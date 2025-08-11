@@ -110,3 +110,6 @@ Dieses Projekt ist unter der **MIT-Lizenz** lizenziert. Weitere Informationen fi
   * Danke an das Team von **bpmn.io** für die fantastischen JavaScript-Toolkits, die das Modellieren von Prozessen zu einer Freude machen.
 
 <!-- end list -->
+---
+*VertexBPMN™ ist eine nicht eingetragene Marke von Yovanny Rodríguez/Tainosoft UG.*
+*VertexBPMN™ is an unregistered trademark of Yovanny Rodríguez/Tainosoft UG.*

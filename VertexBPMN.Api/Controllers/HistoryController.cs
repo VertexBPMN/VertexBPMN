@@ -5,7 +5,7 @@ using VertexBPMN.Core.Domain;
 namespace VertexBPMN.Api.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/history")]
 public class HistoryController : ControllerBase
 {
     private readonly IHistoryService _historyService;

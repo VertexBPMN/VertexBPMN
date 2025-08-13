@@ -4,7 +4,7 @@ using VertexBPMN.Core.Services;
 namespace VertexBPMN.Api.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/management")]
 public class ManagementController : ControllerBase
 {
     private readonly IManagementService _managementService;

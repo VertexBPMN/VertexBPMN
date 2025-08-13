@@ -5,7 +5,7 @@ using CoreTask = VertexBPMN.Core.Domain.Task;
 namespace VertexBPMN.Api.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/task")]
 public class TaskController : ControllerBase
 {
     private readonly ITaskService _taskService;

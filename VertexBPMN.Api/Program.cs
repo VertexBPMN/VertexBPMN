@@ -75,6 +75,14 @@ builder.Services.AddScoped<VertexBPMN.Core.Services.ISimulationScenarioService, 
 	// Register SimulationService
 	builder.Services.AddScoped<VertexBPMN.Core.Services.ISimulationService, VertexBPMN.Core.Services.SimulationService>();
 
+		// Olympic-level Enterprise Scalability: SignalR real-time monitoring
+		builder.Services.AddSignalR();
+
+		// Olympic-level Enterprise Scalability: Distributed processing services
+		builder.Services.AddSingleton<VertexBPMN.Core.Engine.IDistributedTokenEngine, VertexBPMN.Core.Engine.DistributedTokenEngine>();
+		builder.Services.AddSingleton<VertexBPMN.Api.Controllers.ILoadBalancingService, VertexBPMN.Api.Controllers.LoadBalancingService>();
+		builder.Services.AddSingleton<VertexBPMN.Core.Engine.IWorkerNodeManager, VertexBPMN.Core.Engine.WorkerNodeManager>();
+
 		// Observability: HealthChecks, Logging, Metrics
 	builder.Services.AddHealthChecks();
 	builder.Logging.ClearProviders();
@@ -121,6 +129,31 @@ builder.Services.AddScoped<VertexBPMN.Core.Services.ISimulationScenarioService, 
 
 		var app = builder.Build();
 
+		// Ensure databases are created
+		using (var scope = app.Services.CreateScope())
+		{
+			var services = scope.ServiceProvider;
+			try
+			{
+				var bpmnContext = services.GetRequiredService<VertexBPMN.Persistence.BpmnDbContext>();
+				await bpmnContext.Database.EnsureCreatedAsync();
+				
+				var tenantContext = services.GetRequiredService<VertexBPMN.Persistence.Services.TenantDbContext>();
+				await tenantContext.Database.EnsureCreatedAsync();
+				
+				var simulationContext = services.GetRequiredService<VertexBPMN.Persistence.Services.SimulationScenarioDbContext>();
+				await simulationContext.Database.EnsureCreatedAsync();
+				
+				var processMiningContext = services.GetRequiredService<VertexBPMN.Persistence.Services.ProcessMiningEventDbContext>();
+				await processMiningContext.Database.EnsureCreatedAsync();
+			}
+			catch (Exception ex)
+			{
+				var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("DatabaseInitialization");
+				logger.LogError(ex, "An error occurred while creating the database");
+			}
+		}
+
 		// Configure the HTTP request pipeline.
 
 		// Always enable Swagger for easier API exploration in all environments
@@ -143,6 +176,9 @@ builder.Services.AddScoped<VertexBPMN.Core.Services.ISimulationScenarioService, 
 		});
 
 		app.UseAuthorization();
+
+		// Olympic-level Enterprise Scalability: SignalR Hub mapping
+		app.MapHub<VertexBPMN.Api.Hubs.ProcessMonitoringHub>("/api/monitoring-hub");
 
 		app.MapControllers();
 

@@ -5,7 +5,7 @@ using VertexBPMN.Core.Domain;
 namespace VertexBPMN.Api.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/repository")]
 public class RepositoryController : ControllerBase
 {
     private readonly IRepositoryService _repositoryService;

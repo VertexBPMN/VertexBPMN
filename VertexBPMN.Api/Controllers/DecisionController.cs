@@ -4,7 +4,7 @@ using VertexBPMN.Core.Services;
 namespace VertexBPMN.Api.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("api/decision")]
     public class DecisionController : ControllerBase
     {
         private readonly IDecisionService _decisionService;

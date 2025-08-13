@@ -4,7 +4,7 @@
     namespace VertexBPMN.Api.Controllers;
 
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("api/identity")]
     public class IdentityController : ControllerBase
     {
         private readonly IIdentityService _identityService;

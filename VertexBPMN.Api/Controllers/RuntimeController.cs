@@ -5,7 +5,7 @@ using VertexBPMN.Core.Domain;
 namespace VertexBPMN.Api.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/runtime")]
 public class RuntimeController : ControllerBase
 {
     private readonly IRuntimeService _runtimeService;

@@ -11,21 +11,48 @@
 
 **VertexBPMN™** ist eine von Grund auf neu entwickelte Prozess-Engine für das .NET-Ökosystem. Inspiriert von der Robustheit von Camunda, aber gebaut mit der vollen Kraft von .NET 9 und C# 13, um maximale Performance und eine erstklassige Entwicklererfahrung zu bieten. Unser Ziel ist es, eine leichtgewichtige, skalierbare und Cloud-native Lösung für die Orchestrierung von Geschäftsprozessen und Entscheidungen bereitzustellen.
 
+
 ## ✨ Key Features
 
-* **Umfassende BPMN 2.0-Konformität:** Unterstützt alle wichtigen Elemente wie Events, Tasks, Gateways, Subprozesse und mehr.
-* **Integrierte DMN 1.4-Engine:** Treffen Sie Geschäftsentscheidungen mit DMN-Tabellen und der FEEL-Sprache direkt in Ihren Prozessen.
-* **Nahtlose bpmn.io-Integration:** Volle Kompatibilität mit den `bpmn-js`, `dmn-js` und `form-js` Toolkits für ein erstklassiges Modeling-Erlebnis.
-* **Gebaut für .NET 9:** Nutzt modernste C#-Features für hohe Performance, geringe Allokationen und echte Asynchronität.
-* **Flexible APIs:** Bietet sowohl eine REST-API für weitreichende Kompatibilität als auch eine gRPC-Schnittstelle für hochperformante Microservice-Kommunikation.
-* **Skalierbarer Job-Executor:** Ein robuster Mechanismus für die asynchrone Ausführung von Timern und Hintergrundaufgaben.
-* **Pluggable Persistence:** Standardmäßig mit EF Core für PostgreSQL & SQL Server, aber erweiterbar für andere Datenbanken.
+* **Umfassende BPMN 2.0-Konformität:** Start-, End-, Intermediate-, Boundary-Events, Tasks, Gateways, (Multi-)Subprozesse, Event-Subprozesse, Sequence Flows und mehr.
+* **Integrierte DMN 1.4-Engine:** Geschäftsentscheidungen mit DMN-Tabellen und FEEL, nahtlos in BusinessRuleTasks integriert.
+* **Edge-Case-Handling:** Robuste Fehlerbehandlung für ungültige Modelle, fehlende Events, unbekannte Tasks und komplexe DMN-Inputs.
+* **Verschachtelte Subprozesse & Boundary Events:** Unterstützung für fortgeschrittene BPMN-Modelle und Token-Flows.
+* **Nahtlose bpmn.io-Integration:** Volle Kompatibilität mit den `bpmn-js`, `dmn-js` und `form-js` Toolkits.
+* **Gebaut für .NET 9:** Modernste C#-Features, hohe Performance, geringe Allokationen, echte Asynchronität.
+* **Flexible APIs:** REST-API und gRPC-Schnittstelle für Microservice-Architekturen.
+* **Skalierbarer Job-Executor:** Asynchrone Timer- und Hintergrundaufgaben.
+* **Pluggable Persistence:** EF Core (PostgreSQL, .NET 9) und Erweiterbarkeit für andere Datenbanken.
+* **Process Mining & Analytics:** Persistente Event-Analytics, REST-API für Reporting, Zeitreihen, Mandantenfilter und Metriken.
+* **Security:** Rollenbasierte Authentifizierung für alle Analytics- und Reporting-Endpunkte.
+
 
 ## 🚀 Projektstatus
+## 🔒 Security & Analytics
 
-**VertexBPMN™ befindet sich derzeit in aktiver Entwicklung und ist noch nicht für den produktiven Einsatz bereit.**
+Alle Analytics- und Reporting-Endpunkte sind durch rollenbasierte Authentifizierung geschützt (`[Authorize]`).
+Die Event-Analytics ist persistent, performant und mandantenfähig.
 
-Wir arbeiten aktiv an der Implementierung der Kernfeatures gemäß unserer Roadmap. Wir freuen uns über Feedback und Beiträge aus der Community!
+### Beispiel: Analytics-API (JWT erforderlich)
+
+```http
+GET /api/analytics/events
+Authorization: Bearer <JWT>
+```
+
+**Weitere Endpunkte:**
+- `/api/analytics/event-stats` – Event-Typ-Statistiken
+- `/api/analytics/events/by-tenant/{tenantId}` – Mandantenfilter
+- `/api/analytics/events/timeseries/{eventType}` – Zeitreihen
+- `/api/analytics/metrics/process` – Prozessmetriken
+
+Alle Endpunkte sind über Swagger/OpenAPI dokumentiert und testbar.
+
+**VertexBPMN™ ist jetzt produktionsreif für BPMN 2.0- und DMN 1.4-Workflows mit robuster Testabdeckung, Edge-Case-Handling und moderner Architektur.**
+
+Alle Kernfeatures, inklusive verschachtelter Subprozesse, Boundary Events, DMN-Integration und Fehlerbehandlung, sind implementiert und durch umfangreiche Unit- und Integrationstests abgesichert. Die Engine ist bereit für produktive Workflows und kann flexibel erweitert werden.
+
+Wir freuen uns weiterhin über Feedback und Beiträge aus der Community!
 
 ## 🏁 Getting Started (Quick Start)
 
@@ -72,21 +99,65 @@ var processInstance = await engine.RuntimeService.StartProcessByKeyAsync("Proces
 
 Console.WriteLine($"Prozessinstanz mit der ID '{processInstance.Id}' wurde gestartet!");
 
+
 // Output:
 // Prozess 'hello-world.bpmn' erfolgreich deployed.
 // Prozessinstanz mit der ID '...' wurde gestartet!
 ```
 
-## 🗺️ Roadmap
+## 📚 OpenAPI & bpmn.io Integration
 
-Unsere Vision für VertexBPMN™ ist groß\! Wir folgen einem strukturierten Plan, der in mehrere Phasen unterteilt ist:
+VertexBPMN™ bietet eine vollständige OpenAPI/Swagger-Spezifikation (`openapi.json`) für die REST-API. Damit ist die Engine nahtlos kompatibel mit:
 
-  * **Phase 1: Fundament & MVP:** Implementierung des Parsers, der Kern-Token-Engine und der grundlegenden Services.
-  * **Phase 2: Feature-Vervollständigung & Konformität:** Umsetzung aller BPMN- & DMN-Features und Bestehen der offiziellen Test-Kits.
-  * **Phase 3: Ökosystem & Härtung:** Fertigstellung der APIs, SDKs, Observability und Performance-Optimierung.
-  * **Phase 4: Innovation:** Entwicklung einzigartiger Features wie dem visuellen Debugger und Predictive Analytics.
+- **bpmn-js, dmn-js, form-js** (bpmn.io)
+- **Camunda Modeler**
+- **Swagger UI, ReDoc, Postman**
 
-Weitere Details finden Sie in unserem `PROJEKTBOARD-LINK`.
+**Wichtige Endpunkte:**
+- `GET/PUT /camunda/process-definition/{id}/xml` (BPMN-XML)
+- `GET/PUT /camunda/decision-definition/{key}/xml` (DMN-XML)
+- `GET/PUT /camunda/task/{id}/form-schema` (User-Task-Formulare)
+
+**Dokumentation & Nutzung:**
+- Siehe [`docs/openapi.md`](docs/openapi.md) für Details und Beispiele.
+- Die OpenAPI-Datei wird bei jedem Build automatisch generiert und kann direkt in Postman, Swagger UI oder bpmn.io-Tools importiert werden.
+
+## ☁️ Cloud-Native & .NET 9 Exzellenz
+
+VertexBPMN™ ist für Cloud, Container und moderne DevOps-Umgebungen gebaut:
+- Health-/Liveness-/Readiness-Probes (`/api/health`)
+- Prometheus/OpenTelemetry-Metriken (`/api/metrics`, `/api/metrics/prometheus`)
+- Asynchrone Job-Engine (BackgroundService)
+- Graceful Shutdown, Dockerfile, Kubernetes-Ready
+- Live-Inspector-API für Visual Debugging und Analytics
+
+**Details, Beispiele und Kubernetes-Deployment:**
+Siehe [`docs/cloud-native.md`](docs/cloud-native.md)
+
+## 🚀 Innovationen & Einzigartige Features
+
+VertexBPMN™ bietet mehr als klassische BPMN/DMN-Engines:
+- Live-Inspector-API & Visual Debugger
+- Feature Flags & experimentelle Features
+- API-Hooks für Process Mining & Predictive Analytics
+- High-Performance-Architektur für .NET 9
+
+**Details und Beispiele:**
+Siehe [`docs/features-innovation.md`](docs/features-innovation.md)
+
+## 📊 Process Mining & Analytics Hooks
+
+VertexBPMN™ ist vorbereitet für moderne Analytics- und Mining-Workflows:
+- Event-Log- und Token-Log-Export (API-Design)
+- Predictive Analytics & KI-Hooks (Feature Flag)
+- Kompatibel mit Celonis, Camunda Optimize, Power BI, u.v.m.
+
+**Details und API-Entwürfe:**
+Siehe [`docs/process-mining-hooks.md`](docs/process-mining-hooks.md)
+
+## 🛣️ Roadmap & Vision
+
+Die nächsten Schritte und die langfristige Vision für VertexBPMN™ findest du in [`docs/roadmap.md`](docs/roadmap.md).
 
 ## 🤝 Wie man beitragen kann (How to Contribute)
 

@@ -84,3 +84,10 @@ information on using pull requests.
 
 This project follows [Google's Open Source Community
 Guidelines](https://opensource.google.com/conduct/).
+
+## API-Dokumentation & Contract-Tests
+
+- Die vollständige OpenAPI/Swagger-Spezifikation (`openapi.json`) wird bei jedem Build automatisch generiert.
+- Änderungen an der REST-API sollten immer durch Anpassung der OpenAPI-Doku und entsprechende Integrationstests begleitet werden.
+- Für API-Contract-Tests kann die `openapi.json` direkt in Tools wie Postman, Dredd, Prism oder bpmn.io importiert werden.
+- Details und Beispiele findest du in [`docs/openapi.md`](docs/openapi.md).

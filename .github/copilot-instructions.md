@@ -1,79 +1,79 @@
-# GitHub Copilot Anweisungen für das Projekt "BPMN-NextGen Engine"
 
-Willkommen im Team! Du hilfst uns beim Bau einer BPMN 2.0 Engine der nächsten Generation für .NET. Deine Aufgabe ist es, Code von höchster Qualität zu generieren, der unseren strengen Architektur-, Stil- und Testrichtlinien entspricht. Bitte befolge diese Anweisungen sorgfältig.
+# VertexBPMN – AI Agent Coding Instructions
 
-## 1. Die Mission (Das 'Warum')
+This document guides AI coding agents to be productive in the VertexBPMN codebase. It merges project-specific conventions with actionable, up-to-date instructions. **Focus on these points for best results:**
 
-Wir bauen eine BPMN-Engine, die in puncto Performance, Konformität und Developer Experience neue Maßstäbe im .NET-Ökosystem setzt. Das Ziel ist funktionale Parität mit Camunda, kombiniert mit nativer .NET-Performance und innovativen Features. Denk immer daran: **Qualität, Testbarkeit und Lesbarkeit sind nicht verhandelbar.**
+## Project Overview
 
-## 2. Technische Kernspezifikationen (Das 'Was')
+- **VertexBPMN** is a modular, high-performance BPMN 2.0 & DMN 1.4 engine for .NET 9, inspired by Camunda but built natively for .NET and C# 13.
+- The architecture is service-oriented: core services (e.g., `RepositoryService`, `RuntimeService`, `TaskService`) are accessed via interfaces (e.g., `IRepositoryService`).
+- Persistence is abstracted: **never** use `DbContext` directly in business logic—always go through repository interfaces (e.g., `IProcessDefinitionRepository`).
+- The engine is stateless; all state is persisted in the database or distributed cache.
+- All I/O (DB, network) must be async (`async`/`await`, prefer `ValueTask` where appropriate).
 
-Dein Code MUSS auf dem folgenden Tech-Stack basieren:
+## Developer Workflows
 
-- **Framework:** .NET 9
-- **Sprache:** C# 13 (nutze moderne Features wie Primary Constructors, `record struct`, Collection Literals etc.)
-- **Persistenz:** Entity Framework Core 9 (EF Core) mit dem Repository- und Unit-of-Work-Pattern.
-- **Testing:**
-    - **Unit-Tests:** xUnit
-    - **Mocks/Fakes:** Moq (oder NSubstitute, falls bevorzugt, aber sei konsistent)
-    - **Assertions:** FluentAssertions
-- **API:** ASP.NET Core Minimal APIs für REST; gRPC for .NET für RPC-Schnittstellen.
-- **Observability:** OpenTelemetry für Tracing, Metrics und Logging.
-- **Datenbanken:** PostgreSQL (primär) und SQL Server (sekundär). Schreibe portablen EF Core Code.
+- **Build:** Use `dotnet build` in the repo root or solution folder.
+- **Add projects:** Use `dotnet sln add <project-path>` to add new projects to the solution.
+- **Testing:** (Planned) Use xUnit for unit/integration tests. Test projects should be named `*.Tests` and use Moq/NSubstitute for mocking, FluentAssertions for assertions.
+- **NuGet:** Add dependencies via `dotnet add package <PackageName>`.
+- **Documentation:** All public/internal types and members require XML documentation.
 
-## 3. Architektonische Leitsätze (Das 'Wie')
+## Code & Architecture Conventions
 
-Unsere Architektur ist modular und serviceorientiert.
+- **Framework:** .NET 9, C# 13 features (primary constructors, `record struct`, collection literals, etc.).
+- **Persistence:** EF Core 9, repository/unit-of-work pattern. No direct `DbContext` in business logic.
+- **API:** ASP.NET Core Minimal APIs for REST, gRPC for RPC.
+- **Observability:** Use OpenTelemetry for tracing, metrics, and logging.
+- **Database:** Target PostgreSQL (primary), SQL Server (secondary). Write portable EF Core code.
+- **Naming:**
+  - Methods: `PascalCase`, async methods end with `Async` (e.g., `StartProcessByKeyAsync`).
+  - Interfaces: `IPascalCase` (e.g., `IRuntimeService`).
+  - Private fields: `_camelCase`.
+- **Nullability:** `#nullable enable` is enforced. Avoid null-forgiving (`!`) operator.
+- **Immutability:** Use `record`/`record struct` for DTOs and immutable models. Historical data (e.g., `HistoryEvent`) is immutable after creation.
+- **Error Handling:** Use custom exceptions (e.g., `ProcessNotFoundException`). Never throw generic `Exception`/`SystemException`.
+- **Logging:** Use `ILogger` (Microsoft.Extensions.Logging). No `Console.WriteLine`/`Debug.WriteLine` in app logic.
+- **No magic strings:** Use `nameof()` and `const`/`static readonly` for repeated strings (e.g., variable names, error codes).
+- **No direct dependencies on concrete classes:** Always code against interfaces in public APIs.
 
-- **Service-Orientierung:** Die Engine ist in klare Services aufgeteilt (`RepositoryService`, `RuntimeService`, `TaskService` etc.), die über Interfaces (`IRepositoryService` etc.) angesprochen werden. Implementiere immer gegen diese Interfaces.
-- **Persistenz-Abstraktion:** **NIEMALS** direkten `DbContext` in der Business-Logik verwenden. Nutze immer ein Repository-Interface (z.B. `IProcessDefinitionRepository`). Die Implementierung dieses Interfaces verwendet EF Core.
-- **Zustandslosigkeit:** Die API- und Worker-Knoten müssen zustandslos (stateless) sein. Jeder Zustand wird in der Datenbank (oder einem verteilten Cache) persistiert.
-- **Asynchronität:** Alle I/O-lastigen Operationen (Datenbank, Netzwerk) MÜSSEN asynchron sein. Verwende `async`/`await` konsequent und nutze `ValueTask`, wo sinnvoll.
+## Domain-Specific Patterns
 
-## 4. Code-Qualität und Stil (Unsere Regeln)
+- **Token-based execution:** The engine models BPMN token flow. Think in terms of tokens moving through the process graph.
+- **Transactional boundaries:** State changes must be atomic within DB transactions. Each "unit of work" (e.g., moving a token) is a single transaction.
+- **Statelessness:** API and worker nodes must not hold process state in memory between requests.
 
-- **Sprachfeatures:** Nutze die neuesten C# 13 Features, wo sie die Lesbarkeit und Performance verbessern. `record` und `record struct` sind für DTOs und unveränderliche Datenmodelle zu bevorzugen.
-- **Nullability:** Das gesamte Projekt verwendet `#nullable enable`. Behandle Warnungen zu Null-Referenzen als Fehler. Vermeide den `!`-Operator (null-forgiving) so weit wie möglich.
-- **Namenskonventionen:**
-    - Methoden: `PascalCase`. Asynchrone Methoden enden **immer** auf `Async` (z.B. `StartProcessInstanceAsync`).
-    - Interfaces: `IPascalCase` (z.B. `IRuntimeService`).
-    - Private Felder: `_camelCase`.
-- **XML-Dokumentation:** Alle `public` und `internal` Typen und Member MÜSSEN eine vollständige XML-Dokumentation haben (`<summary>`, `<param>`, `<returns>`).
+## Testing & Quality
 
-  ```csharp
-  /// <summary>
-  /// Starts a new process instance for the definition with the given key.
-  /// </summary>
-  /// <param name="processDefinitionKey">The unique key of the process definition.</param>
-  /// <param name="variables">A dictionary of variables to start the process with.</param>
-  /// <param name="cancellationToken">A token to cancel the operation.</param>
-  /// <returns>A task representing the asynchronous operation, which returns the newly created process instance.</returns>
-  Task<ProcessInstance> StartProcessByKeyAsync(string processDefinitionKey, IDictionary<string, object> variables, CancellationToken cancellationToken);
-````
+- **Test coverage:** Target ≥95% for core logic. All new features require unit/integration tests.
+- **Test structure:** Use Arrange-Act-Assert (AAA) in all tests.
+- **End-to-end/integration:** Test cross-component flows (API → Service → DB) as integration tests.
+- **Conformance:** Code must pass BPMN MIWG and DMN TCK test suites.
 
-  - **Fehlerbehandlung:** Wir verwenden spezifische, benutzerdefinierte Exceptions (z.B. `ProcessNotFoundException`, `TaskAlreadyClaimedException`). Werfe keine generischen `Exception` oder `SystemException`.
-  - **Logging:** Nutze `Microsoft.Extensions.Logging.ILogger` für strukturiertes Logging. **KEIN** `Console.WriteLine` oder `Debug.WriteLine` in der Anwendungslogik.
+## Absolute No-Gos
 
-## 5\. Test-Philosophie (Immer testen\!)
+- No direct `DbContext` outside repository implementations.
+- No manual thread creation; prefer async/await and TPL.
+- No for-loops where LINQ is clearer.
+- No empty catch blocks or swallowed exceptions—always log or rethrow.
+- No public APIs with concrete types (use interfaces like `IEnumerable`, `IDictionary`).
 
-  - **Hohe Abdeckung:** Wir streben eine Testabdeckung von \>=95% für die Kernlogik an. Jede neue Funktion muss von Unit- und/oder Integrationstests begleitet werden.
-  - **Arrange-Act-Assert (AAA):** Strukturiere alle Tests klar nach dem AAA-Muster.
-  - **Fokus auf Unit-Tests:** Die Geschäftslogik der einzelnen BPMN-Elemente und Services sollte primär mit Unit-Tests validiert werden.
-  - **Integrationstests für Abläufe:** End-to-End-Szenarien, die die Interaktion mehrerer Komponenten (z.B. API -\> Service -\> Datenbank) testen, werden als Integrationstests implementiert.
-  - **Konformitätstests:** Denke daran, dass der generierte Code die BPMN MIWG und DMN TCK Test-Suiten bestehen muss.
+## Example: Minimal Engine Usage
 
-## 6\. Domänenspezifische Regeln (BPMN-Semantik)
+See `README.md` for a minimal example of deploying and running a process:
 
-  - **Token-Fluss:** Die Engine ist Token-basiert. Denke in Tokens, die durch den Graphen fließen, konsumiert und erzeugt werden.
-  - **Unveränderlichkeit (Immutability):** Historische Daten (`HistoryEvent`) sind nach ihrer Erstellung unveränderlich.
-  - **Transaktionsgrenzen:** Zustandsänderungen müssen atomar innerhalb von Datenbanktransaktionen stattfinden. Eine "Arbeitseinheit" (z.B. das Bewegen eines Tokens von einem Knoten zum nächsten) sollte in einer einzigen Transaktion erfolgen.
+```csharp
+var engine = await new EngineBuilder()
+    .UseInMemoryStorage()
+    .BuildAsync();
+// ...
+```
 
-## 7\. Absolute No-Gos (Was du vermeiden musst)
+## Key Files & Directories
 
-  - **Veraltete Muster:** Keine `for`-Schleifen, wenn `LINQ` lesbarer ist. Keine manuellen Thread-Erstellungen.
-  - **Direkte DB-Abfragen:** Kein `DbContext` außerhalb der Repository-Implementierungen.
-  - **Magische Strings:** Verwende `nameof()` für Typen- und Member-Namen und `const` oder `static readonly` Felder für wiederkehrende Strings (z.B. Variablennamen, BPMN-Fehlercodes).
-  - **Verschluckte Exceptions:** Fange niemals eine Exception, ohne sie zu loggen oder weiterzuwerfen. Leere `catch`-Blöcke sind verboten.
-  - **Abhängigkeiten von konkreten Klassen:** Programmiere immer gegen Interfaces (`IEnumerable` statt `List`, `IDictionary` statt `Dictionary` in öffentlichen Signaturen).
+- `VertexBPMN.Core/` – Core engine logic, services, and interfaces
+- `README.md` – Project overview, usage, and architecture
+- `.github/` – Contribution, issue, and PR templates
 
-Wir zählen auf deine Unterstützung, um dieses Projekt zu einem herausragenden Erfolg zu machen. Lass uns sauberen, performanten und robusten Code schreiben\!
+---
+**For any unclear or missing conventions, consult the README and CONTRIBUTING.md, or ask for clarification.**

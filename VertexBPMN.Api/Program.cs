@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore.Sqlite;
 using VertexBPMN.Persistence.Services;
 using VertexBPMN.Persistence.Repositories;
 using VertexBPMN.Api.Security;
+using VertexBPMN.Api.Services;
+using Polly;
 // ...existing top-level statements and code...
 // Place this at the end of the file, after all top-level statements
 
@@ -28,6 +30,14 @@ builder.Services.AddDbContext<VertexBPMN.Persistence.Services.SimulationScenario
 
 // Register SimulationScenarioService
 builder.Services.AddScoped<VertexBPMN.Core.Services.ISimulationScenarioService, VertexBPMN.Persistence.Services.SimulationScenarioService>();
+
+		// Olympic-level Production-Grade Features: Security, Caching, Resilience, Rate Limiting, Health Monitoring
+		builder.Services.AddMemoryCache(); // Required for ProductionCachingService
+		builder.Services.AddSingleton<ICachingService, ProductionCachingService>();
+		builder.Services.AddSingleton<IResilienceService, ProductionResilienceService>();
+		builder.Services.AddSingleton<IRateLimitingService, ProductionRateLimitingService>();
+		builder.Services.AddScoped<IHealthMonitoringService, ProductionHealthMonitoringService>();
+
 		// Register TenantDbContext (SQLite for demo, can be extended)
 		builder.Services.AddDbContext<VertexBPMN.Persistence.Services.TenantDbContext>(options =>
 			options.UseSqlite("Data Source=tenants.db"));

@@ -4,6 +4,10 @@ using VertexBPMN.Persistence.Services;
 using VertexBPMN.Persistence.Repositories;
 using VertexBPMN.Api.Security;
 using VertexBPMN.Api.Services;
+using VertexBPMN.Api.ML;
+using VertexBPMN.Api.Migration;
+using VertexBPMN.Api.Debugging;
+using VertexBPMN.Api.Plugins;
 using Polly;
 // ...existing top-level statements and code...
 // Place this at the end of the file, after all top-level statements
@@ -84,6 +88,12 @@ builder.Services.AddScoped<VertexBPMN.Core.Services.ISimulationScenarioService, 
 
 	// Register SimulationService
 	builder.Services.AddScoped<VertexBPMN.Core.Services.ISimulationService, VertexBPMN.Core.Services.SimulationService>();
+
+	// Olympic-level Innovation Differentiators - The Future of BPMN
+	builder.Services.AddScoped<IPredictiveAnalyticsService, MLPredictiveAnalyticsService>();
+	builder.Services.AddScoped<ILiveProcessMigrationService, LiveProcessMigrationService>();
+	builder.Services.AddScoped<IVisualDebuggingService, VisualDebuggingService>();
+	builder.Services.AddSingleton<IPluginManager, PluginManager>();
 
 		// Olympic-level Enterprise Scalability: SignalR real-time monitoring
 		builder.Services.AddSignalR();
@@ -189,6 +199,8 @@ builder.Services.AddScoped<VertexBPMN.Core.Services.ISimulationScenarioService, 
 
 		// Olympic-level Enterprise Scalability: SignalR Hub mapping
 		app.MapHub<VertexBPMN.Api.Hubs.ProcessMonitoringHub>("/api/monitoring-hub");
+		// Olympic-level Innovation Differentiators: Visual Debugging Hub
+		app.MapHub<VertexBPMN.Api.Debugging.DebugHub>("/api/debug-hub");
 
 		app.MapControllers();
 

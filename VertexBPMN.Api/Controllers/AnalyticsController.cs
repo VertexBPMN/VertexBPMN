@@ -52,6 +52,7 @@ namespace VertexBPMN.Api.Controllers
     {
         var trace = _db.Events
             .Where(e => e.ProcessInstanceId == processInstanceId)
+            .AsEnumerable() // Force client-side evaluation for SQLite compatibility
             .OrderBy(e => e.Timestamp)
             .ToList();
         return Ok(trace);
@@ -94,6 +95,7 @@ namespace VertexBPMN.Api.Controllers
     {
         var series = _db.Events
             .Where(e => e.EventType == eventType)
+            .AsEnumerable() // Force client-side evaluation for SQLite compatibility
             .GroupBy(e => e.Timestamp.Date)
             .Select(g => new { Date = g.Key, Count = g.Count() })
             .OrderBy(x => x.Date)

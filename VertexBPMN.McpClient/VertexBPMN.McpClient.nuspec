@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<package >
+  <metadata>
+    <id>VertexBPMN.McpClient</id>
+    <version>1.0.0</version>
+    <authors>VertexBPMN</authors>
+    <owners>VertexBPMN</owners>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>Client-Bibliothek für MCP-Calls (JSON-RPC und Event-Stream) für VertexBPMN.</description>
+    <tags>BPMN MCP JSON-RPC WebSocket Client</tags>
+    <projectUrl>https://github.com/VertexBPMN/VertexBPMN</projectUrl>
+    <license type="expression">MIT</license>
+  </metadata>
+</package>

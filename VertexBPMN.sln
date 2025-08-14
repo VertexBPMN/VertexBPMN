@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VertexBPMN.Persistence", "V
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VertexBPMN.Tests", "VertexBPMN.Tests\VertexBPMN.Tests.csproj", "{8B205B63-8E82-4C4E-8E70-D1900112792A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VertexBPMN.McpClient", "VertexBPMN.McpClient\VertexBPMN.McpClient.csproj", "{BD7A6527-6B99-4D26-B79D-B2170B4D439D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -69,6 +71,18 @@ Global
 		{8B205B63-8E82-4C4E-8E70-D1900112792A}.Release|x64.Build.0 = Release|Any CPU
 		{8B205B63-8E82-4C4E-8E70-D1900112792A}.Release|x86.ActiveCfg = Release|Any CPU
 		{8B205B63-8E82-4C4E-8E70-D1900112792A}.Release|x86.Build.0 = Release|Any CPU
+		{BD7A6527-6B99-4D26-B79D-B2170B4D439D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BD7A6527-6B99-4D26-B79D-B2170B4D439D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BD7A6527-6B99-4D26-B79D-B2170B4D439D}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{BD7A6527-6B99-4D26-B79D-B2170B4D439D}.Debug|x64.Build.0 = Debug|Any CPU
+		{BD7A6527-6B99-4D26-B79D-B2170B4D439D}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{BD7A6527-6B99-4D26-B79D-B2170B4D439D}.Debug|x86.Build.0 = Debug|Any CPU
+		{BD7A6527-6B99-4D26-B79D-B2170B4D439D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BD7A6527-6B99-4D26-B79D-B2170B4D439D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BD7A6527-6B99-4D26-B79D-B2170B4D439D}.Release|x64.ActiveCfg = Release|Any CPU
+		{BD7A6527-6B99-4D26-B79D-B2170B4D439D}.Release|x64.Build.0 = Release|Any CPU
+		{BD7A6527-6B99-4D26-B79D-B2170B4D439D}.Release|x86.ActiveCfg = Release|Any CPU
+		{BD7A6527-6B99-4D26-B79D-B2170B4D439D}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

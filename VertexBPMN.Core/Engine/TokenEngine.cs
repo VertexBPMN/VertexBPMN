@@ -1,18 +1,34 @@
-using System.Collections.Generic;
+using VertexBPMN.Core.Bpmn;
+using VertexBPMN.Core.Services;
+using VertexBPMN.Core.Tasks;
 
-namespace VertexBPMN.Core.Bpmn;
+namespace VertexBPMN.Core.Engine;
 
 /// <summary>
 /// Advanced BPMN 2.0 Token Engine with support for boundary events, multi-instance, compensation, and transactions.
 /// Olympic-level implementation for comprehensive BPMN execution.
 /// </summary>
-public class TokenEngine
+public class TokenEngine : IProcessEngine
 {
     private readonly Dictionary<string, List<ExecutionToken>> _activeTokens = new();
     private readonly Dictionary<string, CompensationContext> _compensationStack = new();
     private readonly Dictionary<string, MultiInstanceContext> _multiInstanceContexts = new();
     private readonly List<BoundaryEventHandler> _boundaryEventHandlers = new();
-    public List<string> Execute(BpmnModel model, VertexBPMN.Core.Services.IDecisionService? decisionService = null)
+    private readonly Dictionary<string, Func<IDictionary<string, string>, IDictionary<string, object>, CancellationToken, Task>> _serviceTaskHandlers = new();
+
+    public TokenEngine()
+    {
+        // Registrierung des SemanticKernelServiceTaskHandler
+        var skHandler = new SemanticKernelServiceTaskHandler(new CachingKernelFactory());
+        _serviceTaskHandlers["semanticKernelServiceTask"] = skHandler.ExecuteAsync;
+
+    }
+    public List<string> Execute(BpmnModel model)
+    {
+        return Execute(model, null);
+    }
+
+    public List<string> Execute(BpmnModel model, IDecisionService? decisionService = null)
     {
         var trace = new List<string>();
         var start = model.Events.FirstOrDefault(e => e.Type == "startEvent");
@@ -160,6 +176,21 @@ public class TokenEngine
                     // Simuliere DMN-Auswertung
                     var result = decisionService.EvaluateDecisionByKeyAsync(task.Id, new Dictionary<string, object> { { "input", 1 } }).Result;
                     trace.Add($"DecisionEvaluated: {task.Id} => {result.Outputs["input"]}");
+                }
+                else
+                {
+                    trace.Add($"UserTask: {task.Id}");
+                }
+                // ServiceTask-Handling
+                if (task.Type == "serviceTask" && _serviceTaskHandlers.TryGetValue(task.Implementation, out var handler))
+                {
+                    trace.Add($"ServiceTask: {task.Id} ({task.Implementation})");
+                    // BPMN-Attribute und Prozessvariablen zusammenstellen
+                    var attributes = task.Attributes; // Annahme: task.Attributes enthält BPMN-Attribute als Dictionary
+                    var variables = model.ProcessVariables; // Annahme: Prozessvariablen sind hier verfügbar
+                    // Asynchronen Handler ausführen (ggf. synchron warten, falls Execute synchron ist)
+                    handler(attributes, variables, CancellationToken.None).GetAwaiter().GetResult();
+                    trace.Add($"ServiceTaskCompleted: {task.Id}");
                 }
                 else
                 {
@@ -467,23 +498,3 @@ public class TokenEngine
         return true;
     }
 }
-
-/// <summary>
-/// Represents an execution token for advanced BPMN 2.0 flow control
-/// </summary>
-public record ExecutionToken(string Id, string ProcessInstanceId, string CurrentNodeId);
-
-/// <summary>
-/// Context for compensation handling in transaction subprocesses
-/// </summary>
-public record CompensationContext(string EventId, string AttachedActivityId);
-
-/// <summary>
-/// Context for multi-instance loop execution
-/// </summary>
-public record MultiInstanceContext(string ActivityId, int TotalInstances, int CompletedInstances, bool IsSequential);
-
-/// <summary>
-/// Handler for boundary events attached to activities
-/// </summary>
-public record BoundaryEventHandler(BpmnEvent BoundaryEvent);

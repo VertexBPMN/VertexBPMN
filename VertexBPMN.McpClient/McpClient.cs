@@ -5,7 +5,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace VertexBPMN.McpClient;
+namespace VertexBPMN.Mcp;
 
 public class McpClient
 {

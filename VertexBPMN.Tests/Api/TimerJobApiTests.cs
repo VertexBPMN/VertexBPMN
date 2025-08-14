@@ -9,11 +9,11 @@ using Xunit;
 
 namespace VertexBPMN.Tests.Api;
 
-public class TimerJobApiTests : IClassFixture<WebApplicationFactory<Program>>
+public class TimerJobApiTests : IClassFixture<WebApplicationFactory<VertexBPMN.Api.Program>>
 {
     private readonly HttpClient _client;
 
-    public TimerJobApiTests(WebApplicationFactory<Program> factory)
+    public TimerJobApiTests(WebApplicationFactory<VertexBPMN.Api.Program> factory)
     {
         _client = factory.CreateClient();
     }

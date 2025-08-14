@@ -1,11 +1,12 @@
 using System.Xml.Linq;
+using VertexBPMN.Core.Bpmn;
 
-namespace VertexBPMN.Core.Bpmn;
+namespace VertexBPMN.Core.Engine;
 
 /// <summary>
 /// Einfache BPMN 2.0 XML-Parser-Basisklasse. Parst BPMN-Definitions und extrahiert Prozesselemente.
 /// </summary>
-public class BpmnParser
+public class BpmnParser : IBpmnParser
 {
     public BpmnModel Parse(string bpmnXml)
     {
@@ -46,7 +47,42 @@ public class BpmnParser
             return new BpmnEvent(id, type, attachedTo, isCompensation, cancelActivity, eventDefinitionType);
         }).ToList();
         // Event Subprocesses
-    var tasks = process.Elements().Where(e => e.Name.LocalName.EndsWith("Task") || e.Name.LocalName == "callActivity").Select(e => new BpmnTask((string?)e.Attribute("id") ?? "", e.Name.LocalName)).ToList();
+        var tasks = process.Elements()
+            .Where(e => e.Name.LocalName.EndsWith("Task") || e.Name.LocalName == "callActivity")
+            .Select(e =>
+            {
+                var id = (string?)e.Attribute("id") ?? "";
+                var type = e.Name.LocalName;
+                var implementation = (string?)e.Attribute("implementation");
+                var attributes = new Dictionary<string, string>();
+
+                // Parse <bpmn:extensionElements>
+                var ext = e.Element(e.Name.Namespace + "extensionElements");
+                if (ext != null)
+                {
+                    // Parse <bpmn:property name="..." value="..."/>
+                    foreach (var prop in ext.Elements(e.Name.Namespace + "property"))
+                    {
+                        var name = (string?)prop.Attribute("name");
+                        var value = (string?)prop.Attribute("value");
+                        if (!string.IsNullOrWhiteSpace(name) && value != null)
+                            attributes[name] = value;
+                    }
+
+                    // Optionally: Parse Zeebe or other extension fields
+                    foreach (var zeebeProp in ext.Elements().Where(x => x.Name.LocalName == "header"))
+                    {
+                        var key = (string?)zeebeProp.Attribute("key");
+                        var value = (string?)zeebeProp.Attribute("value");
+                        if (!string.IsNullOrWhiteSpace(key) && value != null)
+                            attributes[key] = value;
+                    }
+                }
+
+                return new BpmnTask(id, type, implementation, attributes);
+            })
+            .ToList();
+
         var gateways = process.Elements().Where(e => e.Name.LocalName.EndsWith("Gateway")).Select(e =>
         {
             var type = e.Name.LocalName;
@@ -118,24 +154,3 @@ public class BpmnParser
     }
 }
 
-public partial record BpmnModel(
-    string Id,
-    string Name,
-    List<BpmnEvent> Events,
-    List<BpmnTask> Tasks,
-    List<BpmnGateway> Gateways,
-    List<BpmnSubprocess> Subprocesses,
-    List<BpmnSequenceFlow> SequenceFlows
-);
-
-public partial record BpmnModel
-{
-    public string ProcessId => Id;
-    public IEnumerable<object> Activities => Tasks.Cast<object>().Concat(Subprocesses);
-}
-public record BpmnSubprocess(string Id, bool IsMultiInstance, bool IsEventSubprocess = false, bool IsTransaction = false, bool IsSequential = false, int? LoopCardinality = null);
-
-public record BpmnEvent(string Id, string Type, string? AttachedToRef = null, bool IsCompensation = false, bool CancelActivity = true, string? EventDefinitionType = null);
-public record BpmnTask(string Id, string Type);
-public record BpmnGateway(string Id, string Type);
-public record BpmnSequenceFlow(string Id, string SourceRef, string TargetRef);

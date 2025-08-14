@@ -7,46 +7,6 @@ using Task = System.Threading.Tasks.Task;
 namespace VertexBPMN.Core.Engine;
 
 /// <summary>
-/// Distributed token execution engine for enterprise scalability
-/// Olympic-level feature: Enterprise Scalability - Distributed processing
-/// </summary>
-public interface IDistributedTokenEngine
-{
-    Task<List<string>> ExecuteAsync(BpmnModel model, CancellationToken cancellationToken = default);
-    Task<bool> CanExecuteAsync(string nodeId, CancellationToken cancellationToken = default);
-    Task DistributeTokenAsync(ExecutionToken token, CancellationToken cancellationToken = default);
-    Task<List<ExecutionToken>> GetPendingTokensAsync(CancellationToken cancellationToken = default);
-}
-
-/// <summary>
-/// Execution token for distributed processing
-/// </summary>
-public record ExecutionToken(
-    Guid Id,
-    Guid ProcessInstanceId,
-    string CurrentNodeId,
-    string NodeType,
-    IDictionary<string, object> Variables,
-    DateTime CreatedAt,
-    string? AssignedWorker = null,
-    DateTime? AssignedAt = null,
-    int RetryCount = 0
-);
-
-/// <summary>
-/// Worker node for distributed execution
-/// </summary>
-public record WorkerNode(
-    string Id,
-    string HostName,
-    int Port,
-    DateTime LastHeartbeat,
-    List<string> SupportedNodeTypes,
-    int CurrentLoad,
-    int MaxCapacity
-);
-
-/// <summary>
 /// In-memory implementation of distributed token engine
 /// In production, this would use Redis, RabbitMQ, or Apache Kafka
 /// </summary>
@@ -379,5 +339,16 @@ public class DistributedTokenEngine : IDistributedTokenEngine
     public void Dispose()
     {
         _heartbeatTimer?.Dispose();
+    }
+}
+
+public class DistributedTokenEngineAdapter : IProcessEngine
+{
+    private readonly IDistributedTokenEngine _distributed;
+    public DistributedTokenEngineAdapter(IDistributedTokenEngine distributed) { _distributed = distributed; }
+    public List<string> Execute(BpmnModel model)
+    {
+        // Sync-Wrapper für Demo, besser: Async-Interface!
+        return _distributed.ExecuteAsync(model).GetAwaiter().GetResult();
     }
 }

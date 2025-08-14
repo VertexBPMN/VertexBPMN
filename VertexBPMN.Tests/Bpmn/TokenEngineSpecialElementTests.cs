@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using VertexBPMN.Core.Bpmn;
+using VertexBPMN.Core.Engine;
 using Xunit;
 
 namespace VertexBPMN.Tests.Bpmn

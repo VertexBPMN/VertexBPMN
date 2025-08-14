@@ -8,21 +8,37 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="coverlet.collector" Version="6.0.2" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
-    <PackageReference Include="xunit" Version="2.9.2" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
-  <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.0.0" />
+    <PackageReference Include="coverlet.collector" Version="6.0.4">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="Moq" Version="4.20.72" />
+  <PackageReference Include="xunit" Version="2.9.3" />
+  <PackageReference Include="xunit.runner.visualstudio" Version="3.1.3">
+    <PrivateAssets>all</PrivateAssets>
+    <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+  </PackageReference>
+  <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.0.8" />
   </ItemGroup>
 
   <ItemGroup>
     <Using Include="Xunit" />
   <ProjectReference Include="..\VertexBPMN.Api\VertexBPMN.Api.csproj" />
+  <ProjectReference Include="..\VertexBPMN.McpAgentPlugin\VertexBPMN.McpAgentPlugin.csproj" />
+  <ProjectReference Include="..\VertexBPMN.McpClient\VertexBPMN.McpClient.csproj" />
+  <ProjectReference Include="..\VertexBPMN.McpAdapter\VertexBPMN.McpAdapter.csproj" />
   </ItemGroup>
 <ItemGroup>
     <None Include="TestData\**\*.*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 <ItemGroup>
+<None Update="TestData\agents.js">    
+    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+  </None>
+<None Update="TestData\ExampleProcess.bpmn">  
+    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+  </None>
   <None Update="TestData\Reference\A.1.0.bpmn">
     <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
   </None>
@@ -89,6 +105,12 @@
   <None Update="TestData\Reference\xsdTypes.xsd">
     <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
   </None>
+  <None Update="TestData\SemanticKernelTestProcess.bpmn">
+    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+  </None>
+</ItemGroup>
+<ItemGroup>
+  <Folder Include="Tasks\" />
 </ItemGroup>
 
 </Project>

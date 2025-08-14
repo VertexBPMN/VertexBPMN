@@ -2,8 +2,8 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Collections.Generic;
+using VertexBPMN.Core.Engine;
 using Xunit;
-using VertexBPMN.Core.Bpmn;
 using VertexBPMN.Core.Services;
 
 namespace VertexBPMN.Tests.Bpmn

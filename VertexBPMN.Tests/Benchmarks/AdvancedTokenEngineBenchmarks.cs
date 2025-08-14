@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using VertexBPMN.Core.Bpmn;
+using VertexBPMN.Core.Engine;
 using Xunit;
 
 namespace VertexBPMN.Benchmarks;
@@ -32,7 +33,9 @@ public class AdvancedTokenEngineBenchmarks
         var sw = Stopwatch.StartNew();
         for (int i = 0; i < 5000; i++)
         {
-            engine.Execute(model, decisionService);
+          var result =  engine.Execute(model, decisionService);
+            Assert.NotNull(result);
+            Assert.Contains("StartEvent: start1", result);
         }
         sw.Stop();
         Console.WriteLine($"Executed 5,000 complex processes in {sw.ElapsedMilliseconds} ms");

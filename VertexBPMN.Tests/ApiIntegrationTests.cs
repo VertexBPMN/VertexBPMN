@@ -7,12 +7,12 @@ using Xunit;
 
 namespace VertexBPMN.Tests;
 
-public class ApiIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
+public class ApiIntegrationTests : IClassFixture<WebApplicationFactory<VertexBPMN.Api.Program>>
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly WebApplicationFactory<VertexBPMN.Api.Program> _factory;
     private readonly HttpClient _client;
 
-    public ApiIntegrationTests(WebApplicationFactory<Program> factory)
+    public ApiIntegrationTests(WebApplicationFactory<VertexBPMN.Api.Program> factory)
     {
         _factory = factory;
         _client = factory.CreateClient();

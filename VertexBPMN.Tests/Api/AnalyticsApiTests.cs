@@ -10,10 +10,10 @@ using Microsoft.VisualStudio.TestPlatform.TestHost;
 
 namespace VertexBPMN.Tests.Api
 {
-    public class AnalyticsApiTests : IClassFixture<WebApplicationFactory<Program>>
+    public class AnalyticsApiTests : IClassFixture<WebApplicationFactory<VertexBPMN.Api.Program>>
     {
-        private readonly WebApplicationFactory<Program> _factory;
-        public AnalyticsApiTests(WebApplicationFactory<Program> factory)
+    private readonly WebApplicationFactory<VertexBPMN.Api.Program> _factory;
+    public AnalyticsApiTests(WebApplicationFactory<VertexBPMN.Api.Program> factory)
         {
             _factory = factory;
         }

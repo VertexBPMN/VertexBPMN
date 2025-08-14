@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using VertexBPMN.Core.Bpmn;
+using VertexBPMN.Core.Engine;
 using VertexBPMN.Core.Services;
 using Xunit;
 

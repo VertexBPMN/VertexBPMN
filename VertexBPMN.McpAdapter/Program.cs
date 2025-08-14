@@ -5,11 +5,15 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
 using VertexBPMN.Core;
+using VertexBPMN.Core.Engine;
+using VertexBPMN.Core.Bpmn;
 using System.Text.Json;
 using System.Net.WebSockets;
 using System.Threading.Tasks;
 using System.Text;
 
+namespace VertexBPMN.McpAdapter
+{
 public partial class Program
 {
     public static void Main(string[] args)
@@ -18,6 +22,9 @@ public partial class Program
         var builder = WebApplication.CreateBuilder(args);
     builder.Host.UseSerilog((ctx, lc) => lc.WriteTo.Console());
     builder.Services.AddVertexTelemetry();
+    builder.Services.AddSingleton<IDistributedTokenEngine, DistributedTokenEngine>();
+    builder.Services.AddSingleton<IProcessEngine, DistributedTokenEngineAdapter>();
+    builder.Services.AddSingleton<IBpmnParser, BpmnParser>();
     builder.Services.AddSingleton<IBpmnEngine, BpmnEngine>();
     builder.Services.AddSingleton<McpServer>();
         var app = builder.Build();
@@ -129,4 +136,10 @@ public partial class Program
 
         app.Run();
     }
+}
+
+namespace VertexBPMN.McpAdapter
+{
+    public partial class Program { }
+}
 }

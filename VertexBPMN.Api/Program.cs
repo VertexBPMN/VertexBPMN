@@ -9,8 +9,7 @@ using VertexBPMN.Api.Migration;
 using VertexBPMN.Api.Debugging;
 using VertexBPMN.Api.Plugins;
 using Polly;
-// ...existing top-level statements and code...
-// Place this at the end of the file, after all top-level statements
+
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddScoped<VertexBPMN.Persistence.Repositories.IMultiInstanceExecutionRepository, VertexBPMN.Persistence.Repositories.Impl.MultiInstanceExecutionRepository>();
@@ -20,6 +19,7 @@ builder.Services.AddScoped<VertexBPMN.Core.Services.IProcessMigrationService>(sp
 		sp.GetRequiredService<VertexBPMN.Core.Services.IHistoryService>()
 	)
 );
+
 // Register VisualDebuggerController dependencies
 builder.Services.AddScoped<VertexBPMN.Api.Controllers.VisualDebuggerController>();
 // Register SemanticValidationService for diagnostics
@@ -174,6 +174,30 @@ builder.Services.AddScoped<VertexBPMN.Core.Services.ISimulationScenarioService, 
 			}
 		}
 
+	var pluginsDir = Path.Combine(AppContext.BaseDirectory, "plugins");
+	if (!Directory.Exists(pluginsDir))
+	{
+		Directory.CreateDirectory(pluginsDir);
+	}
+	// Load plugins from the "plugins" directory
+	using (var pluginScope = app.Services.CreateScope())
+	{
+		var pluginManager = pluginScope.ServiceProvider.GetRequiredService<IPluginManager>();
+		var logger = pluginScope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("PluginLoader");
+		var pluginFiles = Directory.GetFiles(pluginsDir, "*.dll", SearchOption.TopDirectoryOnly);
+		foreach (var pluginPath in pluginFiles)
+		{
+			var result = await pluginManager.LoadPluginAsync(pluginPath);
+			if (!result.Success)
+			{
+				logger.LogError("Failed to load plugin {PluginPath}: {Error}", pluginPath, result.Error);
+			}
+			else
+			{
+				logger.LogInformation("Loaded plugin: {PluginPath}", pluginPath);
+			}
+		}
+	}
 		// Configure the HTTP request pipeline.
 
 		// Always enable Swagger for easier API exploration in all environments
@@ -208,4 +232,10 @@ builder.Services.AddScoped<VertexBPMN.Core.Services.ISimulationScenarioService, 
 	// Prometheus-Scraping-Endpoint entfernt
 
 		app.Run();
-public partial class Program { }
+
+
+		namespace VertexBPMN.Api
+		{
+			public partial class Program { }
+		}
+

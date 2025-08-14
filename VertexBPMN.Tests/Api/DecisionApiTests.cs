@@ -8,11 +8,11 @@ using Xunit;
 
 namespace VertexBPMN.Tests.Api;
 
-public class DecisionApiTests : IClassFixture<WebApplicationFactory<Program>>
+public class DecisionApiTests : IClassFixture<WebApplicationFactory<VertexBPMN.Api.Program>>
 {
     private readonly HttpClient _client;
 
-    public DecisionApiTests(WebApplicationFactory<Program> factory)
+  public DecisionApiTests(WebApplicationFactory<VertexBPMN.Api.Program> factory)
     {
         _client = factory.CreateClient();
     }

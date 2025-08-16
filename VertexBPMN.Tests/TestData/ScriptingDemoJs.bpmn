@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<scriptTask id="doJs" scriptFormat="JavaScript" resultVariable="out">
+	<script>
+		<![CDATA[
+    const x = variables["x"]; 
+    const y = variables["y"];
+    x + y;
+  ]]>
+	</script>
+</scriptTask>
+

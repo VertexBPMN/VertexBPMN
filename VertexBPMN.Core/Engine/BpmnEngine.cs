@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using VertexBPMN.Core.Bpmn;
 using VertexBPMN.Core.Engine;
-using VertexBPMN.Core.Tasks;
 
 namespace VertexBPMN.Core.Engine
 {

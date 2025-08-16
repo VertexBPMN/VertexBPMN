@@ -1,6 +1,11 @@
+using Microsoft.Extensions.Logging;
+using SendGrid;
+using System.Text.Json;
+using Microsoft.Extensions.Logging.Abstractions;
 using VertexBPMN.Core.Bpmn;
+using VertexBPMN.Core.Handlers;
+using VertexBPMN.Core.Scripting;
 using VertexBPMN.Core.Services;
-using VertexBPMN.Core.Tasks;
 
 namespace VertexBPMN.Core.Engine;
 
@@ -10,19 +15,23 @@ namespace VertexBPMN.Core.Engine;
 /// </summary>
 public class TokenEngine : IProcessEngine
 {
+    private readonly ILogger<TokenEngine> _logger;
     private readonly Dictionary<string, List<ExecutionToken>> _activeTokens = new();
     private readonly Dictionary<string, CompensationContext> _compensationStack = new();
     private readonly Dictionary<string, MultiInstanceContext> _multiInstanceContexts = new();
     private readonly List<BoundaryEventHandler> _boundaryEventHandlers = new();
-    private readonly Dictionary<string, Func<IDictionary<string, string>, IDictionary<string, object>, CancellationToken, Task>> _serviceTaskHandlers = new();
+    private readonly ServiceTaskRegistry _serviceTaskRegistry;
 
-    public TokenEngine()
-    {
-        // Registrierung des SemanticKernelServiceTaskHandler
-        var skHandler = new SemanticKernelServiceTaskHandler(new CachingKernelFactory());
-        _serviceTaskHandlers["semanticKernelServiceTask"] = skHandler.ExecuteAsync;
-
+    public TokenEngine():this(NullLogger<TokenEngine>.Instance, new ServiceTaskRegistry())
+    {      
     }
+    public TokenEngine(ILogger<TokenEngine> logger, ServiceTaskRegistry serviceTaskRegistry)
+    {
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _serviceTaskRegistry = serviceTaskRegistry ?? throw new ArgumentNullException(nameof(serviceTaskRegistry));
+    }
+
+    
     public List<string> Execute(BpmnModel model)
     {
         return Execute(model, null);
@@ -181,20 +190,179 @@ public class TokenEngine : IProcessEngine
                 {
                     trace.Add($"UserTask: {task.Id}");
                 }
-                // ServiceTask-Handling
-                if (task.Type == "serviceTask" && _serviceTaskHandlers.TryGetValue(task.Implementation, out var handler))
+                // --- BEGIN: ScriptTask Handling (einfügen direkt bevor ServiceTask-Handling) ---
+                if (task.Type == "scriptTask")
+                {
+                    trace.Add($"ScriptTask: {task.Id}");
+                    try
+                    {
+                        // model.ProcessVariables wird hier verwendet (dein Modell sollte dieses Dictionary bereitstellen)
+                        var variables = model.ProcessVariables ?? new Dictionary<string, object>();
+                        // Wir rufen den async runner synchron auf, weil Execute(...) synchron ist
+                        var handled = ScriptTaskExecution.TryHandleScriptTaskAsync(task, variables, CancellationToken.None).GetAwaiter().GetResult();
+                        if (handled)
+                        {
+                            trace.Add($"ScriptTaskCompleted: {task.Id}");
+                        }
+                        else
+                        {
+                            trace.Add($"ScriptTaskNotHandled: {task.Id}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        trace.Add($"ScriptTaskError: {task.Id} => {ex.GetType().Name}: {ex.Message}");
+                        _logger.LogError($"ScriptTaskError: {task.Id} => {ex.GetType().Name}: {ex.Message}");
+                    }
+
+                    // Weiter zum nächsten Flow
+                    var nextFlowAfterScript = flows.FirstOrDefault();
+                    if (nextFlowAfterScript == null) break;
+                    trace.Add($"SequenceFlow: {nextFlowAfterScript.Id}");
+                    var endEvento = model.Events.FirstOrDefault(e => e.Id == nextFlowAfterScript.TargetRef && e.Type == "endEvent");
+                    if (endEvento != null)
+                    {
+                        trace.Add($"EndEvent: {endEvento.Id}");
+                        break;
+                    }
+                    currentId = nextFlowAfterScript.TargetRef;
+                    continue;
+                }
+                // --- END: ScriptTask Handling ---
+                if (task.Type == "serviceTask")
                 {
                     trace.Add($"ServiceTask: {task.Id} ({task.Implementation})");
-                    // BPMN-Attribute und Prozessvariablen zusammenstellen
-                    var attributes = task.Attributes; // Annahme: task.Attributes enthält BPMN-Attribute als Dictionary
-                    var variables = model.ProcessVariables; // Annahme: Prozessvariablen sind hier verfügbar
-                    // Asynchronen Handler ausführen (ggf. synchron warten, falls Execute synchron ist)
-                    handler(attributes, variables, CancellationToken.None).GetAwaiter().GetResult();
-                    trace.Add($"ServiceTaskCompleted: {task.Id}");
+
+                    // Check if the task has the specific implementation attribute
+                    var implementation = task.Implementation;
+                    if (implementation == "semanticKernelServiceTask")
+                    {
+                        trace.Add($"Detected Semantic Kernel Service Task: {task.Id}");
+
+                        // Extract additional attributes if needed
+                        if (task.Attributes.TryGetValue("provider", out var provider))
+                        {
+                            trace.Add($"Provider: {provider}");
+                        }
+                        if (task.Attributes.TryGetValue("modelId", out var modelId))
+                        {
+                            trace.Add($"ModelId: {modelId}");
+                        }
+                        if (task.Attributes.TryGetValue("prompt", out var prompt))
+                        {
+                            trace.Add($"Prompt: {prompt}");
+                        }
+                        if (task.Attributes.TryGetValue("resultVariable", out var resultVariable))
+                        {
+                            trace.Add($"ResultVariable: {resultVariable}");
+                        }
+
+                        // Try to resolve the handler from the ServiceTaskRegistry
+                        if (_serviceTaskRegistry.TryResolve(implementation, out var handler))
+                        {
+                            try
+                            {
+                                // Execute the service task using the resolved handler
+                                handler.ExecuteAsync(task.Attributes, model.ProcessVariables, CancellationToken.None);
+                                trace.Add($"ServiceTaskCompleted: {task.Id}");
+                            }
+                            catch (Exception ex)
+                            {
+                                trace.Add($"ServiceTaskError: {task.Id} => {ex.GetType().Name}: {ex.Message}");
+                                _logger.LogError($"ServiceTaskError: {task.Id} => {ex.GetType().Name}: {ex.Message}");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Handle unregistered service tasks
+                        trace.Add($"Unregistered Service Task: {task.Id} with implementation '{implementation}'");
+
+                        // Log a warning
+                        _logger.LogWarning("Service task with implementation '{Implementation}' is not registered in the ServiceTaskRegistry.", implementation);
+
+                        // Optionally, execute a default handler or skip the task
+                        _ = HandleUnregisteredServiceTaskAsync(task, model.ProcessVariables, trace);
+                    }
+                    
+                
+                    // Extract Zeebe-specific attributes
+
+                    if (task.Attributes != null && task.Attributes.TryGetValue("zeebe:taskDefinition", out var taskDefinitionType) && !string.IsNullOrWhiteSpace(taskDefinitionType))
+                    {
+                        trace.Add($"ZeebeTaskDefinition: {taskDefinitionType}");
+                        try
+                        {
+                            if (_serviceTaskRegistry.TryResolve(taskDefinitionType, out var handler))
+                            {
+                                handler?.ExecuteAsync(task.Attributes, model.ProcessVariables, CancellationToken.None).ConfigureAwait(false);
+                                trace.Add($"ServiceTaskCompleted: {task.Id}");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            trace.Add($"ServiceTaskError: {task.Id} => {ex.GetType().Name}: {ex.Message}");
+                            // Optionally rethrow or handle the error (e.g., trigger a boundary event)
+                            break;
+                        }
+                    }
+
+                    if (task.Attributes != null && task.Attributes.TryGetValue("zeebe:ioMapping", out var ioMappingJson))
+                    {
+                        var ioMapping = JsonSerializer.Deserialize<Dictionary<string, string>>(ioMappingJson);
+
+                        // Map inputs to process variables
+                        foreach (var (target, source) in ioMapping)
+                        {
+                            if (source.StartsWith("=")) // Handle expressions
+                            {
+                                // Evaluate the expression (simplified for demo)
+                                model.ProcessVariables[target] = EvaluateExpression(source, model.ProcessVariables);
+                            }
+                            else
+                            {
+                                model.ProcessVariables[target] = source;
+                            }
+                        }
+                    }
+
+                    
+                    
                 }
-                else
+
+                if (task.Type == "userTask")
                 {
-                    trace.Add($"UserTask: {task.Id}");
+                    trace.Add($"UserTask: {task.Id} ({task.Name})");
+
+                    // Log the task details
+                    if (task.Attributes != null)
+                    {
+                        foreach (var attribute in task.Attributes)
+                        {
+                            trace.Add($"Attribute: {attribute.Key} = {attribute.Value}");
+                        }
+                    }
+
+                    // Simulate creating a user task in a task management system
+                    var userTaskId = Guid.NewGuid().ToString(); // Generate a unique ID for the user task
+                    var userTaskDetails = new
+                    {
+                        TaskId = task.Id,
+                        Name = task.Name,
+                        Attributes = task.Attributes,
+                        AssignedTo = task.Attributes?.ContainsKey("assignee") == true ? task.Attributes["assignee"] : "Unassigned",
+                        DueDate = task.Attributes?.ContainsKey("dueDate") == true ? task.Attributes["dueDate"] : null
+                    };
+
+                    // Log the creation of the user task
+                    trace.Add($"UserTaskCreated: {userTaskId} for task {task.Id}");
+
+                    // Persist the user task (e.g., save to a database or task management system)
+                    _=  PersistUserTaskAsync(userTaskId, userTaskDetails);
+
+                    // Pause execution and wait for the user to complete the task
+                    trace.Add($"UserTaskPaused: Waiting for completion of task {task.Id}");
+                    return trace; // Exit the execution loop to simulate pausing
                 }
                 // Weiter zum nächsten Flow
                 var flow = flows.FirstOrDefault();
@@ -223,7 +391,63 @@ public class TokenEngine : IProcessEngine
         }
         return trace;
     }
-    
+
+    private async Task PersistUserTaskAsync(string userTaskId, object userTaskDetails)
+    {
+        // Simulate persisting the user task (e.g., save to a database or task management system)
+        _logger.LogInformation("Persisting user task: {UserTaskId} with details: {UserTaskDetails}", userTaskId, userTaskDetails);
+
+        // Example: Simulate async operation
+        await Task.CompletedTask;
+    }
+
+    public async Task CompleteUserTaskAsync(string userTaskId, IDictionary<string, object> processVariables)
+    {
+        _logger.LogInformation("Completing user task: {UserTaskId}", userTaskId);
+
+        // Update process variables or state as needed
+        // ...
+
+        // Resume process execution
+        //var trace = Execute(model); // Pass the current process model
+        _logger.LogInformation("Process resumed after completing user task: {UserTaskId}", userTaskId);
+    }
+    private object EvaluateExpression(string expression, IDictionary<string, object> variables)
+    {
+        // Simplified: Remove '=' and evaluate as a variable lookup
+        var variableName = expression.TrimStart('=');
+        return variables.TryGetValue(variableName, out var value) ? value : null;
+    }
+
+    private async Task HandleUnregisteredServiceTaskAsync(BpmnTask task, IDictionary<string, object>? processVariables, List<string> trace)
+    {
+        trace.Add($"Executing default handler for unregistered service task: {task.Id}");
+
+        // Log the task attributes
+        if (task.Attributes != null)
+        {
+            foreach (var attribute in task.Attributes)
+            {
+                trace.Add($"Attribute: {attribute.Key} = {attribute.Value}");
+            }
+        }
+
+        // Perform a generic action for unregistered tasks
+        var resultVariable = task.Attributes?.ContainsKey("resultVariable") == true
+            ? task.Attributes["resultVariable"]
+            : $"{task.Id}_Result";
+
+        // Simulate a generic result (e.g., a placeholder or default value)
+        var result = $"Default result for task {task.Id}";
+        processVariables ??= new Dictionary<string, object>();
+
+        processVariables[resultVariable] = result;
+
+        trace.Add($"Default result set for task {task.Id}: {result}");
+
+        // Simulate async operation
+        await Task.CompletedTask;
+    }
     /// <summary>
     /// Checks and handles boundary events attached to the current activity
     /// </summary>
@@ -488,13 +712,107 @@ public class TokenEngine : IProcessEngine
     /// </summary>
     private bool SimulateEventArrival(BpmnEvent targetEvent)
     {
-        // Simplified simulation - in real implementation, this would check:
-        // - Message queues
-        // - Timer schedules
-        // - Signal broadcasts
-        // - Condition evaluations
-        
-        // For now, always return true to continue flow
-        return true;
+        // Prüfe, ob das Zielereignis definiert ist
+        if (targetEvent == null)
+        {
+            _logger.LogWarning("Target event is null. Skipping event arrival simulation.");
+            return false;
+        }
+
+        _logger.LogInformation("Simulating event arrival for event: {EventId} of type: {EventType}", targetEvent.Id, targetEvent.EventDefinitionType);
+
+        // Simuliere basierend auf dem Typ des Ereignisses
+        switch (targetEvent.EventDefinitionType)
+        {
+            case "message":
+                return SimulateMessageEvent(targetEvent);
+
+            case "timer":
+                return SimulateTimerEvent(targetEvent);
+
+            case "signal":
+                return SimulateSignalEvent(targetEvent);
+
+            case "error":
+                return SimulateErrorEvent(targetEvent);
+
+            case "condition":
+                return SimulateConditionEvent(targetEvent);
+
+            default:
+                _logger.LogWarning("Unsupported event type: {EventType}. Defaulting to false.", targetEvent.EventDefinitionType);
+                return false;
+        }
+    }
+    private bool SimulateMessageEvent(BpmnEvent targetEvent)
+    {
+        _logger.LogInformation("Simulating message event for event: {EventId}", targetEvent.Id);
+
+        // Beispiel: Prüfe, ob eine Nachricht mit der richtigen Korrelation empfangen wurde
+        if (targetEvent.CorrelationKey != null && targetEvent.CorrelationKey == "expectedCorrelationKey")
+        {
+            _logger.LogInformation("Message event {EventId} triggered with correlation key: {CorrelationKey}", targetEvent.Id, targetEvent.CorrelationKey);
+            return true;
+        }
+
+        _logger.LogWarning("Message event {EventId} not triggered. Correlation key mismatch.", targetEvent.Id);
+        return false;
+    }
+    private bool SimulateTimerEvent(BpmnEvent targetEvent)
+    {
+        _logger.LogInformation("Simulating timer event for event: {EventId}", targetEvent.Id);
+
+        // Beispiel: Simuliere, dass der Timer abgelaufen ist
+        var timerDueDate = DateTime.UtcNow.AddSeconds(-10); // Timer vor 10 Sekunden abgelaufen
+        if (DateTime.UtcNow >= timerDueDate)
+        {
+            _logger.LogInformation("Timer event {EventId} triggered. Timer is due.", targetEvent.Id);
+            return true;
+        }
+
+        _logger.LogWarning("Timer event {EventId} not triggered. Timer is not yet due.", targetEvent.Id);
+        return false;
+    }
+    private bool SimulateSignalEvent(BpmnEvent targetEvent)
+    {
+        _logger.LogInformation("Simulating signal event for event: {EventId}", targetEvent.Id);
+
+        // Beispiel: Prüfe, ob ein Signal mit dem richtigen Namen gesendet wurde
+        if (targetEvent.SignalName == "expectedSignal")
+        {
+            _logger.LogInformation("Signal event {EventId} triggered with signal name: {SignalName}", targetEvent.Id, targetEvent.SignalName);
+            return true;
+        }
+
+        _logger.LogWarning("Signal event {EventId} not triggered. Signal name mismatch.", targetEvent.Id);
+        return false;
+    }
+    private bool SimulateErrorEvent(BpmnEvent targetEvent)
+    {
+        _logger.LogInformation("Simulating error event for event: {EventId}", targetEvent.Id);
+
+        // Beispiel: Simuliere, dass ein Fehler mit dem richtigen Code aufgetreten ist
+        if (targetEvent.ErrorCode == "expectedErrorCode")
+        {
+            _logger.LogInformation("Error event {EventId} triggered with error code: {ErrorCode}", targetEvent.Id, targetEvent.ErrorCode);
+            return true;
+        }
+
+        _logger.LogWarning("Error event {EventId} not triggered. Error code mismatch.", targetEvent.Id);
+        return false;
+    }
+    private bool SimulateConditionEvent(BpmnEvent targetEvent)
+    {
+        _logger.LogInformation("Simulating condition event for event: {EventId}", targetEvent.Id);
+
+        // Beispiel: Simuliere, dass eine Bedingung erfüllt ist
+        if (targetEvent.ConditionExpression == "expectedCondition")
+        {
+            _logger.LogInformation("Condition event {EventId} triggered. Condition is met.", targetEvent.Id);
+            return true;
+        }
+
+        _logger.LogWarning("Condition event {EventId} not triggered. Condition not met.", targetEvent.Id);
+        return false;
     }
 }

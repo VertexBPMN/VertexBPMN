@@ -7,7 +7,8 @@ namespace VertexBPMN.Tests.TestSuite2025
 {
     public class C_7_0_Test
     {
-        [Fact(Skip = "BPMN 2.0 C.7.0 test not implemented, is too complex and slow")]
+        //[Fact(Skip = "BPMN 2.0 C.7.0 test not implemented, is too complex and slow")]
+        [Fact]
         public void Test_C_7_0_Bpmn()
         {
             var bpmnFile = Path.Combine(Directory.GetCurrentDirectory(), "TestData", "Reference", "C.7.0.bpmn");

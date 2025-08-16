@@ -1,6 +1,4 @@
 using Polly;
-using Polly.CircuitBreaker;
-using Polly.Extensions.Http;
 
 namespace VertexBPMN.Api.Services;
 

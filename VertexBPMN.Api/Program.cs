@@ -9,6 +9,9 @@ using VertexBPMN.Api.Migration;
 using VertexBPMN.Api.Debugging;
 using VertexBPMN.Api.Plugins;
 using Polly;
+using VertexBPMN.Core.Messaging;
+using VertexBPMN.Core.Services;
+using VertexBPMN.Core.Extensions;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -19,7 +22,8 @@ builder.Services.AddScoped<VertexBPMN.Core.Services.IProcessMigrationService>(sp
 		sp.GetRequiredService<VertexBPMN.Core.Services.IHistoryService>()
 	)
 );
-
+builder.Services.AddServiceTaskHandlers();
+builder.Services.AddLogging();
 // Register VisualDebuggerController dependencies
 builder.Services.AddScoped<VertexBPMN.Api.Controllers.VisualDebuggerController>();
 // Register SemanticValidationService for diagnostics
@@ -97,9 +101,10 @@ builder.Services.AddScoped<VertexBPMN.Core.Services.ISimulationScenarioService, 
 
 		// Olympic-level Enterprise Scalability: SignalR real-time monitoring
 		builder.Services.AddSignalR();
-
-		// Olympic-level Enterprise Scalability: Distributed processing services
-		builder.Services.AddSingleton<VertexBPMN.Core.Engine.IDistributedTokenEngine, VertexBPMN.Core.Engine.DistributedTokenEngine>();
+        builder.Services.AddSingleton<ServiceTaskRegistry>();
+        builder.Services.AddSingleton<IMessageDispatcher, InMemoryMessageDispatcher>();
+// Olympic-level Enterprise Scalability: Distributed processing services
+builder.Services.AddSingleton<VertexBPMN.Core.Engine.IDistributedTokenEngine, VertexBPMN.Core.Engine.DistributedTokenEngine>();
 		builder.Services.AddSingleton<VertexBPMN.Api.Controllers.ILoadBalancingService, VertexBPMN.Api.Controllers.LoadBalancingService>();
 		builder.Services.AddSingleton<VertexBPMN.Core.Engine.IWorkerNodeManager, VertexBPMN.Core.Engine.WorkerNodeManager>();
 

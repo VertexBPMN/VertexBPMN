@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Xml.Linq;
 using VertexBPMN.Core.Bpmn;
 
@@ -25,25 +26,25 @@ public class BpmnParser : IBpmnParser
             var cancelActivity = e.Name.LocalName == "boundaryEvent" ? (string?)e.Attribute("cancelActivity") != "false" : true;
             var isCompensation = false;
             string? eventDefinitionType = null;
-            
+
             if (type == "boundaryEvent")
             {
                 var comp = e.Elements().FirstOrDefault(x => x.Name.LocalName == "compensateEventDefinition");
                 isCompensation = comp != null;
-                
+
                 // Detect event definition type for advanced boundary event handling
                 var timerDef = e.Elements().FirstOrDefault(x => x.Name.LocalName == "timerEventDefinition");
                 var messageDef = e.Elements().FirstOrDefault(x => x.Name.LocalName == "messageEventDefinition");
                 var errorDef = e.Elements().FirstOrDefault(x => x.Name.LocalName == "errorEventDefinition");
                 var signalDef = e.Elements().FirstOrDefault(x => x.Name.LocalName == "signalEventDefinition");
-                
+
                 if (timerDef != null) eventDefinitionType = "timer";
                 else if (messageDef != null) eventDefinitionType = "message";
                 else if (errorDef != null) eventDefinitionType = "error";
                 else if (signalDef != null) eventDefinitionType = "signal";
                 else if (comp != null) eventDefinitionType = "compensation";
             }
-            
+
             return new BpmnEvent(id, type, attachedTo, isCompensation, cancelActivity, eventDefinitionType);
         }).ToList();
         // Event Subprocesses
@@ -55,6 +56,22 @@ public class BpmnParser : IBpmnParser
                 var type = e.Name.LocalName;
                 var implementation = (string?)e.Attribute("implementation");
                 var attributes = new Dictionary<string, string>();
+
+                // ScriptTask-spezifische Felder einlesen
+                if (type == "scriptTask")
+                {
+                    // Standard-BPMN: scriptFormat-Attribut und <script> Kind-Element
+                    var scriptFormat = (string?)e.Attribute("scriptFormat");
+                    var scriptNode = e.Element(e.Name.Namespace + "script"); // <bpmn:script>…</bpmn:script>
+                    var scriptContent = scriptNode?.Value ?? string.Empty;
+
+                    // Optional: Ergebnisvariable als Attribut (üblich in vielen Engines)
+                    var resultVar = (string?)e.Attribute("resultVariable");
+
+                    if (!string.IsNullOrWhiteSpace(scriptFormat)) attributes["scriptFormat"] = scriptFormat;
+                    if (!string.IsNullOrWhiteSpace(scriptContent)) attributes["script"] = scriptContent;
+                    if (!string.IsNullOrWhiteSpace(resultVar)) attributes["resultVariable"] = resultVar;
+                }
 
                 // Parse <bpmn:extensionElements>
                 var ext = e.Element(e.Name.Namespace + "extensionElements");
@@ -77,6 +94,30 @@ public class BpmnParser : IBpmnParser
                         if (!string.IsNullOrWhiteSpace(key) && value != null)
                             attributes[key] = value;
                     }
+                    // Parse Zeebe extensions
+                    var zeebeTaskDefinition = e.Element(e.Name.Namespace + "extensionElements")?
+                        .Element(e.Name.Namespace + "taskDefinition")?
+                        .Attribute("type")?.Value;
+
+                    if (!string.IsNullOrWhiteSpace(zeebeTaskDefinition))
+                    {
+                        attributes["zeebe:taskDefinition"] = zeebeTaskDefinition;
+                    }
+
+                    var zeebeIoMapping = e.Element(e.Name.Namespace + "extensionElements")?
+                        .Element(e.Name.Namespace + "ioMapping")?
+                        .Elements()
+                        .ToDictionary(
+                            io => io.Attribute("target")?.Value ?? "",
+                            io => io.Attribute("source")?.Value ?? ""
+                        );
+
+                    // Add Zeebe-specific attributes
+                    if (!string.IsNullOrWhiteSpace(zeebeTaskDefinition))
+                        attributes["zeebe:taskDefinition"] = zeebeTaskDefinition;
+
+                    if (zeebeIoMapping != null)
+                        attributes["zeebe:ioMapping"] = JsonSerializer.Serialize(zeebeIoMapping);
                 }
 
                 return new BpmnTask(id, type, implementation, attributes);
@@ -98,11 +139,11 @@ public class BpmnParser : IBpmnParser
             var loopCardinality = mi?.Element(XName.Get("loopCardinality", e.Name.NamespaceName))?.Value;
             var isEventSubprocess = (string?)e.Attribute("triggeredByEvent") == "true";
             var isTransaction = (string?)e.Attribute("transaction") == "true";
-            
+
             int? parsedCardinality = null;
             if (int.TryParse(loopCardinality, out var card))
                 parsedCardinality = card;
-                
+
             return new BpmnSubprocess(idAttr, isMultiInstance, isEventSubprocess, isTransaction, isSequential, parsedCardinality);
         }).ToList();
         var sequenceFlows = process.Elements().Where(e => e.Name.LocalName == "sequenceFlow").Select(e => new BpmnSequenceFlow((string?)e.Attribute("id") ?? "", (string?)e.Attribute("sourceRef") ?? "", (string?)e.Attribute("targetRef") ?? "")).ToList();
@@ -122,11 +163,46 @@ public class BpmnParser : IBpmnParser
                             e.AttachedToRef != null ? new XAttribute("attachedToRef", e.AttachedToRef) : null
                         )
                     ),
-                    model.Tasks.Select(t =>
-                        new XElement(XName.Get(t.Type, ns),
-                            new XAttribute("id", t.Id)
-                        )
-                    ),
+                     model.Tasks.Select(t =>
+                    {
+                        var element = new XElement(XName.Get(t.Type, ns),
+                            new XAttribute("id", t.Id),
+                            t.Implementation != null ? new XAttribute("implementation", t.Implementation) : null
+                        );
+
+                        // Handle scriptTask-specific attributes
+                        if (t.Type == "scriptTask")
+                        {
+                            if (t.Attributes.TryGetValue("scriptFormat", out var scriptFormat))
+                                element.Add(new XAttribute("scriptFormat", scriptFormat));
+
+                            if (t.Attributes.TryGetValue("resultVariable", out var resultVar))
+                                element.Add(new XAttribute("resultVariable", resultVar));
+
+                            if (t.Attributes.TryGetValue("script", out var scriptContent))
+                                element.Add(new XElement(XName.Get("script", ns), scriptContent));
+                        }
+
+                        // Handle extension elements for additional properties
+                        var extensionProps = t.Attributes.Where(kvp =>
+                            kvp.Key != "scriptFormat" &&
+                            kvp.Key != "script" &&
+                            kvp.Key != "resultVariable").ToList();
+
+                        if (extensionProps.Any())
+                        {
+                            var extensionElements = new XElement(XName.Get("extensionElements", ns));
+                            foreach (var prop in extensionProps)
+                            {
+                                extensionElements.Add(new XElement(XName.Get("property", ns),
+                                    new XAttribute("name", prop.Key),
+                                    new XAttribute("value", prop.Value)));
+                            }
+                            element.Add(extensionElements);
+                        }
+
+                        return element;
+                       }),
                     model.Gateways.Select(g =>
                         new XElement(XName.Get(g.Type, ns),
                             new XAttribute("id", g.Id)

@@ -1,7 +1,10 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using System.IO;
 using VertexBPMN.Core.Engine;
-using Xunit;
+using VertexBPMN.Core.Extensions;
 using VertexBPMN.Core.Services;
+using Xunit;
 
 namespace VertexBPMN.Tests.TestSuite2025
 {
@@ -15,7 +18,16 @@ namespace VertexBPMN.Tests.TestSuite2025
             var parser = new BpmnParser();
             var model = parser.Parse(xml);
             Assert.NotNull(model);
-            var engine = new TokenEngine();
+            var services = new ServiceCollection();
+            services.AddLogging();
+            services.AddServiceTaskHandlers();
+            var provider = services.BuildServiceProvider();
+            var registry = provider.GetRequiredService<ServiceTaskRegistry>();
+
+            // Act & Assert
+            Assert.True(registry.TryResolve("calculateScore", out var calculateScoreHandler));
+            Assert.NotNull(calculateScoreHandler);
+            var engine = new TokenEngine(NullLogger<TokenEngine>.Instance, registry);
             var result = engine.Execute(model);
             Assert.NotNull(result);
             Assert.True(result.Count > 0, "No trace produced for C.9.0.bpmn");

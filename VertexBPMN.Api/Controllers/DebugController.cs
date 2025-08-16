@@ -1,8 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
-using VertexBPMN.Core.Services;
+using Microsoft.Extensions.Logging;
 using System.Collections.Generic;
 using VertexBPMN.Core.Bpmn;
 using VertexBPMN.Core.Engine;
+using VertexBPMN.Core.Services;
 
 namespace VertexBPMN.Api.Controllers;
 
@@ -25,7 +26,12 @@ public class DebugController : ControllerBase
     {
         var parser = new BpmnParser();
         var model = parser.Parse(request.BpmnXml);
-        var engine = new TokenEngine();
+
+        // Fix: Create an ILoggerFactory instance before using CreateLogger
+        using var loggerFactory = LoggerFactory.Create(builder => { });
+        var logger = loggerFactory.CreateLogger<TokenEngine>();
+
+        var engine = new TokenEngine(logger, new ServiceTaskRegistry());
         var trace = engine.Execute(model);
         return Ok(trace);
     }

@@ -1,9 +1,12 @@
+using Microsoft.Extensions.Logging;
+using Moq;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using Microsoft.Extensions.Logging;
 using VertexBPMN.Core.Bpmn;
 using VertexBPMN.Core.Engine;
+using VertexBPMN.Core.Messaging;
+using VertexBPMN.Core.Services;
 using Xunit;
 
 namespace VertexBPMN.Benchmarks;
@@ -45,7 +48,9 @@ public class TokenEngineBenchmarks
             new List<BpmnSequenceFlow> { new("flow1", "start1", "end1") }
         );
         var logger = new LoggerFactory().CreateLogger<DistributedTokenEngine>();
-        var engine = new DistributedTokenEngine(logger);
+        var serviceRegistry = new ServiceTaskRegistry(); // Falls nicht interface, aber virtual
+        var dispatcherMock = new Mock<IMessageDispatcher>();
+        var engine = new DistributedTokenEngine(logger, serviceRegistry, dispatcherMock.Object);
         var sw = Stopwatch.StartNew();
         for (int i = 0; i < 10000; i++)
         {

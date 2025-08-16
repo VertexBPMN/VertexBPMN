@@ -1,0 +1,19 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Defs">
+	<process id="scriptDemo" isExecutable="true">
+		<startEvent id="start" />
+		<sequenceFlow id="f1" sourceRef="start" targetRef="doMath" />
+		<scriptTask id="doMath" name="Addiere" scriptFormat="C#" resultVariable="sum">
+			<script>
+				<![CDATA[
+        var a = (int)variables["a"];
+        var b = (int)variables["b"];
+        return a + b;
+      ]]>
+			</script>
+		</scriptTask>
+		<sequenceFlow id="f2" sourceRef="doMath" targetRef="end" />
+		<endEvent id="end" />
+	</process>
+</definitions>
+

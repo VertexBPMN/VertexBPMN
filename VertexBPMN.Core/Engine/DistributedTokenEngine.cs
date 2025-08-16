@@ -1,7 +1,10 @@
-using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
 using VertexBPMN.Core.Bpmn;
 using VertexBPMN.Core.Domain;
+using VertexBPMN.Core.Messaging;
+using VertexBPMN.Core.Scripting;
+using VertexBPMN.Core.Services;
 using Task = System.Threading.Tasks.Task;
 
 namespace VertexBPMN.Core.Engine;
@@ -17,11 +20,14 @@ public class DistributedTokenEngine : IDistributedTokenEngine
     private readonly ConcurrentDictionary<Guid, ExecutionToken> _processingTokens = new();
     private readonly ILogger<DistributedTokenEngine> _logger;
     private readonly Timer _heartbeatTimer;
+    private readonly ServiceTaskRegistry _serviceRegistry;
+    private readonly IMessageDispatcher _messageDispatcher;
 
-    public DistributedTokenEngine(ILogger<DistributedTokenEngine> logger)
+    public DistributedTokenEngine(ILogger<DistributedTokenEngine> logger, ServiceTaskRegistry serviceRegistry, IMessageDispatcher dispatcher)
     {
         _logger = logger;
-        
+        _serviceRegistry = serviceRegistry ?? throw new ArgumentNullException(nameof(serviceRegistry));
+        _messageDispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         // Initialize with current node as worker
         var currentWorker = new WorkerNode(
             Environment.MachineName,
@@ -229,29 +235,142 @@ public class DistributedTokenEngine : IDistributedTokenEngine
 
     private async Task ProcessNodeAsync(object node, ExecutionToken token, BpmnModel model, List<string> trace, CancellationToken cancellationToken)
     {
-        switch (node)
+        _processingTokens[token.Id] = token;
+        try
         {
-            case BpmnEvent evt when evt.Type == "endEvent":
-                trace.Add($"EndEvent: {evt.Id}");
-                break;
-                
-            case BpmnTask task:
-                trace.Add($"DistributedTask: {task.Type} {task.Id} on worker {token.AssignedWorker}");
-                await Task.Delay(50, cancellationToken); // Simulate task execution
-                await ContinueToNextNode(task.Id, token, model, trace, cancellationToken);
-                break;
-                
-            case BpmnGateway gateway:
-                trace.Add($"DistributedGateway: {gateway.Type} {gateway.Id}");
-                await ProcessGateway(gateway, token, model, trace, cancellationToken);
-                break;
-                
-            case BpmnEvent evt:
-                trace.Add($"DistributedEvent: {evt.Type} {evt.Id}");
-                await ContinueToNextNode(evt.Id, token, model, trace, cancellationToken);
-                break;
+            trace.Add($"ProcessingToken: {token.Id} on {token.AssignedWorker ?? "unassigned"}");
+            if (node == null)
+            {
+                trace.Add($"NodeNotFound: {token.CurrentNodeId}");
+                return;
+            }
+
+            switch (node)
+            {
+                case BpmnEvent evt when evt.Type == "endEvent":
+                    trace.Add($"EndEvent: {evt.Id}");
+                    break;
+
+                case BpmnTask task:
+                    trace.Add($"DistributedTask: {task.Type} {task.Id} on worker {token.AssignedWorker}");
+
+                    // SCRIPT TASK: lokal ausführen (Script finnshed quickly)
+                    if (string.Equals(task.Type, "scriptTask", StringComparison.OrdinalIgnoreCase))
+                    {
+                        trace.Add($"ScriptTask-distributed: executing {task.Id} locally");
+                        // Ensure ProcessVariables merged into token.Variables (propagate context)
+                        if (model.ProcessVariables != null)
+                        {
+                            foreach (var kv in model.ProcessVariables)
+                                token.Variables[kv.Key] = kv.Value;
+                        }
+                        // Execute script and copy back variables to model
+                        await ScriptTaskExecution.TryHandleScriptTaskAsync(task, model.ProcessVariables, cancellationToken).ConfigureAwait(false);
+                        // Merge model.ProcessVariables back into token variables for subsequent tokens
+                        if (model.ProcessVariables != null)
+                        {
+                            foreach (var kv in model.ProcessVariables)
+                                token.Variables[kv.Key] = kv.Value;
+                        }
+
+                        trace.Add($"ScriptTaskCompleted: {task.Id}");
+                        await ContinueToNextNode(task.Id, token, model, trace, cancellationToken).ConfigureAwait(false);
+                        break;
+                    }
+
+                    // SERVICE TASK: lokal handler oder remote dispatch
+                    if (string.Equals(task.Type, "serviceTask", StringComparison.OrdinalIgnoreCase))
+                    {
+                        trace.Add($"ServiceTask (distributed): {task.Id} impl={task.Implementation}");
+
+                        // Prepare attributes + variables to send
+                        var attributes = task.Attributes ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                        var variables = token.Variables ?? new Dictionary<string, object>();
+
+                        // 1) Try local handler
+                        if (_serviceRegistry.TryResolve(task.Implementation ?? string.Empty, out var handler))
+                        {
+                            trace.Add($"ServiceTask: local handler found for {task.Implementation}, executing locally");
+                            // Execute local handler
+                            await handler.ExecuteAsync(attributes, variables, cancellationToken).ConfigureAwait(false);
+                            trace.Add($"ServiceTaskCompleted(local): {task.Id}");
+                        }
+                        else
+                        {
+                            // 2) Remote dispatch
+                            var targetWorker = token.AssignedWorker ?? FindBestWorker(task.Type)?.Id;
+                            trace.Add($"ServiceTask: no local handler => dispatch to worker '{targetWorker ?? "any"}'");
+                            await _messageDispatcher.DispatchServiceTaskAsync(targetWorker ?? string.Empty, task.Implementation ?? string.Empty, attributes, variables, cancellationToken).ConfigureAwait(false);
+                            trace.Add($"ServiceTaskDispatched: {task.Id} -> {targetWorker ?? "none"}");
+                        }
+
+                        // Merge back variables into model.ProcessVariables and token
+                        if (model.ProcessVariables == null)
+                            model = model with { ProcessVariables = new Dictionary<string, object>(variables) };
+                        else
+                        {
+                            foreach (var kv in variables)
+                                model.ProcessVariables[kv.Key] = kv.Value;
+                        }
+                        token = token with { Variables = new Dictionary<string, object>(variables) };
+
+                        // Continue
+                        await ContinueToNextNode(task.Id, token, model, trace, cancellationToken).ConfigureAwait(false);
+                        break;
+                    }
+
+                    // other task types: just continue
+                    await ContinueToNextNode(task.Id, token, model, trace, cancellationToken).ConfigureAwait(false);
+                    break;
+
+                case BpmnGateway gateway:
+                    trace.Add($"DistributedGateway: {gateway.Type} {gateway.Id}");
+                    await ProcessGateway(gateway, token, model, trace, cancellationToken).ConfigureAwait(false);
+                    break;
+
+                case BpmnEvent evt2:
+                    trace.Add($"DistributedEvent: {evt2.Type} {evt2.Id}");
+                    await ContinueToNextNode(evt2.Id, token, model, trace, cancellationToken).ConfigureAwait(false);
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing token {TokenId}", token.Id);
+            trace.Add($"TokenError: {token.Id} - {ex.Message}");
+            throw;
+        }
+        finally
+        {
+            _processingTokens.TryRemove(token.Id, out _);
         }
     }
+
+    //private async Task ProcessNodeAsync(object node, ExecutionToken token, BpmnModel model, List<string> trace, CancellationToken cancellationToken)
+    //{
+    //    switch (node)
+    //    {
+    //        case BpmnEvent evt when evt.Type == "endEvent":
+    //            trace.Add($"EndEvent: {evt.Id}");
+    //            break;
+                
+    //        case BpmnTask task:
+    //            trace.Add($"DistributedTask: {task.Type} {task.Id} on worker {token.AssignedWorker}");
+    //            await Task.Delay(50, cancellationToken); // Simulate task execution
+    //            await ContinueToNextNode(task.Id, token, model, trace, cancellationToken);
+    //            break;
+                
+    //        case BpmnGateway gateway:
+    //            trace.Add($"DistributedGateway: {gateway.Type} {gateway.Id}");
+    //            await ProcessGateway(gateway, token, model, trace, cancellationToken);
+    //            break;
+                
+    //        case BpmnEvent evt:
+    //            trace.Add($"DistributedEvent: {evt.Type} {evt.Id}");
+    //            await ContinueToNextNode(evt.Id, token, model, trace, cancellationToken);
+    //            break;
+    //    }
+    //}
 
     private async Task ProcessGateway(BpmnGateway gateway, ExecutionToken token, BpmnModel model, List<string> trace, CancellationToken cancellationToken)
     {

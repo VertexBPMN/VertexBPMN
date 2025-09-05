@@ -426,6 +426,32 @@ namespace VertexBPMN.Core.Engine
             }
         }
 
+        public async Task GenerateAdHocSubprocessAsync(string caseId, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var cmmnXml = await _store.GetCmmnModelAsync(caseId)
+                              ?? throw new DistributedTokenException($"CMMN model {caseId} not found");
+                var caseModel = await _cmmnParser.ParseAsync(cmmnXml);
+
+                var caseTokens = await _store.GetPendingCaseTokensAsync();
+               var caseToken = caseTokens.FirstOrDefault(t => t.CaseInstanceId == Guid.Parse(caseId));
+               if (caseToken == null)
+               {
+                   throw new DistributedTokenException($"No active tokens found for case {caseId}");
+                }
+
+                var adHocSubprocess = await _aiDecisionService.GenerateAdHocSubprocessAsync(caseId, caseToken.CaseFile, cancellationToken);
+                await AddDiscretionaryItemAsync(caseId, adHocSubprocess with { IsDiscretionary = true }, cancellationToken);
+                _logger.LogInformation("Added AI-generated ad-hoc subprocess {PlanItemId} to case {CaseId}", adHocSubprocess.Id, caseId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to generate ad-hoc subprocess for case {CaseId}", caseId);
+                throw new DistributedTokenException($"Failed to generate ad-hoc subprocess for case {caseId}", ex);
+            }
+        }
+
 
         private async Task<WorkerNode?> FindBestWorkerAsync(string nodeType)
         {
@@ -599,6 +625,19 @@ namespace VertexBPMN.Core.Engine
                             break;
                         case "eventlistener" when planItem.DefinitionRef == "userEventListener":
                             trace.Add($"UserEventListenerTriggered: {planItem.Id}");
+                            await CompletePlanItemAsync(planItem, token, model, trace, cancellationToken);
+                            break;
+                        case "adhocsubprocess":
+                            trace.Add($"AdHocSubprocess: {planItem.Id} started");
+                            // Dynamische Logik basierend auf AI-generierten Attributen
+                            var subTasks = planItem.Attributes?.GetValueOrDefault("subTasks", "").Split(';').Select(id => new PlanItem(
+                                $"subtask_{id}", "humanTask", "humanTaskDef", new() { { "camunda:assignee", "user1" } }, null, null, true
+                            )).ToList() ?? [];
+                            foreach (var subTask in subTasks)
+                            {
+                                await AddDiscretionaryItemAsync(model.Id, subTask, cancellationToken);
+                                trace.Add($"AdHocSubprocessTaskAdded: {subTask.Id}");
+                            }
                             await CompletePlanItemAsync(planItem, token, model, trace, cancellationToken);
                             break;
                         default:

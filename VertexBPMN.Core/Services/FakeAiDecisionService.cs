@@ -1,4 +1,5 @@
 #nullable enable
+using VertexBPMN.Core.Cmmn;
 using VertexBPMN.Core.Domain;
 
 namespace VertexBPMN.Core.Services;
@@ -64,4 +65,9 @@ public sealed class FakeAiDecisionService : IAiDecisionService
     /// Resets the invocation counter (test utility).
     /// </summary>
     public void Reset() => Interlocked.Exchange(ref _cloneInvocations, 0);
+
+    public Task<PlanItem> GenerateAdHocSubprocessAsync(string caseId, Dictionary<string, object> caseFile, CancellationToken cancellationToken = default)
+    {
+        return null;
+    }
 }

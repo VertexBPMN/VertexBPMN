@@ -37,9 +37,15 @@
 <None Update="TestData\agents.js">    
     <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
   </None>
+<None Update="TestData\dinnerDecisions.dmn">
+  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+</None>
 <None Update="TestData\ExampleProcess.bpmn">  
     <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
   </None>
+<None Update="TestData\ExternalTask1.bpmn">
+  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+</None>
   <None Update="TestData\Reference\A.1.0.bpmn">
     <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
   </None>

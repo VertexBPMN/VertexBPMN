@@ -1,18 +1,19 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Sqlite;
-using VertexBPMN.Persistence.Services;
-using VertexBPMN.Persistence.Repositories;
+using Polly;
+using VertexBPMN.Api.Debugging;
+using VertexBPMN.Api.Migration;
+using VertexBPMN.Api.ML;
+using VertexBPMN.Api.Plugins;
 using VertexBPMN.Api.Security;
 using VertexBPMN.Api.Services;
-using VertexBPMN.Api.ML;
-using VertexBPMN.Api.Migration;
-using VertexBPMN.Api.Debugging;
-using VertexBPMN.Api.Plugins;
-using Polly;
 using VertexBPMN.Core.Domain;
+using VertexBPMN.Core.Engine;
+using VertexBPMN.Core.Extensions;
 using VertexBPMN.Core.Messaging;
 using VertexBPMN.Core.Services;
-using VertexBPMN.Core.Extensions;
+using VertexBPMN.Persistence.Repositories;
+using VertexBPMN.Persistence.Services;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -94,20 +95,24 @@ builder.Services.AddScoped<VertexBPMN.Core.Services.ISimulationScenarioService, 
 	// Register SimulationService
 	builder.Services.AddScoped<VertexBPMN.Core.Services.ISimulationService, VertexBPMN.Core.Services.SimulationService>();
 
-	// Olympic-level Innovation Differentiators - The Future of BPMN
 	builder.Services.AddScoped<IPredictiveAnalyticsService, MLPredictiveAnalyticsService>();
 	builder.Services.AddScoped<ILiveProcessMigrationService, LiveProcessMigrationService>();
 	builder.Services.AddScoped<IVisualDebuggingService, VisualDebuggingService>();
 	builder.Services.AddSingleton<IPluginManager, PluginManager>();
 
-		// Olympic-level Enterprise Scalability: SignalR real-time monitoring
-		builder.Services.AddSignalR();
-        builder.Services.AddSingleton<ServiceTaskRegistry>();
-        builder.Services.AddSingleton<IMessageDispatcher, InMemoryMessageDispatcher>();
-// Olympic-level Enterprise Scalability: Distributed processing services
-builder.Services.AddSingleton<IDistributedTokenEngine, VertexBPMN.Core.Engine.DistributedTokenEngine>();
-		builder.Services.AddSingleton<VertexBPMN.Api.Controllers.ILoadBalancingService, VertexBPMN.Api.Controllers.LoadBalancingService>();
-		builder.Services.AddSingleton<IWorkerNodeManager, VertexBPMN.Core.Engine.WorkerNodeManager>();
+	// Olympic-level Enterprise Scalability: SignalR real-time monitoring
+	builder.Services.AddSignalR();
+    builder.Services.AddSingleton<ServiceTaskRegistry>();
+    builder.Services.AddSingleton<IMessageDispatcher, InMemoryMessageDispatcher>();
+	builder.Services.AddSingleton<IAiDecisionService, FakeAiDecisionService>();
+	builder.Services.AddSingleton<IProcessInstanceStore, InMemoryProcessInstanceStore>();
+	builder.Services.AddSingleton<IDmnEngine, DmnEngine>();
+	builder.Services.AddSingleton<IDmnParser, DmnParser>();
+	builder.Services.AddSingleton<ICmmnParser, CmmnParser>();
+	builder.Services.AddSingleton<IBpmnParser, BpmnParser>();
+	builder.Services.AddSingleton<IDistributedTokenEngine, VertexBPMN.Core.Engine.DistributedTokenEngine>();
+	builder.Services.AddSingleton<VertexBPMN.Api.Controllers.ILoadBalancingService, VertexBPMN.Api.Controllers.LoadBalancingService>();
+	builder.Services.AddSingleton<IWorkerNodeManager, VertexBPMN.Core.Engine.WorkerNodeManager>();
 
 		// Observability: HealthChecks, Logging, Metrics
 	builder.Services.AddHealthChecks();

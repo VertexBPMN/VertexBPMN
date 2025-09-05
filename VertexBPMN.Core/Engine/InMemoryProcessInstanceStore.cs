@@ -13,36 +13,6 @@ namespace VertexBPMN.Core.Engine;
 /// </summary>
 public sealed class InMemoryProcessInstanceStore : IProcessInstanceStore
 {
-    /*
-     PSEUDOCODE / PLAN
-     - Maintain dictionaries:
-       processes: key -> bpmnXml
-       instances: instanceId(string) -> ProcessInstance
-       executionTokens: tokenId(Guid) -> ExecutionToken
-       caseTokens: caseTokenId(Guid) -> CaseToken
-       workers: workerId(string) -> WorkerNode
-       dmnModels: decisionId -> dmnXml
-       cmmnModels: caseId -> cmmnXml
-       deadLetter: list of DeadLetterEntry (token json + error)
-     - SaveProcessAsync: upsert into processes
-     - GetProcessAsync: try get, throw KeyNotFoundException if missing
-     - ListProcessesAsync: return list of process keys
-     - SaveInstanceAsync: require instance.InstanceId (string) or fallback to Guid Id.ToString(), store
-     - GetInstanceAsync: return stored instance or throw
-     - SaveTokenAsync: upsert execution token by Id
-     - GetTokenAsync: lookup or throw
-     - GetPendingTokensAsync: filter tokens where (AssignedWorker == null) (best-effort; if property missing, return all)
-     - SaveWorkerAsync: upsert worker
-     - GetWorkerAsync: lookup or throw
-     - GetActiveWorkersAsync: return all workers (no heartbeat logic here)
-     - RemoveWorkerAsync: remove silently
-     - SaveToDeadLetterQueueAsync: serialize token to JSON with error message and timestamp
-     - SaveDmnModelAsync / GetDmnModelAsync: upsert + get
-     - SaveCaseTokenAsync / GetCaseTokenAsync / GetPendingCaseTokensAsync: store all, "pending" returns all (no state info available)
-     - SaveCmmnModelAsync / GetCmmnModelAsync: upsert + get
-     - All methods return Task to satisfy interface; no real async I/O so use Task.FromResult / Task.CompletedTask
-    */
-
     private readonly ConcurrentDictionary<string, string> _processes = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, ProcessInstance> _instances = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<Guid, ExecutionToken> _executionTokens = new();

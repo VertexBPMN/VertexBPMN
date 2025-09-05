@@ -1,0 +1,44 @@
+﻿syntax = "proto3";
+
+package vertexbpmn;
+
+service VertexBPMNService {
+	rpc RegisterCmmnModel (RegisterCmmnRequest) returns (CmmnResponse);
+	rpc ExecuteCase (ExecuteCaseRequest) returns (ExecuteCaseResponse);
+	rpc TriggerUserEvent (TriggerEventRequest) returns (CmmnResponse);
+	rpc UpdateCaseFileItem (CaseFileUpdateRequest) returns (CmmnResponse);
+	rpc GenerateAdHocSubprocess (GenerateAdHocSubprocessRequest) returns (CmmnResponse);
+}
+
+message RegisterCmmnRequest {
+	string case_id = 1;
+	string cmmn_xml = 2;
+}
+
+message ExecuteCaseRequest {
+	string case_id = 1;
+}
+
+message ExecuteCaseResponse {
+	repeated string trace = 1;
+}
+
+message TriggerEventRequest {
+	string case_id = 1;
+	string event_id = 2;
+	map<string, string> event_data = 3;
+}
+
+message CaseFileUpdateRequest {
+	string case_id = 1;
+	string case_file_item_id = 2;
+	string new_value = 3;
+}
+
+message GenerateAdHocSubprocessRequest {
+	string case_id = 1;
+}
+
+message CmmnResponse {
+	string message = 1;
+}

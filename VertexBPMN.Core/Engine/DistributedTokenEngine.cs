@@ -636,31 +636,11 @@ namespace VertexBPMN.Core.Engine
 
                     switch (planItem.Type.ToLowerInvariant())
                     {
-                        case "humantask":
-                            await ProcessHumanTaskAsync(planItem, token, model, trace, cancellationToken);
-                            break;
-                        case "processtask":
-                            await ProcessProcessTaskAsync(planItem, token, model, trace, cancellationToken);
-                            break;
-                        case "casetask":
-                            await ProcessCaseTaskAsync(planItem, token, model, trace, cancellationToken);
-                            break;
-                        case "milestone":
-                            trace.Add($"MilestoneReached: {planItem.Id}");
-                            await CompletePlanItemAsync(planItem, token, model, trace, cancellationToken);
-                            break;
-                        case "eventlistener" when planItem.DefinitionRef == "timerEventListener":
-                            var duration = planItem.Attributes?.GetValueOrDefault("timeDuration", "PT1M");
-                            await Task.Delay(ParseDuration(duration), cancellationToken);
-                            trace.Add($"TimerEventListenerTriggered: {planItem.Id} after {duration}");
-                            await CompletePlanItemAsync(planItem, token, model, trace, cancellationToken);
-                            break;
-                        case "eventlistener" when planItem.DefinitionRef == "caseFileItemUpdate":
-                            trace.Add($"CaseFileItemUpdateListener: {planItem.Id} triggered");
-                            await CompletePlanItemAsync(planItem, token, model, trace, cancellationToken);
-                            break;
-                        case "eventlistener" when planItem.DefinitionRef == "userEventListener":
-                            trace.Add($"UserEventListenerTriggered: {planItem.Id}");
+                        case "servicetask" when planItem.Attributes?.ContainsKey("type") == true:
+                            var serviceTaskType = planItem.Attributes["type"];
+                            var handler = _serviceRegistry.GetHandler(serviceTaskType);
+                            await handler.ExecuteAsync(planItem.Attributes ?? new Dictionary<string, string>(), token.CaseFile, cancellationToken);
+                            trace.Add($"ServiceTaskExecuted: {planItem.Id} (type: {serviceTaskType})");
                             await CompletePlanItemAsync(planItem, token, model, trace, cancellationToken);
                             break;
                         case "adhocsubprocess":
@@ -688,6 +668,33 @@ namespace VertexBPMN.Core.Engine
                                 await AddDiscretionaryItemAsync(model.Id, subTask, cancellationToken);
                                 trace.Add($"AdHocSubprocessTaskAdded: {subTask.Id}");
                             }
+                            await CompletePlanItemAsync(planItem, token, model, trace, cancellationToken);
+                            break;
+                        case "humantask":
+                            await ProcessHumanTaskAsync(planItem, token, model, trace, cancellationToken);
+                            break;
+                        case "processtask":
+                            await ProcessProcessTaskAsync(planItem, token, model, trace, cancellationToken);
+                            break;
+                        case "casetask":
+                            await ProcessCaseTaskAsync(planItem, token, model, trace, cancellationToken);
+                            break;
+                        case "milestone":
+                            trace.Add($"MilestoneReached: {planItem.Id}");
+                            await CompletePlanItemAsync(planItem, token, model, trace, cancellationToken);
+                            break;
+                        case "eventlistener" when planItem.DefinitionRef == "timerEventListener":
+                            var duration = planItem.Attributes?.GetValueOrDefault("timeDuration", "PT1M");
+                            await Task.Delay(ParseDuration(duration), cancellationToken);
+                            trace.Add($"TimerEventListenerTriggered: {planItem.Id} after {duration}");
+                            await CompletePlanItemAsync(planItem, token, model, trace, cancellationToken);
+                            break;
+                        case "eventlistener" when planItem.DefinitionRef == "caseFileItemUpdate":
+                            trace.Add($"CaseFileItemUpdateListener: {planItem.Id} triggered");
+                            await CompletePlanItemAsync(planItem, token, model, trace, cancellationToken);
+                            break;
+                        case "eventlistener" when planItem.DefinitionRef == "userEventListener":
+                            trace.Add($"UserEventListenerTriggered: {planItem.Id}");
                             await CompletePlanItemAsync(planItem, token, model, trace, cancellationToken);
                             break;
                         default:
@@ -1125,7 +1132,9 @@ namespace VertexBPMN.Core.Engine
                 bool allConditionsMet = sentry.Conditions.All(c => c.LogicalOperator == "OR");
                 foreach (var condition in sentry.Conditions)
                 {
-                    bool conditionMet = false;
+                    bool conditionMet = EvaluateCondition(condition, caseFile);
+                    if (!conditionMet)
+                        return false;
                     if (!string.IsNullOrEmpty(condition.VariableRef) && caseFile.TryGetValue(condition.VariableRef, out var value))
                     {
                         var engine = _jintCache.GetOrAdd(condition.Expression, _ => new Jint.Engine());
@@ -1148,6 +1157,7 @@ namespace VertexBPMN.Core.Engine
                         return false;
                     if (condition.LogicalOperator == "OR" && conditionMet)
                         allConditionsMet = true;
+                   
                 }
 
                 if (sentry.Conditions.Any(c => c.LogicalOperator == "OR") && !allConditionsMet)
@@ -1155,7 +1165,19 @@ namespace VertexBPMN.Core.Engine
             }
             return true;
         }
-
+        private bool EvaluateCondition(SentryCondition condition, IDictionary<string, object> caseFile)
+        {
+            // Beispiel: Vereinfachte Logik für Bedingungsprüfung
+            if (caseFile.TryGetValue(condition.VariableRef, out var value))
+            {
+                return condition.Expression switch
+                {
+                    "complete" => true, // Beispiel: Immer wahr, wenn Variable existiert
+                    _ => false // Erweitern für komplexere Bedingungen
+                };
+            }
+            return false;
+        }
 
         private object? FindNode(BpmnModel model, string nodeId)
         {

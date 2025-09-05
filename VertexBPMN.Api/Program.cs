@@ -110,6 +110,7 @@ builder.Services.AddScoped<ISimulationScenarioService, SimulationScenarioService
     builder.Services.AddSingleton<IMessageDispatcher, InMemoryMessageDispatcher>();
 	builder.Services.AddSingleton<IAiDecisionService, FakeAiDecisionService>();
 	builder.Services.AddHttpClient<IAiDecisionService, XAiDecisionService>();
+    builder.Services.AddHttpClient<McpServiceTaskHandler>();
     builder.Services.AddSingleton<IProcessInstanceStore, InMemoryProcessInstanceStore>();
 	builder.Services.AddSingleton<IDmnEngine, DmnEngine>();
 	builder.Services.AddSingleton<IDmnParser, DmnParser>();

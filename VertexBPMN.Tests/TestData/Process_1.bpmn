@@ -1,0 +1,15 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC" xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
+<process id="Process_1" isExecutable="true">
+  <serviceTask id="mcpTask1" name="Trigger MCP Action">
+    <extensionElements>
+      <camunda:properties>
+        <camunda:property name="type" value="mcpServiceTask" />
+        <camunda:property name="mcpServerUrl" value="http://cms-mcp:8080/api/mcp" />
+        <camunda:property name="mcpMethod" value="trigger_approval" />
+        <camunda:property name="mcpParams" value='{"documentId": "doc123"}' />
+      </camunda:properties>
+    </extensionElements>
+  </serviceTask>
+</process>
+</definitions>

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using VertexBPMN.Core.Exceptions;
 
 namespace VertexBPMN.Core.Services;
 
@@ -15,5 +16,11 @@ public sealed class ServiceTaskRegistry
     public bool TryResolve(string implementation, out IServiceTaskHandler? handler)
     {
         return _handlers.TryGetValue(implementation ?? string.Empty, out handler);
+    }
+    public IServiceTaskHandler GetHandler(string type)
+    {
+        if (TryResolve(type, out var handler))
+            return handler;
+        throw new DistributedTokenException($"No handler registered for service task type: {type}");
     }
 }

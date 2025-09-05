@@ -34,7 +34,8 @@ public static class ServiceTaskRegistryExtensions
                 { "io.camunda:sendgrid:1", () => provider.GetRequiredService<SendGridServiceTaskHandler>() },
                 { "informCustomerSuccessfulCancelation", () => provider.GetRequiredService<InformCustomerSuccessfulCancelationHandler>() },
                 { "reportFraud", () => provider.GetRequiredService<ReportFraudHandler>() },
-                { "informOperationsSuccessfulCancelation", () => provider.GetRequiredService<InformOperationsSuccessfulCancelationHandler>() }
+                { "informOperationsSuccessfulCancelation", () => provider.GetRequiredService<InformOperationsSuccessfulCancelationHandler>() },
+                { "mcpServiceTask", () => provider.GetRequiredService<McpServiceTaskHandler>() }
             };
 
             foreach (var (key, handlerFactory) in handlers)

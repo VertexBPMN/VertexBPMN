@@ -44,7 +44,7 @@ namespace VertexBPMN.Core.Engine
         {
             try
             {
-                var bpmnXml = await _store.GetProcessAsync(processKey)
+                var bpmnXml = await _store.GetBpmnModelAsync(processKey)
                     ?? throw new BpmnEngineException($"Process {processKey} not found.");
 
                 var model = await _parser.ParseAsync(bpmnXml);
@@ -103,7 +103,7 @@ namespace VertexBPMN.Core.Engine
             {
                 // Validierung des XML
                 await _parser.ParseAsync(bpmnXml);
-                await _store.SaveProcessAsync(key, bpmnXml);
+                await _store.SaveBpmnModelAsync(key, bpmnXml);
                 _logger.LogInformation($"Registered process {key}");
             }
             catch (BpmnParseException ex)
@@ -129,7 +129,7 @@ namespace VertexBPMN.Core.Engine
                 if (!instance.ActiveTasks.Contains(taskId))
                     throw new BpmnEngineException($"Task {taskId} is not active in instance {instanceId}");
 
-                var bpmnXml = await _store.GetProcessAsync(instance.ProcessId)
+                var bpmnXml = await _store.GetBpmnModelAsync(instance.ProcessId)
                     ?? throw new BpmnEngineException($"Process {instance.ProcessId} not found.");
                 var model = await _parser.ParseAsync(bpmnXml);
 

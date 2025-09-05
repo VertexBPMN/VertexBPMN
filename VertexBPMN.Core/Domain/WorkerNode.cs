@@ -12,5 +12,5 @@ public record WorkerNode(
     int CurrentLoad,
     int MaxCapacity,
     bool SupportsDmn = false,
-    bool SupportsCmmn = false
-);
+    bool SupportsCmmn = false,
+    bool SupportsBpmn = false);

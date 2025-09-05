@@ -1,14 +1,16 @@
 using Microsoft.Extensions.Logging;
 using OpenTelemetry;
+using OpenTelemetry.Trace;
 using System.Diagnostics;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Xml;
 using System.Xml.Linq;
-using OpenTelemetry.Trace;
 using VertexBPMN.Core.Bpmn;
+using VertexBPMN.Core.Cmmn;
 using VertexBPMN.Core.Domain;
 using VertexBPMN.Core.Exceptions;
+using static System.Net.Mime.MediaTypeNames;
 using Task = System.Threading.Tasks.Task;
 
 namespace VertexBPMN.Core.Engine
@@ -80,7 +82,7 @@ namespace VertexBPMN.Core.Engine
             }
             catch (Exception ex)
             {
-                span.SetStatus(Status.Error);//,, ex.Message);
+                span.SetStatus(Status.Error.WithDescription(ex.Message));
                 _logger.LogError(ex, "Error parsing BPMN XML");
                 throw new BpmnParseException("Failed to parse BPMN XML", ex);
             }
@@ -423,6 +425,14 @@ namespace VertexBPMN.Core.Engine
                 if (!string.IsNullOrEmpty(script)) attributes["alfresco:script"] = script;
             }
 
+            // MCP ServiceTask
+            var mcpNs = "http://vertexbpmn.io/mcp";
+            if (ext.Element(XName.Get("mcpServiceTask", mcpNs)) is { } mcpServiceTask)
+            {
+                if (mcpServiceTask.Attribute("mcpServerUrl") is { } serverUrl) attributes["mcpServerUrl"] = serverUrl.Value;
+                if (mcpServiceTask.Attribute("mcpMethod") is { } method) attributes["mcpMethod"] = method.Value;
+                if (mcpServiceTask.Attribute("mcpParams") is { } paramsAttr) attributes["mcpParams"] = paramsAttr.Value;
+            }
             // Generische Erweiterungen für unbekannte Namespaces
             foreach (var element in ext.Elements())
             {
@@ -463,6 +473,9 @@ namespace VertexBPMN.Core.Engine
             // Validierung von Tool-Erweiterungen
             foreach (var task in model.Tasks)
             {
+                if (task.Type == "mcpServiceTask" && (!task.Attributes.ContainsKey("mcpServerUrl") || !task.Attributes.ContainsKey("mcpMethod")))
+                    throw new BpmnParseException($"mcpServiceTask {task.Id} requires mcpServerUrl and mcpMethod attributes");
+
                 if (task.Attributes.ContainsKey("zeebe:ioMapping"))
                 {
                     try
@@ -528,7 +541,7 @@ namespace VertexBPMN.Core.Engine
                                     new XElement(XName.Get("resourceAssignmentExpression", ns),
                                         new XElement(XName.Get("formalExpression", ns), owner))));
                             }
-
+                           
                             var extensionProps = t.Attributes.Where(kvp =>
                                 !kvp.Key.StartsWith("script") && !kvp.Key.StartsWith("resultVariable") && !kvp.Key.StartsWith("potentialOwner")).ToList();
                             if (extensionProps.Any())
@@ -677,6 +690,14 @@ namespace VertexBPMN.Core.Engine
                                         var localName = nsParts[1];
                                         ext.Add(new XElement(XName.Get(localName, ns), prop.Value));
                                     }
+                                }
+                                if (t.Type == "mcpServiceTask")
+                                {
+                                    var mcp = new XElement(XName.Get("mcpServiceTask", "http://vertexbpmn.io/mcp"));
+                                    if (t.Attributes.TryGetValue("mcpServerUrl", out var serverUrl)) mcp.Add(new XAttribute("mcpServerUrl", serverUrl));
+                                    if (t.Attributes.TryGetValue("mcpMethod", out var method)) mcp.Add(new XAttribute("mcpMethod", method));
+                                    if (t.Attributes.TryGetValue("mcpParams", out var paramsAttr)) mcp.Add(new XAttribute("mcpParams", paramsAttr));
+                                    ext.Add(mcp);
                                 }
                                 element.Add(ext);
                             }

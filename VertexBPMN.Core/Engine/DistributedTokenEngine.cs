@@ -69,7 +69,8 @@ namespace VertexBPMN.Core.Engine
                 0,
                 10,
                 SupportsDmn: true,
-                SupportsCmmn: true
+                SupportsCmmn: true,
+                SupportsBpmn: true
             );
             _store.SaveWorkerAsync(currentWorker).GetAwaiter().GetResult();
 
@@ -105,6 +106,26 @@ namespace VertexBPMN.Core.Engine
                 trace.Add($"ExecutionError: {ex.Message}");
                 throw new DistributedTokenException($"Failed to execute process {model.Id}", ex);
             }
+        }
+
+        public async Task<List<string>> ExecuteProcessAsync(string processId, CancellationToken cancellationToken = default)
+        {
+            var trace = new List<string>();
+            var bpmnXml = await _store.GetBpmnModelAsync(processId);
+            var processModel = await _bpmnParser.ParseAsync(bpmnXml, cancellationToken);
+            var token = new ExecutionToken(
+                Guid.NewGuid(),
+                Guid.Parse(processModel.Id),
+                processModel.Events.FirstOrDefault(pi => pi.Type == "eventListener" && pi.AttachedToRef == "startEvent")?.Id
+                ?? throw new DistributedTokenException("No start event found in process"),
+                "eventListener",
+                processModel.ProcessVariables,
+                DateTime.UtcNow
+            );
+
+            await _store.SaveTokenAsync(token);
+            await DistributeTokenAsync(token, cancellationToken);
+            return trace;
         }
 
         public async Task<List<string>> ExecuteCaseAsync(CaseModel model, CancellationToken cancellationToken = default)
@@ -293,6 +314,12 @@ namespace VertexBPMN.Core.Engine
                 throw new DistributedTokenException($"Invalid DMN XML for decision {decisionId}", ex);
             }
         }
+        public async Task RegisterBpmnModelAsync(string processId, string bpmnXml, CancellationToken cancellationToken = default)
+        {
+            await _store.SaveBpmnModelAsync(processId, bpmnXml);
+            _logger.LogInformation("Registered BPMN model {ProcessId}", processId);
+        }
+
 
         public async Task RegisterCmmnModelAsync(string caseId, string cmmnXml)
         {

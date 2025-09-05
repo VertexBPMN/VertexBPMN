@@ -28,7 +28,7 @@ builder.Services.AddScoped<IProcessMigrationService>(sp =>
 
 builder.Services.AddServiceTaskHandlers();
 builder.Services.AddVertexBPMNTelemetry();
-builder.Services.AddGrpc();
+//builder.Services.AddGrpc();
 builder.Services.AddLogging();
 // Register VisualDebuggerController dependencies
 builder.Services.AddScoped<VertexBPMN.Api.Controllers.VisualDebuggerController>();

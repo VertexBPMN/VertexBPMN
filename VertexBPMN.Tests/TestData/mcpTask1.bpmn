@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:camunda="http://activiti.org/bpmn" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC" xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
+	<serviceTask id="mcpTask1" name="Get Customer Data">
+		<extensionElements>
+			<camunda:properties>
+				<camunda:property name="type" value="mcpServiceTask" />
+				<camunda:property name="mcpServerUrl" value="http://crm-mcp:8080/api/mcp" />
+				<camunda:property name="mcpMethod" value="get_resource" />
+				<camunda:property name="mcpParams" value='{"resourceId": "customer123"}' />
+			</camunda:properties>
+		</extensionElements>
+	</serviceTask>
+</definitions>

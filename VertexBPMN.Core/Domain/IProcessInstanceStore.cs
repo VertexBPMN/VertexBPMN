@@ -5,8 +5,8 @@ namespace VertexBPMN.Core.Domain;
 public interface IProcessInstanceStore
 {
     // BPMN models and instances
-    Task SaveProcessAsync(string key, string bpmnXml);
-    Task<string> GetProcessAsync(string key);
+    Task SaveBpmnModelAsync(string processId, string bpmnXml);
+    Task<string> GetBpmnModelAsync(string processId);
     Task<IEnumerable<string>> ListProcessesAsync();
     Task SaveInstanceAsync(ProcessInstance instance);
     Task<ProcessInstance> GetInstanceAsync(string instanceId);

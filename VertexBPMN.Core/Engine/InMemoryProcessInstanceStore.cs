@@ -24,20 +24,20 @@ public sealed class InMemoryProcessInstanceStore : IProcessInstanceStore
 
     private record DeadLetterEntry(DateTime TimestampUtc, string TokenType, string SerializedToken, string ErrorMessage);
 
-    public Task SaveProcessAsync(string key, string bpmnXml)
+    public Task SaveBpmnModelAsync(string processId, string bpmnXml)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        ArgumentException.ThrowIfNullOrWhiteSpace(processId);
         ArgumentException.ThrowIfNullOrWhiteSpace(bpmnXml);
-        _processes[key] = bpmnXml;
+        _processes[processId] = bpmnXml;
         return Task.CompletedTask;
     }
 
-    public Task<string> GetProcessAsync(string key)
+    public Task<string> GetBpmnModelAsync(string processId)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(key);
-        if (_processes.TryGetValue(key, out var xml))
+        ArgumentException.ThrowIfNullOrWhiteSpace(processId);
+        if (_processes.TryGetValue(processId, out var xml))
             return Task.FromResult(xml);
-        throw new KeyNotFoundException($"Process with key '{key}' not found.");
+        throw new KeyNotFoundException($"Process with key '{processId}' not found.");
     }
 
     public Task<IEnumerable<string>> ListProcessesAsync() =>

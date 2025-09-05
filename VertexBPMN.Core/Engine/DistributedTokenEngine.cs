@@ -388,6 +388,45 @@ namespace VertexBPMN.Core.Engine
             }
         }
 
+        public async Task TriggerUserEventAsync(string caseId, string eventId, Dictionary<string, object> eventData, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var cmmnXml = await _store.GetCmmnModelAsync(caseId)
+                    ?? throw new DistributedTokenException($"CMMN model {caseId} not found");
+                var caseModel = await _cmmnParser.ParseAsync(cmmnXml);
+
+                var planItem = caseModel.PlanItems.FirstOrDefault(pi => pi.Id == eventId && pi.Type == "eventListener" && pi.DefinitionRef == "userEventListener")
+                    ?? throw new DistributedTokenException($"UserEventListener {eventId} not found");
+
+                var caseTokens = await _store.GetPendingCaseTokensAsync();
+                var caseToken = caseTokens.FirstOrDefault(t => t.CaseInstanceId == Guid.Parse(caseId));
+                if (caseToken.Id != default)
+                {
+                    var updatedCaseFile = new Dictionary<string, object>(caseToken.CaseFile);
+                    foreach (var kvp in eventData)
+                        updatedCaseFile[kvp.Key] = kvp.Value;
+
+                    var newToken = new CaseToken(
+                        Guid.NewGuid(),
+                        caseToken.CaseInstanceId,
+                        planItem.Id,
+                        planItem.Type,
+                        updatedCaseFile,
+                        DateTime.UtcNow
+                    );
+                    await DistributeCaseTokenAsync(newToken, cancellationToken);
+                    _logger.LogInformation("Triggered user event {EventId} for case {CaseId}", eventId, caseId);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to trigger user event {EventId} for case {CaseId}", eventId, caseId);
+                throw new DistributedTokenException($"Failed to trigger user event {eventId} for case {caseId}", ex);
+            }
+        }
+
+
         private async Task<WorkerNode?> FindBestWorkerAsync(string nodeType)
         {
             var workers = await _store.GetActiveWorkersAsync() ?? new List<WorkerNode>();
@@ -552,6 +591,14 @@ namespace VertexBPMN.Core.Engine
                             var duration = planItem.Attributes?.GetValueOrDefault("timeDuration", "PT1M");
                             await Task.Delay(ParseDuration(duration), cancellationToken);
                             trace.Add($"TimerEventListenerTriggered: {planItem.Id} after {duration}");
+                            await CompletePlanItemAsync(planItem, token, model, trace, cancellationToken);
+                            break;
+                        case "eventlistener" when planItem.DefinitionRef == "caseFileItemUpdate":
+                            trace.Add($"CaseFileItemUpdateListener: {planItem.Id} triggered");
+                            await CompletePlanItemAsync(planItem, token, model, trace, cancellationToken);
+                            break;
+                        case "eventlistener" when planItem.DefinitionRef == "userEventListener":
+                            trace.Add($"UserEventListenerTriggered: {planItem.Id}");
                             await CompletePlanItemAsync(planItem, token, model, trace, cancellationToken);
                             break;
                         default:

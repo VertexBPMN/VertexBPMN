@@ -25,5 +25,6 @@ public interface IDistributedTokenEngine
     Task RegisterCmmnModelAsync(string caseId, string cmmnXml);
     Task AddDiscretionaryItemAsync(string caseId, PlanItem planItem, CancellationToken cancellationToken = default);
     Task UpdateCaseFileItemAsync(string caseId, string caseFileItemId, object newValue, CancellationToken cancellationToken = default);
+    Task TriggerUserEventAsync(string caseId, string eventId, Dictionary<string, object> eventData, CancellationToken cancellationToken = default);
 
 }

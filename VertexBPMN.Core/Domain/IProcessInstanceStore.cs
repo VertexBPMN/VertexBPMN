@@ -32,4 +32,6 @@ public interface IProcessInstanceStore
     Task SaveCmmnModelAsync(string caseId, string cmmnXml);
     Task<string> GetCmmnModelAsync(string caseId);
     Task UpdateCaseModelAsync(CaseModel model);
+    Task SaveHistoricalCaseDataAsync(HistoricalCaseData data);
+    Task<List<HistoricalCaseData>> GetHistoricalCaseDataAsync(string caseId);
 }

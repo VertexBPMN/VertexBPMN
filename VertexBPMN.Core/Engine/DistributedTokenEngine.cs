@@ -435,6 +435,8 @@ namespace VertexBPMN.Core.Engine
 
         public async Task GenerateAdHocSubprocessAsync(string caseId, CancellationToken cancellationToken = default)
         {
+            using var span = _tracer.StartActiveSpan("GenerateAdHocSubprocess");
+            span.SetAttribute("caseId", caseId);
             try
             {
                 var cmmnXml = await _store.GetCmmnModelAsync(caseId)
@@ -448,12 +450,34 @@ namespace VertexBPMN.Core.Engine
                    throw new DistributedTokenException($"No active tokens found for case {caseId}");
                 }
 
-                var adHocSubprocess = await _aiDecisionService.GenerateAdHocSubprocessAsync(caseId, caseToken.CaseFile, cancellationToken);
-                await AddDiscretionaryItemAsync(caseId, adHocSubprocess with { IsDiscretionary = true }, cancellationToken);
-                _logger.LogInformation("Added AI-generated ad-hoc subprocess {PlanItemId} to case {CaseId}", adHocSubprocess.Id, caseId);
+               // Prädiktive Optimierung
+               var historicalData = await _store.GetHistoricalCaseDataAsync(caseId);
+               var predictedPlanItems = await _aiDecisionService.PredictOptimalPlanItemsAsync(caseId, caseToken.CaseFile, historicalData, cancellationToken);
+
+               foreach (var planItem in predictedPlanItems)
+               {
+                   await AddDiscretionaryItemAsync(caseId, planItem with { IsDiscretionary = true }, cancellationToken);
+                   _logger.LogInformation("Added AI-predicted PlanItem {PlanItemId} to case {CaseId}", planItem.Id, caseId);
+               }
+
+               // Fallback auf Ad-hoc-Subprozess, falls keine prädiktiven Vorschläge
+               if (!predictedPlanItems.Any())
+               {
+                   var adHocSubprocess = await _aiDecisionService.GenerateAdHocSubprocessAsync(caseId, caseToken.CaseFile, cancellationToken);
+                   await AddDiscretionaryItemAsync(caseId, adHocSubprocess with { IsDiscretionary = true }, cancellationToken);
+                   _logger.LogInformation("Added AI-generated ad-hoc subprocess {PlanItemId} to case {CaseId}", adHocSubprocess.Id, caseId);
+               }
+               // Speichere historische Daten
+               var completedPlanItems = caseModel.PlanItems.Where(pi => pi.Type != "eventListener").Select(pi => pi.Id).ToList();
+               var historicalDataEntry = new HistoricalCaseData(caseId, caseToken.CaseFile, completedPlanItems, DateTime.UtcNow);
+               await _store.SaveHistoricalCaseDataAsync(historicalDataEntry);
+
+               span.SetStatus(Status.Ok);
+
             }
             catch (Exception ex)
             {
+                span.SetStatus(Status.Error.WithDescription(ex.Message));
                 _logger.LogError(ex, "Failed to generate ad-hoc subprocess for case {CaseId}", caseId);
                 throw new DistributedTokenException($"Failed to generate ad-hoc subprocess for case {caseId}", ex);
             }

@@ -186,6 +186,16 @@ public sealed class InMemoryProcessInstanceStore : IProcessInstanceStore
         throw new NotImplementedException();
     }
 
+    public Task SaveHistoricalCaseDataAsync(HistoricalCaseData data)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<List<HistoricalCaseData>> GetHistoricalCaseDataAsync(string caseId)
+    {
+        throw new NotImplementedException();
+    }
+
     // Helper methods (reflection-safe to cope with incomplete domain model definitions provided)
 
     private static Guid GetTokenId(ExecutionToken token)

@@ -24,4 +24,13 @@
     <ProjectReference Include="..\VertexBPMN.Persistence\VertexBPMN.Persistence.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="Properties\vertexbpmn.proto">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Properties\vertexbpmn_mcp.proto">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

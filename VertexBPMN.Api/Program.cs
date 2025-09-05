@@ -244,11 +244,13 @@ builder.Services.AddScoped<ISimulationScenarioService, SimulationScenarioService
 
 		app.MapControllers();
 
-        //app.UseRouting();
-        //app.UseEndpoints(endpoints =>
-        //{
-        //    endpoints.MapGrpcService<VertexBPMNService>();
-        //    endpoints.MapVertexBPMNApi(app.ApplicationServices.GetRequiredService<IDistributedTokenEngine>());
+		//app.UseRouting();
+		//app.UseEndpoints(endpoints =>
+		//{
+		//	endpoints.MapGrpcService<VertexBPMNMCPService>();
+		//	endpoints.MapGrpcService<VertexBPMNService>();
+		//	endpoints.MapVertexBPMNApi(app.ApplicationServices.GetRequiredService<IDistributedTokenEngine>());
+		//}); endpoints.MapVertexBPMNApi(app.ApplicationServices.GetRequiredService<IDistributedTokenEngine>());
         //});
 // Map Prometheus metrics endpoint
 // Prometheus-Scraping-Endpoint entfernt

@@ -1,6 +1,7 @@
 using Jint;
 using Microsoft.Extensions.Logging;
 using OpenTelemetry;
+using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using System;
 using System.Collections.Concurrent;
@@ -8,6 +9,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Diagnostics;
 using VertexBPMN.Core.Bpmn;
 using VertexBPMN.Core.Cmmn;
 using VertexBPMN.Core.Domain;
@@ -347,6 +349,9 @@ namespace VertexBPMN.Core.Engine
 
         public async Task UpdateCaseFileItemAsync(string caseId, string caseFileItemId, object newValue, CancellationToken cancellationToken = default)
         {
+            using var span = _tracer.StartActiveSpan("UpdateCaseFileItem");
+            span.SetAttribute("caseId", caseId);
+            span.SetAttribute("caseFileItemId", caseFileItemId);
             try
             {
                 var cmmnXml = await _store.GetCmmnModelAsync(caseId)
@@ -364,6 +369,7 @@ namespace VertexBPMN.Core.Engine
                 var updateEvent = new CaseFileUpdateEvent(caseId, caseFileItemId, newValue, DateTime.UtcNow);
                 await _messageDispatcher.PublishCaseFileUpdateAsync(updateEvent, cancellationToken);
                 _logger.LogInformation("CaseFileItem {CaseFileItemId} updated in case {CaseId}", caseFileItemId, caseId);
+                span.SetStatus(Status.Ok);
 
                 // Trigger EventListener für Case File Updates
                 var caseTokens = await _store.GetPendingCaseTokensAsync();
@@ -383,6 +389,7 @@ namespace VertexBPMN.Core.Engine
             }
             catch (Exception ex)
             {
+                span.SetStatus(Status.Error.WithDescription(ex.Message));
                 _logger.LogError(ex, "Failed to update CaseFileItem {CaseFileItemId} in case {CaseId}", caseFileItemId, caseId);
                 throw new DistributedTokenException($"Failed to update CaseFileItem {caseFileItemId} in case {caseId}", ex);
             }
@@ -581,6 +588,9 @@ namespace VertexBPMN.Core.Engine
 
         private async Task ProcessCaseTokenAsync(CaseToken token, CaseModel model, List<string> trace, CancellationToken cancellationToken)
         {
+            using var span = _tracer.StartActiveSpan("ProcessCaseToken");
+            span.SetAttribute("tokenId", token.Id.ToString());
+            span.SetAttribute("planItemId", token.CurrentPlanItemId);
             const int maxRetries = 3;
             var retryCount = 0;
 
@@ -595,6 +605,7 @@ namespace VertexBPMN.Core.Engine
                     if (!await EvaluateSentriesAsync(planItem.EntrySentryRefs, model, token.CaseFile, cancellationToken))
                     {
                         trace.Add($"CaseTokenBlocked: {token.Id} - Entry sentries not satisfied for {planItem.Id}");
+                        span.SetStatus(Status.Ok);
                         return;
                     }
 
@@ -660,6 +671,7 @@ namespace VertexBPMN.Core.Engine
                             await _store.SaveWorkerAsync(worker with { CurrentLoad = Math.Max(0, worker.CurrentLoad - 1) });
                         }
                     }
+                    span.SetStatus(Status.Ok);
                     return;
                 }
                 catch (Exception ex)
@@ -670,6 +682,7 @@ namespace VertexBPMN.Core.Engine
                         _logger.LogError(ex, "Max retries reached for case token {TokenId}", token.Id);
                         await _store.SaveToDeadLetterQueueAsync(token, ex.Message);
                         trace.Add($"CaseTokenFailed: {token.Id} - {ex.Message}");
+                        span.SetStatus( Status.Error.WithDescription( ex.Message));
                         return;
                     }
                     await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, retryCount)), cancellationToken);

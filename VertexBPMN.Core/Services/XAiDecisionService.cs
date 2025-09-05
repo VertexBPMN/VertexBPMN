@@ -181,5 +181,3 @@ public class XAiDecisionService : IAiDecisionService
 
 }
 
-public record JsonRpcResponse(string Jsonrpc, object Result, JsonRpcError Error);
-public record JsonRpcError(int Code, string Message, object Data);

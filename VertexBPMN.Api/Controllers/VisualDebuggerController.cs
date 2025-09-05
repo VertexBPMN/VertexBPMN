@@ -69,7 +69,7 @@ namespace VertexBPMN.Api.Controllers
             }
 
             // Use current activity from first token if available
-            string currentActivityId = tokens.Count > 0 ? tokens[0].NodeId : string.Empty;
+            string currentActivityId = tokens.Count > 0 ? tokens[0].CurrentNodeId : string.Empty;
 
             var state = new {
                 Instance = instance,

@@ -17,17 +17,17 @@ public class TaskRepository : ITaskRepository
     private readonly BpmnDbContext _db;
     public TaskRepository(BpmnDbContext db) => _db = db;
 
-    public async ValueTask AddAsync(VertexBPMN.Core.Domain.Task task, CancellationToken cancellationToken = default)
+    public async ValueTask AddAsync(VertexBPMN.Core.Domain.UserTask userTask, CancellationToken cancellationToken = default)
     {
-        await _db.Tasks.AddAsync(task, cancellationToken);
+        await _db.Tasks.AddAsync(userTask, cancellationToken);
     }
 
-    public async ValueTask<VertexBPMN.Core.Domain.Task?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    public async ValueTask<VertexBPMN.Core.Domain.UserTask?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         return await _db.Tasks.FindAsync(new object[] { id }, cancellationToken);
     }
 
-    public async IAsyncEnumerable<VertexBPMN.Core.Domain.Task> ListAsync(Guid? processInstanceId = null, string? assignee = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<VertexBPMN.Core.Domain.UserTask> ListAsync(Guid? processInstanceId = null, string? assignee = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var query = _db.Tasks.AsQueryable();
         if (processInstanceId != null) query = query.Where(t => t.ProcessInstanceId == processInstanceId);

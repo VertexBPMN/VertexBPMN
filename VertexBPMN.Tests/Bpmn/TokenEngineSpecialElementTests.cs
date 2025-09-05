@@ -17,11 +17,11 @@ namespace VertexBPMN.Tests.Bpmn
                 new List<BpmnEvent> { new("start1", "startEvent"), new("end1", "endEvent") },
                 new List<BpmnTask> { new("call1", "callActivity") },
                 new List<BpmnGateway>(),
-                new List<BpmnSubprocess>(),
                 new List<BpmnSequenceFlow> {
                     new("f1", "start1", "call1"),
                     new("f2", "call1", "end1")
-                }
+                },
+                new List<BpmnSubprocess>()
             );
             var engine = new TokenEngine();
             var trace = engine.Execute(model);
@@ -40,11 +40,11 @@ namespace VertexBPMN.Tests.Bpmn
                 new List<BpmnEvent> { new("start1", "startEvent"), new("end1", "endEvent") },
                 new List<BpmnTask>(),
                 new List<BpmnGateway>(),
-                new List<BpmnSubprocess> { new("adhoc1", false) },
                 new List<BpmnSequenceFlow> {
                     new("f1", "start1", "adhoc1"),
                     new("f2", "adhoc1", "end1")
-                }
+                },
+                new List<BpmnSubprocess> { new("adhoc1", false) }
             );
             var engine = new TokenEngine();
             var trace = engine.Execute(model);
@@ -63,10 +63,10 @@ namespace VertexBPMN.Tests.Bpmn
                 new List<BpmnEvent> { new("start1", "startEvent"), new("end1", "endEvent") },
                 new List<BpmnTask>(),
                 new List<BpmnGateway>(),
-                new List<BpmnSubprocess>(),
                 new List<BpmnSequenceFlow> {
                     new("f1", "start1", "end1")
-                }
+                },
+                new List<BpmnSubprocess>()
             );
             var engine = new TokenEngine();
             var trace = engine.Execute(model);

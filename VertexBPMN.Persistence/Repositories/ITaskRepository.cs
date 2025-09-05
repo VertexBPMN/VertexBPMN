@@ -16,17 +16,17 @@ public interface ITaskRepository
     /// <summary>
     /// Adds a new task.
     /// </summary>
-    ValueTask AddAsync(VertexBPMN.Core.Domain.Task task, CancellationToken cancellationToken = default);
+    ValueTask AddAsync(VertexBPMN.Core.Domain.UserTask userTask, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets a task by its unique ID.
     /// </summary>
-    ValueTask<VertexBPMN.Core.Domain.Task?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+    ValueTask<VertexBPMN.Core.Domain.UserTask?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Lists all tasks for a process instance or assignee.
     /// </summary>
-    IAsyncEnumerable<VertexBPMN.Core.Domain.Task> ListAsync(Guid? processInstanceId = null, string? assignee = null, CancellationToken cancellationToken = default);
+    IAsyncEnumerable<VertexBPMN.Core.Domain.UserTask> ListAsync(Guid? processInstanceId = null, string? assignee = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Deletes a task by ID.

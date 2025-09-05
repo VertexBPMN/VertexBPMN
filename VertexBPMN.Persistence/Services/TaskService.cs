@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using CoreTask = VertexBPMN.Core.Domain.Task;
+using VertexBPMN.Core.Domain;
 using VertexBPMN.Core.Services;
 using VertexBPMN.Persistence.Repositories;
 
@@ -75,9 +75,9 @@ public class TaskService : ITaskService
         }
     }
 
-    public ValueTask<CoreTask?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    public ValueTask<UserTask?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
         => _repo.GetByIdAsync(id, cancellationToken);
 
-    public IAsyncEnumerable<CoreTask> ListAsync(Guid? processInstanceId = null, string? assignee = null, CancellationToken cancellationToken = default)
+    public IAsyncEnumerable<UserTask> ListAsync(Guid? processInstanceId = null, string? assignee = null, CancellationToken cancellationToken = default)
         => _repo.ListAsync(processInstanceId, assignee, cancellationToken);
 }

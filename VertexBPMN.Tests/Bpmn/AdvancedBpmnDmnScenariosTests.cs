@@ -19,14 +19,14 @@ public class AdvancedBpmnDmnScenariosTests
             new List<BpmnEvent> { new("start1", "startEvent"), new("end1", "endEvent") },
             new List<BpmnTask>(),
             new List<BpmnGateway>(),
-            new List<BpmnSubprocess> {
-                new("sub1", false),
-                new("sub2", false)
-            },
             new List<BpmnSequenceFlow> {
                 new("flow1", "start1", "sub1"),
                 new("flow2", "sub1", "sub2"),
                 new("flow3", "sub2", "end1")
+            },
+            new List<BpmnSubprocess> {
+                new("sub1", false),
+                new("sub2", false)
             }
         );
         var engine = new TokenEngine();
@@ -48,12 +48,12 @@ public class AdvancedBpmnDmnScenariosTests
             new List<BpmnEvent> { new("start1", "startEvent"), new("b1", "boundaryEvent", "t1"), new("end1", "endEvent") },
             new List<BpmnTask> { new("t1", "userTask") },
             new List<BpmnGateway>(),
-            new List<BpmnSubprocess>(),
             new List<BpmnSequenceFlow> {
                 new("flow1", "start1", "t1"),
                 new("flow2", "t1", "end1"),
                 new("flow3", "b1", "end1")
-            }
+            },
+            new List<BpmnSubprocess>()
         );
         var engine = new TokenEngine();
         var trace = engine.Execute(model);

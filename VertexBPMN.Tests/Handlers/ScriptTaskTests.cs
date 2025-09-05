@@ -1,4 +1,8 @@
-﻿namespace VertexBPMN.Tests.Tasks;
+﻿using Microsoft.Extensions.Logging;
+using Moq;
+using OpenTelemetry.Trace;
+
+namespace VertexBPMN.Tests.Tasks;
 
 using System.Xml.Linq;
 using VertexBPMN.Core.Bpmn;
@@ -29,8 +33,8 @@ public class ScriptTaskTests
   </process>
 </definitions>";
 
-        var parser = new BpmnParser();
-        var model = parser.Parse(xml);
+        var logger = new Mock<ILogger<BpmnParser>>();var parser = new BpmnParser(logger.Object, TracerProvider.Default);
+        var model =  parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
 
         // Nimm den ScriptTask aus dem Modell
         var task = model.Tasks.Single(t => t.Type == "scriptTask");
@@ -71,8 +75,8 @@ public class ScriptTaskTests
   </process>
 </definitions>";
 
-        var parser = new BpmnParser();
-        var model = parser.Parse(xml);
+        var logger = new Mock<ILogger<BpmnParser>>();var parser = new BpmnParser(logger.Object, TracerProvider.Default);
+        var model =  parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
         var task = model.Tasks.Single(t => t.Type == "scriptTask");
 
         var variables = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
@@ -105,14 +109,14 @@ public class ScriptTaskTests
         );
 
         var model = new BpmnModel(
-            Id: "process1",
-            Name: "TestProcess",
-            Events: new List<BpmnEvent>(),
-            Tasks: new List<BpmnTask> { scriptTask },
-            Gateways: new List<BpmnGateway>(),
-            Subprocesses: new List<BpmnSubprocess>(),
-            SequenceFlows: new List<BpmnSequenceFlow>(),
-            ProcessVariables: new Dictionary<string, object>
+             "process1",
+           "TestProcess",
+            new List<BpmnEvent>(),
+           new List<BpmnTask> { scriptTask },
+            new List<BpmnGateway>(),
+            new List<BpmnSubprocess>(),
+            new List<BpmnSequenceFlow>(),
+             new Dictionary<string, object>
             {
                     { "a", 2 },
                     { "b", 3 }
@@ -144,14 +148,14 @@ public class ScriptTaskTests
         );
 
         var model = new BpmnModel(
-            Id: "process2",
-            Name: "TestProcessJS",
-            Events: new List<BpmnEvent>(),
-            Tasks: new List<BpmnTask> { scriptTask },
-            Gateways: new List<BpmnGateway>(),
-            Subprocesses: new List<BpmnSubprocess>(),
-            SequenceFlows: new List<BpmnSequenceFlow>(),
-            ProcessVariables: new Dictionary<string, object>
+            "process2",
+             "TestProcessJS",
+            new List<BpmnEvent>(),
+            new List<BpmnTask> { scriptTask },
+            new List<BpmnGateway>(),
+            new List<BpmnSubprocess>(),
+            new List<BpmnSequenceFlow>(),
+            new Dictionary<string, object>
             {
                     { "a", 7 },
                     { "b", 8 }

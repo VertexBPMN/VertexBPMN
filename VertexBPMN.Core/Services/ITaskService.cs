@@ -1,3 +1,5 @@
+using VertexBPMN.Core.Domain;
+
 namespace VertexBPMN.Core.Services;
 
 /// <summary>
@@ -7,7 +9,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using CoreTask = VertexBPMN.Core.Domain.Task;
 
 public interface ITaskService
 {
@@ -29,10 +30,10 @@ public interface ITaskService
     /// <summary>
     /// Gets a user task by ID.
     /// </summary>
-    ValueTask<CoreTask?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+    ValueTask<UserTask?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Lists all user tasks for a process instance or assignee.
     /// </summary>
-    IAsyncEnumerable<CoreTask> ListAsync(Guid? processInstanceId = null, string? assignee = null, CancellationToken cancellationToken = default);
+    IAsyncEnumerable<UserTask> ListAsync(Guid? processInstanceId = null, string? assignee = null, CancellationToken cancellationToken = default);
 }

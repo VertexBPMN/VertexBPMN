@@ -1,4 +1,4 @@
-namespace VertexBPMN.Core.Engine;
+namespace VertexBPMN.Core.Domain;
 
 /// <summary>
 /// Worker node for distributed execution
@@ -10,5 +10,7 @@ public record WorkerNode(
     DateTime LastHeartbeat,
     List<string> SupportedNodeTypes,
     int CurrentLoad,
-    int MaxCapacity
+    int MaxCapacity,
+    bool SupportsDmn = false,
+    bool SupportsCmmn = false
 );

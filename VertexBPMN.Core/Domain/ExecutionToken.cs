@@ -1,13 +1,43 @@
 namespace VertexBPMN.Core.Domain;
 
 /// <summary>
-/// Represents a token in the BPMN execution graph.
+/// Represents an execution token for advanced BPMN 2.0 flow control
 /// </summary>
-public class ExecutionToken
+public record ExecutionToken
 {
-    public Guid Id { get; set; }
-    public Guid ProcessInstanceId { get; set; }
-    public string NodeId { get; set; } = string.Empty;
-    public bool IsActive { get; set; }
-    // TODO: Add parent/child token relationships, state, etc.
+    public Guid Id;
+    public Guid ProcessInstanceId;
+    public string CurrentNodeId;
+    public string NodeType;
+    public Dictionary<string, object> Variables;
+    public DateTime CreatedAt;
+    public string? AssignedWorker = null;
+    public DateTime? AssignedAt = null;
+    public int RetryCount = 0;
+
+    /// <summary>
+    /// Represents an execution token for advanced BPMN 2.0 flow control
+    /// </summary>
+    public ExecutionToken(string Id, string ProcessInstanceId, string CurrentNodeId)
+    {
+        this.CurrentNodeId = CurrentNodeId;
+        this.Id = Guid.Parse(Id);
+        this.ProcessInstanceId = Guid.Parse(ProcessInstanceId);
+        this.Variables = new Dictionary<string, object>();
+        this.CreatedAt = DateTime.UtcNow;
+    }
+
+    public ExecutionToken(Guid Id, Guid ProcessInstanceId, string CurrentNodeId, string NodeType, Dictionary<string, object> Variables, DateTime CreatedAt, string? AssignedWorker = null, DateTime? AssignedAt = null, int RetryCount = 0)
+    {
+        this.Id = Id;
+        this.ProcessInstanceId = ProcessInstanceId;
+        this.CurrentNodeId = CurrentNodeId;
+        this.NodeType = NodeType;
+        this.Variables = Variables;
+        this.CreatedAt = CreatedAt;
+        this.AssignedWorker = AssignedWorker;
+        this.AssignedAt = AssignedAt;
+        this.RetryCount = RetryCount;
+    }
+
 }

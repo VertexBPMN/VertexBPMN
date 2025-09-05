@@ -3,7 +3,7 @@ namespace VertexBPMN.Core.Domain;
 /// <summary>
 /// Represents a user or service task instance.
 /// </summary>
-public class Task
+public class UserTask
 {
     public Guid Id { get; set; }
     public Guid ProcessInstanceId { get; set; }

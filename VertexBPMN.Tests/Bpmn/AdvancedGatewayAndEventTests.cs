@@ -26,14 +26,14 @@ public class AdvancedGatewayAndEventTests
             },
             new List<BpmnTask>(),
             new List<BpmnGateway> { new("complex1", "complexGateway") },
-            new List<BpmnSubprocess>(),
-            new List<BpmnSequenceFlow> 
+            new List<BpmnSequenceFlow>
             {
                 new("flow1", "start1", "complex1"),
                 new("flow2", "complex1", "end1"),
                 new("flow3", "complex1", "end2"),
                 new("flow4", "complex1", "end3")
-            }
+            },
+            new List<BpmnSubprocess>()
         );
 
         var engine = new TokenEngine();
@@ -63,15 +63,15 @@ public class AdvancedGatewayAndEventTests
             },
             new List<BpmnTask>(),
             new List<BpmnGateway> { new("event_gw1", "eventBasedGateway") },
-            new List<BpmnSubprocess>(),
-            new List<BpmnSequenceFlow> 
+            new List<BpmnSequenceFlow>
             {
                 new("flow1", "start1", "event_gw1"),
                 new("flow2", "event_gw1", "msg_event1"),
                 new("flow3", "event_gw1", "msg_event2"),
                 new("flow4", "msg_event1", "end1"),
                 new("flow5", "msg_event2", "end2")
-            }
+            },
+            new List<BpmnSubprocess>()
         );
 
         var engine = new TokenEngine();
@@ -99,15 +99,15 @@ public class AdvancedGatewayAndEventTests
             },
             new List<BpmnTask> { new("task1", "userTask") },
             new List<BpmnGateway>(),
-            new List<BpmnSubprocess> 
-            { 
-                new("msg_subprocess", false, true) // Event subprocess
-            },
-            new List<BpmnSequenceFlow> 
+            new List<BpmnSequenceFlow>
             {
                 new("flow1", "start1", "task1"),
                 new("flow2", "task1", "normal_end"),
                 new("event_flow1", "msg_start", "event_end")
+            },
+            new List<BpmnSubprocess> 
+            { 
+                new("msg_subprocess", false, true) // Event subprocess
             }
         );
 
@@ -135,15 +135,15 @@ public class AdvancedGatewayAndEventTests
             },
             new List<BpmnTask> { new("risky_task", "serviceTask") },
             new List<BpmnGateway>(),
-            new List<BpmnSubprocess> 
-            { 
-                new("error_subprocess", false, true) // Event subprocess
-            },
-            new List<BpmnSequenceFlow> 
+            new List<BpmnSequenceFlow>
             {
                 new("flow1", "start1", "risky_task"),
                 new("flow2", "risky_task", "normal_end"),
                 new("error_flow1", "error_start", "error_end")
+            },
+            new List<BpmnSubprocess> 
+            { 
+                new("error_subprocess", false, true) // Event subprocess
             }
         );
 
@@ -171,15 +171,15 @@ public class AdvancedGatewayAndEventTests
             },
             new List<BpmnTask> { new("long_task", "userTask") },
             new List<BpmnGateway>(),
-            new List<BpmnSubprocess> 
-            { 
-                new("timer_subprocess", false, true) // Event subprocess
-            },
-            new List<BpmnSequenceFlow> 
+            new List<BpmnSequenceFlow>
             {
                 new("flow1", "start1", "long_task"),
                 new("flow2", "long_task", "normal_end"),
                 new("timer_flow1", "timer_start", "timer_end")
+            },
+            new List<BpmnSubprocess> 
+            { 
+                new("timer_subprocess", false, true) // Event subprocess
             }
         );
 
@@ -207,15 +207,15 @@ public class AdvancedGatewayAndEventTests
             },
             new List<BpmnTask> { new("waiting_task", "userTask") },
             new List<BpmnGateway>(),
-            new List<BpmnSubprocess> 
-            { 
-                new("signal_subprocess", false, true) // Event subprocess
-            },
-            new List<BpmnSequenceFlow> 
+            new List<BpmnSequenceFlow>
             {
                 new("flow1", "start1", "waiting_task"),
                 new("flow2", "waiting_task", "normal_end"),
                 new("signal_flow1", "signal_start", "signal_end")
+            },
+            new List<BpmnSubprocess> 
+            { 
+                new("signal_subprocess", false, true) // Event subprocess
             }
         );
 
@@ -249,8 +249,7 @@ public class AdvancedGatewayAndEventTests
                 new("event_gw1", "eventBasedGateway"),
                 new("exclusive1", "exclusiveGateway")
             },
-            new List<BpmnSubprocess>(),
-            new List<BpmnSequenceFlow> 
+            new List<BpmnSequenceFlow>
             {
                 new("flow1", "start1", "prep_task"),
                 new("flow2", "prep_task", "parallel1"),
@@ -260,7 +259,8 @@ public class AdvancedGatewayAndEventTests
                 new("flow6", "timer_catch", "end1"),
                 new("flow7", "exclusive1", "end2"),
                 new("flow8", "exclusive1", "end3")
-            }
+            },
+            new List<BpmnSubprocess>()
         );
 
         var engine = new TokenEngine();

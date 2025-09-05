@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using System.Collections.Generic;
 using VertexBPMN.Core.Bpmn;
+using VertexBPMN.Core.Domain;
 using VertexBPMN.Core.Engine;
 using VertexBPMN.Core.Services;
 
@@ -12,27 +13,25 @@ namespace VertexBPMN.Api.Controllers;
 public class DebugController : ControllerBase
 {
     private readonly IRepositoryService _repositoryService;
+    private readonly IBpmnParser _parser;
+    private readonly IProcessEngine _processEngine;
     private readonly IRuntimeService _runtimeService;
 
-    public DebugController(IRepositoryService repositoryService, IRuntimeService runtimeService)
+    public DebugController(IRepositoryService repositoryService, IBpmnParser parser, IProcessEngine processEngine, IRuntimeService runtimeService)
     {
         _repositoryService = repositoryService;
+        _parser = parser;
+        _processEngine = processEngine;
         _runtimeService = runtimeService;
     }
 
     // Simulates a BPMN process and returns the execution trace for visual debugging.
     [HttpPost("trace")]
-    public ActionResult<List<string>> Trace([FromBody] TraceRequest request)
+    public async Task<ActionResult<List<string>>> Trace([FromBody] TraceRequest request)
     {
-        var parser = new BpmnParser();
-        var model = parser.Parse(request.BpmnXml);
 
-        // Fix: Create an ILoggerFactory instance before using CreateLogger
-        using var loggerFactory = LoggerFactory.Create(builder => { });
-        var logger = loggerFactory.CreateLogger<TokenEngine>();
-
-        var engine = new TokenEngine(logger, new ServiceTaskRegistry());
-        var trace = engine.Execute(model);
+        var model = await _parser.ParseAsync(request.BpmnXml);
+        var trace = _processEngine.Execute(model);
         return Ok(trace);
     }
 

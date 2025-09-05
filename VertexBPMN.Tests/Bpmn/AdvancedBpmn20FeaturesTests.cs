@@ -26,13 +26,13 @@ public class AdvancedBpmn20FeaturesTests
             },
             new List<BpmnTask> { new("task1", "userTask") },
             new List<BpmnGateway>(),
-            new List<BpmnSubprocess>(),
             new List<BpmnSequenceFlow> 
             {
                 new("flow1", "start1", "task1"),
                 new("flow2", "task1", "normal_end"),
                 new("flow3", "timer_boundary", "timeout_end")
-            }
+            },
+            new List<BpmnSubprocess>()
         );
 
         var engine = new TokenEngine();
@@ -59,14 +59,14 @@ public class AdvancedBpmn20FeaturesTests
             },
             new List<BpmnTask>(),
             new List<BpmnGateway>(),
-            new List<BpmnSubprocess> 
-            { 
-                new("subprocess1", true, false, false, true, 3) // Sequential MI with cardinality 3
-            },
-            new List<BpmnSequenceFlow> 
+            new List<BpmnSequenceFlow>
             {
                 new("flow1", "start1", "subprocess1"),
                 new("flow2", "subprocess1", "end1")
+            },
+            new List<BpmnSubprocess> 
+            { 
+                new("subprocess1", true, false, false, true, 3) // Sequential MI with cardinality 3
             }
         );
 
@@ -97,14 +97,14 @@ public class AdvancedBpmn20FeaturesTests
             },
             new List<BpmnTask>(),
             new List<BpmnGateway>(),
-            new List<BpmnSubprocess> 
-            { 
-                new("subprocess1", true, false, false, false, 2) // Parallel MI with cardinality 2
-            },
-            new List<BpmnSequenceFlow> 
+            new List<BpmnSequenceFlow>
             {
                 new("flow1", "start1", "subprocess1"),
                 new("flow2", "subprocess1", "end1")
+            },
+            new List<BpmnSubprocess> 
+            { 
+                new("subprocess1", true, false, false, false, 2) // Parallel MI with cardinality 2
             }
         );
 
@@ -135,14 +135,14 @@ public class AdvancedBpmn20FeaturesTests
             },
             new List<BpmnTask>(),
             new List<BpmnGateway>(),
-            new List<BpmnSubprocess> 
-            { 
-                new("tx_subprocess", false, false, true) // Transaction subprocess
-            },
-            new List<BpmnSequenceFlow> 
+            new List<BpmnSequenceFlow>
             {
                 new("flow1", "start1", "tx_subprocess"),
                 new("flow2", "tx_subprocess", "end1")
+            },
+            new List<BpmnSubprocess> 
+            { 
+                new("tx_subprocess", false, false, true) // Transaction subprocess
             }
         );
 
@@ -172,13 +172,13 @@ public class AdvancedBpmn20FeaturesTests
             },
             new List<BpmnTask> { new("task1", "userTask") },
             new List<BpmnGateway>(),
-            new List<BpmnSubprocess>(),
-            new List<BpmnSequenceFlow> 
+            new List<BpmnSequenceFlow>
             {
                 new("flow1", "start1", "task1"),
                 new("flow2", "task1", "normal_end"),
                 new("flow3", "msg_boundary", "msg_end")
-            }
+            },
+            new List<BpmnSubprocess>()
         );
 
         var engine = new TokenEngine();
@@ -206,15 +206,15 @@ public class AdvancedBpmn20FeaturesTests
             },
             new List<BpmnTask>(),
             new List<BpmnGateway>(),
-            new List<BpmnSubprocess> 
-            { 
-                new("mi_subprocess", true, false, false, false, 2) // Parallel MI with cardinality 2
-            },
-            new List<BpmnSequenceFlow> 
+            new List<BpmnSequenceFlow>
             {
                 new("flow1", "start1", "mi_subprocess"),
                 new("flow2", "mi_subprocess", "normal_end"),
                 new("flow3", "error_boundary", "error_end")
+            },
+            new List<BpmnSubprocess> 
+            { 
+                new("mi_subprocess", true, false, false, false, 2) // Parallel MI with cardinality 2
             }
         );
 
@@ -246,15 +246,15 @@ public class AdvancedBpmn20FeaturesTests
             },
             new List<BpmnTask> { new("task1", "userTask") },
             new List<BpmnGateway>(),
-            new List<BpmnSubprocess> 
-            { 
-                new("event_subprocess", false, true) // Event subprocess
-            },
-            new List<BpmnSequenceFlow> 
+            new List<BpmnSequenceFlow>
             {
                 new("flow1", "start1", "task1"),
                 new("flow2", "task1", "normal_end"),
                 new("event_flow1", "event_start", "event_end")
+            },
+            new List<BpmnSubprocess> 
+            { 
+                new("event_subprocess", false, true) // Event subprocess
             }
         );
 

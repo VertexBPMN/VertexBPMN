@@ -2,6 +2,9 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Collections.Generic;
+using Microsoft.Extensions.Logging;
+using Moq;
+using OpenTelemetry.Trace;
 using VertexBPMN.Core.Engine;
 using Xunit;
 using VertexBPMN.Core.Services;
@@ -38,9 +41,9 @@ namespace VertexBPMN.Tests.Bpmn
         [MemberData(nameof(GetBpmnFiles))]
         public void Engine_Should_Import_Export_Roundtrip_Bpmn_File(string bpmnFile)
         {
-            var xmlOriginal = File.ReadAllText(bpmnFile);
-            var parser = new BpmnParser();
-            var model = parser.Parse(xmlOriginal);
+            var xml = File.ReadAllText(bpmnFile);
+            var logger = new Mock<ILogger<BpmnParser>>();var parser = new BpmnParser(logger.Object, TracerProvider.Default);
+           var model =  parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
             var engine = new TokenEngine();
             var result = engine.Execute(model);
             Assert.NotNull(result);
@@ -51,7 +54,7 @@ namespace VertexBPMN.Tests.Bpmn
             Assert.False(string.IsNullOrWhiteSpace(xmlExported), $"Exported BPMN XML is empty for {Path.GetFileName(bpmnFile)}");
 
             // Roundtrip: Parse exported XML and compare structure
-            var modelRoundtrip = parser.Parse(xmlExported);
+            var modelRoundtrip = parser.ParseAsync(xmlExported.Replace('\'', '"')).GetAwaiter().GetResult();
             Assert.NotNull(modelRoundtrip);
             // Optionally: Compare key model properties for equality
             Assert.Equal(model.ProcessId, modelRoundtrip.ProcessId);

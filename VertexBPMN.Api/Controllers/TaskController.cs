@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using VertexBPMN.Core.Domain;
 using VertexBPMN.Core.Services;
-using CoreTask = VertexBPMN.Core.Domain.Task;
 
 namespace VertexBPMN.Api.Controllers;
 
@@ -16,11 +16,11 @@ public class TaskController : ControllerBase
     }
 
     [HttpGet]
-    public IAsyncEnumerable<CoreTask> List([FromQuery] Guid? processInstanceId = null, [FromQuery] string? assignee = null)
+    public IAsyncEnumerable<UserTask> List([FromQuery] Guid? processInstanceId = null, [FromQuery] string? assignee = null)
         => _taskService.ListAsync(processInstanceId, assignee);
 
     [HttpGet("{id}")]
-    public async Task<ActionResult<CoreTask>> GetById(Guid id)
+    public async Task<ActionResult<UserTask>> GetById(Guid id)
     {
         var task = await _taskService.GetByIdAsync(id);
         if (task is null) return NotFound();

@@ -4,7 +4,6 @@ using System.Diagnostics;
 using VertexBPMN.Core.Bpmn;
 using VertexBPMN.Core.Engine;
 using Xunit;
-
 namespace VertexBPMN.Benchmarks;
 
 public class AdvancedTokenEngineBenchmarks
@@ -13,12 +12,11 @@ public class AdvancedTokenEngineBenchmarks
     public void Benchmark_Execute_ComplexProcess()
     {
         var model = new BpmnModel(
-            "P2",
+             "P2",
             "ComplexBenchmark",
             new List<BpmnEvent> { new("start1", "startEvent"), new("end1", "endEvent") },
             new List<BpmnTask> { new("t1", "userTask"), new("brt1", "businessRuleTask") },
             new List<BpmnGateway> { new("gw1", "parallelGateway") },
-            new List<BpmnSubprocess> { new("sub1", true) },
             new List<BpmnSequenceFlow> {
                 new("flow1", "start1", "gw1"),
                 new("flow2", "gw1", "t1"),
@@ -26,7 +24,8 @@ public class AdvancedTokenEngineBenchmarks
                 new("flow4", "t1", "brt1"),
                 new("flow5", "sub1", "brt1"),
                 new("flow6", "brt1", "end1")
-            }
+            },
+            new List<BpmnSubprocess> { new("sub1", true) }
         );
         var engine = new TokenEngine();
         var decisionService = new VertexBPMN.Core.Services.DecisionService();

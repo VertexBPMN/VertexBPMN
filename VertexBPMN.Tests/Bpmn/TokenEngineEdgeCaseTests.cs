@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using Moq;
+using OpenTelemetry.Trace;
 using VertexBPMN.Core.Bpmn;
 using VertexBPMN.Core.Engine;
 using VertexBPMN.Core.Services;
 using Xunit;
-
 namespace VertexBPMN.Tests.Bpmn
 {
     public class TokenEngineEdgeCaseTests
@@ -75,9 +77,9 @@ namespace VertexBPMN.Tests.Bpmn
         [Fact]
         public void Throws_On_Missing_Process_Element_In_Parser()
         {
-            var parser = new BpmnParser();
+            var logger = new Mock<ILogger<BpmnParser>>();var parser = new BpmnParser(logger.Object, TracerProvider.Default);
             const string xml = "<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'></definitions>";
-            Assert.Throws<InvalidOperationException>(() => parser.Parse(xml.Replace("'", "\"")));
+            Assert.Throws<InvalidOperationException>(() => parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult());
         }
 
         [Fact]

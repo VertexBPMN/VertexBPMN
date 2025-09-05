@@ -1,4 +1,6 @@
-namespace VertexBPMN.Core.Engine;
+using VertexBPMN.Core.Engine;
+
+namespace VertexBPMN.Core.Domain;
 
 /// <summary>
 /// Worker node management interface for distributed execution
@@ -7,13 +9,13 @@ namespace VertexBPMN.Core.Engine;
 public interface IWorkerNodeManager
 {
     Task<WorkerNode> RegisterWorkerAsync(WorkerRegistrationRequest request);
-    Task UnregisterWorkerAsync(string workerId);
+    System.Threading.Tasks.Task UnregisterWorkerAsync(string workerId);
     Task<List<WorkerNode>> GetActiveWorkersAsync();
     Task<WorkerNode?> GetWorkerAsync(string workerId);
-    Task UpdateWorkerStatusAsync(string workerId, WorkerStatus status);
+    System.Threading.Tasks.Task UpdateWorkerStatusAsync(string workerId, WorkerStatus status);
     Task<WorkerCapacityInfo> GetWorkerCapacityAsync(string workerId);
     Task<bool> IsWorkerHealthyAsync(string workerId);
     Task<List<WorkerNode>> GetWorkersForNodeTypeAsync(string nodeType);
-    Task NotifyWorkersAsync(string message);
+    System.Threading.Tasks.Task NotifyWorkersAsync(string message);
     Task<WorkerPerformanceMetrics> GetWorkerPerformanceAsync(string workerId);
 }

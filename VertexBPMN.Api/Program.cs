@@ -9,6 +9,7 @@ using VertexBPMN.Api.Migration;
 using VertexBPMN.Api.Debugging;
 using VertexBPMN.Api.Plugins;
 using Polly;
+using VertexBPMN.Core.Domain;
 using VertexBPMN.Core.Messaging;
 using VertexBPMN.Core.Services;
 using VertexBPMN.Core.Extensions;
@@ -104,9 +105,9 @@ builder.Services.AddScoped<VertexBPMN.Core.Services.ISimulationScenarioService, 
         builder.Services.AddSingleton<ServiceTaskRegistry>();
         builder.Services.AddSingleton<IMessageDispatcher, InMemoryMessageDispatcher>();
 // Olympic-level Enterprise Scalability: Distributed processing services
-builder.Services.AddSingleton<VertexBPMN.Core.Engine.IDistributedTokenEngine, VertexBPMN.Core.Engine.DistributedTokenEngine>();
+builder.Services.AddSingleton<IDistributedTokenEngine, VertexBPMN.Core.Engine.DistributedTokenEngine>();
 		builder.Services.AddSingleton<VertexBPMN.Api.Controllers.ILoadBalancingService, VertexBPMN.Api.Controllers.LoadBalancingService>();
-		builder.Services.AddSingleton<VertexBPMN.Core.Engine.IWorkerNodeManager, VertexBPMN.Core.Engine.WorkerNodeManager>();
+		builder.Services.AddSingleton<IWorkerNodeManager, VertexBPMN.Core.Engine.WorkerNodeManager>();
 
 		// Observability: HealthChecks, Logging, Metrics
 	builder.Services.AddHealthChecks();

@@ -2,6 +2,9 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Collections.Generic;
+using Microsoft.Extensions.Logging;
+using Moq;
+using OpenTelemetry.Trace;
 using VertexBPMN.Core.Engine;
 using Xunit;
 using VertexBPMN.Core.Services;
@@ -28,8 +31,8 @@ namespace VertexBPMN.Tests.Bpmn
         public void Engine_Should_Execute_MIWG_Bpmn_File(string bpmnFile)
         {
             var xml = File.ReadAllText(bpmnFile);
-            var parser = new BpmnParser();
-            var model = parser.Parse(xml);
+           var logger = new Mock<ILogger<BpmnParser>>();var parser = new BpmnParser(logger.Object, TracerProvider.Default);
+            var model =  parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
             var engine = new TokenEngine();
             var result = engine.Execute(model);
             Assert.NotNull(result);

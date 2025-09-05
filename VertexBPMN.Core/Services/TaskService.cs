@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using CoreTask = VertexBPMN.Core.Domain.Task;
+using VertexBPMN.Core.Domain;
 
 namespace VertexBPMN.Core.Services;
 
@@ -12,7 +12,7 @@ namespace VertexBPMN.Core.Services;
 /// </summary>
 public class TaskService : ITaskService
 {
-    private readonly ConcurrentDictionary<Guid, CoreTask> _tasks = new();
+    private readonly ConcurrentDictionary<Guid, UserTask> _tasks = new();
     private readonly IProcessMiningEventSink _eventSink;
 
     public TaskService(IProcessMiningEventSink eventSink)
@@ -72,10 +72,10 @@ public class TaskService : ITaskService
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask<CoreTask?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    public ValueTask<UserTask?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
         => ValueTask.FromResult(_tasks.TryGetValue(id, out var task) ? task : null);
 
-    public async IAsyncEnumerable<CoreTask> ListAsync(Guid? processInstanceId = null, string? assignee = null, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<UserTask> ListAsync(Guid? processInstanceId = null, string? assignee = null, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         foreach (var task in _tasks.Values)
         {

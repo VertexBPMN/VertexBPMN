@@ -15,7 +15,7 @@ public class BpmnDbContext : DbContext
     public DbSet<ExecutionToken> ExecutionTokens => Set<ExecutionToken>();
     public DbSet<Variable> Variables => Set<Variable>();
     public DbSet<Job> Jobs => Set<Job>();
-    public DbSet<VertexBPMN.Core.Domain.Task> Tasks => Set<VertexBPMN.Core.Domain.Task>();
+    public DbSet<VertexBPMN.Core.Domain.UserTask> Tasks => Set<VertexBPMN.Core.Domain.UserTask>();
     public DbSet<HistoryEvent> HistoryEvents => Set<HistoryEvent>();
     public DbSet<Incident> Incidents => Set<Incident>();
     public DbSet<MultiInstanceExecution> MultiInstanceExecutions => Set<MultiInstanceExecution>();

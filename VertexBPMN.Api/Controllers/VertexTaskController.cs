@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using VertexBPMN.Core.Services;
 using VertexBPMN.Api.Dto;
-using CoreTask = VertexBPMN.Core.Domain.Task;
+using VertexBPMN.Core.Domain;
 
 namespace VertexBPMN.Api.Controllers;
 
@@ -60,7 +60,7 @@ public class VertexTaskController : ControllerBase
 
     public record UpdateFormSchemaRequest(string? FormKey, string? Schema);
 
-    private static TaskDto ToDto(CoreTask t) => new()
+    private static TaskDto ToDto(UserTask t) => new()
     {
         Id = t.Id,
         Name = t.Name,

@@ -1,5 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using OpenTelemetry.Trace;
 using VertexBPMN.Core.Extensions;
 using VertexBPMN.Core.Services;
 
@@ -86,12 +88,13 @@ public class SemanticKernelServiceTaskHandlerTests
         // Arrange
         var bpmnFile = Path.Combine(Directory.GetCurrentDirectory(), "TestData", "SemanticKernelTestProcess.bpmn");
         var xml = File.ReadAllText(bpmnFile);
-        var parser = new BpmnParser();
+        var logger = new Mock<ILogger<BpmnParser>>();var parser = new BpmnParser(logger.Object, TracerProvider.Default);
         var processVariables = new Dictionary<string, object>
         {
             { "customerMessage", "Wie ist das Wetter heute?" }
         };
-        var model = parser.Parse(xml) with { ProcessVariables = processVariables };
+        var model = parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
+        model.ProcessVariables = processVariables;
         Assert.NotNull(model);
 
         var task = Assert.Single(model.Tasks);
@@ -131,13 +134,12 @@ public class SemanticKernelServiceTaskHandlerTests
     public void Parse_ServiceTask_WithAttributesAndExtensionElements()
     {
         // Arrange: Minimal BPMN XML with serviceTask
-        var bpmnXml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<bpmn:definitions xmlns:bpmn=\"http://www.omg.org/spec/BPMN/20100524/MODEL\">\n  <bpmn:process id=\"TestProcess\" name=\"Test Process\" isExecutable=\"true\">\n    <bpmn:serviceTask id=\"ServiceTask_1\" name=\"AI Task\" implementation=\"semanticKernelServiceTask\">\n      <bpmn:extensionElements>\n        <bpmn:property name=\"provider\" value=\"OpenAI\"/>\n        <bpmn:property name=\"modelId\" value=\"gpt-4o\"/>\n        <bpmn:property name=\"prompt\" value=\"customerMessage\"/>\n        <bpmn:property name=\"resultVariable\" value=\"llmResult\"/>\n      </bpmn:extensionElements>\n    </bpmn:serviceTask>\n  </bpmn:process>\n</bpmn:definitions>";
+        var xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<bpmn:definitions xmlns:bpmn=\"http://www.omg.org/spec/BPMN/20100524/MODEL\">\n  <bpmn:process id=\"TestProcess\" name=\"Test Process\" isExecutable=\"true\">\n    <bpmn:serviceTask id=\"ServiceTask_1\" name=\"AI Task\" implementation=\"semanticKernelServiceTask\">\n      <bpmn:extensionElements>\n        <bpmn:property name=\"provider\" value=\"OpenAI\"/>\n        <bpmn:property name=\"modelId\" value=\"gpt-4o\"/>\n        <bpmn:property name=\"prompt\" value=\"customerMessage\"/>\n        <bpmn:property name=\"resultVariable\" value=\"llmResult\"/>\n      </bpmn:extensionElements>\n    </bpmn:serviceTask>\n  </bpmn:process>\n</bpmn:definitions>";
 
-        var parser = new BpmnParser();
+        var logger = new Mock<ILogger<BpmnParser>>();var parser = new BpmnParser(logger.Object, TracerProvider.Default);
 
         // Act
-        var model = parser.Parse(bpmnXml);
-
+        var model = parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
         // Assert
         var task = Assert.Single(model.Tasks);
         Assert.Equal("serviceTask", task.Type);

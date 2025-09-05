@@ -1,4 +1,7 @@
-﻿using VertexBPMN.Core.Services;
+﻿using VertexBPMN.Core.Cmmn;
+using VertexBPMN.Core.Domain;
+using VertexBPMN.Core.Services;
+using Task = System.Threading.Tasks.Task;
 
 namespace VertexBPMN.Core.Messaging;
 
@@ -15,16 +18,44 @@ public class InMemoryMessageDispatcher : IMessageDispatcher
         _registry = registry;
     }
 
-    public async Task DispatchServiceTaskAsync(string targetWorkerId, string implementation, IDictionary<string, string> attributes, IDictionary<string, object> variables, CancellationToken ct = default)
+    public Task<Dictionary<string, object>> DispatchDmnTaskAsync(string targetWorker, string decisionRef, Dictionary<string, object> variables, CancellationToken cancellationToken = default)
+        => Task.FromResult(new Dictionary<string, object>(variables));
+
+    public Task DispatchUserTaskAsync(string assignee, string taskId, Dictionary<string, object> variables, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task DispatchServiceTaskAsync(string targetWorkerId, string implementation, Dictionary<string, string> attributes, Dictionary<string, object> variables,
+        CancellationToken cancellationToken = default)
     {
         // Für Demo: Wenn ein lokaler Handler existiert, rufe ihn auf (synchron/async).
         if (_registry.TryResolve(implementation, out var handler))
         {
-            await handler.ExecuteAsync(attributes, variables, ct).ConfigureAwait(false);
-            return;
+            _= handler.ExecuteAsync(attributes, variables, cancellationToken).ConfigureAwait(false);
         }
 
         // Sonst: Simuliere Remote-Dispatch: hier einfach Log / No-op
-        await Task.CompletedTask;
+        return Task.CompletedTask;
+    }
+
+    public Task PublishTokenAsync(ExecutionToken token, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task PublishCaseTokenAsync(CaseToken token, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task QueueTaskAsync(string taskId, string taskType, Dictionary<string, object> variables, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task SubscribeToMessageAsync(string messageName, Func<Message, Task> handler, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task PublishCaseFileUpdateAsync(CaseFileUpdateEvent updateEvent, CancellationToken cancellationToken = default)
+    {
+        return Task.CompletedTask;
+    }
+
+    public Task SubscribeToCaseFileUpdateAsync(string caseId, Func<CaseFileUpdateEvent, Task> handler, CancellationToken cancellationToken = default)
+    {
+        return Task.CompletedTask;
     }
 }

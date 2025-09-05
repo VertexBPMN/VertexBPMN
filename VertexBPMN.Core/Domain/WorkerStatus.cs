@@ -1,4 +1,4 @@
-namespace VertexBPMN.Core.Engine;
+namespace VertexBPMN.Core.Domain;
 
 /// <summary>
 /// Worker status information

@@ -615,6 +615,7 @@ namespace VertexBPMN.Core.Engine
             using var span = _tracer.StartActiveSpan("ProcessCaseToken");
             span.SetAttribute("tokenId", token.Id.ToString());
             span.SetAttribute("planItemId", token.CurrentPlanItemId);
+
             const int maxRetries = 3;
             var retryCount = 0;
 
@@ -668,6 +669,20 @@ namespace VertexBPMN.Core.Engine
                             var subTasks = planItem.Attributes?.GetValueOrDefault("subTasks", "").Split(';').Select(id => new PlanItem(
                                 $"subtask_{id}", "humanTask", "humanTaskDef", new() { { "camunda:assignee", "user1" } }, null, null, true
                             )).ToList() ?? [];
+                            // MCP-Aktion für externe Systeme
+                            if (planItem.Attributes?.ContainsKey("mcpAction") == true)
+                            {
+                                var mcpServerUrl = planItem.Attributes.GetValueOrDefault("mcpServerUrl", "http://mcp-server:8080/api/mcp");
+                                var mcpMethod = planItem.Attributes["mcpAction"];
+                                var mcpParams = new Dictionary<string, object>
+                                {
+                                    { "caseId", model.Id },
+                                    { "planItemId", planItem.Id }
+                                };
+                                await _aiDecisionService.ExecuteMcpActionAsync(model.Id, mcpServerUrl, mcpMethod, mcpParams, cancellationToken);
+                                trace.Add($"MCPActionTriggered: {mcpMethod} on {mcpServerUrl}");
+                            }
+
                             foreach (var subTask in subTasks)
                             {
                                 await AddDiscretionaryItemAsync(model.Id, subTask, cancellationToken);

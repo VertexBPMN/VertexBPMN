@@ -164,6 +164,127 @@ namespace VertexBPMN.Tests.Engine
             await Assert.ThrowsAsync<BpmnParseException>(() => _parser.ParseAsync(bpmnXml));
         }
 
+
+        [Fact]
+        public async Task ParseAsync_ExclusiveGatewayWithConditions_ReturnsProcessModel()
+        {
+            var bpmnXml = @"
+                <bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL'>
+                    <bpmn:process id='Process_1' name='Test Process'>
+                        <bpmn:startEvent id='start1'/>
+                        <bpmn:exclusiveGateway id='gateway1'/>
+                        <bpmn:userTask id='task1'/>
+                        <bpmn:userTask id='task2'/>
+                        <bpmn:sequenceFlow id='flow1' sourceRef='start1' targetRef='gateway1'/>
+                        <bpmn:sequenceFlow id='flow2' sourceRef='gateway1' targetRef='task1'>
+                            <bpmn:conditionExpression>${amount > 1000}</bpmn:conditionExpression>
+                        </bpmn:sequenceFlow>
+                        <bpmn:sequenceFlow id='flow3' sourceRef='gateway1' targetRef='task2'>
+                            <bpmn:conditionExpression>${amount <= 1000}</bpmn:conditionExpression>
+                        </bpmn:sequenceFlow>
+                    </bpmn:process>
+                </bpmn:definitions>";
+
+            var processModel = await _parser.ParseAsync(bpmnXml);
+
+            Assert.Equal("Process_1", processModel.Id);
+            Assert.Contains(processModel.Gateways, pi => pi.Id == "gateway1" && pi.Type == "exclusiveGateway");
+            Assert.Contains(processModel.SequenceFlows, s => s.Id == "flow2" && s.Attributes.Any(c => c.Value == "${amount > 1000}"));
+            Assert.Contains(processModel.SequenceFlows, s => s.Id == "flow3" && s.Attributes.Any(c => c.Value == "${amount <= 1000}"));
+        }
+
+        [Fact]
+        public async Task ParseAsync_ParallelGateway_ReturnsProcessModel()
+        {
+            var bpmnXml = @"
+                <bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL'>
+                    <bpmn:process id='Process_1' name='Test Process'>
+                        <bpmn:startEvent id='start1'/>
+                        <bpmn:parallelGateway id='gateway1'/>
+                        <bpmn:userTask id='task1'/>
+                        <bpmn:userTask id='task2'/>
+                        <bpmn:sequenceFlow id='flow1' sourceRef='start1' targetRef='gateway1'/>
+                        <bpmn:sequenceFlow id='flow2' sourceRef='gateway1' targetRef='task1'/>
+                        <bpmn:sequenceFlow id='flow3' sourceRef='gateway1' targetRef='task2'/>
+                    </bpmn:process>
+                </bpmn:definitions>";
+
+            var processModel = await _parser.ParseAsync(bpmnXml);
+
+            Assert.Equal("Process_1", processModel.Id);
+            Assert.Contains(processModel.Gateways, pi => pi.Id == "gateway1" && pi.Type == "parallelGateway");
+            Assert.Contains(processModel.SequenceFlows, s => s.Id == "flow2" && s.TargetRef == "task1");
+            Assert.Contains(processModel.SequenceFlows, s => s.Id == "flow3" && s.TargetRef == "task2");
+        }
+
+        [Fact]
+        public async Task ParseAsync_SubProcess_ReturnsProcessModel()
+        {
+            var bpmnXml = @"
+                <bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL'>
+                    <bpmn:process id='Process_1' name='Test Process'>
+                        <bpmn:startEvent id='start1'/>
+                        <bpmn:subProcess id='sub1'>
+                            <bpmn:startEvent id='sub_start1'/>
+                            <bpmn:userTask id='sub_task1'/>
+                            <bpmn:sequenceFlow id='sub_flow1' sourceRef='sub_start1' targetRef='sub_task1'/>
+                        </bpmn:subProcess>
+                        <bpmn:sequenceFlow id='flow1' sourceRef='start1' targetRef='sub1'/>
+                    </bpmn:process>
+                </bpmn:definitions>";
+
+            var processModel = await _parser.ParseAsync(bpmnXml);
+
+            Assert.Equal("Process_1", processModel.Id);
+            var subProcess = processModel.Subprocesses.FirstOrDefault(pi => pi.Id == "sub1");
+            Assert.NotNull(subProcess);
+            //Assert.NotNull(subProcess.IsMultiInstance);
+            //Assert.Contains(subProcess, pi => pi.Id == "sub_start1" && pi.Type == "eventListener");
+            //Assert.Contains(subProcess.SubProcessModel.PlanItems, pi => pi.Id == "sub_task1" && pi.Type == "userTask");
+        }
+
+        [Fact]
+        public async Task ParseAsync_MultiInstanceSubProcess_ReturnsProcessModel()
+        {
+            var bpmnXml = @"
+                <bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL'>
+                    <bpmn:process id='Process_1' name='Test Process'>
+                        <bpmn:startEvent id='start1'/>
+                        <bpmn:subProcess id='sub1'>
+                            <bpmn:multiInstanceLoopCharacteristics isSequential='true'>
+                                <bpmn:loopCardinality>3</bpmn:loopCardinality>
+                            </bpmn:multiInstanceLoopCharacteristics>
+                            <bpmn:startEvent id='sub_start1'/>
+                            <bpmn:userTask id='sub_task1'/>
+                            <bpmn:sequenceFlow id='sub_flow1' sourceRef='sub_start1' targetRef='sub_task1'/>
+                        </bpmn:subProcess>
+                        <bpmn:sequenceFlow id='flow1' sourceRef='start1' targetRef='sub1'/>
+                    </bpmn:process>
+                </bpmn:definitions>";
+
+            var processModel = await _parser.ParseAsync(bpmnXml);
+
+            var subProcess = processModel.Subprocesses.FirstOrDefault(pi => pi.Id == "sub1");
+            Assert.NotNull(subProcess);
+            Assert.Equal(3, subProcess.LoopCardinality);
+            Assert.True(subProcess.IsSequential);
+        }
+
+        [Fact]
+        public async Task ParseAsync_InvalidExclusiveGateway_ThrowsException()
+        {
+            var bpmnXml = @"
+                <bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL'>
+                    <bpmn:process id='Process_1'>
+                        <bpmn:exclusiveGateway id='gateway1'/>
+                        <bpmn:userTask id='task1'/>
+                        <bpmn:sequenceFlow id='flow1' sourceRef='gateway1' targetRef='task1'/>
+                    </bpmn:process>
+                </bpmn:definitions>";
+
+            await Assert.ThrowsAsync<BpmnParseException>(() => _parser.ParseAsync(bpmnXml));
+        }
+
         //[Fact]
         //public async Task Serialize_RoundTrip_ReturnsValidXml()
         //{

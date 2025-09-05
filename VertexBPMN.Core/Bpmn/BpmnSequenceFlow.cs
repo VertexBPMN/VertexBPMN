@@ -1,3 +1,5 @@
+using VertexBPMN.Core.Cmmn;
+
 namespace VertexBPMN.Core.Bpmn;
 
 public record BpmnSequenceFlow(string Id, string SourceRef, string TargetRef)
@@ -6,4 +8,4 @@ public record BpmnSequenceFlow(string Id, string SourceRef, string TargetRef)
     /// Additional attributes for extensibility.
     /// </summary>
     public IDictionary<string, object> Attributes { get; init; } = new Dictionary<string, object>();
-};
+}

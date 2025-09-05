@@ -27,5 +27,7 @@ public interface IDistributedTokenEngine
     Task UpdateCaseFileItemAsync(string caseId, string caseFileItemId, object newValue, CancellationToken cancellationToken = default);
     Task TriggerUserEventAsync(string caseId, string eventId, Dictionary<string, object> eventData, CancellationToken cancellationToken = default);
     Task GenerateAdHocSubprocessAsync(string caseId, CancellationToken cancellationToken = default);
+    Task RegisterBpmnModelAsync(string processId, string bpmnXml, CancellationToken cancellationToken = default);
+    Task<List<string>> ExecuteProcessAsync(string processId, CancellationToken cancellationToken = default);
 
 }

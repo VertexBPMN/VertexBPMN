@@ -1,6 +1,7 @@
+using Microsoft.Extensions.Logging;
+using OpenTelemetry.Trace;
 using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.Logging;
 using VertexBPMN.Core.Cmmn;
 using VertexBPMN.Core.Domain;
 using VertexBPMN.Core.Exceptions;
@@ -11,12 +12,15 @@ public class XAiDecisionService : IAiDecisionService
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<XAiDecisionService> _logger;
+    private readonly Tracer _tracer;
     private readonly string _apiEndpoint = "https://api.x.ai/grok";
-
-    public XAiDecisionService(HttpClient httpClient, ILogger<XAiDecisionService> logger)
+    private readonly string _aiApiEndpoint = "https://api.x.ai/ml-predict";
+    private readonly string _mcpServerEndpoint = "http://mcp-server:8080/api/mcp"; // Konfigurierbar
+    public XAiDecisionService(HttpClient httpClient, ILogger<XAiDecisionService> logger,  TracerProvider tracerProvider)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _tracer = tracerProvider.GetTracer("VertexBPMN");
     }
 
     public async Task<PlanItem> GenerateAdHocSubprocessAsync(string caseId, Dictionary<string, object> caseFile, CancellationToken cancellationToken = default)
@@ -51,14 +55,20 @@ public class XAiDecisionService : IAiDecisionService
 
     public async Task<List<PlanItem>> PredictOptimalPlanItemsAsync(string caseId, Dictionary<string, object> caseFile, List<HistoricalCaseData> historicalData, CancellationToken cancellationToken = default)
     {
+        using var span = _tracer.StartActiveSpan("PredictOptimalPlanItems");
+        span.SetAttribute("caseId", caseId);
         try
         {
+            // Externe Kontextdaten via MCP abrufen
+            var externalContext = await FetchExternalContextAsync(caseId, "external_workflow_data", cancellationToken);
+
             var request = new
             {
                 caseId,
                 caseFile,
                 historicalData,
-                prompt = "Predict optimal PlanItems for a CMMN case based on the provided case file and historical data. Return a list of PlanItems."
+                externalContext,
+                prompt = "Predict optimal PlanItems for a CMMN case based on case file, historical data, and external context."
             };
             var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
             var response = await _httpClient.PostAsync(_apiEndpoint, content, cancellationToken);
@@ -68,12 +78,54 @@ public class XAiDecisionService : IAiDecisionService
             var planItems = JsonSerializer.Deserialize<List<PlanItem>>(responseContent) ?? throw new DistributedTokenException("Invalid AI response");
 
             _logger.LogInformation("Predicted {Count} optimal PlanItems for case {CaseId}", planItems.Count, caseId);
+            span.SetStatus(Status.Ok);
             return planItems;
         }
         catch (Exception ex)
         {
+            span.SetStatus(Status.Error.WithDescription(ex.Message));
             _logger.LogError(ex, "Failed to predict optimal PlanItems for case {CaseId}", caseId);
             throw new DistributedTokenException($"Failed to predict optimal PlanItems for case {caseId}", ex);
         }
     }
+
+
+    public async Task<Dictionary<string, object>> FetchExternalContextAsync(string caseId, string resourceId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var request = new
+            {
+                jsonrpc = "2.0",
+                method = "get_resource",
+                @params = new { caseId, resourceId },
+                id = Guid.NewGuid().ToString()
+            };
+            var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
+            var response = await _httpClient.PostAsync(_mcpServerEndpoint, content, cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
+            var jsonResponse = JsonSerializer.Deserialize<JsonRpcResponse>(responseContent)
+                               ?? throw new DistributedTokenException("Invalid MCP response");
+
+            if (jsonResponse.Error != null)
+                throw new DistributedTokenException($"MCP error: {jsonResponse.Error.Message}");
+
+            var context = JsonSerializer.Deserialize<Dictionary<string, object>>(jsonResponse.Result?.ToString() ?? "{}")
+                          ?? throw new DistributedTokenException("Invalid MCP context data");
+
+            _logger.LogInformation("Fetched external context for case {CaseId}, resource {ResourceId}", caseId, resourceId);
+            return context;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to fetch external context for case {CaseId}, resource {ResourceId}", caseId, resourceId);
+            throw new DistributedTokenException($"Failed to fetch external context for case {caseId}, resource {resourceId}", ex);
+        }
+    }
+
 }
+
+public record JsonRpcResponse(string Jsonrpc, object Result, JsonRpcError Error);
+public record JsonRpcError(int Code, string Message, object Data);

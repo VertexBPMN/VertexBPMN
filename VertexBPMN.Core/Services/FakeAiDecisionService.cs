@@ -76,4 +76,9 @@ public sealed class FakeAiDecisionService : IAiDecisionService
     {
         return null;
     }
+
+    public Task<Dictionary<string, object>> FetchExternalContextAsync(string caseId, string resourceId, CancellationToken cancellationToken = default)
+    {
+        return null;
+    }
 }

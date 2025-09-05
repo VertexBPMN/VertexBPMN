@@ -450,7 +450,7 @@ namespace VertexBPMN.Core.Engine
                    throw new DistributedTokenException($"No active tokens found for case {caseId}");
                 }
 
-               // Prädiktive Optimierung
+               // Prädiktive Optimierung mit externem Kontext
                var historicalData = await _store.GetHistoricalCaseDataAsync(caseId);
                var predictedPlanItems = await _aiDecisionService.PredictOptimalPlanItemsAsync(caseId, caseToken.CaseFile, historicalData, cancellationToken);
 

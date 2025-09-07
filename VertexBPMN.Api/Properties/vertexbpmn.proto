@@ -1,7 +1,9 @@
 ﻿syntax = "proto3";
 
-package vertexbpmn;
+package vertexbpmn.v1;
+option csharp_namespace = "VertexBPMN.Api.Grpc";
 
+// Service for CMMN case execution & interaction.
 service VertexBPMNService {
 	rpc RegisterCmmnModel (RegisterCmmnRequest) returns (CmmnResponse);
 	rpc ExecuteCase (ExecuteCaseRequest) returns (ExecuteCaseResponse);
@@ -11,8 +13,8 @@ service VertexBPMNService {
 }
 
 message RegisterCmmnRequest {
-	string case_id = 1;
-	string cmmn_xml = 2;
+	string case_id = 1;      // Unique case identifier
+	string cmmn_xml = 2;     // Raw CMMN XML definition
 }
 
 message ExecuteCaseRequest {

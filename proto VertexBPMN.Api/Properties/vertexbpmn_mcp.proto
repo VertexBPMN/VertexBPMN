@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package vertexbpmn.mcp.v1;
+option csharp_namespace = "VertexBPMN.Api.Grpc.Mcp";
+
+// MCP (Managed Case Processing) Service für CMMN-ähnliche dynamische Fallausführung.
+service VertexBPMNMCPService {
+  rpc ExecuteCase              (ExecuteCaseRequest)              returns (ExecuteCaseResponse);
+  rpc TriggerUserEvent         (TriggerEventRequest)             returns (CmmnResponse);
+  rpc UpdateCaseFileItem       (CaseFileUpdateRequest)           returns (CmmnResponse);
+  rpc GenerateAdHocSubprocess  (GenerateAdHocSubprocessRequest)  returns (CmmnResponse);
+  rpc GetHistoricalContext     (HistoricalContextRequest)        returns (HistoricalContextResponse);
+}
+
+message ExecuteCaseRequest {
+  string case_id = 1; // Pflicht: Eindeutige Fall-ID
+}
+
+message ExecuteCaseResponse {
+  repeated string trace = 1; // Ablauf-Trace
+}
+
+message TriggerEventRequest {
+  string case_id   = 1;
+  string event_id  = 2;
+  map<string, string> event_data = 3; // Beliebige einfache Key/Value-Payload
+}
+
+message CaseFileUpdateRequest {
+  string case_id          = 1;
+  string case_file_item_id = 2;
+  string new_value        = 3;
+}
+	
+message GenerateAdHocSubprocessRequest {
+  string case_id = 1;
+}
+
+message HistoricalContextRequest {
+  string case_id = 1;
+}
+
+message HistoricalContextResponse {
+  repeated HistoricalCaseData historical_data = 1;
+}
+
+message HistoricalCaseData {
+  string case_id = 1;
+  map<string, string> case_file = 2;
+  repeated string completed_plan_items = 3;
+  string timestamp = 4; // ISO-8601
+}
+
+message CmmnResponse {
+  string message = 1;
+}

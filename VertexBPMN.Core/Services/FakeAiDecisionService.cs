@@ -81,4 +81,9 @@ public sealed class FakeAiDecisionService : IAiDecisionService
     {
         return null;
     }
+
+    public Task ExecuteMcpActionAsync(string caseId, string mcpServerUrl, string method, Dictionary<string, object> parameters, CancellationToken cancellationToken = default)
+    {
+       return null;
+    }
 }

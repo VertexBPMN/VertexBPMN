@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Sqlite;
 using Polly;
+using VertexBPMN.Api.Configurations;
 using VertexBPMN.Api.Debugging;
 using VertexBPMN.Api.Migration;
 using VertexBPMN.Api.ML;
@@ -10,7 +11,6 @@ using VertexBPMN.Api.Services;
 using VertexBPMN.Core.Domain;
 using VertexBPMN.Core.Engine;
 using VertexBPMN.Core.Extensions;
-using VertexBPMN.Core.Infrastructure;
 using VertexBPMN.Core.Messaging;
 using VertexBPMN.Core.Services;
 using VertexBPMN.Persistence.Repositories;
@@ -27,8 +27,8 @@ builder.Services.AddScoped<IProcessMigrationService>(sp =>
 );
 
 builder.Services.AddServiceTaskHandlers();
-builder.Services.AddVertexBPMNTelemetry();
-//builder.Services.AddGrpc();
+builder.Services.AddVertexBPMNTelemetry(builder.Configuration);
+builder.Services.AddGrpc();
 builder.Services.AddLogging();
 // Register VisualDebuggerController dependencies
 builder.Services.AddScoped<VertexBPMN.Api.Controllers.VisualDebuggerController>();
@@ -245,22 +245,14 @@ builder.Services.AddScoped<ISimulationScenarioService, SimulationScenarioService
 
 		app.MapControllers();
 
-		//app.UseRouting();
-		//app.UseEndpoints(endpoints =>
-		//{
-		//	endpoints.MapGrpcService<VertexBPMNMCPService>();
-		//	endpoints.MapGrpcService<VertexBPMNService>();
-		//	endpoints.MapVertexBPMNApi(app.ApplicationServices.GetRequiredService<IDistributedTokenEngine>());
-		//}); endpoints.MapVertexBPMNApi(app.ApplicationServices.GetRequiredService<IDistributedTokenEngine>());
-        //});
-// Map Prometheus metrics endpoint
-// Prometheus-Scraping-Endpoint entfernt
+        app.MapGrpcService<VertexBPMN.Api.Services.VertexBpmnServiceImpl>();
+        app.MapGrpcService<VertexBPMN.Api.Services.VertexBpmnServiceImpl>();
+		app.MapGet("/", () => "gRPC endpoint. Use a gRPC client.");
 
 app.Run();
 
-
-		namespace VertexBPMN.Api
-		{
-			public partial class Program { }
-		}
+namespace VertexBPMN.Api
+{
+	public partial class Program { }
+}
 

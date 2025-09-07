@@ -20,8 +20,7 @@ public static class RestApiConfig
 
         app.MapPost("/api/cmmn/execute", async (HttpContext context, CaseRequest request) =>
         {
-            var cmmnXml = await engine.GetCmmnModelAsync(request.CaseId);
-            var caseModel = await engine.GetCmmnParser().ParseAsync(cmmnXml);
+            var caseModel = await engine.GetCmmnModelAsync(request.CaseId);
             var trace = await engine.ExecuteCaseAsync(caseModel);
             return Results.Ok(new { Trace = trace });
         });

@@ -1,4 +1,4 @@
-﻿namespace VertexBPMN.Core.Domain;
+﻿namespace VertexBPMN.Core.Cmmn;
 
 public record HistoricalCaseData(
     string CaseId,

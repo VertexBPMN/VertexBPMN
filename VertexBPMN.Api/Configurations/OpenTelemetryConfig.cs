@@ -19,6 +19,9 @@ internal static class TelemetryConstants
     public const string ServiceNamespace = "vertex.bpmn";
     public const string ActivitySourceName = ServiceName;
     public const string MeterName = ServiceName + ".metrics";
+    /// <summary>
+    /// Default Jaeger HTTP collector endpoint (Thrift). Change via config key Telemetry:Jaeger:Endpoint.
+    /// </summary>
     public const string DefaultJaegerEndpoint = "http://localhost:14268/api/traces";
 }
 
@@ -53,40 +56,45 @@ public static class OpenTelemetryConfig
                     serviceName: TelemetryConstants.ServiceName,
                     serviceVersion: serviceVersion,
                     serviceInstanceId: Environment.MachineName)
-                .AddAttributes(new []
+                .AddAttributes(new[]
                 {
-                    new KeyValuePair<string, object>("service.namespace", TelemetryConstants.ServiceNamespace),
-                    new KeyValuePair<string, object>("deployment.environment", environment)
+                                        new KeyValuePair<string, object>("service.namespace", TelemetryConstants.ServiceNamespace),
+                                        new KeyValuePair<string, object>("deployment.environment", environment)
                 }))
-            .WithTracing(builder => builder
-                .AddSource(TelemetryConstants.ActivitySourceName)
-                .AddAspNetCoreInstrumentation(o =>
-                {
-                    o.RecordException = true;
-                    o.Filter = ctx => true; // placeholder for potential route filtering
-                })
-                .AddHttpClientInstrumentation(o =>
-                {
-                    o.RecordException = true;
-                })
-                // Exporters
-                .AddConsoleExporter()
-                .AddJaegerExporter(o =>
-                {
-                    // Accept either full URI or host:port
-                    if (Uri.TryCreate(jaegerEndpoint, UriKind.Absolute, out var uri))
+            .WithTracing(builder =>
+            {
+                builder
+                    .AddSource(TelemetryConstants.ActivitySourceName)
+                    .AddAspNetCoreInstrumentation(o =>
                     {
-                        o.Endpoint = uri;
-                    }
-                })
-            )
-            .WithMetrics(builder => builder
-                .AddMeter(TelemetryConstants.MeterName)
-                .AddRuntimeInstrumentation()
-                .AddProcessInstrumentation()
-                .AddAspNetCoreInstrumentation()
-                .AddHttpClientInstrumentation()
-                .AddPrometheusExporter());
+                        o.RecordException = true;
+                        o.Filter = _ => true;
+                    })
+                    .AddHttpClientInstrumentation(o =>
+                    {
+                        o.RecordException = true;
+                    })
+                    .AddConsoleExporter();
+
+                                    builder.AddJaegerExporter(o =>
+                                    {
+                                        if (Uri.TryCreate(jaegerEndpoint, UriKind.Absolute, out var uri))
+                                        {
+                                            o.Endpoint = uri;
+                                        }
+                                    });
+
+            })
+            .WithMetrics(builder =>
+            {
+                builder
+                    .AddMeter(TelemetryConstants.MeterName)
+                    .AddRuntimeInstrumentation()
+                    //.AddProcessInstrumentation()
+                    .AddAspNetCoreInstrumentation()
+                    .AddHttpClientInstrumentation();
+                    //.AddPrometheusExporter();
+            });
 
         return services;
     }

@@ -1,3 +1,4 @@
+using System.Collections;
 using VertexBPMN.Core.Bpmn;
 using VertexBPMN.Core.Cmmn;
 using VertexBPMN.Core.Engine;
@@ -29,5 +30,6 @@ public interface IDistributedTokenEngine
     Task GenerateAdHocSubprocessAsync(string caseId, CancellationToken cancellationToken = default);
     Task RegisterBpmnModelAsync(string processId, string bpmnXml, CancellationToken cancellationToken = default);
     Task<List<string>> ExecuteProcessAsync(string processId, CancellationToken cancellationToken = default);
-
+    Task<CaseModel> GetCmmnModelAsync(string caseId);
+    Task<List<HistoricalCaseData>> GetHistoricalCaseDataAsync(string caseId);
 }

@@ -53,10 +53,10 @@ public class DistributedTokenEngineBenchmarks
         _caseToken = new CaseToken(Guid.NewGuid(), Guid.NewGuid(), "task1", "humanTask", new() { { "amount", 200 } }, DateTime.UtcNow);
 
         store.Setup(s => s.GetCmmnModelAsync("case1")).ReturnsAsync("<cmmn:case id='case1'>...</cmmn:case>");
-        cmmnParser.Setup(p => p.ParseAsync(It.IsAny<string>())).ReturnsAsync(_caseModel);
+        cmmnParser.Setup(p => p.ParseAsync(It.IsAny<string>(),CancellationToken.None )).ReturnsAsync(_caseModel);
         store.Setup(s => s.GetPendingCaseTokensAsync()).ReturnsAsync([_caseToken]);
 
-        _engine ) new DistributedTokenEngine(logger, registry, dispatcher.Object, store.Object, dmnEngine.Object, dmnParser.Object, cmmnParser.Object, bpmnParser.Object, aiService.Object, TracerProvider.Default);
+        _engine = new DistributedTokenEngine(logger, registry, dispatcher.Object, store.Object, dmnEngine.Object, dmnParser.Object, cmmnParser.Object, bpmnParser.Object, aiService.Object, TracerProvider.Default);
 
     }
 
@@ -64,7 +64,7 @@ public class DistributedTokenEngineBenchmarks
     public async Task BenchmarkSentryEvaluation()
     {
         var trace = new List<string>();
-        await _engine.GetType().GetMethod("ProcessCaseTokenAsync", BindingFlags.NonPublic | BindingFlags.Instance)
+         _engine.GetType().GetMethod("ProcessCaseTokenAsync", BindingFlags.NonPublic | BindingFlags.Instance)
             .Invoke(_engine, new object[] { _caseToken, _caseModel, trace, CancellationToken.None });
     }
 
@@ -73,5 +73,4 @@ public class DistributedTokenEngineBenchmarks
     {
         await _engine.UpdateCaseFileItemAsync("case1", "amount", 300, CancellationToken.None);
     }
-}
 }

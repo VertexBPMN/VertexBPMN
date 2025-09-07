@@ -128,6 +128,17 @@ namespace VertexBPMN.Core.Engine
             return trace;
         }
 
+        public async Task<CaseModel> GetCmmnModelAsync(string caseId)
+        {
+            var xml = await _store.GetCmmnModelAsync(caseId);
+            return await _cmmnParser.ParseAsync(xml);
+        }
+
+        public Task<List<HistoricalCaseData>> GetHistoricalCaseDataAsync(string caseId)
+        {
+            return _store.GetHistoricalCaseDataAsync(caseId);
+        }
+
         public async Task<List<string>> ExecuteCaseAsync(CaseModel model, CancellationToken cancellationToken = default)
         {
             var trace = new List<string>();

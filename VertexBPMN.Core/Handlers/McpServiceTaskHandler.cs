@@ -24,8 +24,8 @@ public class McpServiceTaskHandler : IServiceTaskHandler
     public async Task ExecuteAsync(IDictionary<string, string> attributes, IDictionary<string, object> variables, CancellationToken ct = default)
     {
         using var span = _tracer.StartActiveSpan("McpServiceTask");
-        span.SetAttribute("mcpMethod", attributes.GetValueOrDefault("mcpMethod", "unknown"));
-        span.SetAttribute("mcpServerUrl", attributes.GetValueOrDefault("mcpServerUrl", "unknown"));
+        span.SetAttribute("mcpMethod", attributes.TryGetValue("mcpMethod", out var mcpMethodAttr) ? mcpMethodAttr : "unknown");
+        span.SetAttribute("mcpServerUrl", attributes.TryGetValue("mcpServerUrl", out var mcpServerUrlAttr) ? mcpServerUrlAttr : "unknown");
 
         try
         {
@@ -86,7 +86,8 @@ public class McpServiceTaskHandler : IServiceTaskHandler
         {
             span.SetStatus(Status.Error.WithDescription(ex.Message));
             _logger.LogError(ex, "Failed to execute MCP ServiceTask {McpMethod} on {McpServerUrl}",
-                attributes.GetValueOrDefault("mcpMethod"), attributes.GetValueOrDefault("mcpServerUrl"));
+                attributes.TryGetValue("mcpMethod", out var mcpMethodLog) ? mcpMethodLog : "unknown",
+                attributes.TryGetValue("mcpServerUrl", out var mcpServerUrlLog) ? mcpServerUrlLog : "unknown");
             throw new DistributedTokenException($"Failed to execute MCP ServiceTask: {ex.Message}", ex);
         }
     }

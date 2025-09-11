@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace VertexBPMN.Core.Domain
+namespace VertexBPMN.Domain
 {
     public class SimulationScenario
     {

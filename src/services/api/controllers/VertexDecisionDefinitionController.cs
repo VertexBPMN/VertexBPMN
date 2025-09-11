@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
-using VertexBPMN.Core.Services;
 using VertexBPMN.Api.Dto;
+using VertexBPMN.Core.Contracts;
+using VertexBPMN.EngineServices;
 
 namespace VertexBPMN.Api.Controllers;
 
@@ -39,7 +40,7 @@ public class VertexDecisionDefinitionController : ControllerBase
         var def = await _decisionService.GetDecisionByKeyAsync(key, tenantId);
         if (def is null) return NotFound();
         // For now, update in-memory only (like BPMN)
-        if (_decisionService is VertexBPMN.Core.Services.DecisionService svc)
+        if (_decisionService is DecisionService svc)
         {
             await svc.DeployAsync(key, def.Name, request.DmnXml, tenantId);
             return NoContent();

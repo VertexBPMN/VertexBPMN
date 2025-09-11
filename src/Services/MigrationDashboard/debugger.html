@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VertexBPMN Visual Debugger</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- bpmn-js CDN -->
+    <script src="https://unpkg.com/bpmn-js@13.1.0/dist/bpmn-viewer.development.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>Visual Debugger</h1>
+        <form id="debugForm">
+            <label for="instanceId">Process Instance ID:</label>
+            <input type="text" id="instanceId" name="instanceId" required>
+            <button type="submit">Load State</button>
+            <button type="button" id="stepBtn">Step</button>
+        </form>
+        <div id="debugState"></div>
+        <div id="tokenState"></div>
+        <div id="variableState"></div>
+        <div id="multiInstanceState"></div>
+        <button type="button" id="exportBtn">Export State</button>
+        <div id="diagramOverlay">
+            <div id="bpmnContainer" style="height:400px; background:#fff; border:1px solid #ccc; border-radius:4px;"></div>
+        </div>
+    </div>
+    <script src="debugger.js"></script>
+</body>
+</html>

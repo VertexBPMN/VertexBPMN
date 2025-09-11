@@ -1,4 +1,7 @@
-namespace VertexBPMN.Core.Domain;
+using System;
+using System.Collections.Generic;
+
+namespace VertexBPMN.Domain;
 
 /// <summary>
 /// Represents a running or completed process instance.

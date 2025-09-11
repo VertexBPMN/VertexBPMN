@@ -1,4 +1,4 @@
-namespace VertexBPMN.Core.Domain;
+namespace VertexBPMN.Domain;
 
 /// <summary>
 /// Worker capacity information

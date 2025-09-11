@@ -3,15 +3,23 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VertexBPMN.Core", "VertexBPMN.Core\VertexBPMN.Core.csproj", "{D09C80EA-5D6E-4FF7-BB2C-261E59CB68D2}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VertexBPMN.Core", "src\Lib\Core\VertexBPMN.Core.csproj", "{D09C80EA-5D6E-4FF7-BB2C-261E59CB68D2}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VertexBPMN.Api", "VertexBPMN.Api\VertexBPMN.Api.csproj", "{391D9A4D-95AC-4E76-9DEA-A057BE0A820A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VertexBPMN.Domain", "src\Models\Domain\VertexBPMN.Domain.csproj", "{A1B2C3D4-0000-0000-0000-000000000004}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VertexBPMN.Persistence", "VertexBPMN.Persistence\VertexBPMN.Persistence.csproj", "{4621E891-F9A7-4973-B283-DB3AD68F5507}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VertexBPMN.McpAgentPlugin", "src\Lib\Plugins\McpAgentPlugin\VertexBPMN.McpAgentPlugin.csproj", "{A1B2C3D4-0000-0000-0000-000000000001}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VertexBPMN.Tests", "VertexBPMN.Tests\VertexBPMN.Tests.csproj", "{8B205B63-8E82-4C4E-8E70-D1900112792A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VertexBPMN.Api", "src\Services\Api\VertexBPMN.Api.csproj", "{391D9A4D-95AC-4E76-9DEA-A057BE0A820A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VertexBPMN.McpClient", "VertexBPMN.McpClient\VertexBPMN.McpClient.csproj", "{BD7A6527-6B99-4D26-B79D-B2170B4D439D}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VertexBPMN.Persistence", "src\Lib\Persistence\VertexBPMN.Persistence.csproj", "{4621E891-F9A7-4973-B283-DB3AD68F5507}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VertexBPMN.Tests", "tests\VertexBPMN.Tests.csproj", "{8B205B63-8E82-4C4E-8E70-D1900112792A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VertexBPMN.McpClient", "src\Lib\Integrations\McpClient\VertexBPMN.McpClient.csproj", "{BD7A6527-6B99-4D26-B79D-B2170B4D439D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VertexBPMN.McpAdapter", "src\Lib\Integrations\McpAdapter\VertexBPMN.McpAdapter.csproj", "{C8CFD3DE-6389-38E5-3CC3-59D213DB41DA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VertexBPMN.EngineServices", "src\Services\EngineServices\VertexBPMN.EngineServices.csproj", "{A1B2C3D4-0000-0000-0000-000000000005}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -35,6 +43,30 @@ Global
 		{D09C80EA-5D6E-4FF7-BB2C-261E59CB68D2}.Release|x64.Build.0 = Release|Any CPU
 		{D09C80EA-5D6E-4FF7-BB2C-261E59CB68D2}.Release|x86.ActiveCfg = Release|Any CPU
 		{D09C80EA-5D6E-4FF7-BB2C-261E59CB68D2}.Release|x86.Build.0 = Release|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000004}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000004}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000004}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000004}.Debug|x64.Build.0 = Debug|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000004}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000004}.Debug|x86.Build.0 = Debug|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000004}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000004}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000004}.Release|x64.ActiveCfg = Release|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000004}.Release|x64.Build.0 = Release|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000004}.Release|x86.ActiveCfg = Release|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000004}.Release|x86.Build.0 = Release|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000001}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000001}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000001}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000001}.Debug|x64.Build.0 = Debug|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000001}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000001}.Debug|x86.Build.0 = Debug|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000001}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000001}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000001}.Release|x64.ActiveCfg = Release|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000001}.Release|x64.Build.0 = Release|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000001}.Release|x86.ActiveCfg = Release|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000001}.Release|x86.Build.0 = Release|Any CPU
 		{391D9A4D-95AC-4E76-9DEA-A057BE0A820A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{391D9A4D-95AC-4E76-9DEA-A057BE0A820A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{391D9A4D-95AC-4E76-9DEA-A057BE0A820A}.Debug|x64.ActiveCfg = Debug|Any CPU
@@ -83,8 +115,35 @@ Global
 		{BD7A6527-6B99-4D26-B79D-B2170B4D439D}.Release|x64.Build.0 = Release|Any CPU
 		{BD7A6527-6B99-4D26-B79D-B2170B4D439D}.Release|x86.ActiveCfg = Release|Any CPU
 		{BD7A6527-6B99-4D26-B79D-B2170B4D439D}.Release|x86.Build.0 = Release|Any CPU
+		{C8CFD3DE-6389-38E5-3CC3-59D213DB41DA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C8CFD3DE-6389-38E5-3CC3-59D213DB41DA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C8CFD3DE-6389-38E5-3CC3-59D213DB41DA}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{C8CFD3DE-6389-38E5-3CC3-59D213DB41DA}.Debug|x64.Build.0 = Debug|Any CPU
+		{C8CFD3DE-6389-38E5-3CC3-59D213DB41DA}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{C8CFD3DE-6389-38E5-3CC3-59D213DB41DA}.Debug|x86.Build.0 = Debug|Any CPU
+		{C8CFD3DE-6389-38E5-3CC3-59D213DB41DA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C8CFD3DE-6389-38E5-3CC3-59D213DB41DA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C8CFD3DE-6389-38E5-3CC3-59D213DB41DA}.Release|x64.ActiveCfg = Release|Any CPU
+		{C8CFD3DE-6389-38E5-3CC3-59D213DB41DA}.Release|x64.Build.0 = Release|Any CPU
+		{C8CFD3DE-6389-38E5-3CC3-59D213DB41DA}.Release|x86.ActiveCfg = Release|Any CPU
+		{C8CFD3DE-6389-38E5-3CC3-59D213DB41DA}.Release|x86.Build.0 = Release|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000005}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000005}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000005}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000005}.Debug|x64.Build.0 = Debug|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000005}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000005}.Debug|x86.Build.0 = Debug|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000005}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000005}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000005}.Release|x64.ActiveCfg = Release|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000005}.Release|x64.Build.0 = Release|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000005}.Release|x86.ActiveCfg = Release|Any CPU
+		{A1B2C3D4-0000-0000-0000-000000000005}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {AB845C15-A2A9-41E8-91E2-5FBCD73529E1}
 	EndGlobalSection
 EndGlobal

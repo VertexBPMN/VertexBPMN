@@ -1,4 +1,6 @@
-namespace VertexBPMN.Core.Domain;
+using System.Collections.Generic;
+
+namespace VertexBPMN.Domain;
 
 /// <summary>
 /// Worker registration request

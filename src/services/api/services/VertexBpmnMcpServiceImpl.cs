@@ -1,7 +1,8 @@
 ﻿using Grpc.Core;
 using Microsoft.Extensions.Logging;
 using VertexBPMN.Api.Grpc.Mcp;
-using VertexBPMN.Core.Domain;
+using VertexBPMN.Core.Contracts;
+
 using HistoricalCaseData = VertexBPMN.Api.Grpc.Mcp.HistoricalCaseData;
 
 namespace VertexBPMN.Api.Services;

@@ -1,4 +1,6 @@
-namespace VertexBPMN.Core.Domain;
+using System;
+
+namespace VertexBPMN.Domain;
 
 /// <summary>
 /// Represents an incident (error, failure, etc.) during process execution.

@@ -1,4 +1,6 @@
-namespace VertexBPMN.Core.Domain;
+using System;
+
+namespace VertexBPMN.Domain;
 
 /// <summary>
 /// Represents a historical event for audit and compliance.

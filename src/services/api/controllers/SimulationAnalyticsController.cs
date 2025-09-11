@@ -1,8 +1,8 @@
-using VertexBPMN.Core.Services;
 using Microsoft.AspNetCore.Mvc;
-using VertexBPMN.Core.Domain;
 using System.Collections.Generic;
 using System.Linq;
+using VertexBPMN.Core.Contracts;
+using VertexBPMN.Domain;
 
 namespace VertexBPMN.Api.Controllers
 {

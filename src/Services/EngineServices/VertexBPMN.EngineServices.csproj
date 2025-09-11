@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <RootNamespace>VertexBPMN.EngineServices</RootNamespace>
+    <AssemblyName>VertexBPMN.EngineServices</AssemblyName>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Lib\Core\VertexBPMN.Core.csproj" />
+    <ProjectReference Include="..\..\Models\Domain\VertexBPMN.Domain.csproj" />
+  </ItemGroup>
+</Project>

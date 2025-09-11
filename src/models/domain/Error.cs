@@ -1,4 +1,4 @@
-namespace VertexBPMN.Core.Domain;
+namespace VertexBPMN.Domain;
 
 public record Error(string Id, ErrorType Type, string Description);
 

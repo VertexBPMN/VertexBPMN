@@ -1,8 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
 using System.Diagnostics;
 using VertexBPMN.Api.Hubs;
-using VertexBPMN.Core.Domain;
+using VertexBPMN.Core.Contracts;
 using VertexBPMN.Core.Engine;
+using VertexBPMN.Domain;
 using Task = System.Threading.Tasks.Task;
 
 namespace VertexBPMN.Api.Controllers;

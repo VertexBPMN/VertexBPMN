@@ -1,3 +1,3 @@
-namespace VertexBPMN.Core.Domain;
+namespace VertexBPMN.Domain;
 
 public record JsonRpcResponse(string Jsonrpc, object Result, JsonRpcError Error);

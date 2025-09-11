@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
-using VertexBPMN.Core.Domain;
 using VertexBPMN.Persistence.Services;
 using Microsoft.EntityFrameworkCore;
+using VertexBPMN.Domain;
 
 namespace VertexBPMN.Api.Controllers
 {

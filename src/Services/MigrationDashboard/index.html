@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VertexBPMN Migration Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Process Migration Dashboard</h1>
+        <form id="migrationForm">
+            <label for="sourceId">Source Process Definition ID:</label>
+            <input type="text" id="sourceId" name="sourceId" required>
+            <label for="targetId">Target Process Definition ID:</label>
+            <input type="text" id="targetId" name="targetId" required>
+            <label for="activityMappings">Activity Mappings (JSON):</label>
+            <textarea id="activityMappings" name="activityMappings" rows="4" required>{}</textarea>
+            <button type="submit">Preview Migration</button>
+            <button type="button" id="executeBtn">Execute Migration</button>
+        </form>
+        <div id="result"></div>
+        <hr style="margin:40px 0;">
+        <h2>Live Observability Dashboard</h2>
+        <div id="healthStatus" style="margin-bottom:16px;"></div>
+        <div id="metrics" style="margin-bottom:16px;"></div>
+        <div id="recentActivity" style="margin-bottom:16px;"></div>
+        <hr style="margin:40px 0;">
+        <h2>Tutorials & Docs</h2>
+        <div id="tutorialsDocs" style="margin-bottom:16px;">
+            <ul>
+                <li><a href="#" onclick="showTutorial('quickstart')">Quickstart: Migration & Monitoring</a></li>
+                <li><a href="#" onclick="showTutorial('api')">API Reference</a></li>
+                <li><a href="#" onclick="showTutorial('bpmn')">BPMN Features</a></li>
+                <li><a href="#" onclick="showTutorial('observability')">Observability & Dashboards</a></li>
+                <li><a href="#" onclick="showTutorial('faq')">FAQ</a></li>
+            </ul>
+            <div id="tutorialContent" style="background:#f9f9f9;padding:16px;border-radius:4px;margin-top:16px;"></div>
+        </div>
+    </div>
+    <script src="dashboard.js"></script>
+</body>
+</html>

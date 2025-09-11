@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
-using VertexBPMN.Core.Services;
 using VertexBPMN.Api.Dto;
+using VertexBPMN.Core.Contracts;
+using VertexBPMN.Domain;
 
 namespace VertexBPMN.Api.Controllers;
 
@@ -24,7 +25,7 @@ public class VertexHistoricTaskInstanceController : ControllerBase
             yield return ToDto(evt);
     }
 
-    private static HistoricTaskInstanceDto ToDto(VertexBPMN.Core.Domain.HistoryEvent e) => new()
+    private static HistoricTaskInstanceDto ToDto(HistoryEvent e) => new()
     {
         Id = e.Id,
         ProcessInstanceId = e.ProcessInstanceId.ToString(),

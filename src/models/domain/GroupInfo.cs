@@ -1,3 +1,3 @@
-namespace VertexBPMN.Core.DTO;
+namespace VertexBPMN.Domain;
 
 public record GroupInfo(string Id, string Name, string? Type = null);

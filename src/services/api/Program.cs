@@ -1,20 +1,23 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Sqlite;
 using Polly;
-using VertexBPMN.Api.Configurations;
-using VertexBPMN.Api.Debugging;
+using VertexBPMN.Api.Config;
+using VertexBPMN.Api.Debug;
 using VertexBPMN.Api.Migration;
 using VertexBPMN.Api.ML;
 using VertexBPMN.Api.Plugins;
 using VertexBPMN.Api.Security;
 using VertexBPMN.Api.Services;
-using VertexBPMN.Core.Domain;
+using VertexBPMN.Core.Contracts;
 using VertexBPMN.Core.Engine;
-using VertexBPMN.Core.Extensions;
+using VertexBPMN.Core.Handlers;
 using VertexBPMN.Core.Messaging;
-using VertexBPMN.Core.Services;
+using VertexBPMN.EngineServices;
+using VertexBPMN.EngineServices.Extensions;
 using VertexBPMN.Persistence.Repositories;
 using VertexBPMN.Persistence.Services;
+using IdentityService = VertexBPMN.Core.Contracts.IdentityService;
+using IJobRepository = VertexBPMN.Core.Contracts.IJobRepository;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -27,7 +30,10 @@ builder.Services.AddScoped<IProcessMigrationService>(sp =>
 );
 
 builder.Services.AddServiceTaskHandlers();
-builder.Services.AddVertexBPMNTelemetry(builder.Configuration);
+OpenTelemetryConfig.AddVertexBPMNTelemetry(
+    builder.Services,
+    builder.Configuration
+);
 builder.Services.AddGrpc();
 builder.Services.AddLogging();
 // Register VisualDebuggerController dependencies
@@ -59,7 +65,10 @@ builder.Services.AddScoped<ISimulationScenarioService, SimulationScenarioService
 	// Add services to the container.
 	builder.Services.AddControllers();
 	// Add OAuth2/OIDC authentication
-	builder.Services.AddOAuth2Authentication();
+	VertexBPMN.Api.Security.OAuth2AuthenticationExtensions.AddOAuth2Authentication(
+		builder.Services,
+		options => { /* configure JwtBearerOptions if needed */ }
+	);
 	// Register BpmnDbContext for all BPMN persistence with SQLite
 	builder.Services.AddDbContext<VertexBPMN.Persistence.BpmnDbContext>(options =>
 		options.UseSqlite("Data Source=vertexbpmn.db"));
@@ -71,7 +80,7 @@ builder.Services.AddScoped<ISimulationScenarioService, SimulationScenarioService
 	builder.Services.AddScoped<VertexBPMN.Persistence.Repositories.IJobRepository, VertexBPMN.Persistence.Repositories.Impl.JobRepository>();
 	builder.Services.AddScoped<IRepositoryService, VertexBPMN.Persistence.Services.RepositoryService>();
 	// Register Core IJobRepository abstraction to persistence implementation
-	builder.Services.AddScoped<VertexBPMN.Core.Services.IJobRepository, VertexBPMN.Persistence.Repositories.Impl.JobRepository>();
+	builder.Services.AddScoped<IJobRepository, VertexBPMN.Persistence.Repositories.Impl.JobRepository>();
 	// Conditional registration for ProcessMiningEventDbContext (PostgreSQL or SQLite)
 	var sqliteConn = builder.Configuration.GetConnectionString("ProcessMiningEventsSqlite");
 	if (!string.IsNullOrWhiteSpace(sqliteConn))
@@ -93,7 +102,7 @@ builder.Services.AddScoped<ISimulationScenarioService, SimulationScenarioService
 	builder.Services.AddHostedService<VertexBPMN.Core.JobExecutor.JobExecutorService>();
 	builder.Services.AddEndpointsApiExplorer();
 	builder.Services.AddScoped<IManagementService, ManagementService>();
-	builder.Services.AddSingleton<IIdentityService, VertexBPMN.Core.Services.IdentityService>();
+	builder.Services.AddSingleton<IIdentityService, IdentityService>();
 	builder.Services.AddSingleton<IDecisionService, DecisionService>();
 
 	// Register SimulationService
@@ -106,11 +115,11 @@ builder.Services.AddScoped<ISimulationScenarioService, SimulationScenarioService
 
 	// Olympic-level Enterprise Scalability: SignalR real-time monitoring
 	builder.Services.AddSignalR();
-    builder.Services.AddSingleton<ServiceTaskRegistry>();
+    builder.Services.AddSingleton<IServiceTaskRegistry,ServiceTaskRegistry>();
     builder.Services.AddSingleton<IMessageDispatcher, InMemoryMessageDispatcher>();
 	builder.Services.AddSingleton<IAiDecisionService, FakeAiDecisionService>();
 	builder.Services.AddHttpClient<IAiDecisionService, XAiDecisionService>();
-    builder.Services.AddHttpClient<McpServiceTaskHandler>();
+	builder.Services.AddHttpClient<IMcpAgentService, McpAgentService>();
     builder.Services.AddSingleton<IProcessInstanceStore, InMemoryProcessInstanceStore>();
 	builder.Services.AddSingleton<IDmnEngine, DmnEngine>();
 	builder.Services.AddSingleton<IDmnParser, DmnParser>();

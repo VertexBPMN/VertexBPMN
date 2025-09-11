@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
-using VertexBPMN.Core.Services;
 using VertexBPMN.Api.Dto;
-using CoreInstance = VertexBPMN.Core.Domain.ProcessInstance;
+using VertexBPMN.Core.Contracts;
+using CoreInstance = VertexBPMN.Domain.ProcessInstance;
 
 namespace VertexBPMN.Api.Controllers;
 

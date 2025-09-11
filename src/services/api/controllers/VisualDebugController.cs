@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
-using VertexBPMN.Api.Debugging;
+using VertexBPMN.Core.Contracts;
+using VertexBPMN.Domain.Debugging;
 
 namespace VertexBPMN.Api.Controllers;
 

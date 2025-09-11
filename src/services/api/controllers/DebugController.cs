@@ -1,10 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using System.Collections.Generic;
-using VertexBPMN.Core.Bpmn;
-using VertexBPMN.Core.Domain;
+using VertexBPMN.Core.Contracts;
 using VertexBPMN.Core.Engine;
-using VertexBPMN.Core.Services;
 
 namespace VertexBPMN.Api.Controllers;
 

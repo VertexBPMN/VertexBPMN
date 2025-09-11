@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
-using VertexBPMN.Core.Services;
+using VertexBPMN.Core.Contracts;
+using VertexBPMN.EngineServices;
 
 namespace VertexBPMN.Api.Controllers
 {
@@ -25,7 +26,7 @@ namespace VertexBPMN.Api.Controllers
         public record DeployRequest(string DecisionKey, string Name, string DmnXml, string? TenantId = null);
 
         [HttpGet("by-key")]
-        public async Task<ActionResult<VertexBPMN.Core.Services.DecisionDefinition>> GetDecisionByKey([FromQuery] string decisionKey, [FromQuery] string? tenantId = null)
+        public async Task<ActionResult<DecisionDefinition>> GetDecisionByKey([FromQuery] string decisionKey, [FromQuery] string? tenantId = null)
         {
             var def = await _decisionService.GetDecisionByKeyAsync(decisionKey, tenantId);
             if (def is null) return NotFound();
@@ -47,8 +48,8 @@ namespace VertexBPMN.Api.Controllers
         /// <param name="request">Evaluation request</param>
         /// <returns>The DMN decision result</returns>
         [HttpPost("evaluate")]
-        [ProducesResponseType(typeof(VertexBPMN.Core.Services.DecisionResult), 200)]
-        public async Task<ActionResult<VertexBPMN.Core.Services.DecisionResult>> Evaluate([FromBody] EvaluateRequest request)
+        [ProducesResponseType(typeof(DecisionResult), 200)]
+        public async Task<ActionResult<DecisionResult>> Evaluate([FromBody] EvaluateRequest request)
         {
             var result = await _decisionService.EvaluateDecisionByKeyAsync(request.DecisionKey, request.Inputs);
             return Ok(result);

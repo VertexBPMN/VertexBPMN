@@ -1,7 +1,6 @@
 using Grpc.Core;
-using Microsoft.Extensions.Logging;
 using VertexBPMN.Api.Grpc;
-using VertexBPMN.Core.Domain;
+using VertexBPMN.Core.Contracts;
 
 namespace VertexBPMN.Api.Services;
 

@@ -1,3 +1,3 @@
-namespace VertexBPMN.Core.DTO;
+namespace VertexBPMN.Domain;
 
 public record TenantInfo(string Id, string Name);

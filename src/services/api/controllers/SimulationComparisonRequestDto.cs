@@ -1,4 +1,5 @@
-using VertexBPMN.Core.Domain;
+using VertexBPMN.Domain;
+
 namespace VertexBPMN.Api.Controllers
 {
     public class SimulationComparisonRequestDto

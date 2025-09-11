@@ -1,4 +1,7 @@
-namespace VertexBPMN.Core.Domain;
+using System;
+using System.Collections.Generic;
+
+namespace VertexBPMN.Domain;
 
 /// <summary>
 /// Represents an execution token for advanced BPMN 2.0 flow control

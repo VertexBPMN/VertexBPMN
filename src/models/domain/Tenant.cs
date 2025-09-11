@@ -1,4 +1,6 @@
-namespace VertexBPMN.Core.Domain
+using System;
+
+namespace VertexBPMN.Domain
 {
     public class Tenant
     {

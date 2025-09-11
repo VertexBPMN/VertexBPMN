@@ -49,6 +49,24 @@ This document guides AI coding agents to be productive in the VertexBPMN codebas
 - **Test structure:** Use Arrange-Act-Assert (AAA) in all tests.
 - **End-to-end/integration:** Test cross-component flows (API → Service → DB) as integration tests.
 - **Conformance:** Code must pass BPMN MIWG and DMN TCK test suites.
+# VertexBPMN vs. Camunda REST-API: Paritätsmatrix
+
+| Camunda Endpoint                | VertexBPMN-Status | Bemerkung / Mapping / TODO |
+|---------------------------------|-------------------|---------------------------|
+| /process-definition             | Teilweise         | RepositoryController, aber Filter/Paging/DTOs fehlen |
+| /process-instance               | Teilweise         | RuntimeController, aber Camunda-typische Query/DTOs fehlen |
+| /task                           | Teilweise         | TaskController, aber Filter, Paging, DTOs, Variablen fehlen |
+| /history/task                   | Teilweise         | HistoryController, aber Query/DTOs fehlen |
+| /deployment                     | Teilweise         | RepositoryController, aber Camunda-typische Response fehlt |
+| /message                        | Fehlend           | Muss ergänzt werden |
+| /signal                         | Fehlend           | Muss ergänzt werden |
+| /job                            | Fehlend           | Muss ergänzt werden |
+| /incident                       | Fehlend           | Muss ergänzt werden |
+| /variable                       | Fehlend           | Muss ergänzt werden |
+| /user, /group, /authorization   | Teilweise         | IdentityController, aber Camunda-typische Endpunkte fehlen |
+| /filter                         | Fehlend           | Muss ergänzt werden |
+| /decision-definition            | Teilweise         | DecisionController, aber Camunda-typische Query/DTOs fehlen |
+| /decision-instance              | Fehlend           | Muss ergänzt werden |
 
 ## Absolute No-Gos
 

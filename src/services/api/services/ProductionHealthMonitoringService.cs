@@ -3,24 +3,12 @@ using System.Diagnostics;
 using System.Net.NetworkInformation;
 using System.Reflection;
 using Microsoft.EntityFrameworkCore;
+using VertexBPMN.Core.Contracts;
+using VertexBPMN.Domain;
 
 namespace VertexBPMN.Api.Services;
 
-/// <summary>
-/// Production-Grade Health Monitoring Service
-/// Olympic-level feature: Production-Grade Features - Health Monitoring
-/// </summary>
-public interface IHealthMonitoringService
-{
-    Task<HealthCheckResult> CheckDatabaseHealthAsync();
-    Task<HealthCheckResult> CheckMemoryHealthAsync();
-    Task<HealthCheckResult> CheckDiskSpaceHealthAsync();
-    Task<HealthCheckResult> CheckExternalServicesHealthAsync();
-    Task<ComprehensiveHealthReport> GetComprehensiveHealthReportAsync();
-    Task<SystemMetrics> GetSystemMetricsAsync();
-}
-
-public class ProductionHealthMonitoringService : IHealthMonitoringService
+public class ProductionHealthMonitoringService : VertexBPMN.Core.Contracts.IHealthMonitoringService
 {
     private readonly ILogger<ProductionHealthMonitoringService> _logger;
     private readonly IServiceProvider _serviceProvider;
@@ -289,7 +277,7 @@ public class ProductionHealthMonitoringService : IHealthMonitoringService
             "All external services reachable", data: data);
     }
 
-    public async Task<ComprehensiveHealthReport> GetComprehensiveHealthReportAsync()
+    public async Task<Domain.ComprehensiveHealthReport> GetComprehensiveHealthReportAsync()
     {
         var stopwatch = Stopwatch.StartNew();
         
@@ -308,7 +296,7 @@ public class ProductionHealthMonitoringService : IHealthMonitoringService
                 ? HealthStatus.Unhealthy
                 : HealthStatus.Degraded;
 
-        return new ComprehensiveHealthReport
+        return new Domain.ComprehensiveHealthReport
         {
             OverallStatus = overallStatus.ToString(),
             CheckDuration = stopwatch.Elapsed,
@@ -321,13 +309,13 @@ public class ProductionHealthMonitoringService : IHealthMonitoringService
         };
     }
 
-    public async Task<SystemMetrics> GetSystemMetricsAsync()
+    public async Task<Domain.SystemMetrics> GetSystemMetricsAsync()
     {
         await Task.Delay(1); // Make async
         
         var process = Process.GetCurrentProcess();
         
-        var metrics = new SystemMetrics
+        var metrics = new Domain.SystemMetrics
         {
             Timestamp = DateTime.UtcNow,
             ProcessId = process.Id,
@@ -371,14 +359,14 @@ public class ProductionHealthMonitoringService : IHealthMonitoringService
         return metrics;
     }
 
-    private async Task<SystemInfo> GetSystemInfoAsync()
+    private async Task<Domain.SystemInfo> GetSystemInfoAsync()
     {
         await Task.Delay(1); // Make async
         
         var assembly = Assembly.GetExecutingAssembly();
         var process = Process.GetCurrentProcess();
         
-        return new SystemInfo
+        return new Domain.SystemInfo
         {
             ApplicationVersion = assembly.GetName().Version?.ToString() ?? "Unknown",
             RuntimeVersion = Environment.Version.ToString(),
@@ -389,47 +377,4 @@ public class ProductionHealthMonitoringService : IHealthMonitoringService
             Uptime = DateTime.UtcNow - process.StartTime
         };
     }
-}
-
-// Supporting classes
-public record ExternalServiceCheck(string Name, string Host);
-
-public class ComprehensiveHealthReport
-{
-    public string OverallStatus { get; set; } = string.Empty;
-    public TimeSpan CheckDuration { get; set; }
-    public DateTime Timestamp { get; set; }
-    public HealthCheckResult DatabaseHealth { get; set; } = HealthCheckResult.Healthy();
-    public HealthCheckResult MemoryHealth { get; set; } = HealthCheckResult.Healthy();
-    public HealthCheckResult DiskSpaceHealth { get; set; } = HealthCheckResult.Healthy();
-    public HealthCheckResult ExternalServicesHealth { get; set; } = HealthCheckResult.Healthy();
-    public SystemInfo SystemInfo { get; set; } = new();
-}
-
-public class SystemMetrics
-{
-    public DateTime Timestamp { get; set; }
-    public int ProcessId { get; set; }
-    public long WorkingSetMB { get; set; }
-    public long PrivateMemoryMB { get; set; }
-    public int ThreadCount { get; set; }
-    public int HandleCount { get; set; }
-    public double UptimeSeconds { get; set; }
-    public long GCMemoryMB { get; set; }
-    public int Gen0Collections { get; set; }
-    public int Gen1Collections { get; set; }
-    public int Gen2Collections { get; set; }
-    public float? CpuUsagePercent { get; set; }
-    public float? AvailableMemoryMB { get; set; }
-}
-
-public class SystemInfo
-{
-    public string ApplicationVersion { get; set; } = string.Empty;
-    public string RuntimeVersion { get; set; } = string.Empty;
-    public string OperatingSystem { get; set; } = string.Empty;
-    public string MachineName { get; set; } = string.Empty;
-    public int ProcessorCount { get; set; }
-    public DateTime StartTime { get; set; }
-    public TimeSpan Uptime { get; set; }
 }

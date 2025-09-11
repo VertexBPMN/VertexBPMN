@@ -1,4 +1,6 @@
 using Polly;
+using VertexBPMN.Core.Contracts;
+using VertexBPMN.Domain;
 
 namespace VertexBPMN.Api.Services;
 
@@ -6,13 +8,6 @@ namespace VertexBPMN.Api.Services;
 /// Production-Grade Resilience Service with Circuit Breaker Pattern
 /// Olympic-level feature: Production-Grade Features - Resilience
 /// </summary>
-public interface IResilienceService
-{
-    Task<T> ExecuteAsync<T>(Func<Task<T>> operation, string operationName);
-    Task ExecuteAsync(Func<Task> operation, string operationName);
-    ResilienceStatus GetCircuitBreakerStatus(string operationName);
-}
-
 public class ProductionResilienceService : IResilienceService
 {
     private readonly Dictionary<string, IAsyncPolicy> _policies = new();
@@ -128,12 +123,3 @@ public class ProductionResilienceService : IResilienceService
         return new ResilienceStatus(operationName, "Healthy", "Policy active");
     }
 }
-
-/// <summary>
-/// Resilience status information
-/// </summary>
-public record ResilienceStatus(
-    string OperationName,
-    string Status,
-    string Message
-);

@@ -5,8 +5,8 @@ using System.Threading.Tasks;
 using VertexBPMN.Core.Contracts;
 using VertexBPMN.Core.Engine;
 using VertexBPMN.Core.Exceptions;
-using VertexBPMN.Core.Modeling;
 using VertexBPMN.Domain;
+using VertexBPMN.Domain.Modeling;
 using Task = System.Threading.Tasks.Task;
 
 namespace VertexBPMN.Core.Engine

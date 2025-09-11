@@ -1,18 +1,28 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using VertexBPMN.Core.Contracts;
+using VertexBPMN.Core.Contracts.Repositories;
 using VertexBPMN.Domain;
 
 namespace VertexBPMN.EngineServices;
 
 /// <summary>
-/// In-memory implementation of IRuntimeService for development and testing.
+/// Persistent implementation of IRuntimeService using IProcessInstanceRepository.
 /// </summary>
 public class RuntimeService : IRuntimeService
 {
+    private readonly IProcessInstanceRepository _repo;
+    private readonly IProcessDefinitionRepository _defRepo;
+    private readonly IProcessMiningEventSink _eventSink;
+    public RuntimeService(IProcessInstanceRepository repo, IProcessDefinitionRepository defRepo, IProcessMiningEventSink eventSink)
+    {
+        _repo = repo;
+        _defRepo = defRepo;
+        _eventSink = eventSink;
+    }
+
     // Vertex-kompatible Methoden
     public ValueTask<IDictionary<string, object>?> GetVariablesAsync(Guid processInstanceId, CancellationToken cancellationToken = default)
         => new((IDictionary<string, object>?)null);
@@ -22,23 +32,11 @@ public class RuntimeService : IRuntimeService
 
     public ValueTask BroadcastSignalAsync(string signalName, IDictionary<string, object>? variables = null, CancellationToken cancellationToken = default)
         => ValueTask.CompletedTask;
-    private readonly ConcurrentDictionary<Guid, ProcessInstance> _instances = new();
 
-    private readonly IRepositoryService _repositoryService;
-    private readonly IProcessMiningEventSink _eventSink;
-
-    public RuntimeService(IRepositoryService repositoryService, IProcessMiningEventSink eventSink)
-    {
-        _repositoryService = repositoryService;
-        _eventSink = eventSink;
-    }
-
-    public ValueTask<ProcessInstance> StartProcessByKeyAsync(string processDefinitionKey, IDictionary<string, object>? variables = null, string? businessKey = null, string? tenantId = null, CancellationToken cancellationToken = default)
+    public async ValueTask<ProcessInstance> StartProcessByKeyAsync(string processDefinitionKey, IDictionary<string, object>? variables = null, string? businessKey = null, string? tenantId = null, CancellationToken cancellationToken = default)
     {
         // Lookup process definition by key
-        var defTask = _repositoryService.GetLatestByKeyAsync(processDefinitionKey, tenantId, cancellationToken);
-        defTask.AsTask().Wait();
-        var def = defTask.Result;
+        var def = await _defRepo.GetLatestByKeyAsync(processDefinitionKey, tenantId, cancellationToken);
         if (def == null) throw new InvalidOperationException($"Process definition with key '{processDefinitionKey}' not found.");
         var instance = new ProcessInstance
         {
@@ -48,40 +46,32 @@ public class RuntimeService : IRuntimeService
             TenantId = tenantId,
             StartedAt = DateTime.UtcNow
         };
-        _instances[instance.Id] = instance;
+        await _repo.AddAsync(instance, cancellationToken);
         // Emit process mining event
-        _eventSink.EmitAsync(new ProcessMiningEvent {
+        await _eventSink.EmitAsync(new ProcessMiningEvent
+        {
             EventType = "ProcessStarted",
             ProcessInstanceId = instance.Id.ToString(),
             TenantId = tenantId,
             Timestamp = DateTimeOffset.UtcNow,
             PayloadJson = variables != null ? System.Text.Json.JsonSerializer.Serialize(variables) : null
         }, cancellationToken);
-        return ValueTask.FromResult(instance);
+        return instance;
     }
 
     public ValueTask<ProcessInstance?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
-        => ValueTask.FromResult(_instances.TryGetValue(id, out var inst) ? inst : null);
+        => _repo.GetByIdAsync(id, cancellationToken);
 
-    public async IAsyncEnumerable<ProcessInstance> ListAsync(Guid? processDefinitionId = null, string? tenantId = null, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public IAsyncEnumerable<ProcessInstance> ListAsync(Guid? processDefinitionId = null, string? tenantId = null, CancellationToken cancellationToken = default)
+        => _repo.ListAsync(processDefinitionId, tenantId, cancellationToken);
+
+    public async ValueTask SignalAsync(Guid processInstanceId, string signalName, object? payload = null, CancellationToken cancellationToken = default)
     {
-        foreach (var inst in _instances.Values)
+        var inst = await _repo.GetByIdAsync(processInstanceId, cancellationToken);
+        if (inst != null)
         {
-            if ((processDefinitionId == null || inst.ProcessDefinitionId == processDefinitionId) &&
-                (tenantId == null || inst.TenantId == tenantId))
+            await _eventSink.EmitAsync(new ProcessMiningEvent
             {
-                yield return inst;
-            }
-        }
-    await System.Threading.Tasks.Task.CompletedTask;
-    }
-
-
-    public ValueTask SignalAsync(Guid processInstanceId, string signalName, object? payload = null, CancellationToken cancellationToken = default)
-    {
-        if (_instances.TryGetValue(processInstanceId, out var inst))
-        {
-            _eventSink.EmitAsync(new ProcessMiningEvent {
                 EventType = "ProcessSignaled",
                 ProcessInstanceId = inst.Id.ToString(),
                 TenantId = inst.TenantId,
@@ -89,51 +79,52 @@ public class RuntimeService : IRuntimeService
                 PayloadJson = payload is IDictionary<string, object> dict ? System.Text.Json.JsonSerializer.Serialize(dict) : null
             }, cancellationToken);
         }
-        return ValueTask.CompletedTask;
     }
 
-
-    public ValueTask SuspendAsync(Guid processInstanceId, CancellationToken cancellationToken = default)
+    public async ValueTask SuspendAsync(Guid processInstanceId, CancellationToken cancellationToken = default)
     {
-        if (_instances.TryGetValue(processInstanceId, out var inst))
+        var inst = await _repo.GetByIdAsync(processInstanceId, cancellationToken);
+        if (inst != null)
         {
-            _eventSink.EmitAsync(new ProcessMiningEvent {
+            await _eventSink.EmitAsync(new ProcessMiningEvent
+            {
                 EventType = "ProcessSuspended",
                 ProcessInstanceId = inst.Id.ToString(),
                 TenantId = inst.TenantId,
                 Timestamp = DateTimeOffset.UtcNow
             }, cancellationToken);
         }
-        return ValueTask.CompletedTask;
     }
 
-
-    public ValueTask ResumeAsync(Guid processInstanceId, CancellationToken cancellationToken = default)
+    public async ValueTask ResumeAsync(Guid processInstanceId, CancellationToken cancellationToken = default)
     {
-        if (_instances.TryGetValue(processInstanceId, out var inst))
+        var inst = await _repo.GetByIdAsync(processInstanceId, cancellationToken);
+        if (inst != null)
         {
-            _eventSink.EmitAsync(new ProcessMiningEvent {
+            await _eventSink.EmitAsync(new ProcessMiningEvent
+            {
                 EventType = "ProcessResumed",
                 ProcessInstanceId = inst.Id.ToString(),
                 TenantId = inst.TenantId,
                 Timestamp = DateTimeOffset.UtcNow
             }, cancellationToken);
         }
-        return ValueTask.CompletedTask;
     }
 
-    // Emits a process end event (for demo, call this when removing from _instances)
-    public ValueTask EndProcessAsync(Guid processInstanceId, CancellationToken cancellationToken = default)
+    // Emits a process end event (for demo, call this when deleting from repository)
+    public async ValueTask EndProcessAsync(Guid processInstanceId, CancellationToken cancellationToken = default)
     {
-        if (_instances.TryRemove(processInstanceId, out var inst))
+        var inst = await _repo.GetByIdAsync(processInstanceId, cancellationToken);
+        if (inst != null)
         {
-            _eventSink.EmitAsync(new ProcessMiningEvent {
+            // Optionally: await _repo.DeleteAsync(processInstanceId, cancellationToken);
+            await _eventSink.EmitAsync(new ProcessMiningEvent
+            {
                 EventType = "ProcessEnded",
                 ProcessInstanceId = inst.Id.ToString(),
                 TenantId = inst.TenantId,
                 Timestamp = DateTimeOffset.UtcNow
             }, cancellationToken);
         }
-        return ValueTask.CompletedTask;
     }
 }

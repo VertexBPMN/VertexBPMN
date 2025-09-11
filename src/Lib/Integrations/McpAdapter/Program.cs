@@ -6,12 +6,12 @@ using Microsoft.Extensions.Hosting;
 using Serilog;
 using VertexBPMN.Core;
 using VertexBPMN.Core.Engine;
-using VertexBPMN.Core.Bpmn;
 using System.Text.Json;
 using System.Net.WebSockets;
 using System.Threading.Tasks;
 using System.Text;
-using VertexBPMN.Core.Domain;
+using VertexBPMN.Core.Contracts;
+using VertexBPMN.McpAdapter.Config; // Added for telemetry extension
 
 namespace VertexBPMN.McpAdapter
 {
@@ -22,9 +22,8 @@ public partial class Program
     // ...existing code...
         var builder = WebApplication.CreateBuilder(args);
     builder.Host.UseSerilog((ctx, lc) => lc.WriteTo.Console());
-    builder.Services.AddVertexTelemetry();
+    builder.Services.AddMcpAdapterTelemetry(builder.Configuration); // updated telemetry setup
     builder.Services.AddSingleton<IDistributedTokenEngine, DistributedTokenEngine>();
-    builder.Services.AddSingleton<IProcessEngine, DistributedTokenEngine>();
     builder.Services.AddSingleton<IBpmnParser, BpmnParser>();
     builder.Services.AddSingleton<IBpmnEngine, BpmnEngine>();
     builder.Services.AddSingleton<McpServer>();

@@ -1,5 +1,5 @@
 using VertexBPMN.Core.Engine;
-using VertexBPMN.Core.Modeling;
+using VertexBPMN.Domain.Modeling;
 
 namespace VertexBPMN.Tests.Integration.Bpmn
 {

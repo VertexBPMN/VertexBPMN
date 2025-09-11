@@ -4,4 +4,8 @@
     <RootNamespace>VertexBPMN.Domain</RootNamespace>
     <AssemblyName>VertexBPMN.Domain</AssemblyName>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="9.0.9" />
+    <PackageReference Include="Microsoft.ML" Version="4.0.2" />
+  </ItemGroup>
 </Project>

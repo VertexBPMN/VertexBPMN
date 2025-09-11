@@ -3,8 +3,8 @@ using Moq;
 using OpenTelemetry.Trace;
 using VertexBPMN.Core.Contracts;
 using VertexBPMN.Core.Engine;
-using VertexBPMN.Core.Messaging;
 using VertexBPMN.Core.Modeling;
+using VertexBPMN.Domain.Modeling;
 using VertexBPMN.EngineServices;
 
 namespace VertexBPMN.Tests.Integration.Mcp;

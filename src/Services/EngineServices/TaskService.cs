@@ -1,49 +1,55 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using VertexBPMN.Core.Contracts;
+using VertexBPMN.Core.Contracts.Repositories;
 using VertexBPMN.Domain;
 
 namespace VertexBPMN.EngineServices;
 
 /// <summary>
-/// In-memory implementation of ITaskService for development and testing.
+/// Persistent implementation of ITaskService using ITaskRepository.
 /// </summary>
 public class TaskService : ITaskService
 {
-    private readonly ConcurrentDictionary<Guid, UserTask> _tasks = new();
+    private readonly ITaskRepository _repo;
     private readonly IProcessMiningEventSink _eventSink;
-
-    public TaskService(IProcessMiningEventSink eventSink)
+    public TaskService(ITaskRepository repo, IProcessMiningEventSink eventSink)
     {
+        _repo = repo;
         _eventSink = eventSink;
     }
 
-    public ValueTask ClaimAsync(Guid taskId, string userId, CancellationToken cancellationToken = default)
+    public async ValueTask ClaimAsync(Guid taskId, string userId, CancellationToken cancellationToken = default)
     {
-        if (_tasks.TryGetValue(taskId, out var task))
+        var task = await _repo.GetByIdAsync(taskId, cancellationToken);
+        if (task != null)
         {
             task.Assignee = userId;
-            _eventSink.EmitAsync(new ProcessMiningEvent {
+            await _repo.AddAsync(task, cancellationToken); // Upsert
+            await _eventSink.EmitAsync(new ProcessMiningEvent
+            {
                 EventType = "TaskClaimed",
                 ProcessInstanceId = task.ProcessInstanceId.ToString(),
                 TaskId = task.Id.ToString(),
                 UserId = userId,
                 TenantId = task.TenantId,
-                Timestamp = DateTimeOffset.UtcNow
+                Timestamp = DateTimeOffset.UtcNow,
+                PayloadJson = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object> { { "UserId", userId } })
             }, cancellationToken);
         }
-        return ValueTask.CompletedTask;
     }
 
-    public ValueTask CompleteAsync(Guid taskId, IDictionary<string, object>? variables = null, CancellationToken cancellationToken = default)
+    public async ValueTask CompleteAsync(Guid taskId, IDictionary<string, object>? variables = null, CancellationToken cancellationToken = default)
     {
-        if (_tasks.TryGetValue(taskId, out var task))
+        var task = await _repo.GetByIdAsync(taskId, cancellationToken);
+        if (task != null)
         {
             task.CompletedAt = DateTime.UtcNow;
-            _eventSink.EmitAsync(new ProcessMiningEvent {
+            await _repo.AddAsync(task, cancellationToken); // Upsert
+            await _eventSink.EmitAsync(new ProcessMiningEvent
+            {
                 EventType = "TaskCompleted",
                 ProcessInstanceId = task.ProcessInstanceId.ToString(),
                 TaskId = task.Id.ToString(),
@@ -53,39 +59,31 @@ public class TaskService : ITaskService
                 PayloadJson = variables != null ? System.Text.Json.JsonSerializer.Serialize(variables) : null
             }, cancellationToken);
         }
-        return ValueTask.CompletedTask;
     }
 
-    public ValueTask DelegateAsync(Guid taskId, string userId, CancellationToken cancellationToken = default)
+    public async ValueTask DelegateAsync(Guid taskId, string userId, CancellationToken cancellationToken = default)
     {
-        if (_tasks.TryGetValue(taskId, out var task))
+        var task = await _repo.GetByIdAsync(taskId, cancellationToken);
+        if (task != null)
         {
             task.Assignee = userId;
-            _eventSink.EmitAsync(new ProcessMiningEvent {
+            await _repo.AddAsync(task, cancellationToken); // Upsert
+            await _eventSink.EmitAsync(new ProcessMiningEvent
+            {
                 EventType = "TaskDelegated",
                 ProcessInstanceId = task.ProcessInstanceId.ToString(),
                 TaskId = task.Id.ToString(),
                 UserId = userId,
                 TenantId = task.TenantId,
-                Timestamp = DateTimeOffset.UtcNow
+                Timestamp = DateTimeOffset.UtcNow,
+                PayloadJson = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object> { { "UserId", userId } })
             }, cancellationToken);
         }
-        return ValueTask.CompletedTask;
     }
 
     public ValueTask<UserTask?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
-        => ValueTask.FromResult(_tasks.TryGetValue(id, out var task) ? task : null);
+        => _repo.GetByIdAsync(id, cancellationToken);
 
-    public async IAsyncEnumerable<UserTask> ListAsync(Guid? processInstanceId = null, string? assignee = null, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        foreach (var task in _tasks.Values)
-        {
-            if ((processInstanceId == null || task.ProcessInstanceId == processInstanceId) &&
-                (assignee == null || task.Assignee == assignee))
-            {
-                yield return task;
-            }
-        }
-        await System.Threading.Tasks.Task.CompletedTask;
-    }
+    public IAsyncEnumerable<UserTask> ListAsync(Guid? processInstanceId = null, string? assignee = null, CancellationToken cancellationToken = default)
+        => _repo.ListAsync(processInstanceId, assignee, cancellationToken);
 }

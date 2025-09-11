@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
 using VertexBPMN.Domain;
+using VertexBPMN.Core.Contracts;
 
 namespace VertexBPMN.Persistence.Repositories;
 

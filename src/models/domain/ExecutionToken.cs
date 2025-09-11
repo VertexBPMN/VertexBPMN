@@ -43,4 +43,5 @@ public record ExecutionToken
         this.RetryCount = RetryCount;
     }
 
+    public string State { get; set; }
 }

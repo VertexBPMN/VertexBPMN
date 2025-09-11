@@ -3,25 +3,31 @@ using Microsoft.EntityFrameworkCore.Sqlite;
 using Polly;
 using VertexBPMN.Api.Config;
 using VertexBPMN.Api.Debug;
+using VertexBPMN.Api.Mcp;
 using VertexBPMN.Api.Migration;
 using VertexBPMN.Api.ML;
 using VertexBPMN.Api.Plugins;
 using VertexBPMN.Api.Security;
 using VertexBPMN.Api.Services;
+using VertexBPMN.Core;
 using VertexBPMN.Core.Contracts;
+using VertexBPMN.Core.Contracts.Repositories;
 using VertexBPMN.Core.Engine;
-using VertexBPMN.Core.Handlers;
-using VertexBPMN.Core.Messaging;
 using VertexBPMN.EngineServices;
 using VertexBPMN.EngineServices.Extensions;
+using VertexBPMN.EngineServices.Messaging;
+using VertexBPMN.Persistence;
 using VertexBPMN.Persistence.Repositories;
 using VertexBPMN.Persistence.Services;
-using IdentityService = VertexBPMN.Core.Contracts.IdentityService;
-using IJobRepository = VertexBPMN.Core.Contracts.IJobRepository;
+using ICachingService = VertexBPMN.Core.Contracts.ICachingService;
+using IHealthMonitoringService = VertexBPMN.Core.Contracts.IHealthMonitoringService;
+using IRateLimitingService = VertexBPMN.Core.Contracts.IRateLimitingService;
+using IResilienceService = VertexBPMN.Core.Contracts.IResilienceService;
+using RepositoryService = VertexBPMN.EngineServices.RepositoryService;
 
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddScoped<IMultiInstanceExecutionRepository, VertexBPMN.Persistence.Repositories.Impl.MultiInstanceExecutionRepository>();
+builder.Services.AddScoped<IMultiInstanceExecutionRepository, MultiInstanceExecutionRepository>();
 builder.Services.AddScoped<IProcessMigrationService>(sp =>
 	new ProcessMigrationService(
 		sp.GetRequiredService<IRuntimeService>(),
@@ -65,22 +71,26 @@ builder.Services.AddScoped<ISimulationScenarioService, SimulationScenarioService
 	// Add services to the container.
 	builder.Services.AddControllers();
 	// Add OAuth2/OIDC authentication
-	VertexBPMN.Api.Security.OAuth2AuthenticationExtensions.AddOAuth2Authentication(
+	OAuth2AuthenticationExtensions.AddOAuth2Authentication(
 		builder.Services,
 		options => { /* configure JwtBearerOptions if needed */ }
 	);
 	// Register BpmnDbContext for all BPMN persistence with SQLite
-	builder.Services.AddDbContext<VertexBPMN.Persistence.BpmnDbContext>(options =>
-		options.UseSqlite("Data Source=vertexbpmn.db"));
-	// Register persistence-based services
-	builder.Services.AddScoped<IProcessDefinitionRepository, VertexBPMN.Persistence.Repositories.Impl.ProcessDefinitionRepository>();
-	builder.Services.AddScoped<IProcessInstanceRepository, VertexBPMN.Persistence.Repositories.Impl.ProcessInstanceRepository>();
-	builder.Services.AddScoped<ITaskRepository, VertexBPMN.Persistence.Repositories.Impl.TaskRepository>();
-	builder.Services.AddScoped<IHistoryEventRepository, VertexBPMN.Persistence.Repositories.Impl.HistoryEventRepository>();
-	builder.Services.AddScoped<VertexBPMN.Persistence.Repositories.IJobRepository, VertexBPMN.Persistence.Repositories.Impl.JobRepository>();
-	builder.Services.AddScoped<IRepositoryService, VertexBPMN.Persistence.Services.RepositoryService>();
-	// Register Core IJobRepository abstraction to persistence implementation
-	builder.Services.AddScoped<IJobRepository, VertexBPMN.Persistence.Repositories.Impl.JobRepository>();
+	//builder.Services.AddDbContext<VertexBPMN.Persistence.BpmnDbContext>(options =>
+	//	options.UseSqlite("Data Source=vertexbpmn.db"));
+    builder.Services.AddBpmnPersistence(options =>
+	{
+		options.UseSqlite("Data Source=vertexbpmn.db");
+		// Enable retry on failure for transient faults
+		//options.EnableRetryOnFailure(5, TimeSpan.FromSeconds(10), null);
+	});
+// Register persistence-based services
+builder.Services.AddScoped<IProcessDefinitionRepository, ProcessDefinitionRepository>();
+	builder.Services.AddScoped<IProcessInstanceRepository, ProcessInstanceRepository>();
+	builder.Services.AddScoped<ITaskRepository, TaskRepository>();
+	builder.Services.AddScoped<IHistoryEventRepository, HistoryEventRepository>();
+	builder.Services.AddScoped<IJobRepository, JobRepository>();
+	builder.Services.AddScoped<IRepositoryService, RepositoryService>();
 	// Conditional registration for ProcessMiningEventDbContext (PostgreSQL or SQLite)
 	var sqliteConn = builder.Configuration.GetConnectionString("ProcessMiningEventsSqlite");
 	if (!string.IsNullOrWhiteSpace(sqliteConn))
@@ -94,12 +104,12 @@ builder.Services.AddScoped<ISimulationScenarioService, SimulationScenarioService
 			options.UseSqlite(builder.Configuration.GetConnectionString("ProcessMiningEvents")));
 	}
 	builder.Services.AddScoped<IProcessMiningEventSink, PersistentProcessMiningEventSink>();
-	builder.Services.AddScoped<IRuntimeService, VertexBPMN.Persistence.Services.RuntimeService>();
-	builder.Services.AddScoped<ITaskService, VertexBPMN.Persistence.Services.TaskService>();
-	builder.Services.AddScoped<IHistoryService, VertexBPMN.Persistence.Services.HistoryService>();
+	builder.Services.AddScoped<IRuntimeService, RuntimeService>();
+	builder.Services.AddScoped<ITaskService, TaskService>();
+	builder.Services.AddScoped<IHistoryService, HistoryService>();
 	builder.Services.AddScoped<IIncidentService, IncidentService>();
 	// Register JobExecutor as background service
-	builder.Services.AddHostedService<VertexBPMN.Core.JobExecutor.JobExecutorService>();
+	builder.Services.AddHostedService<JobExecutorService>();
 	builder.Services.AddEndpointsApiExplorer();
 	builder.Services.AddScoped<IManagementService, ManagementService>();
 	builder.Services.AddSingleton<IIdentityService, IdentityService>();
@@ -120,13 +130,12 @@ builder.Services.AddScoped<ISimulationScenarioService, SimulationScenarioService
 	builder.Services.AddSingleton<IAiDecisionService, FakeAiDecisionService>();
 	builder.Services.AddHttpClient<IAiDecisionService, XAiDecisionService>();
 	builder.Services.AddHttpClient<IMcpAgentService, McpAgentService>();
-    builder.Services.AddSingleton<IProcessInstanceStore, InMemoryProcessInstanceStore>();
 	builder.Services.AddSingleton<IDmnEngine, DmnEngine>();
 	builder.Services.AddSingleton<IDmnParser, DmnParser>();
 	builder.Services.AddSingleton<ICmmnParser, CmmnParser>();
 	builder.Services.AddSingleton<IBpmnParser, BpmnParser>();
 	builder.Services.AddSingleton<IDistributedTokenEngine,DistributedTokenEngine>();
-	builder.Services.AddSingleton<VertexBPMN.Api.Controllers.ILoadBalancingService, VertexBPMN.Api.Controllers.LoadBalancingService>();
+	builder.Services.AddSingleton<ILoadBalancingService, LoadBalancingService>();
 	builder.Services.AddSingleton<IWorkerNodeManager, WorkerNodeManager>();
 
 		// Observability: HealthChecks, Logging, Metrics
@@ -181,7 +190,7 @@ builder.Services.AddScoped<ISimulationScenarioService, SimulationScenarioService
 			var services = scope.ServiceProvider;
 			try
 			{
-				var bpmnContext = services.GetRequiredService<VertexBPMN.Persistence.BpmnDbContext>();
+				var bpmnContext = services.GetRequiredService<BpmnDbContext>();
 				await bpmnContext.Database.EnsureCreatedAsync();
 				
 				var tenantContext = services.GetRequiredService<TenantDbContext>();
@@ -254,8 +263,8 @@ builder.Services.AddScoped<ISimulationScenarioService, SimulationScenarioService
 
 		app.MapControllers();
 
-        app.MapGrpcService<VertexBPMN.Api.Services.VertexBpmnServiceImpl>();
-        app.MapGrpcService<VertexBPMN.Api.Services.VertexBpmnServiceImpl>();
+        app.MapGrpcService<VertexBPMN.Api.Mcp.VertexBpmnServiceImpl>();
+        app.MapGrpcService<VertexBPMN.Api.Mcp.VertexBpmnServiceImpl>();
 		app.MapGet("/", () => "gRPC endpoint. Use a gRPC client.");
 
 app.Run();

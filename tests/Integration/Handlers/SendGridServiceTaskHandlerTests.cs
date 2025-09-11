@@ -2,8 +2,8 @@
 using Moq;
 using SendGrid;
 using SendGrid.Helpers.Mail;
-using VertexBPMN.Core.Fakes;
 using VertexBPMN.EngineServices;
+using VertexBPMN.EngineServices.Fakes;
 
 namespace VertexBPMN.Tests.Integration.Handlers;
 

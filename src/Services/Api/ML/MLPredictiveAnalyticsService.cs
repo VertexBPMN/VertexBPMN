@@ -1,22 +1,15 @@
 using System.Text.Json;
 using Microsoft.ML;
-using Microsoft.ML.Data;
+using VertexBPMN.Core.Contracts;
+using VertexBPMN.Domain.ML;
 
 namespace VertexBPMN.Api.ML;
+
 
 /// <summary>
 /// ML-Based Predictive Analytics Engine
 /// Olympic-level feature: Innovation Differentiators - Machine Learning Predictions
 /// </summary>
-public interface IPredictiveAnalyticsService
-{
-    Task<ProcessCompletionPrediction> PredictProcessCompletionAsync(Guid processInstanceId);
-    Task<ProcessDurationPrediction> PredictProcessDurationAsync(string processDefinitionKey, Dictionary<string, object> variables);
-    Task<ProcessBottleneckPrediction> PredictBottlenecksAsync(string processDefinitionKey);
-    Task<ProcessOptimizationSuggestion> GetOptimizationSuggestionsAsync(string processDefinitionKey);
-    Task TrainModelsAsync();
-}
-
 public class MLPredictiveAnalyticsService : IPredictiveAnalyticsService
 {
     private readonly ILogger<MLPredictiveAnalyticsService> _logger;
@@ -521,120 +514,4 @@ public class MLPredictiveAnalyticsService : IPredictiveAnalyticsService
         // Simulate model confidence based on training data availability
         return 0.85f;
     }
-}
-
-// ML.NET Data Models
-public class ProcessInstanceData
-{
-    public string ProcessInstanceId { get; set; } = string.Empty;
-    public string ProcessDefinitionKey { get; set; } = string.Empty;
-    public string TenantId { get; set; } = string.Empty;
-    public int VariableCount { get; set; }
-    public float DurationMinutes { get; set; }
-    public int ActivityCount { get; set; }
-    public float CompletionProbability { get; set; }
-}
-
-public class ProcessStartData
-{
-    public string ProcessDefinitionKey { get; set; } = string.Empty;
-    public int VariableCount { get; set; }
-    public bool HasBusinessKey { get; set; }
-    public string TenantId { get; set; } = string.Empty;
-    public int StartHour { get; set; }
-    public int StartDayOfWeek { get; set; }
-    public float EstimatedDurationMinutes { get; set; }
-}
-
-public class ActivityData
-{
-    public string ActivityId { get; set; } = string.Empty;
-    public string ActivityName { get; set; } = string.Empty;
-    public float AverageExecutionTime { get; set; }
-    public int ExecutionCount { get; set; }
-    public float ErrorRate { get; set; }
-    public float BottleneckProbability { get; set; }
-}
-
-public class CompletionPredictionOutput
-{
-    [ColumnName("Score")]
-    public float CompletionProbability { get; set; }
-    public float EstimatedMinutesToCompletion { get; set; }
-    public float ConfidenceScore { get; set; }
-}
-
-public class DurationPredictionOutput
-{
-    [ColumnName("Score")]
-    public float EstimatedDurationMinutes { get; set; }
-    public float ConfidenceScore { get; set; }
-}
-
-public class BottleneckPredictionOutput
-{
-    [ColumnName("Score")]
-    public float BottleneckProbability { get; set; }
-    public float AverageWaitTime { get; set; }
-    public float ThroughputImpact { get; set; }
-}
-
-// Prediction Result Models
-public class ProcessCompletionPrediction
-{
-    public Guid ProcessInstanceId { get; set; }
-    public float CompletionProbability { get; set; }
-    public DateTime EstimatedCompletionTime { get; set; }
-    public float ConfidenceScore { get; set; }
-    public string[] RiskFactors { get; set; } = Array.Empty<string>();
-    public string[] Recommendations { get; set; } = Array.Empty<string>();
-}
-
-public class ProcessDurationPrediction
-{
-    public string ProcessDefinitionKey { get; set; } = string.Empty;
-    public float EstimatedDurationMinutes { get; set; }
-    public float MinDuration { get; set; }
-    public float MaxDuration { get; set; }
-    public float ConfidenceScore { get; set; }
-    public string[] InfluencingFactors { get; set; } = Array.Empty<string>();
-    public string[] SuggestedOptimizations { get; set; } = Array.Empty<string>();
-}
-
-public class ProcessBottleneckPrediction
-{
-    public string ProcessDefinitionKey { get; set; } = string.Empty;
-    public float OverallBottleneckRisk { get; set; }
-    public List<ActivityBottleneckPrediction> ActivityPredictions { get; set; } = new();
-    public List<string> CriticalPath { get; set; } = new();
-    public string OptimizationPriority { get; set; } = string.Empty;
-}
-
-public class ActivityBottleneckPrediction
-{
-    public string ActivityId { get; set; } = string.Empty;
-    public string ActivityName { get; set; } = string.Empty;
-    public float BottleneckProbability { get; set; }
-    public float AverageWaitTime { get; set; }
-    public float ThroughputImpact { get; set; }
-    public string[] RecommendedActions { get; set; } = Array.Empty<string>();
-}
-
-public class ProcessOptimizationSuggestion
-{
-    public string ProcessDefinitionKey { get; set; } = string.Empty;
-    public DateTime GeneratedAt { get; set; }
-    public float OverallScore { get; set; }
-    public List<OptimizationAction> Suggestions { get; set; } = new();
-    public float ModelConfidence { get; set; }
-    public DateTime NextReviewDate { get; set; }
-}
-
-public class OptimizationAction
-{
-    public string Type { get; set; } = string.Empty;
-    public string Priority { get; set; } = string.Empty;
-    public string Description { get; set; } = string.Empty;
-    public string Recommendation { get; set; } = string.Empty;
-    public string ExpectedImpact { get; set; } = string.Empty;
 }

@@ -2,10 +2,10 @@
 using Moq;
 using VertexBPMN.Core.Engine;
 using VertexBPMN.Core.Exceptions;
-using VertexBPMN.Core.Modeling;
-using DmnInput = VertexBPMN.Core.Modeling.DmnInput;
-using DmnOutput = VertexBPMN.Core.Modeling.DmnOutput;
-using DmnRule = VertexBPMN.Core.Modeling.DmnRule;
+using VertexBPMN.Domain.Modeling;
+using DmnInput = VertexBPMN.Domain.Modeling.DmnInput;
+using DmnOutput = VertexBPMN.Domain.Modeling.DmnOutput;
+using DmnRule = VertexBPMN.Domain.Modeling.DmnRule;
 
 namespace VertexBPMN.Tests.Integration.Engine;
 

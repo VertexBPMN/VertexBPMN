@@ -1,15 +1,15 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using VertexBPMN.Core.Contracts;
+using VertexBPMN.Core.Contracts.Repositories;
 using VertexBPMN.Domain;
 
 namespace VertexBPMN.EngineServices;
 
 /// <summary>
-/// In-memory implementation of IHistoryService for development and testing.
+/// Persistent implementation of IHistoryService using IHistoryEventRepository.
 /// </summary>
 public class HistoryService : IHistoryService
 {
@@ -18,19 +18,12 @@ public class HistoryService : IHistoryService
         await System.Threading.Tasks.Task.CompletedTask;
         yield break;
     }
+    private readonly IHistoryEventRepository _repo;
+    public HistoryService(IHistoryEventRepository repo) => _repo = repo;
 
-    private readonly ConcurrentDictionary<Guid, HistoryEvent> _events = new();
-
-    public async IAsyncEnumerable<HistoryEvent> ListByProcessInstanceAsync(Guid processInstanceId, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        foreach (var evt in _events.Values)
-        {
-            if (evt.ProcessInstanceId == processInstanceId)
-                yield return evt;
-        }
-        await System.Threading.Tasks.Task.CompletedTask;
-    }
+    public IAsyncEnumerable<HistoryEvent> ListByProcessInstanceAsync(Guid processInstanceId, CancellationToken cancellationToken = default)
+        => _repo.ListByProcessInstanceAsync(processInstanceId, cancellationToken);
 
     public ValueTask<HistoryEvent?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
-        => ValueTask.FromResult(_events.TryGetValue(id, out var evt) ? evt : null);
+        => _repo.GetByIdAsync(id, cancellationToken);
 }

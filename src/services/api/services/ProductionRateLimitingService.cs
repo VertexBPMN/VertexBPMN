@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Mvc.Filters;
 using System.Collections.Concurrent;
+using VertexBPMN.Core.Contracts;
+using VertexBPMN.Domain;
 
 namespace VertexBPMN.Api.Services;
 
@@ -7,12 +9,6 @@ namespace VertexBPMN.Api.Services;
 /// Production-Grade Rate Limiting Service
 /// Olympic-level feature: Production-Grade Features - Rate Limiting
 /// </summary>
-public interface IRateLimitingService
-{
-    bool IsAllowed(string identifier, string rateLimitPolicy);
-    RateLimitInfo GetRateLimitInfo(string identifier, string rateLimitPolicy);
-    void ResetRateLimit(string identifier, string rateLimitPolicy);
-}
 
 public class ProductionRateLimitingService : IRateLimitingService
 {
@@ -144,20 +140,20 @@ public class RateLimitAttribute : ActionFilterAttribute
     public override async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
         var rateLimitingService = context.HttpContext.RequestServices.GetRequiredService<IRateLimitingService>();
-        
+
         // Get identifier (IP address or user ID)
         var identifier = GetIdentifier(context.HttpContext);
-        
+
         if (!rateLimitingService.IsAllowed(identifier, _policy))
         {
             var rateLimitInfo = rateLimitingService.GetRateLimitInfo(identifier, _policy);
-            
+
             context.HttpContext.Response.StatusCode = 429; // Too Many Requests
             context.HttpContext.Response.Headers["X-RateLimit-Limit"] = rateLimitInfo.Limit.ToString();
             context.HttpContext.Response.Headers["X-RateLimit-Remaining"] = rateLimitInfo.Remaining.ToString();
             context.HttpContext.Response.Headers["X-RateLimit-Reset"] = rateLimitInfo.ResetTime.ToString("O");
             context.HttpContext.Response.Headers["Retry-After"] = ((int)rateLimitInfo.WindowDuration.TotalSeconds).ToString();
-            
+
             await context.HttpContext.Response.WriteAsync("Rate limit exceeded. Please try again later.");
             return;
         }
@@ -182,7 +178,7 @@ public class RateLimitAttribute : ActionFilterAttribute
 
         // Fall back to IP address
         var ipAddress = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        
+
         // Check for forwarded IP
         if (context.Request.Headers.TryGetValue("X-Forwarded-For", out var forwardedFor))
         {
@@ -195,106 +191,4 @@ public class RateLimitAttribute : ActionFilterAttribute
 
         return $"ip:{ipAddress}";
     }
-}
-
-/// <summary>
-/// Rate limit policy configuration
-/// </summary>
-public record RateLimitPolicy(int RequestLimit, TimeSpan TimeWindow);
-
-/// <summary>
-/// Rate limit bucket for tracking requests
-/// </summary>
-public class RateLimitBucket
-{
-    private readonly RateLimitPolicy _policy;
-    private readonly object _lock = new();
-    private int _requestCount;
-    private DateTime _windowStart;
-
-    public RateLimitBucket(RateLimitPolicy policy)
-    {
-        _policy = policy;
-        _windowStart = DateTime.UtcNow;
-        _requestCount = 0;
-    }
-
-    public bool TryConsume()
-    {
-        lock (_lock)
-        {
-            var now = DateTime.UtcNow;
-            
-            // Reset window if expired
-            if (now - _windowStart >= _policy.TimeWindow)
-            {
-                _windowStart = now;
-                _requestCount = 0;
-            }
-
-            // Check if limit exceeded
-            if (_requestCount >= _policy.RequestLimit)
-            {
-                return false;
-            }
-
-            _requestCount++;
-            return true;
-        }
-    }
-
-    public int RemainingRequests
-    {
-        get
-        {
-            lock (_lock)
-            {
-                var now = DateTime.UtcNow;
-                
-                // Reset window if expired
-                if (now - _windowStart >= _policy.TimeWindow)
-                {
-                    return _policy.RequestLimit;
-                }
-
-                return Math.Max(0, _policy.RequestLimit - _requestCount);
-            }
-        }
-    }
-
-    public DateTime ResetTime
-    {
-        get
-        {
-            lock (_lock)
-            {
-                return _windowStart.Add(_policy.TimeWindow);
-            }
-        }
-    }
-
-    public bool IsExpired
-    {
-        get
-        {
-            lock (_lock)
-            {
-                var now = DateTime.UtcNow;
-                return now - _windowStart >= _policy.TimeWindow.Add(TimeSpan.FromMinutes(5));
-            }
-        }
-    }
-}
-
-/// <summary>
-/// Rate limit information
-/// </summary>
-public class RateLimitInfo
-{
-    public string Identifier { get; set; } = string.Empty;
-    public string Policy { get; set; } = string.Empty;
-    public int Limit { get; set; }
-    public int Remaining { get; set; }
-    public DateTime ResetTime { get; set; }
-    public TimeSpan WindowDuration { get; set; }
 }

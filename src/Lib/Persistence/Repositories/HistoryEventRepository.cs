@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using VertexBPMN.Core.Contracts.Repositories;
 using VertexBPMN.Domain;
 
 namespace VertexBPMN.Persistence.Repositories;

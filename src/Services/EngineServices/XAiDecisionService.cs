@@ -11,6 +11,7 @@ using VertexBPMN.Core.Contracts;
 using VertexBPMN.Core.Exceptions;
 using VertexBPMN.Core.Modeling;
 using VertexBPMN.Domain;
+using VertexBPMN.Domain.Modeling;
 
 namespace VertexBPMN.EngineServices;
 

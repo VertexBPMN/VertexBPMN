@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using VertexBPMN.Core.Contracts;
 using VertexBPMN.Core.Modeling;
+using VertexBPMN.Domain.Modeling;
 
 namespace VertexBPMN.EngineServices;
 
@@ -14,22 +15,6 @@ namespace VertexBPMN.EngineServices;
 /// </summary>
 public sealed class FakeAiDecisionService : IAiDecisionService
 {
-    /*
-    PSEUDOCODE PLAN
-    - Maintain an int field _cloneInvocations for how many times Clone() was called on this instance.
-    - Optional Action<FakeAiDecisionService>? _onClone invoked when a clone is created (for test hooks).
-    - Constructors:
-        - Public parameterless
-        - Internal private that accepts callback and current invocation count (used during cloning)
-    - Clone():
-        - Increment _cloneInvocations thread-safely (Interlocked.Increment).
-        - Create new FakeAiDecisionService passing same callback, with cloned count = 0 (fresh instance).
-        - Invoke callback (if any) with the new instance.
-        - Return the new instance as IAiDecisionService.
-    - Expose CloneInvocations property (int) using Volatile.Read.
-    - Provide static Create(factory) overload to allow specifying callback.
-    - Ensure thread safety for counters.
-    */
 
     private int _cloneInvocations;
     private readonly Action<FakeAiDecisionService>? _onClone;

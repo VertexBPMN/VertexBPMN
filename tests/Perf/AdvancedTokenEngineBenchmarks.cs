@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using VertexBPMN.Core.Engine;
-using VertexBPMN.Core.Modeling;
+using VertexBPMN.Domain.Modeling;
 using VertexBPMN.EngineServices;
 
 namespace VertexBPMN.Tests.Perf;

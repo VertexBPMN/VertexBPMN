@@ -1,5 +1,5 @@
-using VertexBPMN.Core.Modeling;
 using VertexBPMN.Domain;
+using VertexBPMN.Domain.Modeling;
 
 namespace VertexBPMN.Core.Contracts;
 

@@ -1,4 +1,4 @@
-﻿using VertexBPMN.Core.Handlers;
+﻿using VertexBPMN.EngineServices.Handlers;
 
 namespace VertexBPMN.Tests.Integration.Handlers;
 

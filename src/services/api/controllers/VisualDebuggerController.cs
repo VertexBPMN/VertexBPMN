@@ -4,6 +4,7 @@ using System.Threading;
 using VertexBPMN.Persistence.Repositories;
 using System.Threading.Tasks;
 using VertexBPMN.Core.Contracts;
+using VertexBPMN.Core.Contracts.Repositories;
 using VertexBPMN.Domain;
 
 namespace VertexBPMN.Api.Controllers

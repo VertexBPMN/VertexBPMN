@@ -1,5 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Caching.Memory;
+using VertexBPMN.Core;
+using VertexBPMN.Core.Contracts;
 
 namespace VertexBPMN.Api.Services;
 
@@ -7,16 +9,7 @@ namespace VertexBPMN.Api.Services;
 /// Production-Grade Caching Service
 /// Olympic-level feature: Production-Grade Features - Performance Optimization
 /// </summary>
-public interface ICachingService
-{
-    Task<T?> GetAsync<T>(string key);
-    Task SetAsync<T>(string key, T value, TimeSpan? expiry = null);
-    Task RemoveAsync(string key);
-    Task RemovePatternAsync(string pattern);
-    Task<T> GetOrSetAsync<T>(string key, Func<Task<T>> factory, TimeSpan? expiry = null);
-}
-
-public class ProductionCachingService : ICachingService
+public class ProductionCachingService : VertexBPMN.Core.Contracts.ICachingService
 {
     private readonly IMemoryCache _memoryCache;
     private readonly ILogger<ProductionCachingService> _logger;
@@ -153,23 +146,4 @@ public class ProductionCachingService : ICachingService
             throw;
         }
     }
-}
-
-/// <summary>
-/// Cache Keys Constants
-/// </summary>
-public static class CacheKeys
-{
-    public const string ProcessDefinition = "process_def_{0}";
-    public const string ProcessInstance = "process_inst_{0}";
-    public const string UserInfo = "user_{0}";
-    public const string TenantInfo = "tenant_{0}";
-    public const string SystemMetrics = "system_metrics";
-    public const string WorkerNodes = "worker_nodes";
-    public const string LoadBalancerStatus = "load_balancer_status";
-
-    public static string ProcessDefinitionById(Guid id) => string.Format(ProcessDefinition, id);
-    public static string ProcessInstanceById(Guid id) => string.Format(ProcessInstance, id);
-    public static string UserById(string userId) => string.Format(UserInfo, userId);
-    public static string TenantById(string tenantId) => string.Format(TenantInfo, tenantId);
 }

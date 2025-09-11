@@ -8,7 +8,7 @@ using System.Xml;
 using System.Xml.Linq;
 using VertexBPMN.Core.Contracts;
 using VertexBPMN.Core.Exceptions;
-using VertexBPMN.Core.Modeling;
+using VertexBPMN.Domain.Modeling;
 using static System.Net.Mime.MediaTypeNames;
 using Task = System.Threading.Tasks.Task;
 

@@ -3,7 +3,7 @@ using System.Xml;
 using System.Xml.Linq;
 using VertexBPMN.Core.Contracts;
 using VertexBPMN.Core.Exceptions;
-using VertexBPMN.Core.Modeling;
+using VertexBPMN.Domain.Modeling;
 
 namespace VertexBPMN.Core.Engine;
 
@@ -57,7 +57,7 @@ public class DmnParser : IDmnParser
                               ?? inputExpression?.Attribute("typeRef")?.Value
                               ?? input.Attribute("typeRef")?.Value
                               ?? "string";
-                return new Modeling.DmnInput(
+                return new Domain.Modeling.DmnInput(
                     inputId,
                     input.Attribute("label")?.Value ?? inputId,
                     typeRef
@@ -65,7 +65,7 @@ public class DmnParser : IDmnParser
             }).ToList();
 
             // Parse Outputs
-            var outputs = decisionTable.Descendants(ns + "output").Select(output => new Modeling.DmnOutput(
+            var outputs = decisionTable.Descendants(ns + "output").Select(output => new Domain.Modeling.DmnOutput(
                 output.Attribute("id")?.Value ?? throw new DmnParseException("Output ID missing"),
                 output.Attribute("label")?.Value ?? output.Attribute("id")?.Value ?? "",
                 output.Attribute("typeRef")?.Value ?? "string"
@@ -88,7 +88,7 @@ public class DmnParser : IDmnParser
                     return KeyValuePair.Create(outputRef, (object)value);
                 }).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
 
-                return new Modeling.DmnRule(ruleId, inputConditions, outputValues);
+                return new Domain.Modeling.DmnRule(ruleId, inputConditions, outputValues);
             }).ToList();
 
             // Validate
@@ -110,7 +110,7 @@ public class DmnParser : IDmnParser
         }
     }
 
-    private void ValidateDecision(string decisionId, List<Modeling.DmnInput> inputs, List<Modeling.DmnOutput> outputs, List<Modeling.DmnRule> rules, string hitPolicy)
+    private void ValidateDecision(string decisionId, List<Domain.Modeling.DmnInput> inputs, List<Domain.Modeling.DmnOutput> outputs, List<Domain.Modeling.DmnRule> rules, string hitPolicy)
     {
         if (!inputs.Any())
             throw new DmnParseException($"Decision {decisionId} has no inputs defined");

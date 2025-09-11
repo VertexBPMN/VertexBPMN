@@ -1,4 +1,4 @@
-﻿using VertexBPMN.Core.Modeling;
+﻿using VertexBPMN.Domain.Modeling;
 
 namespace VertexBPMN.Core.Scripting;
 

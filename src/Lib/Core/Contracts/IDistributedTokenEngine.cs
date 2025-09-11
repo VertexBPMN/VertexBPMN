@@ -1,5 +1,6 @@
 using VertexBPMN.Core.Modeling;
 using VertexBPMN.Domain;
+using VertexBPMN.Domain.Modeling;
 using Task = System.Threading.Tasks.Task;
 
 namespace VertexBPMN.Core.Contracts;

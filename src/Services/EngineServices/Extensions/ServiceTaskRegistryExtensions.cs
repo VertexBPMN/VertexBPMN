@@ -3,8 +3,8 @@ using System.Collections.Generic;
 using Microsoft.Extensions.DependencyInjection;
 using SendGrid;
 using VertexBPMN.Core.Contracts;
-using VertexBPMN.Core.Fakes;
-using VertexBPMN.Core.Handlers;
+using VertexBPMN.EngineServices.Fakes;
+using VertexBPMN.EngineServices.Handlers;
 
 namespace VertexBPMN.EngineServices.Extensions;
 
@@ -20,7 +20,7 @@ public static class ServiceTaskRegistryExtensions
         RegisterHandlers(services);
 
         // Füge die Handler zur Registry hinzu
-        services.AddSingleton(provider =>
+        services.AddSingleton(typeof(IServiceTaskRegistry), provider =>
         {
             var registry = new ServiceTaskRegistry();
 

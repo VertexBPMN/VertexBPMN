@@ -11,15 +11,15 @@
   <ItemGroup>
   <FrameworkReference Include="Microsoft.AspNetCore.App" />
   <PackageReference Include="Grpc.Core" Version="2.46.6" />
-  <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.8" />
-  <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.8" />
-  <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.8" />
+  <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.9" />
+  <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.9" />
+  <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.9" />
   <PackageReference Include="Microsoft.ML" Version="4.0.2" />
   <PackageReference Include="OpenTelemetry.Exporter.Jaeger" Version="1.5.1" />
   <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.12.0" />
   <PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.4" />
-  <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.8" />
-  <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="9.0.8" />
+  <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.9" />
+  <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="9.0.9" />
   <PackageReference Include="Grpc.AspNetCore" Version="2.71.0" />
   <PackageReference Include="Google.Protobuf" Version="3.32.0" />
   <PackageReference Include="Grpc.Tools" Version="2.72.0" PrivateAssets="All" />
@@ -36,11 +36,11 @@
     <ProjectReference Include="..\EngineServices\VertexBPMN.EngineServices.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
+  <!--<ItemGroup>
     <Reference Include="VertexBPMN.Api">
       <HintPath>..\..\Lib\Plugins\McpAgentPlugin\bin\Debug\net9.0\VertexBPMN.Api.dll</HintPath>
     </Reference>
-  </ItemGroup>
+  </ItemGroup>-->
 
 	<ItemGroup>
 		<Protobuf Include="Protos\*.proto" GrpcServices="Both" />
@@ -52,10 +52,6 @@
     <None Update="Protos\vertexbpmn_mcp.proto">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Mcp\" />
   </ItemGroup>
 
 </Project>

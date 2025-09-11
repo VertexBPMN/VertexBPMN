@@ -6,10 +6,9 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using System.Xml;
 using System.Xml.Linq;
-using VertexBPMN.Core.Contracts;
-using VertexBPMN.Core.Exceptions;
+using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Exceptions;
 using VertexBPMN.Domain.Modeling;
-using static System.Net.Mime.MediaTypeNames;
 using Task = System.Threading.Tasks.Task;
 
 namespace VertexBPMN.Core.Engine

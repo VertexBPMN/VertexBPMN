@@ -2,7 +2,7 @@
 using Microsoft.Extensions.Logging;
 using Moq;
 using VertexBPMN.Core.Engine;
-using VertexBPMN.Core.Exceptions;
+using VertexBPMN.Domain.Exceptions;
 
 namespace VertexBPMN.Tests.Integration.Engine;
 

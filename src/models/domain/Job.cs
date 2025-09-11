@@ -14,5 +14,8 @@ public class Job
     public int Retries { get; set; }
     public string? ErrorMessage { get; set; }
     public string? TenantId { get; set; }
+    public ProcessInstance ProcessInstance { get; set; } = null!;
+    public string State { get; set; } = string.Empty;
+    public string? Payload { get; set; }
     // TODO: Add job handler, status, etc.
 }

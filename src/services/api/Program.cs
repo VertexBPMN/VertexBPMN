@@ -10,19 +10,19 @@ using VertexBPMN.Api.Plugins;
 using VertexBPMN.Api.Security;
 using VertexBPMN.Api.Services;
 using VertexBPMN.Core;
-using VertexBPMN.Core.Contracts;
-using VertexBPMN.Core.Contracts.Repositories;
 using VertexBPMN.Core.Engine;
+using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Contracts.Repositories;
 using VertexBPMN.EngineServices;
 using VertexBPMN.EngineServices.Extensions;
 using VertexBPMN.EngineServices.Messaging;
 using VertexBPMN.Persistence;
 using VertexBPMN.Persistence.Repositories;
 using VertexBPMN.Persistence.Services;
-using ICachingService = VertexBPMN.Core.Contracts.ICachingService;
-using IHealthMonitoringService = VertexBPMN.Core.Contracts.IHealthMonitoringService;
-using IRateLimitingService = VertexBPMN.Core.Contracts.IRateLimitingService;
-using IResilienceService = VertexBPMN.Core.Contracts.IResilienceService;
+using ICachingService = VertexBPMN.Domain.Contracts.ICachingService;
+using IHealthMonitoringService = VertexBPMN.Domain.Contracts.IHealthMonitoringService;
+using IRateLimitingService = VertexBPMN.Domain.Contracts.IRateLimitingService;
+using IResilienceService = VertexBPMN.Domain.Contracts.IResilienceService;
 using RepositoryService = VertexBPMN.EngineServices.RepositoryService;
 
 
@@ -125,6 +125,8 @@ builder.Services.AddScoped<IProcessDefinitionRepository, ProcessDefinitionReposi
 
 	// Olympic-level Enterprise Scalability: SignalR real-time monitoring
 	builder.Services.AddSignalR();
+	builder.Services.AddVertexEngineServices(false);
+
     builder.Services.AddSingleton<IServiceTaskRegistry,ServiceTaskRegistry>();
     builder.Services.AddSingleton<IMessageDispatcher, InMemoryMessageDispatcher>();
 	builder.Services.AddSingleton<IAiDecisionService, FakeAiDecisionService>();

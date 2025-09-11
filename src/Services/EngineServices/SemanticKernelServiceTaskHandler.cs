@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.SemanticKernel;
 using Polly;
 using Polly.Retry;
-using VertexBPMN.Core.Contracts;
+using VertexBPMN.Domain.Contracts;
 
 namespace VertexBPMN.EngineServices;
 

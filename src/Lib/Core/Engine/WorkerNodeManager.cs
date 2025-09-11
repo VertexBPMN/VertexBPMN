@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
-using VertexBPMN.Core.Contracts;
 using VertexBPMN.Domain;
+using VertexBPMN.Domain.Contracts;
 using Task = System.Threading.Tasks.Task;
 
 namespace VertexBPMN.Core.Engine;

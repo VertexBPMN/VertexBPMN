@@ -1,7 +1,8 @@
 #nullable enable
 using Microsoft.Extensions.DependencyInjection;
-using VertexBPMN.Core.Contracts;
+using VertexBPMN.Domain.Contracts;
 using VertexBPMN.EngineServices.Extensions;
+using VertexBPMN.EngineServices.Messaging;
 
 namespace VertexBPMN.EngineServices;
 
@@ -23,12 +24,14 @@ public static class EngineServiceModule
 
         if (useInMemory)
         {
-            services.AddSingleton<IRepositoryService, RepositoryService>(); // still needs repository behind but kept for completeness
+            services.AddSingleton<IRepositoryService, InMemoryRepositoryService>(); // still needs repository behind but kept for completeness
             services.AddSingleton<IRuntimeService, InMemoryRuntimeService>();
             services.AddSingleton<ITaskService, InMemoryTaskService>();
             services.AddSingleton<IHistoryService, InMemoryHistoryService>();
             services.AddSingleton<IAiDecisionService, FakeAiDecisionService>();
             services.AddSingleton<IProcessInstanceStore, InMemoryProcessInstanceStore>();
+            services.AddSingleton<IProcessMiningEventSink, InMemoryEventSink>();
+            services.AddSingleton<IMessageDispatcher, InMemoryMessageDispatcher>();
         }
         else
         {

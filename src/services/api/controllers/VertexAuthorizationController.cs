@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using System.Collections.Generic;
-using VertexBPMN.Core.Contracts;
+using VertexBPMN.Domain.Contracts;
 
 namespace VertexBPMN.Api.Controllers;
 

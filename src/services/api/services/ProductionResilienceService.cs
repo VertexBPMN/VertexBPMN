@@ -1,6 +1,6 @@
 using Polly;
-using VertexBPMN.Core.Contracts;
 using VertexBPMN.Domain;
+using VertexBPMN.Domain.Contracts;
 
 namespace VertexBPMN.Api.Services;
 

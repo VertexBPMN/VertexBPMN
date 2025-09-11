@@ -3,12 +3,12 @@ using System.Diagnostics;
 using System.Net.NetworkInformation;
 using System.Reflection;
 using Microsoft.EntityFrameworkCore;
-using VertexBPMN.Core.Contracts;
 using VertexBPMN.Domain;
+using VertexBPMN.Domain.Contracts;
 
 namespace VertexBPMN.Api.Services;
 
-public class ProductionHealthMonitoringService : VertexBPMN.Core.Contracts.IHealthMonitoringService
+public class ProductionHealthMonitoringService : IHealthMonitoringService
 {
     private readonly ILogger<ProductionHealthMonitoringService> _logger;
     private readonly IServiceProvider _serviceProvider;

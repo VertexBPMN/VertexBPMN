@@ -14,5 +14,7 @@ public class ProcessDefinition
     public string BpmnXml { get; set; } = string.Empty;
     public string? TenantId { get; set; }
     public DateTime CreatedAt { get; set; }
+    public Guid DeploymentId { get; set; }
+    public EngineDeployment Deployment { get; set; } = null!;
     // TODO: Add additional metadata as needed
 }

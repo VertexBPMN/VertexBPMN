@@ -1,6 +1,6 @@
 using System.Collections.Generic;
-using VertexBPMN.Core.Contracts;
 using VertexBPMN.Domain;
+using VertexBPMN.Domain.Contracts;
 
 namespace VertexBPMN.EngineServices
 {

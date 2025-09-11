@@ -2,8 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using VertexBPMN.Core.Contracts;
-using VertexBPMN.Core.Contracts.Repositories;
+using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Contracts.Repositories;
 using VertexBPMN.Persistence.Repositories;
 using VertexBPMN.Persistence.Services;
 

@@ -27,6 +27,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\models\domain\VertexBPMN.Domain.csproj" />
+    <ProjectReference Include="..\..\Models\Domain\VertexBPMN.Domain.csproj" />
+    <ProjectReference Include="..\..\Services\EngineServices\VertexBPMN.EngineServices.csproj" />
   </ItemGroup>
 </Project>

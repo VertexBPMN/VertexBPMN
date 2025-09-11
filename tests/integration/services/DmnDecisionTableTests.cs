@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using VertexBPMN.Core.Engine;
+using VertexBPMN.Domain.Modeling;
 using Xunit;
 
 namespace VertexBPMN.Tests.Services.Dmn;

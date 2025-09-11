@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using Microsoft.AspNetCore.SignalR;
-using VertexBPMN.Core.Contracts;
+using VertexBPMN.Domain.Contracts;
 using VertexBPMN.Domain.Debugging;
 
 namespace VertexBPMN.Api.Debug;

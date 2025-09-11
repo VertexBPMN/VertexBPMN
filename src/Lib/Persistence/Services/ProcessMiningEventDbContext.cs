@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using VertexBPMN.Core.Contracts;
+using VertexBPMN.Domain.Contracts;
 
 namespace VertexBPMN.Persistence.Services
 {

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
-using VertexBPMN.Core.Contracts;
+using VertexBPMN.Domain.Contracts;
 using VertexBPMN.Persistence.Services;
 
 namespace VertexBPMN.Persistence.Services

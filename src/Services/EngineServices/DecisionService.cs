@@ -3,8 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using VertexBPMN.Core.Contracts;
-using VertexBPMN.Core.Engine;
+using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Modeling;
 
 namespace VertexBPMN.EngineServices;
 

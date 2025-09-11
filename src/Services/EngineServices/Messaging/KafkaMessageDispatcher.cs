@@ -1,7 +1,8 @@
 ﻿using System.Collections.Concurrent;
 using System.Collections.Generic;
-using VertexBPMN.Core.Contracts;
 using VertexBPMN.Domain;
+using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Exceptions;
 using VertexBPMN.Domain.Modeling;
 
 namespace VertexBPMN.Core.Messaging;
@@ -13,7 +14,6 @@ using System;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using VertexBPMN.Core.Exceptions;
 
 /// <summary>
 /// Kafka based implementation of IMessageDispatcher.

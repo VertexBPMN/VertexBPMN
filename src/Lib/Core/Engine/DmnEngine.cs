@@ -1,7 +1,7 @@
 ﻿using Jint;
 using Microsoft.Extensions.Logging;
-using VertexBPMN.Core.Contracts;
-using VertexBPMN.Core.Exceptions;
+using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Exceptions;
 using VertexBPMN.Domain.Modeling;
 
 namespace VertexBPMN.Core.Engine;

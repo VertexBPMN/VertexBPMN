@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Caching.Memory;
 using VertexBPMN.Core;
-using VertexBPMN.Core.Contracts;
+using VertexBPMN.Domain.Contracts;
 
 namespace VertexBPMN.Api.Services;
 
@@ -9,7 +9,7 @@ namespace VertexBPMN.Api.Services;
 /// Production-Grade Caching Service
 /// Olympic-level feature: Production-Grade Features - Performance Optimization
 /// </summary>
-public class ProductionCachingService : VertexBPMN.Core.Contracts.ICachingService
+public class ProductionCachingService : ICachingService
 {
     private readonly IMemoryCache _memoryCache;
     private readonly ILogger<ProductionCachingService> _logger;

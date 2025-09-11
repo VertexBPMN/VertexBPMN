@@ -2,9 +2,9 @@ using Microsoft.Extensions.Logging;
 using SendGrid;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
-using VertexBPMN.Core.Contracts;
 using VertexBPMN.Core.Scripting;
 using VertexBPMN.Domain;
+using VertexBPMN.Domain.Contracts;
 using VertexBPMN.Domain.Modeling;
 using Task = System.Threading.Tasks.Task;
 

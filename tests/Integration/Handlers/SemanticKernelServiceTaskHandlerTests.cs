@@ -5,8 +5,8 @@ using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Moq;
 using OpenTelemetry.Trace;
-using VertexBPMN.Core.Contracts;
 using VertexBPMN.Core.Engine;
+using VertexBPMN.Domain.Contracts;
 using VertexBPMN.EngineServices;
 using VertexBPMN.EngineServices.Extensions;
 

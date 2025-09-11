@@ -7,7 +7,7 @@ using System.Text;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
-using VertexBPMN.Core.Contracts;
+using VertexBPMN.Domain.Contracts;
 
 namespace VertexBPMN.EngineServices;
 

@@ -7,9 +7,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using OpenTelemetry.Trace;
-using VertexBPMN.Core.Contracts;
-using VertexBPMN.Core.Exceptions;
 using VertexBPMN.Domain;
+using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Exceptions;
 
 namespace VertexBPMN.EngineServices.Handlers;
 

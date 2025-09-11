@@ -1,3 +1,7 @@
 namespace VertexBPMN.Domain.Modeling;
 
-public record DmnOutput(string Id, string Label, string TypeRef);
+public record DmnOutput(string Id, string Label, string TypeRef)
+{
+    // Backward compatibility
+    public DmnOutput(string Id, string Label) : this(Id, Label, "string") { }
+}

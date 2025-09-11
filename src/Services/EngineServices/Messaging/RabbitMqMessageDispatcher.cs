@@ -5,8 +5,8 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using RabbitMQ.Client;
-using VertexBPMN.Core.Contracts;
 using VertexBPMN.Domain;
+using VertexBPMN.Domain.Contracts;
 using VertexBPMN.Domain.Modeling;
 
 namespace VertexBPMN.Core.Messaging

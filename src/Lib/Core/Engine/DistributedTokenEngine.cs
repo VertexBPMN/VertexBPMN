@@ -10,11 +10,11 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Diagnostics;
-using VertexBPMN.Core.Contracts;
-using VertexBPMN.Core.Exceptions;
 using VertexBPMN.Core.Modeling;
 using VertexBPMN.Core.Scripting;
 using VertexBPMN.Domain;
+using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Exceptions;
 using VertexBPMN.Domain.Modeling;
 
 namespace VertexBPMN.Core.Engine

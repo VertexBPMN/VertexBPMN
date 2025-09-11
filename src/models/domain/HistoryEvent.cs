@@ -13,5 +13,8 @@ public class HistoryEvent
     public DateTime Timestamp { get; set; }
     public string? Details { get; set; }
     public string? TenantId { get; set; }
-    // TODO: Add event-specific properties
+    public ProcessInstance ProcessInstance { get; set; } = null!;
+    public string ElementId { get; set; } = string.Empty;
+    public string? Data { get; set; }
+    // TODO: Add event-specific properties as needed
 }

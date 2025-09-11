@@ -1,8 +1,8 @@
 ﻿using Microsoft.Extensions.Logging;
 using System.Xml;
 using System.Xml.Linq;
-using VertexBPMN.Core.Contracts;
-using VertexBPMN.Core.Exceptions;
+using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Exceptions;
 using VertexBPMN.Domain.Modeling;
 
 namespace VertexBPMN.Core.Engine;

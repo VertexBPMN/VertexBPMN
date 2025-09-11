@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using OpenTelemetry.Trace;
 using VertexBPMN.Core.Engine;
-using VertexBPMN.Core.Exceptions;
+using VertexBPMN.Domain.Exceptions;
 
 // added for reading BPMN file
 

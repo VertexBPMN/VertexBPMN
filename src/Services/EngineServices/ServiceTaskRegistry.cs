@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Concurrent;
-using VertexBPMN.Core.Contracts;
-using VertexBPMN.Core.Exceptions;
+using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Exceptions;
 
 namespace VertexBPMN.EngineServices;
 

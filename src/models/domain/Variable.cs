@@ -14,5 +14,8 @@ public class Variable
     public string Type { get; set; } = string.Empty;
     public string? Value { get; set; }
     public string? TenantId { get; set; }
+    public Guid ProcessInstanceId { get; set; }
+    public ProcessInstance ProcessInstance { get; set; } = null!;
+    public DateTime CreatedAt { get; set; }
     // TODO: Add serialization, scope type, etc.
 }

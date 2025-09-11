@@ -24,4 +24,5 @@ public class ProcessInstance
     public Dictionary<string, object> Variables { get; set; } = new();
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime LastModified { get; set; } = DateTime.UtcNow;
+    public ProcessDefinition ProcessDefinition { get; set; } = null!;
 }

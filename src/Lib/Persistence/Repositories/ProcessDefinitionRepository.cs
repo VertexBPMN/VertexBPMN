@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
-using VertexBPMN.Core.Contracts.Repositories;
 using VertexBPMN.Domain;
+using VertexBPMN.Domain.Contracts.Repositories;
 
 namespace VertexBPMN.Persistence.Repositories;
 

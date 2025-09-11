@@ -10,7 +10,7 @@ using System.Text.Json;
 using System.Net.WebSockets;
 using System.Threading.Tasks;
 using System.Text;
-using VertexBPMN.Core.Contracts;
+using VertexBPMN.Domain.Contracts;
 using VertexBPMN.McpAdapter.Config; // Added for telemetry extension
 
 namespace VertexBPMN.McpAdapter

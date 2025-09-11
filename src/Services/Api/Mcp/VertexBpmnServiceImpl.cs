@@ -1,6 +1,6 @@
 using Grpc.Core;
 using VertexBPMN.Api.Grpc;
-using VertexBPMN.Core.Contracts;
+using VertexBPMN.Domain.Contracts;
 
 namespace VertexBPMN.Api.Mcp;
 

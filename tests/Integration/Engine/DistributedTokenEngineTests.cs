@@ -2,10 +2,10 @@
 using Microsoft.Extensions.Logging;
 using Moq;
 using OpenTelemetry.Trace;
-using VertexBPMN.Core.Contracts;
 using VertexBPMN.Core.Engine;
 using VertexBPMN.Core.Modeling;
 using VertexBPMN.Domain;
+using VertexBPMN.Domain.Contracts;
 using VertexBPMN.Domain.Modeling;
 using VertexBPMN.EngineServices;
 using DmnInput = VertexBPMN.Domain.Modeling.DmnInput;
@@ -122,10 +122,10 @@ public class DistributedTokenEngineTests
         store.Setup(s => s.GetActiveWorkersAsync()).ReturnsAsync(new List<WorkerNode>());
 
         var decision = new DmnDecision("decision1", "Test Decision",
-            new List<DmnInput> { new("input1", "Amount", "double") },
-            new List<DmnOutput> { new("output1", "Result", "string") },
-            new List<DmnRule> { new("rule1", new Dictionary<string, string> { { "input1", "> 100" } },
-                new Dictionary<string, object> { { "output1", "Approved" } }) });
+            new List<DmnInput> { new((string)"input1", (string)"Amount", (string)"double") },
+            new List<DmnOutput> { new((string)"output1", (string)"Result", (string)"string") },
+            new List<DmnRule> { new((string) "rule1", (IReadOnlyDictionary<string, string>) new Dictionary<string, string> { { "input1", "> 100" } },
+                (IReadOnlyDictionary<string, object>) new Dictionary<string, object> { { "output1", "Approved" } }) });
 
         dmnParser.Setup(p => p.ParseAsync(It.IsAny<string>(), CancellationToken.None)).ReturnsAsync(decision);
         dmnEngine.Setup(e => e.EvaluateDecisionAsync(decision, It.IsAny<Dictionary<string, object>>(), CancellationToken.None))
@@ -228,6 +228,44 @@ public class DistributedTokenEngineTests
         Assert.Contains("Start->Token:task1", trace);
         //store.Verify(s => s.SaveTokenAsync(It.IsAny<ExecutionToken>()), Times.Once);
         dispatcher.Verify(d => d.PublishTokenAsync(It.IsAny<ExecutionToken>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+
+    [Fact]
+    public async Task ExecuteAsync_With_the_EngineBuilder()
+    {   
+   
+        // 1. Definiere ein einfaches BPMN 2.0-Prozessmodell als XML-String
+        const string bpmnProcess = @"
+            <?xml version=""1.0"" encoding=""UTF-8""?>
+            <bpmn:definitions xmlns:bpmn=""[http://www.omg.org/spec/BPMN/20100524/MODEL](http://www.omg.org/spec/BPMN/20100524/MODEL)"" 
+                              targetNamespace=""[http://bpmn.io/schema/bpmn](http://bpmn.io/schema/bpmn)"">
+              <bpmn:process id=""Process_HelloWorld"" isExecutable=""true"">
+                <bpmn:startEvent id=""StartEvent_1""/>
+              </bpmn:process>
+            </bpmn:definitions>";
+
+        // 2. Baue eine In-Memory-Engine für einen schnellen Test
+        var engine = await new EngineBuilder()
+            .UseInMemoryStorage()
+            .UseDistributedExecution()
+            .ConfigureServices(services =>
+            {
+                // Add any additional services or overrides here if needed
+            })
+            .BuildAsync();
+
+        // 3. Deploye den Prozess in die Engine
+         var task = engine.RegisterProcessAsync("hello-world.bpmn", bpmnProcess);
+
+        Console.WriteLine($"Prozess '{task.Id}' erfolgreich deployed.");
+
+        // 4. Starte eine neue Instanz des Prozesses
+        var processInstance = await engine.StartInstanceAsync("Process_HelloWorld", null);
+
+        Console.WriteLine($"Prozessinstanz mit der ID '{processInstance}' wurde gestartet!");
+
+
     }
 }
 

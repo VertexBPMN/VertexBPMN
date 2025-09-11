@@ -3,9 +3,9 @@ using System.Reflection;
 using Microsoft.Extensions.Logging;
 using Moq;
 using OpenTelemetry.Trace;
-using VertexBPMN.Core.Contracts;
 using VertexBPMN.Core.Engine;
 using VertexBPMN.Core.Modeling;
+using VertexBPMN.Domain.Contracts;
 using VertexBPMN.Domain.Modeling;
 using VertexBPMN.EngineServices;
 

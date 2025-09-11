@@ -1,8 +1,4 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-
-  <ItemGroup>
-  <ProjectReference Include="..\Core\VertexBPMN.Core.csproj" />
-  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.9" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.9" />
@@ -16,6 +12,9 @@
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Stores\" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Models\Domain\VertexBPMN.Domain.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

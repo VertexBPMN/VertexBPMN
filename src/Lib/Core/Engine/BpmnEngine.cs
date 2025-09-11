@@ -2,10 +2,10 @@ using Microsoft.Extensions.Logging;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading.Tasks;
-using VertexBPMN.Core.Contracts;
 using VertexBPMN.Core.Engine;
-using VertexBPMN.Core.Exceptions;
 using VertexBPMN.Domain;
+using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Exceptions;
 using VertexBPMN.Domain.Modeling;
 using Task = System.Threading.Tasks.Task;
 
@@ -16,9 +16,9 @@ namespace VertexBPMN.Core.Engine
         private readonly IBpmnParser _parser;
         private readonly IDistributedTokenEngine _engine;
         private readonly IProcessInstanceStore _store;
-        private readonly ILogger _logger;
+        private readonly ILogger<BpmnEngine> _logger;
 
-        public BpmnEngine(IBpmnParser parser, IDistributedTokenEngine engine, IProcessInstanceStore store, ILogger logger)
+        public BpmnEngine(IBpmnParser parser, IDistributedTokenEngine engine, IProcessInstanceStore store, ILogger<BpmnEngine> logger)
         {
             _parser = parser ?? throw new ArgumentNullException(nameof(parser));
             _engine = engine ?? throw new ArgumentNullException(nameof(engine));

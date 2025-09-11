@@ -14,4 +14,6 @@ public class Incident
     public DateTime CreatedAt { get; set; }
     public string? TenantId { get; set; }
     // TODO: Add resolution, status, etc.
+    public ProcessInstance ProcessInstance { get; set; } = null!;
+    public string State { get; set; }
 }

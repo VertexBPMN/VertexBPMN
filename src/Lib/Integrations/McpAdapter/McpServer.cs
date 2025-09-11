@@ -6,7 +6,7 @@ using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using VertexBPMN.Core.Contracts;
+using VertexBPMN.Domain.Contracts;
 
 public class McpServer
 {

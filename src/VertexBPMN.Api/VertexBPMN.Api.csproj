@@ -31,10 +31,11 @@
   </ItemGroup>
 
   <ItemGroup>
-  <ProjectReference Include="..\..\Lib\Core\VertexBPMN.Core.csproj" />
-    <ProjectReference Include="..\..\Lib\persistence\VertexBPMN.Persistence.csproj" />
-    <ProjectReference Include="..\EngineServices\VertexBPMN.EngineServices.csproj" />
-  </ItemGroup>
+  <ProjectReference Include="..\VertexBPMN.Domain\VertexBPMN.Domain.csproj" />
+  <ProjectReference Include="..\VertexBPMN.Application\VertexBPMN.Application.csproj" />
+  <ProjectReference Include="..\VertexBPMN.Infrastructure\VertexBPMN.Infrastructure.csproj" />
+  <ProjectReference Include="..\VertexBPMN.Engine\VertexBPMN.Engine.csproj" />
+</ItemGroup>
 
   <!--<ItemGroup>
     <Reference Include="VertexBPMN.Api">

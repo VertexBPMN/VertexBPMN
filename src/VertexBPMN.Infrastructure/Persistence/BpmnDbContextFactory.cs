@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
-namespace VertexBPMN.Persistence;
+namespace VertexBPMN.Infrastructure.Persistence;
 
 public class BpmnDbContextFactory : IDesignTimeDbContextFactory<BpmnDbContext>
 {

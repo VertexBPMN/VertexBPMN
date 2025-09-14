@@ -1,8 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
-using VertexBPMN.Persistence.Services;
+using VertexBPMN.Infrastructure.Persistence.Services;
 
-namespace VertexBPMN.Persistence
+namespace VertexBPMN.Infrastructure.Persistence
 {
     public class ProcessMiningEventDbContextFactory : IDesignTimeDbContextFactory<ProcessMiningEventDbContext>
     {

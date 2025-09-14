@@ -1,9 +1,6 @@
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
+using VertexBPMN.Domain.Entities;
 
-namespace VertexBPMN.Domain.Contracts;
+namespace VertexBPMN.Domain.Interfaces;
 
 /// <summary>
 /// Provides operations for managing user tasks, assignments, and completion.

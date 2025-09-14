@@ -1,6 +1,4 @@
-using System;
-
-namespace VertexBPMN.Domain;
+namespace VertexBPMN.Domain.Entities;
 
 public class TaskEntity
 {

@@ -1,11 +1,11 @@
-﻿using Microsoft.Extensions.Logging;
-using System.Xml;
+﻿using System.Xml;
 using System.Xml.Linq;
-using VertexBPMN.Domain.Contracts;
+using Microsoft.Extensions.Logging;
+using VertexBPMN.Domain.Entities.Modeling;
 using VertexBPMN.Domain.Exceptions;
-using VertexBPMN.Domain.Modeling;
+using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.Core.Engine;
+namespace VertexBPMN.Engine.Parsing;
 
 /// <summary>
 /// Parses DMN XML into a DmnDecision model.
@@ -57,7 +57,7 @@ public class DmnParser : IDmnParser
                               ?? inputExpression?.Attribute("typeRef")?.Value
                               ?? input.Attribute("typeRef")?.Value
                               ?? "string";
-                return new Domain.Modeling.DmnInput(
+                return new DmnInput(
                     inputId,
                     input.Attribute("label")?.Value ?? inputId,
                     typeRef
@@ -65,7 +65,7 @@ public class DmnParser : IDmnParser
             }).ToList();
 
             // Parse Outputs
-            var outputs = decisionTable.Descendants(ns + "output").Select(output => new Domain.Modeling.DmnOutput(
+            var outputs = decisionTable.Descendants(ns + "output").Select(output => new DmnOutput(
                 output.Attribute("id")?.Value ?? throw new DmnParseException("Output ID missing"),
                 output.Attribute("label")?.Value ?? output.Attribute("id")?.Value ?? "",
                 output.Attribute("typeRef")?.Value ?? "string"
@@ -88,7 +88,7 @@ public class DmnParser : IDmnParser
                     return KeyValuePair.Create(outputRef, (object)value);
                 }).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
 
-                return new Domain.Modeling.DmnRule(ruleId, inputConditions, outputValues);
+                return new DmnRule(ruleId, inputConditions, outputValues);
             }).ToList();
 
             // Validate
@@ -110,7 +110,7 @@ public class DmnParser : IDmnParser
         }
     }
 
-    private void ValidateDecision(string decisionId, List<Domain.Modeling.DmnInput> inputs, List<Domain.Modeling.DmnOutput> outputs, List<Domain.Modeling.DmnRule> rules, string hitPolicy)
+    private void ValidateDecision(string decisionId, List<DmnInput> inputs, List<DmnOutput> outputs, List<DmnRule> rules, string hitPolicy)
     {
         if (!inputs.Any())
             throw new DmnParseException($"Decision {decisionId} has no inputs defined");

@@ -1,14 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Net.Http;
-using System.Net.Http.Headers;
-using System.Threading;
-using System.Threading.Tasks;
+﻿using System.Net.Http.Headers;
 using Microsoft.Extensions.Logging;
 using SendGrid;
 using SendGrid.Helpers.Mail;
 
-namespace VertexBPMN.EngineServices.Fakes;
+namespace VertexBPMN.Application.Fakes;
 
 /// <summary>
 /// A fake implementation of ISendGridClient for offline and unit testing.

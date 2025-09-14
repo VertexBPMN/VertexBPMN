@@ -1,10 +1,8 @@
-using System.Collections.Generic;
-using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
-using VertexBPMN.Domain;
-using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Entities;
+using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.Persistence.Services
+namespace VertexBPMN.Infrastructure.Persistence.Services
 {
     public class SimulationScenarioService : ISimulationScenarioService
     {

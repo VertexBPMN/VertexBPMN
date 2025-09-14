@@ -1,6 +1,6 @@
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Mvc.Testing;
-using VertexBPMN.EngineServices;
+using VertexBPMN.Application;
 
 namespace VertexBPMN.Tests.Integration.Mcp;
 public class McpAgentServiceTests : IClassFixture<WebApplicationFactory<VertexBPMN.Api.Program>>

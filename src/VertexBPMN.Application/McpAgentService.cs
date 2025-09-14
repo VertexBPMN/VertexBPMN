@@ -1,15 +1,8 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Net.Http;
 using System.Text;
 using System.Text.Json.Nodes;
-using System.Threading;
-using System.Threading.Tasks;
-using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.EngineServices;
+namespace VertexBPMN.Application;
 
 /// <summary>
 /// Service für MCP-Agent-Kommunikation (REST + WebSocket)

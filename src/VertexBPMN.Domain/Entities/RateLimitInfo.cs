@@ -1,6 +1,4 @@
-using System;
-
-namespace VertexBPMN.Domain;
+namespace VertexBPMN.Domain.Entities;
 
 /// <summary>
 /// Rate limit information

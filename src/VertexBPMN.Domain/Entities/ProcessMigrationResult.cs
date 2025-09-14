@@ -1,6 +1,4 @@
-using System.Collections.Generic;
-
-namespace VertexBPMN.Domain
+namespace VertexBPMN.Domain.Entities
 {
     public class ProcessMigrationResult
     {

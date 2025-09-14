@@ -1,4 +1,4 @@
-namespace VertexBPMN.Domain.Modeling;
+namespace VertexBPMN.Domain.Entities.Modeling;
 
 /// <summary>
 /// Context for compensation handling in transaction subprocesses

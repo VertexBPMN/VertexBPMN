@@ -1,20 +1,14 @@
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.EntityFrameworkCore;
-using VertexBPMN.Domain.Contracts;
-using VertexBPMN.Persistence.Services;
+using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.Persistence.Services
+namespace VertexBPMN.Infrastructure.Persistence.Services
 {
     /// <summary>
     /// Persistent process mining event sink (EF Core, PostgreSQL).
     /// </summary>
     public class PersistentProcessMiningEventSink : IProcessMiningEventSink
     {
-    private readonly VertexBPMN.Persistence.Services.ProcessMiningEventDbContext _db;
-    public PersistentProcessMiningEventSink(VertexBPMN.Persistence.Services.ProcessMiningEventDbContext db)
+    private readonly ProcessMiningEventDbContext _db;
+    public PersistentProcessMiningEventSink(ProcessMiningEventDbContext db)
         {
             _db = db;
         }

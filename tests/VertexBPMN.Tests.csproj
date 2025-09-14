@@ -27,9 +27,6 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
-  <ProjectReference Include="..\src\services\api\VertexBPMN.Api.csproj" />
-  <ProjectReference Include="..\src\lib\plugins\McpAgentPlugin\VertexBPMN.McpAgentPlugin.csproj" />
-  <ProjectReference Include="..\src\lib\integrations\McpClient\VertexBPMN.McpClient.csproj" />
   <!--<ProjectReference Include="..\VertexBPMN.McpAdapter\VertexBPMN.McpAdapter.csproj" />-->
   </ItemGroup>
 <ItemGroup>
@@ -125,6 +122,16 @@
 </ItemGroup>
 <ItemGroup>
   <Folder Include="Integration\Services\" />
+</ItemGroup>
+<ItemGroup>
+  <ProjectReference Include="..\src\VertexBPMN.Api\VertexBPMN.Api.csproj" />
+  <ProjectReference Include="..\src\VertexBPMN.Application\VertexBPMN.Application.csproj" />
+  <ProjectReference Include="..\src\VertexBPMN.Domain\VertexBPMN.Domain.csproj" />
+  <ProjectReference Include="..\src\VertexBPMN.Engine\VertexBPMN.Engine.csproj" />
+  <ProjectReference Include="..\src\VertexBPMN.Infrastructure\VertexBPMN.Infrastructure.csproj" />
+  <ProjectReference Include="..\src\VertexBPMN.Integration\McpAdapter\VertexBPMN.McpAdapter.csproj" />
+  <ProjectReference Include="..\src\VertexBPMN.Integration\McpAgentPlugin\VertexBPMN.McpAgentPlugin.csproj" />
+  <ProjectReference Include="..\src\VertexBPMN.Integration\McpClient\VertexBPMN.McpClient.csproj" />
 </ItemGroup>
 
 </Project>

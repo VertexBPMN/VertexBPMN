@@ -1,8 +1,7 @@
-using System.Collections.Generic;
-using VertexBPMN.Domain;
-using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Entities;
+using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.EngineServices
+namespace VertexBPMN.Application
 {
     public class SemanticValidationService : ISemanticValidationService
     {

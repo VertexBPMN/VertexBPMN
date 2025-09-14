@@ -1,9 +1,6 @@
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
+using VertexBPMN.Domain.Entities;
 
-namespace VertexBPMN.Domain.Contracts;
+namespace VertexBPMN.Domain.Interfaces;
 
 /// <summary>
 /// Provides access to historical data and audit logs for process and activity instances.

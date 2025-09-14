@@ -1,12 +1,8 @@
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
-using VertexBPMN.Domain;
-using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Entities;
+using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.EngineServices;
+namespace VertexBPMN.Infrastructure.Persistence.InMemory;
 
 /// <summary>
 /// In-memory implementation of IRuntimeService for development and testing.
@@ -73,7 +69,7 @@ public class InMemoryRuntimeService : IRuntimeService
                 yield return inst;
             }
         }
-        await System.Threading.Tasks.Task.CompletedTask;
+        await Task.CompletedTask;
     }
 
 

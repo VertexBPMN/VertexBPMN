@@ -1,8 +1,9 @@
 ﻿using System.Xml.Linq;
 using Microsoft.Extensions.Logging;
 using Moq;
-using VertexBPMN.Core.Engine;
+
 using VertexBPMN.Domain.Exceptions;
+using VertexBPMN.Engine.Parsing;
 
 namespace VertexBPMN.Tests.Integration.Engine;
 

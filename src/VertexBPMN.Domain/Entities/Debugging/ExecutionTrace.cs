@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-
-namespace VertexBPMN.Domain.Debugging;
+﻿namespace VertexBPMN.Domain.Entities.Debugging;
 
 public class ExecutionTrace
 {

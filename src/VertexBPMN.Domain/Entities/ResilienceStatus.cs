@@ -1,4 +1,4 @@
-namespace VertexBPMN.Domain;
+namespace VertexBPMN.Domain.Entities;
 
 /// <summary>
 /// Resilience status information

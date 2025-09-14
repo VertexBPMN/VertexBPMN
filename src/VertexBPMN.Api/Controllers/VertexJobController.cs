@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using VertexBPMN.Api.Dto;
-using VertexBPMN.Domain.Contracts;
-using CoreJob = VertexBPMN.Domain.Job;
+using VertexBPMN.Domain.Interfaces;
+using CoreJob = VertexBPMN.Domain.Entities.Job;
 
 namespace VertexBPMN.Api.Controllers;
 

@@ -1,15 +1,12 @@
-using Microsoft.Extensions.Logging;
-using System.Collections.Generic;
 using System.Text.Json;
-using System.Threading.Tasks;
-using VertexBPMN.Core.Engine;
-using VertexBPMN.Domain;
-using VertexBPMN.Domain.Contracts;
+using Microsoft.Extensions.Logging;
+using VertexBPMN.Domain.Entities;
+using VertexBPMN.Domain.Entities.Modeling;
 using VertexBPMN.Domain.Exceptions;
-using VertexBPMN.Domain.Modeling;
+using VertexBPMN.Domain.Interfaces;
 using Task = System.Threading.Tasks.Task;
 
-namespace VertexBPMN.Core.Engine
+namespace VertexBPMN.Engine.Execution
 {
     public class BpmnEngine : IBpmnEngine
     {

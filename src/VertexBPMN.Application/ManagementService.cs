@@ -1,12 +1,8 @@
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
-using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.EngineServices;
+namespace VertexBPMN.Application;
 
 /// <summary>
 /// In-memory implementation of IManagementService for development and testing.

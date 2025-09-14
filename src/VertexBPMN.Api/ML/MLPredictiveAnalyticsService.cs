@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Microsoft.ML;
-using VertexBPMN.Domain.Contracts;
-using VertexBPMN.Domain.ML;
+using VertexBPMN.Domain.Entities.ML;
+using VertexBPMN.Domain.Interfaces;
 
 namespace VertexBPMN.Api.ML;
 

@@ -2,12 +2,13 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using VertexBPMN.Domain.Contracts;
-using VertexBPMN.Domain.Contracts.Repositories;
-using VertexBPMN.Persistence.Repositories;
-using VertexBPMN.Persistence.Services;
+using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Domain.Interfaces.Repositories;
+using VertexBPMN.Infrastructure.Persistence.Repositories;
+using VertexBPMN.Infrastructure.Persistence.Services;
+using VertexBPMN.Infrastructure.Stores;
 
-namespace VertexBPMN.Persistence;
+namespace VertexBPMN.Infrastructure.Persistence;
 
 /// <summary>
 /// Extension methods for registering persistence services.
@@ -31,6 +32,7 @@ public static class PersistenceModule
         services.AddScoped<IHistoryEventRepository, HistoryEventRepository>();
         services.AddScoped<IIncidentRepository, IncidentRepository>();
         services.AddScoped<IDesignTimeDbContextFactory<ProcessMiningEventDbContext>, ProcessMiningEventDbContextFactory>();
+        services.AddSingleton<IProcessInstanceStore, ProductionProcessInstanceStore>();
         return services;
     }
 

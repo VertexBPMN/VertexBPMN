@@ -1,6 +1,6 @@
-using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.Persistence.Services
+namespace VertexBPMN.Infrastructure.Persistence.Services
 {
     /// <summary>
     /// Null implementation of IProcessMiningEventSink for production/persistence layer (no-op).

@@ -1,9 +1,4 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-
-  <ItemGroup>
-    <ProjectReference Include="..\VertexBPMN.Domain\VertexBPMN.Domain.csproj" />
-    <ProjectReference Include="..\VertexBPMN.Application\VertexBPMN.Application.csproj" />
-  </ItemGroup>
 <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.9" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.9" />
@@ -15,10 +10,12 @@
     </PackageReference>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.9" />
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="9.9.0" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.14.0" />
   </ItemGroup>
-  <ItemGroup>
-    <Folder Include="Stores\" />
-  </ItemGroup>
+<ItemGroup>
+  <ProjectReference Include="..\VertexBPMN.Application\VertexBPMN.Application.csproj" />
+  <ProjectReference Include="..\VertexBPMN.Domain\VertexBPMN.Domain.csproj" />
+</ItemGroup>
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

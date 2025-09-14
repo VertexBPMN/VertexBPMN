@@ -1,11 +1,8 @@
 ﻿using Microsoft.Extensions.Logging;
 using Moq;
-using VertexBPMN.Core.Engine;
+using VertexBPMN.Domain.Entities.Modeling;
 using VertexBPMN.Domain.Exceptions;
-using VertexBPMN.Domain.Modeling;
-using DmnInput = VertexBPMN.Domain.Modeling.DmnInput;
-using DmnOutput = VertexBPMN.Domain.Modeling.DmnOutput;
-using DmnRule = VertexBPMN.Domain.Modeling.DmnRule;
+using VertexBPMN.Engine.Execution;
 
 namespace VertexBPMN.Tests.Integration.Engine;
 

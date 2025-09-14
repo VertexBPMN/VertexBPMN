@@ -1,7 +1,4 @@
-using System;
-using System.Threading.Tasks;
-
-namespace VertexBPMN.Domain.Contracts;
+namespace VertexBPMN.Domain.Interfaces;
 
 /// <summary>
 /// Production-Grade Caching Service

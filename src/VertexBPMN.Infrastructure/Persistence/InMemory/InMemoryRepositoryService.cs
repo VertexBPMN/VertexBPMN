@@ -1,14 +1,9 @@
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Xml.Linq;
-using VertexBPMN.Domain;
-using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Entities;
+using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.EngineServices;
+namespace VertexBPMN.Infrastructure.Persistence.InMemory;
 
 public sealed class InMemoryRepositoryService : IRepositoryService
 {

@@ -1,12 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
-using SendGrid;
+﻿using SendGrid;
 using SendGrid.Helpers.Mail;
-using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.EngineServices;
+namespace VertexBPMN.Application;
 
 public class SendGridServiceTaskHandler(ISendGridClient client) : IServiceTaskHandler
 {

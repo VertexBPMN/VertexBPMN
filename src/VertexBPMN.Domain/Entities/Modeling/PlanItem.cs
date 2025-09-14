@@ -1,6 +1,4 @@
-﻿using System.Collections.Generic;
-
-namespace VertexBPMN.Core.Modeling;
+﻿namespace VertexBPMN.Domain.Entities.Modeling;
 
 public record PlanItem(
     string Id,

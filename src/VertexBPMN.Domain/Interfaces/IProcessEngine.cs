@@ -1,7 +1,6 @@
-using System.Collections.Generic;
-using VertexBPMN.Domain.Modeling;
+using VertexBPMN.Domain.Entities.Modeling;
 
-namespace VertexBPMN.Domain.Contracts;
+namespace VertexBPMN.Domain.Interfaces;
 
 public interface IProcessEngine
 {

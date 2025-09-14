@@ -1,4 +1,4 @@
-﻿namespace VertexBPMN.Domain.Modeling;
+﻿namespace VertexBPMN.Domain.Entities.Modeling;
 
 public record struct SentryCondition(
     string Expression, // Jint-kompatible Bedingung

@@ -1,6 +1,4 @@
-﻿using System.Collections.Generic;
-
-namespace VertexBPMN.Domain.Modeling;
+﻿namespace VertexBPMN.Domain.Entities.Modeling;
 
 public record Sentry(
     string Id,

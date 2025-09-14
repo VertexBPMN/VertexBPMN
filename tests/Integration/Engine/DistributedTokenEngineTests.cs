@@ -2,15 +2,14 @@
 using Microsoft.Extensions.Logging;
 using Moq;
 using OpenTelemetry.Trace;
-using VertexBPMN.Core.Engine;
-using VertexBPMN.Core.Modeling;
-using VertexBPMN.Domain;
-using VertexBPMN.Domain.Contracts;
-using VertexBPMN.Domain.Modeling;
-using VertexBPMN.EngineServices;
-using DmnInput = VertexBPMN.Domain.Modeling.DmnInput;
-using DmnOutput = VertexBPMN.Domain.Modeling.DmnOutput;
-using DmnRule = VertexBPMN.Domain.Modeling.DmnRule;
+using VertexBPMN.Application;
+using VertexBPMN.Domain.Entities;
+using VertexBPMN.Domain.Entities.Modeling;
+using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Engine.Configuration;
+using VertexBPMN.Engine.Execution;
+using VertexBPMN.Engine.Parsing;
+using VertexBPMN.Infrastructure.Persistence.InMemory;
 
 namespace VertexBPMN.Tests.Integration.Engine;
 

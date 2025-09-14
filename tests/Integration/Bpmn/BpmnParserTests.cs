@@ -1,7 +1,8 @@
 using Microsoft.Extensions.Logging;
 using Moq;
 using OpenTelemetry.Trace;
-using VertexBPMN.Core.Engine;
+using VertexBPMN.Engine.Parsing;
+
 
 namespace VertexBPMN.Tests.Integration.Bpmn;
 

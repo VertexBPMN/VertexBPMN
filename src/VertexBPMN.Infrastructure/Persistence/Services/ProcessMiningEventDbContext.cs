@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
-using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.Persistence.Services
+namespace VertexBPMN.Infrastructure.Persistence.Services
 {
     public class ProcessMiningEventDbContext : DbContext
     {

@@ -1,19 +1,13 @@
-using System;
-using System.Collections.Generic;
-using System.Net.Http;
 using System.Text;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using OpenTelemetry.Trace;
-using VertexBPMN.Core.Modeling;
-using VertexBPMN.Domain;
-using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Entities;
+using VertexBPMN.Domain.Entities.Modeling;
 using VertexBPMN.Domain.Exceptions;
-using VertexBPMN.Domain.Modeling;
+using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.EngineServices;
+namespace VertexBPMN.Application;
 
 public class XAiDecisionService : IAiDecisionService
 {

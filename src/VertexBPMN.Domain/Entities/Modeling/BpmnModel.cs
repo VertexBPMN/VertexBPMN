@@ -1,7 +1,4 @@
-using System.Collections.Generic;
-using System.Linq;
-
-namespace VertexBPMN.Domain.Modeling;
+namespace VertexBPMN.Domain.Entities.Modeling;
 
 public class BpmnModel
 {

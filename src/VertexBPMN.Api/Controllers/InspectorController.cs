@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
-using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Infrastructure.Features;
 
 namespace VertexBPMN.Api.Controllers;
 
@@ -20,7 +21,7 @@ public class InspectorController : ControllerBase
     [HttpGet("process-instance/{id}/state")]
     public IActionResult GetProcessInstanceState(Guid id)
     {
-        if (!VertexBPMN.Core.Features.FeatureFlags.LiveInspector)
+        if (!FeatureFlags.LiveInspector)
             return StatusCode(503, "Live Inspector feature is disabled.");
         // Demo: Simuliertes Modell, TODO: Echte Engine-State-API
         var state = new

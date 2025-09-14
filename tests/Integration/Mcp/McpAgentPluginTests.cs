@@ -2,7 +2,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
 using VertexBPMN.Api.Plugins;
-using VertexBPMN.Mcp;
 
 namespace VertexBPMN.Tests.Integration.Mcp;
 public class McpAgentPluginTests
@@ -12,7 +11,7 @@ public class McpAgentPluginTests
      [Fact(Skip = "Needs external service")]
     public async Task ServiceTaskExecutesAgent()
     {
-        var plugin = new McpAgentPlugin();
+        var plugin = new McpAgentPlugin.McpAgentPlugin();
         var context = new PluginContext
         {
             Configuration = new TestConfig(),

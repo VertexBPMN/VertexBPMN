@@ -1,8 +1,4 @@
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
-
-namespace VertexBPMN.Domain.Contracts;
+namespace VertexBPMN.Domain.Interfaces;
 
 /// <summary>
 /// Provides identity and access management operations (users, groups, tenants).

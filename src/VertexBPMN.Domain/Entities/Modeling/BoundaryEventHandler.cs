@@ -1,4 +1,4 @@
-namespace VertexBPMN.Domain.Modeling;
+namespace VertexBPMN.Domain.Entities.Modeling;
 
 /// <summary>
 /// Handler for boundary events attached to activities

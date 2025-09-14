@@ -1,7 +1,4 @@
-﻿using System.Collections.Generic;
-using VertexBPMN.Core.Modeling;
-
-namespace VertexBPMN.Domain.Modeling;
+﻿namespace VertexBPMN.Domain.Entities.Modeling;
 
 public record CaseModel(
     string Id,

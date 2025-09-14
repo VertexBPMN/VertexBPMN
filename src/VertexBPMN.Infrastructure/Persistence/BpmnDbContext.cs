@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
-using VertexBPMN.Domain;
+using VertexBPMN.Domain.Entities;
 
-namespace VertexBPMN.Persistence;
+namespace VertexBPMN.Infrastructure.Persistence;
 
 /// <summary>
 /// EF Core DbContext for BPMN engine persistence.

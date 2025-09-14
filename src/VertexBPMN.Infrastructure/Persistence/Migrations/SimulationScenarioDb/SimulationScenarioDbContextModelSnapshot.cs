@@ -2,7 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using VertexBPMN.Persistence.Services;
+using VertexBPMN.Infrastructure.Persistence.Services;
 
 #nullable disable
 

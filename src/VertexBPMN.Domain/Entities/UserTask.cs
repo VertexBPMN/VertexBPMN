@@ -1,6 +1,4 @@
-using System;
-
-namespace VertexBPMN.Domain;
+namespace VertexBPMN.Domain.Entities;
 
 /// <summary>
 /// Represents a user or service task instance.

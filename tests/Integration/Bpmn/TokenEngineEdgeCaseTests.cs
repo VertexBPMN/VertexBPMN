@@ -1,9 +1,10 @@
 using Microsoft.Extensions.Logging;
 using Moq;
 using OpenTelemetry.Trace;
-using VertexBPMN.Core.Engine;
-using VertexBPMN.Domain.Modeling;
-using VertexBPMN.EngineServices;
+using VertexBPMN.Application;
+using VertexBPMN.Domain.Entities.Modeling;
+using VertexBPMN.Engine.Execution;
+using VertexBPMN.Engine.Parsing;
 
 namespace VertexBPMN.Tests.Integration.Bpmn
 {

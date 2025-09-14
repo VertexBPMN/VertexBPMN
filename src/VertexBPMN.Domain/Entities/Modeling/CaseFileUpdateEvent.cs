@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace VertexBPMN.Domain.Modeling;
+﻿namespace VertexBPMN.Domain.Entities.Modeling;
 
 public record CaseFileUpdateEvent(
     string CaseId,

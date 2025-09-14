@@ -1,12 +1,8 @@
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
-using VertexBPMN.Domain;
-using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Entities;
+using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.EngineServices;
+namespace VertexBPMN.Infrastructure.Persistence.InMemory;
 
 /// <summary>
 /// In-memory implementation of IHistoryService for development and testing.
@@ -15,7 +11,7 @@ public class InMemoryHistoryService : IHistoryService
 {
     public async IAsyncEnumerable<HistoryEvent> ListHistoricTasksAsync(Guid? processInstanceId = null, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        await System.Threading.Tasks.Task.CompletedTask;
+        await Task.CompletedTask;
         yield break;
     }
 
@@ -28,7 +24,7 @@ public class InMemoryHistoryService : IHistoryService
             if (evt.ProcessInstanceId == processInstanceId)
                 yield return evt;
         }
-        await System.Threading.Tasks.Task.CompletedTask;
+        await Task.CompletedTask;
     }
 
     public ValueTask<HistoryEvent?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)

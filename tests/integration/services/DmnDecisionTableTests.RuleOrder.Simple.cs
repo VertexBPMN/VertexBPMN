@@ -1,8 +1,4 @@
-using System;
-using System.Collections.Generic;
-using Xunit;
-
-namespace VertexBPMN.Tests.Services.Dmn
+namespace VertexBPMN.Tests.Integration.Services
 {
     public partial class DmnDecisionTableTests
     {

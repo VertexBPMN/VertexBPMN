@@ -1,10 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
-using VertexBPMN.Domain.Contracts;
+﻿using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.EngineServices.Handlers
+namespace VertexBPMN.Application.Handlers
 {
     public class CalculateScoreServiceTaskHandler : IServiceTaskHandler
     {

@@ -3,9 +3,10 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using OpenTelemetry.Trace;
-using VertexBPMN.Core.Engine;
-using VertexBPMN.EngineServices;
-using VertexBPMN.EngineServices.Extensions;
+using VertexBPMN.Application;
+using VertexBPMN.Application.Extensions;
+using VertexBPMN.Engine.Execution;
+using VertexBPMN.Engine.Parsing;
 
 namespace VertexBPMN.Tests.Conformance
 {

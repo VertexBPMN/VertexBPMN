@@ -1,8 +1,8 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+﻿#nullable disable
 
-#nullable disable
+using Microsoft.EntityFrameworkCore.Migrations;
 
-namespace VertexBPMN.Persistence.Migrations.SimulationScenarioDb
+namespace VertexBPMN.Infrastructure.Persistence.Migrations.SimulationScenarioDb
 {
     /// <inheritdoc />
     public partial class InitialCreate : Migration

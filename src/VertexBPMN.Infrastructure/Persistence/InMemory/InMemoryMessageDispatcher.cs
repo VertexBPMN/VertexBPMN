@@ -1,14 +1,10 @@
-﻿using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
-using VertexBPMN.Domain;
-using VertexBPMN.Domain.Contracts;
-using VertexBPMN.Domain.Modeling;
+﻿using System.Collections.Concurrent;
+using VertexBPMN.Domain.Entities;
+using VertexBPMN.Domain.Entities.Modeling;
+using VertexBPMN.Domain.Interfaces;
 using Task = System.Threading.Tasks.Task;
 
-namespace VertexBPMN.EngineServices.Messaging;
+namespace VertexBPMN.Infrastructure.Persistence.InMemory;
 
 /// <summary>
 /// Einfacher In-Memory Dispatcher.

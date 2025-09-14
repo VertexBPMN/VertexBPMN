@@ -1,9 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using VertexBPMN.Api.Services;
-using IHealthMonitoringService = VertexBPMN.Domain.Contracts.IHealthMonitoringService;
-using IRateLimitingService = VertexBPMN.Domain.Contracts.IRateLimitingService;
-using IResilienceService = VertexBPMN.Domain.Contracts.IResilienceService;
+using IHealthMonitoringService = VertexBPMN.Domain.Interfaces.IHealthMonitoringService;
+using IRateLimitingService = VertexBPMN.Domain.Interfaces.IRateLimitingService;
+using IResilienceService = VertexBPMN.Domain.Interfaces.IResilienceService;
 
 namespace VertexBPMN.Api.Controllers;
 

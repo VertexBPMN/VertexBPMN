@@ -1,10 +1,10 @@
 ﻿using Jint;
 using Microsoft.Extensions.Logging;
-using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Entities.Modeling;
 using VertexBPMN.Domain.Exceptions;
-using VertexBPMN.Domain.Modeling;
+using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.Core.Engine;
+namespace VertexBPMN.Engine.Execution;
 
 /// <summary>
 /// Evaluates DMN decisions based on input variables.
@@ -29,7 +29,7 @@ public class DmnEngine : IDmnEngine
     {
         try
         {
-            var matchingRules = new List<Domain.Modeling.DmnRule>();
+            var matchingRules = new List<DmnRule>();
 
             foreach (var rule in decision.Rules)
             {
@@ -64,7 +64,7 @@ public class DmnEngine : IDmnEngine
         }
     }
 
-    private async Task<bool> EvaluateRuleConditionsAsync(Domain.Modeling.DmnRule rule, IReadOnlyList<Domain.Modeling.DmnInput> inputs, Dictionary<string, object> variables, CancellationToken cancellationToken)
+    private async Task<bool> EvaluateRuleConditionsAsync(DmnRule rule, IReadOnlyList<DmnInput> inputs, Dictionary<string, object> variables, CancellationToken cancellationToken)
     {
         foreach (var input in inputs)
         {
@@ -121,19 +121,19 @@ public class DmnEngine : IDmnEngine
         };
     }
 
-    private Dictionary<string, object> HandleUniqueHitPolicy(DmnDecision decision, List<Domain.Modeling.DmnRule> matchingRules)
+    private Dictionary<string, object> HandleUniqueHitPolicy(DmnDecision decision, List<DmnRule> matchingRules)
     {
         if (matchingRules.Count > 1)
             throw new DmnEvaluationException($"UNIQUE hit policy requires exactly one matching rule, but {matchingRules.Count} rules matched for decision {decision.Id}");
         return matchingRules.First().OutputValues.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
     }
 
-    private Dictionary<string, object> HandleFirstHitPolicy(List<Domain.Modeling.DmnRule> matchingRules)
+    private Dictionary<string, object> HandleFirstHitPolicy(List<DmnRule> matchingRules)
     {
         return matchingRules.First().OutputValues.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
     }
 
-    private Dictionary<string, object> HandlePriorityHitPolicy(DmnDecision decision, List<Domain.Modeling.DmnRule> matchingRules)
+    private Dictionary<string, object> HandlePriorityHitPolicy(DmnDecision decision, List<DmnRule> matchingRules)
     {
         if (!matchingRules.Any())
             throw new DmnEvaluationException($"No matching rules for PRIORITY hit policy in decision {decision.Id}");
@@ -156,7 +156,7 @@ public class DmnEngine : IDmnEngine
         return orderedRules.First().OutputValues.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
     }
 
-    private Dictionary<string, object> HandleCollectHitPolicy(DmnDecision decision, List<Domain.Modeling.DmnRule> matchingRules)
+    private Dictionary<string, object> HandleCollectHitPolicy(DmnDecision decision, List<DmnRule> matchingRules)
     {
         var result = new Dictionary<string, object>();
         foreach (var output in decision.Outputs)

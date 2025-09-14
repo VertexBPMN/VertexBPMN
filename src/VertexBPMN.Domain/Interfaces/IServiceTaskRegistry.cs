@@ -1,4 +1,4 @@
-namespace VertexBPMN.Domain.Contracts;
+namespace VertexBPMN.Domain.Interfaces;
 
 public interface IServiceTaskRegistry
 {

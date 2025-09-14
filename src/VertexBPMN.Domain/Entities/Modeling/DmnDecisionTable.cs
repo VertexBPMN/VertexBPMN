@@ -1,9 +1,6 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Xml.Linq;
 
-namespace VertexBPMN.Domain.Modeling;
+namespace VertexBPMN.Domain.Entities.Modeling;
 
 /// <summary>
 /// DMN 1.4 Decision Table (minimal) using canonical record types DmnInput, DmnOutput, DmnRule.

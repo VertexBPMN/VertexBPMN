@@ -1,6 +1,6 @@
 ﻿using Grpc.Core;
 using VertexBPMN.Api.Grpc.Mcp;
-using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Interfaces;
 using HistoricalCaseData = VertexBPMN.Api.Grpc.Mcp.HistoricalCaseData;
 
 namespace VertexBPMN.Api.Mcp;

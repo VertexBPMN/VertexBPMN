@@ -1,7 +1,4 @@
-using System;
-using System.Collections.Generic;
-
-namespace VertexBPMN.Domain.ML;
+namespace VertexBPMN.Domain.Entities.ML;
 
 public class ProcessOptimizationSuggestion
 {

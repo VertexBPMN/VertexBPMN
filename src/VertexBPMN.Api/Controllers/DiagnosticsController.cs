@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using VertexBPMN.Domain;
-using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Entities;
+using VertexBPMN.Domain.Interfaces;
 
 namespace VertexBPMN.Api.Controllers
 {

@@ -1,12 +1,9 @@
-using System.Threading.Channels;
-using VertexBPMN.Core;
-using VertexBPMN.Core.Engine;
-using System;
 using System.Collections.Concurrent;
-using System.Net.WebSockets;
 using System.Text.Json;
-using System.Text.Json.Serialization;
-using VertexBPMN.Domain.Contracts;
+using System.Threading.Channels;
+using VertexBPMN.Domain.Interfaces;
+
+namespace VertexBPMN.McpAdapter;
 
 public class McpServer
 {

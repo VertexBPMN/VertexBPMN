@@ -1,9 +1,6 @@
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
+using VertexBPMN.Domain.Entities;
 
-namespace VertexBPMN.Domain.Contracts.Repositories;
+namespace VertexBPMN.Domain.Interfaces.Repositories;
 
 /// <summary>
 /// Repository for managing execution tokens.

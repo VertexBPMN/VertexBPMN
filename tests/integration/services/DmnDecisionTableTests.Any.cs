@@ -1,10 +1,6 @@
-using System;
-using System.Collections.Generic;
-using VertexBPMN.Core.Engine;
-using VertexBPMN.Domain.Modeling;
-using Xunit;
+using VertexBPMN.Domain.Entities.Modeling;
 
-namespace VertexBPMN.Tests.Services.Dmn
+namespace VertexBPMN.Tests.Integration.Services
 {
     public partial class DmnDecisionTableTests
     {

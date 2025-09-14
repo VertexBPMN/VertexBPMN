@@ -1,4 +1,4 @@
-namespace VertexBPMN.Domain.ML;
+namespace VertexBPMN.Domain.Entities.ML;
 
 public class ProcessStartData
 {

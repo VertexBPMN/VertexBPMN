@@ -1,14 +1,13 @@
-using Microsoft.Extensions.Logging;
-using SendGrid;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using VertexBPMN.Core.Scripting;
-using VertexBPMN.Domain;
-using VertexBPMN.Domain.Contracts;
-using VertexBPMN.Domain.Modeling;
+using VertexBPMN.Domain.Entities;
+using VertexBPMN.Domain.Entities.Modeling;
+using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Infrastructure.Scripting;
 using Task = System.Threading.Tasks.Task;
 
-namespace VertexBPMN.Core.Engine;
+namespace VertexBPMN.Engine.Execution;
 
 /// <summary>
 /// Advanced BPMN 2.0 Token Engine with support for boundary events, multi-instance, compensation, and transactions.

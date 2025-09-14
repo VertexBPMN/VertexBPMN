@@ -1,9 +1,8 @@
-﻿using System;
+﻿#nullable disable
+
 using Microsoft.EntityFrameworkCore.Migrations;
 
-#nullable disable
-
-namespace VertexBPMN.Persistence.Migrations.TenantDb
+namespace VertexBPMN.Infrastructure.Persistence.Migrations.TenantDb
 {
     /// <inheritdoc />
     public partial class InitialCreate : Migration

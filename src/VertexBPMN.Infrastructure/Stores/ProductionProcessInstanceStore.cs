@@ -1,16 +1,13 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using VertexBPMN.Domain;
-using VertexBPMN.Domain.Contracts;
-using VertexBPMN.Domain.Modeling;
+using VertexBPMN.Domain.Entities;
+using VertexBPMN.Domain.Entities.Modeling;
+using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Infrastructure.Persistence;
 using VertexBPMN.Persistence;
 
-namespace VertexBPMN.EngineServices;
+namespace VertexBPMN.Infrastructure.Stores;
 
 public sealed class ProductionProcessInstanceStore : IProcessInstanceStore
 {

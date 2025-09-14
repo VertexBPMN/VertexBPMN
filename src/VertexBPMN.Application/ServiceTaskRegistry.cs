@@ -1,9 +1,8 @@
-using System;
 using System.Collections.Concurrent;
-using VertexBPMN.Domain.Contracts;
 using VertexBPMN.Domain.Exceptions;
+using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.EngineServices;
+namespace VertexBPMN.Application;
 
 public sealed class ServiceTaskRegistry : IServiceTaskRegistry
 {

@@ -1,10 +1,10 @@
 #nullable enable
 using Microsoft.Extensions.DependencyInjection;
-using VertexBPMN.Domain.Contracts;
-using VertexBPMN.EngineServices.Extensions;
-using VertexBPMN.EngineServices.Messaging;
+using VertexBPMN.Application.Extensions;
+using VertexBPMN.Application.Messaging;
+using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.EngineServices;
+namespace VertexBPMN.Application;
 
 /// <summary>
 /// Extension module to register all engine service implementations in this project.
@@ -24,14 +24,14 @@ public static class EngineServiceModule
 
         if (useInMemory)
         {
-            services.AddSingleton<IRepositoryService, InMemoryRepositoryService>(); // still needs repository behind but kept for completeness
-            services.AddSingleton<IRuntimeService, InMemoryRuntimeService>();
-            services.AddSingleton<ITaskService, InMemoryTaskService>();
-            services.AddSingleton<IHistoryService, InMemoryHistoryService>();
-            services.AddSingleton<IAiDecisionService, FakeAiDecisionService>();
-            services.AddSingleton<IProcessInstanceStore, InMemoryProcessInstanceStore>();
-            services.AddSingleton<IProcessMiningEventSink, InMemoryEventSink>();
-            services.AddSingleton<IMessageDispatcher, InMemoryMessageDispatcher>();
+            //services.AddSingleton<IRepositoryService, InMemoryRepositoryService>(); // still needs repository behind but kept for completeness
+            //services.AddSingleton<IRuntimeService, InMemoryRuntimeService>();
+            //services.AddSingleton<ITaskService, InMemoryTaskService>();
+            //services.AddSingleton<IHistoryService, InMemoryHistoryService>();
+            //services.AddSingleton<IAiDecisionService, FakeAiDecisionService>();
+            //services.AddSingleton<IProcessInstanceStore, InMemoryProcessInstanceStore>();
+            //services.AddSingleton<IProcessMiningEventSink, InMemoryEventSink>();
+            //services.AddSingleton<IMessageDispatcher, InMemoryMessageDispatcher>();
         }
         else
         {
@@ -40,7 +40,6 @@ public static class EngineServiceModule
             services.AddScoped<ITaskService, TaskService>();
             services.AddScoped<IHistoryService, HistoryService>();
             services.AddScoped<IAiDecisionService, XAiDecisionService>();
-            services.AddSingleton<IProcessInstanceStore, ProductionProcessInstanceStore>();
         }
 
         services.AddSingleton<IManagementService, ManagementService>();

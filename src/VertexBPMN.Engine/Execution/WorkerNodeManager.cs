@@ -1,9 +1,9 @@
 using Microsoft.Extensions.Logging;
-using VertexBPMN.Domain;
-using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Entities;
+using VertexBPMN.Domain.Interfaces;
 using Task = System.Threading.Tasks.Task;
 
-namespace VertexBPMN.Core.Engine;
+namespace VertexBPMN.Engine.Execution;
 
 /// <summary>
 /// Worker node manager implementation

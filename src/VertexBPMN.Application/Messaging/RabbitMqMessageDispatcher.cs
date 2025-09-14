@@ -1,15 +1,11 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using System.Text;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using RabbitMQ.Client;
-using VertexBPMN.Domain;
-using VertexBPMN.Domain.Contracts;
-using VertexBPMN.Domain.Modeling;
+using VertexBPMN.Domain.Entities;
+using VertexBPMN.Domain.Entities.Modeling;
+using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.Core.Messaging
+namespace VertexBPMN.Application.Messaging
 {
     public class RabbitMqMessageDispatcher : IMessageDispatcher
     {

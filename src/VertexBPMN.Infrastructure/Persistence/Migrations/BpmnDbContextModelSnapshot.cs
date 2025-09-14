@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using VertexBPMN.Infrastructure.Persistence;
 using VertexBPMN.Persistence;
 
 #nullable disable

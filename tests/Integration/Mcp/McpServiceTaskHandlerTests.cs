@@ -5,7 +5,8 @@ using Moq;
 using OpenTelemetry.Trace;
 using VertexBPMN.Domain;
 using VertexBPMN.Domain.Exceptions;
-using VertexBPMN.EngineServices.Handlers;
+using VertexBPMN.Application.Handlers;
+using VertexBPMN.Domain.Entities;
 
 namespace VertexBPMN.Tests.Integration.Mcp;
 

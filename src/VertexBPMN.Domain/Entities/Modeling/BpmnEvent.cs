@@ -1,7 +1,4 @@
-using System;
-using System.Collections.Generic;
-
-namespace VertexBPMN.Domain.Modeling;
+namespace VertexBPMN.Domain.Entities.Modeling;
 
 /// <summary>
 /// Represents a BPMN event in the process model.

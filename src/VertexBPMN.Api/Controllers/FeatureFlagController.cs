@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using VertexBPMN.Infrastructure.Features;
 
 namespace VertexBPMN.Api.Controllers;
 
@@ -14,9 +15,9 @@ public class FeatureFlagController : ControllerBase
     {
         return Ok(new
         {
-            LiveInspector = VertexBPMN.Core.Features.FeatureFlags.LiveInspector,
-            PredictiveAnalytics = VertexBPMN.Core.Features.FeatureFlags.PredictiveAnalytics,
-            ProcessMiningApi = VertexBPMN.Core.Features.FeatureFlags.ProcessMiningApi
+            LiveInspector = FeatureFlags.LiveInspector,
+            PredictiveAnalytics = FeatureFlags.PredictiveAnalytics,
+            ProcessMiningApi = FeatureFlags.ProcessMiningApi
         });
     }
 
@@ -28,9 +29,9 @@ public class FeatureFlagController : ControllerBase
     {
         switch (flag.ToLowerInvariant())
         {
-            case "liveinspector": VertexBPMN.Core.Features.FeatureFlags.LiveInspector = enabled; break;
-            case "predictiveanalytics": VertexBPMN.Core.Features.FeatureFlags.PredictiveAnalytics = enabled; break;
-            case "processminingapi": VertexBPMN.Core.Features.FeatureFlags.ProcessMiningApi = enabled; break;
+            case "liveinspector": FeatureFlags.LiveInspector = enabled; break;
+            case "predictiveanalytics": FeatureFlags.PredictiveAnalytics = enabled; break;
+            case "processminingapi": FeatureFlags.ProcessMiningApi = enabled; break;
             default: return NotFound();
         }
         return NoContent();

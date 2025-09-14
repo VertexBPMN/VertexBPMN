@@ -1,19 +1,13 @@
 ﻿using System.Collections.Concurrent;
-using System.Collections.Generic;
-using VertexBPMN.Domain;
-using VertexBPMN.Domain.Contracts;
-using VertexBPMN.Domain.Exceptions;
-using VertexBPMN.Domain.Modeling;
-
-namespace VertexBPMN.Core.Messaging;
-
-using Confluent.Kafka;
-using Microsoft.CodeAnalysis.Operations;
-using Microsoft.Extensions.Logging;
-using System;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
+using Confluent.Kafka;
+using Microsoft.Extensions.Logging;
+using VertexBPMN.Domain.Entities;
+using VertexBPMN.Domain.Entities.Modeling;
+using VertexBPMN.Domain.Exceptions;
+using VertexBPMN.Domain.Interfaces;
+
+namespace VertexBPMN.Application.Messaging;
 
 /// <summary>
 /// Kafka based implementation of IMessageDispatcher.

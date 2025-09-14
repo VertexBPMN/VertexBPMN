@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using VertexBPMN.Api.Dto;
-using VertexBPMN.Domain.Contracts;
-using CoreIncident = VertexBPMN.Domain.Incident;
+using VertexBPMN.Domain.Interfaces;
+using CoreIncident = VertexBPMN.Domain.Entities.Incident;
 
 namespace VertexBPMN.Api.Controllers;
 

@@ -1,11 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
-using VertexBPMN.Domain.Contracts;
+﻿using Microsoft.Extensions.Logging;
+using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.EngineServices.Handlers;
+namespace VertexBPMN.Application.Handlers;
 
 public class UserTaskServiceHandler : IServiceTaskHandler
 {

@@ -1,12 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using SendGrid;
-using VertexBPMN.Domain.Contracts;
-using VertexBPMN.EngineServices.Fakes;
-using VertexBPMN.EngineServices.Handlers;
+using VertexBPMN.Application.Fakes;
+using VertexBPMN.Application.Handlers;
+using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.EngineServices.Extensions;
+namespace VertexBPMN.Application.Extensions;
 
 public static class ServiceTaskRegistryExtensions
 {

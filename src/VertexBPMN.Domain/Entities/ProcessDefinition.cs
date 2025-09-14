@@ -1,6 +1,4 @@
-using System;
-
-namespace VertexBPMN.Domain;
+namespace VertexBPMN.Domain.Entities;
 
 /// <summary>
 /// Represents a BPMN process definition deployed to the engine.

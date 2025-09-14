@@ -1,15 +1,9 @@
-using System.Net.Http;
-using System.Text.Json.Nodes;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Collections.Generic;
-using System.IO;
 using System.Text;
-using System;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using VertexBPMN.Api.Plugins;
 
-namespace VertexBPMN.Mcp;
+namespace VertexBPMN.McpAgentPlugin;
 /// <summary>
 /// BPMN-Plugin für MCP-Agent-Integration (Service Task mit implementation="mcp-agent")
 /// </summary>

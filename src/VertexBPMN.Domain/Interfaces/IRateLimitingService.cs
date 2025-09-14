@@ -1,4 +1,6 @@
-namespace VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Entities;
+
+namespace VertexBPMN.Domain.Interfaces;
 
 /// <summary>
 /// Production-Grade Rate Limiting Service

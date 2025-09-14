@@ -1,11 +1,8 @@
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
-using VertexBPMN.Core.Modeling;
-using VertexBPMN.Domain.Modeling;
+using VertexBPMN.Domain.Entities;
+using VertexBPMN.Domain.Entities.Modeling;
 using Task = System.Threading.Tasks.Task;
 
-namespace VertexBPMN.Domain.Contracts;
+namespace VertexBPMN.Domain.Interfaces;
 
 /// <summary>
 /// Distributed token execution engine for enterprise scalability

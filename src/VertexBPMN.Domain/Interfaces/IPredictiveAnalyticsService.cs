@@ -1,9 +1,6 @@
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using VertexBPMN.Domain.ML;
+using VertexBPMN.Domain.Entities.ML;
 
-namespace VertexBPMN.Domain.Contracts;
+namespace VertexBPMN.Domain.Interfaces;
 
 /// <summary>
 /// ML-Based Predictive Analytics Engine

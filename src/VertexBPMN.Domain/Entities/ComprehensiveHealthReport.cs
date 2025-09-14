@@ -1,7 +1,6 @@
-using System;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
-namespace VertexBPMN.Domain;
+namespace VertexBPMN.Domain.Entities;
 
 public class ComprehensiveHealthReport
 {

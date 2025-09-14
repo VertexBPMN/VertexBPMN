@@ -4,7 +4,8 @@ using System.Net.NetworkInformation;
 using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using VertexBPMN.Domain;
-using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Entities;
+using VertexBPMN.Domain.Interfaces;
 
 namespace VertexBPMN.Api.Services;
 
@@ -277,7 +278,7 @@ public class ProductionHealthMonitoringService : IHealthMonitoringService
             "All external services reachable", data: data);
     }
 
-    public async Task<Domain.ComprehensiveHealthReport> GetComprehensiveHealthReportAsync()
+    public async Task<ComprehensiveHealthReport> GetComprehensiveHealthReportAsync()
     {
         var stopwatch = Stopwatch.StartNew();
         
@@ -296,7 +297,7 @@ public class ProductionHealthMonitoringService : IHealthMonitoringService
                 ? HealthStatus.Unhealthy
                 : HealthStatus.Degraded;
 
-        return new Domain.ComprehensiveHealthReport
+        return new ComprehensiveHealthReport
         {
             OverallStatus = overallStatus.ToString(),
             CheckDuration = stopwatch.Elapsed,
@@ -309,13 +310,13 @@ public class ProductionHealthMonitoringService : IHealthMonitoringService
         };
     }
 
-    public async Task<Domain.SystemMetrics> GetSystemMetricsAsync()
+    public async Task<SystemMetrics> GetSystemMetricsAsync()
     {
         await Task.Delay(1); // Make async
         
         var process = Process.GetCurrentProcess();
         
-        var metrics = new Domain.SystemMetrics
+        var metrics = new SystemMetrics
         {
             Timestamp = DateTime.UtcNow,
             ProcessId = process.Id,
@@ -359,14 +360,14 @@ public class ProductionHealthMonitoringService : IHealthMonitoringService
         return metrics;
     }
 
-    private async Task<Domain.SystemInfo> GetSystemInfoAsync()
+    private async Task<SystemInfo> GetSystemInfoAsync()
     {
         await Task.Delay(1); // Make async
         
         var assembly = Assembly.GetExecutingAssembly();
         var process = Process.GetCurrentProcess();
         
-        return new Domain.SystemInfo
+        return new SystemInfo
         {
             ApplicationVersion = assembly.GetName().Version?.ToString() ?? "Unknown",
             RuntimeVersion = Environment.Version.ToString(),

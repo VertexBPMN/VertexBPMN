@@ -1,23 +1,14 @@
+using System.Collections.Concurrent;
 using Jint;
 using Microsoft.Extensions.Logging;
-using OpenTelemetry;
-using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
-using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Diagnostics;
-using VertexBPMN.Core.Modeling;
-using VertexBPMN.Core.Scripting;
-using VertexBPMN.Domain;
-using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Entities;
+using VertexBPMN.Domain.Entities.Modeling;
 using VertexBPMN.Domain.Exceptions;
-using VertexBPMN.Domain.Modeling;
+using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Infrastructure.Scripting;
 
-namespace VertexBPMN.Core.Engine
+namespace VertexBPMN.Engine.Execution
 {
     public class DistributedTokenEngine : IDistributedTokenEngine, IDisposable
     {

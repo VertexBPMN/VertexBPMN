@@ -1,7 +1,8 @@
 using Microsoft.AspNetCore.Mvc.Filters;
 using System.Collections.Concurrent;
 using VertexBPMN.Domain;
-using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Entities;
+using VertexBPMN.Domain.Interfaces;
 
 namespace VertexBPMN.Api.Services;
 

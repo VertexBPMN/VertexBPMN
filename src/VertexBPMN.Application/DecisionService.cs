@@ -1,12 +1,8 @@
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using VertexBPMN.Domain.Contracts;
-using VertexBPMN.Domain.Modeling;
+using VertexBPMN.Domain.Entities.Modeling;
+using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.EngineServices;
+namespace VertexBPMN.Application;
 
 /// <summary>
 /// In-memory DMN 1.4 DecisionService mit echtem Decision Table Parsing/Evaluation.

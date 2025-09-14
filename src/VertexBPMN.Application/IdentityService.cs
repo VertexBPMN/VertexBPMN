@@ -1,10 +1,7 @@
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
-using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.EngineServices
+namespace VertexBPMN.Application
 {
     /// <summary>
     /// In-memory implementation of IIdentityService for development and testing.

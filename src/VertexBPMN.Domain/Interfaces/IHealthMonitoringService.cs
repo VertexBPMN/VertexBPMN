@@ -1,7 +1,7 @@
-using System.Threading.Tasks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using VertexBPMN.Domain.Entities;
 
-namespace VertexBPMN.Domain.Contracts;
+namespace VertexBPMN.Domain.Interfaces;
 
 /// <summary>
 /// Production-Grade Health Monitoring Service

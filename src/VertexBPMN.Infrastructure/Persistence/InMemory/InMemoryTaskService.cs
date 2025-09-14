@@ -1,12 +1,8 @@
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
-using VertexBPMN.Domain;
-using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Entities;
+using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.EngineServices;
+namespace VertexBPMN.Infrastructure.Persistence.InMemory;
 
 /// <summary>
 /// In-memory implementation of ITaskService for development and testing.
@@ -86,6 +82,6 @@ public class InMemoryTaskService : ITaskService
                 yield return task;
             }
         }
-        await System.Threading.Tasks.Task.CompletedTask;
+        await Task.CompletedTask;
     }
 }

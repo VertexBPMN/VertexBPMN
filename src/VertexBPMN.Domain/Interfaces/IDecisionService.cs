@@ -1,9 +1,4 @@
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
-
-namespace VertexBPMN.Domain.Contracts
+namespace VertexBPMN.Domain.Interfaces
 {
     /// <summary>
     /// Provides operations for evaluating DMN decisions and managing decision resources.

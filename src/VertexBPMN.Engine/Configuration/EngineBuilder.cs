@@ -4,9 +4,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenTelemetry.Trace;
 using VertexBPMN.Domain.Interfaces;
-using VertexBPMN.Infrastructure.Parsing;
-using VertexBPMN.Infrastructure.Persistence.InMemory;
-using VertexBPMN.Infrastructure.Persistence.Distributed;
+using VertexBPMN.Engine.Execution;
+using VertexBPMN.Engine.Parsing;
 
 namespace VertexBPMN.Engine.Configuration;
 
@@ -66,12 +65,12 @@ public sealed class EngineBuilder
     private void RegisterInMemoryCore()
     {
         // Register in-memory repositories
-        _services.AddSingleton<IProcessDefinitionRepository, InMemoryProcessRepository>();
-        _services.AddSingleton<IProcessInstanceRepository>(sp => 
-            sp.GetRequiredService<IProcessDefinitionRepository>() as InMemoryProcessRepository);
+        //_services.AddSingleton<IProcessDefinitionRepository, InMemoryProcessRepository>();
+        //_services.AddSingleton<IProcessInstanceRepository>(sp => 
+        //    sp.GetRequiredService<IProcessDefinitionRepository>() as InMemoryProcessRepository);
         
         // Register application services
-        _services.AddSingleton<IProcessDeploymentService, ProcessDeploymentService>();
+        //_services.AddSingleton<IProcessDeploymentService, ProcessDeploymentService>();
         
         // Register engine
         _services.AddSingleton<IBpmnEngine, BpmnEngine>();
@@ -85,6 +84,9 @@ public sealed class EngineBuilder
         _services.AddSingleton<ICmmnParser, CmmnParser>();
         _services.AddSingleton<IDmnEngine, DmnEngine>();
         _services.AddSingleton<IDistributedTokenEngine, DistributedTokenEngine>();
-        _services.AddSingleton<IBpmnEngine, DistributedBpmnEngine>();
+        _services.AddSingleton<IBpmnEngine, BpmnEngine>();
+        //_services.AddSingleton<IProcessDefinitionRepository, ProcessRepository>();
+        //_services.AddSingleton<IProcessInstanceRepository>(sp =>
+        //    sp.GetRequiredService<IProcessDefinitionRepository>() as ProcessRepository);
     }
 }

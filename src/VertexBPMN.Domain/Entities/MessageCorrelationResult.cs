@@ -1,4 +1,4 @@
-namespace VertexBPMN.EngineServices;
+namespace VertexBPMN.Domain.Entities;
 
 /// <summary>
 /// Result DTO for message correlation (Vertex compatibility).

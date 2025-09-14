@@ -1,4 +1,6 @@
-namespace VertexBPMN.Domain.Contracts
+using VertexBPMN.Domain.Entities;
+
+namespace VertexBPMN.Domain.Interfaces
 {
     public interface IProcessMigrationService
     {

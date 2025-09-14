@@ -1,10 +1,8 @@
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using Microsoft.SemanticKernel;
-using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.EngineServices;
+namespace VertexBPMN.Application;
 
 public class CachingKernelFactory : IKernelFactory
 {

@@ -1,13 +1,8 @@
 #nullable enable
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
-using VertexBPMN.Core.Modeling;
-using VertexBPMN.Domain.Contracts;
-using VertexBPMN.Domain.Modeling;
+using VertexBPMN.Domain.Entities.Modeling;
+using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.EngineServices;
+namespace VertexBPMN.Application;
 
 /// <summary>
 /// Fake implementation of <see cref="IAiDecisionService"/> for tests and in-memory scenarios.

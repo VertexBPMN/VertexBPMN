@@ -1,10 +1,9 @@
 ﻿using System.Xml.Linq;
-using VertexBPMN.Core.Modeling;
-using VertexBPMN.Domain.Contracts;
+using VertexBPMN.Domain.Entities.Modeling;
 using VertexBPMN.Domain.Exceptions;
-using VertexBPMN.Domain.Modeling;
+using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.Core.Engine;
+namespace VertexBPMN.Engine.Parsing;
 
 public class CmmnParser : ICmmnParser
 {

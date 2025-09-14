@@ -1,17 +1,14 @@
-using Microsoft.Extensions.Logging;
-using OpenTelemetry;
-using OpenTelemetry.Trace;
-using System.Diagnostics;
 using System.Text.Json;
-using System.Threading.Tasks;
 using System.Xml;
 using System.Xml.Linq;
-using VertexBPMN.Domain.Contracts;
+using Microsoft.Extensions.Logging;
+using OpenTelemetry.Trace;
+using VertexBPMN.Domain.Entities.Modeling;
 using VertexBPMN.Domain.Exceptions;
-using VertexBPMN.Domain.Modeling;
+using VertexBPMN.Domain.Interfaces;
 using Task = System.Threading.Tasks.Task;
 
-namespace VertexBPMN.Core.Engine
+namespace VertexBPMN.Engine.Parsing
 {
     public class BpmnParser : IBpmnParser
     {

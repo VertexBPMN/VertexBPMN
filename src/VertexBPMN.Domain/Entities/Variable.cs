@@ -1,7 +1,4 @@
-using System;
-using System.Threading.Tasks;
-
-namespace VertexBPMN.Domain;
+namespace VertexBPMN.Domain.Entities;
 
 /// <summary>
 /// Represents a process or task variable.

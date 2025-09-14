@@ -1,6 +1,4 @@
-using System.Collections.Generic;
-
-namespace VertexBPMN.Domain.Modeling;
+namespace VertexBPMN.Domain.Entities.Modeling;
 
 public record BpmnTask(string Id, string Type, string? Implementation = null,
     Dictionary<string, string>? Attributes = null)

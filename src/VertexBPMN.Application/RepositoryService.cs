@@ -1,13 +1,8 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using VertexBPMN.Domain;
-using VertexBPMN.Domain.Contracts;
-using VertexBPMN.Domain.Contracts.Repositories;
+using VertexBPMN.Domain.Entities;
+using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Domain.Interfaces.Repositories;
 
-namespace VertexBPMN.EngineServices;
+namespace VertexBPMN.Application;
 
 /// <summary>
 /// Persistent implementation of IRepositoryService using IProcessDefinitionRepository.

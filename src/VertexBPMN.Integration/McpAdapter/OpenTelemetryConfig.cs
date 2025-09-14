@@ -1,12 +1,10 @@
 #nullable enable
 using System.Diagnostics;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
+using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
-using OpenTelemetry.Metrics;
 
-namespace VertexBPMN.McpAdapter.Config;
+namespace VertexBPMN.McpAdapter;
 
 /// <summary>
 /// OpenTelemetry constants for the MCP Adapter.

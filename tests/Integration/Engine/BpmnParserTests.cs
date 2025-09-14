@@ -2,8 +2,8 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Moq;
 using OpenTelemetry.Trace;
-using VertexBPMN.Core.Engine;
 using VertexBPMN.Domain.Exceptions;
+using VertexBPMN.Engine.Parsing;
 
 // added for reading BPMN file
 

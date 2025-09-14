@@ -1,8 +1,6 @@
-using System;
-using System.Threading.Tasks;
-using VertexBPMN.Domain.Debugging;
+using VertexBPMN.Domain.Entities.Debugging;
 
-namespace VertexBPMN.Domain.Contracts;
+namespace VertexBPMN.Domain.Interfaces;
 
 /// <summary>
 /// Advanced Visual Debugging System
@@ -21,5 +19,5 @@ public interface IVisualDebuggingService
     Task<ContinueResult> ContinueExecutionAsync(Guid sessionId);
     Task<ProcessVisualization> GetProcessVisualizationAsync(Guid processInstanceId);
     Task<VariableInspection> InspectVariablesAsync(Guid sessionId);
-    Task<Debugging.ExecutionTrace> GetExecutionTraceAsync(Guid processInstanceId);
+    Task<ExecutionTrace> GetExecutionTraceAsync(Guid processInstanceId);
 }

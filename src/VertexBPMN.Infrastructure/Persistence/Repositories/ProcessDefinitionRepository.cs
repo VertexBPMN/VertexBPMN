@@ -1,9 +1,9 @@
 using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
-using VertexBPMN.Domain;
-using VertexBPMN.Domain.Contracts.Repositories;
+using VertexBPMN.Domain.Entities;
+using VertexBPMN.Domain.Interfaces.Repositories;
 
-namespace VertexBPMN.Persistence.Repositories;
+namespace VertexBPMN.Infrastructure.Persistence.Repositories;
 
 /// <summary>
 /// EF Core implementation of IProcessDefinitionRepository.

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using VertexBPMN.Application;
 using VertexBPMN.Domain.Entities.Modeling;
@@ -27,7 +28,8 @@ public class AdvancedTokenEngineBenchmarks
             new List<BpmnSubprocess> { new("sub1", true) }
         );
         var engine = new TokenEngine();
-        var decisionService = new DecisionService();
+        var logger = new LoggerFactory().CreateLogger<DecisionService>();
+        var decisionService = new DecisionService(logger);
         var sw = Stopwatch.StartNew();
         for (int i = 0; i < 5000; i++)
         {

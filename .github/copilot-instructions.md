@@ -5,7 +5,7 @@ This document guides AI coding agents to be productive in the VertexBPMN codebas
 
 ## Project Overview
 
-- **VertexBPMN** is a modular, high-performance BPMN 2.0 & DMN 1.4 engine for .NET 9, inspired by Camunda but built natively for .NET and C# 13.
+- **VertexBPMN** is a modular, high-performance BPMN 2.0, CMMN 1.4 & DMN 1.4 engine for .NET 9, inspired by Camunda but built natively for .NET and C# 13.
 - The architecture is service-oriented: core services (e.g., `RepositoryService`, `RuntimeService`, `TaskService`) are accessed via interfaces (e.g., `IRepositoryService`).
 - Persistence is abstracted: **never** use `DbContext` directly in business logic—always go through repository interfaces (e.g., `IProcessDefinitionRepository`).
 - The engine is stateless; all state is persisted in the database or distributed cache.

@@ -19,15 +19,7 @@ public class VertexDecisionInstanceController : ControllerBase
     public async IAsyncEnumerable<DecisionInstanceDto> GetAll([FromQuery] string? decisionKey = null, [FromQuery] string? tenantId = null)
     {
         await foreach (var inst in _decisionService.ListInstancesAsync(decisionKey, tenantId))
-            yield return new DecisionInstanceDto { Id = inst.Id, DecisionKey = inst.DecisionKey, Result = inst.Result, EvaluatedAt = inst.EvaluatedAt, TenantId = inst.TenantId ?? string.Empty };
+            yield return new DecisionInstanceDto { Id = inst.Id, DecisionKey = inst.DecisionDefinitionKey, Result = inst.OutputVariables.Values, EvaluatedAt = inst.EvaluationTime, TenantId = inst.TenantId ?? string.Empty };
     }
 
-    public class DecisionInstanceDto
-    {
-        public string Id { get; set; } = string.Empty;
-        public string DecisionKey { get; set; } = string.Empty;
-        public object? Result { get; set; }
-        public DateTime EvaluatedAt { get; set; }
-        public string TenantId { get; set; } = string.Empty;
-    }
 }

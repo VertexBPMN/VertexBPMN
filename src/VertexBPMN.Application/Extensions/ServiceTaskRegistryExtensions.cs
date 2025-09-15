@@ -10,44 +10,31 @@ public static class ServiceTaskRegistryExtensions
 {
     public static IServiceCollection AddServiceTaskHandlers(this IServiceCollection services)
     {
-        // Registriere die ServiceTaskRegistry
-        //services.AddSingleton<ServiceTaskRegistry>();
-
         // Registriere alle Handler und Abhängigkeiten
         RegisterCoreDependencies(services);
         RegisterHandlers(services);
 
-        // Füge die Handler zur Registry hinzu
-        services.AddSingleton(typeof(IServiceTaskRegistry), provider =>
+        // ✅ KORREKTE Registry-Registrierung
+        services.AddSingleton<IServiceTaskRegistry>(provider =>
         {
             var registry = new ServiceTaskRegistry();
 
-            // Verwende Lazy Loading für die Registrierung
-            var handlers = new Dictionary<string, Func<IServiceTaskHandler>>
-            {
-                { "semanticKernelServiceTask", () => provider.GetRequiredService<SemanticKernelServiceTaskHandler>() },
-                { "calculateScore", () => provider.GetRequiredService<CalculateScoreServiceTaskHandler>() },
-                { "cancelApplication", () => provider.GetRequiredService<CancelApplicationServiceTaskHandler>() },
-                { "issuePolicy", () => provider.GetRequiredService<IssuePolicyServiceTaskHandler>() },
-                { "rejectPolicy", () => provider.GetRequiredService<RejectPolicyServiceTaskHandler>() },
-                { "io.camunda:sendgrid:1", () => provider.GetRequiredService<SendGridServiceTaskHandler>() },
-                { "informCustomerSuccessfulCancelation", () => provider.GetRequiredService<InformCustomerSuccessfulCancelationHandler>() },
-                { "reportFraud", () => provider.GetRequiredService<ReportFraudHandler>() },
-                { "informOperationsSuccessfulCancelation", () => provider.GetRequiredService<InformOperationsSuccessfulCancelationHandler>() },
-                { "mcpServiceTask", () => provider.GetRequiredService<McpServiceTaskHandler>() }
-            };
-
-            foreach (var (key, handlerFactory) in handlers)
-            {
-                registry.Register(key, new Lazy<IServiceTaskHandler>(handlerFactory).Value);
-            }
+            // ✅ Handler werden EINMAL aus dem DI Container geholt (respektiert Singleton)
+            registry.Register("semanticKernelServiceTask", provider.GetRequiredService<SemanticKernelServiceTaskHandler>());
+            registry.Register("calculateScore", provider.GetRequiredService<CalculateScoreServiceTaskHandler>());
+            registry.Register("cancelApplication", provider.GetRequiredService<CancelApplicationServiceTaskHandler>());
+            registry.Register("issuePolicy", provider.GetRequiredService<IssuePolicyServiceTaskHandler>());
+            registry.Register("rejectPolicy", provider.GetRequiredService<RejectPolicyServiceTaskHandler>());
+            registry.Register("io.camunda:sendgrid:1", provider.GetRequiredService<SendGridServiceTaskHandler>());
+            registry.Register("informCustomerSuccessfulCancelation", provider.GetRequiredService<InformCustomerSuccessfulCancelationHandler>());
+            registry.Register("reportFraud", provider.GetRequiredService<ReportFraudHandler>());
+            registry.Register("informOperationsSuccessfulCancelation", provider.GetRequiredService<InformOperationsSuccessfulCancelationHandler>());
+            registry.Register("mcpServiceTask", provider.GetRequiredService<McpServiceTaskHandler>());
 
             return registry;
         });
 
-
-
-            return services;
+        return services;
     }
 
     private static void RegisterCoreDependencies(IServiceCollection services)
@@ -59,7 +46,7 @@ public static class ServiceTaskRegistryExtensions
 
     private static void RegisterHandlers(IServiceCollection services)
     {
-        // Registriere alle Handler als Singleton
+        // ✅ Handler bleiben Singleton (korrekt für stateless workers)
         services.AddSingleton<CalculateScoreServiceTaskHandler>();
         services.AddSingleton<CancelApplicationServiceTaskHandler>();
         services.AddSingleton<IssuePolicyServiceTaskHandler>();
@@ -69,5 +56,6 @@ public static class ServiceTaskRegistryExtensions
         services.AddSingleton<SemanticKernelServiceTaskHandler>();
         services.AddSingleton<InformCustomerSuccessfulCancelationHandler>();
         services.AddSingleton<InformOperationsSuccessfulCancelationHandler>();
+        services.AddSingleton<McpServiceTaskHandler>();
     }
 }

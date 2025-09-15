@@ -1,5 +1,6 @@
 
 
+using Microsoft.Extensions.Logging;
 using VertexBPMN.Application;
 using VertexBPMN.Domain.Entities.Modeling;
 using VertexBPMN.Engine.Execution;
@@ -62,13 +63,14 @@ public class AdvancedBpmnDmnScenariosTests
     [Fact]
     public async Task DecisionService_Handles_Complex_Inputs()
     {
-        var service = new DecisionService();
+        var logger = new LoggerFactory().CreateLogger<DecisionService>();
+        var service = new DecisionService(logger);
         var inputs = new Dictionary<string, object> { { "foo", 42 }, { "bar", "baz" }, { "list", new List<int> { 1, 2, 3 } } };
         var result = await service.EvaluateDecisionByKeyAsync("complex", inputs);
         Assert.NotNull(result);
-        Assert.Equal(42, (result.Outputs["foo"] as int?) ?? ((System.Text.Json.JsonElement)result.Outputs["foo"]).GetInt32());
-        Assert.Equal("baz", result.Outputs["bar"].ToString());
+        Assert.Equal(42, (result.Variables["foo"] as int?) ?? ((System.Text.Json.JsonElement)result.Variables["foo"]).GetInt32());
+        Assert.Equal("baz", result.Variables["bar"].ToString());
         // List may be serialized as JsonElement array
-        Assert.True(result.Outputs.ContainsKey("list"));
+        Assert.True(result.Variables.ContainsKey("list"));
     }
 }

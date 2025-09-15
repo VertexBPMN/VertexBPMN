@@ -1,5 +1,6 @@
 
 
+using Microsoft.Extensions.Logging;
 using VertexBPMN.Application;
 using VertexBPMN.Domain.Entities.Modeling;
 using VertexBPMN.Engine.Execution;
@@ -24,7 +25,8 @@ public class TokenEngineTests
             new List<BpmnSubprocess>()
         );
         var engine = new TokenEngine();
-        var decisionService = new DecisionService();
+        var logger = new LoggerFactory().CreateLogger<DecisionService>();
+        var decisionService = new DecisionService(logger);
         var trace = engine.Execute(model, decisionService);
         Assert.Contains("BusinessRuleTask: brt1", trace);
         Assert.Contains("DecisionEvaluated: brt1 => 1", trace);

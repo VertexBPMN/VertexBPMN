@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using VertexBPMN.Application;
+using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 
 namespace VertexBPMN.Api.Controllers
@@ -18,8 +19,7 @@ namespace VertexBPMN.Api.Controllers
         [HttpPost("deploy")]
         public async Task<IActionResult> Deploy([FromBody] DeployRequest request)
         {
-            if (_decisionService is DecisionService svc)
-                await svc.DeployAsync(request.DecisionKey, request.Name, request.DmnXml, request.TenantId);
+            await _decisionService.DeployAsync(request.DecisionKey, request.Name, request.DmnXml, request.TenantId);
             return Ok();
         }
 

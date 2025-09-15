@@ -20,9 +20,8 @@ public static class PersistenceModule
     /// </summary>
     /// <param name="services">The service collection.</param>
     /// <param name="configureDb">A delegate to configure the BpmnDbContext options.</param>
-    public static IServiceCollection AddBpmnPersistence(this IServiceCollection services, Action<DbContextOptionsBuilder> configureDb)
+    public static IServiceCollection AddBpmnPersistenceServices(IServiceCollection services)
     {
-        services.AddDbContext<BpmnDbContext>(configureDb);
         services.AddScoped<IProcessDefinitionRepository, ProcessDefinitionRepository>();
         services.AddScoped<IProcessInstanceRepository, ProcessInstanceRepository>();
         services.AddScoped<IExecutionTokenRepository, ExecutionTokenRepository>();
@@ -32,7 +31,7 @@ public static class PersistenceModule
         services.AddScoped<IHistoryEventRepository, HistoryEventRepository>();
         services.AddScoped<IIncidentRepository, IncidentRepository>();
         services.AddScoped<IDesignTimeDbContextFactory<ProcessMiningEventDbContext>, ProcessMiningEventDbContextFactory>();
-        services.AddSingleton<IProcessInstanceStore, ProductionProcessInstanceStore>();
+        services.AddScoped<IProcessInstanceStore, ProductionProcessInstanceStore>();
         return services;
     }
 

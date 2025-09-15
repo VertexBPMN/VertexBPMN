@@ -83,7 +83,8 @@ namespace VertexBPMN.Tests.Integration.Bpmn
         [Fact]
         public async Task DecisionService_Returns_Null_For_Unknown_Decision()
         {
-            var service = new DecisionService();
+            var logger = new LoggerFactory().CreateLogger<DecisionService>();
+            var service = new DecisionService(logger);
             var def = await service.GetDecisionByKeyAsync("unknown");
             Assert.Null(def);
         }

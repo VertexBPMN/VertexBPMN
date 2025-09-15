@@ -20,37 +20,42 @@ public static class EngineServiceModule
     public static IServiceCollection AddVertexEngineServices(this IServiceCollection services, bool useInMemory = false)
     {
         // Shared singleton/event sink
-        services.AddSingleton<IProcessMiningEventSink, ProcessMiningEventSink>();
+        services.AddScoped<IProcessMiningEventSink, ProcessMiningEventSink>();
 
-        if (useInMemory)
-        {
-            //services.AddSingleton<IRepositoryService, InMemoryRepositoryService>(); // still needs repository behind but kept for completeness
-            //services.AddSingleton<IRuntimeService, InMemoryRuntimeService>();
-            //services.AddSingleton<ITaskService, InMemoryTaskService>();
-            //services.AddSingleton<IHistoryService, InMemoryHistoryService>();
-            //services.AddSingleton<IAiDecisionService, FakeAiDecisionService>();
-            //services.AddSingleton<IProcessInstanceStore, InMemoryProcessInstanceStore>();
-            //services.AddSingleton<IProcessMiningEventSink, InMemoryEventSink>();
-            //services.AddSingleton<IMessageDispatcher, InMemoryMessageDispatcher>();
-        }
-        else
-        {
-            services.AddScoped<IRepositoryService, RepositoryService>();
-            services.AddScoped<IRuntimeService, RuntimeService>();
-            services.AddScoped<ITaskService, TaskService>();
-            services.AddScoped<IHistoryService, HistoryService>();
-            services.AddScoped<IAiDecisionService, XAiDecisionService>();
-        }
+        //if (useInMemory)
+        //{
+        //    //services.AddSingleton<IRepositoryService, InMemoryRepositoryService>(); // still needs repository behind but kept for completeness
+        //    //services.AddSingleton<IRuntimeService, InMemoryRuntimeService>();
+        //    //services.AddSingleton<ITaskService, InMemoryTaskService>();
+        //    //services.AddSingleton<IHistoryService, InMemoryHistoryService>();
+        //    //services.AddSingleton<IAiDecisionService, FakeAiDecisionService>();
+        //    //services.AddSingleton<IProcessInstanceStore, InMemoryProcessInstanceStore>();
+        //    //services.AddSingleton<IProcessMiningEventSink, InMemoryEventSink>();
+        //    //services.AddSingleton<IMessageDispatcher, InMemoryMessageDispatcher>();
+        //}
+        //else
+        //{
+        //    services.AddScoped<IRepositoryService, RepositoryService>();
+        //    services.AddScoped<IRuntimeService, RuntimeService>();
+        //    services.AddScoped<ITaskService, TaskService>();
+        //    services.AddScoped<IHistoryService, HistoryService>();
+        //    services.AddScoped<IAiDecisionService, XAiDecisionService>();
+        //}
 
-        services.AddSingleton<IManagementService, ManagementService>();
-        services.AddSingleton<IIdentityService, IdentityService>();
-        services.AddSingleton<IDecisionService, DecisionService>();
-        services.AddSingleton<IIncidentService, IncidentService>();
-        services.AddSingleton<IProcessMigrationService, ProcessMigrationService>();
-        services.AddSingleton<ISemanticValidationService, SemanticValidationService>();
-        services.AddSingleton<ISimulationService, SimulationService>();
-        services.AddSingleton<IMcpAgentService, McpAgentService>();
-        services.AddSingleton<ITaskService, TaskService>();
+        services.AddScoped<IRepositoryService, RepositoryService>();
+        services.AddScoped<IRuntimeService, RuntimeService>();
+        services.AddScoped<ITaskService, TaskService>();
+        services.AddScoped<IHistoryService, HistoryService>();
+        services.AddScoped<IAiDecisionService, XAiDecisionService>();
+        services.AddScoped<IManagementService, ManagementService>();
+        services.AddScoped<IIdentityService, IdentityService>();
+        services.AddScoped<IDecisionService, DecisionService>();
+        services.AddScoped<IIncidentService, IncidentService>();
+        services.AddScoped<IProcessMigrationService, ProcessMigrationService>();
+        services.AddScoped<ISemanticValidationService, SemanticValidationService>();
+        services.AddScoped<ISimulationService, SimulationService>();
+        services.AddScoped<IMcpAgentService, McpAgentService>();
+        services.AddScoped<ITaskService, TaskService>();
         services.AddServiceTaskHandlers();
         services.AddHostedService<JobExecutorService>();
         return services;

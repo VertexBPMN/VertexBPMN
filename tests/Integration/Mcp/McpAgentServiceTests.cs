@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
 using VertexBPMN.Application;
 
 namespace VertexBPMN.Tests.Integration.Mcp;
@@ -16,7 +17,10 @@ public class McpAgentServiceTests : IClassFixture<WebApplicationFactory<VertexBP
     [Fact(Skip = "Needs external service")]
     public async Task CallAgentAsync_ReturnsResponse()
     {
-        var service = new McpAgentService(_agentFilePath);
+        var configuration = new ConfigurationBuilder()
+            .AddJsonFile(_agentFilePath)
+            .Build();
+        var service = new McpAgentService(configuration);
         var input = new JsonObject { ["input"] = "Test" };
         var resp = await service.CallAgentAsync("NLP", input, CancellationToken.None);
         Assert.NotNull(resp);
@@ -25,7 +29,10 @@ public class McpAgentServiceTests : IClassFixture<WebApplicationFactory<VertexBP
     [Fact(Skip = "Needs external service")]
     public async Task WaitForAgentResponseAsync_ReturnsDemoResponse()
     {
-        var service = new McpAgentService(_agentFilePath);
+        var configuration = new ConfigurationBuilder()
+            .AddJsonFile(_agentFilePath)
+            .Build();
+        var service = new McpAgentService(configuration);
         var resp = await service.WaitForAgentResponseAsync("corr-123", CancellationToken.None);
         Assert.Equal("corr-123", resp["correlationId"]!.ToString());
         Assert.Equal("DemoResponse", resp["result"]!.ToString());

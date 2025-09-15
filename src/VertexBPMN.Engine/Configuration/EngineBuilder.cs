@@ -85,8 +85,5 @@ public sealed class EngineBuilder
         _services.AddSingleton<IDmnEngine, DmnEngine>();
         _services.AddSingleton<IDistributedTokenEngine, DistributedTokenEngine>();
         _services.AddSingleton<IBpmnEngine, BpmnEngine>();
-        //_services.AddSingleton<IProcessDefinitionRepository, ProcessRepository>();
-        //_services.AddSingleton<IProcessInstanceRepository>(sp =>
-        //    sp.GetRequiredService<IProcessDefinitionRepository>() as ProcessRepository);
     }
 }

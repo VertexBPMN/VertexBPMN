@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using System.Text;
 using System.Text.Json.Nodes;
 using VertexBPMN.Domain.Interfaces;
@@ -12,11 +13,12 @@ public class McpAgentService : IMcpAgentService
     private readonly Dictionary<string, AgentConfig> _agents;
     private readonly HttpClient _httpClient;
 
-    public McpAgentService(string configPath)
+    public McpAgentService(IConfiguration configuration)
     {
         _httpClient = new HttpClient();
-        var configJson = File.ReadAllText(configPath);
-        var config = JsonNode.Parse(configJson)!["agents"]!.AsArray();
+        //var configJson = File.ReadAllText(configPath);
+        //var config = JsonNode.Parse(configJson)!["agents"]!.AsArray();
+        var config = configuration.GetSection("McpAgents").Get<JsonArray>()!;
         _agents = config.ToDictionary(
             x => x["name"]!.ToString(),
             x => new AgentConfig

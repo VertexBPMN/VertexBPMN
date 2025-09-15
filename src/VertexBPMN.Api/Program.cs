@@ -11,7 +11,6 @@ using VertexBPMN.Api.Security;
 using VertexBPMN.Api.Services;
 using VertexBPMN.Application;
 using VertexBPMN.Application.Extensions;
-using VertexBPMN.Application.Messaging;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Domain.Interfaces.Repositories;
 using VertexBPMN.Engine.Execution;
@@ -90,17 +89,17 @@ else
 	builder.Services.AddDbContext<ProcessMiningEventDbContext>(options =>
 		options.UseSqlite(builder.Configuration.GetConnectionString("ProcessMiningEvents")));
 }
-builder.Services.AddScoped<IProcessMiningEventSink, PersistentProcessMiningEventSink>();
-builder.Services.AddScoped<IRuntimeService, RuntimeService>();
-builder.Services.AddScoped<ITaskService, TaskService>();
-builder.Services.AddScoped<IHistoryService, HistoryService>();
-builder.Services.AddScoped<IIncidentService, IncidentService>();
+//builder.Services.AddScoped<IProcessMiningEventSink, PersistentProcessMiningEventSink>();
+//builder.Services.AddScoped<IRuntimeService, RuntimeService>();
+//builder.Services.AddScoped<ITaskService, TaskService>();
+//builder.Services.AddScoped<IHistoryService, HistoryService>();
+//builder.Services.AddScoped<IIncidentService, IncidentService>();
 // Register JobExecutor as background service
 builder.Services.AddHostedService<JobExecutorService>();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddScoped<IManagementService, ManagementService>();
-builder.Services.AddSingleton<IIdentityService, IdentityService>();
-builder.Services.AddSingleton<IDecisionService, DecisionService>();
+//builder.Services.AddScoped<IManagementService, ManagementService>();
+//builder.Services.AddSingleton<IIdentityService, IdentityService>();
+//builder.Services.AddSingleton<IDecisionService, DecisionService>();
 
 // Register SimulationService
 builder.Services.AddScoped<ISimulationService, SimulationService>();
@@ -114,7 +113,7 @@ builder.Services.AddSingleton<IPluginManager, PluginManager>();
 builder.Services.AddSignalR();
 // Register all engine services (persistent variants)
 builder.Services.AddBpmnPersistenceServices();
-builder.Services.AddVertexEngineServices(false);
+builder.Services.AddVertexEngineServices(builder.Configuration);
 
 builder.Services.AddSingleton<IServiceTaskRegistry,ServiceTaskRegistry>();
 builder.Services.AddSingleton<IMessageDispatcher, InMemoryMessageDispatcher>();

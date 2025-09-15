@@ -1,4 +1,5 @@
 #nullable enable
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using VertexBPMN.Application.Extensions;
 using VertexBPMN.Application.Messaging;
@@ -17,31 +18,10 @@ public static class EngineServiceModule
     /// </summary>
     /// <param name="services">Service collection.</param>
     /// <param name="useInMemory">If true, register in-memory implementations instead of persistent ones (for tests).</param>
-    public static IServiceCollection AddVertexEngineServices(this IServiceCollection services, bool useInMemory = false)
+    public static IServiceCollection AddVertexEngineServices(this IServiceCollection services, IConfiguration configuration)
     {
         // Shared singleton/event sink
         services.AddScoped<IProcessMiningEventSink, ProcessMiningEventSink>();
-
-        //if (useInMemory)
-        //{
-        //    //services.AddSingleton<IRepositoryService, InMemoryRepositoryService>(); // still needs repository behind but kept for completeness
-        //    //services.AddSingleton<IRuntimeService, InMemoryRuntimeService>();
-        //    //services.AddSingleton<ITaskService, InMemoryTaskService>();
-        //    //services.AddSingleton<IHistoryService, InMemoryHistoryService>();
-        //    //services.AddSingleton<IAiDecisionService, FakeAiDecisionService>();
-        //    //services.AddSingleton<IProcessInstanceStore, InMemoryProcessInstanceStore>();
-        //    //services.AddSingleton<IProcessMiningEventSink, InMemoryEventSink>();
-        //    //services.AddSingleton<IMessageDispatcher, InMemoryMessageDispatcher>();
-        //}
-        //else
-        //{
-        //    services.AddScoped<IRepositoryService, RepositoryService>();
-        //    services.AddScoped<IRuntimeService, RuntimeService>();
-        //    services.AddScoped<ITaskService, TaskService>();
-        //    services.AddScoped<IHistoryService, HistoryService>();
-        //    services.AddScoped<IAiDecisionService, XAiDecisionService>();
-        //}
-
         services.AddScoped<IRepositoryService, RepositoryService>();
         services.AddScoped<IRuntimeService, RuntimeService>();
         services.AddScoped<ITaskService, TaskService>();

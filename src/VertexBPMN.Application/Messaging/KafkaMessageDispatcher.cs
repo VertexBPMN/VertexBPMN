@@ -492,6 +492,12 @@ public class KafkaMessageDispatcher : IMessageDispatcher, IDisposable
         }
     }
 
+    public Task DispatchAiTaskAsync(string targetWorkerId, string aiProvider, string aiModel, Dictionary<string, string> attributes,
+        Dictionary<string, object> variables, CancellationToken cancellationToken = default)
+    {
+        return Task.CompletedTask;
+    }
+
     public void Dispose()
     {
         try { _producer?.Flush(TimeSpan.FromSeconds(2)); } catch { /* ignore */ }

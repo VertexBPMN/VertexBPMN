@@ -100,9 +100,9 @@ public class TokenEngine : IProcessEngine
             var task = model.Tasks.FirstOrDefault(t => t.Id == currentId);
             if (task != null)
             {
-                var nextId = await HandleTaskAsync(task, flows, model, trace, decisionService);
+                var nextId =  HandleTaskAsync(task, flows, model, trace, decisionService);
                 if (nextId == null) break;
-                currentId = nextId;
+                currentId = nextId.Result;
                 continue;
             }
 

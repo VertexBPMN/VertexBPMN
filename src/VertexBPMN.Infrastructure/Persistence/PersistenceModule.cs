@@ -20,7 +20,7 @@ public static class PersistenceModule
     /// </summary>
     /// <param name="services">The service collection.</param>
     /// <param name="configureDb">A delegate to configure the BpmnDbContext options.</param>
-    public static IServiceCollection AddBpmnPersistenceServices(IServiceCollection services)
+    public static IServiceCollection AddBpmnPersistenceServices(this IServiceCollection services)
     {
         services.AddScoped<IProcessDefinitionRepository, ProcessDefinitionRepository>();
         services.AddScoped<IProcessInstanceRepository, ProcessInstanceRepository>();

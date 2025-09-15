@@ -34,7 +34,12 @@ public static class ServiceTaskRegistryExtensions
             registry.Register("informOperationsSuccessfulCancelation", provider.GetRequiredService<InformOperationsSuccessfulCancelationHandler>());
             registry.Register("mcpServiceTask", provider.GetRequiredService<McpServiceTaskHandler>());
 
-            // ✅ NEW: AI Service Task Handlers
+            // ✅ NEW: Universal AI Service Task Handler
+            registry.Register("aiServiceTask", provider.GetRequiredService<AIServiceTaskHandler>());
+            registry.Register("ai:universal", provider.GetRequiredService<AIServiceTaskHandler>());
+            registry.Register("ai:smart", provider.GetRequiredService<AIServiceTaskHandler>());
+
+            // ✅ Specialized AI Service Task Handlers
             registry.Register("ai:openai", provider.GetRequiredService<OpenAiServiceTaskHandler>());
             registry.Register("ai:openai:gpt-4", provider.GetRequiredService<OpenAiServiceTaskHandler>());
             registry.Register("ai:openai:gpt-3.5-turbo", provider.GetRequiredService<OpenAiServiceTaskHandler>());
@@ -55,7 +60,6 @@ public static class ServiceTaskRegistryExtensions
             registry.Register("externalDataFetch", provider.GetRequiredService<ContextEnrichmentServiceTaskHandler>());
 
             registry.Register("ai:generic", provider.GetRequiredService<GenericAiServiceTaskHandler>());
-            registry.Register("aiServiceTask", provider.GetRequiredService<GenericAiServiceTaskHandler>());
             registry.Register("genericAi", provider.GetRequiredService<GenericAiServiceTaskHandler>());
 
             // Additional AI provider mappings
@@ -101,7 +105,10 @@ public static class ServiceTaskRegistryExtensions
         services.AddSingleton<InformOperationsSuccessfulCancelationHandler>();
         services.AddSingleton<McpServiceTaskHandler>();
 
-        // ✅ NEW: AI Service Task Handlers (Singleton for performance)
+        // ✅ NEW: Universal AI Service Task Handler (Primary)
+        services.AddSingleton<AIServiceTaskHandler>();
+
+        // ✅ Specialized AI Service Task Handlers (Secondary)
         services.AddSingleton<OpenAiServiceTaskHandler>();
         services.AddSingleton<AnthropicServiceTaskHandler>();
         services.AddSingleton<GeminiServiceTaskHandler>();

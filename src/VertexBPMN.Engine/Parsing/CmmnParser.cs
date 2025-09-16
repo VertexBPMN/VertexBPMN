@@ -19,15 +19,28 @@ public class CmmnParser : ICmmnParser
             var caseId = caseElement.Attribute("id")?.Value ?? throw new CmmnParseException("Case ID missing");
             var caseName = caseElement.Attribute("name")?.Value ?? caseId;
 
-            var planItems = caseElement.Descendants(ns + "planItem").Select(item => new PlanItem(
-                item.Attribute("id")?.Value ?? "",
-                item.Element(ns + "definitionRef")?.Name.LocalName ?? "",
-                item.Attribute("definitionRef")?.Value ?? "",
-                item.Attributes().ToDictionary(a => a.Name.LocalName, a => a.Value),
-                item.Descendants(ns + "entryCriterion").Select(c => c.Attribute("sentryRef")?.Value ?? "").ToList(),
-                item.Descendants(ns + "exitCriterion").Select(c => c.Attribute("sentryRef")?.Value ?? "").ToList(),
-                item.Attribute("isDiscretionary")?.Value == "true"
-            )).ToList();
+            var planItems = caseElement
+                .Descendants(ns + "planItem")
+                .Select(item =>
+                {
+                    var type = item.Attribute("definitionType")?.Value
+                               ?? item.Element(ns + "definitionRef")?.Attribute("type")?.Value
+                               ?? item.Element(ns + "definitionRef")?.Value
+                               ?? item.Element(ns + "definitionRef")?.Name.LocalName
+                               ?? item.Attribute("type")?.Value
+                               ?? string.Empty;
+
+                    return new PlanItem(
+                        item.Attribute("id")?.Value ?? string.Empty,
+                        type,
+                        item.Attribute("definitionRef")?.Value ?? string.Empty,
+                        item.Attributes().ToDictionary(a => a.Name.LocalName, a => a.Value),
+                        item.Descendants(ns + "entryCriterion").Select(c => c.Attribute("sentryRef")?.Value ?? "").ToList(),
+                        item.Descendants(ns + "exitCriterion").Select(c => c.Attribute("sentryRef")?.Value ?? "").ToList(),
+                        item.Attribute("isDiscretionary")?.Value == "true"
+                    );
+                })
+                .ToList();
 
             var sentries = caseElement.Descendants(ns + "sentry").Select(sentry => new Sentry(
                 sentry.Attribute("id")?.Value ?? "",

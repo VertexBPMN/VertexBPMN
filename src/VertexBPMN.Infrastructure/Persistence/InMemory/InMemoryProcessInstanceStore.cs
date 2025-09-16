@@ -1,6 +1,8 @@
 #nullable enable
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Text.Json;
+using System.Xml.Linq;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Entities.Modeling;
 using VertexBPMN.Domain.Interfaces;
@@ -21,6 +23,7 @@ public sealed class InMemoryProcessInstanceStore : IProcessInstanceStore
     private readonly ConcurrentDictionary<string, WorkerNode> _workers = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, string> _dmnModels = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, string> _cmmnModels = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, ConcurrentQueue<HistoricalCaseData>> _historicalCaseData = new(StringComparer.Ordinal);
     private readonly ConcurrentQueue<DeadLetterEntry> _deadLetters = new();
 
     private record DeadLetterEntry(DateTime TimestampUtc, string TokenType, string SerializedToken, string ErrorMessage);
@@ -184,20 +187,150 @@ public sealed class InMemoryProcessInstanceStore : IProcessInstanceStore
 
     public Task UpdateCaseModelAsync(CaseModel model)
     {
-        throw new NotImplementedException();
+        ArgumentNullException.ThrowIfNull(model);
+        var serialized = SerializeCaseModel(model);
+        _cmmnModels[model.Id] = serialized;
+        return Task.CompletedTask;
     }
 
     public Task SaveHistoricalCaseDataAsync(HistoricalCaseData data)
     {
-        throw new NotImplementedException();
+        ArgumentNullException.ThrowIfNull(data);
+        var queue = _historicalCaseData.GetOrAdd(data.CaseId, _ => new ConcurrentQueue<HistoricalCaseData>());
+        queue.Enqueue(CloneHistoricalCaseData(data));
+        return Task.CompletedTask;
     }
 
     public Task<List<HistoricalCaseData>> GetHistoricalCaseDataAsync(string caseId)
     {
-        throw new NotImplementedException();
+        ArgumentException.ThrowIfNullOrWhiteSpace(caseId);
+        if (_historicalCaseData.TryGetValue(caseId, out var queue))
+        {
+            var snapshot = queue.ToArray().Select(CloneHistoricalCaseData).ToList();
+            return Task.FromResult(snapshot);
+        }
+
+        return Task.FromResult(new List<HistoricalCaseData>());
     }
 
     // Helper methods (reflection-safe to cope with incomplete domain model definitions provided)
+
+    private static HistoricalCaseData CloneHistoricalCaseData(HistoricalCaseData data)
+    {
+        var caseFile = data.CaseFile != null
+            ? new Dictionary<string, object>(data.CaseFile)
+            : new Dictionary<string, object>();
+        var completedPlanItems = data.CompletedPlanItems != null
+            ? new List<string>(data.CompletedPlanItems)
+            : new List<string>();
+
+        return new HistoricalCaseData(data.CaseId, caseFile, completedPlanItems, data.Timestamp);
+    }
+
+    private static string SerializeCaseModel(CaseModel model)
+    {
+        var ns = XNamespace.Get("https://www.omg.org/spec/CMMN/20151109/MODEL");
+
+        var caseElement = new XElement(ns + "case",
+            new XAttribute("id", model.Id ?? string.Empty),
+            new XAttribute("name", model.Name ?? string.Empty));
+
+        if (model.Attributes != null)
+        {
+            foreach (var attribute in model.Attributes)
+            {
+                if (!string.IsNullOrWhiteSpace(attribute.Key) && attribute.Value is not null)
+                    caseElement.SetAttributeValue(attribute.Key, attribute.Value);
+            }
+        }
+
+        foreach (var planItem in model.PlanItems ?? new List<PlanItem>())
+        {
+            var planItemElement = new XElement(ns + "planItem",
+                new XAttribute("id", planItem.Id ?? string.Empty));
+
+            if (!string.IsNullOrWhiteSpace(planItem.DefinitionRef))
+                planItemElement.SetAttributeValue("definitionRef", planItem.DefinitionRef);
+
+            if (!string.IsNullOrWhiteSpace(planItem.Type))
+                planItemElement.SetAttributeValue("definitionType", planItem.Type);
+
+            if (planItem.IsDiscretionary)
+                planItemElement.SetAttributeValue("isDiscretionary", "true");
+
+            if (planItem.Attributes != null)
+            {
+                foreach (var attribute in planItem.Attributes)
+                {
+                    if (!string.IsNullOrWhiteSpace(attribute.Key) && attribute.Value is not null)
+                        planItemElement.SetAttributeValue(attribute.Key, attribute.Value);
+                }
+            }
+
+            if (planItem.EntrySentryRefs != null)
+            {
+                foreach (var sentryRef in planItem.EntrySentryRefs.Where(r => !string.IsNullOrWhiteSpace(r)))
+                {
+                    planItemElement.Add(new XElement(ns + "entryCriterion", new XAttribute("sentryRef", sentryRef!)));
+                }
+            }
+
+            if (planItem.ExitSentryRefs != null)
+            {
+                foreach (var sentryRef in planItem.ExitSentryRefs.Where(r => !string.IsNullOrWhiteSpace(r)))
+                {
+                    planItemElement.Add(new XElement(ns + "exitCriterion", new XAttribute("sentryRef", sentryRef!)));
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(planItem.Type))
+            {
+                planItemElement.Add(new XElement(ns + "definitionRef", new XAttribute("type", planItem.Type)));
+            }
+
+            caseElement.Add(planItemElement);
+        }
+
+        foreach (var sentry in model.Sentries ?? new List<Sentry>())
+        {
+            var sentryElement = new XElement(ns + "sentry",
+                new XAttribute("id", sentry.Id ?? string.Empty));
+
+            if (!string.IsNullOrWhiteSpace(sentry.OnPartRef))
+            {
+                sentryElement.Add(new XElement(ns + "onPart", new XAttribute("planItemRef", sentry.OnPartRef)));
+            }
+
+            if (sentry.Conditions != null)
+            {
+                foreach (var condition in sentry.Conditions)
+                {
+                    var conditionElement = new XElement(ns + "condition");
+                    if (!string.IsNullOrWhiteSpace(condition.VariableRef))
+                        conditionElement.SetAttributeValue("variableRef", condition.VariableRef);
+                    if (!string.IsNullOrWhiteSpace(condition.OnPartEvent))
+                        conditionElement.SetAttributeValue("onPartEvent", condition.OnPartEvent);
+                    if (!string.IsNullOrWhiteSpace(condition.LogicalOperator))
+                        conditionElement.SetAttributeValue("logicalOperator", condition.LogicalOperator);
+
+                    conditionElement.Add(new XElement(ns + "expression", condition.Expression ?? string.Empty));
+                    sentryElement.Add(conditionElement);
+                }
+            }
+
+            caseElement.Add(sentryElement);
+        }
+
+        foreach (var caseFileItem in model.CaseFileItems ?? new List<CaseFileItem>())
+        {
+            var caseFileElement = new XElement(ns + "caseFileItem",
+                new XAttribute("id", caseFileItem.Id ?? string.Empty),
+                new XAttribute("name", caseFileItem.Name ?? string.Empty));
+            caseElement.Add(caseFileElement);
+        }
+
+        return new XDocument(caseElement).ToString(SaveOptions.DisableFormatting);
+    }
 
     private static Guid GetTokenId(ExecutionToken token)
     {

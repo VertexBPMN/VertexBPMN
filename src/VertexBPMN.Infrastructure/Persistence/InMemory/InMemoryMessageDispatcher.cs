@@ -25,7 +25,6 @@ public class InMemoryMessageDispatcher : IMessageDispatcher
     private readonly ConcurrentBag<CaseToken> _caseTokens = new();
     private readonly ConcurrentBag<(string TaskId, string TaskType, Dictionary<string, object> Variables)> _queuedTasks = new();
     private readonly ConcurrentBag<CaseFileUpdateEvent> _caseFileUpdates = new();
-    private IMessageDispatcher _messageDispatcherImplementation;
 
     public InMemoryMessageDispatcher(IServiceTaskRegistry registry)
     {
@@ -116,9 +115,7 @@ public class InMemoryMessageDispatcher : IMessageDispatcher
 
     public Task DispatchAiTaskAsync(string targetWorkerId, string aiProvider, string aiModel, Dictionary<string, string> attributes,
         Dictionary<string, object> variables, CancellationToken cancellationToken = default)
-    {
-        return _messageDispatcherImplementation.DispatchAiTaskAsync(targetWorkerId, aiProvider, aiModel, attributes, variables, cancellationToken);
-    }
+        => Task.CompletedTask;
 
     // ---------- Helpers / Safe Invocation ----------
 

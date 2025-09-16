@@ -124,7 +124,7 @@ builder.Services.AddSingleton<IDmnEngine, DmnEngine>();
 builder.Services.AddSingleton<IDmnParser, DmnParser>();
 builder.Services.AddSingleton<ICmmnParser, CmmnParser>();
 builder.Services.AddSingleton<IBpmnParser, BpmnParser>();
-builder.Services.AddSingleton<IDistributedTokenEngine,DistributedTokenEngine>();
+builder.Services.AddSingleton<IDistributedProcessEngine,DistributedProcessEngine>();
 builder.Services.AddSingleton<ILoadBalancingService, LoadBalancingService>();
 builder.Services.AddSingleton<IWorkerNodeManager, WorkerNodeManager>();
 

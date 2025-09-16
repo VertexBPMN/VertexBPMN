@@ -13,14 +13,14 @@ namespace VertexBPMN.Tests.Perf;
 [MemoryDiagnoser]
 public class DistributedTokenEngineBenchmarks
 {
-    private readonly DistributedTokenEngine _engine;
+    private readonly DistributedProcessEngine _engine;
     private readonly CaseModel _caseModel;
     private readonly CaseToken _caseToken;
 
     public DistributedTokenEngineBenchmarks()
     {
      
-        var logger = new LoggerFactory().CreateLogger<DistributedTokenEngine>();
+        var logger = new LoggerFactory().CreateLogger<DistributedProcessEngine>();
         var registry = new ServiceTaskRegistry();
         var dispatcher = new Mock<IMessageDispatcher>();
         var store = new Mock<IProcessInstanceStore>();
@@ -54,7 +54,7 @@ public class DistributedTokenEngineBenchmarks
         cmmnParser.Setup(p => p.ParseAsync(It.IsAny<string>(),CancellationToken.None )).ReturnsAsync(_caseModel);
         store.Setup(s => s.GetPendingCaseTokensAsync()).ReturnsAsync([_caseToken]);
 
-        _engine = new DistributedTokenEngine(logger, registry, dispatcher.Object, store.Object, dmnEngine.Object, dmnParser.Object, cmmnParser.Object, bpmnParser.Object, aiService.Object, TracerProvider.Default);
+        _engine = new DistributedProcessEngine(logger, registry, dispatcher.Object, store.Object, dmnEngine.Object, dmnParser.Object, cmmnParser.Object, bpmnParser.Object, aiService.Object, TracerProvider.Default);
 
     }
 

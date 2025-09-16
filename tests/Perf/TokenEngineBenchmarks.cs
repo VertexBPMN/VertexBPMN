@@ -24,7 +24,7 @@ public class TokenEngineBenchmarks
             new List<BpmnSequenceFlow> { new("flow1", "start1", "end1") },
                 new List<BpmnSubprocess>()
         );
-        var engine = new TokenEngine();
+        var engine = new ProcessEngine();
         var sw = Stopwatch.StartNew();
         for (int i = 0; i < 10000; i++)
         {
@@ -46,7 +46,7 @@ public class TokenEngineBenchmarks
             new List<BpmnSequenceFlow> { new("flow1", "start1", "end1") },
             new List<BpmnSubprocess>()
         );
-        var logger = new LoggerFactory().CreateLogger<DistributedTokenEngine>();
+        var logger = new LoggerFactory().CreateLogger<DistributedProcessEngine>();
         var registry = new ServiceTaskRegistry();
         var dispatcher = new Mock<IMessageDispatcher>();
         var store = new Mock<IProcessInstanceStore>();
@@ -55,7 +55,7 @@ public class TokenEngineBenchmarks
         var bpmnParser = new Mock<IBpmnParser>();
         var dmnEngine = new Mock<IDmnEngine>();
         var aiService = new Mock<IAiDecisionService>();
-        var engine = new DistributedTokenEngine(logger, registry, dispatcher.Object, store.Object, dmnEngine.Object, dmnParser.Object, cmmnParser.Object, bpmnParser.Object, aiService.Object, TracerProvider.Default);
+        var engine = new DistributedProcessEngine(logger, registry, dispatcher.Object, store.Object, dmnEngine.Object, dmnParser.Object, cmmnParser.Object, bpmnParser.Object, aiService.Object, TracerProvider.Default);
         var sw = Stopwatch.StartNew();
         for (int i = 0; i < 10000; i++)
         {
@@ -68,7 +68,7 @@ public class TokenEngineBenchmarks
     [Fact]
     public async Task ProcessCaseTokenAsync_ComplexSentry_EvaluatesCorrectly()
     {
-        var logger = new Mock<ILogger<DistributedTokenEngine>>();
+        var logger = new Mock<ILogger<DistributedProcessEngine>>();
         var registry = new ServiceTaskRegistry();
         var dispatcher = new Mock<IMessageDispatcher>();
         var store = new Mock<IProcessInstanceStore>();
@@ -100,7 +100,7 @@ public class TokenEngineBenchmarks
         cmmnParser.Setup(p => p.ParseAsync(It.IsAny<string>(), CancellationToken.None)).ReturnsAsync(caseModel);
         store.Setup(s => s.GetCmmnModelAsync("case1")).ReturnsAsync("<cmmn:case id='case1'>...</cmmn:case>");
 
-        var engine = new DistributedTokenEngine(logger.Object, registry, dispatcher.Object, store.Object, dmnEngine.Object, dmnParser.Object, cmmnParser.Object, bpmnParser.Object, aiService.Object, TracerProvider.Default);
+        var engine = new DistributedProcessEngine(logger.Object, registry, dispatcher.Object, store.Object, dmnEngine.Object, dmnParser.Object, cmmnParser.Object, bpmnParser.Object, aiService.Object, TracerProvider.Default);
         var token = new CaseToken(Guid.NewGuid(), Guid.NewGuid(), "task1", "humanTask", new() { { "amount", 200 } }, DateTime.UtcNow);
         var trace = new List<string>();
         engine.GetType().GetMethod("ProcessCaseTokenAsync", BindingFlags.NonPublic | BindingFlags.Instance)

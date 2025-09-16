@@ -35,7 +35,7 @@ public class AdvancedBpmn20FeaturesTests
             new List<BpmnSubprocess>()
         );
 
-        var engine = new TokenEngine();
+        var engine = new ProcessEngine();
         var trace = engine.Execute(model);
 
         Assert.Contains("StartEvent: start1", trace);
@@ -70,7 +70,7 @@ public class AdvancedBpmn20FeaturesTests
             }
         );
 
-        var engine = new TokenEngine();
+        var engine = new ProcessEngine();
         var trace = engine.Execute(model);
 
         Assert.Contains("StartEvent: start1", trace);
@@ -108,7 +108,7 @@ public class AdvancedBpmn20FeaturesTests
             }
         );
 
-        var engine = new TokenEngine();
+        var engine = new ProcessEngine();
         var trace = engine.Execute(model);
 
         Assert.Contains("StartEvent: start1", trace);
@@ -146,7 +146,7 @@ public class AdvancedBpmn20FeaturesTests
             }
         );
 
-        var engine = new TokenEngine();
+        var engine = new ProcessEngine();
         var trace = engine.Execute(model);
 
         Assert.Contains("StartEvent: start1", trace);
@@ -181,7 +181,7 @@ public class AdvancedBpmn20FeaturesTests
             new List<BpmnSubprocess>()
         );
 
-        var engine = new TokenEngine();
+        var engine = new ProcessEngine();
         var trace = engine.Execute(model);
 
         Assert.Contains("StartEvent: start1", trace);
@@ -218,7 +218,7 @@ public class AdvancedBpmn20FeaturesTests
             }
         );
 
-        var engine = new TokenEngine();
+        var engine = new ProcessEngine();
         var trace = engine.Execute(model);
 
         Assert.Contains("StartEvent: start1", trace);
@@ -258,7 +258,7 @@ public class AdvancedBpmn20FeaturesTests
             }
         );
 
-        var engine = new TokenEngine();
+        var engine = new ProcessEngine();
         var trace = engine.Execute(model);
 
         Assert.Contains("StartEvent: start1", trace);

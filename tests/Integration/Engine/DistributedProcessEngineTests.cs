@@ -1,4 +1,5 @@
 ﻿using System.Reflection;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
 using OpenTelemetry.Trace;
@@ -10,22 +11,25 @@ using VertexBPMN.Engine.Configuration;
 using VertexBPMN.Engine.Execution;
 using VertexBPMN.Engine.Parsing;
 using VertexBPMN.Infrastructure.Persistence.InMemory;
+using Xunit.Abstractions;
 
 namespace VertexBPMN.Tests.Integration.Engine;
 
-public class DistributedTokenEngineTests
+public class DistributedProcessEngineTests
 {
-    private readonly Mock<ILogger<DistributedTokenEngine>> _loggerMock;
+    private readonly ITestOutputHelper _testOutputHelper;
+    private readonly Mock<ILogger<DistributedProcessEngine>> _loggerMock;
     private readonly Mock<IProcessInstanceStore> _storeMock;
     private readonly Mock<IMessageDispatcher> _dispatcherMock;
     private readonly Mock<ICmmnParser> _cmmnParserMock;
     private readonly Mock<IAiDecisionService> _aiDecisionServiceMock;
 
-    private readonly DistributedTokenEngine _engine;
+    private readonly DistributedProcessEngine _engine;
 
-    public DistributedTokenEngineTests()
+    public DistributedProcessEngineTests(ITestOutputHelper testOutputHelper)
     {
-        _loggerMock = new Mock<ILogger<DistributedTokenEngine>>();
+        _testOutputHelper = testOutputHelper;
+        _loggerMock = new Mock<ILogger<DistributedProcessEngine>>();
         _storeMock = new Mock<IProcessInstanceStore>();
         _dispatcherMock = new Mock<IMessageDispatcher>();
         _cmmnParserMock = new Mock<ICmmnParser>();
@@ -35,7 +39,7 @@ public class DistributedTokenEngineTests
         var dmnParser = new Mock<IDmnParser>();
         var bpmnParser = new Mock<IBpmnParser>();
         var dmnEngine = new Mock<IDmnEngine>();
-        _engine = new DistributedTokenEngine(_loggerMock.Object, registry, _dispatcherMock.Object, _storeMock.Object, dmnEngine.Object, dmnParser.Object, _cmmnParserMock.Object, bpmnParser.Object, _aiDecisionServiceMock.Object, tracerProvider);
+        _engine = new DistributedProcessEngine(_loggerMock.Object, registry, _dispatcherMock.Object, _storeMock.Object, dmnEngine.Object, dmnParser.Object, _cmmnParserMock.Object, bpmnParser.Object, _aiDecisionServiceMock.Object, tracerProvider);
 
     }
 
@@ -72,7 +76,7 @@ public class DistributedTokenEngineTests
     public async Task PublishCaseFileUpdateAsync_KafkaIntegration_Successfully()
     {
         // Arrange
-        var caseId = "case1";
+        var caseId = "D2DD968A-6748-4C17-83A6-8EAE354F5C77";
         var caseFileItemId = "amount";
         var newValue = 300;
         var caseModel = new CaseModel(
@@ -88,7 +92,7 @@ public class DistributedTokenEngineTests
         );
         var caseToken = new CaseToken(Guid.NewGuid(), Guid.Parse(caseId), "event1", "eventListener", new Dictionary<string, object> { { caseFileItemId, 200 } }, DateTime.UtcNow);
 
-        _storeMock.Setup(s => s.GetCmmnModelAsync(caseId)).ReturnsAsync("<cmmn:case id='case1'>...</cmmn:case>");
+        _storeMock.Setup(s => s.GetCmmnModelAsync(caseId)).ReturnsAsync("<cmmn:case id='D2DD968A-6748-4C17-83A6-8EAE354F5C77'>...</cmmn:case>");
         _cmmnParserMock.Setup(p => p.ParseAsync(It.IsAny<string>(), CancellationToken.None)).ReturnsAsync(caseModel);
         _storeMock.Setup(s => s.GetPendingCaseTokensAsync()).ReturnsAsync([caseToken]);
         _storeMock.Setup(s => s.UpdateCaseModelAsync(It.IsAny<CaseModel>())).Returns(Task.CompletedTask);
@@ -107,7 +111,7 @@ public class DistributedTokenEngineTests
     [Fact]
     public async Task ProcessTaskAsync_BusinessRuleTask_EvaluatesDmnCorrectly()
     {
-        var logger = new LoggerFactory().CreateLogger<DistributedTokenEngine>();
+        var logger = new LoggerFactory().CreateLogger<DistributedProcessEngine>();
         var registry = new ServiceTaskRegistry();
         var dispatcher = new Mock<IMessageDispatcher>();
         var store = new Mock<IProcessInstanceStore>();
@@ -131,7 +135,7 @@ public class DistributedTokenEngineTests
                  .ReturnsAsync(new Dictionary<string, object> { { "output1", "Approved" } });
         store.Setup(s => s.GetDmnModelAsync("decision1", CancellationToken.None)).ReturnsAsync("<dmn:decision id='decision1'>...</dmn:decision>");
 
-        var engine = new DistributedTokenEngine(logger, registry, dispatcher.Object, store.Object, dmnEngine.Object, dmnParser.Object, cmmnParser.Object, bpmnParser.Object, aiService.Object, TracerProvider.Default);
+        var engine = new DistributedProcessEngine(logger, registry, dispatcher.Object, store.Object, dmnEngine.Object, dmnParser.Object, cmmnParser.Object, bpmnParser.Object, aiService.Object, TracerProvider.Default);
         var model = new BpmnModel("process1", "process1",
             new List<BpmnEvent>(),
             new List<BpmnTask> {
@@ -170,7 +174,7 @@ public class DistributedTokenEngineTests
         var logger1 = new Mock<ILogger<BpmnParser>>(); var parser = new BpmnParser(logger1.Object, TracerProvider.Default);
         var model = await parser.ParseAsync(simpleXml);
 
-        var logger = new LoggerFactory().CreateLogger<DistributedTokenEngine>();
+        var logger = new LoggerFactory().CreateLogger<DistributedProcessEngine>();
         var registry = new ServiceTaskRegistry();
         var dispatcher = new Mock<IMessageDispatcher>();
         var store = new InMemoryProcessInstanceStore();
@@ -186,7 +190,7 @@ public class DistributedTokenEngineTests
                   .Returns(Task.CompletedTask);
 
 
-        var engine = new DistributedTokenEngine(logger, registry, dispatcher.Object, store, dmnEngine.Object, dmnParser.Object, cmmnParser.Object, bpmnParser.Object, aiService.Object, TracerProvider.Default);
+        var engine = new DistributedProcessEngine(logger, registry, dispatcher.Object, store, dmnEngine.Object, dmnParser.Object, cmmnParser.Object, bpmnParser.Object, aiService.Object, TracerProvider.Default);
         var trace = await engine.ExecuteAsync(model);
 
         Assert.Contains(trace, l => l.StartsWith("DistributedExecution: Starting process"));
@@ -203,7 +207,7 @@ public class DistributedTokenEngineTests
         var logger1 = new Mock<ILogger<BpmnParser>>(); var parser = new BpmnParser(logger1.Object, TracerProvider.Default);
         var model = await parser.ParseAsync(xml);
 
-        var logger = new LoggerFactory().CreateLogger<DistributedTokenEngine>();
+        var logger = new LoggerFactory().CreateLogger<DistributedProcessEngine>();
         var registry = new ServiceTaskRegistry();
         var dispatcher = new Mock<IMessageDispatcher>();
 
@@ -220,7 +224,7 @@ public class DistributedTokenEngineTests
         dispatcher.Setup(d => d.PublishTokenAsync(It.IsAny<ExecutionToken>(), It.IsAny<CancellationToken>()))
                   .Returns(Task.CompletedTask);
 
-        var engine = new DistributedTokenEngine(logger, registry, dispatcher.Object, store, dmnEngine.Object, dmnParser.Object, cmmnParser.Object, bpmnParser.Object, aiService.Object, TracerProvider.Default);
+        var engine = new DistributedProcessEngine(logger, registry, dispatcher.Object, store, dmnEngine.Object, dmnParser.Object, cmmnParser.Object, bpmnParser.Object, aiService.Object, TracerProvider.Default);
         var trace = await engine.ExecuteAsync(model);
 
         Assert.Contains(trace, l => l.StartsWith("DistributedExecution: Starting process"));
@@ -232,17 +236,11 @@ public class DistributedTokenEngineTests
 
     [Fact]
     public async Task ExecuteAsync_With_the_EngineBuilder()
-    {   
-   
+    {
+
         // 1. Definiere ein einfaches BPMN 2.0-Prozessmodell als XML-String
-        const string bpmnProcess = @"
-            <?xml version=""1.0"" encoding=""UTF-8""?>
-            <bpmn:definitions xmlns:bpmn=""[http://www.omg.org/spec/BPMN/20100524/MODEL](http://www.omg.org/spec/BPMN/20100524/MODEL)"" 
-                              targetNamespace=""[http://bpmn.io/schema/bpmn](http://bpmn.io/schema/bpmn)"">
-              <bpmn:process id=""Process_HelloWorld"" isExecutable=""true"">
-                <bpmn:startEvent id=""StartEvent_1""/>
-              </bpmn:process>
-            </bpmn:definitions>";
+        var path = Path.Combine("TestData", "hello-world.bpmn");
+        var bpmnProcess = await File.ReadAllTextAsync(path);
 
         // 2. Baue eine In-Memory-Engine für einen schnellen Test
         var engine = await new EngineBuilder()
@@ -250,19 +248,24 @@ public class DistributedTokenEngineTests
             .UseDistributedExecution()
             .ConfigureServices(services =>
             {
+                services.AddSingleton<IServiceTaskRegistry, ServiceTaskRegistry>();
+                services.AddSingleton<IMessageDispatcher, InMemoryMessageDispatcher>();
+                services.AddSingleton<IProcessInstanceStore, InMemoryProcessInstanceStore>();
+                services.AddSingleton<IAiDecisionService, FakeAiDecisionService>();
+                services.AddSingleton(TracerProvider.Default);
                 // Add any additional services or overrides here if needed
             })
             .BuildAsync();
 
         // 3. Deploye den Prozess in die Engine
-         var task = engine.RegisterProcessAsync("hello-world.bpmn", bpmnProcess);
+          await engine.RegisterProcessAsync("Process_HelloWorld", bpmnProcess);
 
-        Console.WriteLine($"Prozess '{task.Id}' erfolgreich deployed.");
+        _testOutputHelper.WriteLine($"Prozess erfolgreich deployed.");
 
         // 4. Starte eine neue Instanz des Prozesses
         var processInstance = await engine.StartInstanceAsync("Process_HelloWorld", null);
 
-        Console.WriteLine($"Prozessinstanz mit der ID '{processInstance}' wurde gestartet!");
+        _testOutputHelper.WriteLine($"Prozessinstanz mit der ID '{processInstance}' wurde gestartet!");
 
 
     }

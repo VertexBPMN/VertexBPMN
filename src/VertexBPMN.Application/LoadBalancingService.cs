@@ -8,12 +8,12 @@ namespace VertexBPMN.Application;
 /// </summary>
 public class LoadBalancingService : ILoadBalancingService
 {
-    private readonly IDistributedTokenEngine _distributedEngine;
+    private readonly IDistributedProcessEngine _distributedEngine;
     private readonly Dictionary<string, WorkerNode> _workers = new();
     private readonly object _workersLock = new();
     private LoadBalancingConfig _config = new();
 
-    public LoadBalancingService(IDistributedTokenEngine distributedEngine)
+    public LoadBalancingService(IDistributedProcessEngine distributedEngine)
     {
         _distributedEngine = distributedEngine;
     }

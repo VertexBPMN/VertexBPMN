@@ -22,7 +22,7 @@ namespace VertexBPMN.Tests.Integration.Bpmn
                 },
                 new List<BpmnSubprocess>()
             );
-            var engine = new TokenEngine();
+            var engine = new ProcessEngine();
             var trace = engine.Execute(model);
             Assert.Contains("StartEvent: start1", trace);
             Assert.Contains("SequenceFlow: f1", trace);
@@ -44,7 +44,7 @@ namespace VertexBPMN.Tests.Integration.Bpmn
                 },
                 new List<BpmnSubprocess>()
             );
-            var engine = new TokenEngine();
+            var engine = new ProcessEngine();
             var trace = engine.Execute(model);
             Assert.Contains("StartEvent: start1", trace);
             Assert.Contains("SequenceFlow: f1", trace);

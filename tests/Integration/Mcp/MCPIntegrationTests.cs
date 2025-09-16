@@ -11,14 +11,14 @@ namespace VertexBPMN.Tests.Integration.Mcp;
 
 public class MCPIntegrationTests
 {
-    private readonly Mock<ILogger<DistributedTokenEngine>> _loggerMock;
+    private readonly Mock<ILogger<DistributedProcessEngine>> _loggerMock;
     private readonly Mock<IProcessInstanceStore> _storeMock;
     private readonly Mock<IAiDecisionService> _aiDecisionServiceMock;
-    private readonly DistributedTokenEngine _engine;
+    private readonly DistributedProcessEngine _engine;
 
     public MCPIntegrationTests()
     {
-        _loggerMock = new Mock<ILogger<DistributedTokenEngine>>();
+        _loggerMock = new Mock<ILogger<DistributedProcessEngine>>();
         _storeMock = new Mock<IProcessInstanceStore>();
         _aiDecisionServiceMock = new Mock<IAiDecisionService>();
         var dispatcherMock = new Mock<IMessageDispatcher>();
@@ -29,7 +29,7 @@ public class MCPIntegrationTests
 
         var tracerProvider = new Mock<TracerProvider>().Object;
 
-        _engine = new DistributedTokenEngine(
+        _engine = new DistributedProcessEngine(
             _loggerMock.Object,
             new ServiceTaskRegistry(),
             dispatcherMock.Object,

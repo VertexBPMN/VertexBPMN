@@ -19,7 +19,7 @@ public partial class Program
         var builder = WebApplication.CreateBuilder(args);
     builder.Host.UseSerilog((ctx, lc) => lc.WriteTo.Console());
     builder.Services.AddMcpAdapterTelemetry(builder.Configuration); // updated telemetry setup
-    builder.Services.AddSingleton<IDistributedTokenEngine, DistributedTokenEngine>();
+    builder.Services.AddSingleton<IDistributedProcessEngine, DistributedProcessEngine>();
     builder.Services.AddSingleton<IBpmnParser, BpmnParser>();
     builder.Services.AddSingleton<IBpmnEngine, BpmnEngine>();
     builder.Services.AddSingleton<McpServer>();

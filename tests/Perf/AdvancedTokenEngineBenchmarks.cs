@@ -27,7 +27,7 @@ public class AdvancedTokenEngineBenchmarks
             },
             new List<BpmnSubprocess> { new("sub1", true) }
         );
-        var engine = new TokenEngine();
+        var engine = new ProcessEngine();
         var logger = new LoggerFactory().CreateLogger<DecisionService>();
         var decisionService = new DecisionService(logger);
         var sw = Stopwatch.StartNew();

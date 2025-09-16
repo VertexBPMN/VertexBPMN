@@ -83,7 +83,7 @@ public sealed class EngineBuilder
         _services.AddSingleton<IDmnParser, DmnParser>();
         _services.AddSingleton<ICmmnParser, CmmnParser>();
         _services.AddSingleton<IDmnEngine, DmnEngine>();
-        _services.AddSingleton<IDistributedTokenEngine, DistributedTokenEngine>();
+        _services.AddSingleton<IDistributedProcessEngine, DistributedProcessEngine>();
         _services.AddSingleton<IBpmnEngine, BpmnEngine>();
     }
 }

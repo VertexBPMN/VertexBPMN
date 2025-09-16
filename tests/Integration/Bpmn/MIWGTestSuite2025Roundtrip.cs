@@ -40,7 +40,7 @@ namespace VertexBPMN.Tests.Integration.Bpmn
             var xml = File.ReadAllText(bpmnFile);
             var logger = new Mock<ILogger<BpmnParser>>();var parser = new BpmnParser(logger.Object, TracerProvider.Default);
            var model =  parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
-            var engine = new TokenEngine();
+            var engine = new ProcessEngine();
             var result = engine.Execute(model);
             Assert.NotNull(result);
             Assert.True(result.Count > 0, $"No trace produced for {Path.GetFileName(bpmnFile)}");

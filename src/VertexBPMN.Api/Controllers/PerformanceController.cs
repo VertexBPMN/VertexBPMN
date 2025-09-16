@@ -16,13 +16,13 @@ namespace VertexBPMN.Api.Controllers;
 [Route("api/performance")]
 public class PerformanceController : ControllerBase
 {
-    private readonly IDistributedTokenEngine _distributedEngine;
+    private readonly IDistributedProcessEngine _distributedEngine;
     private readonly ILogger<PerformanceController> _logger;
     private static readonly Dictionary<string, PerformanceMetric> _metrics = new();
     private static readonly object _metricsLock = new();
 
     public PerformanceController(
-        IDistributedTokenEngine distributedEngine,
+        IDistributedProcessEngine distributedEngine,
         ILogger<PerformanceController> logger)
     {
         _distributedEngine = distributedEngine;

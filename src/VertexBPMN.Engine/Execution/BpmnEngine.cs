@@ -11,11 +11,11 @@ namespace VertexBPMN.Engine.Execution
     public class BpmnEngine : IBpmnEngine
     {
         private readonly IBpmnParser _parser;
-        private readonly IDistributedTokenEngine _engine;
+        private readonly IDistributedProcessEngine _engine;
         private readonly IProcessInstanceStore _store;
         private readonly ILogger<BpmnEngine> _logger;
 
-        public BpmnEngine(IBpmnParser parser, IDistributedTokenEngine engine, IProcessInstanceStore store, ILogger<BpmnEngine> logger)
+        public BpmnEngine(IBpmnParser parser, IDistributedProcessEngine engine, IProcessInstanceStore store, ILogger<BpmnEngine> logger)
         {
             _parser = parser ?? throw new ArgumentNullException(nameof(parser));
             _engine = engine ?? throw new ArgumentNullException(nameof(engine));

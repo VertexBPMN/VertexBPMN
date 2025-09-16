@@ -11,30 +11,109 @@ namespace VertexBPMN.Engine.Execution;
 
 /// <summary>
 /// Advanced BPMN 2.0 Token Engine with support for boundary events, multi-instance, compensation, and transactions.
-/// Olympic-level implementation for comprehensive BPMN execution.
+/// Lightweight, purely local in-process engine implementing IProcessEngine.
+/// Intended for development, unit tests, single-node demos.
+/// - No worker registry / distribution
+/// - No messaging layer
+/// - Optional DMN evaluation if parsers provided
+/// - In-memory model registry (BPMN/DMN/CMMN)
+/// - Deterministic synchronous execution loop with async facade
 /// </summary>
-public class TokenEngine : IProcessEngine
+public class ProcessEngine : IProcessEngine
 {
-    private readonly ILogger<TokenEngine> _logger;
+    private readonly ILogger<ProcessEngine> _logger;
     private readonly Dictionary<string, List<ExecutionToken>> _activeTokens = new();
     private readonly Dictionary<string, CompensationContext> _compensationStack = new();
     private readonly Dictionary<string, MultiInstanceContext> _multiInstanceContexts = new();
     private readonly List<BoundaryEventHandler> _boundaryEventHandlers = new();
     private readonly IServiceTaskRegistry _serviceTaskRegistry;
 
-    public TokenEngine() : this(NullLogger<TokenEngine>.Instance, NullServiceTaskRegistry.Instance)
+    public ProcessEngine() : this(NullLogger<ProcessEngine>.Instance, NullServiceTaskRegistry.Instance)
     {      
     }
     
-    public TokenEngine(ILogger<TokenEngine> logger, IServiceTaskRegistry serviceTaskRegistry)
+    public ProcessEngine(ILogger<ProcessEngine> logger, IServiceTaskRegistry serviceTaskRegistry)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _serviceTaskRegistry = serviceTaskRegistry ?? throw new ArgumentNullException(nameof(serviceTaskRegistry));
     }
 
+    public Task<List<string>> ExecuteAsync(BpmnModel model, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var result = Execute(model);
+        return Task.FromResult(result);
+    }
+
     public List<string> Execute(BpmnModel model)
     {
         return Execute(model, null);
+    }
+
+    public Task<List<string>> ExecuteCaseAsync(CaseModel model, CancellationToken cancellationToken = default)
+    {
+        // TokenEngine doesn't support CMMN, so return informative trace
+        var trace = new List<string>
+        {
+            "CaseExecutionNotSupported: TokenEngine does not support CMMN case execution",
+            $"CaseId: {model.Id}",
+            $"PlanItems: {model.PlanItems.Count}",
+            "Recommendation: Use DistributedTokenEngine (IDistributedProcessEngine) for CMMN support"
+        };
+        return Task.FromResult(trace);
+    }
+
+    public Task<List<string>> ExecuteProcessAsync(string processId, CancellationToken cancellationToken = default)
+    {
+        // TokenEngine doesn't support process registry, so return informative trace
+        var trace = new List<string>
+        {
+            "ProcessRegistryNotSupported: TokenEngine does not support process registry",
+            $"ProcessId: {processId}",
+            "Recommendation: Use DistributedTokenEngine (IDistributedProcessEngine) for process registry support"
+        };
+        return Task.FromResult(trace);
+    }
+
+    public Task<bool> CanExecuteAsync(string nodeId, CancellationToken cancellationToken = default)
+    {
+        // TokenEngine always can execute (single-threaded, local execution)
+        return Task.FromResult(true);
+    }
+
+    public Task RegisterBpmnModelAsync(string processId, string bpmnXml, CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException(
+            "TokenEngine does not support model registration. " +
+            "Use DistributedTokenEngine (IDistributedProcessEngine) for model registry features.");
+    }
+
+    public Task RegisterCmmnModelAsync(string caseId, string cmmnXml)
+    {
+        throw new NotSupportedException(
+            "TokenEngine does not support CMMN. " +
+            "Use DistributedTokenEngine (IDistributedProcessEngine) for CMMN support.");
+    }
+
+    public Task RegisterDmnModelAsync(string decisionId, string dmnXml)
+    {
+        throw new NotSupportedException(
+            "TokenEngine does not support DMN registration. " +
+            "Use DistributedTokenEngine (IDistributedProcessEngine) for DMN support.");
+    }
+
+    public Task<CaseModel> GetCmmnModelAsync(string caseId)
+    {
+        throw new NotSupportedException(
+            "TokenEngine does not support CMMN. " +
+            "Use DistributedTokenEngine (IDistributedProcessEngine) for CMMN support.");
+    }
+
+    public Task<List<HistoricalCaseData>> GetHistoricalCaseDataAsync(string caseId)
+    {
+        throw new NotSupportedException(
+            "TokenEngine does not support historical data. " +
+            "Use DistributedTokenEngine (IDistributedProcessEngine) for historical data features.");
     }
 
     public List<string> Execute(BpmnModel model, IDecisionService? decisionService = null)

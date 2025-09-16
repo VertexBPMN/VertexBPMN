@@ -13,12 +13,12 @@ namespace VertexBPMN.Api.Controllers;
 [Route("api/load-balancer")]
 public class LoadBalancerController : ControllerBase
 {
-    private readonly IDistributedTokenEngine _distributedEngine;
+    private readonly IDistributedProcessEngine _distributedEngine;
     private readonly ILoadBalancingService _loadBalancer;
     private readonly ILogger<LoadBalancerController> _logger;
 
     public LoadBalancerController(
-        IDistributedTokenEngine distributedEngine,
+        IDistributedProcessEngine distributedEngine,
         ILoadBalancingService loadBalancer,
         ILogger<LoadBalancerController> logger)
     {

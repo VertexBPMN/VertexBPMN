@@ -50,6 +50,9 @@
 <None Update="TestData\ExternalTask1.bpmn">
   <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 </None>
+<None Update="TestData\hello-world.bpmn">
+  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+</None>
   <None Update="TestData\Reference\A.1.0.bpmn">
     <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
   </None>

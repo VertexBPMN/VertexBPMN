@@ -12,15 +12,15 @@ namespace VertexBPMN.Tests.Integration.Mcp;
 
 public class MCPExternalServerTests
 {
-    private readonly Mock<ILogger<DistributedTokenEngine>> _loggerMock;
+    private readonly Mock<ILogger<DistributedProcessEngine>> _loggerMock;
     private readonly Mock<IProcessInstanceStore> _storeMock;
     private readonly Mock<ICmmnParser> _cmmnParserMock;
     private readonly Mock<IAiDecisionService> _aiDecisionServiceMock;
-    private readonly DistributedTokenEngine _engine;
+    private readonly DistributedProcessEngine _engine;
 
     public MCPExternalServerTests()
     {
-        _loggerMock = new Mock<ILogger<DistributedTokenEngine>>();
+        _loggerMock = new Mock<ILogger<DistributedProcessEngine>>();
         _storeMock = new Mock<IProcessInstanceStore>();
         _aiDecisionServiceMock = new Mock<IAiDecisionService>();
         var dispatcherMock = new Mock<IMessageDispatcher>();
@@ -30,7 +30,7 @@ public class MCPExternalServerTests
         var tracerProvider = new Mock<TracerProvider>().Object;
         var bpmnParserMock = new Mock<IBpmnParser>();
 
-        _engine = new DistributedTokenEngine(
+        _engine = new DistributedProcessEngine(
             _loggerMock.Object,
             new ServiceTaskRegistry(),
             dispatcherMock.Object,

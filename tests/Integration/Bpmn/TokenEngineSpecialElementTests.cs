@@ -21,7 +21,7 @@ namespace VertexBPMN.Tests.Integration.Bpmn
                 },
                 new List<BpmnSubprocess>()
             );
-            var engine = new TokenEngine();
+            var engine = new ProcessEngine();
             var trace = engine.Execute(model);
             Assert.Contains("StartEvent: start1", trace);
             Assert.Contains("UserTask: call1", trace); // callActivity mapped as UserTask for now
@@ -44,7 +44,7 @@ namespace VertexBPMN.Tests.Integration.Bpmn
                 },
                 new List<BpmnSubprocess> { new("adhoc1", false) }
             );
-            var engine = new TokenEngine();
+            var engine = new ProcessEngine();
             var trace = engine.Execute(model);
             Assert.Contains("Subprocess: adhoc1", trace);
             Assert.Contains("SubprocessStart: adhoc1_start", trace);
@@ -66,7 +66,7 @@ namespace VertexBPMN.Tests.Integration.Bpmn
                 },
                 new List<BpmnSubprocess>()
             );
-            var engine = new TokenEngine();
+            var engine = new ProcessEngine();
             var trace = engine.Execute(model);
             Assert.Contains("StartEvent: start1", trace);
             Assert.Contains("SequenceFlow: f1", trace);

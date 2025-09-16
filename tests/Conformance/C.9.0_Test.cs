@@ -29,7 +29,7 @@ namespace VertexBPMN.Tests.Conformance
             // Act & Assert
             Assert.True(registry.TryResolve("calculateScore", out var calculateScoreHandler));
             Assert.NotNull(calculateScoreHandler);
-            var engine = new TokenEngine(NullLogger<TokenEngine>.Instance, registry);
+            var engine = new ProcessEngine(NullLogger<ProcessEngine>.Instance, registry);
             var result = engine.Execute(model);
             Assert.NotNull(result);
             Assert.True(result.Count > 0, "No trace produced for C.9.0.bpmn");

@@ -26,7 +26,7 @@ namespace VertexBPMN.Tests.Integration.Bpmn
                     new("f3", "sub2", "end1")
                 }
             );
-            var engine = new TokenEngine();
+            var engine = new ProcessEngine();
             var trace = engine.Execute(model);
             Assert.Contains("Subprocess: sub1", trace);
             Assert.Contains("Subprocess: sub2", trace);
@@ -48,7 +48,7 @@ namespace VertexBPMN.Tests.Integration.Bpmn
                     new("f3", "gw1", "e2"),
                 }
             );
-            var engine = new TokenEngine();
+            var engine = new ProcessEngine();
             var trace = engine.Execute(model);
             Assert.Contains("ParallelGateway: gw1", trace);
             Assert.Contains("ParallelBranch: e1", trace);
@@ -68,7 +68,7 @@ namespace VertexBPMN.Tests.Integration.Bpmn
                 new List<BpmnSubprocess>(),
                 new List<BpmnSequenceFlow>()
             );
-            var engine = new TokenEngine();
+            var engine = new ProcessEngine();
             Assert.Throws<InvalidOperationException>(() => engine.Execute(model));
         }
 
@@ -104,7 +104,7 @@ namespace VertexBPMN.Tests.Integration.Bpmn
                     new("flow2", "t1", "end1")
                 }
             );
-            var engine = new TokenEngine();
+            var engine = new ProcessEngine();
             var trace = engine.Execute(model);
             Assert.Contains("UserTask: t1", trace); // Falls back to UserTask
         }

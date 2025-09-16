@@ -10,9 +10,9 @@ using VertexBPMN.Infrastructure.Scripting;
 
 namespace VertexBPMN.Engine.Execution
 {
-    public class DistributedTokenEngine : IDistributedTokenEngine, IDisposable
+    public class DistributedProcessEngine : IDistributedProcessEngine, IDisposable
     {
-        private readonly ILogger<DistributedTokenEngine> _logger;
+        private readonly ILogger<DistributedProcessEngine> _logger;
         private readonly IServiceTaskRegistry _serviceRegistry;
         private readonly IMessageDispatcher _messageDispatcher;
         private readonly IProcessInstanceStore _store;
@@ -27,8 +27,8 @@ namespace VertexBPMN.Engine.Execution
         private readonly ConcurrentDictionary<string, Jint.Engine> _jintCache = new(); // Jint-Cache für Performance
         private readonly Timer _heartbeatTimer;
 
-        public DistributedTokenEngine(
-            ILogger<DistributedTokenEngine> logger,
+        public DistributedProcessEngine(
+            ILogger<DistributedProcessEngine> logger,
             IServiceTaskRegistry serviceRegistry,
             IMessageDispatcher dispatcher,
             IProcessInstanceStore store,
@@ -67,7 +67,6 @@ namespace VertexBPMN.Engine.Execution
             _heartbeatTimer = new Timer(ProcessHeartbeatsAsync, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
         }
 
-
         public async Task<List<string>> ExecuteAsync(BpmnModel model, CancellationToken cancellationToken = default)
         {
 
@@ -96,6 +95,11 @@ namespace VertexBPMN.Engine.Execution
                 trace.Add($"ExecutionError: {ex.Message}");
                 throw new DistributedTokenException($"Failed to execute process {model.Id}", ex);
             }
+        }
+            
+        public List<string> Execute(BpmnModel model)
+        {
+          return  ExecuteAsync(model, CancellationToken.None).GetAwaiter().GetResult();
         }
 
         public async Task<List<string>> ExecuteProcessAsync(string processId, CancellationToken cancellationToken = default)
@@ -196,7 +200,6 @@ namespace VertexBPMN.Engine.Execution
             }
    
         }
-
 
         public async Task DistributeCaseTokenAsync(CaseToken token, CancellationToken cancellationToken = default)
         {
@@ -320,7 +323,6 @@ namespace VertexBPMN.Engine.Execution
             await _store.SaveBpmnModelAsync(processId, bpmnXml);
             _logger.LogInformation("Registered BPMN model {ProcessId}", processId);
         }
-
 
         public async Task RegisterCmmnModelAsync(string caseId, string cmmnXml)
         {
@@ -511,7 +513,6 @@ namespace VertexBPMN.Engine.Execution
             }
         }
 
-
         private async Task<WorkerNode?> FindBestWorkerAsync(string nodeType)
         {
             var workers = await _store.GetActiveWorkersAsync() ?? new List<WorkerNode>();
@@ -551,7 +552,6 @@ namespace VertexBPMN.Engine.Execution
                 await Task.Delay(100, cancellationToken);
             }
         }
-
 
         private async Task ProcessDistributedCaseTokensAsync(CaseModel model, List<string> trace, CancellationToken cancellationToken)
         {
@@ -636,7 +636,6 @@ namespace VertexBPMN.Engine.Execution
                 }
             }
         }
-
 
         private async Task ProcessCaseTokenAsync(CaseToken token, CaseModel model, List<string> trace, CancellationToken cancellationToken)
         {
@@ -1531,7 +1530,7 @@ namespace VertexBPMN.Engine.Execution
 ///// In-memory implementation of distributed token engine
 ///// In production, this would use Redis, RabbitMQ, or Apache Kafka
 ///// </summary>
-//public class DistributedTokenEngine : IDistributedTokenEngine
+//public class DistributedTokenEngine : IDistributedProcessEngine
 //{
 //    private readonly ConcurrentQueue<ExecutionToken> _tokenQueue = new();
 //    private readonly ConcurrentDictionary<string, WorkerNode> _workers = new();
@@ -1981,8 +1980,8 @@ namespace VertexBPMN.Engine.Execution
 
 //public class DistributedTokenEngineAdapter : IProcessEngine
 //{
-//    private readonly IDistributedTokenEngine _distributed;
-//    public DistributedTokenEngineAdapter(IDistributedTokenEngine distributed) { _distributed = distributed; }
+//    private readonly IDistributedProcessEngine _distributed;
+//    public DistributedTokenEngineAdapter(IDistributedProcessEngine distributed) { _distributed = distributed; }
 //    public List<string> Execute(BpmnModel model)
 //    {
 //        // Sync-Wrapper für Demo, besser: Async-Interface!

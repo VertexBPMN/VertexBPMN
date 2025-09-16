@@ -7,7 +7,7 @@ using VertexBPMN.Engine.Execution;
 
 namespace VertexBPMN.Tests.Integration.Engine;
 
-public class TokenEngineTests
+public class ProcessEngineTests
 {
     [Fact]
     public void Executes_BusinessRuleTask_With_DecisionService()
@@ -24,7 +24,7 @@ public class TokenEngineTests
             },
             new List<BpmnSubprocess>()
         );
-        var engine = new TokenEngine();
+        var engine = new ProcessEngine();
         var logger = new LoggerFactory().CreateLogger<DecisionService>();
         var decisionService = new DecisionService(logger);
         var trace = engine.Execute(model, decisionService);
@@ -48,7 +48,7 @@ public class TokenEngineTests
             },
             new List<BpmnSubprocess>()
         );
-        var engine = new TokenEngine();
+        var engine = new ProcessEngine();
         var trace = engine.Execute(model);
         Assert.Contains("ParallelGateway: gw1", trace);
         Assert.Contains("ParallelBranch: t1", trace);
@@ -71,7 +71,7 @@ public class TokenEngineTests
             },
             new List<BpmnSubprocess>()
         );
-        var engine = new TokenEngine();
+        var engine = new ProcessEngine();
         var trace = engine.Execute(model);
         Assert.Contains("InclusiveGateway: gw1", trace);
         Assert.Contains("InclusiveBranch: t1", trace);
@@ -93,7 +93,7 @@ public class TokenEngineTests
             },
             new List<BpmnSubprocess> { new("sub1", true) }
         );
-        var engine = new TokenEngine();
+        var engine = new ProcessEngine();
         var trace = engine.Execute(model);
         Assert.Contains("Subprocess: sub1", trace);
         Assert.Contains("MultiInstance: sub1", trace);

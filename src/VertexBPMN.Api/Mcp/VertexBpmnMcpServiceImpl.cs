@@ -7,11 +7,11 @@ namespace VertexBPMN.Api.Mcp;
 
 public class VertexBpmnMcpServiceImpl : VertexBPMNMCPService.VertexBPMNMCPServiceBase
 {
-    private readonly IDistributedTokenEngine _engine;
+    private readonly IDistributedProcessEngine _engine;
     private readonly ILogger<VertexBpmnMcpServiceImpl> _logger;
 
     public VertexBpmnMcpServiceImpl(
-        IDistributedTokenEngine engine,
+        IDistributedProcessEngine engine,
         ILogger<VertexBpmnMcpServiceImpl> logger)
     {
         _engine = engine ?? throw new ArgumentNullException(nameof(engine));

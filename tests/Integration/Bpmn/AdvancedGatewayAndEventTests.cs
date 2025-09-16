@@ -36,7 +36,7 @@ public class AdvancedGatewayAndEventTests
             new List<BpmnSubprocess>()
         );
 
-        var engine = new TokenEngine();
+        var engine = new ProcessEngine();
         var trace = engine.Execute(model);
 
         Assert.Contains("StartEvent: start1", trace);
@@ -74,7 +74,7 @@ public class AdvancedGatewayAndEventTests
             new List<BpmnSubprocess>()
         );
 
-        var engine = new TokenEngine();
+        var engine = new ProcessEngine();
         var trace = engine.Execute(model);
 
         Assert.Contains("StartEvent: start1", trace);
@@ -111,7 +111,7 @@ public class AdvancedGatewayAndEventTests
             }
         );
 
-        var engine = new TokenEngine();
+        var engine = new ProcessEngine();
         var trace = engine.Execute(model);
 
         Assert.Contains("StartEvent: start1", trace);
@@ -147,7 +147,7 @@ public class AdvancedGatewayAndEventTests
             }
         );
 
-        var engine = new TokenEngine();
+        var engine = new ProcessEngine();
         var trace = engine.Execute(model);
 
         Assert.Contains("StartEvent: start1", trace);
@@ -183,7 +183,7 @@ public class AdvancedGatewayAndEventTests
             }
         );
 
-        var engine = new TokenEngine();
+        var engine = new ProcessEngine();
         var trace = engine.Execute(model);
 
         Assert.Contains("StartEvent: start1", trace);
@@ -219,7 +219,7 @@ public class AdvancedGatewayAndEventTests
             }
         );
 
-        var engine = new TokenEngine();
+        var engine = new ProcessEngine();
         var trace = engine.Execute(model);
 
         Assert.Contains("StartEvent: start1", trace);
@@ -263,7 +263,7 @@ public class AdvancedGatewayAndEventTests
             new List<BpmnSubprocess>()
         );
 
-        var engine = new TokenEngine();
+        var engine = new ProcessEngine();
         var trace = engine.Execute(model);
 
         Assert.Contains("StartEvent: start1", trace);

@@ -10,7 +10,7 @@ public record GenerateAdHocSubprocessRequest(string CaseId);
 
 public static class RestApiConfig
 {
-    public static WebApplication MapVertexBPMNApi(this WebApplication app, IDistributedTokenEngine engine)
+    public static WebApplication MapVertexBPMNApi(this WebApplication app, IDistributedProcessEngine engine)
     {
         app.MapPost("/api/cmmn/register", async (HttpContext context, CaseRequest request) =>
         {

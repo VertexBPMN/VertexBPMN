@@ -16,7 +16,7 @@ namespace VertexBPMN.Tests.Integration.Bpmn
             var logger = new Mock<ILogger<BpmnParser>>();
             var parser = new BpmnParser(logger.Object, TracerProvider.Default);
             var model = await parser.ParseAsync(xml.Replace('\'', '"'));
-            var engine = new TokenEngine();
+            var engine = new ProcessEngine();
             var trace = engine.Execute(model);
             Assert.Contains("StartEvent: start1", trace);
             Assert.Contains("Subprocess: sub1", trace);
@@ -34,7 +34,7 @@ namespace VertexBPMN.Tests.Integration.Bpmn
             var logger = new Mock<ILogger<BpmnParser>>();
             var parser = new BpmnParser(logger.Object, TracerProvider.Default);
             var model = await parser.ParseAsync(xml.Replace('\'', '"'));
-            var engine = new TokenEngine();
+            var engine = new ProcessEngine();
             var trace = engine.Execute(model);
             Assert.Contains("StartEvent: start1", trace);
             Assert.Contains("TransactionSubprocess: tx1", trace);

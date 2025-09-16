@@ -7,6 +7,7 @@ using Moq;
 using OpenTelemetry.Trace;
 using VertexBPMN.Application;
 using VertexBPMN.Application.Extensions;
+using VertexBPMN.Application.Handlers;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Engine.Execution;
 using VertexBPMN.Engine.Parsing;
@@ -20,6 +21,17 @@ namespace VertexBPMN.Tests.Integration.Handlers;
 /// </summary>
 public class SemanticKernelServiceTaskHandlerTests
 {
+    private readonly Mock<HttpMessageHandler> _httpMessageHandlerMock;
+    private readonly HttpClient _httpClient;
+    private readonly Mock<ILogger<GeminiServiceTaskHandler>> _loggerMock;
+    private readonly GeminiServiceTaskHandler _handler;
+
+    public SemanticKernelServiceTaskHandlerTests()
+    {
+        _httpMessageHandlerMock = new Mock<HttpMessageHandler>();
+        _httpClient = new HttpClient(_httpMessageHandlerMock.Object);
+    }
+
     [Theory]
     [InlineData("OpenAI", "gpt-4o-mini", "Hallo, wie kann ich helfen?", "llmResult", "Fake-OpenAI-Antwort")]
     [InlineData("Ollama", "llama2", "Was ist BPMN?", "llmResult", "Fake-Ollama-Antwort")]
@@ -109,13 +121,13 @@ public class SemanticKernelServiceTaskHandlerTests
         services.AddServiceTaskHandlers(); // Use the updated ServiceTaskRegistryExtensions
 
         var provider = services.BuildServiceProvider();
-        var registry = provider.GetRequiredService<ServiceTaskRegistry>();
+        var registry = provider.GetRequiredService<IServiceTaskRegistry>();
         registry.Register("semanticKernelServiceTask", new FakeSemanticKernelHandler());
         // Verify that the registry resolves the handler correctly
         Assert.True(registry.TryResolve("semanticKernelServiceTask", out var semanticKernelHandler));
         Assert.NotNull(semanticKernelHandler);
 
-        var engine = new TokenEngine(NullLogger<TokenEngine>.Instance, registry);
+        var engine = new ProcessEngine(NullLogger<ProcessEngine>.Instance, registry);
 
         // Act
         var trace = engine.Execute(model);

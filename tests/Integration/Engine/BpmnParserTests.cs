@@ -61,7 +61,7 @@ namespace VertexBPMN.Tests.Integration.Engine
             var invalidBpmnXml = "<invalid></invalid>";
 
             // Act & Assert
-            await Assert.ThrowsAsync<DistributedTokenException>(() => _parser.ParseAsync(invalidBpmnXml));
+            await Assert.ThrowsAsync<BpmnParseException>(() => _parser.ParseAsync(invalidBpmnXml));
         }
         [Fact]
         public async Task ParseAsync_FlowableTaskListener_ParsesCorrectly()

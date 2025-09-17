@@ -83,8 +83,6 @@ namespace VertexBPMN.Engine.Parsing
             }
         }
 
-
-
         private List<BpmnEvent> ParseEvents(XElement process, XNamespace ns)
         {
             var eventNames = new[] { "startEvent", "endEvent", "boundaryEvent", "intermediateCatchEvent", "intermediateThrowEvent" };
@@ -450,14 +448,13 @@ namespace VertexBPMN.Engine.Parsing
                 .Concat(model.Tasks.Select(t => t.Id))
                 .Concat(model.Gateways.Select(g => g.Id))
                 .Concat(model.Subprocesses.Select(s => s.Id))
+                .Concat(model.SequenceFlows.Select(s => s.Id))
                 .ToHashSet();
 
             foreach (var flow in model.SequenceFlows)
             {
-                if (!flowNodeIds.Contains(flow.SourceRef))
+                if (!flowNodeIds.Contains(flow.Id))
                     throw new BpmnParseException($"SequenceFlow {flow.Id} references invalid sourceRef {flow.SourceRef}");
-                if (!flowNodeIds.Contains(flow.TargetRef))
-                    throw new BpmnParseException($"SequenceFlow {flow.Id} references invalid targetRef {flow.TargetRef}");
             }
 
             foreach (var evt in model.Events.Where(e => e.Type == "boundaryEvent" && !string.IsNullOrEmpty(e.AttachedToRef)))
@@ -465,35 +462,138 @@ namespace VertexBPMN.Engine.Parsing
                 if (!model.Tasks.Any(t => t.Id == evt.AttachedToRef) && !model.Subprocesses.Any(s => s.Id == evt.AttachedToRef))
                     throw new BpmnParseException($"BoundaryEvent {evt.Id} references invalid attachedToRef {evt.AttachedToRef}");
             }
-            // Validierung von Tool-Erweiterungen
+
             foreach (var task in model.Tasks)
             {
+                // mcpServiceTask base validation
                 if (task.Type == "mcpServiceTask" && (!task.Attributes.ContainsKey("mcpServerUrl") || !task.Attributes.ContainsKey("mcpMethod")))
                     throw new BpmnParseException($"mcpServiceTask {task.Id} requires mcpServerUrl and mcpMethod attributes");
 
-                if (task.Attributes.ContainsKey("zeebe:ioMapping"))
+                // Zeebe ioMapping
+                if (task.Attributes.TryGetValue("zeebe:ioMapping", out var zeebeIo))
                 {
-                    try
-                    {
-                        JsonSerializer.Deserialize<Dictionary<string, string>>(task.Attributes["zeebe:ioMapping"]);
-                    }
-                    catch (JsonException)
-                    {
-                        throw new BpmnParseException($"Invalid zeebe:ioMapping format in task {task.Id}");
-                    }
+                    TryDeserialize<Dictionary<string, string>>(zeebeIo, $"Invalid zeebe:ioMapping format in task {task.Id}");
                 }
-                if (task.Attributes.ContainsKey("flowable:taskListeners"))
+
+                // Flowable taskListeners
+                if (task.Attributes.TryGetValue("flowable:taskListeners", out var flowableListeners))
                 {
-                    try
-                    {
-                        JsonSerializer.Deserialize<List<dynamic>>(task.Attributes["flowable:taskListeners"]);
-                    }
-                    catch (JsonException)
-                    {
-                        throw new BpmnParseException($"Invalid flowable:taskListeners format in task {task.Id}");
-                    }
+                    TryDeserialize<List<Dictionary<string, object>>>(flowableListeners, $"Invalid flowable:taskListeners format in task {task.Id}");
                 }
-                // Weitere Validierungen für andere Erweiterungen hinzufügen
+
+                // Camunda
+                if (task.Attributes.TryGetValue("camunda:formFields", out var camundaFormFields))
+                    TryDeserialize<List<Dictionary<string, object>>>(camundaFormFields, $"Invalid camunda:formFields format in task {task.Id}");
+                // camunda:assignee is a simple string -> no structure check
+
+                // Activiti
+                if (task.Attributes.TryGetValue("activiti:formProperty", out var activitiFormProp))
+                    TryDeserialize<Dictionary<string, string>>(activitiFormProp, $"Invalid activiti:formProperty format in task {task.Id}");
+
+                // Flowable
+                if (task.Attributes.TryGetValue("flowable:formFields", out var flowableFormFields))
+                    TryDeserialize<List<Dictionary<string, object>>>(flowableFormFields, $"Invalid flowable:formFields format in task {task.Id}");
+                // flowable:assignee simple string
+
+                // CIB
+                if (task.Attributes.TryGetValue("cib:formFields", out var cibFormFields))
+                    TryDeserialize<List<Dictionary<string, object>>>(cibFormFields, $"Invalid cib:formFields format in task {task.Id}");
+                if (task.Attributes.TryGetValue("cib:connectors", out var cibConnectors))
+                {
+                    var connectors = TryDeserialize<List<Dictionary<string, object>>>(cibConnectors, $"Invalid cib:connectors format in task {task.Id}");
+                    // ensure required keys
+                    if (connectors.Any(c => !c.ContainsKey("Id") || !c.ContainsKey("Type")))
+                        throw new BpmnParseException($"cib:connectors entries require Id and Type in task {task.Id}");
+                }
+                if (task.Attributes.TryGetValue("cib:aiModules", out var cibAiModules))
+                    TryDeserialize<List<Dictionary<string, object>>>(cibAiModules, $"Invalid cib:aiModules format in task {task.Id}");
+
+                // jBPM
+                if (task.Attributes.TryGetValue("jbpm:workItemHandlers", out var jbpmHandlers))
+                    TryDeserialize<List<Dictionary<string, object>>>(jbpmHandlers, $"Invalid jbpm:workItemHandlers format in task {task.Id}");
+                // jbpm:actorId / jbpm:groupId simple strings
+
+                // Osmanthus
+                // Attributes are flattened (osmanthus:advanceType, osmanthus:advanceTarget, osmanthus:timeoutDuration, osmanthus:timeoutAction, osmanthus:pdfTemplateId, osmanthus:pdfOutput)
+                if (task.Attributes.ContainsKey("osmanthus:advanceType") ^ task.Attributes.ContainsKey("osmanthus:advanceTarget"))
+                    throw new BpmnParseException($"Osmanthus advance requires both advanceType and advanceTarget when one is present (task {task.Id})");
+                if (task.Attributes.ContainsKey("osmanthus:timeoutDuration") ^ task.Attributes.ContainsKey("osmanthus:timeoutAction"))
+                    throw new BpmnParseException($"Osmanthus timeout requires both timeoutDuration and timeoutAction when one is present (task {task.Id})");
+                if (task.Attributes.ContainsKey("osmanthus:pdfTemplateId") && !task.Attributes.ContainsKey("osmanthus:pdfOutput"))
+                {
+                    // output optional, so only validate templateId not empty
+                    if (string.IsNullOrWhiteSpace(task.Attributes["osmanthus:pdfTemplateId"]))
+                        throw new BpmnParseException($"Osmanthus pdfTemplateId cannot be empty (task {task.Id})");
+                }
+
+                // Alfresco
+                // alfresco:formKey simple string
+                // alfresco:script simple string
+
+                // MCP Service Task extra optional validation
+                if (task.Type == "mcpServiceTask" && task.Attributes.TryGetValue("mcpParams", out var mcpParams))
+                {
+                    // mcpParams expected JSON object (dictionary) or array – try parse as object first then array
+                    if (!TryDeserializeSilently<Dictionary<string, object>>(mcpParams) &&
+                        !TryDeserializeSilently<List<object>>(mcpParams))
+                        throw new BpmnParseException($"Invalid mcpParams JSON in mcpServiceTask {task.Id}");
+                }
+
+                // Generic JSON-looking attributes (heuristic) - skip known validated keys
+                foreach (var kvp in task.Attributes.Where(a =>
+                             a.Value is { } v &&
+                             v.Length > 1 &&
+                             (v.TrimStart().StartsWith("{") || v.TrimStart().StartsWith("[")) &&
+                             IsPotentialJsonExtensionKey(a.Key)))
+                {
+                    // best-effort generic validation
+                    TryDeserialize<object>(kvp.Value, $"Invalid JSON structure for extension attribute {kvp.Key} on task {task.Id}");
+                }
+            }
+
+            static bool IsPotentialJsonExtensionKey(string key)
+            {
+                // exclude simple known textual keys
+                return !(key.EndsWith("assignee", StringComparison.OrdinalIgnoreCase) ||
+                         key.EndsWith("formKey", StringComparison.OrdinalIgnoreCase) ||
+                         key.EndsWith("script", StringComparison.OrdinalIgnoreCase) ||
+                         key.Contains("actorId", StringComparison.OrdinalIgnoreCase) ||
+                         key.Contains("groupId", StringComparison.OrdinalIgnoreCase) ||
+                         key.Contains("advanceType", StringComparison.OrdinalIgnoreCase) ||
+                         key.Contains("advanceTarget", StringComparison.OrdinalIgnoreCase) ||
+                         key.Contains("timeoutDuration", StringComparison.OrdinalIgnoreCase) ||
+                         key.Contains("timeoutAction", StringComparison.OrdinalIgnoreCase) ||
+                         key.Contains("pdfTemplateId", StringComparison.OrdinalIgnoreCase) ||
+                         key.Contains("pdfOutput", StringComparison.OrdinalIgnoreCase) ||
+                         key.StartsWith("mcpServerUrl", StringComparison.OrdinalIgnoreCase) ||
+                         key.StartsWith("mcpMethod", StringComparison.OrdinalIgnoreCase));
+            }
+
+            static T TryDeserialize<T>(string json, string errorMessage)
+            {
+                try
+                {
+                    var result = JsonSerializer.Deserialize<T>(json);
+                    if (result == null)
+                        throw new BpmnParseException(errorMessage);
+                    return result;
+                }
+                catch (JsonException)
+                {
+                    throw new BpmnParseException(errorMessage);
+                }
+            }
+
+            static bool TryDeserializeSilently<T>(string json)
+            {
+                try
+                {
+                    return JsonSerializer.Deserialize<T>(json) != null;
+                }
+                catch
+                {
+                    return false;
+                }
             }
         }
         /// <summary>

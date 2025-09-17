@@ -54,9 +54,9 @@ builder.Services.AddScoped<ISimulationScenarioService, SimulationScenarioService
 
 	// Olympic-level Production-Grade Features: Security, Caching, Resilience, Rate Limiting, Health Monitoring
 builder.Services.AddMemoryCache(); // Required for ProductionCachingService
-builder.Services.AddSingleton<ICachingService, ProductionCachingService>();
-builder.Services.AddSingleton<IResilienceService, ProductionResilienceService>();
-builder.Services.AddSingleton<IRateLimitingService, ProductionRateLimitingService>();
+builder.Services.AddScoped<ICachingService, ProductionCachingService>();
+builder.Services.AddScoped<IResilienceService, ProductionResilienceService>();
+builder.Services.AddScoped<IRateLimitingService, ProductionRateLimitingService>();
 builder.Services.AddScoped<IHealthMonitoringService, ProductionHealthMonitoringService>();
 
 // Add services to the container.
@@ -115,18 +115,18 @@ builder.Services.AddSignalR();
 builder.Services.AddBpmnPersistenceServices();
 builder.Services.AddVertexEngineServices(builder.Configuration);
 
-builder.Services.AddSingleton<IServiceTaskRegistry,ServiceTaskRegistry>();
-builder.Services.AddSingleton<IMessageDispatcher, InMemoryMessageDispatcher>();
-builder.Services.AddSingleton<IAiDecisionService, FakeAiDecisionService>();
+builder.Services.AddScoped<IServiceTaskRegistry,ServiceTaskRegistry>();
+builder.Services.AddScoped<IMessageDispatcher, InMemoryMessageDispatcher>();
+builder.Services.AddScoped<IAiDecisionService, FakeAiDecisionService>();
 builder.Services.AddHttpClient<IAiDecisionService, XAiDecisionService>();
 builder.Services.AddHttpClient<IMcpAgentService, McpAgentService>();
-builder.Services.AddSingleton<IDmnEngine, DmnEngine>();
-builder.Services.AddSingleton<IDmnParser, DmnParser>();
-builder.Services.AddSingleton<ICmmnParser, CmmnParser>();
-builder.Services.AddSingleton<IBpmnParser, BpmnParser>();
-builder.Services.AddSingleton<IDistributedProcessEngine,DistributedProcessEngine>();
-builder.Services.AddSingleton<ILoadBalancingService, LoadBalancingService>();
-builder.Services.AddSingleton<IWorkerNodeManager, WorkerNodeManager>();
+builder.Services.AddScoped<IDmnEngine, DmnEngine>();
+builder.Services.AddScoped<IDmnParser, DmnParser>();
+builder.Services.AddScoped<ICmmnParser, CmmnParser>();
+builder.Services.AddScoped<IBpmnParser, BpmnParser>();
+builder.Services.AddScoped<IDistributedProcessEngine,DistributedProcessEngine>();
+builder.Services.AddScoped<ILoadBalancingService, LoadBalancingService>();
+builder.Services.AddScoped<IWorkerNodeManager, WorkerNodeManager>();
 
 	// Observability: HealthChecks, Logging, Metrics
 builder.Services.AddHealthChecks();

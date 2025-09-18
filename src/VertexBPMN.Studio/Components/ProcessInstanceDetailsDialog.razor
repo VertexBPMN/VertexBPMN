@@ -1,0 +1,474 @@
+@using VertexBPMN.Domain.Entities
+@inject VertexBPMN.Studio.Services.IBpmnEngineService BpmnEngineService
+@inject VertexBPMN.Studio.Services.IHistoryService HistoryService
+@inject MudBlazor.IDialogService DialogService
+@inject MudBlazor.ISnackbar Snackbar
+@inject ILogger<ProcessInstanceDetailsDialog> Logger
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Info" Class="mr-3"/>
+            Process Instance Details
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudContainer Style="max-width: none !important; height: 70vh; overflow-y: auto;">
+            @if (_isLoading)
+            {
+                <div class="d-flex justify-center align-center" style="height: 200px;">
+                    <MudProgressCircular Indeterminate="true" Size="Size.Large" />
+                    <MudText Class="ml-3">Loading process instance details...</MudText>
+                </div>
+            }
+            else if (_error != null)
+            {
+                <MudAlert Severity="Severity.Error">
+                    <MudText>Error loading process instance details: @_error</MudText>
+                    <MudButton OnClick="RefreshData" 
+                              Color="Color.Primary" 
+                              Size="Size.Small" 
+                              Class="mt-2">
+                        Retry
+                    </MudButton>
+                </MudAlert>
+            }
+            else
+            {
+                <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-6">
+                    <!-- Overview Tab -->
+                    <MudTabPanel Text="Overview" Icon="@Icons.Material.Filled.Dashboard">
+                        <MudGrid>
+                            <!-- Basic Information -->
+                            <MudItem xs="12" md="6">
+                                <MudPaper Class="pa-4" Style="height: 100%;">
+                                    <MudText Typo="Typo.h6" Class="mb-3">
+                                        <MudIcon Icon="@Icons.Material.Filled.Info" Class="mr-2" />
+                                        Basic Information
+                                    </MudText>
+                                    
+                                    <MudField Label="Instance ID" Variant="Variant.Text">
+                                        <MudText Class="font-monospace">@ProcessInstance.InstanceId</MudText>
+                                    </MudField>
+                                    
+                                    <MudField Label="Process ID" Variant="Variant.Text">
+                                        <MudText>@ProcessInstance.ProcessId</MudText>
+                                    </MudField>
+                                    
+                                    <MudField Label="Business Key" Variant="Variant.Text">
+                                        <MudText>@(ProcessInstance.BusinessKey ?? "N/A")</MudText>
+                                    </MudField>
+                                    
+                                    <MudField Label="State" Variant="Variant.Text">
+                                        <MudChip T="string" 
+                                                Color="GetStateColor(ProcessInstance.State)" 
+                                                Size="Size.Small" 
+                                                Variant="Variant.Filled">
+                                            @ProcessInstance.State
+                                        </MudChip>
+                                    </MudField>
+                                </MudPaper>
+                            </MudItem>
+
+                            <!-- Timeline Information -->
+                            <MudItem xs="12" md="6">
+                                <MudPaper Class="pa-4" Style="height: 100%;">
+                                    <MudText Typo="Typo.h6" Class="mb-3">
+                                        <MudIcon Icon="@Icons.Material.Filled.Schedule" Class="mr-2" />
+                                        Timeline
+                                    </MudText>
+                                    
+                                    <MudField Label="Started At" Variant="Variant.Text">
+                                        <MudText>@ProcessInstance.StartedAt.ToString("yyyy-MM-dd HH:mm:ss")</MudText>
+                                    </MudField>
+                                    
+                                    <MudField Label="Ended At" Variant="Variant.Text">
+                                        <MudText>@(ProcessInstance.EndedAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? "Still running")</MudText>
+                                    </MudField>
+                                    
+                                    <MudField Label="Duration" Variant="Variant.Text">
+                                        <MudText>@GetDuration()</MudText>
+                                    </MudField>
+                                    
+                                    <MudField Label="Last Modified" Variant="Variant.Text">
+                                        <MudText>@ProcessInstance.LastModified.ToString("yyyy-MM-dd HH:mm:ss")</MudText>
+                                    </MudField>
+                                </MudPaper>
+                            </MudItem>
+
+                            <!-- Process Definition Information -->
+                            <MudItem xs="12">
+                                <MudPaper Class="pa-4">
+                                    <MudText Typo="Typo.h6" Class="mb-3">
+                                        <MudIcon Icon="@Icons.Material.Filled.Description" Class="mr-2" />
+                                        Process Definition
+                                    </MudText>
+                                    
+                                    @if (_processDefinition != null)
+                                    {
+                                        <MudGrid>
+                                            <MudItem xs="12" md="4">
+                                                <MudField Label="Key" Variant="Variant.Text">
+                                                    <MudText>@_processDefinition.Key</MudText>
+                                                </MudField>
+                                            </MudItem>
+                                            <MudItem xs="12" md="4">
+                                                <MudField Label="Name" Variant="Variant.Text">
+                                                    <MudText>@_processDefinition.Name</MudText>
+                                                </MudField>
+                                            </MudItem>
+                                            <MudItem xs="12" md="4">
+                                                <MudField Label="Version" Variant="Variant.Text">
+                                                    <MudText>@_processDefinition.Version</MudText>
+                                                </MudField>
+                                            </MudItem>
+                                        </MudGrid>
+                                        
+                                        <MudButton Variant="Variant.Outlined" 
+                                                  StartIcon="@Icons.Material.Filled.Visibility"
+                                                  OnClick="ViewProcessDefinition"
+                                                  Class="mt-2">
+                                            View BPMN Diagram
+                                        </MudButton>
+                                    }
+                                    else
+                                    {
+                                        <MudSkeleton Width="60%" Height="24px" />
+                                    }
+                                </MudPaper>
+                            </MudItem>
+                        </MudGrid>
+                    </MudTabPanel>
+
+                    <!-- Variables Tab -->
+                    <MudTabPanel Text="Variables" Icon="@Icons.Material.Filled.Storage">
+                        @if (ProcessInstance.Variables?.Any() == true)
+                        {
+                            <MudDataGrid Items="@GetVariablesList()" 
+                                        Hover="true" 
+                                        Dense="true"
+                                        Filterable="true"
+                                        Height="400px">
+                                <Columns>
+                                    <PropertyColumn Property="x => x.Name" Title="Variable Name" />
+                                    <TemplateColumn Title="Value" SortBy="@(x => x.Value?.ToString() ?? string.Empty)">
+                                        <CellTemplate>
+                                            <div style="max-width: 300px; word-break: break-all;">
+                                                @if (context.Item.Value != null)
+                                                {
+                                                    <MudText Typo="Typo.body2">@FormatValue(context.Item.Value)</MudText>
+                                                }
+                                                else
+                                                {
+                                                    <MudText Typo="Typo.body2" Color="Color.Tertiary">null</MudText>
+                                                }
+                                            </div>
+                                        </CellTemplate>
+                                    </TemplateColumn>
+                                    <TemplateColumn Title="Type" SortBy="@(x => x.Value?.GetType().Name ?? "null")">
+                                        <CellTemplate>
+                                            <MudChip T="string" Size="Size.Small" Color="Color.Secondary">
+                                                @(context.Item.Value?.GetType().Name ?? "null")
+                                            </MudChip>
+                                        </CellTemplate>
+                                    </TemplateColumn>
+                                </Columns>
+                                <PagerContent>
+                                    <MudDataGridPager T="VariableDisplay" />
+                                </PagerContent>
+                            </MudDataGrid>
+                        }
+                        else
+                        {
+                            <MudAlert Severity="Severity.Info">
+                                No variables found for this process instance.
+                            </MudAlert>
+                        }
+                    </MudTabPanel>
+
+                    <!-- Active Tasks Tab -->
+                    <MudTabPanel Text="Active Tasks" Icon="@Icons.Material.Filled.Assignment">
+                        @if (ProcessInstance.ActiveTasks?.Any() == true)
+                        {
+                            <MudList T="string">
+                                @foreach (var taskId in ProcessInstance.ActiveTasks)
+                                {
+                                    <MudListItem T="string">
+                                        <div class="d-flex justify-space-between align-center">
+                                            <div>
+                                                <MudText Typo="Typo.body1">@taskId</MudText>
+                                                <MudText Typo="Typo.caption" Color="Color.Tertiary">
+                                                    Task ID
+                                                </MudText>
+                                            </div>
+                                            <MudIconButton Icon="@Icons.Material.Filled.OpenInNew" 
+                                                          Size="Size.Small" 
+                                                          OnClick="@(() => OpenTask(taskId))"
+                                                          Title="Open Task" />
+                                        </div>
+                                    </MudListItem>
+                                }
+                            </MudList>
+                        }
+                        else
+                        {
+                            <MudAlert Severity="Severity.Info">
+                                No active tasks for this process instance.
+                            </MudAlert>
+                        }
+                    </MudTabPanel>
+
+                    <!-- Execution Tokens Tab -->
+                    <MudTabPanel Text="Execution Tokens" Icon="@Icons.Material.Filled.Token">
+                        @if (ProcessInstance.ActiveTokens?.Any() == true)
+                        {
+                            <MudList T="string">
+                                @foreach (var tokenId in ProcessInstance.ActiveTokens)
+                                {
+                                    <MudListItem T="string">
+                                        <div class="d-flex align-center">
+                                            <MudIcon Icon="@Icons.Material.Filled.PlayCircle" 
+                                                    Color="Color.Success" 
+                                                    Class="mr-3" />
+                                            <div>
+                                                <MudText Typo="Typo.body1">Token: @tokenId</MudText>
+                                                <MudText Typo="Typo.caption" Color="Color.Tertiary">
+                                                    Active execution token
+                                                </MudText>
+                                            </div>
+                                        </div>
+                                    </MudListItem>
+                                }
+                            </MudList>
+                        }
+                        else
+                        {
+                            <MudAlert Severity="Severity.Info">
+                                No active execution tokens found.
+                            </MudAlert>
+                        }
+                    </MudTabPanel>
+
+                    <!-- History Tab -->
+                    <MudTabPanel Text="History" Icon="@Icons.Material.Filled.History">
+                        @if (_historyEvents.Any())
+                        {
+                            <div style="height: 400px; overflow-y: auto;">
+                                <MudTimeline>
+                                    @foreach (var historyEvent in _historyEvents.OrderByDescending(e => e.Timestamp).Take(20))
+                                    {
+                                        <MudTimelineItem Color="GetEventColor(historyEvent.EventType)" 
+                                                        Size="Size.Small">
+                                            <ItemOpposite>
+                                                <MudText Typo="Typo.caption" Color="Color.Tertiary">
+                                                    @historyEvent.Timestamp.ToString("HH:mm:ss")
+                                                </MudText>
+                                            </ItemOpposite>
+                                            <ItemContent>
+                                                <MudText Typo="Typo.body2">
+                                                    @GetEventTitle(historyEvent.EventType)
+                                                </MudText>
+                                                @if (!string.IsNullOrEmpty(historyEvent.ElementId))
+                                                {
+                                                    <MudText Typo="Typo.caption" Color="Color.Tertiary">
+                                                        Element: @historyEvent.ElementId
+                                                    </MudText>
+                                                }
+                                            </ItemContent>
+                                        </MudTimelineItem>
+                                    }
+                                </MudTimeline>
+                            </div>
+                            
+                            <MudButton Variant="Variant.Text" 
+                                      StartIcon="@Icons.Material.Filled.History"
+                                      OnClick="ShowFullHistory"
+                                      Class="mt-2">
+                                View Full History
+                            </MudButton>
+                        }
+                        else
+                        {
+                            <MudAlert Severity="Severity.Info">
+                                No history events found for this process instance.
+                            </MudAlert>
+                        }
+                    </MudTabPanel>
+                </MudTabs>
+            }
+        </MudContainer>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="RefreshData" 
+                  StartIcon="@Icons.Material.Filled.Refresh"
+                  Color="Color.Default">
+            Refresh
+        </MudButton>
+        <MudSpacer />
+        <MudButton OnClick="@(() => Dialog.Close())" 
+                  Color="Color.Primary">
+            Close
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] public MudBlazor.IDialogReference Dialog { get; set; } = default!;
+    [Parameter] public ProcessInstance ProcessInstance { get; set; } = default!;
+
+    private ProcessDefinition? _processDefinition;
+    private List<HistoryEvent> _historyEvents = new();
+    private bool _isLoading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAdditionalData();
+    }
+
+    private async Task LoadAdditionalData()
+    {
+        try
+        {
+            _isLoading = true;
+            _error = null;
+            StateHasChanged();
+
+            // Load process definition
+            var definitions = await BpmnEngineService.GetProcessDefinitionsAsync();
+            _processDefinition = definitions.FirstOrDefault(d => d.Id == ProcessInstance.ProcessDefinitionId);
+
+            // Load recent history events
+            var historyEvents = await HistoryService.GetHistoryByProcessInstanceAsync(ProcessInstance.Id);
+            _historyEvents = historyEvents.ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load process instance details for {ProcessInstanceId}", ProcessInstance.Id);
+            _error = ex.Message;
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshData()
+    {
+        await LoadAdditionalData();
+        Snackbar.Add("Process instance details refreshed", Severity.Success);
+    }
+
+    private Color GetStateColor(string state) => state?.ToLower() switch
+    {
+        "active" => Color.Success,
+        "suspended" => Color.Warning,
+        "completed" => Color.Info,
+        "terminated" => Color.Error,
+        _ => Color.Default
+    };
+
+    private string GetDuration()
+    {
+        var endTime = ProcessInstance.EndedAt ?? DateTime.Now;
+        var duration = endTime - ProcessInstance.StartedAt;
+        
+        if (duration.TotalDays >= 1)
+            return $"{duration.TotalDays:F1} days";
+        else if (duration.TotalHours >= 1)
+            return $"{duration.TotalHours:F1} hours";
+        else if (duration.TotalMinutes >= 1)
+            return $"{duration.TotalMinutes:F1} minutes";
+        else
+            return $"{duration.TotalSeconds:F0} seconds";
+    }
+
+    private List<VariableDisplay> GetVariablesList()
+    {
+        return ProcessInstance.Variables?
+            .Select(kvp => new VariableDisplay { Name = kvp.Key, Value = kvp.Value })
+            .ToList() ?? new List<VariableDisplay>();
+    }
+
+    private static string FormatValue(object value)
+    {
+        return value switch
+        {
+            string s when s.Length > 100 => s[..100] + "...",
+            DateTime dt => dt.ToString("yyyy-MM-dd HH:mm:ss"),
+            _ => value.ToString() ?? "null"
+        };
+    }
+
+    private Color GetEventColor(string eventType) => eventType?.ToLower() switch
+    {
+        "process_started" => Color.Success,
+        "process_completed" => Color.Info,
+        "process_terminated" => Color.Error,
+        "activity_started" => Color.Primary,
+        "activity_completed" => Color.Secondary,
+        "task_created" => Color.Tertiary,
+        "task_completed" => Color.Success,
+        _ => Color.Default
+    };
+
+    private static string GetEventTitle(string eventType) => 
+        eventType?.Replace('_', ' ').ToTitleCase() ?? "Unknown Event";
+
+    private async Task ViewProcessDefinition()
+    {
+        if (_processDefinition == null) return;
+
+        try
+        {
+            var xml = await BpmnEngineService.GetProcessDefinitionXmlAsync(_processDefinition.Id.ToString());
+            
+            var parameters = new DialogParameters
+            {
+                ["BpmnXml"] = xml,
+                ["Title"] = $"Process Definition: {_processDefinition.Name}"
+            };
+
+            var options = new DialogOptions
+            {
+                MaxWidth = MaxWidth.ExtraExtraLarge,
+                FullWidth = true
+            };
+
+            DialogService.Show<BpmnViewerDialog>("BPMN Viewer", parameters, options);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading BPMN diagram: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void OpenTask(string taskId)
+    {
+        Snackbar.Add($"Opening task: {taskId}", Severity.Info);
+    }
+
+    private void ShowFullHistory()
+    {
+        var parameters = new DialogParameters
+        {
+            ["ProcessInstanceId"] = ProcessInstance.Id
+        };
+
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Large,
+            FullWidth = true
+        };
+
+        DialogService.Show<ProcessInstanceHistoryDialog>(
+            $"Full History: {ProcessInstance.InstanceId}", parameters, options);
+    }
+
+    private sealed record VariableDisplay
+    {
+        public string Name { get; init; } = string.Empty;
+        public object? Value { get; init; }
+    }
+}   

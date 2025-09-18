@@ -1,0 +1,134 @@
+@inherits LayoutComponentBase
+@inject VertexBPMN.Studio.Services.IBpmnEngineService BpmnEngineService
+@inject VertexBPMN.Studio.Services.ActiveEngineService ActiveEngineService
+@inject ILogger<MainLayout> Logger
+@implements IDisposable
+
+<MudThemeProvider Theme="_theme" />
+<MudDialogProvider />
+<MudSnackbarProvider />
+<MudPopoverProvider /> <!-- Added to fix Missing <MudPopoverProvider /> exception -->
+
+<MudLayout>
+    <MudAppBar Elevation="1">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" 
+                      Color="Color.Inherit" 
+                      Edge="Edge.Start" 
+                      OnClick="DrawerToggle" />
+        
+        <MudText Typo="Typo.h5" Class="ml-3">VertexBPMN Studio</MudText>
+        <MudSpacer />
+
+        <!-- Connection Status -->
+        <MudChip T="string" 
+                Color="@(ActiveEngineService.IsConnected ? Color.Success : Color.Error)" 
+                Size="Size.Small" 
+                Icon="@(ActiveEngineService.IsConnected ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Error)"
+                Class="mr-2">
+            @(ActiveEngineService.IsConnected ? "Connected" : "Disconnected")
+        </MudChip>
+
+        <!-- User Role Selector -->
+        <MudSelect T="string" 
+                  Label="Role" 
+                  @bind-Value="ActiveEngineService.CurrentUserRole" 
+                  Variant="Variant.Outlined" 
+                  Dense="true" 
+                  Class="mr-4">
+            <MudSelectItem Value="@("Admin")">Admin</MudSelectItem>
+            <MudSelectItem Value="@("User")">User</MudSelectItem>
+            <MudSelectItem Value="@("Manager")">Manager</MudSelectItem>
+            <MudSelectItem Value="@("Viewer")">Viewer</MudSelectItem>
+        </MudSelect>
+
+        <!-- Engine Selector -->
+        <MudSelect T="string" 
+                  Label="Engine" 
+                  @bind-Value="ActiveEngineService.ActiveEngineId" 
+                  Variant="Variant.Outlined" 
+                  Dense="true" 
+                  Class="mr-4"
+                  Loading="_isLoadingEngines">
+            @foreach (var engine in _engineConnections)
+            {
+                <MudSelectItem Value="@engine.Id">
+                    @engine.Name
+                </MudSelectItem>
+            }
+        </MudSelect>
+
+        <MudIconButton Icon="@Icons.Material.Filled.Refresh" 
+                      Color="Color.Inherit" 
+                      OnClick="RefreshEngines" />
+        
+        <MudIconButton Icon="@Icons.Material.Filled.MoreVert" 
+                      Color="Color.Inherit" 
+                      Edge="Edge.End" />
+    </MudAppBar>
+
+    <MudDrawer @bind-Open="_drawerOpen" Elevation="2">
+        <MudDrawerHeader>
+            <MudText Typo="Typo.h6" Class="px-4">VertexBPMN Studio</MudText>
+        </MudDrawerHeader>
+        <NavMenu />
+    </MudDrawer>
+
+    <MudMainContent>
+        <MudContainer MaxWidth="MaxWidth.Large" Class="my-16 pt-16">
+            @Body
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    private static readonly MudTheme _theme = new();
+
+    private bool _drawerOpen = true;
+    private bool _isLoadingEngines = false;
+    private List<VertexBPMN.Studio.Services.EngineConnection> _engineConnections = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await LoadEngineConnections();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to initialize MainLayout");
+        }
+    }
+
+    private async Task LoadEngineConnections()
+    {
+        try
+        {
+            _isLoadingEngines = true;
+            StateHasChanged();
+
+            var connections = await BpmnEngineService.GetEngineConnectionsAsync();
+            _engineConnections = connections.ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load engine connections");
+        }
+        finally
+        {
+            _isLoadingEngines = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshEngines()
+    {
+        await LoadEngineConnections();
+    }
+
+    private void DrawerToggle() => _drawerOpen = !_drawerOpen;
+
+    public void Dispose()
+    {
+        // Clean up resources
+    }
+}

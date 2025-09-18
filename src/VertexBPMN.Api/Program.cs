@@ -20,7 +20,6 @@ using VertexBPMN.Infrastructure.Persistence.InMemory;
 using VertexBPMN.Infrastructure.Persistence.Repositories;
 using VertexBPMN.Infrastructure.Persistence.Services;
 using VertexBPMN.Infrastructure.Stores;
-using VertexBPMN.Persistence;
 using ICachingService = VertexBPMN.Domain.Interfaces.ICachingService;
 using IHealthMonitoringService = VertexBPMN.Domain.Interfaces.IHealthMonitoringService;
 using IRateLimitingService = VertexBPMN.Domain.Interfaces.IRateLimitingService;
@@ -133,71 +132,71 @@ builder.Services.AddHealthChecks();
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 // OpenTelemetry metrics temporarily disabled due to .NET 9 API instability
-	// OpenTelemetry und Prometheus-Registrierung temporär entfernt für Test-Kompatibilität
-	builder.Services.AddSwaggerGen(options =>
+// OpenTelemetry und Prometheus-Registrierung temporär entfernt für Test-Kompatibilität
+builder.Services.AddSwaggerGen(options =>
+{
+	// Add JWT Bearer security definition
+	options.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
 	{
-		// Add JWT Bearer security definition
-		options.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+		Description = "JWT Authorization header using the Bearer scheme. Example: 'Authorization: Bearer {token}'",
+		Name = "Authorization",
+		In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+		Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+		Scheme = "bearer",
+		BearerFormat = "JWT"
+	});
+	options.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+	{
 		{
-			Description = "JWT Authorization header using the Bearer scheme. Example: 'Authorization: Bearer {token}'",
-			Name = "Authorization",
-			In = Microsoft.OpenApi.Models.ParameterLocation.Header,
-			Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
-			Scheme = "bearer",
-			BearerFormat = "JWT"
-		});
-		options.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
-		{
+			new Microsoft.OpenApi.Models.OpenApiSecurityScheme
 			{
-				new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+				Reference = new Microsoft.OpenApi.Models.OpenApiReference
 				{
-					Reference = new Microsoft.OpenApi.Models.OpenApiReference
-					{
-						Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
-						Id = "Bearer"
-					}
-				},
-				new string[] {}
-			}
-		});
-		// Add Simulation API tag
-		options.DocumentFilter<VertexBPMN.Api.SimulationTagDocumentFilter>();
-	});
-	// OpenAPI/Swagger: XML-Kommentare für Camunda-kompatible Endpunkte einbinden
-	var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
-	var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
-	builder.Services.AddSwaggerGen(c =>
-	{
-		c.IncludeXmlComments(xmlPath, includeControllerXmlComments: true);
-	});
-	// OpenAPI/Swagger: Camunda-kompatible Endpunkte dokumentieren
-
-	var app = builder.Build();
-
-	// Ensure databases are created
-	using (var scope = app.Services.CreateScope())
-	{
-		var services = scope.ServiceProvider;
-		try
-		{
-			var bpmnContext = services.GetRequiredService<BpmnDbContext>();
-			await bpmnContext.Database.EnsureCreatedAsync();
-				
-			var tenantContext = services.GetRequiredService<TenantDbContext>();
-			await tenantContext.Database.EnsureCreatedAsync();
-				
-			var simulationContext = services.GetRequiredService<SimulationScenarioDbContext>();
-			await simulationContext.Database.EnsureCreatedAsync();
-				
-			var processMiningContext = services.GetRequiredService<ProcessMiningEventDbContext>();
-			await processMiningContext.Database.EnsureCreatedAsync();
+					Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+					Id = "Bearer"
+				}
+			},
+			new string[] {}
 		}
-		catch (Exception ex)
-		{
-			var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("DatabaseInitialization");
-			logger.LogError(ex, "An error occurred while creating the database");
-		}
+	});
+	// Add Simulation API tag
+	options.DocumentFilter<VertexBPMN.Api.SimulationTagDocumentFilter>();
+});
+// OpenAPI/Swagger: XML-Kommentare für Camunda-kompatible Endpunkte einbinden
+var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
+var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+builder.Services.AddSwaggerGen(c =>
+{
+	c.IncludeXmlComments(xmlPath, includeControllerXmlComments: true);
+});
+// OpenAPI/Swagger: Camunda-kompatible Endpunkte dokumentieren
+
+var app = builder.Build();
+
+// Ensure databases are created
+using (var scope = app.Services.CreateScope())
+{
+	var services = scope.ServiceProvider;
+	try
+	{
+		var bpmnContext = services.GetRequiredService<BpmnDbContext>();
+		await bpmnContext.Database.EnsureCreatedAsync();
+				
+		var tenantContext = services.GetRequiredService<TenantDbContext>();
+		await tenantContext.Database.EnsureCreatedAsync();
+				
+		var simulationContext = services.GetRequiredService<SimulationScenarioDbContext>();
+		await simulationContext.Database.EnsureCreatedAsync();
+				
+		var processMiningContext = services.GetRequiredService<ProcessMiningEventDbContext>();
+		await processMiningContext.Database.EnsureCreatedAsync();
 	}
+	catch (Exception ex)
+	{
+		var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("DatabaseInitialization");
+		logger.LogError(ex, "An error occurred while creating the database");
+	}
+}
 
 var pluginsDir = Path.Combine(AppContext.BaseDirectory, "plugins");
 if (!Directory.Exists(pluginsDir))

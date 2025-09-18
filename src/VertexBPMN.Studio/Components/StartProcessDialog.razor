@@ -1,0 +1,181 @@
+@using VertexBPMN.Domain.Entities
+@inject MudBlazor.ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.PlayArrow" Class="mr-3"/>
+            Start Process Instance
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudContainer Style="max-width: none !important;">
+            <MudText Typo="Typo.h6" Class="mb-4">Process Definition</MudText>
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudTextField Label="Process Key" 
+                                 Value="@ProcessDefinition?.Key" 
+                                 ReadOnly="true" 
+                                 Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField Label="Process Name" 
+                                 Value="@ProcessDefinition?.Name" 
+                                 ReadOnly="true" 
+                                 Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudNumericField Label="Version" 
+                                    Value="@ProcessDefinition?.Version" 
+                                    ReadOnly="true" 
+                                    Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField Label="Tenant ID" 
+                                 Value="@(ProcessDefinition?.TenantId ?? "Default")" 
+                                 ReadOnly="true" 
+                                 Variant="Variant.Outlined" />
+                </MudItem>
+            </MudGrid>
+
+            <MudDivider Class="my-6" />
+
+            <MudText Typo="Typo.h6" Class="mb-4">Process Instance Configuration</MudText>
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="_businessKey" 
+                                 Label="Business Key" 
+                                 Placeholder="Optional business identifier"
+                                 Variant="Variant.Outlined" 
+                                 HelperText="Unique business identifier for this process instance" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="_tenantId" 
+                                 Label="Tenant ID" 
+                                 Placeholder="Leave empty for default tenant"
+                                 Variant="Variant.Outlined" />
+                </MudItem>
+            </MudGrid>
+
+            <MudText Typo="Typo.h6" Class="mt-6 mb-4">Initial Variables</MudText>
+            
+            @foreach (var variable in _variables)
+            {
+                <MudGrid Class="mb-3">
+                    <MudItem xs="5">
+                        <MudTextField @bind-Value="variable.Name" 
+                                     Label="Variable Name" 
+                                     Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="5">
+                        <MudTextField @bind-Value="variable.Value" 
+                                     Label="Value" 
+                                     Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="2" Class="d-flex align-center">
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" 
+                                      Color="Color.Error" 
+                                      OnClick="@(() => RemoveVariable(variable))" 
+                                      Size="Size.Small" />
+                    </MudItem>
+                </MudGrid>
+            }
+
+            <MudButton StartIcon="@Icons.Material.Filled.Add" 
+                      Variant="Variant.Text" 
+                      Color="Color.Primary" 
+                      OnClick="AddVariable" 
+                      Class="mt-2">
+                Add Variable
+            </MudButton>
+        </MudContainer>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => Dialog.Close(DialogResult.Cancel()))" Color="Color.Default">
+            Cancel
+        </MudButton>
+        <MudButton OnClick="StartProcessInstance" 
+                  Color="Color.Success" 
+                  Variant="Variant.Filled" 
+                  StartIcon="@Icons.Material.Filled.PlayArrow"
+                  Disabled="_isStarting">
+            @if (_isStarting)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                <span class="ml-2">Starting...</span>
+            }
+            else
+            {
+                <span>Start Process</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] public MudBlazor.IDialogReference Dialog { get; set; } = default!;
+    [Parameter] public ProcessDefinition? ProcessDefinition { get; set; }
+
+    private string _businessKey = string.Empty;
+    private string _tenantId = string.Empty;
+    private bool _isStarting = false;
+
+    private readonly List<ProcessVariable> _variables = new();
+
+    protected override void OnInitialized()
+    {
+        _tenantId = ProcessDefinition?.TenantId ?? string.Empty;
+        AddVariable(); // Start with one empty variable
+    }
+
+    private void AddVariable()
+    {
+        _variables.Add(new ProcessVariable());
+    }
+
+    private void RemoveVariable(ProcessVariable variable)
+    {
+        _variables.Remove(variable);
+    }
+
+    private async Task StartProcessInstance()
+    {
+        if (ProcessDefinition == null) return;
+
+        try
+        {
+            _isStarting = true;
+            StateHasChanged();
+
+            // Create variables dictionary from the list
+            var variables = _variables
+                .Where(v => !string.IsNullOrWhiteSpace(v.Name))
+                .ToDictionary(v => v.Name, v => (object)v.Value);
+
+            // TODO: Call your runtime service to start the process instance
+            // var processInstance = await RuntimeService.StartProcessInstanceByKeyAsync(
+            //     ProcessDefinition.Key, 
+            //     _businessKey, 
+            //     variables, 
+            //     _tenantId);
+
+            Snackbar.Add($"Process instance started successfully!", Severity.Success);
+            Dialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error starting process instance: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isStarting = false;
+            StateHasChanged();
+        }
+    }
+
+    private class ProcessVariable
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Value { get; set; } = string.Empty;
+    }
+}

@@ -1,0 +1,278 @@
+@page "/process-instances"
+@inject VertexBPMN.Studio.Services.IBpmnEngineService BpmnEngineService
+@inject VertexBPMN.Studio.Services.IHistoryService HistoryService
+@inject VertexBPMN.Studio.Services.ActiveEngineService ActiveEngineService
+@inject MudBlazor.IDialogService DialogService
+@inject MudBlazor.ISnackbar Snackbar
+@using VertexBPMN.Domain.Entities
+@implements IDisposable
+
+<PageTitle>Process Instances</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Process Instances</MudText>
+
+@if (_isLoading)
+{
+    <MudProgressLinear Indeterminate="true" Class="my-4" />
+    <MudText>Loading process instances...</MudText>
+}
+else
+{
+    <MudTable Items="@_processInstances" 
+              Hover="true" 
+              Striped="true" 
+              Dense="true"
+              Class="mt-4" 
+              Filter="new Func<ProcessInstance, bool>(FilterFunc)"
+              Loading="_isLoading"
+              LoadingProgressColor="Color.Info">
+        <ToolBarContent>
+            <MudTextField @bind-Value="_searchString" 
+                         Placeholder="Search instances..." 
+                         Adornment="Adornment.Start" 
+                         AdornmentIcon="@Icons.Material.Filled.Search" 
+                         IconSize="Size.Medium" 
+                         Class="mt-0"
+                         Clearable="true"/>
+            <MudSpacer />
+            <MudButton Variant="Variant.Filled" 
+                      Color="Color.Primary" 
+                      StartIcon="@Icons.Material.Filled.Refresh"
+                      OnClick="RefreshData">
+                Refresh
+            </MudButton>
+        </ToolBarContent>
+        <HeaderContent>
+            <MudTh><MudTableSortLabel SortBy="new Func<ProcessInstance, object>(x => x.InstanceId)">Instance ID</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<ProcessInstance, object>(x => x.ProcessId)">Process ID</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<ProcessInstance, object>(x => x.BusinessKey ?? string.Empty)">Business Key</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<ProcessInstance, object>(x => x.State)">State</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<ProcessInstance, object>(x => x.StartedAt)">Started At</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<ProcessInstance, object>(x => x.EndedAt ?? DateTime.MaxValue)">Ended At</MudTableSortLabel></MudTh>
+            <MudTh>Active Tasks</MudTh>
+            <MudTh>Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Instance ID">
+                <MudText Typo="Typo.body2" Class="font-monospace">@context.InstanceId</MudText>
+            </MudTd>
+            <MudTd DataLabel="Process ID">
+                <MudText Typo="Typo.body2">@context.ProcessId</MudText>
+            </MudTd>
+            <MudTd DataLabel="Business Key">
+                <MudText Typo="Typo.body2">@(context.BusinessKey ?? "N/A")</MudText>
+            </MudTd>
+            <MudTd DataLabel="State">
+                <MudChip T="string" Color="GetStateColor(context.State)" Size="Size.Small" Variant="Variant.Filled">
+                    @context.State
+                </MudChip>
+            </MudTd>
+            <MudTd DataLabel="Started At">
+                <MudText Typo="Typo.body2">@context.StartedAt.ToString("yyyy-MM-dd HH:mm:ss")</MudText>
+            </MudTd>
+            <MudTd DataLabel="Ended At">
+                <MudText Typo="Typo.body2">@(context.EndedAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? "Running")</MudText>
+            </MudTd>
+            <MudTd DataLabel="Active Tasks">
+                <MudChip T="string" Color="Color.Info" Size="Size.Small">
+                    @context.ActiveTasks.Count task(s)
+                </MudChip>
+            </MudTd>
+            <MudTd DataLabel="Actions">
+                <MudButtonGroup Size="Size.Small" Variant="Variant.Text">
+                    <MudIconButton Icon="@Icons.Material.Filled.History" 
+                                  Size="Size.Small" 
+                                  OnClick="@(() => ViewHistory(context))" 
+                                  Title="View History" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Visibility" 
+                                  Size="Size.Small" 
+                                  OnClick="@(() => ViewDetails(context))" 
+                                  Title="View Details" />
+                    @if (context.State == "Active")
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Pause" 
+                                      Size="Size.Small" 
+                                      OnClick="@(() => SuspendInstance(context.Id))" 
+                                      Title="Suspend Instance" />
+                    }
+                    else if (context.State == "Suspended")
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" 
+                                      Size="Size.Small" 
+                                      OnClick="@(() => ResumeInstance(context.Id))" 
+                                      Title="Resume Instance" />
+                    }
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" 
+                                  Size="Size.Small" 
+                                  Color="Color.Error"
+                                  OnClick="@(() => DeleteInstance(context.Id))" 
+                                  Title="Delete Instance" />
+                </MudButtonGroup>
+            </MudTd>
+        </RowTemplate>
+        <PagerContent>
+            <MudTablePager PageSizeOptions="new int[]{10, 25, 50, 100}" />
+        </PagerContent>
+    </MudTable>
+}
+
+@if (_error != null)
+{
+    <MudAlert Severity="Severity.Error" Class="mt-4">
+        <MudText>Error loading process instances: @_error</MudText>
+    </MudAlert>
+}
+
+@code {
+    private List<ProcessInstance> _processInstances = new();
+    private string _searchString = "";
+    private bool _isLoading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        ActiveEngineService.OnChange += StateHasChanged;
+        await LoadProcessInstances();
+    }
+
+    public void Dispose()
+    {
+        ActiveEngineService.OnChange -= StateHasChanged;
+    }
+
+    private async Task LoadProcessInstances()
+    {
+        try
+        {
+            _isLoading = true;
+            _error = null;
+            StateHasChanged();
+
+            var instances = await BpmnEngineService.GetProcessInstancesAsync();
+            _processInstances = instances.ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _processInstances.Clear();
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshData()
+    {
+        await LoadProcessInstances();
+        Snackbar.Add("Process instances refreshed", Severity.Success);
+    }
+
+    private bool FilterFunc(ProcessInstance instance)
+    {
+        if (string.IsNullOrWhiteSpace(_searchString))
+            return true;
+
+        return (instance.InstanceId?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
+               (instance.ProcessId?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
+               (instance.BusinessKey?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
+               (instance.State?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+
+    private Color GetStateColor(string state) => state?.ToLower() switch
+    {
+        "active" => Color.Success,
+        "suspended" => Color.Warning,
+        "completed" => Color.Info,
+        "terminated" => Color.Error,
+        _ => Color.Default
+    };
+
+    private async Task ViewHistory(ProcessInstance instance)
+    {
+        var parameters = new DialogParameters
+        {
+            ["ProcessInstanceId"] = instance.Id
+        };
+
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Large,
+            FullWidth = true
+        };
+
+        DialogService.Show<ProcessInstanceHistoryDialog>(
+            $"History: {instance.InstanceId}", parameters, options);
+    }
+
+    private async Task ViewDetails(ProcessInstance instance)
+    {
+        var parameters = new DialogParameters
+        {
+            ["ProcessInstance"] = instance
+        };
+
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.ExtraLarge,
+            FullWidth = true
+        };
+
+        DialogService.Show<ProcessInstanceDetailsDialog>(
+            $"Details: {instance.InstanceId}", parameters, options);
+    }
+
+    private async Task SuspendInstance(Guid instanceId)
+    {
+        try
+        {
+            // This would call your management API
+            // await ManagementService.SuspendProcessInstanceAsync(instanceId);
+            Snackbar.Add("Process instance suspended", Severity.Success);
+            await LoadProcessInstances();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error suspending instance: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ResumeInstance(Guid instanceId)
+    {
+        try
+        {
+            // This would call your management API
+            // await ManagementService.ResumeProcessInstanceAsync(instanceId);
+            Snackbar.Add("Process instance resumed", Severity.Success);
+            await LoadProcessInstances();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error resuming instance: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteInstance(Guid instanceId)
+    {
+        bool? result = await DialogService.ShowMessageBox(
+            "Delete Process Instance",
+            "Are you sure you want to delete this process instance? This action cannot be undone.",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (result == true)
+        {
+            try
+            {
+                // This would call your management API
+                // await ManagementService.DeleteProcessInstanceAsync(instanceId);
+                Snackbar.Add("Process instance deleted", Severity.Success);
+                await LoadProcessInstances();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error deleting instance: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+}

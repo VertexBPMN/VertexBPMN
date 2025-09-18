@@ -135,6 +135,7 @@
   <ProjectReference Include="..\src\VertexBPMN.Integration\McpAdapter\VertexBPMN.McpAdapter.csproj" />
   <ProjectReference Include="..\src\VertexBPMN.Integration\McpAgentPlugin\VertexBPMN.McpAgentPlugin.csproj" />
   <ProjectReference Include="..\src\VertexBPMN.Integration\McpClient\VertexBPMN.McpClient.csproj" />
+  <ProjectReference Include="..\src\VertexBPMN.Studio\VertexBPMN.Studio.csproj" />
 </ItemGroup>
 
 </Project>

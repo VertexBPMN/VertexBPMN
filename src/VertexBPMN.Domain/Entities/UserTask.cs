@@ -13,6 +13,7 @@ public class UserTask
     public string? TenantId { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
+    public DateTime? DueDate { get; set; }
     /// <summary>
     /// Camunda formKey for user task forms (form-js, embedded forms, etc.)
     /// </summary>
@@ -22,5 +23,6 @@ public class UserTask
     /// Optional JSON schema for dynamic forms (form-js, Camunda 8, etc.)
     /// </summary>
     public string? FormSchema { get; set; }
+
     // TODO: Add candidate users/groups, etc.
 }

@@ -1,0 +1,129 @@
+@using VertexBPMN.Studio.Services
+@inject IBpmnEngineService BpmnEngineService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+
+<MudAutocomplete T="SearchResult"
+                Label="Search processes, tasks, definitions..."
+                @bind-Value="_selectedResult"
+                SearchFunc="SearchAsync"
+                ToStringFunc="@(item => item?.DisplayText ?? string.Empty)"
+                Variant="Variant.Outlined"
+                AdornmentIcon="@Icons.Material.Filled.Search"
+                Adornment="Adornment.Start"
+                Clearable="true"
+                ResetValueOnEmptyText="true"
+                CoerceText="true"
+                MaxItems="20">
+    <ItemTemplate Context="item">
+        <div class="d-flex align-center">
+            <MudIcon Icon="@GetSearchResultIcon(item.Type)" 
+                    Color="@GetSearchResultColor(item.Type)" 
+                    Class="mr-3" />
+            <div>
+                <MudText Typo="Typo.body1">@item.Title</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Tertiary">
+                    @item.Subtitle
+                </MudText>
+            </div>
+        </div>
+    </ItemTemplate>
+</MudAutocomplete>
+
+@code {
+    private SearchResult? _selectedResult;
+
+    protected override void OnParametersSet()
+    {
+        if (_selectedResult != null)
+        {
+            Navigation.NavigateTo(_selectedResult.Url);
+            _selectedResult = null;
+        }
+    }
+
+    private async Task<IEnumerable<SearchResult>> SearchAsync(string value, CancellationToken token)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length < 2)
+            return Array.Empty<SearchResult>();
+
+        var results = new List<SearchResult>();
+
+        try
+        {
+            // Search process definitions
+            var definitions = await BpmnEngineService.GetProcessDefinitionsAsync();
+            results.AddRange(definitions
+                .Where(d => d.Name.Contains(value, StringComparison.OrdinalIgnoreCase) ||
+                           d.Key.Contains(value, StringComparison.OrdinalIgnoreCase))
+                .Take(5)
+                .Select(d => new SearchResult
+                {
+                    Type = "ProcessDefinition",
+                    Title = d.Name,
+                    Subtitle = $"Key: {d.Key} • Version: {d.Version}",
+                    Url = $"/process-definitions?highlight={d.Id}"
+                }));
+
+            // Search process instances
+            var instances = await BpmnEngineService.GetProcessInstancesAsync();
+            results.AddRange(instances
+                .Where(i => i.InstanceId.Contains(value, StringComparison.OrdinalIgnoreCase) ||
+                           (i.BusinessKey?.Contains(value, StringComparison.OrdinalIgnoreCase) ?? false))
+                .Take(5)
+                .Select(i => new SearchResult
+                {
+                    Type = "ProcessInstance",
+                    Title = i.InstanceId,
+                    Subtitle = $"State: {i.State} • Started: {i.StartedAt:yyyy-MM-dd}",
+                    Url = $"/process-instances?highlight={i.Id}"
+                }));
+
+            // Search tasks
+            var tasks = await BpmnEngineService.GetTasksAsync();
+            results.AddRange(tasks
+                .Where(t => t.Name.Contains(value, StringComparison.OrdinalIgnoreCase) ||
+                           (t.Assignee?.Contains(value, StringComparison.OrdinalIgnoreCase) ?? false))
+                .Take(5)
+                .Select(t => new SearchResult
+                {
+                    Type = "Task",
+                    Title = t.Name,
+                    Subtitle = $"Assignee: {t.Assignee ?? "Unassigned"} • Process: {t.ProcessInstanceId}",
+                    Url = $"/tasks?highlight={t.Id}"
+                }));
+        }
+        catch (Exception ex)
+        {
+            // Log error but don't break search
+            Console.WriteLine($"Search error: {ex.Message}");
+        }
+
+        return results.OrderBy(r => r.Type).ThenBy(r => r.Title);
+    }
+
+    private static string GetSearchResultIcon(string type) => type switch
+    {
+        "ProcessDefinition" => Icons.Material.Filled.List,
+        "ProcessInstance" => Icons.Material.Filled.PlayArrow,
+        "Task" => Icons.Material.Filled.Assignment,
+        _ => Icons.Material.Filled.Search
+    };
+
+    private static Color GetSearchResultColor(string type) => type switch
+    {
+        "ProcessDefinition" => Color.Primary,
+        "ProcessInstance" => Color.Success,
+        "Task" => Color.Warning,
+        _ => Color.Default
+    };
+
+    private sealed record SearchResult
+    {
+        public string Type { get; init; } = string.Empty;
+        public string Title { get; init; } = string.Empty;
+        public string Subtitle { get; init; } = string.Empty;
+        public string Url { get; init; } = string.Empty;
+        public string DisplayText => $"{Title} - {Subtitle}";
+    }
+}

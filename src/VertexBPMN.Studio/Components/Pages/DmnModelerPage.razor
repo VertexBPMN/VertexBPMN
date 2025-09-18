@@ -1,0 +1,107 @@
+@page "/dmn-modeler"
+@inject MudBlazor.ISnackbar Snackbar
+@inject IHttpClientFactory HttpClientFactory
+@inject IJSRuntime JSRuntime
+@inject IWebHostEnvironment Env
+@implements IAsyncDisposable
+
+<PageTitle>DMN Modeler</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">DMN Modeler</MudText>
+
+<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveDmnXml">Save XML</MudButton>
+<MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="LoadDmnXml">Load XML</MudButton>
+
+<div id="@_modelerContainerId" style="height:500px; border:1px solid #ccc;"></div>
+
+@code {
+    private string _dmnXml = string.Empty;
+    private string _modelerContainerId = $"dmn-modeler-{Guid.NewGuid():N}";
+    private IJSObjectReference? _module;
+    private IJSObjectReference? _modelerInstance;
+    private bool _initialized;
+
+    private string DmnFilePath => Path.Combine(Env.ContentRootPath, "wwwroot", "data", "DefaultDmn.xml");
+
+    // Inline fallback minimal DMN (decision table skeleton)
+    private const string FallbackDmn = """<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<definitions xmlns=\"https://www.omg.org/spec/DMN/20191111/MODEL/\" id=\"Defs_Fallback\" name=\"Fallback\" namespace=\"http://vertexbpmn.io/dmn\">\n  <decision id=\"Decision_Fallback\" name=\"FallbackDecision\">\n    <decisionTable id=\"DecisionTable_1\">\n      <output id=\"OutputClause_1\" name=\"result\" />\n    </decisionTable>\n  </decision>\n</definitions>""";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDmnXml();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _module = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/dmn-modeler.js");
+            _modelerInstance = await _module.InvokeAsync<IJSObjectReference>("DmnModelerInterop.createModeler", _modelerContainerId, _dmnXml);
+            _initialized = true;
+        }
+    }
+
+    private async Task SaveDmnXml()
+    {
+        if (_module == null || _modelerInstance == null)
+        {
+            Snackbar.Add("Modeler not initialized yet", Severity.Warning);
+            return;
+        }
+        try
+        {
+            var xml = await _module.InvokeAsync<string>("DmnModelerInterop.getXml", _modelerInstance);
+            Directory.CreateDirectory(Path.GetDirectoryName(DmnFilePath)!);
+            await File.WriteAllTextAsync(DmnFilePath, xml);
+            _dmnXml = xml;
+            Snackbar.Add($"DMN XML saved to file: {Path.GetFileName(DmnFilePath)}", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed saving DMN: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task LoadDmnXml()
+    {
+        try
+        {
+            if (File.Exists(DmnFilePath))
+            {
+                _dmnXml = await File.ReadAllTextAsync(DmnFilePath);
+                Snackbar.Add("DMN XML loaded from file system", Severity.Info);
+            }
+            else
+            {
+                _dmnXml = FallbackDmn;
+                Snackbar.Add("DMN file not found. Using fallback.", Severity.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            _dmnXml = FallbackDmn;
+            Snackbar.Add($"Error loading DMN file. Using fallback. ({ex.Message})", Severity.Error);
+        }
+
+        if (_initialized && _module != null && _modelerInstance != null)
+        {
+            await _module.InvokeVoidAsync("DmnModelerInterop.loadXml", _modelerInstance, _dmnXml);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_modelerInstance is not null)
+            {
+                await _modelerInstance.DisposeAsync();
+            }
+            if (_module is not null)
+            {
+                await _module.DisposeAsync();
+            }
+        }
+        catch { }
+    }
+}

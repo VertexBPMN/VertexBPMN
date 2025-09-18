@@ -1,0 +1,40 @@
+@page "/configuration"
+@inject VertexBPMN.Studio.Services.IBpmnEngineService BpmnEngineService
+@inject MudBlazor.ISnackbar Snackbar
+
+<PageTitle>Configuration</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Configuration</MudText>
+
+<MudForm Model="@_config" @ref="form">
+    <MudTextField Label="Status Message" @bind-Value="_config.StatusMessage" For="@(() => _config.StatusMessage)" />
+    <MudNumericField Label="Deployment Delay (ms)" @bind-Value="_config.DeploymentDelayMs" For="@(() => _config.DeploymentDelayMs)" />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveConfiguration" Class="mt-4">Save Configuration</MudButton>
+</MudForm>
+
+@code {
+    private VertexBPMN.Studio.Services.EngineConfiguration _config = new();
+    private MudForm form;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _config = await BpmnEngineService.GetEngineConfigurationAsync();
+    }
+
+    private async Task SaveConfiguration()
+    {
+        await form.Validate();
+        if (form.IsValid)
+        {
+            try
+            {
+                await BpmnEngineService.UpdateEngineConfigurationAsync(_config);
+                Snackbar.Add("Configuration saved successfully!", Severity.Success);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error saving configuration: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+}

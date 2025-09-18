@@ -1,0 +1,127 @@
+@using VertexBPMN.Studio.Services
+@using MudBlazor
+@inject MudBlazor.IDialogService DialogService
+@inject MudBlazor.ISnackbar Snackbar
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Task Details: @Task.Name</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid>
+            <MudItem xs="12">
+                <MudText><b>Id:</b> @Task.Id</MudText>
+                <MudText><b>Process Instance Id:</b> @Task.ProcessInstanceId</MudText>
+                <MudText><b>Created Time:</b> @Task.CreatedAt</MudText>
+                <MudText><b>Assignee:</b> @(string.IsNullOrEmpty(Task.Assignee) ? "Unassigned" : Task.Assignee)</MudText>
+                <MudText><b>Due Date:</b> @(Task.DueDate?.ToShortDateString() ?? "N/A")</MudText>
+            </MudItem>
+            @if (!string.IsNullOrEmpty(Task.FormKey))
+            {
+                <MudItem xs="12">
+                    <MudText Typo="Typo.h6" Class="mt-4">Task Form</MudText>
+                    <div id="@_formContainerId" style="height:400px; border:1px solid #ccc;"></div>
+                </MudItem>
+            }
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => Dialog.Close())">Cancel</MudButton>
+        @if (Task.Assignee == "John Doe") // Assuming "John Doe" is the current user
+        {
+            <MudButton Color="Color.Primary" OnClick="CompleteTask">Complete</MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] public MudBlazor.IDialogReference Dialog { get; set; } = default!;
+
+    [Parameter]
+    public UserTask Task { get; set; } = default!;
+
+    private string _formJson = "{}";
+
+    private string _formContainerId = $"form-builder-{Guid.NewGuid():N}";
+    private IJSObjectReference? _module;
+    private IJSObjectReference? _formInstance;
+    private bool _formInitialized;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrEmpty(Task.FormKey))
+        {
+            try
+            {
+                // Load form JSON (in real app this should come from a service or repository)
+                var path = Path.Combine("wwwroot", "data", Task.FormKey + ".json");
+                if (File.Exists(path))
+                {
+                    _formJson = await File.ReadAllTextAsync(path);
+                }
+                else if (!string.IsNullOrEmpty(Task.FormSchema))
+                {
+                    _formJson = Task.FormSchema!; // fallback to embedded schema
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Fehler beim Laden des Formulars: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !string.IsNullOrEmpty(Task.FormKey))
+        {
+            try
+            {
+                _module = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/form-builder.js");
+                _formInstance = await _module.InvokeAsync<IJSObjectReference>("FormBuilderInterop.createForm", _formContainerId, _formJson);
+                _formInitialized = true;
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Form init failed: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task CompleteTask()
+    {
+        try
+        {
+            string? submittedJson = null;
+            if (_formInitialized && _module is not null && _formInstance is not null)
+            {
+                submittedJson = await _module.InvokeAsync<string>("FormBuilderInterop.getJson", _formInstance);
+            }
+            // Simulate completing task (would send submittedJson to backend)
+            Snackbar.Add($"Task {Task.Name} completed!", Severity.Success);
+            Dialog.Close(DialogResult.Ok(submittedJson));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error completing task: {ex.Message}", Severity.Error);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_formInstance is not null)
+            {
+                await _formInstance.DisposeAsync();
+            }
+            if (_module is not null)
+            {
+                await _module.DisposeAsync();
+            }
+        }
+        catch { }
+    }
+}

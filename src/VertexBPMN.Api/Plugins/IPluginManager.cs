@@ -6,6 +6,8 @@ namespace VertexBPMN.Api.Plugins;
 /// </summary>
 public interface IPluginManager
 {
+    int LoadedPluginCount { get; }
+
     Task<PluginLoadResult> LoadPluginAsync(string pluginPath);
     Task<bool> UnloadPluginAsync(string pluginId);
     Task<List<PluginInfo>> GetLoadedPluginsAsync();

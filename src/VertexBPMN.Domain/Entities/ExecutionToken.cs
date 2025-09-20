@@ -1,44 +1,57 @@
 namespace VertexBPMN.Domain.Entities;
 
-/// <summary>
-/// Represents an execution token for advanced BPMN 2.0 flow control
-/// </summary>
-public record ExecutionToken
-{
-    public Guid Id;
-    public Guid ProcessInstanceId;
-    public string CurrentNodeId;
-    public string NodeType;
-    public Dictionary<string, object> Variables;
-    public DateTime CreatedAt;
-    public string? AssignedWorker = null;
-    public DateTime? AssignedAt = null;
-    public int RetryCount = 0;
-
-    /// <summary>
-    /// Represents an execution token for advanced BPMN 2.0 flow control
-    /// </summary>
-    public ExecutionToken(string Id, string ProcessInstanceId, string CurrentNodeId)
+public class ExecutionToken
+{ 
+    public ExecutionToken(Guid id, Guid processInstanceId, string currentNodeId, string nodeType, Dictionary<string, object> variables, DateTime createdAt, string? assignedWorker = null, DateTime? assignedAt = null, int retryCount = 0)
     {
-        this.CurrentNodeId = CurrentNodeId;
-        this.Id = Guid.Parse(Id);
-        this.ProcessInstanceId = Guid.Parse(ProcessInstanceId);
-        this.Variables = new Dictionary<string, object>();
-        this.CreatedAt = DateTime.UtcNow;
+        Id = id;
+        ProcessInstanceId = processInstanceId;
+        CurrentNodeId = currentNodeId;
+        NodeType = nodeType;
+        Variables = variables;
+        CreatedAt = createdAt;
+        AssignedWorker = assignedWorker;
+        AssignedAt = assignedAt;
+        RetryCount = retryCount;
     }
 
-    public ExecutionToken(Guid Id, Guid ProcessInstanceId, string CurrentNodeId, string NodeType, Dictionary<string, object> Variables, DateTime CreatedAt, string? AssignedWorker = null, DateTime? AssignedAt = null, int RetryCount = 0)
+    public ExecutionToken(Guid id, Guid processInstanceId, string currentNodeId, string nodeType)
     {
-        this.Id = Id;
-        this.ProcessInstanceId = ProcessInstanceId;
-        this.CurrentNodeId = CurrentNodeId;
-        this.NodeType = NodeType;
-        this.Variables = Variables;
-        this.CreatedAt = CreatedAt;
-        this.AssignedWorker = AssignedWorker;
-        this.AssignedAt = AssignedAt;
-        this.RetryCount = RetryCount;
+        Id = id;
+        ProcessInstanceId = processInstanceId;
+        CurrentNodeId = currentNodeId;
+        NodeType = nodeType;
+        Variables = new Dictionary<string, object>();
+        CreatedAt = DateTime.UtcNow;
+        RetryCount = 0;
     }
 
-    public string State { get; set; }
+    public ExecutionToken()
+    {
+    }
+
+    // Optional factory if you still need string inputs
+    public static ExecutionToken FromStrings(string id, string processInstanceId, string currentNodeId, string nodeType) =>
+        new(Guid.Parse(id), Guid.Parse(processInstanceId), currentNodeId, nodeType);
+
+    public Guid Id { get;  set; }
+    public Guid ProcessInstanceId { get;  set; }
+    public string CurrentNodeId { get;  set; } = null!;
+    public string NodeType { get;  set; } = null!;
+    public Dictionary<string, object> Variables { get;  set; } = new();
+    public DateTime CreatedAt { get;  set; }
+    public string? AssignedWorker { get;  set; }
+    public DateTime? AssignedAt { get;  set; }
+    public int RetryCount { get;  set; }
+    public string? State { get;  set; }
+
+    public void AssignWorker(string worker)
+    {
+        AssignedWorker = worker;
+        AssignedAt = DateTime.UtcNow;
+    }
+
+    public void IncrementRetry() => RetryCount++;
+
+    public void SetState(string state) => State = state;
 }

@@ -29,6 +29,8 @@ public class PluginManager : IPluginManager, IDisposable
         InitializeDefaultExtensionPoints();
     }
 
+    public int LoadedPluginCount => _loadedPlugins.Count;
+
     public async Task<PluginLoadResult> LoadPluginAsync(string pluginPath)
     {
         try

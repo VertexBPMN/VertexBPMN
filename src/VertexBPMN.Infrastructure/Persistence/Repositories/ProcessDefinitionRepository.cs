@@ -15,8 +15,24 @@ public class ProcessDefinitionRepository : IProcessDefinitionRepository
 
     public async ValueTask AddAsync(ProcessDefinition definition, CancellationToken cancellationToken = default)
     {
-    await _db.ProcessDefinitions.AddAsync(definition, cancellationToken);
-    await _db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _db.ProcessDefinitions.AddAsync(definition, cancellationToken);
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex)
+        {
+            // Hier die Innere Ausnahme abfangen und loggen
+            var innerExceptionMessage = ex.InnerException?.Message;
+
+            // Logge hier die genaue Fehlermeldung und die Objektdaten
+            Console.WriteLine($"DbUpdateException aufgetreten: {ex.Message}");
+            Console.WriteLine($"Innere Ausnahme: {innerExceptionMessage}");
+            Console.WriteLine($"Fehlerhafte Daten: Id={definition.Id}, Key={definition.Key}, TenantId={definition.TenantId}");
+
+            // Wirf die Ausnahme erneut, damit der Aufrufer den Fehler behandeln kann
+            throw;
+        }
     }
 
     public async ValueTask<ProcessDefinition?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)

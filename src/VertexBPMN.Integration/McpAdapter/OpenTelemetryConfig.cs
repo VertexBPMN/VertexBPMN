@@ -65,14 +65,6 @@ public static class OpenTelemetryConfig
                         o.Filter = _ => true;
                     })
                     .AddConsoleExporter();
-
-                builder.AddJaegerExporter(o =>
-                {
-                    if (Uri.TryCreate(jaegerEndpoint, UriKind.Absolute, out var uri))
-                    {
-                        o.Endpoint = uri;
-                    }
-                });
             })
             .WithMetrics(builder =>
             {

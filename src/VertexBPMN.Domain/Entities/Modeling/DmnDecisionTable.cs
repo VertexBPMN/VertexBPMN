@@ -5,29 +5,33 @@ namespace VertexBPMN.Domain.Entities.Modeling;
 /// <summary>
 /// DMN 1.4 Decision Table (minimal) using canonical record types DmnInput, DmnOutput, DmnRule.
 /// Supports a subset of FEEL for equality and basic hit policies (UNIQUE, FIRST, ANY, COLLECT, RULE ORDER, PRIORITY, OUTPUT ORDER).
+/// Now EF-friendly (parameterless ctor + settable properties) so it can be persisted directly as JSON-converted collections.
 /// </summary>
 public class DmnDecisionTable
 {
-    public string Key { get; }
-    public string Name { get; }
-    public IReadOnlyList<DmnInput> Inputs { get; }
-    public IReadOnlyList<DmnOutput> Outputs { get; }
-    public IReadOnlyList<DmnRule> Rules { get; }
-    public string HitPolicy { get; }
+    public string Key { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public List<DmnInput> Inputs { get; set; } = new();
+    public List<DmnOutput> Outputs { get; set; } = new();
+    public List<DmnRule> Rules { get; set; } = new();
+    public string HitPolicy { get; set; } = "UNIQUE";
+
+    // Parameterless ctor for EF / serializers
+    public DmnDecisionTable() { }
 
     public DmnDecisionTable(
         string key,
         string name,
-        IReadOnlyList<DmnInput> inputs,
-        IReadOnlyList<DmnOutput> outputs,
-        IReadOnlyList<DmnRule> rules,
+        List<DmnInput> inputs,
+        List<DmnOutput> outputs,
+        List<DmnRule> rules,
         string hitPolicy)
     {
         Key = key;
         Name = name;
-        Inputs = inputs;
-        Outputs = outputs;
-        Rules = rules;
+        Inputs = inputs.ToList();
+        Outputs = outputs.ToList();
+        Rules = rules.ToList();
         HitPolicy = hitPolicy;
     }
 
@@ -62,15 +66,13 @@ public class DmnDecisionTable
 
         var rules = table.Elements(ns + "rule").Select((r, ruleIndex) =>
         {
-            // Input conditions map inputId -> expression
             var inputConds = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             var inputEntries = r.Elements(ns + "inputEntry").ToList();
             for (int i = 0; i < inputEntries.Count && i < inputs.Count; i++)
             {
-                var expr = inputEntries[i].Value?.Trim() ?? string.Empty; // FEEL expression or '-'
+                var expr = inputEntries[i].Value?.Trim() ?? string.Empty;
                 inputConds[inputs[i].Id] = expr;
             }
-            // Output values map outputId -> raw string (object for future typed conversions)
             var outputVals = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
             var outputEntries = r.Elements(ns + "outputEntry").ToList();
             for (int j = 0; j < outputEntries.Count && j < outputs.Count; j++)
@@ -126,12 +128,10 @@ public class DmnDecisionTable
         return ProjectOutputs(matches[0]);
     }
 
-    private Dictionary<string, object> EvaluateFirst(List<DmnRule> matches)
-        => ProjectOutputs(matches[0]);
+    private Dictionary<string, object> EvaluateFirst(List<DmnRule> matches) => ProjectOutputs(matches[0]);
 
     private Dictionary<string, object> EvaluateAny(List<DmnRule> matches)
     {
-        // All output values must be identical across matched rules
         foreach (var output in Outputs)
         {
             var first = matches[0].OutputValues[output.Id];
@@ -154,7 +154,6 @@ public class DmnDecisionTable
 
     private Dictionary<string, object> EvaluateRuleOrder(List<DmnRule> matches)
     {
-        // Preserve rule order, aggregate outputs
         var result = new Dictionary<string, object>();
         foreach (var output in Outputs)
             result[output.Label] = matches.Select(m => m.OutputValues[output.Id]).ToList();
@@ -166,7 +165,6 @@ public class DmnDecisionTable
         var result = new Dictionary<string, object>();
         foreach (var output in Outputs)
         {
-            // Lexicographic ordering as placeholder priority
             var min = matches.Select(m => m.OutputValues[output.Id]).OrderBy(v => v).First();
             result[output.Label] = min;
         }
@@ -194,7 +192,6 @@ public class DmnDecisionTable
 
     private static object? ResolveInputValue(DmnInput input, IReadOnlyDictionary<string, object> vars)
     {
-        // Accept input.Id or input.Label as key
         if (vars.TryGetValue(input.Id, out var v)) return v;
         if (!string.IsNullOrEmpty(input.Label) && vars.TryGetValue(input.Label, out v)) return v;
         return null;
@@ -202,10 +199,9 @@ public class DmnDecisionTable
 
     private static bool FeelMatches(string expression, object? value)
     {
-        if (expression == "-" || string.IsNullOrWhiteSpace(expression)) return true; // wildcard / any
+        if (expression == "-" || string.IsNullOrWhiteSpace(expression)) return true;
         if (expression.StartsWith("=", StringComparison.Ordinal))
             return string.Equals(expression.Substring(1).Trim(), value?.ToString(), StringComparison.OrdinalIgnoreCase);
-        // simple equality
         return string.Equals(expression.Trim(), value?.ToString(), StringComparison.OrdinalIgnoreCase);
     }
 }

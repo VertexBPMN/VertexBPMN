@@ -25,7 +25,7 @@ public class RepositoryService : IRepositoryService
                 processId = (string?)process.Attribute("id") ?? name;
         }
         catch { /* fallback to name if parsing fails */ }
-
+        var deploymentId = Guid.NewGuid();
         var def = new ProcessDefinition
         {
             Id = Guid.NewGuid(),
@@ -34,7 +34,16 @@ public class RepositoryService : IRepositoryService
             Version = 1, // TODO: Implement versioning
             BpmnXml = bpmnXml,
             TenantId = tenantId,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            DeploymentId = deploymentId,
+            Deployment = new EngineDeployment
+            {
+                Id = deploymentId,
+                CreatedAt = DateTime.UtcNow,
+                Name = $"Deployment_{name}_{DateTime.UtcNow:yyyyMMddHHmmss}",
+                TenantId = tenantId
+            }
+
         };
         await _repo.AddAsync(def, cancellationToken);
         return def;

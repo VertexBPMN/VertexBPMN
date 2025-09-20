@@ -14,9 +14,11 @@ builder.Services.AddControllers();
 builder.Services.AddMudServices();
 
 // Configure HTTP clients
-builder.Services.AddHttpClient("VertexBPMN.Api", client => 
+
+var apiBaseUrl = builder.Configuration["ApiBaseUrl"];
+builder.Services.AddHttpClient("VertexBPMN.Api", client =>
 {
-    client.BaseAddress = new Uri("http://localhost:5074/"); // Your API URL
+    client.BaseAddress = new Uri(apiBaseUrl);
     client.Timeout = TimeSpan.FromSeconds(30);
 })
 .AddPolicyHandler(GetRetryPolicy());

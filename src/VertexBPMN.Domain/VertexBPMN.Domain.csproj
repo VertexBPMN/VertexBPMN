@@ -10,4 +10,7 @@
     <PackageReference Include="Microsoft.ML" Version="4.0.2" />
     <PackageReference Include="Microsoft.SemanticKernel.Abstractions" Version="1.65.0" />
   </ItemGroup>
+ <ItemGroup>
+   <Folder Include="Extensions\" />
+ </ItemGroup>
 </Project>

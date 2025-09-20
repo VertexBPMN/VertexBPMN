@@ -23,6 +23,7 @@ public class JobRepository : IJobRepository
 
     public async IAsyncEnumerable<Job> ListDueAsync(DateTime asOf, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        await using var tx = await _db.Database.BeginTransactionAsync(cancellationToken);
         var query = _db.Jobs.AsNoTracking().Where(j => j.DueDate <= asOf);
         await foreach (var job in query.AsAsyncEnumerable().WithCancellation(cancellationToken))
             if (job != null)
@@ -37,5 +38,11 @@ public class JobRepository : IJobRepository
             _db.Jobs.Remove(job);
             await _db.SaveChangesAsync(cancellationToken);
         }
+    }
+
+    public async ValueTask UpdateAsync(Job job, CancellationToken cancellationToken = default)
+    {
+        _db.Jobs.Update(job);
+        await _db.SaveChangesAsync(cancellationToken);
     }
 }

@@ -89,9 +89,22 @@ var engine = await new EngineBuilder()
 
 ## Key Files & Directories
 
-- `VertexBPMN.Core/` – Core engine logic, services, and interfaces
+- `VertexBPMN.Core/` – Core engine logic, services
+- `VertexBPMN.Api/` – Core engine logic, services, and interfaces
+- `VertexBPMN.Application/` – Core engine logic, services, and interfaces
+- `VertexBPMN.Domain/` – Core engine logic, services, and interfaces
+- `VertexBPMN.Infrastructure/` – Core engine logic, services, and interfaces
+- `VertexBPMN.Integration/` – Core engine logic, services, and interfaces
+- `VertexBPMN.Plugins/` – Core engine logic, services, and interfaces
+- `VertexBPMN.Studio/` – Core engine logic, services, and interfaces
 - `README.md` – Project overview, usage, and architecture
 - `.github/` – Contribution, issue, and PR templates
+
+
+Always follow docs/AI-CODEGEN-GUIDE.md.
+NEVER modify existing Camunda-compatible routes/DTOs; only add new APIs under /cmmn, /events, /migrations, /history (cleanup), /connectors.
+Enforce tenant-aware queries (X-Tenant-Id), OpenAPI-first, TDD (contracts before code), and additive DB migrations only.
+If unsure, ask to read specs/*/ (plan/spec/contracts/quickstart).
 
 ---
 **For any unclear or missing conventions, consult the README and CONTRIBUTING.md, or ask for clarification.**

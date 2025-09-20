@@ -3,7 +3,9 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.9" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.9" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="9.0.9" />
-  <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.9" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.9" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.9" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.9">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -15,6 +17,9 @@
 <ItemGroup>
   <ProjectReference Include="..\VertexBPMN.Application\VertexBPMN.Application.csproj" />
   <ProjectReference Include="..\VertexBPMN.Domain\VertexBPMN.Domain.csproj" />
+</ItemGroup>
+<ItemGroup>
+  <Folder Include="Converters\" />
 </ItemGroup>
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>

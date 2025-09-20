@@ -83,6 +83,7 @@ namespace VertexBPMN.Engine.Execution
                 foreach (var id in nextIds)
                 {
                     var token = new ExecutionToken(Guid.NewGuid(), processInstanceId, id, "start", new Dictionary<string, object>(model.ProcessVariables ?? new()), DateTime.UtcNow);
+                    token.ProcessInstanceId = processInstanceId;
                     await DistributeTokenAsync(token, cancellationToken);
                     trace.Add($"Start->Token:{id}");
                     await ProcessDistributedTokensAsync(model, trace, cancellationToken);
@@ -178,15 +179,25 @@ namespace VertexBPMN.Engine.Execution
             return workers.Any(w => w.CurrentLoad < w.MaxCapacity && DateTime.UtcNow - w.LastHeartbeat < TimeSpan.FromMinutes(2));
         }
 
+
+
         public async Task DistributeTokenAsync(ExecutionToken token, CancellationToken cancellationToken = default)
         {
             try
             {
                 var bestWorker = await FindBestWorkerAsync(token.NodeType);
-                var assignedToken = token with
+                var assignedToken = new ExecutionToken
                 {
+                    Id = token.Id,
+                    ProcessInstanceId = token.ProcessInstanceId,
+                    CurrentNodeId = token.CurrentNodeId,
+                    NodeType = token.NodeType,
+                    Variables = token.Variables != null ? new Dictionary<string, object>(token.Variables) : new Dictionary<string, object>(),
+                    CreatedAt = token.CreatedAt,
                     AssignedWorker = bestWorker?.Id,
-                    AssignedAt = DateTime.UtcNow
+                    AssignedAt = DateTime.UtcNow,
+                    RetryCount = token.RetryCount,
+                    State = token.State
                 };
 
                 await _store.SaveTokenAsync(assignedToken);
@@ -198,7 +209,6 @@ namespace VertexBPMN.Engine.Execution
                 _logger.LogError(ex, "Failed to distribute token {TokenId}", token.Id);
                 throw new DistributedTokenException($"Failed to distribute token {token.Id}", ex);
             }
-   
         }
 
         public async Task DistributeCaseTokenAsync(CaseToken token, CancellationToken cancellationToken = default)
@@ -806,7 +816,18 @@ namespace VertexBPMN.Engine.Execution
                         trace.Add($"MessageEvent: {evt.Id} waiting for message {messageName}");
                         await _messageDispatcher.SubscribeToMessageAsync(messageName, async (msg) =>
                         {
-                            var newToken = token with { Variables = new Dictionary<string, object>(msg.Variables) };
+                            var newToken = new ExecutionToken
+                            {
+                                Id = token.Id,
+                                ProcessInstanceId = token.ProcessInstanceId,
+                                CurrentNodeId = token.CurrentNodeId,
+                                NodeType = token.NodeType,
+                                Variables = new Dictionary<string, object>(msg.Variables),
+                                CreatedAt = token.CreatedAt,
+                                AssignedAt = DateTime.UtcNow,
+                                RetryCount = token.RetryCount,
+                                State = token.State
+                            };
                             await ContinueToNextNodeAsync(evt.Id, newToken, model, trace, cancellationToken);
                         }, cancellationToken);
                     }
@@ -871,7 +892,18 @@ namespace VertexBPMN.Engine.Execution
                     else
                         foreach (var kv in variables)
                             model.ProcessVariables[kv.Key] = kv.Value;
-                    token = token with { Variables = new Dictionary<string, object>(variables) };
+                    token = new ExecutionToken
+                    {
+                        Id = token.Id,
+                        ProcessInstanceId = token.ProcessInstanceId,
+                        CurrentNodeId = token.CurrentNodeId,
+                        NodeType = token.NodeType,
+                        Variables = new Dictionary<string, object>(variables),
+                        CreatedAt = token.CreatedAt,
+                        AssignedAt = token.AssignedAt,
+                        RetryCount = token.RetryCount,
+                        State = token.State
+                    };
                     await ContinueToNextNodeAsync(task.Id, token, model, trace, cancellationToken);
                     break;
 
@@ -1073,10 +1105,17 @@ namespace VertexBPMN.Engine.Execution
                         var condition = flow.Attributes?.TryGetValue("conditionExpression", out var expr) == true ? expr.ToString() : null;
                         if (condition == null || await EvaluateConditionAsync(condition, token.Variables))
                         {
-                            var newToken = token with
+                            var newToken = new ExecutionToken
                             {
+                                Id = token.Id,
+                                ProcessInstanceId = token.ProcessInstanceId,
                                 CurrentNodeId = flow.TargetRef,
-                                NodeType = GetNodeType(model, flow.TargetRef)
+                                NodeType = GetNodeType(model, flow.TargetRef),
+                                Variables = new Dictionary<string, object>(token.Variables),
+                                CreatedAt = token.CreatedAt,
+                                AssignedAt = DateTime.UtcNow,
+                                RetryCount = token.RetryCount,
+                                State = token.State
                             };
                             await DistributeTokenAsync(newToken, cancellationToken);
                             trace.Add($"ExclusiveBranch: {flow.TargetRef}");
@@ -1120,10 +1159,17 @@ namespace VertexBPMN.Engine.Execution
             foreach (var flow in outgoingFlows)
             {
                 trace.Add($"SequenceFlow: {flow.Id}");
-                var newToken = token with
+                var newToken = new ExecutionToken
                 {
+                    Id = token.Id,
+                    ProcessInstanceId = token.ProcessInstanceId,
                     CurrentNodeId = flow.TargetRef,
-                    NodeType = GetNodeType(model, flow.TargetRef)
+                    NodeType = GetNodeType(model, flow.TargetRef),
+                    Variables = new Dictionary<string, object>(token.Variables),
+                    CreatedAt = token.CreatedAt,
+                    AssignedAt = DateTime.UtcNow,
+                    RetryCount = token.RetryCount,
+                    State = token.State
                 };
                 await DistributeTokenAsync(newToken, cancellationToken);
             }

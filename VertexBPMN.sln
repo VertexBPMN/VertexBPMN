@@ -19,13 +19,13 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VertexBPMN.McpAdapter", "sr
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VertexBPMN.McpClient", "src\VertexBPMN.Integration\McpClient\VertexBPMN.McpClient.csproj", "{C5580B75-C7F8-C459-CBE5-F8EB64648309}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VertexBPMN.Tests", "tests\VertexBPMN.Tests.csproj", "{648A9763-CA55-B70D-6681-FC74C5B84E6A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VertexBPMN.Tests", "tests\VertexBPMN.Tests\VertexBPMN.Tests.csproj", "{648A9763-CA55-B70D-6681-FC74C5B84E6A}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VertexBPMN.Studio", "src\VertexBPMN.Studio\VertexBPMN.Studio.csproj", "{575DF00E-1995-2F2D-6B89-8F11D886E484}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "1- Core", "1- Core", "{31E3FE0D-E2F6-44AF-ADE7-60EEA1F1CFF6}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "1 - Core", "1 - Core", "{31E3FE0D-E2F6-44AF-ADE7-60EEA1F1CFF6}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "2 - Application", "2 - Application", "{250A804F-B738-437D-AC90-C26B8A029554}"
 EndProject
@@ -43,6 +43,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docs", "docs", "{3C3F275F-E
 	ProjectSection(SolutionItems) = preProject
 		README.md = README.md
 	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PerformanceRunner", "tests\PerformanceRunner\PerformanceRunner.csproj", "{FAF982C2-4BC0-B739-48BF-2C67565BF32B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestRunner", "tests\TestRunner\TestRunner.csproj", "{DB1CDEC0-20B3-E202-C6AD-8702DB2400D5}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -90,6 +94,14 @@ Global
 		{575DF00E-1995-2F2D-6B89-8F11D886E484}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{575DF00E-1995-2F2D-6B89-8F11D886E484}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{575DF00E-1995-2F2D-6B89-8F11D886E484}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FAF982C2-4BC0-B739-48BF-2C67565BF32B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FAF982C2-4BC0-B739-48BF-2C67565BF32B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FAF982C2-4BC0-B739-48BF-2C67565BF32B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FAF982C2-4BC0-B739-48BF-2C67565BF32B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DB1CDEC0-20B3-E202-C6AD-8702DB2400D5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DB1CDEC0-20B3-E202-C6AD-8702DB2400D5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DB1CDEC0-20B3-E202-C6AD-8702DB2400D5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DB1CDEC0-20B3-E202-C6AD-8702DB2400D5}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -111,6 +123,8 @@ Global
 		{6B452017-4CE4-4892-9E34-0CF88D39F247} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{4FE0ADDB-D8F1-4E26-AE3E-B4056F2FF0B5} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{6AC3D7BD-3B3E-4DE0-9534-4982A6E47B3A} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{FAF982C2-4BC0-B739-48BF-2C67565BF32B} = {6F2DDFBF-9381-48FD-B47A-7A55156C1476}
+		{DB1CDEC0-20B3-E202-C6AD-8702DB2400D5} = {6F2DDFBF-9381-48FD-B47A-7A55156C1476}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {A60A1F1A-65F9-446F-99F1-BE27DDB55AAC}

@@ -27,4 +27,6 @@ public interface IJobRepository
     /// Deletes a job by ID.
     /// </summary>
     ValueTask DeleteAsync(Guid id, CancellationToken cancellationToken = default);
+
+    ValueTask UpdateAsync(Job job, CancellationToken cancellationToken = default);
 }

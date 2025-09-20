@@ -15,9 +15,9 @@ namespace VertexBPMN.Persistence.Migrations.TenantDb
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "9.0.8");
+            modelBuilder.HasAnnotation("ProductVersion", "9.0.9");
 
-            modelBuilder.Entity("VertexBPMN.Core.Domain.Tenant", b =>
+            modelBuilder.Entity("VertexBPMN.Domain.Entities.Tenant", b =>
                 {
                     b.Property<string>("Id")
                         .HasColumnType("TEXT");
@@ -37,6 +37,22 @@ namespace VertexBPMN.Persistence.Migrations.TenantDb
                     b.HasIndex("Name");
 
                     b.ToTable("Tenants");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = "tenant-default",
+                            CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Standard Mandant",
+                            Name = "Default Tenant"
+                        },
+                        new
+                        {
+                            Id = "tenant-acme",
+                            CreatedAt = new DateTime(2025, 1, 2, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Beispielkunde",
+                            Name = "Acme Corp"
+                        });
                 });
 #pragma warning restore 612, 618
         }

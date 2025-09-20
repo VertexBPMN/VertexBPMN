@@ -3,6 +3,11 @@ using System.Diagnostics;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using OpenTelemetry.Logs;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
+
 
 namespace VertexBPMN.Api.Config;
 
@@ -15,10 +20,6 @@ internal static class TelemetryConstants
     public const string ServiceNamespace = "vertex.bpmn";
     public const string ActivitySourceName = ServiceName;
     public const string MeterName = ServiceName + ".metrics";
-    /// <summary>
-    /// Default Jaeger HTTP collector endpoint (Thrift). Change via config key Telemetry:Jaeger:Endpoint.
-    /// </summary>
-    public const string DefaultJaegerEndpoint = "http://localhost:14268/api/traces";
 }
 
 /// <summary>
@@ -37,8 +38,6 @@ public static class OpenTelemetryConfig
     /// <returns>The updated service collection.</returns>
     public static IServiceCollection AddVertexBPMNTelemetry(this IServiceCollection services, IConfiguration? configuration = null)
     {
-        var jaegerEndpoint = configuration?["Telemetry:Jaeger:Endpoint"]
-                              ?? TelemetryConstants.DefaultJaegerEndpoint;
         var serviceVersion = configuration?["Build:Version"] ?? "dev";
         var environment = configuration?["DOTNET_ENVIRONMENT"]
                            ?? configuration?["ASPNETCORE_ENVIRONMENT"]
@@ -72,26 +71,22 @@ public static class OpenTelemetryConfig
                     })
                     .AddConsoleExporter();
 
-                                    builder.AddJaegerExporter(o =>
-                                    {
-                                        if (Uri.TryCreate(jaegerEndpoint, UriKind.Absolute, out var uri))
-                                        {
-                                            o.Endpoint = uri;
-                                        }
-                                    });
-
             })
             .WithMetrics(builder =>
             {
                 builder
                     .AddMeter(TelemetryConstants.MeterName)
                     .AddRuntimeInstrumentation()
-                    //.AddProcessInstrumentation()
                     .AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation();
-                    //.AddPrometheusExporter();
             });
 
         return services;
+    }
+
+    public static WebApplicationBuilder AddVertexBPMNTelemetry(this WebApplicationBuilder builder)
+    {
+        builder.Services.AddVertexBPMNTelemetry(builder.Configuration);
+        return builder;
     }
 }

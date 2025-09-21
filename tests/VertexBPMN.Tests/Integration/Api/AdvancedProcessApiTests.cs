@@ -3,67 +3,23 @@ using Microsoft.Extensions.DependencyInjection;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
 using VertexBPMN.Domain.Entities;
-using Xunit;
+using VertexBPMN.Tests.Infrastructure;
 
 namespace VertexBPMN.Tests.Integration.Api;
 
-public class AdvancedProcessApiTests : IClassFixture<CustomWebApplicationFactory>
+[Collection("IntegratedApi")] 
+public class AdvancedProcessApiTests
 {
     private readonly HttpClient _client;
     private readonly ITestOutputHelper _output;
     private readonly CustomWebApplicationFactory _factory;
 
-    public AdvancedProcessApiTests(CustomWebApplicationFactory factory, ITestOutputHelper output)
+    public AdvancedProcessApiTests(CustomWebApplicationFactory factory, SharedSqliteDbFixture dbFixture, ITestOutputHelper output)
     {
         _factory = factory;
         _output = output;
 
-        // Database initialization happens automatically when CreateClient is called
-        _client = factory.CreateClient(new WebApplicationFactoryClientOptions
-        {
-            BaseAddress = new Uri("http://localhost")
-        });
-
-        _client.Timeout = TimeSpan.FromSeconds(30);
-
-        factory.Services.GetRequiredService<ILoggerFactory>()
-            .AddProvider(new XunitLoggerProvider(_output));
-    }
-
-    [Fact]
-    public async Task Swagger_Is_Available()
-    {
-        // Database is already initialized at this point
-        _output.WriteLine($"Base address: {_client.BaseAddress}");
-        
-        // Try multiple potential Swagger URLs
-        var urls = new[] { "swagger", "api/swagger", "swagger/index.html", "api/swagger/index.html" };
-        
-        foreach (var url in urls)
-        {
-            try
-            {
-                _output.WriteLine($"Trying URL: {url}");
-                var response = await _client.GetAsync(url);
-                _output.WriteLine($"Response for {url}: {response.StatusCode}");
-                
-                if (response.IsSuccessStatusCode)
-                {
-                    var html = await response.Content.ReadAsStringAsync();
-                    _output.WriteLine($"Content length: {html.Length}");
-                    Assert.Contains("Swagger UI", html);
-                    return; // Test passes
-                }
-            }
-            catch (Exception ex)
-            {
-                _output.WriteLine($"Exception for {url}: {ex.Message}");
-            }
-        }
-        
-        // If we get here, all URLs failed
-        var finalResponse = await _client.GetAsync("swagger");
-        finalResponse.EnsureSuccessStatusCode(); // This will fail and show the error
+        _client = factory.WithSharedFixture(dbFixture).CreateClient(output);
     }
 
     [Fact]

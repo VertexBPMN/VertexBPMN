@@ -57,8 +57,6 @@ namespace VertexBPMN.Studio.Services
         {
             try
             {
-                // Simulate connection check
-                await Task.Delay(100);
                 IsConnected = !string.IsNullOrEmpty(_activeEngineId);
                 LastConnectionCheck = DateTime.Now;
             }

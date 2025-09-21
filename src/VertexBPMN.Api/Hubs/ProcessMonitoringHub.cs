@@ -22,7 +22,7 @@ public class ProcessMonitoringHub : Hub
     public async Task JoinProcessGroup(string processInstanceId)
     {
         await Groups.AddToGroupAsync(Context.ConnectionId, $"Process_{processInstanceId}");
-        _logger.LogInformation("Client {ConnectionId} joined process group {ProcessInstanceId}", 
+        _logger.LogInformation("Client {ConnectionId} joined process group {ProcessInstanceId}",
             Context.ConnectionId, processInstanceId);
     }
 
@@ -32,7 +32,7 @@ public class ProcessMonitoringHub : Hub
     public async Task LeaveProcessGroup(string processInstanceId)
     {
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"Process_{processInstanceId}");
-        _logger.LogInformation("Client {ConnectionId} left process group {ProcessInstanceId}", 
+        _logger.LogInformation("Client {ConnectionId} left process group {ProcessInstanceId}",
             Context.ConnectionId, processInstanceId);
     }
 
@@ -42,7 +42,7 @@ public class ProcessMonitoringHub : Hub
     public async Task JoinTenantGroup(string tenantId)
     {
         await Groups.AddToGroupAsync(Context.ConnectionId, $"Tenant_{tenantId}");
-        _logger.LogInformation("Client {ConnectionId} joined tenant group {TenantId}", 
+        _logger.LogInformation("Client {ConnectionId} joined tenant group {TenantId}",
             Context.ConnectionId, tenantId);
     }
 
@@ -53,6 +53,25 @@ public class ProcessMonitoringHub : Hub
     {
         await Groups.AddToGroupAsync(Context.ConnectionId, "Workers");
         _logger.LogInformation("Client {ConnectionId} joined workers monitoring group", Context.ConnectionId);
+    }
+
+    /// <summary>
+    /// Join user-specific channel for notifications
+    /// </summary>
+    public async Task JoinUserChannel(string userId)
+    {
+        await Groups.AddToGroupAsync(Context.ConnectionId, $"User_{userId}");
+        await Groups.AddToGroupAsync(Context.ConnectionId, "Notifications");
+        _logger.LogInformation("Connection {ConnectionId} joined user notification groups for {UserId}", Context.ConnectionId, userId);
+    }
+
+    /// <summary>
+    /// Leave user-specific channel
+    /// </summary>
+    public async Task LeaveUserChannel(string userId)
+    {
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"User_{userId}");
+        _logger.LogInformation("Connection {ConnectionId} left user notification groups for {UserId}", Context.ConnectionId, userId);
     }
 
     /// <summary>
@@ -89,7 +108,7 @@ public class ProcessMonitoringHub : Hub
 
         await Clients.Group($"Process_{processInstanceId}").SendAsync("ProcessEvent", notification);
         await Clients.Group($"Tenant_{tenantId}").SendAsync("ProcessEvent", notification);
-        
+
         _logger.LogDebug("Notified process started: {ProcessInstanceId}", processInstanceId);
     }
 
@@ -110,7 +129,7 @@ public class ProcessMonitoringHub : Hub
 
         await Clients.Group($"Process_{processInstanceId}").SendAsync("ProcessEvent", notification);
         await Clients.Group($"Tenant_{tenantId}").SendAsync("ProcessEvent", notification);
-        
+
         _logger.LogDebug("Notified task completed: {TaskId} in process {ProcessInstanceId}", taskId, processInstanceId);
     }
 
@@ -130,7 +149,7 @@ public class ProcessMonitoringHub : Hub
 
         await Clients.Group($"Process_{processInstanceId}").SendAsync("ProcessEvent", notification);
         await Clients.Group($"Tenant_{tenantId}").SendAsync("ProcessEvent", notification);
-        
+
         _logger.LogDebug("Notified process completed: {ProcessInstanceId}", processInstanceId);
     }
 
@@ -152,8 +171,8 @@ public class ProcessMonitoringHub : Hub
         await Clients.Group($"Process_{processInstanceId}").SendAsync("ProcessEvent", notification);
         await Clients.Group($"Tenant_{tenantId}").SendAsync("ProcessEvent", notification);
         await Clients.All.SendAsync("SystemAlert", notification); // System-wide alert
-        
-        _logger.LogWarning("Notified incident in process {ProcessInstanceId}: {IncidentType} - {Message}", 
+
+        _logger.LogWarning("Notified incident in process {ProcessInstanceId}: {IncidentType} - {Message}",
             processInstanceId, incidentType, message);
     }
 

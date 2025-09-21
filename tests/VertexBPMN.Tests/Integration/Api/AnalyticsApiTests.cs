@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
+using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 using Assert = Xunit.Assert;
 

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 
 namespace VertexBPMN.Infrastructure.Persistence.Services

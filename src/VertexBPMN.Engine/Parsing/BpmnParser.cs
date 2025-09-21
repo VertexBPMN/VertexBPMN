@@ -152,6 +152,8 @@ namespace VertexBPMN.Engine.Parsing
                             if (!string.IsNullOrEmpty(name) && value != null)
                                 attributes[name] = value;
                         }
+                        // NEU: Camunda properties Wrapper + generische properties in beliebigen Namespaces
+                        ExtractPropertiesFromAnyNamespace(ext, attributes);
 
                         // Tool-spezifische Erweiterungen
                         ParseToolExtensions(ext, attributes);
@@ -191,10 +193,20 @@ namespace VertexBPMN.Engine.Parsing
         private List<BpmnSequenceFlow> ParseSequenceFlows(XElement process, XNamespace ns)
         {
             return process.Elements(ns + "sequenceFlow")
-                .Select(e => new BpmnSequenceFlow(
-                    (string?)e.Attribute("id") ?? "",
-                    (string?)e.Attribute("sourceRef") ?? "",
-                    (string?)e.Attribute("targetRef") ?? ""))
+                .Select(e =>
+                {
+                    var flow = new BpmnSequenceFlow(
+                        (string?)e.Attribute("id") ?? "",
+                        (string?)e.Attribute("sourceRef") ?? "",
+                        (string?)e.Attribute("targetRef") ?? "");
+
+                    var condition = e.Element(ns + "conditionExpression")?.Value;
+                    if (!string.IsNullOrWhiteSpace(condition) && flow.Attributes is IDictionary<string, object> dict)
+                    {
+                        dict["conditionExpression"] = condition.Trim();
+                    }
+                    return flow;
+                })
                 .ToList();
         }
 
@@ -267,6 +279,28 @@ namespace VertexBPMN.Engine.Parsing
         }
 
         /// <summary>
+        /// Extrahiert <properties>/<property>-Strukturen aus beliebigen Namespaces (z.B. camunda:properties).
+        /// </summary>
+        private static void ExtractPropertiesFromAnyNamespace(XElement extensionElements, IDictionary<string, string> attributes)
+        {
+            // Alle Elemente deren lokaler Name 'properties' ist
+            var propertyContainers = extensionElements
+                .Elements()
+                .Where(x => x.Name.LocalName == "properties");
+
+            foreach (var container in propertyContainers)
+            {
+                foreach (var prop in container.Elements().Where(p => p.Name.LocalName == "property"))
+                {
+                    var name = (string?)prop.Attribute("name");
+                    var value = (string?)prop.Attribute("value");
+                    if (!string.IsNullOrEmpty(name) && value != null)
+                        attributes[name] = value;
+                }
+            }
+        }
+
+        /// <summary>
         /// Parst Tool-spezifische Erweiterungen aus <extensionElements> und speichert sie in den Attributen.
         /// Unterstützt Camunda, Zeebe, Activiti, Flowable, CIB, jBPM, Osmanthus, Alfresco und generische Namespaces.
         /// </summary>
@@ -274,6 +308,19 @@ namespace VertexBPMN.Engine.Parsing
         {
             // Camunda
             var camundaNs = "http://camunda.org/schema/1.0/bpmn";
+            var camundaPropsWrapper = ext.Element(XName.Get("properties", camundaNs));
+            if (camundaPropsWrapper != null)
+            {
+                foreach (var p in camundaPropsWrapper.Elements(XName.Get("property", camundaNs)))
+                {
+                    var name = (string?)p.Attribute("name");
+                    var value = (string?)p.Attribute("value");
+                    if (!string.IsNullOrEmpty(name) && value != null)
+                        attributes[name] = value;
+                }
+            }
+
+
             var camundaAssignee = ext.Element(XName.Get("assignee", camundaNs))?.Attribute("value")?.Value;
             if (!string.IsNullOrEmpty(camundaAssignee)) attributes["camunda:assignee"] = camundaAssignee;
 
@@ -419,8 +466,11 @@ namespace VertexBPMN.Engine.Parsing
             }
 
             // MCP ServiceTask
-            var mcpNs = "http://vertexbpmn.io/mcp";
-            if (ext.Element(XName.Get("mcpServiceTask", mcpNs)) is { } mcpServiceTask)
+            var mcpNs = "http://camunda.org/schema/1.0/bpmn";
+            var mcpNsVertex = "http://vertexbpmn.io/mcp";
+            var mcpServiceTask = ext.Element(XName.Get("mcpServiceTask", mcpNs));
+            mcpServiceTask = mcpServiceTask ?? ext.Element(XName.Get("mcpServiceTask", mcpNsVertex)); // fallback ohne Namespace
+            if (mcpServiceTask != null)
             {
                 if (mcpServiceTask.Attribute("mcpServerUrl") is { } serverUrl) attributes["mcpServerUrl"] = serverUrl.Value;
                 if (mcpServiceTask.Attribute("mcpMethod") is { } method) attributes["mcpMethod"] = method.Value;

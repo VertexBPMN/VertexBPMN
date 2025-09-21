@@ -128,9 +128,13 @@
   <None Update="TestData\SemanticKernelTestProcess.bpmn">
     <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
   </None>
+  <None Update="TestData\Sqlite.sql">
+    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+  </None>
 </ItemGroup>
 <ItemGroup>
   <Folder Include="Integration\Services\" />
+  <Folder Include="Parsing\" />
 </ItemGroup>
 <ItemGroup>
   <ProjectReference Include="..\..\src\VertexBPMN.Api\VertexBPMN.Api.csproj" />

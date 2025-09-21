@@ -29,6 +29,7 @@ public static class InfrastructureModule
         services.AddScoped<IHistoryEventRepository, HistoryEventRepository>();
         services.AddScoped<IIncidentRepository, IncidentRepository>();
         services.AddScoped<IDecisionRepository, DecisionRepository>();
+        services.AddScoped<IUserRepository, UserRepository>();
         return services;
     }
 

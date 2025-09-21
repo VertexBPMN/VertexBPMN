@@ -21,6 +21,7 @@ public class BpmnDbContext : DbContext
     public DbSet<Incident> Incidents => Set<Incident>();
     public DbSet<MultiInstanceExecution> MultiInstanceExecutions => Set<MultiInstanceExecution>();
     public DbSet<EngineDeployment> EngineDeployments => Set<EngineDeployment>();
+    public DbSet<User> Users => Set<User>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -34,6 +35,7 @@ public class BpmnDbContext : DbContext
         ConfigureHistoryEvent(modelBuilder);
         ConfigureIncident(modelBuilder);
         ConfigureMultiInstanceExecution(modelBuilder);
+        ConfigureUser(modelBuilder);
 
         // Seed sample data (deterministic IDs & timestamps)
         var deploymentId = Guid.Parse("11111111-1111-1111-1111-111111111111");
@@ -112,7 +114,13 @@ public class BpmnDbContext : DbContext
             CompletedAt = null,
             DueDate = seedTimestamp.AddDays(2),
             FormKey = null,
-            FormSchema = null
+            FormSchema = null,
+            LastModified = seedTimestamp,
+            ModifiedBy = string.Empty,
+            Status = UserTaskStatus.Pending,
+            CandidateUsers = new List<string>(),
+            CandidateRole = string.Empty,
+            RequiredFields = new List<string>()
         });
 
         modelBuilder.Entity<Variable>().HasData(new
@@ -173,6 +181,13 @@ public class BpmnDbContext : DbContext
             RetryCount = 0,
             State = "Active"
         });
+
+        // Seed initial users (align with IdentityService defaults)
+        modelBuilder.Entity<User>().HasData(
+            new User { Id = "1", Username = "admin", Email = "admin@example.com", IsActive = true, Roles = new List<string> { "admin" }, CreatedAt = seedTimestamp, LastModified = seedTimestamp },
+            new User { Id = "2", Username = "user1", Email = "user1@example.com", IsActive = true, Roles = new List<string> { "user" }, CreatedAt = seedTimestamp, LastModified = seedTimestamp },
+            new User { Id = "3", Username = "user2", Email = "user2@example.com", IsActive = true, Roles = new List<string> { "user" }, CreatedAt = seedTimestamp, LastModified = seedTimestamp }
+        );
 
         base.OnModelCreating(modelBuilder);
     }
@@ -408,5 +423,22 @@ public class BpmnDbContext : DbContext
         entity.HasIndex(e => e.ProcessInstanceId);
         entity.HasIndex(e => e.ActivityId);
         entity.HasIndex(e => new { e.ProcessInstanceId, e.ActivityId });
+    }
+
+    private static void ConfigureUser(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<User>();
+        entity.HasKey(e => e.Id);
+        entity.Property(e => e.Username).IsRequired().HasMaxLength(200);
+        entity.Property(e => e.Email).IsRequired().HasMaxLength(400);
+        entity.Property(e => e.IsActive).IsRequired();
+        entity.Property(e => e.Roles)
+            .HasConversion(
+                v => JsonSerializer.Serialize(v, (JsonSerializerOptions)null!),
+                v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions)null!) ?? new List<string>());
+        entity.HasIndex(e => e.Username).IsUnique(false);
+        entity.HasIndex(e => e.Email);
+        entity.HasIndex(e => e.IsActive);
+        entity.HasIndex(e => e.CreatedAt);
     }
 }

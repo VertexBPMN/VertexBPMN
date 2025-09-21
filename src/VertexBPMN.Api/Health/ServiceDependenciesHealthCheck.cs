@@ -18,8 +18,8 @@ public sealed class ServiceDependenciesHealthCheck(IServiceProvider serviceProvi
         typeof(IHistoryService),
         typeof(IDecisionService),
         typeof(IJobRepository),
-        typeof(IProcessDefinitionRepository),
-        typeof(IPluginManager)
+        typeof(IProcessDefinitionRepository)
+        //typeof(IPluginManager)
     };
 
     public Task<HealthCheckResult> CheckHealthAsync(
@@ -45,10 +45,10 @@ public sealed class ServiceDependenciesHealthCheck(IServiceProvider serviceProvi
         data["missingServices"] = missing;
         data["serviceCountResolved"] = CriticalServices.Length - missing.Count;
 
-        if (sp.GetService(typeof(IPluginManager)) is IPluginManager pluginManager)
-        {
-            data["pluginsLoaded"] = pluginManager.LoadedPluginCount;
-        }
+        //if (sp.GetService(typeof(IPluginManager)) is IPluginManager pluginManager)
+        //{
+        //    data["pluginsLoaded"] = pluginManager.LoadedPluginCount;
+        //}
 
         try
         {

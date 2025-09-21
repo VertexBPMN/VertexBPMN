@@ -13,4 +13,5 @@ public sealed class ModuleOptions
     public bool Plugins { get; set; } = true;
     public bool BackgroundJobs { get; set; } = true;
     public bool Swagger { get; set; } = true;
+    public bool Emails { get; set; }
 }

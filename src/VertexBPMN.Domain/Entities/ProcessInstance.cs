@@ -12,7 +12,6 @@ public class ProcessInstance
     public DateTime StartedAt { get; set; }
     public DateTime? EndedAt { get; set; }
     public string State { get; set; } = string.Empty; // For visual debugger step-through
-    // TODO: Add variables and other properties
     public string InstanceId { get; set; } = Guid.NewGuid().ToString("N");
     public string ProcessId { get; set; } = "";
     public ProcessInstanceStatus Status { get; set; } = ProcessInstanceStatus.Running;

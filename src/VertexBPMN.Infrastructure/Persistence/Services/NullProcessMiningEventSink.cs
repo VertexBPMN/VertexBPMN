@@ -1,3 +1,4 @@
+using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 
 namespace VertexBPMN.Infrastructure.Persistence.Services
@@ -7,7 +8,7 @@ namespace VertexBPMN.Infrastructure.Persistence.Services
     /// </summary>
     public class NullProcessMiningEventSink : IProcessMiningEventSink
     {
-        public ValueTask EmitAsync(ProcessMiningEvent evt, CancellationToken cancellationToken = default)
-            => ValueTask.CompletedTask;
+        public ValueTask<ProcessMiningEvent> EmitAsync(ProcessMiningEvent evt, CancellationToken cancellationToken = default)
+            => new ValueTask<ProcessMiningEvent>(evt);
     }
 }

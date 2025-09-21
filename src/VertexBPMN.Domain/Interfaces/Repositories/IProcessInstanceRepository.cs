@@ -27,4 +27,12 @@ public interface IProcessInstanceRepository
     /// Deletes a process instance by ID.
     /// </summary>
     ValueTask DeleteAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Update a process instance.
+    /// </summary>
+    /// <param name="processInstance"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    ValueTask UpdateAsync(ProcessInstance processInstance, CancellationToken cancellationToken = default);
 }

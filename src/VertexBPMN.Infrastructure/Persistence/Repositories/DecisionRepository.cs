@@ -1,12 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using VertexBPMN.Domain.Entities;
+using VertexBPMN.Domain.Entities.Modeling;
 using VertexBPMN.Domain.Interfaces.Repositories;
-using static VertexBPMN.Infrastructure.Persistence.DecisionDbContext;
 
 namespace VertexBPMN.Infrastructure.Persistence.Repositories;
 
 /// <summary>
 /// EF Core implementation of IDecisionRepository over DecisionDbContext.
+/// DecisionTable is transient (not persisted) and parsed from DmnXml on demand.
 /// </summary>
 public class DecisionRepository : IDecisionRepository
 {
@@ -16,23 +17,46 @@ public class DecisionRepository : IDecisionRepository
     public async ValueTask UpsertDefinitionAsync(DecisionDefinition definition, CancellationToken ct = default)
     {
         var id = DecisionDefinition.BuildId(definition.Key, definition.TenantId);
-        var existing = await _db.DecisionDefinitions.FirstOrDefaultAsync(d => d.Id == id, ct);
+        var existing = await _db.DecisionDefinitions
+            .FirstOrDefaultAsync(d => d.Id == id, ct);
+
         if (existing == null)
         {
+            if (definition.DecisionTable == null && !string.IsNullOrWhiteSpace(definition.DmnXml))
+            {
+                // Parse for in-memory use; not persisted
+                definition.DecisionTable = DmnDecisionTable.Parse(definition.DmnXml);
+            }
             await _db.DecisionDefinitions.AddAsync(definition, ct);
         }
         else
         {
+            bool dmnChanged = !string.Equals(existing.DmnXml, definition.DmnXml, StringComparison.Ordinal);
+
             existing.Name = definition.Name;
             existing.DmnXml = definition.DmnXml;
-            existing.DecisionTable = definition.DecisionTable;
+
+            if (definition.DecisionTable != null)
+            {
+                existing.DecisionTable = definition.DecisionTable; // transient
+            }
+            else if (dmnChanged && !string.IsNullOrWhiteSpace(definition.DmnXml))
+            {
+                existing.DecisionTable = DmnDecisionTable.Parse(definition.DmnXml);
+            }
         }
     }
 
     public async ValueTask<DecisionDefinition?> GetDefinitionAsync(string key, string? tenantId = null, CancellationToken ct = default)
     {
         var id = DecisionDefinition.BuildId(key, tenantId);
-        var entity = await _db.DecisionDefinitions.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id, ct);
+        var entity = await _db.DecisionDefinitions
+            .AsNoTracking()
+            .FirstOrDefaultAsync(d => d.Id == id, ct);
+
+        if (entity != null)
+            EnsureParsed(entity);
+
         return entity;
     }
 
@@ -45,14 +69,18 @@ public class DecisionRepository : IDecisionRepository
         if (!string.IsNullOrWhiteSpace(tenantId))
             query = query.Where(d => d.TenantId == tenantId);
 
-        await foreach (var d in query.OrderBy(d => d.Key).AsAsyncEnumerable().WithCancellation(ct))
+        await foreach (var d in query
+            .OrderBy(d => d.Key)
+            .AsAsyncEnumerable()
+            .WithCancellation(ct))
+        {
+            EnsureParsed(d);
             yield return d;
+        }
     }
 
     public async ValueTask AddInstanceAsync(DecisionInstance instance, CancellationToken ct = default)
-    {
-        await _db.DecisionInstances.AddAsync(instance, ct);
-    }
+        => await _db.DecisionInstances.AddAsync(instance, ct);
 
     public async IAsyncEnumerable<DecisionInstance> ListInstancesAsync(string? decisionKey = null, string? tenantId = null, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
     {
@@ -73,4 +101,12 @@ public class DecisionRepository : IDecisionRepository
 
     public async ValueTask SaveChangesAsync(CancellationToken ct = default)
         => await _db.SaveChangesAsync(ct);
+
+    private static void EnsureParsed(DecisionDefinition def)
+    {
+        if (def.DecisionTable == null && !string.IsNullOrWhiteSpace(def.DmnXml))
+        {
+            def.DecisionTable = DmnDecisionTable.Parse(def.DmnXml);
+        }
+    }
 }

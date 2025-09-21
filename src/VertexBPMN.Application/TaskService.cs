@@ -37,14 +37,14 @@ public class TaskService : ITaskService
         }
     }
 
-    public async ValueTask CompleteAsync(Guid taskId, IDictionary<string, object>? variables = null, CancellationToken cancellationToken = default)
+    public async ValueTask<ProcessMiningEvent> CompleteAsync(Guid taskId, IDictionary<string, object>? variables = null, CancellationToken cancellationToken = default)
     {
         var task = await _repo.GetByIdAsync(taskId, cancellationToken);
         if (task != null)
         {
             task.CompletedAt = DateTime.UtcNow;
             await _repo.AddAsync(task, cancellationToken); // Upsert
-            await _eventSink.EmitAsync(new ProcessMiningEvent
+            return await _eventSink.EmitAsync(new ProcessMiningEvent
             {
                 EventType = "TaskCompleted",
                 ProcessInstanceId = task.ProcessInstanceId.ToString(),
@@ -55,16 +55,18 @@ public class TaskService : ITaskService
                 PayloadJson = variables != null ? System.Text.Json.JsonSerializer.Serialize(variables) : null
             }, cancellationToken);
         }
+
+        return null;
     }
 
-    public async ValueTask DelegateAsync(Guid taskId, string userId, CancellationToken cancellationToken = default)
+    public async ValueTask<ProcessMiningEvent> DelegateAsync(Guid taskId, string userId, CancellationToken cancellationToken = default)
     {
         var task = await _repo.GetByIdAsync(taskId, cancellationToken);
         if (task != null)
         {
             task.Assignee = userId;
             await _repo.AddAsync(task, cancellationToken); // Upsert
-            await _eventSink.EmitAsync(new ProcessMiningEvent
+            return await _eventSink.EmitAsync(new ProcessMiningEvent
             {
                 EventType = "TaskDelegated",
                 ProcessInstanceId = task.ProcessInstanceId.ToString(),
@@ -75,6 +77,8 @@ public class TaskService : ITaskService
                 PayloadJson = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object> { { "UserId", userId } })
             }, cancellationToken);
         }
+
+        return default;
     }
 
     public ValueTask<UserTask?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
@@ -82,4 +86,37 @@ public class TaskService : ITaskService
 
     public IAsyncEnumerable<UserTask> ListAsync(Guid? processInstanceId = null, string? assignee = null, CancellationToken cancellationToken = default)
         => _repo.ListAsync(processInstanceId, assignee, cancellationToken);
+
+    /// <summary>
+    /// Rejects a user task and emits a corresponding process mining event.
+    /// </summary>
+    /// <param name="userTaskId">The task identifier.</param>
+    /// <param name="rejectionReason">An object describing the rejection reason (will be serialized).</param>
+    /// <returns>The emitted <see cref="ProcessMiningEvent"/> or null if task not found.</returns>
+    public async ValueTask<ProcessMiningEvent> RejectAsync(Guid userTaskId, object rejectionReason, CancellationToken cancellationToken = default)
+    {
+  
+        var task = await _repo.GetByIdAsync(userTaskId, cancellationToken);
+        if (task == null)
+            return null;
+
+        task.CompletedAt ??= DateTime.UtcNow;
+        await _repo.AddAsync(task, default); // Upsert
+
+        var evt = await _eventSink.EmitAsync(new ProcessMiningEvent
+        {
+            EventType = "TaskRejected",
+            ProcessInstanceId = task.ProcessInstanceId.ToString(),
+            TaskId = task.Id.ToString(),
+            UserId = task.Assignee,
+            TenantId = task.TenantId,
+            Timestamp = DateTimeOffset.UtcNow,
+            PayloadJson = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object>
+            {
+                { "Reason", rejectionReason }
+            })
+        }, cancellationToken);
+
+        return evt;
+    }
 }

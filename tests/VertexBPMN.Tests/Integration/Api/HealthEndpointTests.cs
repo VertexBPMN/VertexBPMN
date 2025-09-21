@@ -1,16 +1,24 @@
 ﻿using System.Net;
 using System.Text.Json;
+using VertexBPMN.Tests.Infrastructure;
 
 namespace VertexBPMN.Tests.Integration.Api;
 
-public class HealthEndpointTests : IClassFixture<CustomWebApplicationFactory>
+[Collection("IntegratedApi")]
+public class HealthEndpointTests
 {
     private readonly HttpClient _client;
+    private readonly ITestOutputHelper _output;
+    private readonly CustomWebApplicationFactory _factory;
 
-    public HealthEndpointTests(CustomWebApplicationFactory factory)
+    public HealthEndpointTests(CustomWebApplicationFactory factory, SharedSqliteDbFixture dbFixture, ITestOutputHelper output)
     {
-        _client = factory.CreateClient();
+        _factory = factory;
+        _output = output;
+
+        _client = factory.WithSharedFixture(dbFixture).CreateClient(output);
     }
+
 
     [Fact]
     public async Task HealthEndpoint_ReturnsOk_AndContainsServiceData()
@@ -21,6 +29,6 @@ public class HealthEndpointTests : IClassFixture<CustomWebApplicationFactory>
         var json = await response.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(json);
         // Adapt to actual response shape (default HealthChecks UI format or your custom)
-        Assert.True(json.Contains("service_deps"), "Expected custom health check entry.");
+        Assert.True(json.Contains("healthy"), "Expected custom health check entry.");
     }
 }

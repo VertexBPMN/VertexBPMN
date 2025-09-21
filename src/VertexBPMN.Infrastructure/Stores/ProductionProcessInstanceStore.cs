@@ -5,7 +5,6 @@ using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Entities.Modeling;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Infrastructure.Persistence;
-using VertexBPMN.Persistence;
 
 namespace VertexBPMN.Infrastructure.Stores;
 

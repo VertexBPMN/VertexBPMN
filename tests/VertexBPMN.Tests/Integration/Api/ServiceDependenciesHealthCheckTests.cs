@@ -1,5 +1,5 @@
-﻿using System.Configuration;
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
+using System.Configuration;
 using VertexBPMN.Infrastructure;
 
 namespace VertexBPMN.Tests.Integration.Api;
@@ -7,6 +7,7 @@ namespace VertexBPMN.Tests.Integration.Api;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using System.Threading;
+using VertexBPMN.Api;
 using VertexBPMN.Api.Health;
 using VertexBPMN.Api.Plugins;
 using VertexBPMN.Application;
@@ -17,6 +18,7 @@ using VertexBPMN.Infrastructure.Persistence;
 using VertexBPMN.Infrastructure.Persistence.InMemory;
 using Xunit;
 
+[Collection("IntegratedApi")]
 public class ServiceDependenciesHealthCheckTests
 {
     private ServiceDependenciesHealthCheck Create(params (Type serviceType, object impl)[] overrides)
@@ -32,6 +34,8 @@ public class ServiceDependenciesHealthCheckTests
             })
             .Build();
 
+        sc.AddApiServices(configuration);
+        sc.AddAllEngineDbContexts(configuration);
         sc.AddBpmnPersistenceServices(configuration);
         sc.AddApplicationServices(configuration);
         sc.AddEngineServices(configuration);

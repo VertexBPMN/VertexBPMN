@@ -1,10 +1,10 @@
-﻿using Microsoft.Extensions.Logging;
-using OpenTelemetry.Trace;
-using VertexBPMN.Domain.Interfaces;
-using VertexBPMN.Domain.Exceptions;
-using VertexBPMN.Application.Extensions;
-using System.Text;
+﻿using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using OpenTelemetry.Trace;
+using VertexBPMN.Application.Extensions;
+using VertexBPMN.Domain.Exceptions;
+using VertexBPMN.Domain.Interfaces;
 
 namespace VertexBPMN.Application.Handlers;
 
@@ -176,7 +176,7 @@ public class AIServiceTaskHandler : IServiceTaskHandler
     private async Task<AITaskResult> ExecuteOpenAIAsync(AITaskConfiguration config, IDictionary<string, object> variables, CancellationToken ct)
     {
         var apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY")
-            ?? throw new ServiceTaskExecutionException("OPENAI_API_KEY environment variable not set");
+                     ?? throw new ServiceTaskExecutionException("OPENAI_API_KEY environment variable not set");
 
         var context = BuildContextString(config.InputVariables, variables);
         var userMessage = string.IsNullOrEmpty(context)
@@ -205,7 +205,7 @@ public class AIServiceTaskHandler : IServiceTaskHandler
     private async Task<AITaskResult> ExecuteAnthropicAsync(AITaskConfiguration config, IDictionary<string, object> variables, CancellationToken ct)
     {
         var apiKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY")
-            ?? throw new ServiceTaskExecutionException("ANTHROPIC_API_KEY environment variable not set");
+                     ?? throw new ServiceTaskExecutionException("ANTHROPIC_API_KEY environment variable not set");
 
         var context = BuildContextString(config.InputVariables, variables);
         var userMessage = string.IsNullOrEmpty(context)
@@ -232,8 +232,8 @@ public class AIServiceTaskHandler : IServiceTaskHandler
     private async Task<AITaskResult> ExecuteGeminiAsync(AITaskConfiguration config, IDictionary<string, object> variables, CancellationToken ct)
     {
         var apiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY")
-            ?? Environment.GetEnvironmentVariable("GOOGLE_API_KEY")
-            ?? throw new ServiceTaskExecutionException("GEMINI_API_KEY or GOOGLE_API_KEY environment variable not set");
+                     ?? Environment.GetEnvironmentVariable("GOOGLE_API_KEY")
+                     ?? throw new ServiceTaskExecutionException("GEMINI_API_KEY or GOOGLE_API_KEY environment variable not set");
 
         var context = BuildContextString(config.InputVariables, variables);
         var fullPrompt = string.IsNullOrEmpty(context)
@@ -494,11 +494,11 @@ public class AIServiceTaskHandler : IServiceTaskHandler
         return statusCode switch
         {
             System.Net.HttpStatusCode.RequestTimeout or
-            System.Net.HttpStatusCode.TooManyRequests or
-            System.Net.HttpStatusCode.InternalServerError or
-            System.Net.HttpStatusCode.BadGateway or
-            System.Net.HttpStatusCode.ServiceUnavailable or
-            System.Net.HttpStatusCode.GatewayTimeout => true,
+                System.Net.HttpStatusCode.TooManyRequests or
+                System.Net.HttpStatusCode.InternalServerError or
+                System.Net.HttpStatusCode.BadGateway or
+                System.Net.HttpStatusCode.ServiceUnavailable or
+                System.Net.HttpStatusCode.GatewayTimeout => true,
             _ => false
         };
     }

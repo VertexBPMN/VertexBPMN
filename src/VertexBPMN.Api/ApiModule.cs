@@ -1,5 +1,6 @@
 #nullable enable
 using VertexBPMN.Api.Debug;
+using VertexBPMN.Api.Hubs;
 using VertexBPMN.Api.Migration;
 using VertexBPMN.Api.ML;
 using VertexBPMN.Api.Plugins;
@@ -35,6 +36,7 @@ public static class ApiModule
         services.AddScoped<ILiveProcessMigrationService, LiveProcessMigrationService>();
         services.AddScoped<IVisualDebuggingService, VisualDebuggingService>();
         services.AddSingleton<IPluginManager, PluginManager>();
+
         return services;
     }
 }

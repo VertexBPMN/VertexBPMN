@@ -15,8 +15,8 @@ public class ProcessInstanceRepository : IProcessInstanceRepository
 
     public async ValueTask AddAsync(ProcessInstance instance, CancellationToken cancellationToken = default)
     {
-    await _db.ProcessInstances.AddAsync(instance, cancellationToken);
-    await _db.SaveChangesAsync(cancellationToken);
+        await _db.ProcessInstances.AddAsync(instance, cancellationToken);
+        await _db.SaveChangesAsync(cancellationToken);
     }
 
     public async ValueTask<ProcessInstance?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
@@ -37,5 +37,33 @@ public class ProcessInstanceRepository : IProcessInstanceRepository
     {
         var entity = await _db.ProcessInstances.FindAsync(new object[] { id }, cancellationToken);
         if (entity != null) _db.ProcessInstances.Remove(entity);
+    }
+
+    /// <summary>
+    /// Updates a process instance. Assumes the provided instance contains the desired current state.
+    /// </summary>
+    /// <param name="processInstance">Instance to update.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public async ValueTask UpdateAsync(ProcessInstance processInstance, CancellationToken cancellationToken = default)
+    {
+ 
+        if (processInstance is null) throw new ArgumentNullException(nameof(processInstance));
+
+        // If entity tracks modification audit.
+        try
+        {
+            var lastModifiedProp = processInstance.GetType().GetProperty("LastModified");
+            if (lastModifiedProp is not null && lastModifiedProp.CanWrite)
+            {
+                lastModifiedProp.SetValue(processInstance, DateTime.UtcNow);
+            }
+        }
+        catch
+        {
+            // Intentionally ignore reflection issues; not critical to update operation.
+        }
+
+        _db.ProcessInstances.Update(processInstance);
+        await _db.SaveChangesAsync(cancellationToken);
     }
 }

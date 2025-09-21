@@ -1,15 +1,24 @@
-using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.VisualStudio.TestPlatform.Utilities;
+using System.Net.Http.Json;
+using VertexBPMN.Tests.Infrastructure;
 
 namespace VertexBPMN.Tests.Integration.Api;
 
-public class BpmnEdgeCaseApiTests : IClassFixture<WebApplicationFactory<VertexBPMN.Api.Program>>
+
+[Collection("IntegratedApi")]
+public class BpmnEdgeCaseApiTests
 {
     private readonly HttpClient _client;
+    private readonly ITestOutputHelper _output;
+    private readonly CustomWebApplicationFactory _factory;
 
-    public BpmnEdgeCaseApiTests(WebApplicationFactory<VertexBPMN.Api.Program> factory)
+    public BpmnEdgeCaseApiTests(CustomWebApplicationFactory factory, SharedSqliteDbFixture dbFixture, ITestOutputHelper output)
     {
-        _client = factory.CreateClient();
+        _factory = factory;
+        _output = output;
+
+        _client = factory.WithSharedFixture(dbFixture).CreateClient(output);
     }
 
     [Fact]

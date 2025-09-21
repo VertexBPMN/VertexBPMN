@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
+using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 
 namespace VertexBPMN.Application;

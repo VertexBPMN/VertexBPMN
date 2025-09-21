@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using VertexBPMN.Tests.Infrastructure;
 
 namespace VertexBPMN.Tests.Integration.Api;
 
@@ -205,7 +206,7 @@ public class ApiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
 
     public record ProcessDefinition(Guid Id, string Key, string Name, int Version, string BpmnXml, string? TenantId, DateTime CreatedAt);
     public record ProcessInstance(Guid Id, Guid ProcessDefinitionId, string? BusinessKey, string? TenantId, DateTime StartedAt, DateTime? EndedAt);
-    public record DecisionResult(Dictionary<string, object> Outputs);
+    //public record DecisionResult(Dictionary<string, object> Outputs);
     public record TenantInfo(string Id, string Name);
     public record HistoryEvent(Guid Id, Guid ProcessInstanceId, string EventType, DateTime Timestamp, string? Details, string? TenantId);
     public record TaskInstance(Guid Id, Guid ProcessInstanceId, string Name, string Type, string? Assignee, string? TenantId, DateTime CreatedAt, DateTime? CompletedAt);

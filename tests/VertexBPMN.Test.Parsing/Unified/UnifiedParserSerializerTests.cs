@@ -6,8 +6,8 @@ namespace VertexBPMN.Test.Parsing.Unified;
 
 public class UnifiedParserSerializerTests
 {
-    private readonly UnifiedBpmnParser _parser = new();
-    private readonly UnifiedBpmnSerializer _serializer = new();
+    private readonly BpmnParser _parser = new();
+    private readonly BpmnSerializer _serializer = new();
 
     [Fact]
     public async Task Roundtrip_Preserves_EventDefinitions_And_DefaultFlow()

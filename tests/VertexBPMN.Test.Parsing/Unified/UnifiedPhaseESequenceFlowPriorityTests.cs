@@ -7,8 +7,8 @@ namespace VertexBPMN.Test.Parsing.Unified;
 
 public class UnifiedPhaseESequenceFlowPriorityTests
 {
-    private readonly UnifiedBpmnParser _parser = new();
-    private readonly UnifiedBpmnSerializer _serializer = new();
+    private readonly BpmnParser _parser = new();
+    private readonly BpmnSerializer _serializer = new();
 
     [Fact]
     public async Task Parses_Camunda_Priority_On_SequenceFlow()

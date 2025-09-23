@@ -3,7 +3,7 @@ namespace VertexBPMN.Parsing;
 /// <summary>
 /// Options controlling parsing performance and validation behavior.
 /// </summary>
-public sealed class UnifiedBpmnParserOptions
+public sealed class BpmnParserOptions
 {
     /// <summary>Enable strict validation diagnostics (default true).</summary>
     public bool StrictValidation { get; init; } = true;

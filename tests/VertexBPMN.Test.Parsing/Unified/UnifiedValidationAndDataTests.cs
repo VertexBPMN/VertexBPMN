@@ -7,7 +7,7 @@ namespace VertexBPMN.Test.Parsing.Unified;
 
 public class UnifiedValidationAndDataTests
 {
-    private readonly UnifiedBpmnParser _parser = new();
+    private readonly BpmnParser _parser = new();
 
     [Fact]
     public async Task Reports_No_Start_Event()

@@ -1,4 +1,4 @@
-using VertexBPMN.Domain.Model.Bpmn.Model;
+using VertexBPMN.Domain.Model.Bpmn;
 
 namespace VertexBPMN.Engine;
 

@@ -7,7 +7,7 @@ namespace VertexBPMN.Test.Parsing;
 
 public class SequenceFlowParsingTests
 {
-    private readonly UnifiedBpmnParser _parser = new();
+    private readonly BpmnParser _parser = new();
 
     [Fact]
     public async Task Parses_Condition_And_Default_Flow()

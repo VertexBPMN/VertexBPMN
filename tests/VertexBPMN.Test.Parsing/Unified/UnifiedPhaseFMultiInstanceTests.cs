@@ -1,6 +1,6 @@
 using System.Threading.Tasks;
 using System.Linq;
-using VertexBPMN.Domain.Model.Bpmn.Model;
+using VertexBPMN.Domain.Model.Bpmn;
 using VertexBPMN.Parsing;
 using Xunit;
 
@@ -8,7 +8,7 @@ namespace VertexBPMN.Test.Parsing.Unified;
 
 public class UnifiedPhaseFMultiInstanceTests
 {
-    private readonly UnifiedBpmnParser _parser = new();
+    private readonly BpmnParser _parser = new();
 
     [Fact]
     public async Task Captures_Separate_Input_And_Output_Elements()

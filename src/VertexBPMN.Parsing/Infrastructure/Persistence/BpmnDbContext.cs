@@ -1,13 +1,9 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using VertexBPMN.Domain.Entities;
-using VertexBPMN.Domain.Model.Bpmn.Extensions;
-using VertexBPMN.Domain.Model.Bpmn.Model;
+using VertexBPMN.Domain.Extensions;
+using VertexBPMN.Domain.Model.Bpmn;
 
-// for MultiInstanceLoopCharacteristics
-// for BpmnModel & artifact records
-
-// portable column helpers
 
 namespace VertexBPMN.Infrastructure.Persistence;
 
@@ -18,7 +14,6 @@ namespace VertexBPMN.Infrastructure.Persistence;
 public class BpmnDbContext : DbContext
 {
     public BpmnDbContext(DbContextOptions<BpmnDbContext> options) : base(options) { }
-
     public DbSet<BpmnProcessDefinitionEntity> ProcessDefinitions => Set<BpmnProcessDefinitionEntity>();
     public DbSet<BpmnFlowNodeEntity> FlowNodes => Set<BpmnFlowNodeEntity>();
     public DbSet<BpmnSequenceFlowEntity> SequenceFlows => Set<BpmnSequenceFlowEntity>();

@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
-namespace VertexBPMN.Domain.Model.Bpmn.Extensions;
+namespace VertexBPMN.Domain.Extensions;
 
 /// <summary>
 /// Provider-portable helpers for configuring JSON-ish string columns across PostgreSQL, SQL Server and SQLite

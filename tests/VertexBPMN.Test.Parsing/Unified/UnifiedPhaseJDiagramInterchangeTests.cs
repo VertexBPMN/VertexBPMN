@@ -1,6 +1,6 @@
 using System.Threading.Tasks;
 using System.Linq;
-using VertexBPMN.Domain.Model.Bpmn.Model;
+using VertexBPMN.Domain.Model.Bpmn;
 using VertexBPMN.Parsing;
 using Xunit;
 
@@ -34,7 +34,7 @@ public class UnifiedPhaseJDiagramInterchangeTests
   </bpmndi:BPMNDiagram>
 </definitions>
 """;
-        var parser = new UnifiedBpmnParser(new UnifiedBpmnParserOptions { ParseDiagramInterchange = true });
+        var parser = new BpmnParser(new BpmnParserOptions { ParseDiagramInterchange = true });
         var model = await parser.ParseAsync(xml);
         Assert.NotNull(model.Shapes);
         Assert.NotNull(model.Edges);
@@ -51,7 +51,7 @@ public class UnifiedPhaseJDiagramInterchangeTests
     [Fact]
     public async Task Serializer_Emits_DI_When_Shapes_Present()
     {
-        var parser = new UnifiedBpmnParser(new UnifiedBpmnParserOptions { ParseDiagramInterchange = true });
+        var parser = new BpmnParser(new BpmnParserOptions { ParseDiagramInterchange = true });
         var xml = """
 <definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <process id='p2'>
@@ -64,7 +64,7 @@ public class UnifiedPhaseJDiagramInterchangeTests
         var model = await parser.ParseAsync(xml);
         // Add synthetic DI
         var updated = model with { Shapes = new [] { new BpmnShape("shape_s1","s1",10,20,30,40) }, Edges = new [] { new BpmnEdge("edge_f1","f1", new [] { (0d,0d),(10d,10d) }) } };
-        var serializer = new UnifiedBpmnSerializer();
+        var serializer = new BpmnSerializer();
         var outXml = serializer.Serialize(updated);
         Assert.Contains("BPMNDiagram", outXml);
         Assert.Contains("waypoint", outXml);

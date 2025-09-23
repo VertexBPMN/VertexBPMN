@@ -1,13 +1,13 @@
 using Xunit;
 using System.Threading.Tasks;
-using VertexBPMN.Domain.Model.Bpmn.Model;
+using VertexBPMN.Domain.Model.Bpmn;
 using VertexBPMN.Parsing;
 
 namespace VertexBPMN.Test.Parsing;
 
 public class LoopCharacteristicsParsingTests
 {
-    private readonly UnifiedBpmnParser _parser = new();
+    private readonly BpmnParser _parser = new();
 
     [Fact]
     public async Task Parses_MultiInstance_Sequential()

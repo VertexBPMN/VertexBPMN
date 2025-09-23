@@ -7,7 +7,7 @@ namespace VertexBPMN.Test.Parsing.Unified;
 
 public class UnifiedPhaseGContainmentTests
 {
-    private readonly UnifiedBpmnParser _parser = new();
+    private readonly BpmnParser _parser = new();
 
     [Fact]
     public async Task Subprocess_Contains_Child_FlowNodes_And_SequenceFlows()

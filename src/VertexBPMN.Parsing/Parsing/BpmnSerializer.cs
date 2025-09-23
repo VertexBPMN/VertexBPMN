@@ -1,9 +1,9 @@
 using System.Xml.Linq;
-using VertexBPMN.Domain.Model.Bpmn.Model;
+using VertexBPMN.Domain.Model.Bpmn;
 
 namespace VertexBPMN.Parsing;
 
-public class UnifiedBpmnSerializer
+public class BpmnSerializer
 {
     private static readonly XNamespace Bpmn = "http://www.omg.org/spec/BPMN/20100524/MODEL";
     private static readonly Dictionary<string,string> WellKnownPrefixes = new()
@@ -30,7 +30,7 @@ public class UnifiedBpmnSerializer
         foreach (var e in model.Events) CollectExt(e.ExtensionAttributes);
         foreach (var g in model.Gateways) CollectExt(g.ExtensionAttributes);
         foreach (var s in model.Subprocesses) CollectExt(s.ExtensionAttributes);
-        foreach (var t in model.Tasks) CollectExt(t.ExtensionAttributes);
+        foreach (var t in model.Tasks) CollectExt(t.Attributes);
         foreach (var f in model.SequenceFlows)
         {
             CollectExt(f.ExtensionAttributes);
@@ -167,7 +167,7 @@ public class UnifiedBpmnSerializer
         foreach (var task in model.Tasks)
         {
             var taskEl = new XElement(Bpmn + task.Type, new XAttribute("id", task.Id));
-            AddExtensions(taskEl, task.ExtensionAttributes);
+            AddExtensions(taskEl, task.Attributes);
             proc.Add(taskEl);
         }
 

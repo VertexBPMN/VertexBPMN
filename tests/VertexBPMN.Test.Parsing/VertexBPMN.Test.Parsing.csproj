@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
 	  <TargetFramework>net9.0</TargetFramework>
 	  <EnableMicrosoftTestingPlatform>true</EnableMicrosoftTestingPlatform>
@@ -8,6 +8,35 @@
 	  <ImplicitUsings>enable</ImplicitUsings>
 	  <Nullable>enable</Nullable>
   </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="Conformance\**" />
+    <EmbeddedResource Remove="Conformance\**" />
+    <None Remove="Conformance\**" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Conformance\A.1.0_Test.cs" />
+    <Compile Include="Conformance\A.2.0_Test.cs" />
+    <Compile Include="Conformance\A.2.1_Test.cs" />
+    <Compile Include="Conformance\A.3.0_Test.cs" />
+    <Compile Include="Conformance\A.4.0_Test.cs" />
+    <Compile Include="Conformance\A.4.1_Test.cs" />
+    <Compile Include="Conformance\B.1.0_Test.cs" />
+    <Compile Include="Conformance\B.2.0_Test.cs" />
+    <Compile Include="Conformance\C.1.0_Test.cs" />
+    <Compile Include="Conformance\C.1.1_Test.cs" />
+    <Compile Include="Conformance\C.2.0_Test.cs" />
+    <Compile Include="Conformance\C.3.0_Test.cs" />
+    <Compile Include="Conformance\C.4.0_Test.cs" />
+    <Compile Include="Conformance\C.5.0_Test.cs" />
+    <Compile Include="Conformance\C.6.0_Test.cs" />
+    <Compile Include="Conformance\C.7.0_Test.cs" />
+    <Compile Include="Conformance\C.8.0_Test.cs" />
+    <Compile Include="Conformance\C.8.1_Test.cs" />
+    <Compile Include="Conformance\C.9.0_Test.cs" />
+    <Compile Include="Conformance\C.9.1_Test.cs" />
+    <Compile Include="Conformance\C.9.2_Test.cs" />
+    <Compile Include="Conformance\MIWGTestSuite2025Roundtrip.cs" />
+  </ItemGroup>
 	<ItemGroup>
 		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
 		<PackageReference Include="xunit.v3" Version="3.0.1" />
@@ -27,4 +56,10 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\VertexBPMN.Parsing\VertexBPMN.Parsing.csproj" />
   </ItemGroup>
+	<ItemGroup>
+		<Content Include="..\..\tests\VertexBPMN.Tests\TestData\**\*.*">
+		<Link>TestData\%(RecursiveDir)%(Filename)%(Extension)</Link>
+		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+	</ItemGroup>
 </Project>

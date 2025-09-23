@@ -7,7 +7,7 @@ namespace VertexBPMN.Test.Parsing.Unified;
 
 public class UnifiedPhaseBValidationTests
 {
-    private readonly UnifiedBpmnParser _parser = new();
+    private readonly BpmnParser _parser = new();
 
     [Fact]
     public async Task Detects_MultiInstance_Conflict()

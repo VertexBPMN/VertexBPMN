@@ -7,8 +7,8 @@ namespace VertexBPMN.Test.Parsing.Unified;
 
 public class UnifiedPhaseDExtensionTests
 {
-    private readonly UnifiedBpmnParser _parser = new();
-    private readonly UnifiedBpmnSerializer _serializer = new();
+    private readonly BpmnParser _parser = new();
+    private readonly BpmnSerializer _serializer = new();
 
     [Fact]
     public async Task Parses_Camunda_FormFields_Extensions()
@@ -29,8 +29,8 @@ public class UnifiedPhaseDExtensionTests
 """;
         var model = await _parser.ParseAsync(xml);
         var task = Assert.Single(model.Tasks);
-        Assert.NotNull(task.ExtensionAttributes);
-        Assert.Contains(task.ExtensionAttributes!, kv => kv.Value == "field1");
+        Assert.NotNull(task.Attributes);
+        Assert.Contains(task.Attributes!, kv => kv.Value == "field1");
         var serialized = _serializer.Serialize(model);
         Assert.Contains("camunda:formData", serialized);
         Assert.Contains("camunda:formField", serialized);
@@ -56,9 +56,9 @@ public class UnifiedPhaseDExtensionTests
 """;
         var model = await _parser.ParseAsync(xml);
         var task = Assert.Single(model.Tasks);
-        Assert.NotNull(task.ExtensionAttributes);
-        Assert.Contains(task.ExtensionAttributes!, kv => kv.Value == "orderVar");
-        Assert.Contains(task.ExtensionAttributes!, kv => kv.Value == "resultVar");
+        Assert.NotNull(task.Attributes);
+        Assert.Contains(task.Attributes!, kv => kv.Value == "orderVar");
+        Assert.Contains(task.Attributes!, kv => kv.Value == "resultVar");
         var serialized = _serializer.Serialize(model);
         Assert.Contains("zeebe:ioMapping", serialized);
         Assert.Contains("zeebe:input", serialized);

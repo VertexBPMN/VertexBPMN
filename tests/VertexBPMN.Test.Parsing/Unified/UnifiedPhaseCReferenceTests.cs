@@ -7,7 +7,7 @@ namespace VertexBPMN.Test.Parsing.Unified;
 
 public class UnifiedPhaseCReferenceTests
 {
-    private readonly UnifiedBpmnParser _parser = new();
+    private readonly BpmnParser _parser = new();
 
     [Fact]
     public async Task Resolves_Message_And_Signal_References()

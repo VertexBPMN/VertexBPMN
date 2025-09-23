@@ -10,7 +10,7 @@ namespace VertexBPMN.Test.Parsing.Unified;
 
 public class UnifiedEngineIntegrationTests
 {
-    private UnifiedBpmnParser CreateParser() => new(new UnifiedBpmnParserOptions());
+    private BpmnParser CreateParser() => new(new BpmnParserOptions());
 
     [Fact]
     public async Task Mapper_Builds_Basic_Graph_Metadata()

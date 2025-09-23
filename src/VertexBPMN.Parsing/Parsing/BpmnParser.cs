@@ -1,21 +1,22 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Xml.Linq;
-using VertexBPMN.Domain.Model.Bpmn.Model;
+using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Domain.Model.Bpmn;
 
 namespace VertexBPMN.Parsing;
 
-public class UnifiedBpmnParser
+public class BpmnParser : IBpmnParser
 {
-    private readonly UnifiedBpmnParserOptions _options;
+    private readonly BpmnParserOptions _options;
 
     // Simple LRU cache (key: SHA256 xml hash) -> model
     private readonly Dictionary<string, LinkedListNode<(string Key, BpmnModel Model)>> _cacheIndex = new();
     private readonly LinkedList<(string Key, BpmnModel Model)> _lru = new();
     private readonly object _cacheLock = new();
 
-    public UnifiedBpmnParser() : this(new UnifiedBpmnParserOptions()) { }
-    public UnifiedBpmnParser(UnifiedBpmnParserOptions options) => _options = options;
+    public BpmnParser() : this(new BpmnParserOptions()) { }
+    public BpmnParser(BpmnParserOptions options) => _options = options;
 
     private BpmnModel? TryGetCached(string xml)
     {
@@ -56,7 +57,7 @@ public class UnifiedBpmnParser
         return Convert.ToHexString(bytes);
     }
 
-    public Task<BpmnModel> ParseAsync(string xml)
+    public Task<BpmnModel> ParseAsync(string xml, CancellationToken cancellationToken = default)
     {
         if (TryGetCached(xml) is { } cached) return Task.FromResult(cached);
 
@@ -406,10 +407,16 @@ public class UnifiedBpmnParser
                 edges.Add(new BpmnEdge(id, bpmnElement, wp));
             }
         }
+        var activities =  tasks.Cast<object>().Concat(subprocesses);
+        var model = new BpmnModel(pid, events, gateways, subprocesses, flows, tasks, dataObjects, dataObjectRefs, dataStores, dataStoreRefs, properties, activityIo, messages, signals, errors, escalations, diagnostics, shapes, edges, participants, lanes, messageFlows, textAnnotations, associationArtifacts, groups, Activities: activities);
 
-        var model = new BpmnModel(pid, events, gateways, subprocesses, flows, tasks, dataObjects, dataObjectRefs, dataStores, dataStoreRefs, properties, activityIo, messages, signals, errors, escalations, diagnostics, shapes, edges, participants, lanes, messageFlows, textAnnotations, associationArtifacts, groups);
         Cache(xml, model);
         return Task.FromResult(model);
+    }
+
+    public string Serialize(BpmnModel model)
+    {
+       return new BpmnSerializer().Serialize(model);
     }
 
     private static (LoopCharacteristics? loop, bool conflict) ParseLoopWithConflict(XElement sp, XNamespace ns, HashSet<string> conflictSet)

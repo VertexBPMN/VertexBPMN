@@ -1,4 +1,3 @@
-
 # VertexBPMN – AI Agent Coding Instructions
 
 This document guides AI coding agents to be productive in the VertexBPMN codebase. It merges project-specific conventions with actionable, up-to-date instructions. **Focus on these points for best results:**
@@ -49,6 +48,8 @@ This document guides AI coding agents to be productive in the VertexBPMN codebas
 - **Test structure:** Use Arrange-Act-Assert (AAA) in all tests.
 - **End-to-end/integration:** Test cross-component flows (API → Service → DB) as integration tests.
 - **Conformance:** Code must pass BPMN MIWG and DMN TCK test suites.
+- **TDD:** Schreibe zuerst einen fehlgeschlagenen Test (Red), dann minimalen Code (Green), anschließend gezieltes Refactoring (Refactor) – keine produktive Logik ohne vorgelagerten Test.
+
 # VertexBPMN vs. Camunda REST-API: Paritätsmatrix
 
 | Camunda Endpoint                | VertexBPMN-Status | Bemerkung / Mapping / TODO |
@@ -105,6 +106,9 @@ Always follow docs/AI-CODEGEN-GUIDE.md.
 NEVER modify existing Camunda-compatible routes/DTOs; only add new APIs under /cmmn, /events, /migrations, /history (cleanup), /connectors.
 Enforce tenant-aware queries (X-Tenant-Id), OpenAPI-first, TDD (contracts before code), and additive DB migrations only.
 If unsure, ask to read specs/*/ (plan/spec/contracts/quickstart).
+
+## Strict Roundtrip Roadmap
+- See docs/ROUNDTRIP_STRICT_PLAN.md
 
 ---
 **For any unclear or missing conventions, consult the README and CONTRIBUTING.md, or ask for clarification.**

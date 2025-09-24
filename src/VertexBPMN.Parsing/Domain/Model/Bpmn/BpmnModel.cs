@@ -2,13 +2,15 @@
 
 namespace VertexBPMN.Domain.Model.Bpmn;
 
+using System.Xml.Linq;
+
 public record BpmnEvent(string Id,string Type,IReadOnlyList<EventDefinition> Definitions,string? SubprocessId,Dictionary<string,string>? ExtensionAttributes=null);
 public record BpmnGateway(string Id,string Type,string? DefaultFlowId,string? SubprocessId,Dictionary<string,string>? ExtensionAttributes=null);
 public record BpmnSubprocess(string Id,bool IsEventSubprocess,bool IsTransaction,LoopCharacteristics? Loop,string? SubprocessId,Dictionary<string,string>? ExtensionAttributes=null,IReadOnlyList<string>? ChildFlowNodeIds=null,IReadOnlyList<string>? ChildSequenceFlowIds=null);
 public record BpmnSequenceFlow(string Id,string SourceRef,string TargetRef,bool IsDefault,string? ConditionExpression,string? SubprocessId,Dictionary<string,string>? ExtensionAttributes=null,int? Priority=null);
 public record BpmnTask(string Id,string Type,string? SubprocessId,  Dictionary<string,string>? Attributes=null, string? Implementation = null)
 {
-    public string Name { get; init; } = string.Empty;
+    public string Name { get; init; } = string.Empty; // retained optional convenience
 }
 public record BpmnDataObject(string Id,string? Name);
 public record BpmnDataObjectReference(string Id,string DataObjectRef);
@@ -47,6 +49,61 @@ public record StandardLoopCharacteristics(string? LoopCondition, bool TestBefore
 public record MultiInstanceLoopCharacteristics(bool IsSequential, int? LoopCardinality, string? Collection, string? ElementVariable, string? CompletionCondition, string? InputElement = null, string? OutputElement = null)
     : LoopCharacteristics("multiInstance");
 
+/// <summary>
+/// Namespace prefix entry for strict roundtrip (Phase A).
+/// </summary>
+public sealed record NamespacePrefix(string Prefix,string Uri,bool Original=true);
+
+/// <summary>
+/// Per-element metadata captured for strict ordering & attribute preservation.
+/// </summary>
+public sealed record ElementMetadata(
+    int OrderIndex,
+    string ElementName,
+    IReadOnlyDictionary<string,string> Attributes,
+    bool HadCamundaCollection = false,
+    bool HadZeebeInputCollection = false,
+    bool HadLoopCardinality = false,
+    bool HadCamundaElementVar = false,
+    bool HadZeebeInputElement = false,
+    bool HadZeebeOutputElement = false
+);
+
+/// <summary>
+/// Raw metadata captured for strict roundtrip mode (Phase 1/2 + Phase A extensions).
+/// RoundtripDirty indicates the model was mutated after parsing and a lossless emit may not be valid.
+/// </summary>
+public sealed record BpmnRawMetadata(
+    IReadOnlyDictionary<string,string>? DefinitionsAttributes = null,
+    IReadOnlyDictionary<string,string>? ProcessAttributes = null,
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? Incoming = null,
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? Outgoing = null,
+    IReadOnlyDictionary<string,(string Raw,bool WasCData)>? SequenceFlowConditions = null,
+    IReadOnlyDictionary<string,XElement>? RawExtensionElements = null,
+    IReadOnlyDictionary<string, IReadOnlyList<XElement>>? RawEventDefinitions = null,
+    IReadOnlyDictionary<string,XElement>? RawMultiInstance = null,
+    IReadOnlyDictionary<string,string>? PriorityAttributeNamespace = null,
+    IReadOnlyDictionary<string, IReadOnlyDictionary<string,string>>? FlowNodeAttributes = null,
+    bool RoundtripDirty = false,
+    IReadOnlyList<NamespacePrefix>? NamespacePrefixes = null,
+    IReadOnlyDictionary<string, ElementMetadata>? ElementsMetadata = null,
+    IReadOnlyList<XElement>? RawGlobalElements = null,
+    IReadOnlyList<XElement>? RawArtifacts = null,
+    IReadOnlyList<XElement>? RawLanes = null,
+    IReadOnlyDictionary<string, IReadOnlyList<XElement>>? RawDocumentation = null,
+    XElement? RawDiRoot = null
+);
+
+public static class BpmnRoundtripUtil
+{
+    public static BpmnModel MarkDirty(BpmnModel model)
+    {
+        if (model.RawMetadata == null) return model;
+        if (model.RawMetadata.RoundtripDirty) return model; // already marked
+        var rm = model.RawMetadata with { RoundtripDirty = true };
+        return model with { RawMetadata = rm };
+    }
+}
 
 public record BpmnModel(
     string ProcessId,
@@ -75,5 +132,6 @@ public record BpmnModel(
     IReadOnlyList<BpmnAssociationArtifact>? Associations = null,
     IReadOnlyList<BpmnGroup>? Groups = null,
     IDictionary<string, object>? ProcessVariables = null,
-    IEnumerable<object>? Activities = null
+    IEnumerable<object>? Activities = null,
+    BpmnRawMetadata? RawMetadata = null
 );

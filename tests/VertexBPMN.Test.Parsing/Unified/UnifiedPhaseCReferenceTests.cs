@@ -55,6 +55,7 @@ public class UnifiedPhaseCReferenceTests
 </definitions>
 """;
         var model = await _parser.ParseAsync(xml);
+        var messageRefs = model.Diagnostics.Where(se => se.Contains("Unknown messageRef") && se.Contains("MissingMsg")).ToList();
         Assert.Contains(model.Diagnostics, d => d.Contains("Unknown messageRef") && d.Contains("MissingMsg"));
         Assert.Contains(model.Diagnostics, d => d.Contains("Unknown signalRef") && d.Contains("MissingSig"));
         Assert.Contains(model.Diagnostics, d => d.Contains("Unknown errorRef") && d.Contains("Err_404"));

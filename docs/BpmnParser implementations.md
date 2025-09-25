@@ -86,7 +86,7 @@ Acceptance:
 - All existing tests remain green.
 - Capabilities exposed without functional change.
 
-### Phase 1 – Collaboration & Global Entities Unification
+### Phase 1 – Collaboration & Global Entities Unification (X)
 Tasks:
 - Parse participants, messageFlows, store raw (if option).
 - Add global element index (messages/signals/errors/escalations) for fast ref validation.
@@ -95,7 +95,7 @@ Acceptance:
 - Golden roundtrip unchanged for non-collab inputs.
 - New tests verify participants/messageFlow appear in strict & normalized projection.
 
-### Phase 2 – Vendor Extension Dual Handling
+### Phase 2 – Vendor Extension Dual Handling (X)
 Tasks:
 - Extract vendor-specific nodes (camunda, zeebe, flowable, cib, jbpm, osmanthus, alfresco, mcp) into:
   - RawExtensionElements (already) AND
@@ -106,7 +106,7 @@ Acceptance:
 - Original <extensionElements> untouched in strict output.
 - Projection exposes expected normalized keys; JSON structure validated.
 
-### Phase 3 – Advanced Validation Layer
+### Phase 3 – Advanced Validation Layer (fertig X)
 Tasks:
 - Implement ValidationSeverity (Info/Warning/Error/Fatal).
 - Rules to port/add:

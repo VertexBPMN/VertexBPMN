@@ -16,12 +16,16 @@ public class BpmnSerializer
 
     public BpmnRoundtripMode RoundtripMode { get; init; } = BpmnRoundtripMode.Normalized;
     /// <summary>If false (strict only), do not synthesize missing incoming/outgoing edges.</summary>
-    public bool PreserveGeneratedIfMissing { get; init; } = true;
+    public bool PreserveGeneratedIfMissing { get; init; } = false;
 
     public string Serialize(BpmnModel model)
     {
         var strictRequested = RoundtripMode == BpmnRoundtripMode.Strict;
         var strict = strictRequested && model.RawMetadata != null && !model.RawMetadata.RoundtripDirty;
+        if (strictRequested && model.RawMetadata?.RoundtripDirty == true)
+        {
+            if (model.Diagnostics is List<string> dl && !dl.Contains("RT-Fallback:dirty-roundtrip")) dl.Add("RT-Fallback:dirty-roundtrip");
+        }
         if (strictRequested && !strict)
         {
             // force normalized path by ignoring raw structures
@@ -167,6 +171,30 @@ public class BpmnSerializer
         {
             foreach (var ge in raw.RawGlobalElements) definitions.Add(new XElement(ge));
         }
+        else if (strict)
+        {
+            // Strict fallback: raw global elements not captured, emit minimal set from model if available
+            if (model.Messages is { Count: >0 })
+            {
+                foreach (var m in model.Messages)
+                {
+                    if (string.IsNullOrEmpty(m.Id)) continue;
+                    var msgEl = new XElement(Bpmn + "message", new XAttribute("id", m.Id));
+                    if (!string.IsNullOrWhiteSpace(m.Name)) msgEl.SetAttributeValue("name", m.Name);
+                    definitions.Add(msgEl);
+                }
+            }
+            if (model.Signals is { Count: >0 })
+            {
+                foreach (var s in model.Signals)
+                {
+                    if (string.IsNullOrEmpty(s.Id)) continue;
+                    var sigEl = new XElement(Bpmn + "signal", new XAttribute("id", s.Id));
+                    if (!string.IsNullOrWhiteSpace(s.Name)) sigEl.SetAttributeValue("name", s.Name);
+                    definitions.Add(sigEl);
+                }
+            }
+        }
         else if (!strict)
         {
             // Fallback / normalized: emit minimal global elements from model (lossy attributes already normalized)
@@ -292,16 +320,24 @@ public class BpmnSerializer
         void ApplyOriginalAttributes(string id, XElement el)
         {
             if (!strict || raw?.FlowNodeAttributes == null) return;
+            var isPartialDirty = raw.PartiallyDirtyElements != null && raw.PartiallyDirtyElements.Contains(id);
             if (!raw.FlowNodeAttributes.TryGetValue(id, out var attrs)) return;
             foreach (var kv in attrs)
             {
                 var local = ParseLocalName(kv.Key);
                 if (local == "id") continue;
+                if (local == "name" && isPartialDirty) continue; // skip original to allow mutated attribute injection later
                 if (local == "name" && string.IsNullOrEmpty(kv.Value)) continue;
                 if (string.IsNullOrEmpty(local) || local.IndexOf('/') >= 0 || local.Any(ch => char.IsWhiteSpace(ch))) continue;
                 var nsUri = ParseNamespace(kv.Key);
                 XName xname = nsUri == null ? local : XName.Get(local, nsUri);
                 if (el.Attribute(xname) == null) el.Add(new XAttribute(xname, kv.Value));
+            }
+            // inject mutated name for partial dirty (task lookup only)
+            if (isPartialDirty)
+            {
+                var task = model.Tasks.FirstOrDefault(t => t.Id == id);
+                if (task != null && !string.IsNullOrEmpty(task.Name)) el.SetAttributeValue("name", task.Name);
             }
         }
 

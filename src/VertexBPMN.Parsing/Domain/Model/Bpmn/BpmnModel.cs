@@ -3,6 +3,7 @@
 namespace VertexBPMN.Domain.Model.Bpmn;
 
 using System.Xml.Linq;
+using VertexBPMN.Parsing;
 
 public record BpmnEvent(string Id,string Type,IReadOnlyList<EventDefinition> Definitions,string? SubprocessId,Dictionary<string,string>? ExtensionAttributes=null);
 public record BpmnGateway(string Id,string Type,string? DefaultFlowId,string? SubprocessId,Dictionary<string,string>? ExtensionAttributes=null);
@@ -91,9 +92,11 @@ public sealed record BpmnRawMetadata(
     IReadOnlyList<XElement>? RawArtifacts = null,
     IReadOnlyList<XElement>? RawLanes = null,
     IReadOnlyDictionary<string, IReadOnlyList<XElement>>? RawDocumentation = null,
-    XElement? RawDiRoot = null
+    XElement? RawDiRoot = null,
+    IReadOnlySet<string>? PartiallyDirtyElements = null,
+    IReadOnlyDictionary<string,string>? GlobalElementKinds = null,
+    IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? VendorNormalizedExtensions = null
 );
-
 public static class BpmnRoundtripUtil
 {
     public static BpmnModel MarkDirty(BpmnModel model)
@@ -102,6 +105,54 @@ public static class BpmnRoundtripUtil
         if (model.RawMetadata.RoundtripDirty) return model; // already marked
         var rm = model.RawMetadata with { RoundtripDirty = true };
         return model with { RawMetadata = rm };
+    }
+
+    public static BpmnModel MarkDirtyOnAnyChange(BpmnModel model, string elementId)
+    {
+        var diagnostics = model.Diagnostics.ToList();
+        diagnostics.Add($"RT-Dirty:element:{elementId}");
+        model = model with { Diagnostics = diagnostics };
+        return MarkDirty(model);
+    }
+
+    public static BpmnModel ApplyAttributeChange(BpmnModel model, string elementId, string key, string value)
+    {
+        // Update task attributes if target is a task
+        if (model.Tasks.FirstOrDefault(t => t.Id == elementId) is { } task)
+        {
+            var attrs = task.Attributes == null ? new Dictionary<string,string>() : new Dictionary<string,string>(task.Attributes);
+            attrs[key] = value;
+            if (key == "name") task = task with { Attributes = attrs, Name = value };
+            else task = task with { Attributes = attrs };
+            var tasks = model.Tasks.ToList();
+            var idx = tasks.FindIndex(t => t.Id == elementId);
+            tasks[idx] = task;
+            model = model with { Tasks = tasks };
+        }
+        // (Could add similar handling for events, gateways etc.)
+        return MarkDirtyOnAnyChange(model, elementId);
+    }
+
+    public static BpmnModel ApplyAttributeChangePartial(BpmnModel model, string elementId, string key, string value)
+    {
+        if (model.RawMetadata == null) return model; // nothing to do
+        // mutate element (tasks only for now) without setting RoundtripDirty, track element id in PartiallyDirtyElements
+        if (model.Tasks.FirstOrDefault(t => t.Id == elementId) is { } task)
+        {
+            var attrs = task.Attributes == null ? new Dictionary<string,string>() : new Dictionary<string,string>(task.Attributes);
+            attrs[key] = value;
+            task = key == "name" ? task with { Attributes = attrs, Name = value } : task with { Attributes = attrs };
+            var tasks = model.Tasks.ToList();
+            var idx = tasks.FindIndex(t => t.Id == elementId);
+            tasks[idx] = task;
+            var diagnostics = model.Diagnostics.ToList();
+            diagnostics.Add($"RT-DirtyPartial:element:{elementId}");
+            var dirtySet = model.RawMetadata.PartiallyDirtyElements != null ? new HashSet<string>(model.RawMetadata.PartiallyDirtyElements) : new HashSet<string>();
+            dirtySet.Add(elementId);
+            var rm = model.RawMetadata with { PartiallyDirtyElements = dirtySet }; // keep RoundtripDirty false
+            model = model with { Tasks = tasks, Diagnostics = diagnostics, RawMetadata = rm };
+        }
+        return model;
     }
 }
 
@@ -133,5 +184,6 @@ public record BpmnModel(
     IReadOnlyList<BpmnGroup>? Groups = null,
     IDictionary<string, object>? ProcessVariables = null,
     IEnumerable<object>? Activities = null,
-    BpmnRawMetadata? RawMetadata = null
+    BpmnRawMetadata? RawMetadata = null,
+    IReadOnlyList<ValidationDiagnostic>? ValidationDiagnostics = null
 );

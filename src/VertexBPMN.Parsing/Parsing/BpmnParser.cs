@@ -1,5 +1,6 @@
 //See docs/ROUNDTRIP_STRICT_PLAN.md
 
+using System.Collections.ObjectModel;
 using System.Security.Cryptography;
 using System.Text;
 using System.Xml.Linq;
@@ -8,7 +9,7 @@ using VertexBPMN.Domain.Model.Bpmn;
 
 namespace VertexBPMN.Parsing;
 
-public class BpmnParser : IBpmnParser
+public partial class BpmnParser : IBpmnParser
 {
     private readonly BpmnParserOptions _options;
     private readonly Dictionary<string, LinkedListNode<(string Key, BpmnModel Model)>> _cacheIndex = new();
@@ -106,9 +107,62 @@ public class BpmnParser : IBpmnParser
         var process = doc.Descendants(ns + "process").FirstOrDefault();
         if (process == null)
         {
-            if (_options.StrictValidation) diagnostics.Add("No <process> element");
-            var empty = new BpmnModel(string.Empty, Array.Empty<BpmnEvent>(), Array.Empty<BpmnGateway>(), Array.Empty<BpmnSubprocess>(), Array.Empty<BpmnSequenceFlow>(), Array.Empty<BpmnTask>(), Array.Empty<BpmnDataObject>(), Array.Empty<BpmnDataObjectReference>(), Array.Empty<BpmnDataStore>(), Array.Empty<BpmnDataStoreReference>(), Array.Empty<BpmnProperty>(), Array.Empty<BpmnActivityIo>(), Array.Empty<BpmnMessage>(), Array.Empty<BpmnSignal>(), Array.Empty<BpmnError>(), Array.Empty<BpmnEscalation>(), diagnostics, RawMetadata: strict ? new BpmnRawMetadata(rawDefinitionsAttr, rawProcessAttr) : null);
-            Cache(xml, empty); return Task.FromResult(empty);
+            if (_options.StrictValidation)
+                diagnostics.Add("No <process> element");
+
+            IReadOnlyList<ValidationDiagnostic>? structured = null;
+            if (strict && _options.EnableAdvancedValidation)
+            {
+                structured = RunAdvancedValidation(
+                    _options,
+                    Array.Empty<BpmnEvent>(),
+                    Array.Empty<BpmnGateway>(),
+                    Array.Empty<BpmnSubprocess>(),
+                    Array.Empty<BpmnSequenceFlow>(),
+                    Array.Empty<BpmnTask>(),
+                    null, // lanes
+                    null, // messageFlows
+                    diagnostics,
+                    null, // rawLaneElements
+                    Array.Empty<BpmnDataObject>(),
+                    Array.Empty<BpmnDataObjectReference>(),
+                    Array.Empty<BpmnAssociationArtifact>(),
+                    Array.Empty<BpmnTextAnnotation>(),
+                    Array.Empty<BpmnGroup>()
+                );
+            }
+            if (_options.EnableAdvancedValidation &&
+                _options.ThrowOnFatalValidation &&
+                structured is { Count: > 0 })
+            {
+                MaybeThrowOnValidation(_options, structured);
+            }
+            var rawMeta0 = strict ? new BpmnRawMetadata(rawDefinitionsAttr, rawProcessAttr) : null;
+
+            var empty = new BpmnModel(
+                string.Empty,
+                Array.Empty<BpmnEvent>(),
+                Array.Empty<BpmnGateway>(),
+                Array.Empty<BpmnSubprocess>(),
+                Array.Empty<BpmnSequenceFlow>(),
+                Array.Empty<BpmnTask>(),
+                Array.Empty<BpmnDataObject>(),
+                Array.Empty<BpmnDataObjectReference>(),
+                Array.Empty<BpmnDataStore>(),
+                Array.Empty<BpmnDataStoreReference>(),
+                Array.Empty<BpmnProperty>(),
+                Array.Empty<BpmnActivityIo>(),
+                Array.Empty<BpmnMessage>(),
+                Array.Empty<BpmnSignal>(),
+                Array.Empty<BpmnError>(),
+                Array.Empty<BpmnEscalation>(),
+                diagnostics,
+                RawMetadata: rawMeta0,
+                ValidationDiagnostics: structured
+            );
+
+            Cache(xml, empty);
+            return Task.FromResult(empty);
         }
         var pid = Intern(process.Attribute("id")?.Value ?? string.Empty);
         if (strict)
@@ -287,14 +341,1126 @@ public class BpmnParser : IBpmnParser
             }
             subprocesses = updated;
         }
+        List<BpmnParticipant>? participantsList = participants;
+        List<BpmnMessageFlow>? messageFlowsList = messageFlows;
 
-        var activities= tasks.Cast<object>().Concat(subprocesses);
-        BpmnRawMetadata? rawMeta=null; if(strict){ if(_options.OptimizeStrictMemory){ if(rawIncoming is {Count:0}) rawIncoming=null; if(rawOutgoing is {Count:0}) rawOutgoing=null; if(rawCond is {Count:0}) rawCond=null; if(rawExtensions is {Count:0}) rawExtensions=null; if(rawEvDefs is {Count:0}) rawEvDefs=null; if(rawDefinitionsAttr is {Count:0}) rawDefinitionsAttr=null; if(rawProcessAttr is {Count:0}) rawProcessAttr=null; if(rawGlobalElements is {Count:0}) rawGlobalElements=null; if(rawArtifacts is {Count:0}) rawArtifacts=null; if(rawLanes is {Count:0}) rawLanes=null; if(namespacePrefixes is {Count:0}) namespacePrefixes=null; if(elementsMetadata is {Count:0}) elementsMetadata=null; if(rawDocumentation is {Count:0}) rawDocumentation=null; if(rawMultiInstance is {Count:0}) rawMultiInstance=null; if(priorityAttrNs is {Count:0}) priorityAttrNs=null; if(flowNodeAttributes is {Count:0}) flowNodeAttributes=null; }
-            rawMeta = new BpmnRawMetadata(rawDefinitionsAttr, rawProcessAttr, rawIncoming?.ToDictionary(k=>k.Key,v=>(IReadOnlyList<string>)v.Value), rawOutgoing?.ToDictionary(k=>k.Key,v=>(IReadOnlyList<string>)v.Value), rawCond?.ToDictionary(k=>k.Key,v=>v.Value), rawExtensions, rawEvDefs?.ToDictionary(k=>k.Key,v=>(IReadOnlyList<XElement>)v.Value), rawMultiInstance?.ToDictionary(k=>k.Key,v=> new XElement(v.Value)), priorityAttrNs?.ToDictionary(k=>k.Key,v=>v.Value), flowNodeAttributes, RoundtripDirty:false, NamespacePrefixes: namespacePrefixes, ElementsMetadata: elementsMetadata, RawGlobalElements: rawGlobalElements, RawArtifacts: rawArtifacts, RawLanes: rawLanes, RawDocumentation: rawDocumentation?.ToDictionary(k=>k.Key,v=>(IReadOnlyList<XElement>)v.Value), RawDiRoot: diRoot); }
+        if (_options.EnableCollaborationParsing)
+        {
+            var collab = doc.Descendants(ns + "collaboration").FirstOrDefault();
+            if (collab != null)
+            {
+                foreach (var part in collab.Elements(ns + "participant"))
+                {
+                    var pidAttr = part.Attribute("id")?.Value;
+                    var pnameAttr = part.Attribute("name")?.Value ?? string.Empty;
+                    var pref = part.Attribute("processRef")?.Value;
+                    if (!string.IsNullOrEmpty(pidAttr))
+                        participantsList.Add(new BpmnParticipant(pidAttr, pnameAttr,pref ?? string.Empty));
+                }
+                foreach (var mf in collab.Elements(ns + "messageFlow"))
+                {
+                    var id = mf.Attribute("id")?.Value;
+                    if (string.IsNullOrEmpty(id)) continue;
 
-        var model = new BpmnModel(pid, events, gateways, subprocesses, flows, tasks, dataObjects, dataObjectRefs, dataStores, dataStoreRefs, properties, activityIo, messageModels, signalModels, errorModels, escalationModels, diagnostics, shapes, edges, participants, lanes, messageFlows, textAnnotations, associationArtifacts, groups, Activities: activities, RawMetadata: rawMeta);
+                    var name = mf.Attribute("name")?.Value ?? string.Empty;
+                    var src = mf.Attribute("sourceRef")?.Value ?? string.Empty;
+                    var tgt = mf.Attribute("targetRef")?.Value ?? string.Empty;
+                    messageFlowsList.Add(new BpmnMessageFlow(id, src, tgt, name));
+                }
+            }
+        }
+
+        // Build global element kind index if requested
+        IReadOnlyDictionary<string, string>? globalKinds = null;
+        if (strict && _options.BuildGlobalElementIndex && rawGlobalElements is { Count: > 0 })
+        {
+            var dict = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var x in rawGlobalElements)
+            {
+                var idAttr = x.Attribute("id")?.Value;
+                if (string.IsNullOrEmpty(idAttr)) continue;
+                var local = x.Name.LocalName; // message | signal | error | escalation
+                dict[idAttr] = local;
+            }
+            globalKinds = dict;
+        }
+
+        // NEW Phase B: vendor extension normalization capture
+        var vendorNormalized = ParseVendorExtensions(strict, rawExtensions);
+
+        var activities = tasks.Cast<object>().Concat(subprocesses);
+
+        IReadOnlyList<ValidationDiagnostic>? structuredDiagnostics = null;
+        if (_options.EnableAdvancedValidation)
+        {
+            structuredDiagnostics = RunAdvancedValidation(_options,
+                events, gateways, subprocesses, flows, tasks,
+                lanes, messageFlows, diagnostics, rawLanes,
+                dataObjects, dataObjectRefs, associationArtifacts, textAnnotations, groups);
+        }
+        // After structuredDiagnostics calculation (just below existing code that sets structuredDiagnostics)
+        if (_options.EnableAdvancedValidation &&
+            _options.ThrowOnFatalValidation &&
+            structuredDiagnostics is { Count: > 0 })
+        {
+            MaybeThrowOnValidation(_options, structuredDiagnostics);
+        }
+
+        BpmnRawMetadata? rawMeta = null;
+        if (strict)
+        {
+            if (_options.OptimizeStrictMemory)
+            {
+                if (rawIncoming is {Count: 0}) rawIncoming = null;
+                if (rawOutgoing is {Count: 0}) rawOutgoing = null;
+                if (rawCond is {Count: 0}) rawCond = null;
+                if (rawExtensions is {Count: 0}) rawExtensions = null;
+                if (rawEvDefs is {Count: 0}) rawEvDefs = null;
+                if (rawDefinitionsAttr is {Count: 0}) rawDefinitionsAttr = null;
+                if (rawProcessAttr is {Count: 0}) rawProcessAttr = null;
+                if (rawGlobalElements is {Count: 0}) rawGlobalElements = null;
+                if (rawArtifacts is {Count: 0}) rawArtifacts = null;
+                if (rawLanes is {Count: 0}) rawLanes = null;
+                if (namespacePrefixes is {Count: 0}) namespacePrefixes = null;
+                if (elementsMetadata is {Count: 0}) elementsMetadata = null;
+                if (rawDocumentation is {Count: 0}) rawDocumentation = null;
+                if (rawMultiInstance is {Count: 0}) rawMultiInstance = null;
+                if (priorityAttrNs is {Count: 0}) priorityAttrNs = null;
+                if (flowNodeAttributes is { Count: 0 }) flowNodeAttributes = null;
+                if (vendorNormalized is { Count: 0 }) vendorNormalized = null;
+            }
+
+            rawMeta = new BpmnRawMetadata(rawDefinitionsAttr, rawProcessAttr,
+                rawIncoming?.ToDictionary(k => k.Key, v => (IReadOnlyList<string>) v.Value),
+                rawOutgoing?.ToDictionary(k => k.Key, v => (IReadOnlyList<string>) v.Value),
+                rawCond?.ToDictionary(k => k.Key, v => v.Value),
+                rawExtensions,
+                rawEvDefs?.ToDictionary(k => k.Key, v => (IReadOnlyList<XElement>) v.Value),
+                rawMultiInstance?.ToDictionary(k => k.Key, v => new XElement(v.Value)),
+                priorityAttrNs?.ToDictionary(k => k.Key, v => v.Value), 
+                flowNodeAttributes, false,
+                namespacePrefixes,
+                elementsMetadata, 
+                rawGlobalElements, 
+                rawArtifacts, 
+                rawLanes,
+                rawDocumentation?.ToDictionary(k => k.Key, v => (IReadOnlyList<XElement>) v.Value),
+                RawDiRoot: diRoot,
+                PartiallyDirtyElements: null,
+                GlobalElementKinds: globalKinds,
+                VendorNormalizedExtensions: vendorNormalized
+            );
+        }
+
+        var model = new BpmnModel(pid, events, gateways, subprocesses, flows, tasks, dataObjects, dataObjectRefs,
+            dataStores, dataStoreRefs, properties, activityIo, messageModels, signalModels, errorModels,
+            escalationModels, diagnostics, shapes, edges, participants, lanes, messageFlows, textAnnotations,
+            associationArtifacts, groups, Activities: activities, RawMetadata: rawMeta, ValidationDiagnostics: structuredDiagnostics);
         Cache(xml, model);
+   
         return Task.FromResult(model);
+    }
+
+
+    private static IReadOnlyList<ValidationDiagnostic> RunAdvancedValidation(
+        BpmnParserOptions options,
+        IReadOnlyList<BpmnEvent> events,
+        IReadOnlyList<BpmnGateway> gateways,
+        IReadOnlyList<BpmnSubprocess> subprocesses,
+        IReadOnlyList<BpmnSequenceFlow> flows,
+        IReadOnlyList<BpmnTask> tasks,
+        IReadOnlyList<BpmnLane>? lanes,
+        IReadOnlyList<BpmnMessageFlow>? messageFlows,
+        IReadOnlyList<string> legacyDiagnostics,
+        IReadOnlyList<XElement>? rawLaneElements,
+        IReadOnlyList<BpmnDataObject> dataObjects,
+        IReadOnlyList<BpmnDataObjectReference> dataObjectReferences,
+        IReadOnlyList<BpmnAssociationArtifact> associations,
+        IReadOnlyList<BpmnTextAnnotation> textAnnotations,
+        IReadOnlyList<BpmnGroup> groups)
+    {
+        var list = new List<ValidationDiagnostic>();
+
+        // ---- Legacy mapping block (keep existing mappings; abbreviated here) ----
+        foreach (var msg in legacyDiagnostics)
+        {
+            if (msg.StartsWith("Duplicate ID:", StringComparison.Ordinal))
+            {
+                var id = msg.Substring("Duplicate ID:".Length).Trim();
+                if (id.Length > 0)
+                {
+                    list.Add(new ValidationDiagnostic(
+                        Code: "STR-DUP-ID",
+                        Severity: ValidationSeverity.Error,
+                        Message: $"Duplicate id '{id}' detected",
+                        ElementId: id,
+                        Category: "Structural"));
+                }
+            }
+            const string miPrefix = "multi-instance conflict on ";
+            if (msg.StartsWith(miPrefix, StringComparison.Ordinal))
+            {
+                var id = msg.Substring(miPrefix.Length).Trim();
+                if (id.Length > 0 &&
+                    !list.Exists(d => d.Code == "SEM-MI-CONFLICT" && d.ElementId == id))
+                {
+                    list.Add(new ValidationDiagnostic(
+                        Code: "SEM-MI-CONFLICT",
+                        Severity: ValidationSeverity.Warning,
+                        Message: $"Multi-instance activity '{id}' has both loopCardinality and collection – remove one",
+                        ElementId: id,
+                        Category: "Semantic"));
+                }
+            }
+            // boundary attached missing
+            if (msg.StartsWith("boundaryEvent ", StringComparison.Ordinal) &&
+                msg.EndsWith(" missing", StringComparison.Ordinal) &&
+                msg.Contains(" attachedToRef "))
+            {
+                var tokens = msg.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (tokens.Length >= 5)
+                {
+                    var boundaryId = tokens[1];
+                    if (boundaryId.Length > 0 &&
+                        !list.Exists(d => d.Code == "REF-BOUNDARY-ATTACHED-MISSING" && d.ElementId == boundaryId))
+                    {
+                        list.Add(new ValidationDiagnostic(
+                            Code: "REF-BOUNDARY-ATTACHED-MISSING",
+                            Severity: ValidationSeverity.Error,
+                            Message: $"BoundaryEvent '{boundaryId}' attachedToRef is missing",
+                            ElementId: boundaryId,
+                            Category: "Referential"));
+                    }
+                }
+            }
+            // Default flow with condition
+            if (msg.StartsWith("Default flow ", StringComparison.Ordinal) &&
+                msg.Contains(" has condition", StringComparison.Ordinal))
+            {
+                // We already add structured version below when iterating flows; skip here to avoid duplication.
+            }
+            // Global reference missing mappings
+            if (msg.StartsWith("Unknown messageRef '", StringComparison.Ordinal))
+            {
+                if (TryExtractRef(msg, "Unknown messageRef '", "' at event ", out var refId, out var evId))
+                    AddIfAbsent("REF-GLOBAL-MESSAGE-MISSING", evId, $"Event '{evId}' references unknown message '{refId}'");
+            }
+            else if (msg.StartsWith("Unknown signalRef '", StringComparison.Ordinal))
+            {
+                if (TryExtractRef(msg, "Unknown signalRef '", "' at event ", out var refId, out var evId))
+                    AddIfAbsent("REF-GLOBAL-SIGNAL-MISSING", evId, $"Event '{evId}' references unknown signal '{refId}'");
+            }
+            else if (msg.StartsWith("Unknown errorRef '", StringComparison.Ordinal))
+            {
+                if (TryExtractRef(msg, "Unknown errorRef '", "' at event ", out var refId, out var evId))
+                    AddIfAbsent("REF-GLOBAL-ERROR-MISSING", evId, $"Event '{evId}' references unknown error '{refId}'");
+            }
+            else if (msg.StartsWith("Unknown escalationRef '", StringComparison.Ordinal))
+            {
+                if (TryExtractRef(msg, "Unknown escalationRef '", "' at event ", out var refId, out var evId))
+                    AddIfAbsent("REF-GLOBAL-ESCALATION-MISSING", evId, $"Event '{evId}' references unknown escalation '{refId}'");
+            }
+            // Link events
+            if (msg.StartsWith("Unmatched link ", StringComparison.Ordinal))
+            {
+                var linkName = msg["Unmatched link ".Length..].Trim();
+                if (linkName.Length > 0 &&
+                    !list.Exists(d => d.Code == "SEM-LINK-UNMATCHED" && d.Message.Contains(linkName, StringComparison.Ordinal)))
+                {
+                    list.Add(new ValidationDiagnostic(
+                        Code: "SEM-LINK-UNMATCHED",
+                        Severity: ValidationSeverity.Error,
+                        Message: $"Link event name '{linkName}' has no matching catch (exactly one throw & one catch required)",
+                        ElementId: null,
+                        Category: "Semantic"));
+                }
+            }
+            else if (msg.StartsWith("Multiple throw link events for ", StringComparison.Ordinal))
+            {
+                var linkName = msg["Multiple throw link events for ".Length..].Trim();
+                if (linkName.Length > 0 &&
+                    !list.Exists(d => d.Code == "SEM-LINK-MULTIPLE-THROW" && d.Message.Contains(linkName, StringComparison.Ordinal)))
+                {
+                    list.Add(new ValidationDiagnostic(
+                        Code: "SEM-LINK-MULTIPLE-THROW",
+                        Severity: ValidationSeverity.Error,
+                        Message: $"Multiple throw link events detected for name '{linkName}' (only one throw allowed)",
+                        ElementId: null,
+                        Category: "Semantic"));
+                }
+            }
+            // Cancel / Terminate outside TX
+            if (msg.StartsWith("Cancel end event ", StringComparison.Ordinal) &&
+                msg.EndsWith(" outside transaction", StringComparison.Ordinal))
+            {
+                const string pc = "Cancel end event ";
+                const string sc = " outside transaction";
+                var idPart = msg.Substring(pc.Length, msg.Length - pc.Length - sc.Length).Trim();
+                if (idPart.Length > 0 &&
+                    !list.Exists(d => d.Code == "SEM-CANCEL-OUTSIDE-TX" && d.ElementId == idPart))
+                {
+                    list.Add(new ValidationDiagnostic(
+                        Code: "SEM-CANCEL-OUTSIDE-TX",
+                        Severity: ValidationSeverity.Warning,
+                        Message: $"Cancel end event '{idPart}' is outside a transaction subprocess",
+                        ElementId: idPart,
+                        Category: "Semantic"));
+                }
+            }
+            else if (msg.StartsWith("Terminate end event ", StringComparison.Ordinal) &&
+                     msg.EndsWith(" outside transaction", StringComparison.Ordinal))
+            {
+                const string pt = "Terminate end event ";
+                const string st = " outside transaction";
+                var idPart = msg.Substring(pt.Length, msg.Length - pt.Length - st.Length).Trim();
+                if (idPart.Length > 0 &&
+                    !list.Exists(d => d.Code == "SEM-TERMINATE-OUTSIDE-TX" && d.ElementId == idPart))
+                {
+                    list.Add(new ValidationDiagnostic(
+                        Code: "SEM-TERMINATE-OUTSIDE-TX",
+                        Severity: ValidationSeverity.Warning,
+                        Message: $"Terminate end event '{idPart}' is outside a transaction subprocess",
+                        ElementId: idPart,
+                        Category: "Semantic"));
+                }
+            }
+            // Boundary compensation cancelActivity false
+            if (msg.StartsWith("Boundary compensation event ", StringComparison.Ordinal) &&
+                msg.EndsWith(" must have cancelActivity='false'", StringComparison.Ordinal))
+            {
+                const string pbc = "Boundary compensation event ";
+                const string sbc = " must have cancelActivity='false'";
+                var idPart = msg.Substring(pbc.Length, msg.Length - pbc.Length - sbc.Length).Trim();
+                if (idPart.Length > 0 &&
+                    !list.Exists(d => d.Code == "SEM-BOUNDARY-COMPENSATION-CANCELACTIVITY" && d.ElementId == idPart))
+                {
+                    list.Add(new ValidationDiagnostic(
+                        Code: "SEM-BOUNDARY-COMPENSATION-CANCELACTIVITY",
+                        Severity: ValidationSeverity.Error,
+                        Message: $"Boundary compensation event '{idPart}' must set cancelActivity='false'",
+                        ElementId: idPart,
+                        Category: "Semantic"));
+                }
+            }
+            // STR-MISSING-PROCESS
+            if (msg == "No <process> element")
+            {
+                if (!list.Exists(d => d.Code == "STR-MISSING-PROCESS"))
+                {
+                    list.Add(new ValidationDiagnostic(
+                        Code: "STR-MISSING-PROCESS",
+                        Severity: ValidationSeverity.Error,
+                        Message: "Root <process> element is missing",
+                        ElementId: null,
+                        Category: "Structural"));
+                }
+                continue;
+            }
+
+            // STR-MISSING-ID legacy: "Missing id on <type>"
+            if (msg.StartsWith("Missing id on ", StringComparison.Ordinal))
+            {
+                var type = msg.Substring("Missing id on ".Length).Trim();
+                if (type.Length == 0) type = "element";
+                // Allow multiple occurrences (could be several elements)
+                list.Add(new ValidationDiagnostic(
+                    Code: "STR-MISSING-ID",
+                    Severity: ValidationSeverity.Error,
+                    Message: $"Flow node of type '{type}' is missing a required id",
+                    ElementId: null,
+                    Category: "Structural"));
+                continue;
+            }
+        }
+
+        // Helper local functions
+        static bool TryExtractRef(string msg, string prefix, string mid, out string refId, out string eventId)
+        {
+            refId = string.Empty;
+            eventId = string.Empty;
+            if (!msg.StartsWith(prefix, StringComparison.Ordinal)) return false;
+            var midIdx = msg.IndexOf(mid, StringComparison.Ordinal);
+            if (midIdx < 0) return false;
+            refId = msg.Substring(prefix.Length, midIdx - prefix.Length);
+            eventId = msg[(midIdx + mid.Length)..].Trim();
+            return refId.Length > 0 && eventId.Length > 0;
+        }
+        void AddIfAbsent(string code, string elementId, string message)
+        {
+            if (!list.Exists(d => d.Code == code && d.ElementId == elementId))
+            {
+                list.Add(new ValidationDiagnostic(
+                    Code: code,
+                    Severity: ValidationSeverity.Error,
+                    Message: message,
+                    ElementId: elementId,
+                    Category: "Referential"));
+            }
+        }
+
+        // Build set of valid flow node ids
+        var nodeIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var e in events) if (!string.IsNullOrEmpty(e.Id)) nodeIds.Add(e.Id);
+        foreach (var t in tasks) if (!string.IsNullOrEmpty(t.Id)) nodeIds.Add(t.Id);
+        foreach (var g in gateways) if (!string.IsNullOrEmpty(g.Id)) nodeIds.Add(g.Id);
+        foreach (var sp in subprocesses) if (!string.IsNullOrEmpty(sp.Id)) nodeIds.Add(sp.Id);
+
+        // Sequence flow endpoint & default condition rule
+        foreach (var flow in flows)
+        {
+            if (string.IsNullOrEmpty(flow.Id)) continue;
+            if (string.IsNullOrEmpty(flow.SourceRef) || !nodeIds.Contains(flow.SourceRef))
+            {
+                list.Add(new ValidationDiagnostic(
+                    Code: "REF-SEQUENCE-ENDPOINT",
+                    Severity: ValidationSeverity.Error,
+                    Message: $"SequenceFlow '{flow.Id}' sourceRef '{flow.SourceRef}' not found",
+                    ElementId: flow.Id,
+                    Category: "Referential"));
+            }
+            if (string.IsNullOrEmpty(flow.TargetRef) || !nodeIds.Contains(flow.TargetRef))
+            {
+                list.Add(new ValidationDiagnostic(
+                    Code: "REF-SEQUENCE-ENDPOINT",
+                    Severity: ValidationSeverity.Error,
+                    Message: $"SequenceFlow '{flow.Id}' targetRef '{flow.TargetRef}' not found",
+                    ElementId: flow.Id,
+                    Category: "Referential"));
+            }
+            if (flow.IsDefault && !string.IsNullOrWhiteSpace(flow.ConditionExpression))
+            {
+                list.Add(new ValidationDiagnostic(
+                    Code: "SEM-DEFAULT-WITH-CONDITION",
+                    Severity: ValidationSeverity.Error,
+                    Message: $"Default sequenceFlow '{flow.Id}' MUST NOT have a conditionExpression",
+                    ElementId: flow.Id,
+                    Category: "Semantic"));
+            }
+        }
+
+        // LANE FLOW NODE REF rule
+        if (rawLaneElements is { Count: > 0 })
+        {
+            foreach (var laneEl in rawLaneElements.Where(x => x.Name.LocalName == "lane"))
+            {
+                var laneId = laneEl.Attribute("id")?.Value;
+                if (string.IsNullOrEmpty(laneId)) continue;
+
+                foreach (var fnRef in laneEl.Elements().Where(e => e.Name.LocalName == "flowNodeRef"))
+                {
+                    var refId = fnRef.Value?.Trim();
+                    if (string.IsNullOrEmpty(refId)) continue;
+                    if (!nodeIds.Contains(refId) &&
+                        !list.Exists(d => d.Code == "REF-LANE-FLOWNODE-MISSING" && d.ElementId == laneId && d.Message.Contains(refId, StringComparison.Ordinal)))
+                    {
+                        list.Add(new ValidationDiagnostic(
+                            Code: "REF-LANE-FLOWNODE-MISSING",
+                            Severity: ValidationSeverity.Warning,
+                            Message: $"Lane '{laneId}' references unknown flow node '{refId}'",
+                            ElementId: laneId,
+                            Category: "Referential"));
+                    }
+                }
+            }
+        }
+
+        // REF-DATAOBJECTREF-TARGET-MISSING
+        if (dataObjectReferences.Count > 0)
+        {
+            var dataObjectIds = new HashSet<string>(dataObjects.Select(d => d.Id), StringComparer.Ordinal);
+            foreach (var dref in dataObjectReferences)
+            {
+                if (string.IsNullOrEmpty(dref.Id)) continue;
+                if (string.IsNullOrEmpty(dref.DataObjectRef) || !dataObjectIds.Contains(dref.DataObjectRef))
+                {
+                    if (!list.Exists(d => d.Code == "REF-DATAOBJECTREF-TARGET-MISSING" && d.ElementId == dref.Id))
+                    {
+                        list.Add(new ValidationDiagnostic(
+                            Code: "REF-DATAOBJECTREF-TARGET-MISSING",
+                            Severity: ValidationSeverity.Error,
+                            Message: $"DataObjectReference '{dref.Id}' references missing dataObject '{dref.DataObjectRef}'",
+                            ElementId: dref.Id,
+                            Category: "Referential"));
+                    }
+                }
+            }
+        }
+
+        // REF-ASSOCIATION-ENDPOINT-MISSING (Warning for each missing endpoint)
+        if (associations.Count > 0)
+        {
+            // Build a set of "known" artifact/flow node ids that associations could legally reference.
+            var knownIds = new HashSet<string>(nodeIds, StringComparer.Ordinal);
+            foreach (var d in dataObjects) if (!string.IsNullOrEmpty(d.Id)) knownIds.Add(d.Id);
+            foreach (var tn in textAnnotations) if (!string.IsNullOrEmpty(tn.Id)) knownIds.Add(tn.Id);
+            foreach (var g in groups) if (!string.IsNullOrEmpty(g.Id)) knownIds.Add(g.Id);
+            foreach (var dref in dataObjectReferences) if (!string.IsNullOrEmpty(dref.Id)) knownIds.Add(dref.Id);
+
+            foreach (var assoc in associations)
+            {
+                if (string.IsNullOrEmpty(assoc.Id)) continue;
+
+                bool missingSource = string.IsNullOrEmpty(assoc.SourceRef) || !knownIds.Contains(assoc.SourceRef);
+                bool missingTarget = string.IsNullOrEmpty(assoc.TargetRef) || !knownIds.Contains(assoc.TargetRef);
+
+                if (missingSource)
+                {
+                    if (!list.Exists(d => d.Code == "REF-ASSOCIATION-ENDPOINT-MISSING" && d.ElementId == assoc.Id && d.Message.Contains("sourceRef", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        list.Add(new ValidationDiagnostic(
+                            Code: "REF-ASSOCIATION-ENDPOINT-MISSING",
+                            Severity: ValidationSeverity.Warning,
+                            Message: $"Association '{assoc.Id}' sourceRef '{assoc.SourceRef}' not found",
+                            ElementId: assoc.Id,
+                            Category: "Referential"));
+                    }
+                }
+                if (missingTarget)
+                {
+                    if (!list.Exists(d => d.Code == "REF-ASSOCIATION-ENDPOINT-MISSING" && d.ElementId == assoc.Id && d.Message.Contains("targetRef", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        list.Add(new ValidationDiagnostic(
+                            Code: "REF-ASSOCIATION-ENDPOINT-MISSING",
+                            Severity: ValidationSeverity.Warning,
+                            Message: $"Association '{assoc.Id}' targetRef '{assoc.TargetRef}' not found",
+                            ElementId: assoc.Id,
+                            Category: "Referential"));
+                    }
+                }
+            }
+        }
+
+        // SEM-EVENTSUBPROCESS-START-TYPE:
+        // Validate startEvent definitions inside event subprocesses (triggeredByEvent="true").
+        if (subprocesses.Count > 0)
+        {
+            // Allowed event definition CLR types
+            static bool IsAllowed(EventDefinition def) =>
+                def is MessageEventDefinition
+                 or TimerEventDefinition
+                 or EscalationEventDefinition
+                 or ErrorEventDefinition
+                 or CompensationEventDefinition
+                 or SignalEventDefinition
+                 or ConditionalEventDefinition;
+
+            var eventSubIds = new HashSet<string>(
+                subprocesses.Where(sp => sp.IsEventSubprocess)
+                            .Select(sp => sp.Id)
+                            .Where(id => !string.IsNullOrEmpty(id)),
+                StringComparer.Ordinal);
+
+            if (eventSubIds.Count > 0)
+            {
+                foreach (var ev in events.Where(e => e.Type == "startEvent" && !string.IsNullOrEmpty(e.SubprocessId) && eventSubIds.Contains(e.SubprocessId)))
+                {
+                    if (string.IsNullOrEmpty(ev.Id)) continue;
+
+                    if (ev.Definitions.Count == 0)
+                    {
+                        AddStartTypeDiagnostic(ev, "none");
+                        continue;
+                    }
+
+                    bool invalid = false;
+                    string? badType = null;
+                    foreach (var def in ev.Definitions)
+                    {
+                        if (!IsAllowed(def))
+                        {
+                            invalid = true;
+                            badType = def.GetType().Name.Replace("EventDefinition", "", StringComparison.Ordinal);
+                            break;
+                        }
+                    }
+                    if (invalid)
+                    {
+                        AddStartTypeDiagnostic(ev, badType ?? "unknown");
+                    }
+
+                    void AddStartTypeDiagnostic(BpmnEvent e, string problem)
+                    {
+                        var normalized = problem.ToLowerInvariant();
+                        if (!list.Exists(d => d.Code == "SEM-EVENTSUBPROCESS-START-TYPE" && d.ElementId == e.Id))
+                        {
+                            list.Add(new ValidationDiagnostic(
+                                Code: "SEM-EVENTSUBPROCESS-START-TYPE",
+                                Severity: ValidationSeverity.Error,
+                                Message: $"Event subprocess start event '{e.Id}' has invalid start type '{normalized}'",
+                                ElementId: e.Id,
+                                Category: "Semantic"));
+                        }
+                    }
+                }
+            }
+        }
+        // SEM-EVENTGW-INVALID-OUTGOING:
+        // For each event-based gateway, all outgoing targets must be catching intermediate events (intermediateCatchEvent).
+        if (gateways.Count > 0)
+        {
+            // Build quick lookup for events by id and type
+            var eventTypeById = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var ev in events)
+            {
+                if (!string.IsNullOrEmpty(ev.Id))
+                    eventTypeById[ev.Id] = ev.Type;
+            }
+
+            // Group flows by source for efficiency
+            var flowsBySource = new Dictionary<string, List<BpmnSequenceFlow>>(StringComparer.Ordinal);
+            foreach (var f in flows)
+            {
+                if (string.IsNullOrEmpty(f.SourceRef)) continue;
+                if (!flowsBySource.TryGetValue(f.SourceRef, out var lst))
+                {
+                    lst = new List<BpmnSequenceFlow>();
+                    flowsBySource[f.SourceRef] = lst;
+                }
+                lst.Add(f);
+            }
+
+            foreach (var gw in gateways.Where(g => string.Equals(g.Type, "eventBasedGateway", StringComparison.Ordinal)))
+            {
+                if (string.IsNullOrEmpty(gw.Id)) continue;
+
+                if (!flowsBySource.TryGetValue(gw.Id, out var outgoing)) continue;
+
+                foreach (var flow in outgoing)
+                {
+                    var tgt = flow.TargetRef;
+                    if (string.IsNullOrEmpty(tgt))
+                    {
+                        // Endpoint rule already covers missing target; skip duplication
+                        continue;
+                    }
+
+                    // Valid only if target is an intermediateCatchEvent
+                    if (!eventTypeById.TryGetValue(tgt, out var tType) || !string.Equals(tType, "intermediateCatchEvent", StringComparison.Ordinal))
+                    {
+                        if (!list.Exists(d => d.Code == "SEM-EVENTGW-INVALID-OUTGOING" && d.ElementId == gw.Id && d.Message.Contains(tgt, StringComparison.Ordinal)))
+                        {
+                            list.Add(new ValidationDiagnostic(
+                                Code: "SEM-EVENTGW-INVALID-OUTGOING",
+                                Severity: ValidationSeverity.Error,
+                                Message: $"Event-based gateway '{gw.Id}' has outgoing flow '{flow.Id}' to invalid target '{tgt}' (must target intermediateCatchEvent)",
+                                ElementId: gw.Id,
+                                Category: "Semantic"));
+                        }
+                    }
+                }
+            }
+        }
+        // --
+        // - Advisory Reachability Rules (BFS from start events) ---
+        // Build adjacency once
+        if (events.Count > 0 || tasks.Count > 0 || gateways.Count > 0 || subprocesses.Count > 0)
+        {
+            var adjacency = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+            foreach (var f in flows)
+            {
+                if (string.IsNullOrEmpty(f.SourceRef) || string.IsNullOrEmpty(f.TargetRef)) continue;
+                if (!adjacency.TryGetValue(f.SourceRef, out var listTargets))
+                {
+                    listTargets = new List<string>();
+                    adjacency[f.SourceRef] = listTargets;
+                }
+                listTargets.Add(f.TargetRef);
+            }
+
+            // Start events only at root level (no SubprocessId) for top-level reachability
+            var startIds = events.Where(e => e.Type == "startEvent" && string.IsNullOrEmpty(e.SubprocessId))
+                                 .Select(e => e.Id)
+                                 .Where(id => !string.IsNullOrEmpty(id))
+                                 .ToList();
+
+            var reachable = new HashSet<string>(StringComparer.Ordinal);
+            var queue = new Queue<string>();
+
+            foreach (var s in startIds)
+            {
+                if (reachable.Add(s)) queue.Enqueue(s);
+            }
+
+            while (queue.Count > 0)
+            {
+                var cur = queue.Dequeue();
+                if (adjacency.TryGetValue(cur, out var outs))
+                {
+                    foreach (var tgt in outs)
+                    {
+                        if (!string.IsNullOrEmpty(tgt) && reachable.Add(tgt))
+                            queue.Enqueue(tgt);
+                    }
+                }
+            }
+
+            // Node set already built: nodeIds
+            if (reachable.Count > 0)
+            {
+                foreach (var nid in nodeIds)
+                {
+                    if (!reachable.Contains(nid))
+                    {
+                        // Unreachable node
+                        if (!list.Exists(d => d.Code == "ADV-UNREACHABLE-NODE" && d.ElementId == nid))
+                        {
+                            list.Add(new ValidationDiagnostic(
+                                Code: "ADV-UNREACHABLE-NODE",
+                                Severity: ValidationSeverity.Info,
+                                Message: $"Flow node '{nid}' is unreachable from any start event",
+                                ElementId: nid,
+                                Category: "Advisory"));
+                        }
+                    }
+                }
+
+                // Orphaned End Events (subset of unreachable end events)
+                foreach (var end in events.Where(e => e.Type == "endEvent"))
+                {
+                    if (!string.IsNullOrEmpty(end.Id) &&
+                        !reachable.Contains(end.Id) &&
+                        !list.Exists(d => d.Code == "ADV-ORPHANED-END" && d.ElementId == end.Id))
+                    {
+                        list.Add(new ValidationDiagnostic(
+                            Code: "ADV-ORPHANED-END",
+                            Severity: ValidationSeverity.Info,
+                            Message: $"End event '{end.Id}' is not reachable (orphaned)",
+                            ElementId: end.Id,
+                            Category: "Advisory"));
+                    }
+                }
+
+                // Dead sequence flows: endpoints include a node that is unreachable
+                foreach (var f in flows)
+                {
+                    if (string.IsNullOrEmpty(f.Id)) continue;
+                    bool dead = string.IsNullOrEmpty(f.SourceRef) || string.IsNullOrEmpty(f.TargetRef)
+                                || !reachable.Contains(f.SourceRef) || !reachable.Contains(f.TargetRef);
+                    if (dead && !list.Exists(d => d.Code == "ADV-DEAD-SEQUENCE-FLOW" && d.ElementId == f.Id))
+                    {
+                        list.Add(new ValidationDiagnostic(
+                            Code: "ADV-DEAD-SEQUENCE-FLOW",
+                            Severity: ValidationSeverity.Info,
+                            Message: $"SequenceFlow '{f.Id}' is dead (one or both endpoints unreachable)",
+                            ElementId: f.Id,
+                            Category: "Advisory"));
+                    }
+                }
+            }
+        }
+        return list;
+    }
+   
+    private IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? ParseVendorExtensions(bool strict, Dictionary<string, XElement>? rawExtensions)
+    {
+        // NEW Phase B: vendor extension normalization capture (expanded all vendors + generics)
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? vendorNormalized = null;
+        if (strict && _options.NormalizeVendorExtensions && rawExtensions is { Count: > 0 })
+        {
+            var camundaNs = "http://camunda.org/schema/1.0/bpmn";
+            var zeebeNs = "http://zeebe.io/schema/zeebe/1.0";
+            var flowableNs = "http://flowable.org/bpmn";
+            var activitiNs = "http://activiti.org/bpmn";
+            var cibNs = "http://cib.de/schema/bpmn";
+            var jbpmNs = "http://jbpm.org/bpmn";
+            var osmanthusNs = "http://osmanthus.io/bpmn";
+            var alfrescoNs = "http://alfresco.org/bpmn";
+            var mcpNs = "http://vertexbpmn.io/mcp";
+
+            var knownSet = new HashSet<string>(StringComparer.Ordinal)
+    {
+        camundaNs, zeebeNs, flowableNs, activitiNs, cibNs, jbpmNs, osmanthusNs, alfrescoNs, mcpNs
+    };
+
+            static string NextIndexedKey(Dictionary<string, string> bucket, string baseKey)
+            {
+                if (!bucket.ContainsKey(baseKey + "#1"))
+                {
+                    return baseKey + "#1";
+                }
+                int i = 2;
+                while (bucket.ContainsKey(baseKey + "#" + i)) i++;
+                return baseKey + "#" + i;
+            }
+
+            var tmp = new Dictionary<string, Dictionary<string, string>>(StringComparer.Ordinal);
+
+            foreach (var kv in rawExtensions)
+            {
+                var ownerId = kv.Key;
+                if (string.IsNullOrEmpty(ownerId)) continue;
+                var root0 = kv.Value;
+                var bucket = new Dictionary<string, string>(StringComparer.Ordinal);
+
+                foreach (var child in root0.Elements())
+                {
+                    var nsUri = child.Name.NamespaceName;
+                    var local = child.Name.LocalName;
+
+                    // CAMUNDA
+                    if (nsUri == camundaNs)
+                    {
+                        switch (local)
+                        {
+                            case "assignee":
+                                if (child.Attribute("value")?.Value is { } cav && cav.Length > 0)
+                                    bucket["camunda:assignee"] = cav;
+                                break;
+                            case "formField":
+                                {
+                                    var fid = child.Attribute("id")?.Value;
+                                    if (!string.IsNullOrEmpty(fid))
+                                    {
+                                        var fType = child.Attribute("type")?.Value;
+                                        var fName = child.Attribute("name")?.Value;
+                                        if (!string.IsNullOrEmpty(fType))
+                                            bucket[$"camunda:formField.{fid}.type"] = fType;
+                                        if (!string.IsNullOrEmpty(fName))
+                                            bucket[$"camunda:formField.{fid}.name"] = fName;
+                                    }
+                                    break;
+                                }
+                            case "properties":
+                                foreach (var prop in child.Elements(XName.Get("property", camundaNs)))
+                                {
+                                    var pname = prop.Attribute("name")?.Value;
+                                    var pval = prop.Attribute("value")?.Value;
+                                    if (!string.IsNullOrEmpty(pname) && pval != null)
+                                        bucket[$"camunda:property.{pname}"] = pval;
+                                }
+                                break;
+                            case "taskListener":
+                                {
+                                    var baseKey = "camunda:taskListener";
+                                    var idxKey = NextIndexedKey(bucket, baseKey);
+                                    var ev = child.Attribute("event")?.Value;
+                                    var clazz = child.Attribute("class")?.Value;
+                                    var expr = child.Attribute("expression")?.Value;
+                                    if (!string.IsNullOrEmpty(ev)) bucket[$"{idxKey}.event"] = ev;
+                                    if (!string.IsNullOrEmpty(clazz)) bucket[$"{idxKey}.class"] = clazz;
+                                    if (!string.IsNullOrEmpty(expr)) bucket[$"{idxKey}.expression"] = expr;
+                                    break;
+                                }
+                        }
+                    }
+                    // ZEEBE
+                    else if (nsUri == zeebeNs)
+                    {
+                        switch (local)
+                        {
+                            case "taskDefinition":
+                                if (child.Attribute("type")?.Value is { } t && t.Length > 0)
+                                    bucket["zeebe:taskDefinition.type"] = t;
+                                break;
+                            case "ioMapping":
+                                foreach (var input in child.Elements(XName.Get("input", zeebeNs)))
+                                {
+                                    var src = input.Attribute("source")?.Value;
+                                    var tgt = input.Attribute("target")?.Value;
+                                    if (!string.IsNullOrEmpty(src) && !string.IsNullOrEmpty(tgt))
+                                        bucket[$"zeebe:ioMapping.input.{tgt}"] = src;
+                                }
+                                foreach (var output in child.Elements(XName.Get("output", zeebeNs)))
+                                {
+                                    var src = output.Attribute("source")?.Value;
+                                    var tgt = output.Attribute("target")?.Value;
+                                    if (!string.IsNullOrEmpty(src) && !string.IsNullOrEmpty(tgt))
+                                        bucket[$"zeebe:ioMapping.output.{tgt}"] = src;
+                                }
+                                break;
+                            case "taskHeaders":
+                                foreach (var header in child.Elements(XName.Get("header", zeebeNs)))
+                                {
+                                    var hKey = header.Attribute("key")?.Value;
+                                    var hVal = header.Attribute("value")?.Value;
+                                    if (!string.IsNullOrEmpty(hKey) && hVal != null)
+                                        bucket[$"zeebe:taskHeaders.{hKey}"] = hVal;
+                                }
+                                break;
+                        }
+                    }
+                    // FLOWABLE
+                    else if (nsUri == flowableNs)
+                    {
+                        switch (local)
+                        {
+                            case "assignee":
+                                if (child.Attribute("value")?.Value is { } fav && fav.Length > 0)
+                                    bucket["flowable:assignee"] = fav;
+                                break;
+                            case "formField":
+                                {
+                                    var fid = child.Attribute("id")?.Value;
+                                    if (!string.IsNullOrEmpty(fid))
+                                    {
+                                        var fType = child.Attribute("type")?.Value;
+                                        var fName = child.Attribute("name")?.Value;
+                                        if (!string.IsNullOrEmpty(fType))
+                                            bucket[$"flowable:formField.{fid}.type"] = fType;
+                                        if (!string.IsNullOrEmpty(fName))
+                                            bucket[$"flowable:formField.{fid}.name"] = fName;
+                                    }
+                                    break;
+                                }
+                            case "taskListener":
+                                {
+                                    var baseKey = "flowable:taskListener";
+                                    var idxKey = NextIndexedKey(bucket, baseKey);
+                                    var ev = child.Attribute("event")?.Value;
+                                    var clazz = child.Attribute("class")?.Value;
+                                    var expr = child.Attribute("expression")?.Value;
+                                    if (!string.IsNullOrEmpty(ev)) bucket[$"{idxKey}.event"] = ev;
+                                    if (!string.IsNullOrEmpty(clazz)) bucket[$"{idxKey}.class"] = clazz;
+                                    if (!string.IsNullOrEmpty(expr)) bucket[$"{idxKey}.expression"] = expr;
+                                    break;
+                                }
+                        }
+                    }
+                    // ACTIVITI
+                    else if (nsUri == activitiNs)
+                    {
+                        switch (local)
+                        {
+                            case "formProperty":
+                                {
+                                    var fid = child.Attribute("id")?.Value;
+                                    if (!string.IsNullOrEmpty(fid))
+                                    {
+                                        var fType = child.Attribute("type")?.Value;
+                                        var fName = child.Attribute("name")?.Value;
+                                        if (!string.IsNullOrEmpty(fType))
+                                            bucket[$"activiti:formProperty.{fid}.type"] = fType;
+                                        if (!string.IsNullOrEmpty(fName))
+                                            bucket[$"activiti:formProperty.{fid}.name"] = fName;
+                                        foreach (var attr in child.Attributes())
+                                        {
+                                            if (attr.IsNamespaceDeclaration) continue;
+                                            if (attr.Name.LocalName is "id" or "type" or "name") continue;
+                                            if (attr.Value.Length == 0) continue;
+                                            bucket[$"activiti:formProperty.{fid}.{attr.Name.LocalName}"] = attr.Value;
+                                        }
+                                    }
+                                    break;
+                                }
+                            case "taskListener":
+                                {
+                                    var baseKey = "activiti:taskListener";
+                                    var idxKey = NextIndexedKey(bucket, baseKey);
+                                    var ev = child.Attribute("event")?.Value;
+                                    var clazz = child.Attribute("class")?.Value;
+                                    var expr = child.Attribute("expression")?.Value;
+                                    var del = child.Attribute("delegateExpression")?.Value;
+                                    if (!string.IsNullOrEmpty(ev)) bucket[$"{idxKey}.event"] = ev;
+                                    if (!string.IsNullOrEmpty(clazz)) bucket[$"{idxKey}.class"] = clazz;
+                                    if (!string.IsNullOrEmpty(expr)) bucket[$"{idxKey}.expression"] = expr;
+                                    if (!string.IsNullOrEmpty(del)) bucket[$"{idxKey}.delegateExpression"] = del;
+                                    break;
+                                }
+                            case "executionListener":
+                                {
+                                    var baseKey = "activiti:executionListener";
+                                    var idxKey = NextIndexedKey(bucket, baseKey);
+                                    var ev = child.Attribute("event")?.Value;
+                                    var clazz = child.Attribute("class")?.Value;
+                                    var expr = child.Attribute("expression")?.Value;
+                                    var del = child.Attribute("delegateExpression")?.Value;
+                                    if (!string.IsNullOrEmpty(ev)) bucket[$"{idxKey}.event"] = ev;
+                                    if (!string.IsNullOrEmpty(clazz)) bucket[$"{idxKey}.class"] = clazz;
+                                    if (!string.IsNullOrEmpty(expr)) bucket[$"{idxKey}.expression"] = expr;
+                                    if (!string.IsNullOrEmpty(del)) bucket[$"{idxKey}.delegateExpression"] = del;
+                                    break;
+                                }
+                            case "candidateUsers":
+                                if (child.Attribute("value")?.Value is { } cu && cu.Length > 0)
+                                    bucket["activiti:candidateUsers"] = cu;
+                                break;
+                            case "candidateGroups":
+                                if (child.Attribute("value")?.Value is { } cg && cg.Length > 0)
+                                    bucket["activiti:candidateGroups"] = cg;
+                                break;
+                        }
+                    }
+                    // CIB
+                    else if (nsUri == cibNs)
+                    {
+                        switch (local)
+                        {
+                            case "assignee":
+                                if (child.Attribute("value")?.Value is { } cav && cav.Length > 0)
+                                    bucket["cib:assignee"] = cav;
+                                break;
+                            case "formField":
+                                {
+                                    var fid = child.Attribute("id")?.Value;
+                                    if (!string.IsNullOrEmpty(fid))
+                                    {
+                                        var fType = child.Attribute("type")?.Value;
+                                        var fName = child.Attribute("name")?.Value;
+                                        if (!string.IsNullOrEmpty(fType))
+                                            bucket[$"cib:formField.{fid}.type"] = fType;
+                                        if (!string.IsNullOrEmpty(fName))
+                                            bucket[$"cib:formField.{fid}.name"] = fName;
+                                    }
+                                    break;
+                                }
+                            case "connector":
+                                {
+                                    var cid = child.Attribute("id")?.Value;
+                                    if (string.IsNullOrEmpty(cid))
+                                        cid = NextIndexedKey(bucket, "cib:connector").Split('#')[1]; // fallback index part
+                                    var idKey = string.IsNullOrEmpty(child.Attribute("id")?.Value) ? NextIndexedKey(bucket, "cib:connector") : $"cib:connector.{cid}";
+                                    var realKeyPrefix = idKey.StartsWith("cib:connector#") ? idKey : $"cib:connector.{cid}";
+                                    var cType = child.Attribute("type")?.Value;
+                                    var url = child.Attribute("url")?.Value;
+                                    if (!string.IsNullOrEmpty(cType)) bucket[$"{realKeyPrefix}.type"] = cType;
+                                    if (!string.IsNullOrEmpty(url)) bucket[$"{realKeyPrefix}.url"] = url;
+                                    break;
+                                }
+                            case "aiModule":
+                                {
+                                    var type = child.Attribute("type")?.Value;
+                                    var model = child.Attribute("model")?.Value;
+                                    string keyPrefix;
+                                    if (!string.IsNullOrEmpty(type))
+                                        keyPrefix = $"cib:aiModule.{type}";
+                                    else
+                                        keyPrefix = NextIndexedKey(bucket, "cib:aiModule");
+                                    if (!string.IsNullOrEmpty(model))
+                                        bucket[$"{keyPrefix}.model"] = model;
+                                    break;
+                                }
+                        }
+                    }
+                    // JBPM
+                    else if (nsUri == jbpmNs)
+                    {
+                        switch (local)
+                        {
+                            case "assignment":
+                                {
+                                    var actor = child.Attribute("actorId")?.Value;
+                                    var grp = child.Attribute("groupId")?.Value;
+                                    if (!string.IsNullOrEmpty(actor)) bucket["jbpm:assignment.actorId"] = actor;
+                                    if (!string.IsNullOrEmpty(grp)) bucket["jbpm:assignment.groupId"] = grp;
+                                    break;
+                                }
+                            case "workItemHandler":
+                                {
+                                    var name = child.Attribute("name")?.Value;
+                                    var cls = child.Attribute("class")?.Value;
+                                    string keyPrefix;
+                                    if (!string.IsNullOrEmpty(name))
+                                        keyPrefix = $"jbpm:workItemHandler.{name}";
+                                    else
+                                        keyPrefix = NextIndexedKey(bucket, "jbpm:workItemHandler");
+                                    if (!string.IsNullOrEmpty(cls))
+                                        bucket[$"{keyPrefix}.class"] = cls;
+                                    break;
+                                }
+                        }
+                    }
+                    // OSMANTHUS
+                    else if (nsUri == osmanthusNs)
+                    {
+                        switch (local)
+                        {
+                            case "advance":
+                                {
+                                    var type = child.Attribute("type")?.Value;
+                                    var target = child.Attribute("target")?.Value;
+                                    if (!string.IsNullOrEmpty(type)) bucket["osmanthus:advance.type"] = type;
+                                    if (!string.IsNullOrEmpty(target)) bucket["osmanthus:advance.target"] = target;
+                                    break;
+                                }
+                            case "timeout":
+                                {
+                                    var dur = child.Attribute("duration")?.Value;
+                                    var act = child.Attribute("action")?.Value;
+                                    if (!string.IsNullOrEmpty(dur)) bucket["osmanthus:timeout.duration"] = dur;
+                                    if (!string.IsNullOrEmpty(act)) bucket["osmanthus:timeout.action"] = act;
+                                    break;
+                                }
+                            case "pdfTemplate":
+                                {
+                                    var tid = child.Attribute("templateId")?.Value;
+                                    var outp = child.Attribute("output")?.Value;
+                                    if (!string.IsNullOrEmpty(tid)) bucket["osmanthus:pdfTemplate.templateId"] = tid;
+                                    if (!string.IsNullOrEmpty(outp)) bucket["osmanthus:pdfTemplate.output"] = outp;
+                                    break;
+                                }
+                        }
+                    }
+                    // ALFRESCO
+                    else if (nsUri == alfrescoNs)
+                    {
+                        switch (local)
+                        {
+                            case "formKey":
+                                if (child.Attribute("value")?.Value is { } fk && fk.Length > 0)
+                                    bucket["alfresco:formKey"] = fk;
+                                break;
+                            case "scriptTask":
+                                if (child.Attribute("script")?.Value is { } sc && sc.Length > 0)
+                                    bucket["alfresco:scriptTask.script"] = sc;
+                                break;
+                        }
+                    }
+                    // MCP
+                    else if (nsUri == mcpNs)
+                    {
+                        if (local == "mcpServiceTask")
+                        {
+                            foreach (var attr in child.Attributes())
+                            {
+                                if (attr.IsNamespaceDeclaration) continue;
+                                if (!string.IsNullOrEmpty(attr.Value))
+                                    bucket[$"mcp:mcpServiceTask.{attr.Name.LocalName}"] = attr.Value;
+                            }
+                        }
+                    }
+                    // GENERICS (nur wenn aktiviert)
+                    else if (_options.NormalizeUnknownVendorExtensions && nsUri.Length > 0)
+                    {
+                        // Versuche Präfix zu ermitteln (falls nicht vorhanden -> generic)
+                        var prefix = child.GetPrefixOfNamespace(child.Name.Namespace);
+                        if (string.IsNullOrEmpty(prefix))
+                        {
+                            // Fallback Kürzel generieren (ns)
+                            prefix = "ns";
+                        }
+                        // Sicherstellen dass nicht einer der bekannten Prefixe kollidiert ohne definierten Namespace
+                        // (zero-break – ignorieren wenn zufällig gleich)
+                        foreach (var attr in child.Attributes())
+                        {
+                            if (attr.IsNamespaceDeclaration) continue;
+                            if (attr.Value.Length == 0) continue;
+                            var key = $"{prefix}:{local}.{attr.Name.LocalName}";
+                            if (!bucket.ContainsKey(key))
+                                bucket[key] = attr.Value;
+                        }
+                        // Textinhalt optional
+                        if (!child.HasElements && !child.HasAttributes && !string.IsNullOrWhiteSpace(child.Value))
+                        {
+                            var k = $"{prefix}:{local}.__text";
+                            if (!bucket.ContainsKey(k))
+                                bucket[k] = child.Value.Trim();
+                        }
+                    }
+                }
+
+                if (bucket.Count > 0)
+                    tmp[ownerId] = bucket;
+            }
+
+            if (tmp.Count > 0)
+            {
+                vendorNormalized = tmp.ToDictionary(
+                    e => e.Key,
+                    e => (IReadOnlyDictionary<string, string>)new ReadOnlyDictionary<string, string>(e.Value),
+                    StringComparer.Ordinal);
+            }
+        }
+        return vendorNormalized;
     }
 
     public string Serialize(BpmnModel model) => new BpmnSerializer { RoundtripMode = _options.RoundtripMode }.Serialize(model);
@@ -372,4 +1538,36 @@ public class BpmnParser : IBpmnParser
         }
         return list;
     }
+
+    private static void MaybeThrowOnValidation(BpmnParserOptions options, IReadOnlyList<ValidationDiagnostic> diagnostics)
+    {
+        if (!options.ThrowOnFatalValidation) return;
+        var threshold = options.MinimumThrowSeverity;
+        // if any diagnostic meets threshold, throw with all diagnostics
+        if (diagnostics.Any(d => d.Severity >= threshold))
+        {
+            // Create concise message summary
+            var first = diagnostics.First(d => d.Severity >= threshold);
+            throw new UnifiedBpmnValidationException(
+                $"BPMN validation failed (first: {first.Code} severity={first.Severity})",
+                diagnostics);
+        }
+    }
+
+}
+
+// ADD: capability property (Phase 0)
+public partial class BpmnParser
+{
+    /// <summary>
+    /// Capabilities exposed by the roundtrip parser (Phase 0 baseline).
+    /// </summary>
+    public static readonly BpmnParserCapabilities Capabilities =
+        new(
+            SupportsStrictRoundtrip: true,
+            SupportsRuntimeProjection: false,
+            SupportsCollaboration: false,
+            SupportsVendorNormalization: false,
+            SupportsAdvancedValidation: false
+        );
 }

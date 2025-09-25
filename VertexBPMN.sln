@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.14.36414.22 d17.14
+VisualStudioVersion = 17.14.36414.22
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VertexBPMN.Domain", "src\VertexBPMN.Domain\VertexBPMN.Domain.csproj", "{B8CEE0DD-76DA-D783-366A-E616777848F0}"
 EndProject
@@ -42,6 +42,7 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docs", "docs", "{3C3F275F-E7DF-4E08-8742-C0A16A0270C3}"
 	ProjectSection(SolutionItems) = preProject
 		docs\BPMN-Standard-Support-Implementation-plan.md = docs\BPMN-Standard-Support-Implementation-plan.md
+		docs\BpmnParser implementations.md = docs\BpmnParser implementations.md
 		docs\Kompakter Umsetzungsplan -Fortsetzung nach Unified Parser.md = docs\Kompakter Umsetzungsplan -Fortsetzung nach Unified Parser.md
 		README.md = README.md
 		docs\ROUNDTRIP_STRICT_PLAN.md = docs\ROUNDTRIP_STRICT_PLAN.md

@@ -1,20 +1,24 @@
+using System.Collections.ObjectModel;
+
 namespace VertexBPMN.Parsing;
 
 public sealed record RuntimeProcessModel(
     string ProcessId,
     IReadOnlyList<RuntimeFlowNode> FlowNodes,
     IReadOnlyList<RuntimeSequenceFlow> SequenceFlows,
-    IReadOnlyDictionary<string, IReadOnlyDictionary<string,string>>? VendorExtensions // elementId -> flattened map (subset)
+    IReadOnlyDictionary<string, IReadOnlyDictionary<string,string>>? VendorExtensions,
+    IReadOnlyDictionary<string, RuntimeScriptTask>? ScriptTasks,
+    IReadOnlyDictionary<string, string>? PotentialOwners // NEW: userTask potentialOwner expressions
 );
 
 public sealed record RuntimeFlowNode(
     string Id,
-    string Type,                  // task, userTask, startEvent, endEvent, gateway type, subprocess
+    string Type,
     string? ParentSubprocessId,
     bool IsMultiInstance,
     bool IsMultiInstanceSequential,
     bool IsEventSubprocess,
-    bool IsDefaultGatewayTarget   // convenience for filtering? (optional)
+    bool IsDefaultGatewayTarget
 );
 
 public sealed record RuntimeSequenceFlow(
@@ -22,4 +26,10 @@ public sealed record RuntimeSequenceFlow(
     string SourceId,
     string TargetId,
     bool IsDefault
+);
+
+public sealed record RuntimeScriptTask(
+    string ScriptFormat,
+    string ScriptBody,
+    string? ResultVariable
 );

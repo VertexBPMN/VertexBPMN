@@ -90,6 +90,8 @@ public partial class BpmnParser : IBpmnParser
         var rawMultiInstance = strict ? new Dictionary<string, XElement>() : null; // original loop characteristics node
         var priorityAttrNs = strict ? new Dictionary<string, string>(StringComparer.Ordinal) : null; // priority attribute namespace per sequenceFlow
         var flowNodeAttributes = strict ? new Dictionary<string, IReadOnlyDictionary<string,string>>(StringComparer.Ordinal) : null; // attribute snapshot per flow node / sequenceFlow
+        var potentialOwnerExtras = new Dictionary<string, string>(StringComparer.Ordinal); // NEW
+        var scriptTaskRaw = new Dictionary<string, (string? Format, string? Body, string? Result)>(StringComparer.Ordinal); // NEW
 
         XElement? diRoot = null;
         var diagnostics = new List<string>();
@@ -200,8 +202,43 @@ public partial class BpmnParser : IBpmnParser
                     if(strict){ var list = new List<XElement>(); foreach(var d in el.Elements()){ if(d.Name.LocalName.EndsWith("EventDefinition") || d.Name.LocalName.Contains("EventDefinition")) list.Add(new XElement(d)); } if(list.Count>0) rawEvDefs![id]=list; }
                     CaptureElementMeta(el,id); break;
                 case var _ when local.EndsWith("Task") || local=="callActivity":
-                    // capture raw loop for activities
-                    if(strict && !string.IsNullOrEmpty(id)) { var miNodeT = el.Element(ns+"multiInstanceLoopCharacteristics") ?? el.Element("multiInstanceLoopCharacteristics"); var stdNodeT = el.Element(ns+"standardLoopCharacteristics") ?? el.Element("standardLoopCharacteristics"); if(miNodeT!=null || stdNodeT!=null) rawMultiInstance![id]= new XElement(miNodeT ?? stdNodeT); }
+                    if(strict && !string.IsNullOrEmpty(id)) {
+                        var miNodeT = el.Element(ns+"multiInstanceLoopCharacteristics") ?? el.Element("multiInstanceLoopCharacteristics");
+                        var stdNodeT = el.Element(ns+"standardLoopCharacteristics") ?? el.Element("standardLoopCharacteristics");
+                        if(miNodeT!=null || stdNodeT!=null) rawMultiInstance![id]= new XElement(miNodeT ?? stdNodeT);
+                    }
+                    if (local == "scriptTask" && !string.IsNullOrEmpty(id))
+                    {
+                        var fmt = el.Attribute("scriptFormat")?.Value;
+                        var body = el.Element(ns + "script")?.Value ?? el.Element("script")?.Value;
+                        var resVar = el.Attribute("resultVariable")?.Value;
+                        scriptTaskRaw[id] = (fmt, body, resVar);
+                    }
+                    // NEW: potentialOwner extraction (resourceRole or potentialOwner)
+                    if (local == "userTask" && !string.IsNullOrEmpty(id))
+                    {
+                        // Either explicit <potentialOwner> or <resourceRole xsi:type="potentialOwner">
+                        IEnumerable<XElement> roles = el.Elements().Where(e =>
+                            e.Name.LocalName == "potentialOwner" ||
+                            (e.Name.LocalName == "resourceRole" &&
+                             (string?)e.Attribute(XName.Get("type","http://www.w3.org/2001/XMLSchema-instance")) == "potentialOwner"));
+
+                        foreach (var role in roles)
+                        {
+                            var formal = role
+                                .Element(ns + "resourceAssignmentExpression") ??
+                                         role.Element("resourceAssignmentExpression");
+                            var expr = formal?
+                                .Element(ns + "formalExpression") ??
+                                       formal?.Element("formalExpression");
+                            var text = expr?.Value?.Trim();
+                            if (!string.IsNullOrWhiteSpace(text))
+                            {
+                                // last one wins if multiple
+                                potentialOwnerExtras[id] = text!;
+                            }
+                        }
+                    }
                     var task = new BpmnTask(id, local, currentSub, ext) { Name = el.Attribute("name")?.Value ?? string.Empty };
                     tasks.Add(task); flowNodeIds.Add(id);
                     // IO spec & associations
@@ -369,6 +406,36 @@ public partial class BpmnParser : IBpmnParser
 
         var vendorNormalized = ParseVendorExtensions(strict, rawExtensions);
 
+        // NEW: merge potentialOwner extras into vendorNormalized even if normalization disabled
+        if (potentialOwnerExtras.Count > 0)
+        {
+            // Ensure dictionary exists
+            var merged = new Dictionary<string, IReadOnlyDictionary<string,string>>(StringComparer.Ordinal);
+            if (vendorNormalized != null)
+            {
+                foreach (var kv in vendorNormalized)
+                    merged[kv.Key] = kv.Value;
+            }
+            foreach (var kv in potentialOwnerExtras)
+            {
+                if (!merged.TryGetValue(kv.Key, out var existing))
+                {
+                    merged[kv.Key] = new ReadOnlyDictionary<string,string>(
+                        new Dictionary<string,string>(StringComparer.Ordinal) { ["potentialOwner"] = kv.Value });
+                }
+                else
+                {
+                    // merge into existing read-only -> create mutable copy
+                    var dict = new Dictionary<string,string>(existing, StringComparer.Ordinal)
+                    {
+                        ["potentialOwner"] = kv.Value
+                    };
+                    merged[kv.Key] = new ReadOnlyDictionary<string,string>(dict);
+                }
+            }
+            vendorNormalized = merged;
+        }
+
         var activities = tasks.Cast<object>().Concat(subprocesses);
 
 
@@ -425,7 +492,11 @@ public partial class BpmnParser : IBpmnParser
                 _options,
                 pid,
                 events, tasks, gateways, subprocesses, flows,
-                vendorNormalized);
+                vendorNormalized,
+                rawMeta,
+                scriptTaskRaw,
+                potentialOwnerExtras
+            );
         }
 
         var model = new BpmnModel(pid, events, gateways, subprocesses, flows, tasks, dataObjects, dataObjectRefs,
@@ -1555,9 +1626,9 @@ public partial class BpmnParser
     public static readonly BpmnParserCapabilities Capabilities =
         new(
             SupportsStrictRoundtrip: true,
-            SupportsRuntimeProjection: false,
+            SupportsRuntimeProjection: true,
             SupportsCollaboration: false,
-            SupportsVendorNormalization: false,
-            SupportsAdvancedValidation: false
+            SupportsVendorNormalization: true,
+            SupportsAdvancedValidation: true
         );
 }

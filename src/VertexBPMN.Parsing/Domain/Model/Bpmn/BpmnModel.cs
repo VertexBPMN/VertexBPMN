@@ -184,9 +184,9 @@ public record BpmnModel(
     IReadOnlyList<BpmnGroup>? Groups = null,
     IDictionary<string, object>? ProcessVariables = null,
     IEnumerable<object>? Activities = null,
-    BpmnRawMetadata? RawMetadata = null,
-    IReadOnlyList<ValidationDiagnostic>? ValidationDiagnostics = null
+    BpmnRawMetadata? RawMetadata = null
 )
 {
     public RuntimeProcessModel? Runtime { get; set; }
+    public IReadOnlyList<ValidationDiagnostic>? ValidationDiagnostics { get; set; }
 }

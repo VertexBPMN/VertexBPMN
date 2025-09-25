@@ -1,6 +1,7 @@
 //See docs/ROUNDTRIP_STRICT_PLAN.md
 
 using System.Collections.ObjectModel;
+using System.Runtime.InteropServices.Marshalling;
 using System.Security.Cryptography;
 using System.Text;
 using System.Xml.Linq;
@@ -109,34 +110,6 @@ public partial class BpmnParser : IBpmnParser
         {
             if (_options.StrictValidation)
                 diagnostics.Add("No <process> element");
-
-            IReadOnlyList<ValidationDiagnostic>? structured = null;
-            if (strict && _options.EnableAdvancedValidation)
-            {
-                structured = RunAdvancedValidation(
-                    _options,
-                    Array.Empty<BpmnEvent>(),
-                    Array.Empty<BpmnGateway>(),
-                    Array.Empty<BpmnSubprocess>(),
-                    Array.Empty<BpmnSequenceFlow>(),
-                    Array.Empty<BpmnTask>(),
-                    null, // lanes
-                    null, // messageFlows
-                    diagnostics,
-                    null, // rawLaneElements
-                    Array.Empty<BpmnDataObject>(),
-                    Array.Empty<BpmnDataObjectReference>(),
-                    Array.Empty<BpmnAssociationArtifact>(),
-                    Array.Empty<BpmnTextAnnotation>(),
-                    Array.Empty<BpmnGroup>()
-                );
-            }
-            if (_options.EnableAdvancedValidation &&
-                _options.ThrowOnFatalValidation &&
-                structured is { Count: > 0 })
-            {
-                MaybeThrowOnValidation(_options, structured);
-            }
             var rawMeta0 = strict ? new BpmnRawMetadata(rawDefinitionsAttr, rawProcessAttr) : null;
 
             var empty = new BpmnModel(
@@ -157,9 +130,21 @@ public partial class BpmnParser : IBpmnParser
                 Array.Empty<BpmnError>(),
                 Array.Empty<BpmnEscalation>(),
                 diagnostics,
-                RawMetadata: rawMeta0,
-                ValidationDiagnostics: structured
+                RawMetadata: rawMeta0
             );
+            empty.Runtime = null;
+            IReadOnlyList<ValidationDiagnostic>? structured = null;
+            if (strict && _options.EnableAdvancedValidation)
+            {
+                structured = ValidateModel(empty, _options);
+            }
+            if (_options.EnableAdvancedValidation &&
+                _options.ThrowOnFatalValidation &&
+                structured is { Count: > 0 })
+            {
+                MaybeThrowOnValidation(_options, structured);
+            }
+
 
             Cache(xml, empty);
             return Task.FromResult(empty);
@@ -292,7 +277,6 @@ public partial class BpmnParser : IBpmnParser
         {
             var hasCancel = rawEvDefs?.ContainsKey(ev.Id)==true && rawEvDefs[ev.Id].Any(x=> x.Name.LocalName=="cancelEventDefinition"); if(!hasCancel) hasCancel = ev.Definitions.OfType<CancelEventDefinition>().Any(); if(hasCancel){ string? cursor = ev.SubprocessId; bool insideTx=false; while(cursor!=null){ var sp = subprocesses.FirstOrDefault(s=> s.Id==cursor); if(sp==null) break; if(sp.IsTransaction){ insideTx=true; break;} cursor = sp.SubprocessId; } if(!insideTx) diagnostics.Add($"Cancel end event {ev.Id} outside transaction"); }
         }
-        // NEW Phase B: terminate end event outside transaction validation
         foreach (var ev in events.Where(e => e.Type == "endEvent" && e.Definitions.OfType<TerminateEventDefinition>().Any()))
         {
             string? cursor = ev.SubprocessId; bool insideTx = false; while (cursor != null)
@@ -303,7 +287,6 @@ public partial class BpmnParser : IBpmnParser
         }
         foreach(var gw in gateways) if(!flows.Any(f=> f.SourceRef==gw.Id)) diagnostics.Add($"Gateway {gw.Id} has no outgoing");
         foreach(var (bid, attached) in boundaryEvents){ if(string.IsNullOrEmpty(attached)) continue; if(!flowNodeIds.Contains(attached!)) diagnostics.Add($"boundaryEvent {bid} attachedToRef {attached} missing"); }
-        // NEW Phase B: boundary compensation must have cancelActivity='false'
         foreach (var bev in events.Where(e => e.Type == "boundaryEvent" && e.Definitions.OfType<CompensationEventDefinition>().Any()))
         {
             if (elementsMetadata != null && elementsMetadata.TryGetValue(bev.Id, out var meta))
@@ -370,7 +353,6 @@ public partial class BpmnParser : IBpmnParser
             }
         }
 
-        // Build global element kind index if requested
         IReadOnlyDictionary<string, string>? globalKinds = null;
         if (strict && _options.BuildGlobalElementIndex && rawGlobalElements is { Count: > 0 })
         {
@@ -385,28 +367,11 @@ public partial class BpmnParser : IBpmnParser
             globalKinds = dict;
         }
 
-        // NEW Phase B: vendor extension normalization capture
         var vendorNormalized = ParseVendorExtensions(strict, rawExtensions);
 
         var activities = tasks.Cast<object>().Concat(subprocesses);
 
-        IReadOnlyList<ValidationDiagnostic>? structuredDiagnostics = null;
-        if (_options.EnableAdvancedValidation)
-        {
-            structuredDiagnostics = RunAdvancedValidation(_options,
-                events, gateways, subprocesses, flows, tasks,
-                lanes, messageFlows, diagnostics, rawLanes,
-                dataObjects, dataObjectRefs, associationArtifacts, textAnnotations, groups);
-        }
-        // After structuredDiagnostics calculation (just below existing code that sets structuredDiagnostics)
-        if (_options.EnableAdvancedValidation &&
-            _options.ThrowOnFatalValidation &&
-            structuredDiagnostics is { Count: > 0 })
-        {
-            MaybeThrowOnValidation(_options, structuredDiagnostics);
-        }
-       
-     
+
         BpmnRawMetadata? rawMeta = null;
         if (strict)
         {
@@ -453,11 +418,6 @@ public partial class BpmnParser : IBpmnParser
             );
         }
 
-        var model = new BpmnModel(pid, events, gateways, subprocesses, flows, tasks, dataObjects, dataObjectRefs,
-            dataStores, dataStoreRefs, properties, activityIo, messageModels, signalModels, errorModels,
-            escalationModels, diagnostics, shapes, edges, participants, lanes, messageFlows, textAnnotations,
-            associationArtifacts, groups, Activities: activities, RawMetadata: rawMeta, ValidationDiagnostics: structuredDiagnostics);
-
         RuntimeProcessModel? runtime = null;
         if (_options.BuildRuntimeProjection)
         {
@@ -466,31 +426,49 @@ public partial class BpmnParser : IBpmnParser
                 pid,
                 events, tasks, gateways, subprocesses, flows,
                 vendorNormalized);
-            model.Runtime = runtime;
         }
+
+        var model = new BpmnModel(pid, events, gateways, subprocesses, flows, tasks, dataObjects, dataObjectRefs,
+            dataStores, dataStoreRefs, properties, activityIo, messageModels, signalModels, errorModels,
+            escalationModels, diagnostics, shapes, edges, participants, lanes, messageFlows, textAnnotations,
+            associationArtifacts, groups, Activities: activities, RawMetadata: rawMeta);
+        model.Runtime = runtime; // set mutable property
+
+        IReadOnlyList<ValidationDiagnostic>? structuredDiagnostics = null;
+        if (_options.EnableAdvancedValidation)
+        {
+            structuredDiagnostics = ValidateModel(model, _options);
+        }
+        if (_options.EnableAdvancedValidation &&
+            _options.ThrowOnFatalValidation &&
+            structuredDiagnostics is { Count: > 0 })
+        {
+            MaybeThrowOnValidation(_options, structuredDiagnostics);
+        }
+        model.ValidationDiagnostics = structuredDiagnostics;
         Cache(xml, model);
    
         return Task.FromResult(model);
     }
 
 
-    private static IReadOnlyList<ValidationDiagnostic> RunAdvancedValidation(
-        BpmnParserOptions options,
-        IReadOnlyList<BpmnEvent> events,
-        IReadOnlyList<BpmnGateway> gateways,
-        IReadOnlyList<BpmnSubprocess> subprocesses,
-        IReadOnlyList<BpmnSequenceFlow> flows,
-        IReadOnlyList<BpmnTask> tasks,
-        IReadOnlyList<BpmnLane>? lanes,
-        IReadOnlyList<BpmnMessageFlow>? messageFlows,
-        IReadOnlyList<string> legacyDiagnostics,
-        IReadOnlyList<XElement>? rawLaneElements,
-        IReadOnlyList<BpmnDataObject> dataObjects,
-        IReadOnlyList<BpmnDataObjectReference> dataObjectReferences,
-        IReadOnlyList<BpmnAssociationArtifact> associations,
-        IReadOnlyList<BpmnTextAnnotation> textAnnotations,
-        IReadOnlyList<BpmnGroup> groups)
+    private static IReadOnlyList<ValidationDiagnostic> ValidateModel(BpmnModel model, BpmnParserOptions options)
     {
+
+        var events = model.Events;
+        var gateways = model.Gateways;
+        var subprocesses = model.Subprocesses;
+        var flows = model.SequenceFlows;
+        var tasks = model.Tasks;
+        var lanes = model.Lanes;
+        var messageFlows = model.MessageFlows;
+        var legacyDiagnostics = model.Diagnostics;
+        var rawLaneElements = model.RawMetadata.RawLanes;
+        var dataObjects = model.DataObjects;
+        var dataObjectReferences = model.DataObjectReferences;
+        var associations = model.Associations;
+        var textAnnotations = model.TextAnnotations;
+        var groups = model.Groups;
         var list = new List<ValidationDiagnostic>();
 
         // ---- Legacy mapping block (keep existing mappings; abbreviated here) ----
@@ -812,8 +790,8 @@ public partial class BpmnParser : IBpmnParser
             {
                 if (string.IsNullOrEmpty(assoc.Id)) continue;
 
-                bool missingSource = string.IsNullOrEmpty(assoc.SourceRef) || !knownIds.Contains(assoc.SourceRef);
-                bool missingTarget = string.IsNullOrEmpty(assoc.TargetRef) || !knownIds.Contains(assoc.TargetRef);
+                var missingSource = string.IsNullOrEmpty(assoc.SourceRef) || !knownIds.Contains(assoc.SourceRef);
+                var missingTarget = string.IsNullOrEmpty(assoc.TargetRef) || !knownIds.Contains(assoc.TargetRef);
 
                 if (missingSource)
                 {
@@ -874,7 +852,7 @@ public partial class BpmnParser : IBpmnParser
                         continue;
                     }
 
-                    bool invalid = false;
+                    var invalid = false;
                     string? badType = null;
                     foreach (var def in ev.Definitions)
                     {
@@ -1046,8 +1024,8 @@ public partial class BpmnParser : IBpmnParser
                 foreach (var f in flows)
                 {
                     if (string.IsNullOrEmpty(f.Id)) continue;
-                    bool dead = string.IsNullOrEmpty(f.SourceRef) || string.IsNullOrEmpty(f.TargetRef)
-                                || !reachable.Contains(f.SourceRef) || !reachable.Contains(f.TargetRef);
+                    var dead = string.IsNullOrEmpty(f.SourceRef) || string.IsNullOrEmpty(f.TargetRef)
+                                                                 || !reachable.Contains(f.SourceRef) || !reachable.Contains(f.TargetRef);
                     if (dead && !list.Exists(d => d.Code == "ADV-DEAD-SEQUENCE-FLOW" && d.ElementId == f.Id))
                     {
                         list.Add(new ValidationDiagnostic(

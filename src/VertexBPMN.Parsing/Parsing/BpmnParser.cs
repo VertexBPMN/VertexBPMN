@@ -1,10 +1,12 @@
 //See docs/ROUNDTRIP_STRICT_PLAN.md
 
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Runtime.InteropServices.Marshalling;
 using System.Security.Cryptography;
 using System.Text;
 using System.Xml.Linq;
+using Microsoft.Extensions.Logging;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Domain.Model.Bpmn;
 
@@ -17,6 +19,11 @@ public partial class BpmnParser : IBpmnParser
     private readonly LinkedList<(string Key, BpmnModel Model)> _lru = new();
     private readonly object _cacheLock = new();
     private readonly Dictionary<string, string> _idPool = new(StringComparer.Ordinal);
+    
+    // Phase 5: Observability Infrastructure (NEW)
+    private readonly ActivitySource? _activitySource;
+    private readonly ILogger _logger;
+    private static readonly ActivitySource DefaultActivitySource = new("VertexBPMN.Parsing");
 
     private string Intern(string s)
     {
@@ -28,7 +35,15 @@ public partial class BpmnParser : IBpmnParser
     }
 
     public BpmnParser() : this(new BpmnParserOptions()) { }
-    public BpmnParser(BpmnParserOptions options) { _options = options; }
+    
+    public BpmnParser(BpmnParserOptions options) 
+    { 
+        _options = options; 
+        
+        // Phase 5: Initialize observability components (zero allocation when disabled)
+        _activitySource = _options.EnableTracing ? (_options.TracingActivitySource ?? DefaultActivitySource) : null;
+        _logger = _options.EnableLogging ? (_options.Logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance) : Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+    }
 
     private BpmnModel? TryGetCached(string xml)
     {
@@ -71,7 +86,24 @@ public partial class BpmnParser : IBpmnParser
 
     public Task<BpmnModel> ParseAsync(string xml, CancellationToken cancellationToken = default)
     {
-        if (TryGetCached(xml) is { } cached) return Task.FromResult(cached);
+        // Phase 5: Start tracing span (zero allocation when disabled)
+        using var activity = _activitySource?.StartActivity("BpmnParser.ParseAsync");
+        
+        if (TryGetCached(xml) is { } cached) 
+        {
+            // Phase 5: Log cache hit (only if logging enabled)
+            if (_options.EnableLogging)
+                _logger.LogDebug("ParseAsync cache hit for XML hash {XmlHash}", Hash(xml)[..8]);
+            return Task.FromResult(cached);
+        }
+
+        // Phase 5: ParseStart logging
+        if (_options.EnableLogging)
+        {
+            _logger.LogDebug("ParseStart: RoundtripMode={RoundtripMode}, BuildRuntimeProjection={BuildRuntimeProjection}, NormalizeVendorExtensions={NormalizeVendorExtensions}",
+                _options.RoundtripMode, _options.BuildRuntimeProjection, _options.NormalizeVendorExtensions);
+        }
+
         var strict = _options.RoundtripMode == BpmnRoundtripMode.Strict;
         var rawDefinitionsAttr = strict ? new Dictionary<string,string>(StringComparer.Ordinal) : null;
         var rawProcessAttr = strict ? new Dictionary<string,string>(StringComparer.Ordinal) : null;
@@ -509,7 +541,17 @@ public partial class BpmnParser : IBpmnParser
         if (_options.EnableAdvancedValidation)
         {
             structuredDiagnostics = ValidateModel(model, _options);
+            
+            // Phase 5: ValidationSummary logging
+            if (_options.EnableLogging && structuredDiagnostics.Count > 0)
+            {
+                var errorCount = structuredDiagnostics.Count(d => d.Severity >= ValidationSeverity.Error);
+                var warningCount = structuredDiagnostics.Count(d => d.Severity == ValidationSeverity.Warning);
+                _logger.LogInformation("ValidationSummary: ProcessId={ProcessId}, Errors={ErrorCount}, Warnings={WarningCount}, TotalDiagnostics={TotalCount}",
+                    pid, errorCount, warningCount, structuredDiagnostics.Count);
+            }
         }
+        
         if (_options.EnableAdvancedValidation &&
             _options.ThrowOnFatalValidation &&
             structuredDiagnostics is { Count: > 0 })
@@ -517,6 +559,44 @@ public partial class BpmnParser : IBpmnParser
             MaybeThrowOnValidation(_options, structuredDiagnostics);
         }
         model.ValidationDiagnostics = structuredDiagnostics;
+        
+        // Phase 5: ProjectionBuilt logging
+        if (_options.EnableLogging && runtime != null)
+        {
+            _logger.LogDebug("ProjectionBuilt: ProcessId={ProcessId}, FlowNodeCount={FlowNodeCount}, SequenceFlowCount={SequenceFlowCount}, ScriptTaskCount={ScriptTaskCount}, PotentialOwnerCount={PotentialOwnerCount}",
+                pid, runtime.FlowNodes.Count, runtime.SequenceFlows.Count, 
+                runtime.ScriptTasks?.Count ?? 0, runtime.PotentialOwners?.Count ?? 0);
+        }
+        
+        // Phase 5: Add span attributes (only if tracing enabled)
+        if (activity != null)
+        {
+            activity.SetTag("bpmn.process_id", pid);
+            activity.SetTag("bpmn.node_count", (events.Count + tasks.Count + gateways.Count + subprocesses.Count).ToString());
+            activity.SetTag("bpmn.flow_count", flows.Count.ToString());
+            activity.SetTag("bpmn.roundtrip_mode", _options.RoundtripMode.ToString());
+            activity.SetTag("bpmn.runtime_projection", _options.BuildRuntimeProjection.ToString().ToLowerInvariant());
+            activity.SetTag("bpmn.vendor_normalization", _options.NormalizeVendorExtensions.ToString().ToLowerInvariant());
+            
+            if (structuredDiagnostics != null)
+            {
+                activity.SetTag("bpmn.validation_errors", structuredDiagnostics.Count(d => d.Severity >= ValidationSeverity.Error).ToString());
+                activity.SetTag("bpmn.validation_warnings", structuredDiagnostics.Count(d => d.Severity == ValidationSeverity.Warning).ToString());
+            }
+            else
+            {
+                activity.SetTag("bpmn.validation_errors", "0");
+                activity.SetTag("bpmn.validation_warnings", "0");
+            }
+        }
+        
+        // Phase 5: PhaseComplete logging
+        if (_options.EnableLogging)
+        {
+            _logger.LogDebug("PhaseComplete: ProcessId={ProcessId}, ParsedSuccessfully=true, DiagnosticsCount={DiagnosticsCount}",
+                pid, diagnostics.Count);
+        }
+
         Cache(xml, model);
    
         return Task.FromResult(model);
@@ -534,7 +614,7 @@ public partial class BpmnParser : IBpmnParser
         var lanes = model.Lanes;
         var messageFlows = model.MessageFlows;
         var legacyDiagnostics = model.Diagnostics;
-        var rawLaneElements = model.RawMetadata.RawLanes;
+        var rawLaneElements = model.RawMetadata?.RawLanes; // Null-safe access
         var dataObjects = model.DataObjects;
         var dataObjectReferences = model.DataObjectReferences;
         var associations = model.Associations;
@@ -756,6 +836,36 @@ public partial class BpmnParser : IBpmnParser
                     Message: message,
                     ElementId: elementId,
                     Category: "Referential"));
+            }
+        }
+
+        // NEW: Direct missing ID validation (not just legacy conversion)
+        // Check for missing IDs on elements that require them
+        var elementsRequiringIds = new List<(string? Id, string Type)>();
+        
+        // Collect all elements that should have IDs
+        foreach (var ev in events)
+            elementsRequiringIds.Add((ev.Id, ev.Type));
+        foreach (var task in tasks)
+            elementsRequiringIds.Add((task.Id, task.Type));
+        foreach (var gw in gateways)
+            elementsRequiringIds.Add((gw.Id, gw.Type));
+        foreach (var sp in subprocesses)
+            elementsRequiringIds.Add((sp.Id, "subProcess"));
+        foreach (var flow in flows)
+            elementsRequiringIds.Add((flow.Id, "sequenceFlow"));
+
+        // Generate STR-MISSING-ID diagnostics for elements without IDs
+        foreach (var (id, type) in elementsRequiringIds)
+        {
+            if (string.IsNullOrEmpty(id))
+            {
+                list.Add(new ValidationDiagnostic(
+                    Code: "STR-MISSING-ID",
+                    Severity: ValidationSeverity.Error,
+                    Message: $"Flow node of type '{type}' is missing a required id",
+                    ElementId: null,
+                    Category: "Structural"));
             }
         }
 
@@ -1040,8 +1150,8 @@ public partial class BpmnParser : IBpmnParser
             foreach (var s in startIds)
             {
                 if (reachable.Add(s)) queue.Enqueue(s);
-            }
-
+    }
+    
             while (queue.Count > 0)
             {
                 var cur = queue.Dequeue();
@@ -1054,7 +1164,7 @@ public partial class BpmnParser : IBpmnParser
                     }
                 }
             }
-
+   
             // Node set already built: nodeIds
             if (reachable.Count > 0)
             {
@@ -1494,6 +1604,7 @@ public partial class BpmnParser : IBpmnParser
                         foreach (var attr in child.Attributes())
                         {
                             if (attr.IsNamespaceDeclaration) continue;
+                            if (attr.Name.LocalName is "id" or "type" or "name") continue;
                             if (attr.Value.Length == 0) continue;
                             var key = $"{prefix}:{local}.{attr.Name.LocalName}";
                             if (!bucket.ContainsKey(key))
@@ -1621,14 +1732,14 @@ public partial class BpmnParser : IBpmnParser
 public partial class BpmnParser
 {
     /// <summary>
-    /// Capabilities exposed by the roundtrip parser (Phase 0 baseline).
+    /// Capabilities exposed by the roundtrip parser (updated based on implemented phases).
     /// </summary>
     public static readonly BpmnParserCapabilities Capabilities =
         new(
             SupportsStrictRoundtrip: true,
-            SupportsRuntimeProjection: true,
-            SupportsCollaboration: false,
-            SupportsVendorNormalization: true,
-            SupportsAdvancedValidation: true
+            SupportsRuntimeProjection: true, // Phase 4 - implemented
+            SupportsCollaboration: false,   // Phase 1 - not yet implemented
+            SupportsVendorNormalization: true, // Phase 2 - implemented
+            SupportsAdvancedValidation: true   // Phase 3 - implemented
         );
 }

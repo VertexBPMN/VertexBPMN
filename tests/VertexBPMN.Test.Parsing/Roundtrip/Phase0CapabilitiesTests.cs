@@ -11,10 +11,10 @@ public class Phase0CapabilitiesTests
     {
         var caps = BpmnParser.Capabilities;
         Assert.True(caps.SupportsStrictRoundtrip);
-        Assert.False(caps.SupportsRuntimeProjection);
-        Assert.False(caps.SupportsCollaboration);
-        Assert.False(caps.SupportsVendorNormalization);
-        Assert.False(caps.SupportsAdvancedValidation);
+        Assert.True(caps.SupportsRuntimeProjection);    // Phase 4 - implemented
+        Assert.False(caps.SupportsCollaboration);       // Phase 1 - not yet implemented  
+        Assert.True(caps.SupportsVendorNormalization);  // Phase 2 - implemented
+        Assert.True(caps.SupportsAdvancedValidation);   // Phase 3 - implemented
     }
 
     [Fact]

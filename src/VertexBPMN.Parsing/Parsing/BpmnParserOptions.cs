@@ -1,3 +1,6 @@
+using System.Diagnostics;
+using Microsoft.Extensions.Logging;
+
 namespace VertexBPMN.Parsing;
 
 /// <summary>
@@ -66,6 +69,29 @@ public sealed class BpmnParserOptions
     /// </summary>
     public ValidationSeverity MinimumThrowSeverity { get; init; } = ValidationSeverity.Error;
     public bool BuildRuntimeProjection { get; init; } = false;
+
+    // Phase 5: Observability Integration (NEW)
+    /// <summary>
+    /// Enable OpenTelemetry tracing for parse operations. Default false (zero-break).
+    /// When enabled, creates spans with process metrics and timing.
+    /// </summary>
+    public bool EnableTracing { get; init; } = false;
+    
+    /// <summary>
+    /// ActivitySource for creating tracing spans. If null and EnableTracing=true, uses default source.
+    /// </summary>
+    public ActivitySource? TracingActivitySource { get; init; }
+    
+    /// <summary>
+    /// Enable structured logging at key parse stages. Default false (zero-break).
+    /// When enabled, emits ParseStart, PhaseComplete, ValidationSummary, ProjectionBuilt messages.
+    /// </summary>
+    public bool EnableLogging { get; init; } = false;
+    
+    /// <summary>
+    /// Logger instance for structured logging. If null and EnableLogging=true, uses NullLogger.
+    /// </summary>
+    public ILogger? Logger { get; init; }
 }
 
 /// <summary>

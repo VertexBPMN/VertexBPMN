@@ -186,4 +186,7 @@ public record BpmnModel(
     IEnumerable<object>? Activities = null,
     BpmnRawMetadata? RawMetadata = null,
     IReadOnlyList<ValidationDiagnostic>? ValidationDiagnostics = null
-);
+)
+{
+    public RuntimeProcessModel? Runtime { get; set; }
+}

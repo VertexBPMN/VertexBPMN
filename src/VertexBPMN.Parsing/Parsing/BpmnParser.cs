@@ -405,7 +405,8 @@ public partial class BpmnParser : IBpmnParser
         {
             MaybeThrowOnValidation(_options, structuredDiagnostics);
         }
-
+       
+     
         BpmnRawMetadata? rawMeta = null;
         if (strict)
         {
@@ -456,6 +457,17 @@ public partial class BpmnParser : IBpmnParser
             dataStores, dataStoreRefs, properties, activityIo, messageModels, signalModels, errorModels,
             escalationModels, diagnostics, shapes, edges, participants, lanes, messageFlows, textAnnotations,
             associationArtifacts, groups, Activities: activities, RawMetadata: rawMeta, ValidationDiagnostics: structuredDiagnostics);
+
+        RuntimeProcessModel? runtime = null;
+        if (_options.BuildRuntimeProjection)
+        {
+            runtime = RuntimeProjectionBuilder.Build(
+                _options,
+                pid,
+                events, tasks, gateways, subprocesses, flows,
+                vendorNormalized);
+            model.Runtime = runtime;
+        }
         Cache(xml, model);
    
         return Task.FromResult(model);

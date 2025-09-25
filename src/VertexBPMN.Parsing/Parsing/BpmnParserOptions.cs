@@ -65,6 +65,7 @@ public sealed class BpmnParserOptions
     /// Default = Error.
     /// </summary>
     public ValidationSeverity MinimumThrowSeverity { get; init; } = ValidationSeverity.Error;
+    public bool BuildRuntimeProjection { get; init; } = false;
 }
 
 /// <summary>

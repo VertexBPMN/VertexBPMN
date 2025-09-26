@@ -23,6 +23,14 @@ public class UnifiedBpmnValidationException : Exception
     {
         Diagnostics = diagnostics ?? throw new ArgumentNullException(nameof(diagnostics));
     }
+    /// <summary>
+    /// Creates a new validation exception with the given message, inner exception, and diagnostics.
+    /// </summary>
+    public UnifiedBpmnValidationException(string message, Exception innerException, IReadOnlyList<ValidationDiagnostic> diagnostics)
+        : base(message, innerException)
+    {
+        Diagnostics = diagnostics ?? throw new ArgumentNullException(nameof(diagnostics));
+    }
 
     public override string ToString()
     {

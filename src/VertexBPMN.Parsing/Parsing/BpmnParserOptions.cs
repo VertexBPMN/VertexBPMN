@@ -144,6 +144,35 @@ public sealed class BpmnParserOptions
     /// Only applies when OptimizeLargeModels=true and threshold is exceeded. Default false (zero-break).
     /// </summary>
     public bool SkipExtensionsForLargeModels { get; init; } = false;
+
+    // Phase 7: Event Definition Enrichment (NEW)
+    /// <summary>
+    /// Enable normalization of event definitions into strongly-typed objects.
+    /// When disabled, event definitions remain as raw XML in RawEventDefinitions only.
+    /// Default true for Phase 7.
+    /// </summary>
+    public bool NormalizeEventDefinitions { get; init; } = true;
+
+    /// <summary>
+    /// Capture raw event definition XML elements for vendor/unknown definitions.
+    /// Essential for maintaining roundtrip fidelity. Default true.
+    /// </summary>
+    public bool CaptureRawEventDefinitions { get; init; } = true;
+
+    /// <summary>
+    /// Generate diagnostics for unknown/vendor event definitions when encountered.
+    /// Helps identify non-standard extensions that rely on raw preservation.
+    /// Default true when EnableAdvancedValidation is true.
+    /// </summary>
+    public bool ValidateEventDefinitions { get; init; } = true;
+
+    // Phase 7: Runtime semantic validation toggle
+    /// <summary>
+    /// Enable semantic validation of runtime constraints (e.g., event definition compatibility).
+    /// Default true when EnableAdvancedValidation is true.
+    /// </summary>
+    public bool ValidateRuntimeSemantics { get; init; } = true;
+
     public bool UsePooledCollections { get; set; }
 }
 

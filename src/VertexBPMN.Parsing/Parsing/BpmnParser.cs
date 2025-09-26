@@ -337,106 +337,165 @@ public partial class BpmnParser : IBpmnParser
         }
 
         (LoopCharacteristics? loop, bool conflict) ParseLoopLocal(XElement sp){ var res= ParseLoopWithConflict(sp, ns, pendingMiConflicts); if(res.conflict) pendingMiConflicts.Add(sp.Attribute("id")?.Value ?? ""); return res; }
-           
-        void Walk(XElement parent){ foreach(var el in parent.Elements()){ cancellationToken.ThrowIfCancellationRequested(); orderCounter++; var local= el.Name.LocalName; var id= Intern(el.Attribute("id")?.Value ?? string.Empty); string? currentSub = subprocessStack.Count>0? subprocessStack.Peek(): null; if(!string.IsNullOrEmpty(id)){ if(!idIndex.Add(id) && _options.StrictValidation) diagnostics.Add($"Duplicate ID: {id}"); } Dictionary<string,string>? ext = ExtractExtensions(el); switch (local)
+        var unknownEventDefinitionDiagnostics = new List<ValidationDiagnostic>();
+        void Walk(XElement parent)
+        {
+            foreach (var el in parent.Elements())
             {
-                case "subProcess":
-                case "adHocSubProcess":
-                    var isEvent = el.Attribute("triggeredByEvent")?.Value=="true"; var isTx = el.Attribute("transaction")?.Value=="true" || local=="transaction"; var loopInfo = ParseLoopLocal(el); // capture raw loop node
-                    if(strict && !string.IsNullOrEmpty(id)) { var miNode = el.Element(ns+"multiInstanceLoopCharacteristics") ?? el.Element("multiInstanceLoopCharacteristics"); var stdNode = el.Element(ns+"standardLoopCharacteristics") ?? el.Element("standardLoopCharacteristics"); if(miNode!=null || stdNode!=null) rawMultiInstance![id]= new XElement(miNode ?? stdNode); }
-                    subprocesses.Add(new BpmnSubprocess(id, isEvent, isTx, loopInfo.loop, currentSub, ext)); if(isTx && !string.IsNullOrEmpty(id)) transactionIds.Add(id); flowNodeIds.Add(id); CaptureElementMeta(el,id, el.Attribute(XName.Get("collection","http://camunda.org/schema/1.0/bpmn"))!=null, el.Element(XName.Get("inputCollection","http://zeebe.io/schema/zeebe/1.0"))!=null, el.Element(ns+"loopCardinality")!=null|| el.Element("loopCardinality")!=null, el.Attribute(XName.Get("elementVariable","http://camunda.org/schema/1.0/bpmn"))!=null, el.Element(XName.Get("inputElement","http://zeebe.io/schema/zeebe/1.0"))!=null, el.Element(XName.Get("outputElement","http://zeebe.io/schema/zeebe/1.0"))!=null); subprocessStack.Push(id); Walk(el); subprocessStack.Pop(); break;
-                case "startEvent":
-                case "endEvent":
-                case "intermediateCatchEvent":
-                case "intermediateThrowEvent":
-                case "boundaryEvent":
-                    var defs = ParseEventDefinitions(el, ns); events.Add(new BpmnEvent(id, local, defs, currentSub, ext)); flowNodeIds.Add(id); if(local=="boundaryEvent") boundaryEvents.Add((id, el.Attribute("attachedToRef")?.Value));
-                    // link events tracking
-                    foreach(var led in el.Elements()) if(led.Name.LocalName=="linkEventDefinition"){ var lname = led.Attribute("name")?.Value; if(!string.IsNullOrEmpty(lname)){ if(local=="intermediateThrowEvent"){ linkThrowCounts.TryGetValue(lname!, out var c); linkThrowCounts[lname!]= c+1; } else if(local=="intermediateCatchEvent"){ linkCatchNames.Add(lname!); } }}
-                    if(strict){ var list = new List<XElement>(); foreach(var d in el.Elements()){ if(d.Name.LocalName.EndsWith("EventDefinition") || d.Name.LocalName.Contains("EventDefinition")) list.Add(new XElement(d)); } if(list.Count>0) rawEvDefs![id]=list; }
-                    CaptureElementMeta(el,id); break;
-                case var _ when local.EndsWith("Task") || local=="callActivity":
-                    if(strict && !string.IsNullOrEmpty(id)) {
-                        var miNodeT = el.Element(ns+"multiInstanceLoopCharacteristics") ?? el.Element("multiInstanceLoopCharacteristics");
-                        var stdNodeT = el.Element(ns+"standardLoopCharacteristics") ?? el.Element("standardLoopCharacteristics");
-                        if(miNodeT!=null || stdNodeT!=null) rawMultiInstance![id]= new XElement(miNodeT ?? stdNodeT);
-                    }
-                    if (local == "scriptTask" && !string.IsNullOrEmpty(id))
-                    {
-                        var fmt = el.Attribute("scriptFormat")?.Value;
-                        var body = el.Element(ns + "script")?.Value ?? el.Element("script")?.Value;
-                        var resVar = el.Attribute("resultVariable")?.Value;
-                        scriptTaskRaw[id] = (fmt, body, resVar);
-                    }
-                    // NEW: potentialOwner extraction (resourceRole or potentialOwner)
-                    if (local == "userTask" && !string.IsNullOrEmpty(id))
-                    {
-                        // Either explicit <potentialOwner> or <resourceRole xsi:type="potentialOwner">
-                        IEnumerable<XElement> roles = el.Elements().Where(e =>
-                            e.Name.LocalName == "potentialOwner" ||
-                            (e.Name.LocalName == "resourceRole" &&
-                             (string?)e.Attribute(XName.Get("type","http://www.w3.org/2001/XMLSchema-instance")) == "potentialOwner"));
+                cancellationToken.ThrowIfCancellationRequested();
+                orderCounter++;
+                var local = el.Name.LocalName;
+                var id = Intern(el.Attribute("id")?.Value ?? string.Empty);
+                var currentSub = subprocessStack.Count > 0 ? subprocessStack.Peek() : null;
+                if (!string.IsNullOrEmpty(id))
+                    if (!idIndex.Add(id) && _options.StrictValidation)
+                        diagnostics.Add($"Duplicate ID: {id}");
+                var ext = ExtractExtensions(el);
+                switch (local)
+                {
+                    case "subProcess":
+                    case "adHocSubProcess":
+                        var isEvent = el.Attribute("triggeredByEvent")?.Value == "true"; var isTx = el.Attribute("transaction")?.Value == "true" || local == "transaction"; var loopInfo = ParseLoopLocal(el); // capture raw loop node
+                        if (strict && !string.IsNullOrEmpty(id)) { var miNode = el.Element(ns + "multiInstanceLoopCharacteristics") ?? el.Element("multiInstanceLoopCharacteristics"); var stdNode = el.Element(ns + "standardLoopCharacteristics") ?? el.Element("standardLoopCharacteristics"); if (miNode != null || stdNode != null) rawMultiInstance![id] = new XElement(miNode ?? stdNode); }
+                        subprocesses.Add(new BpmnSubprocess(id, isEvent, isTx, loopInfo.loop, currentSub, ext)); if (isTx && !string.IsNullOrEmpty(id)) transactionIds.Add(id); flowNodeIds.Add(id); CaptureElementMeta(el, id, el.Attribute(XName.Get("collection", "http://camunda.org/schema/1.0/bpmn")) != null, el.Element(XName.Get("inputCollection", "http://zeebe.io/schema/zeebe/1.0")) != null, el.Element(ns + "loopCardinality") != null || el.Element("loopCardinality") != null, el.Attribute(XName.Get("elementVariable", "http://camunda.org/schema/1.0/bpmn")) != null, el.Element(XName.Get("inputElement", "http://zeebe.io/schema/zeebe/1.0")) != null, el.Element(XName.Get("outputElement", "http://zeebe.io/schema/zeebe/1.0")) != null); subprocessStack.Push(id); Walk(el); subprocessStack.Pop(); break;
+                    case "startEvent":
+                    case "endEvent":
+                    case "intermediateCatchEvent":
+                    case "intermediateThrowEvent":
+                    case "boundaryEvent":
+                        var (defs, eventDefDiagnostics) = ParseEventDefinitionsWithDiagnostics(el, ns, _options);
+                        unknownEventDefinitionDiagnostics.AddRange(eventDefDiagnostics);
 
-                        foreach (var role in roles)
-                        {
-                            var formal = role
-                                .Element(ns + "resourceAssignmentExpression") ??
-                                         role.Element("resourceAssignmentExpression");
-                            var expr = formal?
-                                .Element(ns + "formalExpression") ??
-                                       formal?.Element("formalExpression");
-                            var text = expr?.Value?.Trim();
-                            if (!string.IsNullOrWhiteSpace(text))
+                        events.Add(new BpmnEvent(id, local, defs, currentSub, ext));
+                        flowNodeIds.Add(id);
+
+                        if (local == "boundaryEvent")
+                            boundaryEvents.Add((id, el.Attribute("attachedToRef")?.Value));
+
+                        // link events tracking
+                        foreach (var led in el.Elements())
+                            if (led.Name.LocalName == "linkEventDefinition")
                             {
-                                // last one wins if multiple
-                                potentialOwnerExtras[id] = text!;
+                                var lname = led.Attribute("name")?.Value;
+                                if (!string.IsNullOrEmpty(lname))
+                                {
+                                    if (local == "intermediateThrowEvent")
+                                    {
+                                        linkThrowCounts.TryGetValue(lname!, out var c);
+                                        linkThrowCounts[lname!] = c + 1;
+                                    }
+                                    else if (local == "intermediateCatchEvent")
+                                    {
+                                        linkCatchNames.Add(lname!);
+                                    }
+                                }
+                            }
+
+                        if (strict && _options.CaptureRawEventDefinitions)
+                        {
+                            var list = new List<XElement>();
+                            foreach (var d in el.Elements())
+                            {
+                                // Capture standard BPMN event definitions OR vendor/unknown elements
+                                if (d.Name.LocalName.EndsWith("EventDefinition", StringComparison.OrdinalIgnoreCase) ||
+                                    d.Name.LocalName.Contains("EventDefinition", StringComparison.OrdinalIgnoreCase) ||
+                                    (d.Name.Namespace != ns && d.Name.Namespace != XNamespace.None))
+                                {
+                                    list.Add(new XElement(d));
+                                }
+                            }
+
+                            if (list.Count > 0) rawEvDefs![id] = list;
+                        }
+
+                        CaptureElementMeta(el, id);
+                        break;
+                    case var _ when local.EndsWith("Task") || local == "callActivity":
+                        if (strict && !string.IsNullOrEmpty(id))
+                        {
+                            var miNodeT = el.Element(ns + "multiInstanceLoopCharacteristics") ?? el.Element("multiInstanceLoopCharacteristics");
+                            var stdNodeT = el.Element(ns + "standardLoopCharacteristics") ?? el.Element("standardLoopCharacteristics");
+                            if (miNodeT != null || stdNodeT != null) rawMultiInstance![id] = new XElement(miNodeT ?? stdNodeT);
+                        }
+                        if (local == "scriptTask" && !string.IsNullOrEmpty(id))
+                        {
+                            var fmt = el.Attribute("scriptFormat")?.Value;
+                            var body = el.Element(ns + "script")?.Value ?? el.Element("script")?.Value;
+                            var resVar = el.Attribute("resultVariable")?.Value;
+                            scriptTaskRaw[id] = (fmt, body, resVar);
+                        }
+                        // NEW: potentialOwner extraction (resourceRole or potentialOwner)
+                        if (local == "userTask" && !string.IsNullOrEmpty(id))
+                        {
+                            // Either explicit <potentialOwner> or <resourceRole xsi:type="potentialOwner">
+                            IEnumerable<XElement> roles = el.Elements().Where(e =>
+                                e.Name.LocalName == "potentialOwner" ||
+                                (e.Name.LocalName == "resourceRole" &&
+                                 (string?)e.Attribute(XName.Get("type", "http://www.w3.org/2001/XMLSchema-instance")) == "potentialOwner"));
+
+                            foreach (var role in roles)
+                            {
+                                var formal = role
+                                    .Element(ns + "resourceAssignmentExpression") ??
+                                             role.Element("resourceAssignmentExpression");
+                                var expr = formal?
+                                    .Element(ns + "formalExpression") ??
+                                           formal?.Element("formalExpression");
+                                var text = expr?.Value?.Trim();
+                                if (!string.IsNullOrWhiteSpace(text))
+                                {
+                                    // last one wins if multiple
+                                    potentialOwnerExtras[id] = text!;
+                                }
                             }
                         }
-                    }
-                    var task = new BpmnTask(id, local, currentSub, ext) { Name = el.Attribute("name")?.Value ?? string.Empty };
-                    tasks.Add(task); flowNodeIds.Add(id);
-                    // IO spec & associations
-                    {
-                        var ioSpec = el.Element(ns+"ioSpecification") ?? el.Element("ioSpecification"); if(ioSpec!=null){ var dataInputs = ioSpec.Elements(ns+"dataInput").Concat(ioSpec.Elements("dataInput")).Select(di=> { var did = Intern(di.Attribute("id")?.Value ?? string.Empty); if(string.IsNullOrEmpty(did)) return null; return new BpmnDataInput(did, di.Attribute("name")?.Value); }).OfType<BpmnDataInput>().ToList(); var dataOutputs = ioSpec.Elements(ns+"dataOutput").Concat(ioSpec.Elements("dataOutput")).Select(dout=> { var oid = Intern(dout.Attribute("id")?.Value ?? string.Empty); if(string.IsNullOrEmpty(oid)) return null; return new BpmnDataOutput(oid, dout.Attribute("name")?.Value); }).OfType<BpmnDataOutput>().ToList(); var inputAssociations = el.Elements(ns+"dataInputAssociation").Concat(el.Elements("dataInputAssociation")).Select(a=> { var src=a.Element(ns+"sourceRef")?.Value ?? a.Element("sourceRef")?.Value; var tgt=a.Element(ns+"targetRef")?.Value ?? a.Element("targetRef")?.Value; if(string.IsNullOrWhiteSpace(src)|| string.IsNullOrWhiteSpace(tgt)) return null; return new BpmnDataAssociation(Intern(src), Intern(tgt)); }).OfType<BpmnDataAssociation>().ToList(); var outputAssociations = el.Elements(ns+"dataOutputAssociation").Concat(el.Elements("dataOutputAssociation")).Select(a=> { var src=a.Element(ns+"sourceRef")?.Value ?? a.Element("sourceRef")?.Value; var tgt=a.Element(ns+"targetRef")?.Value ?? a.Element("targetRef")?.Value; if(string.IsNullOrWhiteSpace(src)|| string.IsNullOrWhiteSpace(tgt)) return null; return new BpmnDataAssociation(Intern(src), Intern(tgt)); }).OfType<BpmnDataAssociation>().ToList(); if(dataInputs.Count>0 || dataOutputs.Count>0 || inputAssociations.Count>0 || outputAssociations.Count>0) activityIo.Add(new BpmnActivityIo(id, dataInputs, dataOutputs, inputAssociations, outputAssociations)); }
-                    }
-                    CaptureElementMeta(el,id); break;
-                case var _ when local.EndsWith("Gateway"):
-                    flowNodeIds.Add(id); gateways.Add(new BpmnGateway(id, local, gatewaysRaw.FirstOrDefault(g=>g.Id==id)?.DefaultId, currentSub, ext)); CaptureElementMeta(el,id); break;
-                case "laneSet":
-                    if(strict) rawLanes!.Add(new XElement(el)); // keep laneSet structure
-                    Walk(el); // recurse into lanes
-                    continue; // prevent double attribute handling
-                case "sequenceFlow":
-                    int? priority=null; var prAttr= el.Attribute(XName.Get("priority","http://vertexbpmn.io/schema/1.0"))?? el.Attribute(XName.Get("priority","http://camunda.org/schema/1.0/bpmn"))?? el.Attribute("priority"); if(prAttr!=null && int.TryParse(prAttr.Value,out var pVal)) priority=pVal; if(strict && prAttr!=null && !string.IsNullOrEmpty(id)) priorityAttrNs![id]= prAttr.Name.NamespaceName; var condNode= el.Element(ns+"conditionExpression")?? el.Element("conditionExpression"); var condText = condNode?.Value?.Trim(); flows.Add(new BpmnSequenceFlow(id, Intern(el.Attribute("sourceRef")?.Value ?? string.Empty), Intern(el.Attribute("targetRef")?.Value ?? string.Empty), defaultIds.Contains(id), condText, currentSub, ext, priority)); if(strict && condNode!=null){ bool wasCData = condNode.Nodes().OfType<XCData>().Any(); rawCond![id]=(condNode.Value, wasCData);} CaptureElementMeta(el,id); break;
-                case "dataObject": dataObjects.Add(new BpmnDataObject(id, el.Attribute("name")?.Value)); CaptureElementMeta(el,id); break;
-                case "dataObjectReference": dataObjectRefs.Add(new BpmnDataObjectReference(id, Intern(el.Attribute("dataObjectRef")?.Value ?? string.Empty))); CaptureElementMeta(el,id); break;
-                case "dataStore": dataStores.Add(new BpmnDataStore(id, el.Attribute("name")?.Value)); CaptureElementMeta(el,id); break;
-                case "dataStoreReference": dataStoreRefs.Add(new BpmnDataStoreReference(id, Intern(el.Attribute("dataStoreRef")?.Value ?? string.Empty))); CaptureElementMeta(el,id); break;
-                case "property": properties.Add(new BpmnProperty(id, el.Attribute("name")?.Value)); CaptureElementMeta(el,id); break;
-                case "textAnnotation":
-                    if (!_options.CaptureArtifacts && strict) { CaptureElementMeta(el, id); break; }
-                    textAnnotations.Add(new BpmnTextAnnotation(id, el.Element(ns+"text")?.Value ?? el.Element("text")?.Value)); if(strict) rawArtifacts!.Add(new XElement(el)); CaptureElementMeta(el,id); break;
-                case "group":
-                    if (!_options.CaptureArtifacts && strict) { CaptureElementMeta(el, id); break; }
-                    groups.Add(new BpmnGroup(id, el.Attribute("categoryValueRef")?.Value)); if(strict) rawArtifacts!.Add(new XElement(el)); CaptureElementMeta(el,id); break;
-                case "association":
-                    if (!_options.CaptureArtifacts && strict) { CaptureElementMeta(el, id); break; }
-                    associationArtifacts.Add(new BpmnAssociationArtifact(id, el.Attribute("sourceRef")?.Value ?? string.Empty, el.Attribute("targetRef")?.Value ?? string.Empty, el.Attribute("associationDirection")?.Value)); if(strict) rawArtifacts!.Add(new XElement(el)); CaptureElementMeta(el,id); break;
-                case "lane": if(strict) rawLanes!.Add(new XElement(el)); CaptureElementMeta(el,id); break;
-            }
+                        var task = new BpmnTask(id, local, currentSub, ext) { Name = el.Attribute("name")?.Value ?? string.Empty };
+                        tasks.Add(task); flowNodeIds.Add(id);
+                        // IO spec & associations
+                        {
+                            var ioSpec = el.Element(ns + "ioSpecification") ?? el.Element("ioSpecification"); if (ioSpec != null) { var dataInputs = ioSpec.Elements(ns + "dataInput").Concat(ioSpec.Elements("dataInput")).Select(di => { var did = Intern(di.Attribute("id")?.Value ?? string.Empty); if (string.IsNullOrEmpty(did)) return null; return new BpmnDataInput(did, di.Attribute("name")?.Value); }).OfType<BpmnDataInput>().ToList(); var dataOutputs = ioSpec.Elements(ns + "dataOutput").Concat(ioSpec.Elements("dataOutput")).Select(dout => { var oid = Intern(dout.Attribute("id")?.Value ?? string.Empty); if (string.IsNullOrEmpty(oid)) return null; return new BpmnDataOutput(oid, dout.Attribute("name")?.Value); }).OfType<BpmnDataOutput>().ToList(); var inputAssociations = el.Elements(ns + "dataInputAssociation").Concat(el.Elements("dataInputAssociation")).Select(a => { var src = a.Element(ns + "sourceRef")?.Value ?? a.Element("sourceRef")?.Value; var tgt = a.Element(ns + "targetRef")?.Value ?? a.Element("targetRef")?.Value; if (string.IsNullOrWhiteSpace(src) || string.IsNullOrWhiteSpace(tgt)) return null; return new BpmnDataAssociation(Intern(src), Intern(tgt)); }).OfType<BpmnDataAssociation>().ToList(); var outputAssociations = el.Elements(ns + "dataOutputAssociation").Concat(el.Elements("dataOutputAssociation")).Select(a => { var src = a.Element(ns + "sourceRef")?.Value ?? a.Element("sourceRef")?.Value; var tgt = a.Element(ns + "targetRef")?.Value ?? a.Element("targetRef")?.Value; if (string.IsNullOrWhiteSpace(src) || string.IsNullOrWhiteSpace(tgt)) return null; return new BpmnDataAssociation(Intern(src), Intern(tgt)); }).OfType<BpmnDataAssociation>().ToList(); if (dataInputs.Count > 0 || dataOutputs.Count > 0 || inputAssociations.Count > 0 || outputAssociations.Count > 0) activityIo.Add(new BpmnActivityIo(id, dataInputs, dataOutputs, inputAssociations, outputAssociations)); }
+                        }
+                        CaptureElementMeta(el, id); break;
+                    case var _ when local.EndsWith("Gateway"):
+                        flowNodeIds.Add(id); gateways.Add(new BpmnGateway(id, local, gatewaysRaw.FirstOrDefault(g => g.Id == id)?.DefaultId, currentSub, ext)); CaptureElementMeta(el, id); break;
+                    case "laneSet":
+                        if (strict) rawLanes!.Add(new XElement(el)); // keep laneSet structure
+                        Walk(el); // recurse into lanes
+                        continue; // prevent double attribute handling
+                    case "sequenceFlow":
+                        int? priority = null; var prAttr = el.Attribute(XName.Get("priority", "http://vertexbpmn.io/schema/1.0")) ?? el.Attribute(XName.Get("priority", "http://camunda.org/schema/1.0/bpmn")) ?? el.Attribute("priority"); if (prAttr != null && int.TryParse(prAttr.Value, out var pVal)) priority = pVal; if (strict && prAttr != null && !string.IsNullOrEmpty(id)) priorityAttrNs![id] = prAttr.Name.NamespaceName; var condNode = el.Element(ns + "conditionExpression") ?? el.Element("conditionExpression"); var condText = condNode?.Value?.Trim(); flows.Add(new BpmnSequenceFlow(id, Intern(el.Attribute("sourceRef")?.Value ?? string.Empty), Intern(el.Attribute("targetRef")?.Value ?? string.Empty), defaultIds.Contains(id), condText, currentSub, ext, priority)); if (strict && condNode != null) { bool wasCData = condNode.Nodes().OfType<XCData>().Any(); rawCond![id] = (condNode.Value, wasCData); }
+                        CaptureElementMeta(el, id); break;
+                    case "dataObject": dataObjects.Add(new BpmnDataObject(id, el.Attribute("name")?.Value)); CaptureElementMeta(el, id); break;
+                    case "dataObjectReference": dataObjectRefs.Add(new BpmnDataObjectReference(id, Intern(el.Attribute("dataObjectRef")?.Value ?? string.Empty))); CaptureElementMeta(el, id); break;
+                    case "dataStore": dataStores.Add(new BpmnDataStore(id, el.Attribute("name")?.Value)); CaptureElementMeta(el, id); break;
+                    case "dataStoreReference": dataStoreRefs.Add(new BpmnDataStoreReference(id, Intern(el.Attribute("dataStoreRef")?.Value ?? string.Empty))); CaptureElementMeta(el, id); break;
+                    case "property": properties.Add(new BpmnProperty(id, el.Attribute("name")?.Value)); CaptureElementMeta(el, id); break;
+                    case "textAnnotation":
+                        if (!_options.CaptureArtifacts && strict) { CaptureElementMeta(el, id); break; }
+                        textAnnotations.Add(new BpmnTextAnnotation(id, el.Element(ns + "text")?.Value ?? el.Element("text")?.Value)); if (strict) rawArtifacts!.Add(new XElement(el)); CaptureElementMeta(el, id); break;
+                    case "group":
+                        if (!_options.CaptureArtifacts && strict) { CaptureElementMeta(el, id); break; }
+                        groups.Add(new BpmnGroup(id, el.Attribute("categoryValueRef")?.Value)); if (strict) rawArtifacts!.Add(new XElement(el)); CaptureElementMeta(el, id); break;
+                    case "association":
+                        if (!_options.CaptureArtifacts && strict) { CaptureElementMeta(el, id); break; }
+                        associationArtifacts.Add(new BpmnAssociationArtifact(id, el.Attribute("sourceRef")?.Value ?? string.Empty, el.Attribute("targetRef")?.Value ?? string.Empty, el.Attribute("associationDirection")?.Value)); if (strict) rawArtifacts!.Add(new XElement(el)); CaptureElementMeta(el, id); break;
+                    case "lane": if (strict) rawLanes!.Add(new XElement(el)); CaptureElementMeta(el, id); break;
+                }
 
-            // Phase B: missing id diagnostic for flow nodes / sequenceFlow / artifacts
-            if (strict && string.IsNullOrEmpty(id))
-            {
-                // classify subset of elements requiring ids
-                if (local is "userTask" or "serviceTask" or "task" || local.EndsWith("Task") ||
-                    local is "startEvent" or "endEvent" or "intermediateCatchEvent" or "intermediateThrowEvent" or "boundaryEvent" ||
-                    local.EndsWith("Gateway") || local is "sequenceFlow")
+                // Phase B: missing id diagnostic for flow nodes / sequenceFlow / artifacts
+                if (strict && string.IsNullOrEmpty(id))
                 {
-                    diagnostics.Add($"Missing id on {local}");
+                    // classify subset of elements requiring ids
+                    if (local is "userTask" or "serviceTask" or "task" || local.EndsWith("Task") ||
+                        local is "startEvent" or "endEvent" or "intermediateCatchEvent" or "intermediateThrowEvent" or "boundaryEvent" ||
+                        local.EndsWith("Gateway") || local is "sequenceFlow")
+                    {
+                        diagnostics.Add($"Missing id on {local}");
+                    }
                 }
             }
-        } }
+        }
+
         Walk(process);
 
         // Reference resolution diagnostics
@@ -684,7 +743,15 @@ public partial class BpmnParser : IBpmnParser
         if (_options.EnableAdvancedValidation)
         {
             structuredDiagnostics = ValidateModel(model, _options);
-            
+
+            // Phase 7: Merge unknown event definition diagnostics
+            if (unknownEventDefinitionDiagnostics.Count > 0)
+            {
+                var allDiagnostics = new List<ValidationDiagnostic>(structuredDiagnostics);
+                allDiagnostics.AddRange(unknownEventDefinitionDiagnostics);
+                structuredDiagnostics = allDiagnostics;
+            }
+
             // Phase 5: ValidationSummary logging
             if (_options.EnableLogging && structuredDiagnostics.Count > 0)
             {
@@ -1849,45 +1916,49 @@ public partial class BpmnParser : IBpmnParser
 
     private static IReadOnlyList<EventDefinition> ParseEventDefinitions(XElement evt, XNamespace ns)
     {
-        var list = new List<EventDefinition>();
-        foreach (var defElem in evt.Elements())
-        {
-            switch (defElem.Name.LocalName)
-            {
-                case "timerEventDefinition":
-                    list.Add(new TimerEventDefinition(defElem.Element(ns + "timeDate")?.Value ?? defElem.Element("timeDate")?.Value, defElem.Element(ns + "timeDuration")?.Value ?? defElem.Element("timeDuration")?.Value, defElem.Element(ns + "timeCycle")?.Value ?? defElem.Element("timeCycle")?.Value));
-                    break;
-                case "messageEventDefinition":
-                    list.Add(new MessageEventDefinition(defElem.Attribute("messageRef")?.Value ?? string.Empty, defElem.Attribute("correlationKey")?.Value));
-                    break;
-                case "signalEventDefinition":
-                    list.Add(new SignalEventDefinition(defElem.Attribute("signalRef")?.Value ?? string.Empty));
-                    break;
-                case "errorEventDefinition":
-                    list.Add(new ErrorEventDefinition(defElem.Attribute("errorRef")?.Value ?? string.Empty));
-                    break;
-                case "conditionalEventDefinition":
-                    var cond = defElem.Element(ns + "conditionExpression")?.Value ?? defElem.Element("conditionExpression")?.Value ?? string.Empty;
-                    list.Add(new ConditionalEventDefinition(cond));
-                    break;
-                case "terminateEventDefinition":
-                    list.Add(new TerminateEventDefinition());
-                    break;
-                case "cancelEventDefinition":
-                    list.Add(new CancelEventDefinition());
-                    break;
-                case "compensateEventDefinition":
-                    list.Add(new CompensationEventDefinition(defElem.Attribute("activityRef")?.Value));
-                    break;
-                case "escalationEventDefinition":
-                    list.Add(new EscalationEventDefinition(defElem.Attribute("escalationRef")?.Value ?? string.Empty));
-                    break;
-                case "linkEventDefinition":
-                    list.Add(new LinkEventDefinition(defElem.Attribute("name")?.Value ?? string.Empty));
-                    break;
-            }
-        }
-        return list;
+        // For backward compatibility, use basic options without validation
+        var defaultOptions = new BpmnParserOptions { ValidateEventDefinitions = false };
+        var (definitions, _) = ParseEventDefinitionsWithDiagnostics(evt, ns, defaultOptions);
+        return definitions;
+        //var definitions = new List<EventDefinition>();
+        //foreach (var defElem in evt.Elements())
+        //{
+        //    switch (defElem.Name.LocalName)
+        //    {
+        //        case "timerEventDefinition":
+        //            definitions.Add(new TimerEventDefinition(defElem.Element(ns + "timeDate")?.Value ?? defElem.Element("timeDate")?.Value, defElem.Element(ns + "timeDuration")?.Value ?? defElem.Element("timeDuration")?.Value, defElem.Element(ns + "timeCycle")?.Value ?? defElem.Element("timeCycle")?.Value));
+        //            break;
+        //        case "messageEventDefinition":
+        //            definitions.Add(new MessageEventDefinition(defElem.Attribute("messageRef")?.Value ?? string.Empty, defElem.Attribute("correlationKey")?.Value));
+        //            break;
+        //        case "signalEventDefinition":
+        //            definitions.Add(new SignalEventDefinition(defElem.Attribute("signalRef")?.Value ?? string.Empty));
+        //            break;
+        //        case "errorEventDefinition":
+        //            definitions.Add(new ErrorEventDefinition(defElem.Attribute("errorRef")?.Value ?? string.Empty));
+        //            break;
+        //        case "conditionalEventDefinition":
+        //            var cond = defElem.Element(ns + "conditionExpression")?.Value ?? defElem.Element("conditionExpression")?.Value ?? string.Empty;
+        //            definitions.Add(new ConditionalEventDefinition(cond));
+        //            break;
+        //        case "terminateEventDefinition":
+        //            definitions.Add(new TerminateEventDefinition());
+        //            break;
+        //        case "cancelEventDefinition":
+        //            definitions.Add(new CancelEventDefinition());
+        //            break;
+        //        case "compensateEventDefinition":
+        //            definitions.Add(new CompensationEventDefinition(defElem.Attribute("activityRef")?.Value));
+        //            break;
+        //        case "escalationEventDefinition":
+        //            definitions.Add(new EscalationEventDefinition(defElem.Attribute("escalationRef")?.Value ?? string.Empty));
+        //            break;
+        //        case "linkEventDefinition":
+        //            definitions.Add(new LinkEventDefinition(defElem.Attribute("name")?.Value ?? string.Empty));
+        //            break;
+        //    }
+        //}
+        //return definitions;
     }
 
     private static void MaybeThrowOnValidation(BpmnParserOptions options, IReadOnlyList<ValidationDiagnostic> diagnostics)
@@ -1911,6 +1982,123 @@ public partial class BpmnParser : IBpmnParser
             List<T> list => CollectionsMarshal.AsSpan(list),
             T[] array => array.AsSpan(),
             _ => collection.ToArray().AsSpan() // Fallback - creates array once
+        };
+    }
+
+    // Phase 7: Enhanced ParseEventDefinitions with vendor/unknown detection
+    private static (IReadOnlyList<EventDefinition> definitions, IReadOnlyList<ValidationDiagnostic> diagnostics) ParseEventDefinitionsWithDiagnostics(XElement evt, XNamespace ns, BpmnParserOptions options)
+    {
+        var list = new List<EventDefinition>();
+        var diagnostics = new List<ValidationDiagnostic>();
+        var eventId = evt.Attribute("id")?.Value ?? "unknown";
+
+        // Phase 7: Known standard BPMN event definition types
+        var standardEventDefinitions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "timerEventDefinition", "messageEventDefinition", "signalEventDefinition",
+            "errorEventDefinition", "conditionalEventDefinition", "terminateEventDefinition",
+            "cancelEventDefinition", "compensateEventDefinition", "escalationEventDefinition",
+            "linkEventDefinition"
+        };
+
+        foreach (var defElem in evt.Elements())
+        {
+            var localName = defElem.Name.LocalName;
+            var isInStandardNamespace = defElem.Name.Namespace == ns;
+
+            // Check if this is a standard BPMN event definition
+            if (localName.EndsWith("EventDefinition", StringComparison.OrdinalIgnoreCase))
+            {
+                if (isInStandardNamespace && standardEventDefinitions.Contains(localName))
+                {
+                    // Parse standard event definitions
+                    var eventDef = ParseStandardEventDefinition(defElem, ns, localName);
+                    if (eventDef != null)
+                    {
+                        list.Add(eventDef);
+                    }
+                }
+                else if (!isInStandardNamespace)
+                {
+                    // Phase 7: Unknown/vendor event definition detected
+                    if (options.ValidateEventDefinitions && options.EnableAdvancedValidation)
+                    {
+                        // Get the namespace prefix for the event definition element
+                        var prefix = defElem.GetPrefixOfNamespace(defElem.Name.Namespace);
+                        var elementDisplayName = string.IsNullOrEmpty(prefix)
+                            ? localName
+                            : $"{prefix}:{localName}";
+
+                        diagnostics.Add(new ValidationDiagnostic(
+                            Code: "VEN-UNKNOWN-EVENT-DEFINITION",
+                            Severity: ValidationSeverity.Info,
+                            Message: $"Event '{eventId}' contains unknown event definition '{elementDisplayName}' (preserved in raw form)",
+                            ElementId: eventId,
+                            Category: "Vendor"));
+                    }
+                }
+            }
+            else if (!isInStandardNamespace && defElem.Name.Namespace != XNamespace.None)
+            {
+                // Phase 7: Vendor-specific element that doesn't follow standard naming pattern
+                if (options.ValidateEventDefinitions && options.EnableAdvancedValidation)
+                {
+                    // Get the namespace prefix for the vendor element
+                    var prefix = defElem.GetPrefixOfNamespace(defElem.Name.Namespace);
+                    var elementDisplayName = string.IsNullOrEmpty(prefix)
+                        ? localName
+                        : $"{prefix}:{localName}";
+
+                    diagnostics.Add(new ValidationDiagnostic(
+                        Code: "VEN-UNKNOWN-EVENT-DEFINITION",
+                        Severity: ValidationSeverity.Info,
+                        Message: $"Event '{eventId}' contains unknown event definition '{elementDisplayName}' (preserved in raw form)",
+                        ElementId: eventId,
+                        Category: "Vendor"));
+                }
+            }
+        }
+
+        return (list, diagnostics);
+    }
+    // Phase 7: Helper method to parse standard event definitions
+    private static EventDefinition? ParseStandardEventDefinition(XElement defElem, XNamespace ns, string localName)
+    {
+        return localName switch
+        {
+            "timerEventDefinition" => new TimerEventDefinition(
+                defElem.Element(ns + "timeDate")?.Value ?? defElem.Element("timeDate")?.Value,
+                defElem.Element(ns + "timeDuration")?.Value ?? defElem.Element("timeDuration")?.Value,
+                defElem.Element(ns + "timeCycle")?.Value ?? defElem.Element("timeCycle")?.Value),
+
+            "messageEventDefinition" => new MessageEventDefinition(
+                defElem.Attribute("messageRef")?.Value ?? string.Empty,
+                defElem.Attribute("correlationKey")?.Value),
+
+            "signalEventDefinition" => new SignalEventDefinition(
+                defElem.Attribute("signalRef")?.Value ?? string.Empty),
+
+            "errorEventDefinition" => new ErrorEventDefinition(
+                defElem.Attribute("errorRef")?.Value ?? string.Empty),
+
+            "conditionalEventDefinition" => new ConditionalEventDefinition(
+                defElem.Element(ns + "conditionExpression")?.Value ??
+                defElem.Element("conditionExpression")?.Value ?? string.Empty),
+
+            "terminateEventDefinition" => new TerminateEventDefinition(),
+
+            "cancelEventDefinition" => new CancelEventDefinition(),
+
+            "compensateEventDefinition" => new CompensationEventDefinition(
+                defElem.Attribute("activityRef")?.Value),
+
+            "escalationEventDefinition" => new EscalationEventDefinition(
+                defElem.Attribute("escalationRef")?.Value ?? string.Empty),
+
+            "linkEventDefinition" => new LinkEventDefinition(
+                defElem.Attribute("name")?.Value ?? string.Empty),
+
+            _ => null
         };
     }
 

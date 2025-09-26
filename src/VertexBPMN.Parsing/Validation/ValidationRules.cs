@@ -37,6 +37,8 @@ public static class ValidationRules
         new ValidationRuleDescriptor("SEM-BOUNDARY-COMPENSATION-CANCELACTIVITY", "Semantic", ValidationSeverity.Error, "Compensation boundary must be non-interrupting", "Compensation boundary event must set cancelActivity='false'."),
         new ValidationRuleDescriptor("SEM-EVENTGW-INVALID-OUTGOING", "Semantic", ValidationSeverity.Error, "Invalid event-based gateway outgoing target", "Event-based gateway outgoing flow targets a non-catching intermediate event."),
         new ValidationRuleDescriptor("SEM-EVENTSUBPROCESS-START-TYPE", "Semantic", ValidationSeverity.Error, "Invalid event subprocess start type", "Event subprocess start event uses a disallowed event definition."),
+        // Vendor/Extension
+        new ValidationRuleDescriptor("VEN-UNKNOWN-EVENT-DEFINITION", "Vendor", ValidationSeverity.Info, "Unknown event definition", "Event contains a vendor-specific or unknown event definition that will be preserved in raw form."),
         // Advisory
         new ValidationRuleDescriptor("ADV-UNREACHABLE-NODE", "Advisory", ValidationSeverity.Info, "Unreachable node", "Flow node not reachable from any root start event."),
         new ValidationRuleDescriptor("ADV-ORPHANED-END", "Advisory", ValidationSeverity.Info, "Orphaned end event", "End event not reachable from any root start event."),

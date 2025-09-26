@@ -92,6 +92,59 @@ public sealed class BpmnParserOptions
     /// Logger instance for structured logging. If null and EnableLogging=true, uses NullLogger.
     /// </summary>
     public ILogger? Logger { get; init; }
+    
+    // Phase 6: Performance & Memory Layer (NEW)
+    /// <summary>
+    /// Use shared string atom table for interning common BPMN terms across parser instances.
+    /// Reduces memory usage but may add slight CPU overhead. Default true.
+    /// </summary>
+    public bool UseSharedStringPool { get; init; } = true;
+    
+    /// <summary>
+    /// Use ArrayPool for temporary collections during parsing to reduce GC pressure.
+    /// Default true for better performance in high-throughput scenarios.
+    /// </summary>    
+    public bool UseArrayPooling { get; init; } = true;
+    
+    /// <summary>
+    /// Use lazy cloning for raw extension elements to defer memory allocation until access.
+    /// Only applies in Strict mode. Default true.
+    /// </summary>
+    public bool UseLazyRawCloning { get; init; } = true;
+
+    // Phase 6: Large Model Optimizations (NEW - Zero-Break Default Off)
+    /// <summary>
+    /// Enable automatic optimizations for large models (>LargeModelThreshold elements).
+    /// When enabled, parser applies memory-saving strategies for models that exceed the threshold.
+    /// Default false (zero-break).
+    /// </summary>
+    public bool OptimizeLargeModels { get; init; } = false;
+
+    /// <summary>
+    /// Element count threshold for triggering large model optimizations.
+    /// Models with more elements than this threshold will use optimized parsing strategies.
+    /// Only applies when OptimizeLargeModels=true. Default 100.
+    /// </summary>
+    public int LargeModelThreshold { get; init; } = 100;
+
+    /// <summary>
+    /// Skip raw documentation capture for large models to reduce memory usage.
+    /// Only applies when OptimizeLargeModels=true and threshold is exceeded. Default false (zero-break).
+    /// </summary>
+    public bool SkipDocumentationForLargeModels { get; init; } = false;
+
+    /// <summary>
+    /// Skip raw artifact capture (textAnnotation, association, group) for large models.
+    /// Only applies when OptimizeLargeModels=true and threshold is exceeded. Default false (zero-break).
+    /// </summary>
+    public bool SkipArtifactsForLargeModels { get; init; } = false;
+
+    /// <summary>
+    /// Skip raw extension element capture for large models to improve performance.
+    /// Only applies when OptimizeLargeModels=true and threshold is exceeded. Default false (zero-break).
+    /// </summary>
+    public bool SkipExtensionsForLargeModels { get; init; } = false;
+    public bool UsePooledCollections { get; set; }
 }
 
 /// <summary>

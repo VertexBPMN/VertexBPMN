@@ -1,14 +1,15 @@
-//See docs/ROUNDTRIP_STRICT_PLAN.md
+ï»¿//See docs/ROUNDTRIP_STRICT_PLAN.md
 
 using System.Collections.ObjectModel;
 using System.Diagnostics;
-using System.Runtime.InteropServices.Marshalling;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Xml.Linq;
 using Microsoft.Extensions.Logging;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Domain.Model.Bpmn;
+using VertexBPMN.Parsing.Performance;
 
 namespace VertexBPMN.Parsing;
 
@@ -18,9 +19,8 @@ public partial class BpmnParser : IBpmnParser
     private readonly Dictionary<string, LinkedListNode<(string Key, BpmnModel Model)>> _cacheIndex = new();
     private readonly LinkedList<(string Key, BpmnModel Model)> _lru = new();
     private readonly object _cacheLock = new();
-    private readonly Dictionary<string, string> _idPool = new(StringComparer.Ordinal);
     
-    // Phase 5: Observability Infrastructure (NEW)
+    // Phase 5: Observability Infrastructure
     private readonly ActivitySource? _activitySource;
     private readonly ILogger _logger;
     private static readonly ActivitySource DefaultActivitySource = new("VertexBPMN.Parsing");
@@ -28,10 +28,10 @@ public partial class BpmnParser : IBpmnParser
     private string Intern(string s)
     {
         if (!_options.InternIds) return s;
-        if (s.Length == 0) return s;
-        if (_idPool.TryGetValue(s, out var existing)) return existing;
-        _idPool[s] = s;
-        return s;
+        if (string.IsNullOrEmpty(s)) return s;
+        
+        // Phase 6: Use SharedStringAtomTable for cross-parser memory efficiency
+        return Performance.SharedStringAtomTable.Intern(s);
     }
 
     public BpmnParser() : this(new BpmnParserOptions()) { }
@@ -114,11 +114,10 @@ public partial class BpmnParser : IBpmnParser
         var rawEvDefs = strict ? new Dictionary<string, List<XElement>>() : null;
         var namespacePrefixes = strict ? new List<NamespacePrefix>() : null;
         var elementsMetadata = strict ? new Dictionary<string, ElementMetadata>() : null;
-        var rawDocumentation = strict ? new Dictionary<string, List<XElement>>() : null;
+        var rawDocumentation = strict ? new Dictionary<string, List<XElement>>() : null;      
         var rawGlobalElements = strict ? new List<XElement>() : null;
         var rawArtifacts = strict ? new List<XElement>() : null;
         var rawLanes = strict ? new List<XElement>() : null;
-        // NEW Phase A captures (zero-break additive):
         var rawMultiInstance = strict ? new Dictionary<string, XElement>() : null; // original loop characteristics node
         var priorityAttrNs = strict ? new Dictionary<string, string>(StringComparer.Ordinal) : null; // priority attribute namespace per sequenceFlow
         var flowNodeAttributes = strict ? new Dictionary<string, IReadOnlyDictionary<string,string>>(StringComparer.Ordinal) : null; // attribute snapshot per flow node / sequenceFlow
@@ -179,10 +178,23 @@ public partial class BpmnParser : IBpmnParser
                 MaybeThrowOnValidation(_options, structured);
             }
 
+            empty.ValidationDiagnostics = structured;
 
             Cache(xml, empty);
             return Task.FromResult(empty);
         }
+
+        rawDocumentation = (strict &&
+                                !(IsLargeModel(process, _options) && _options.SkipDocumentationForLargeModels))
+            ? new Dictionary<string, List<XElement>>() : null;
+
+        rawArtifacts = (strict &&
+                            !(IsLargeModel(process, _options) && _options.SkipArtifactsForLargeModels))
+            ? new List<XElement>() : null;
+
+        rawExtensions = (strict && !(IsLargeModel(process, _options) && _options.SkipExtensionsForLargeModels))
+            ? new Dictionary<string, XElement>() : null;
+
         var pid = Intern(process.Attribute("id")?.Value ?? string.Empty);
         if (strict)
         {
@@ -196,26 +208,136 @@ public partial class BpmnParser : IBpmnParser
         }
 
         // global elements capture
-        var messages = doc.Descendants(ns + "message").ToList(); var signals = doc.Descendants(ns + "signal").ToList(); var errors = doc.Descendants(ns + "error").ToList(); var escalations = doc.Descendants(ns + "escalation").ToList(); if(strict){ foreach(var g in messages.Concat(signals).Concat(errors).Concat(escalations)) rawGlobalElements!.Add(new XElement(g)); }
-        var messageModels = messages.Select(m=> new BpmnMessage(Intern(m.Attribute("id")?.Value ?? string.Empty), m.Attribute("name")?.Value)).Where(m=>!string.IsNullOrEmpty(m.Id)).ToList();
-        var signalModels = signals.Select(s=> new BpmnSignal(Intern(s.Attribute("id")?.Value ?? string.Empty), s.Attribute("name")?.Value)).Where(s=>!string.IsNullOrEmpty(s.Id)).ToList();
-        var errorModels = errors.Select(e=> new BpmnError(Intern(e.Attribute("id")?.Value ?? string.Empty), e.Attribute("name")?.Value, e.Attribute("errorCode")?.Value)).Where(e=>!string.IsNullOrEmpty(e.Id)).ToList();
-        var escalationModels = escalations.Select(e=> new BpmnEscalation(Intern(e.Attribute("id")?.Value ?? string.Empty), e.Attribute("name")?.Value, e.Attribute("escalationCode")?.Value)).Where(e=>!string.IsNullOrEmpty(e.Id)).ToList();
+        var messages = doc.Descendants(ns + "message").ToList();
+        var signals = doc.Descendants(ns + "signal").ToList();
+        var errors = doc.Descendants(ns + "error").ToList();
+        var escalations = doc.Descendants(ns + "escalation").ToList();
+        if (strict)
+            foreach (var g in messages.Concat(signals).Concat(errors).Concat(escalations))
+                rawGlobalElements!.Add(new XElement(g));
+        var messageModels = messages
+            .Select(m => new BpmnMessage(Intern(m.Attribute("id")?.Value ?? string.Empty), m.Attribute("name")?.Value))
+            .Where(m => !string.IsNullOrEmpty(m.Id)).ToList();
+        var signalModels = signals
+            .Select(s => new BpmnSignal(Intern(s.Attribute("id")?.Value ?? string.Empty), s.Attribute("name")?.Value))
+            .Where(s => !string.IsNullOrEmpty(s.Id)).ToList();
+        var errorModels = errors
+            .Select(e => new BpmnError(Intern(e.Attribute("id")?.Value ?? string.Empty), e.Attribute("name")?.Value,
+                e.Attribute("errorCode")?.Value)).Where(e => !string.IsNullOrEmpty(e.Id)).ToList();
+        var escalationModels = escalations
+            .Select(e => new BpmnEscalation(Intern(e.Attribute("id")?.Value ?? string.Empty),
+                e.Attribute("name")?.Value, e.Attribute("escalationCode")?.Value))
+            .Where(e => !string.IsNullOrEmpty(e.Id)).ToList();
 
-        var gatewaysRaw = process.Elements().Where(e=>e.Name.LocalName.EndsWith("Gateway")).Select(g=> new { Id = Intern(g.Attribute("id")?.Value ?? string.Empty), Type=g.Name.LocalName, DefaultId = g.Attribute("default")?.Value}).ToList();
-        var defaultIds = new HashSet<string>(gatewaysRaw.Select(g=>g.DefaultId).Where(v=>!string.IsNullOrWhiteSpace(v))!);
+        var gatewaysRaw = process.Elements().Where(e => e.Name.LocalName.EndsWith("Gateway")).Select(g =>
+            new
+            {
+                Id = Intern(g.Attribute("id")?.Value ?? string.Empty), Type = g.Name.LocalName,
+                DefaultId = g.Attribute("default")?.Value
+            }).ToList();
+        var defaultIds =
+            new HashSet<string>(gatewaysRaw.Select(g => g.DefaultId).Where(v => !string.IsNullOrWhiteSpace(v))!);
         var subprocessStack = new Stack<string>();
-        var events = new List<BpmnEvent>(); var gateways = new List<BpmnGateway>(); var subprocesses = new List<BpmnSubprocess>(); var flows = new List<BpmnSequenceFlow>(); var tasks = new List<BpmnTask>(); var dataObjects=new List<BpmnDataObject>(); var dataObjectRefs=new List<BpmnDataObjectReference>(); var dataStores=new List<BpmnDataStore>(); var dataStoreRefs=new List<BpmnDataStoreReference>(); var properties=new List<BpmnProperty>(); var activityIo=new List<BpmnActivityIo>(); var participants=new List<BpmnParticipant>(); var lanes=new List<BpmnLane>(); var messageFlows=new List<BpmnMessageFlow>(); var textAnnotations=new List<BpmnTextAnnotation>(); var associationArtifacts=new List<BpmnAssociationArtifact>(); var groups=new List<BpmnGroup>();
-        var flowNodeIds = new HashSet<string>(); var idIndex=new HashSet<string>(); var pendingMiConflicts=new HashSet<string>();
-        var transactionIds = new HashSet<string>(); var boundaryEvents = new List<(string Id,string? Attached)>(); var linkThrowCounts = new Dictionary<string,int>(StringComparer.Ordinal); var linkCatchNames = new HashSet<string>(StringComparer.Ordinal);
-        int orderCounter = 0;
+        var events =new List<BpmnEvent>();
+        var gateways = new List<BpmnGateway>();
+        var subprocesses = new List<BpmnSubprocess>();
+        var flows = new List<BpmnSequenceFlow>();
+        var tasks = new List<BpmnTask>();
+        var dataObjects = new List<BpmnDataObject>();
+        var dataObjectRefs = new List<BpmnDataObjectReference>();
+        var dataStores = new List<BpmnDataStore>();
+        var dataStoreRefs = new List<BpmnDataStoreReference>();
+        var properties = new List<BpmnProperty>();
+        var activityIo = new List<BpmnActivityIo>();
+        var participants = new List<BpmnParticipant>();
+        var lanes = new List<BpmnLane>();
+        var messageFlows = new List<BpmnMessageFlow>();
+        var textAnnotations = new List<BpmnTextAnnotation>();
+        var associationArtifacts = new List<BpmnAssociationArtifact>();
+        var groups = new List<BpmnGroup>();
+        var flowNodeIds = new HashSet<string>();
+        var idIndex = new HashSet<string>();
+        var pendingMiConflicts = new HashSet<string>();
+        var transactionIds = new HashSet<string>();
+        var boundaryEvents = new List<(string Id, string? Attached)>();
+        var linkThrowCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+        var linkCatchNames = new HashSet<string>(StringComparer.Ordinal);
+        var orderCounter = 0;
 
-        Dictionary<string,string>? ExtractExtensions(XElement el){ if(!_options.PreserveUnknownExtensions) return null; var extParent= el.Element(ns+"extensionElements") ?? el.Element("extensionElements"); if(extParent==null) return null; var dict=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase); if(strict){ var ownerId= el.Attribute("id")?.Value; if(!string.IsNullOrEmpty(ownerId)) rawExtensions![ownerId]= new XElement(extParent);} void Harvest(XElement node){ foreach(var attr in node.Attributes()){ var key=$"{node.Name}:{attr.Name.LocalName}"; dict[key]=attr.Value;} if(!node.HasAttributes && node!=extParent){ var key=$"{node.Name}:__present"; dict[key]="true";} foreach(var child in node.Elements()) Harvest(child);} foreach(var top in extParent.Elements()) Harvest(top); return dict.Count==0? null: dict; }
+        Dictionary<string, string>? ExtractExtensions(XElement el)
+        {
+            if (!_options.PreserveUnknownExtensions) return null;
+            var extParent = el.Element(ns + "extensionElements") ?? el.Element("extensionElements");
+            if (extParent == null) return null;
+            var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (strict && rawExtensions != null)
+            {
+                var ownerId = el.Attribute("id")?.Value;
+                if (!string.IsNullOrEmpty(ownerId))
+                {
+                    rawExtensions[ownerId] = _options.UseLazyRawCloning ?
+                        new LazyXElement(extParent).Element :
+                        new XElement(extParent);
+                }
+            }
 
-        void CaptureElementMeta(XElement el,string id,bool hadCamundaCollection=false,bool hadZeebeInputCollection=false,bool hadLoopCardinality=false,bool hadCamundaElementVar=false,bool hadZeebeInputElement=false,bool hadZeebeOutputElement=false){ if(!strict||string.IsNullOrEmpty(id)) return; var attrDict=new Dictionary<string,string>(StringComparer.Ordinal); foreach(var a in el.Attributes()){ if(a.IsNamespaceDeclaration) continue; attrDict[a.Name.ToString()]=a.Value; } elementsMetadata![id]= new ElementMetadata(orderCounter, el.Name.LocalName, attrDict, hadCamundaCollection, hadZeebeInputCollection, hadLoopCardinality, hadCamundaElementVar, hadZeebeInputElement, hadZeebeOutputElement); if(flowNodeAttributes!=null) flowNodeAttributes[id]=attrDict; var docs = el.Elements(ns + "documentation").Concat(el.Elements("documentation")).ToList(); if (docs.Count > 0){ if (!rawDocumentation!.TryGetValue(id, out var list)) { list = new List<XElement>(); rawDocumentation[id] = list; } foreach (var d in docs) list.Add(new XElement(d)); } }
+            void Harvest(XElement node)
+            {
+                foreach (var attr in node.Attributes())
+                {
+                    var key = $"{node.Name}:{attr.Name.LocalName}";
+                    dict[key] = attr.Value;
+                }
+
+                if (!node.HasAttributes && node != extParent)
+                {
+                    var key = $"{node.Name}:__present";
+                    dict[key] = "true";
+                }
+
+                foreach (var child in node.Elements()) Harvest(child);
+            }
+
+            foreach (var top in extParent.Elements()) Harvest(top);
+            return dict.Count == 0 ? null : dict;
+        }
+
+        void CaptureElementMeta(XElement el, string id, bool hadCamundaCollection = false,
+            bool hadZeebeInputCollection = false, bool hadLoopCardinality = false, bool hadCamundaElementVar = false,
+            bool hadZeebeInputElement = false, bool hadZeebeOutputElement = false)
+        {
+            if (!strict || string.IsNullOrEmpty(id)) return;
+            var attrDict = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var a in el.Attributes())
+            {
+                if (a.IsNamespaceDeclaration) continue;
+                attrDict[a.Name.ToString()] = a.Value;
+            }
+
+            elementsMetadata![id] = new ElementMetadata(orderCounter, el.Name.LocalName, attrDict, hadCamundaCollection,
+                hadZeebeInputCollection, hadLoopCardinality, hadCamundaElementVar, hadZeebeInputElement,
+                hadZeebeOutputElement);
+
+            if (flowNodeAttributes != null) flowNodeAttributes[id] = attrDict;
+            if (rawDocumentation != null)
+            {
+                var docs = el.Elements(ns + "documentation")
+                                          .Concat(el.Elements("documentation")).ToList();
+                if (docs.Count > 0)
+                {
+                    if (!rawDocumentation!.TryGetValue(id, out var list))
+                    {
+                        list = new List<XElement>();
+                        rawDocumentation[id] = list;
+                    }
+
+                    foreach (var d in docs) list.Add(new XElement(d));
+                }
+            }
+        }
 
         (LoopCharacteristics? loop, bool conflict) ParseLoopLocal(XElement sp){ var res= ParseLoopWithConflict(sp, ns, pendingMiConflicts); if(res.conflict) pendingMiConflicts.Add(sp.Attribute("id")?.Value ?? ""); return res; }
-
+           
         void Walk(XElement parent){ foreach(var el in parent.Elements()){ cancellationToken.ThrowIfCancellationRequested(); orderCounter++; var local= el.Name.LocalName; var id= Intern(el.Attribute("id")?.Value ?? string.Empty); string? currentSub = subprocessStack.Count>0? subprocessStack.Peek(): null; if(!string.IsNullOrEmpty(id)){ if(!idIndex.Add(id) && _options.StrictValidation) diagnostics.Add($"Duplicate ID: {id}"); } Dictionary<string,string>? ext = ExtractExtensions(el); switch (local)
             {
                 case "subProcess":
@@ -324,7 +446,9 @@ public partial class BpmnParser : IBpmnParser
             var signalIds = new HashSet<string>(signalModels.Select(s => s.Id), StringComparer.Ordinal);
             var errorIds = new HashSet<string>(errorModels.Select(e => e.Id), StringComparer.Ordinal);
             var escalationIds = new HashSet<string>(escalationModels.Select(e => e.Id), StringComparer.Ordinal);
-            foreach (var ev in events)
+            // Zero-copy span access to List<BpmnEvent> backing array
+            var eventsSpan = AsSpanSafe(events);
+            foreach (var ev in eventsSpan)
             {
                 foreach (var def in ev.Definitions)
                 {
@@ -381,14 +505,33 @@ public partial class BpmnParser : IBpmnParser
         if (subprocesses.Count > 0)
         {
             var updated = new List<BpmnSubprocess>(subprocesses.Count);
-            foreach (var sp in subprocesses)
+            var subprocessesSpan = CollectionsMarshal.AsSpan(subprocesses);
+            var eventsSpan = CollectionsMarshal.AsSpan(events);
+            var tasksSpan = CollectionsMarshal.AsSpan(tasks);
+            var gatewaysSpan = CollectionsMarshal.AsSpan(gateways);
+            var flowsSpan = CollectionsMarshal.AsSpan(flows);
+
+            foreach (var sp in subprocessesSpan)
             {
                 var childFlowNodes = new List<string>();
-                childFlowNodes.AddRange(events.Where(e => e.SubprocessId == sp.Id).Select(e => e.Id));
-                childFlowNodes.AddRange(tasks.Where(t => t.SubprocessId == sp.Id).Select(t => t.Id));
-                childFlowNodes.AddRange(gateways.Where(g => g.SubprocessId == sp.Id).Select(g => g.Id));
-                childFlowNodes.AddRange(subprocesses.Where(s2 => s2.SubprocessId == sp.Id).Select(s2 => s2.Id));
-                var childSeqFlows = flows.Where(f => f.SubprocessId == sp.Id).Select(f => f.Id).ToList();
+
+                // Span-based filtering - much faster than LINQ Where()
+                foreach (var e in eventsSpan)
+                    if (e.SubprocessId == sp.Id) childFlowNodes.Add(e.Id);
+
+                foreach (var t in tasksSpan)
+                    if (t.SubprocessId == sp.Id) childFlowNodes.Add(t.Id);
+
+                foreach (var g in gatewaysSpan)
+                    if (g.SubprocessId == sp.Id) childFlowNodes.Add(g.Id);
+
+                foreach (var s2 in subprocessesSpan)
+                    if (s2.SubprocessId == sp.Id) childFlowNodes.Add(s2.Id);
+
+                var childSeqFlows = new List<string>();
+                foreach (var f in flowsSpan)
+                    if (f.SubprocessId == sp.Id) childSeqFlows.Add(f.Id);
+
                 updated.Add(sp with { ChildFlowNodeIds = childFlowNodes, ChildSequenceFlowIds = childSeqFlows });
             }
             subprocesses = updated;
@@ -602,24 +745,39 @@ public partial class BpmnParser : IBpmnParser
         return Task.FromResult(model);
     }
 
+    private bool IsLargeModel(XElement? processElement, BpmnParserOptions options)
+    {
+        if (!options.OptimizeLargeModels || options.LargeModelThreshold <= 0) 
+            return false;
+            
+        var elementCount = processElement?.Elements().Count() ?? 0;
+        
+        if (elementCount > options.LargeModelThreshold && options.EnableLogging)
+        {
+            _logger.LogDebug("Large model detected: ElementCount={ElementCount}, applying optimizations", 
+                elementCount);
+        }
+        
+        return elementCount > options.LargeModelThreshold;
+    }
 
     private static IReadOnlyList<ValidationDiagnostic> ValidateModel(BpmnModel model, BpmnParserOptions options)
     {
 
-        var events = model.Events;
-        var gateways = model.Gateways;
-        var subprocesses = model.Subprocesses;
-        var flows = model.SequenceFlows;
-        var tasks = model.Tasks;
-        var lanes = model.Lanes;
-        var messageFlows = model.MessageFlows;
-        var legacyDiagnostics = model.Diagnostics;
+        var events = model.Events != null ? AsSpanSafe(model.Events): Array.Empty<BpmnEvent>();
+        var gateways = model.Gateways != null ? AsSpanSafe(model.Gateways) : Array.Empty<BpmnGateway>();
+        var subprocesses = model.Subprocesses != null ? AsSpanSafe(model.Subprocesses) : Array.Empty<BpmnSubprocess>();
+        var flows = AsSpanSafe(model.SequenceFlows);
+        var tasks = model.Tasks != null ? AsSpanSafe(model.Tasks) : Array.Empty<BpmnTask>();
+        var lanes = model.Lanes != null ? AsSpanSafe(model.Lanes) : Array.Empty<BpmnLane>();
+        var messageFlows = model.MessageFlows != null ? AsSpanSafe(model.MessageFlows) : Array.Empty<BpmnMessageFlow>();
+        var legacyDiagnostics = model.Diagnostics != null ? AsSpanSafe(model.Diagnostics) : Array.Empty<string>();
         var rawLaneElements = model.RawMetadata?.RawLanes; // Null-safe access
-        var dataObjects = model.DataObjects;
-        var dataObjectReferences = model.DataObjectReferences;
-        var associations = model.Associations;
-        var textAnnotations = model.TextAnnotations;
-        var groups = model.Groups;
+        var dataObjects = model.DataObjects != null ? AsSpanSafe(model.DataObjects) : Array.Empty<BpmnDataObject>();
+        var dataObjectReferences = model.DataObjectReferences != null ? AsSpanSafe(model.DataObjectReferences) : Array.Empty<BpmnDataObjectReference>();
+        var associations = model.Associations != null ? AsSpanSafe(model.Associations) : Array.Empty<BpmnAssociationArtifact>();
+        var textAnnotations = model.TextAnnotations != null ? AsSpanSafe(model.TextAnnotations) : Array.Empty<BpmnTextAnnotation>();
+        var groups = model.Groups != null ? AsSpanSafe(model.Groups) : Array.Empty<BpmnGroup>();
         var list = new List<ValidationDiagnostic>();
 
         // ---- Legacy mapping block (keep existing mappings; abbreviated here) ----
@@ -648,7 +806,7 @@ public partial class BpmnParser : IBpmnParser
                     list.Add(new ValidationDiagnostic(
                         Code: "SEM-MI-CONFLICT",
                         Severity: ValidationSeverity.Warning,
-                        Message: $"Multi-instance activity '{id}' has both loopCardinality and collection – remove one",
+                        Message: $"Multi-instance activity '{id}' has both loopCardinality and collection â€“ remove one",
                         ElementId: id,
                         Category: "Semantic"));
                 }
@@ -936,9 +1094,11 @@ public partial class BpmnParser : IBpmnParser
         }
 
         // REF-DATAOBJECTREF-TARGET-MISSING
-        if (dataObjectReferences.Count > 0)
+        if (dataObjectReferences.Length > 0)
         {
-            var dataObjectIds = new HashSet<string>(dataObjects.Select(d => d.Id), StringComparer.Ordinal);
+            var dataObjectIds = new HashSet<string>(dataObjects.Length, StringComparer.Ordinal);
+            foreach (var d in dataObjects)
+                if (!string.IsNullOrEmpty(d.Id)) dataObjectIds.Add(d.Id);
             foreach (var dref in dataObjectReferences)
             {
                 if (string.IsNullOrEmpty(dref.Id)) continue;
@@ -958,7 +1118,7 @@ public partial class BpmnParser : IBpmnParser
         }
 
         // REF-ASSOCIATION-ENDPOINT-MISSING (Warning for each missing endpoint)
-        if (associations.Count > 0)
+        if (associations.Length > 0)
         {
             // Build a set of "known" artifact/flow node ids that associations could legally reference.
             var knownIds = new HashSet<string>(nodeIds, StringComparer.Ordinal);
@@ -1003,7 +1163,7 @@ public partial class BpmnParser : IBpmnParser
 
         // SEM-EVENTSUBPROCESS-START-TYPE:
         // Validate startEvent definitions inside event subprocesses (triggeredByEvent="true").
-        if (subprocesses.Count > 0)
+        if (subprocesses.Length > 0)
         {
             // Allowed event definition CLR types
             static bool IsAllowed(EventDefinition def) =>
@@ -1015,16 +1175,25 @@ public partial class BpmnParser : IBpmnParser
                  or SignalEventDefinition
                  or ConditionalEventDefinition;
 
-            var eventSubIds = new HashSet<string>(
-                subprocesses.Where(sp => sp.IsEventSubprocess)
-                            .Select(sp => sp.Id)
-                            .Where(id => !string.IsNullOrEmpty(id)),
-                StringComparer.Ordinal);
+            // Build event subprocess IDs set using spans - much faster than LINQ
+            var eventSubIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var sp in subprocesses)
+            {
+                if (sp.IsEventSubprocess && !string.IsNullOrEmpty(sp.Id))
+                    eventSubIds.Add(sp.Id);
+            }
 
             if (eventSubIds.Count > 0)
             {
-                foreach (var ev in events.Where(e => e.Type == "startEvent" && !string.IsNullOrEmpty(e.SubprocessId) && eventSubIds.Contains(e.SubprocessId)))
+                // Span-based filtering instead of LINQ Where() chain
+                foreach (var ev in events)
                 {
+                    // Manual filtering conditions - much faster than LINQ Where()
+                    if (ev.Type != "startEvent" ||
+                        string.IsNullOrEmpty(ev.SubprocessId) ||
+                        !eventSubIds.Contains(ev.SubprocessId))
+                        continue;
+
                     if (string.IsNullOrEmpty(ev.Id)) continue;
 
                     if (ev.Definitions.Count == 0)
@@ -1048,26 +1217,26 @@ public partial class BpmnParser : IBpmnParser
                     {
                         AddStartTypeDiagnostic(ev, badType ?? "unknown");
                     }
+                }
 
-                    void AddStartTypeDiagnostic(BpmnEvent e, string problem)
+                void AddStartTypeDiagnostic(BpmnEvent e, string problem)
+                {
+                    var normalized = problem.ToLowerInvariant();
+                    if (!list.Exists(d => d.Code == "SEM-EVENTSUBPROCESS-START-TYPE" && d.ElementId == e.Id))
                     {
-                        var normalized = problem.ToLowerInvariant();
-                        if (!list.Exists(d => d.Code == "SEM-EVENTSUBPROCESS-START-TYPE" && d.ElementId == e.Id))
-                        {
-                            list.Add(new ValidationDiagnostic(
-                                Code: "SEM-EVENTSUBPROCESS-START-TYPE",
-                                Severity: ValidationSeverity.Error,
-                                Message: $"Event subprocess start event '{e.Id}' has invalid start type '{normalized}'",
-                                ElementId: e.Id,
-                                Category: "Semantic"));
-                        }
+                        list.Add(new ValidationDiagnostic(
+                            Code: "SEM-EVENTSUBPROCESS-START-TYPE",
+                            Severity: ValidationSeverity.Error,
+                            Message: $"Event subprocess start event '{e.Id}' has invalid start type '{normalized}'",
+                            ElementId: e.Id,
+                            Category: "Semantic"));
                     }
                 }
             }
         }
         // SEM-EVENTGW-INVALID-OUTGOING:
         // For each event-based gateway, all outgoing targets must be catching intermediate events (intermediateCatchEvent).
-        if (gateways.Count > 0)
+        if (gateways.Length > 0)
         {
             // Build quick lookup for events by id and type
             var eventTypeById = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -1090,9 +1259,12 @@ public partial class BpmnParser : IBpmnParser
                 lst.Add(f);
             }
 
-            foreach (var gw in gateways.Where(g => string.Equals(g.Type, "eventBasedGateway", StringComparison.Ordinal)))
+            // âœ… SPAN-OPTIMIZED: Replace LINQ Where() with direct span iteration
+            foreach (var gw in gateways)
             {
-                if (string.IsNullOrEmpty(gw.Id)) continue;
+                if (!string.Equals(gw.Type, "eventBasedGateway", StringComparison.Ordinal) ||
+                    string.IsNullOrEmpty(gw.Id))
+                    continue;
 
                 if (!flowsBySource.TryGetValue(gw.Id, out var outgoing)) continue;
 
@@ -1124,7 +1296,7 @@ public partial class BpmnParser : IBpmnParser
         // --
         // - Advisory Reachability Rules (BFS from start events) ---
         // Build adjacency once
-        if (events.Count > 0 || tasks.Count > 0 || gateways.Count > 0 || subprocesses.Count > 0)
+        if (events.Length > 0 || tasks.Length > 0 || gateways.Length > 0 || subprocesses.Length > 0)
         {
             var adjacency = new Dictionary<string, List<string>>(StringComparer.Ordinal);
             foreach (var f in flows)
@@ -1138,11 +1310,17 @@ public partial class BpmnParser : IBpmnParser
                 listTargets.Add(f.TargetRef);
             }
 
-            // Start events only at root level (no SubprocessId) for top-level reachability
-            var startIds = events.Where(e => e.Type == "startEvent" && string.IsNullOrEmpty(e.SubprocessId))
-                                 .Select(e => e.Id)
-                                 .Where(id => !string.IsNullOrEmpty(id))
-                                 .ToList();
+            // âœ… SPAN-OPTIMIZED: Start events only at root level (no SubprocessId) for top-level reachability
+            var startIds = new List<string>();
+            foreach (var e in events)
+            {
+                if (e.Type == "startEvent" &&
+                    string.IsNullOrEmpty(e.SubprocessId) &&
+                    !string.IsNullOrEmpty(e.Id))
+                {
+                    startIds.Add(e.Id);
+                }
+            }
 
             var reachable = new HashSet<string>(StringComparer.Ordinal);
             var queue = new Queue<string>();
@@ -1150,8 +1328,8 @@ public partial class BpmnParser : IBpmnParser
             foreach (var s in startIds)
             {
                 if (reachable.Add(s)) queue.Enqueue(s);
-    }
-    
+            }
+
             while (queue.Count > 0)
             {
                 var cur = queue.Dequeue();
@@ -1164,7 +1342,7 @@ public partial class BpmnParser : IBpmnParser
                     }
                 }
             }
-   
+
             // Node set already built: nodeIds
             if (reachable.Count > 0)
             {
@@ -1185,10 +1363,11 @@ public partial class BpmnParser : IBpmnParser
                     }
                 }
 
-                // Orphaned End Events (subset of unreachable end events)
-                foreach (var end in events.Where(e => e.Type == "endEvent"))
+                // âœ… SPAN-OPTIMIZED: Orphaned End Events (subset of unreachable end events)
+                foreach (var end in events)
                 {
-                    if (!string.IsNullOrEmpty(end.Id) &&
+                    if (end.Type == "endEvent" &&
+                        !string.IsNullOrEmpty(end.Id) &&
                         !reachable.Contains(end.Id) &&
                         !list.Exists(d => d.Code == "ADV-ORPHANED-END" && d.ElementId == end.Id))
                     {
@@ -1592,15 +1771,15 @@ public partial class BpmnParser : IBpmnParser
                     // GENERICS (nur wenn aktiviert)
                     else if (_options.NormalizeUnknownVendorExtensions && nsUri.Length > 0)
                     {
-                        // Versuche Präfix zu ermitteln (falls nicht vorhanden -> generic)
+                        // Versuche PrÃ¤fix zu ermitteln (falls nicht vorhanden -> generic)
                         var prefix = child.GetPrefixOfNamespace(child.Name.Namespace);
                         if (string.IsNullOrEmpty(prefix))
                         {
-                            // Fallback Kürzel generieren (ns)
+                            // Fallback KÃ¼rzel generieren (ns)
                             prefix = "ns";
                         }
                         // Sicherstellen dass nicht einer der bekannten Prefixe kollidiert ohne definierten Namespace
-                        // (zero-break – ignorieren wenn zufällig gleich)
+                        // (zero-break â€“ ignorieren wenn zufÃ¤llig gleich)
                         foreach (var attr in child.Attributes())
                         {
                             if (attr.IsNamespaceDeclaration) continue;
@@ -1724,6 +1903,15 @@ public partial class BpmnParser : IBpmnParser
                 $"BPMN validation failed (first: {first.Code} severity={first.Severity})",
                 diagnostics);
         }
+    }
+    private static ReadOnlySpan<T> AsSpanSafe<T>(IReadOnlyList<T> collection)
+    {
+        return collection switch
+        {
+            List<T> list => CollectionsMarshal.AsSpan(list),
+            T[] array => array.AsSpan(),
+            _ => collection.ToArray().AsSpan() // Fallback - creates array once
+        };
     }
 
 }

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
+using VertexBPMN.Parsing.Hardening;
 
 namespace VertexBPMN.Parsing;
 
@@ -177,6 +178,25 @@ public sealed class BpmnParserOptions
     public bool EnableNormalizedProjectionSerializer { get; set; } = false;
     public bool UseProjectionSerializer { get; set; } = false;
     public bool EnableCanonicalSort { get; set; } = false;
+    /// <summary>
+    /// Security configuration for parsing operations.
+    /// </summary>
+    public BpmnSecurityOptions SecurityOptions { get; init; } = new();
+
+    /// <summary>
+    /// Enable comprehensive security validation.
+    /// </summary>
+    public bool EnableSecurityValidation { get; init; } = true;
+
+    /// <summary>
+    /// Automatically sanitize detected security threats.
+    /// </summary>
+    public bool AutoSanitizeThreats { get; init; } = false;
+
+    /// <summary>
+    /// Fail parsing on any detected security threat.
+    /// </summary>
+    public bool FailOnSecurityThreat { get; init; } = true;
 
 }
 

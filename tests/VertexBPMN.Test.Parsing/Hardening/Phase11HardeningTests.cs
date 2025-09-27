@@ -79,10 +79,28 @@ public class Phase11HardeningTests
     [Fact]
     public async Task SecurityReview_XXEPrevention_IsEnabledByDefault()
     {
+        // Test XXE vulnerability
+        string simple = """
+                                      <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                                                        xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+                                        <bpmn:process id="p1">
+                                          <bpmn:startEvent id="start"/>
+                                          <bpmn:userTask id="task1">
+                                            <bpmn:extensionElements>
+                                              <camunda:assignee value="alice"/>
+                                            </bpmn:extensionElements>
+                                          </bpmn:userTask>
+                                          <bpmn:endEvent id="end"/>
+                                          <bpmn:sequenceFlow id="f1" sourceRef="start" targetRef="task1"/>
+                                          <bpmn:sequenceFlow id="f2" sourceRef="task1" targetRef="end"/>
+                                        </bpmn:process>
+                                      </bpmn:definitions>
+                                      """;
+
         var securityValidator = new BpmnSecurityValidator();
 
         // Verify XXE prevention through actual configuration
-        var securityResult = securityValidator.ValidateSecurityConfiguration();
+        var securityResult = securityValidator.ValidateSecurityConfiguration(simple);
 
         Assert.True(securityResult.IsSecure, "Parser should be secure against XXE attacks by default");
         Assert.True(securityResult.DtdProcessingDisabled, "DTD processing should be disabled");

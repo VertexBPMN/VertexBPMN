@@ -2,16 +2,31 @@
 
 namespace VertexBPMN.Domain.Model.Bpmn;
 
+using System.Runtime.CompilerServices;
 using System.Xml.Linq;
 using VertexBPMN.Parsing;
 
-public record BpmnEvent(string Id,string Type,IReadOnlyList<EventDefinition> Definitions,string? SubprocessId,Dictionary<string,string>? ExtensionAttributes=null);
+public record BpmnEvent(string Id,string Type,IReadOnlyList<EventDefinition> Definitions,string? SubprocessId,Dictionary<string,string>? ExtensionAttributes=null)
+{
+    // Add Name property for compatibility
+    public string Name => ExtensionAttributes?.TryGetValue("name", out var name) == true ? name : string.Empty;
+
+    // Add Extensions property for compatibility with serializer
+    public Dictionary<string, string>? Extensions => ExtensionAttributes;
+}
 public record BpmnGateway(string Id,string Type,string? DefaultFlowId,string? SubprocessId,Dictionary<string,string>? ExtensionAttributes=null);
 public record BpmnSubprocess(string Id,bool IsEventSubprocess,bool IsTransaction,LoopCharacteristics? Loop,string? SubprocessId,Dictionary<string,string>? ExtensionAttributes=null,IReadOnlyList<string>? ChildFlowNodeIds=null,IReadOnlyList<string>? ChildSequenceFlowIds=null);
-public record BpmnSequenceFlow(string Id,string SourceRef,string TargetRef,bool IsDefault,string? ConditionExpression,string? SubprocessId,Dictionary<string,string>? ExtensionAttributes=null,int? Priority=null);
+public record BpmnSequenceFlow(string Id,string SourceRef,string TargetRef,bool IsDefault,string? ConditionExpression,string? SubprocessId,Dictionary<string,string>? ExtensionAttributes=null,int? Priority=null)
+{
+    public string Name { get; init; } = string.Empty;
+}
 public record BpmnTask(string Id,string Type,string? SubprocessId,  Dictionary<string,string>? Attributes=null, string? Implementation = null)
 {
-    public string Name { get; init; } = string.Empty; // retained optional convenience
+    // Add Name property for compatibility
+    public string Name { get; init; } = string.Empty;
+
+    // Add Extensions property for compatibility with serializer
+    public Dictionary<string, string>? Extensions => Attributes;
 }
 public record BpmnDataObject(string Id,string? Name);
 public record BpmnDataObjectReference(string Id,string DataObjectRef);

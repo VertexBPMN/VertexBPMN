@@ -1,15 +1,16 @@
 ﻿//See docs/ROUNDTRIP_STRICT_PLAN.md
 
+using Microsoft.Extensions.Logging;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Xml.Linq;
-using Microsoft.Extensions.Logging;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Domain.Model.Bpmn;
 using VertexBPMN.Parsing.Performance;
+using VertexBPMN.Parsing.Serialization;
 
 namespace VertexBPMN.Parsing;
 
@@ -1881,7 +1882,18 @@ public partial class BpmnParser : IBpmnParser
         return vendorNormalized;
     }
 
-    public string Serialize(BpmnModel model) => new BpmnSerializer { RoundtripMode = _options.RoundtripMode }.Serialize(model);
+    public string Serialize(BpmnModel model)
+    {
+        // Phase 8: Use NormalizedProjectionSerializer when enabled
+        if (_options.EnableNormalizedProjectionSerializer)
+        {
+            var normalizedSerializer = new NormalizedProjectionSerializer(_options);
+            return normalizedSerializer.Serialize(model);
+        }
+
+        // Existing behavior: use BpmnSerializer for strict/roundtrip mode
+        return new BpmnSerializer { RoundtripMode = _options.RoundtripMode }.Serialize(model);
+    }
 
     private static (LoopCharacteristics? loop, bool conflict) ParseLoopWithConflict(XElement sp, XNamespace ns, HashSet<string> conflictSet)
     {
@@ -2102,6 +2114,207 @@ public partial class BpmnParser : IBpmnParser
         };
     }
 
+    // Phase 8: Add structural model hashing for cache invalidation
+    public string ComputeStructuralModelHash(BpmnModel model)
+    {
+        if (model == null) throw new ArgumentNullException(nameof(model));
+
+        var structuralContent = new StringBuilder();
+
+        // Phase 8: Build deterministic representation of structural content
+        AppendStructuralContent(structuralContent, model);
+
+        // Compute SHA256 hash of structural content
+        var contentBytes = Encoding.UTF8.GetBytes(structuralContent.ToString());
+        var hashBytes = SHA256.HashData(contentBytes);
+
+        return Convert.ToHexString(hashBytes);
+    }
+
+    private static void AppendStructuralContent(StringBuilder sb, BpmnModel model)
+    {
+        // Process ID
+        sb.Append($"PROCESS:{model.ProcessId}|");
+
+        // Events (sorted by id for deterministic output)
+        sb.Append("EVENTS:");
+        foreach (var evt in model.Events.OrderBy(e => e.Id, StringComparer.Ordinal))
+        {
+            sb.Append($"{evt.Id}:{evt.Type}");
+            if (!string.IsNullOrEmpty(evt.Name))
+                sb.Append($"#{evt.Name}");
+
+            // Event definitions (sorted for consistency)
+            if (evt.Definitions.Count > 0)
+            {
+                sb.Append("[");
+                foreach (var def in evt.Definitions.OrderBy(d => d.GetType().Name))
+                {
+                    sb.Append($"{def.GetType().Name}:");
+                    AppendEventDefinitionStructure(sb, def);
+                    sb.Append(",");
+                }
+                sb.Append("]");
+            }
+            sb.Append("|");
+        }
+
+        // Tasks (sorted by id for deterministic output)
+        sb.Append("TASKS:");
+        foreach (var task in model.Tasks.OrderBy(t => t.Id, StringComparer.Ordinal))
+        {
+            sb.Append($"{task.Id}:{task.Type}");
+            if (!string.IsNullOrEmpty(task.Name))
+                sb.Append($"#{task.Name}");
+            sb.Append("|");
+        }
+
+        // Gateways (sorted by id for deterministic output)
+        sb.Append("GATEWAYS:");
+        foreach (var gateway in model.Gateways.OrderBy(g => g.Id, StringComparer.Ordinal))
+        {
+            sb.Append($"{gateway.Id}:{gateway.Type}");
+            if (!string.IsNullOrEmpty(gateway.DefaultFlowId))
+                sb.Append($"@{gateway.DefaultFlowId}");
+            sb.Append("|");
+        }
+
+        // Subprocesses (sorted by id for deterministic output)
+        sb.Append("SUBPROCESSES:");
+        foreach (var subprocess in model.Subprocesses.OrderBy(s => s.Id, StringComparer.Ordinal))
+        {
+            sb.Append($"{subprocess.Id}:SP");
+            if (subprocess.IsEventSubprocess)
+                sb.Append(":EVT");
+            if (subprocess.IsTransaction)
+                sb.Append(":TX");
+            sb.Append("|");
+        }
+
+        // Sequence flows (sorted by id for deterministic output)
+        sb.Append("FLOWS:");
+        foreach (var flow in model.SequenceFlows.OrderBy(f => f.Id, StringComparer.Ordinal))
+        {
+            sb.Append($"{flow.Id}:{flow.SourceRef}->{flow.TargetRef}");
+            if (flow.IsDefault)
+                sb.Append(":DEF");
+            if (!string.IsNullOrEmpty(flow.ConditionExpression))
+                sb.Append($":COND#{flow.ConditionExpression.GetHashCode():X}"); // Hash condition to avoid huge strings
+            if (flow.Priority.HasValue)
+                sb.Append($":PRI{flow.Priority.Value}");
+            sb.Append("|");
+        }
+
+        // Global elements
+        if (model.Messages.Count > 0)
+        {
+            sb.Append("MESSAGES:");
+            foreach (var msg in model.Messages.OrderBy(m => m.Id, StringComparer.Ordinal))
+            {
+                sb.Append($"{msg.Id}");
+                if (!string.IsNullOrEmpty(msg.Name))
+                    sb.Append($"#{msg.Name}");
+                sb.Append("|");
+            }
+        }
+
+        if (model.Signals.Count > 0)
+        {
+            sb.Append("SIGNALS:");
+            foreach (var sig in model.Signals.OrderBy(s => s.Id, StringComparer.Ordinal))
+            {
+                sb.Append($"{sig.Id}");
+                if (!string.IsNullOrEmpty(sig.Name))
+                    sb.Append($"#{sig.Name}");
+                sb.Append("|");
+            }
+        }
+
+        if (model.Errors.Count > 0)
+        {
+            sb.Append("ERRORS:");
+            foreach (var err in model.Errors.OrderBy(e => e.Id, StringComparer.Ordinal))
+            {
+                sb.Append($"{err.Id}");
+                if (!string.IsNullOrEmpty(err.Name))
+                    sb.Append($"#{err.Name}");
+                if (!string.IsNullOrEmpty(err.ErrorCode))
+                    sb.Append($":{err.ErrorCode}");
+                sb.Append("|");
+            }
+        }
+
+        if (model.Escalations.Count > 0)
+        {
+            sb.Append("ESCALATIONS:");
+            foreach (var esc in model.Escalations.OrderBy(e => e.Id, StringComparer.Ordinal))
+            {
+                sb.Append($"{esc.Id}");
+                if (!string.IsNullOrEmpty(esc.Name))
+                    sb.Append($"#{esc.Name}");
+                if (!string.IsNullOrEmpty(esc.EscalationCode))
+                    sb.Append($":{esc.EscalationCode}");
+                sb.Append("|");
+            }
+        }
+    }
+
+    private static void AppendEventDefinitionStructure(StringBuilder sb, EventDefinition def)
+    {
+        switch (def)
+        {
+            case TimerEventDefinition timer:
+                if (!string.IsNullOrEmpty(timer.TimeDate))
+                    sb.Append($"TD:{timer.TimeDate.GetHashCode():X}");
+                if (!string.IsNullOrEmpty(timer.TimeDuration))
+                    sb.Append($"DUR:{timer.TimeDuration.GetHashCode():X}");
+                if (!string.IsNullOrEmpty(timer.TimeCycle))
+                    sb.Append($"CYC:{timer.TimeCycle.GetHashCode():X}");
+                break;
+
+            case MessageEventDefinition message:
+                if (!string.IsNullOrEmpty(message.MessageRef))
+                    sb.Append($"REF:{message.MessageRef}");
+                if (!string.IsNullOrEmpty(message.CorrelationKey))
+                    sb.Append($"CORR:{message.CorrelationKey}");
+                break;
+
+            case SignalEventDefinition signal:
+                if (!string.IsNullOrEmpty(signal.SignalRef))
+                    sb.Append($"REF:{signal.SignalRef}");
+                break;
+
+            case ErrorEventDefinition error:
+                if (!string.IsNullOrEmpty(error.ErrorRef))
+                    sb.Append($"REF:{error.ErrorRef}");
+                break;
+
+            case ConditionalEventDefinition conditional:
+                if (!string.IsNullOrEmpty(conditional.Condition))
+                    sb.Append($"COND:{conditional.Condition.GetHashCode():X}");
+                break;
+
+            case EscalationEventDefinition escalation:
+                if (!string.IsNullOrEmpty(escalation.EscalationRef))
+                    sb.Append($"REF:{escalation.EscalationRef}");
+                break;
+
+            case LinkEventDefinition link:
+                if (!string.IsNullOrEmpty(link.Name))
+                    sb.Append($"NAME:{link.Name}");
+                break;
+
+            case CompensationEventDefinition compensation:
+                if (!string.IsNullOrEmpty(compensation.ActivityRef))
+                    sb.Append($"ACT:{compensation.ActivityRef}");
+                break;
+
+            // Terminal event definitions (no additional data)
+            case TerminateEventDefinition:
+            case CancelEventDefinition:
+                break;
+        }
+    }
 }
 
 // ADD: capability property (Phase 0)

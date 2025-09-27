@@ -174,6 +174,9 @@ public sealed class BpmnParserOptions
     public bool ValidateRuntimeSemantics { get; init; } = true;
 
     public bool UsePooledCollections { get; set; }
+    public bool EnableNormalizedProjectionSerializer { get; init; } = false;
+    public bool UseProjectionSerializer { get; init; } = false;
+    public bool EnableCanonicalSort { get; init; } = false;
 }
 
 /// <summary>

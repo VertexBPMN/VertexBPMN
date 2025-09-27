@@ -177,6 +177,7 @@ public sealed class BpmnParserOptions
     public bool EnableNormalizedProjectionSerializer { get; set; } = false;
     public bool UseProjectionSerializer { get; set; } = false;
     public bool EnableCanonicalSort { get; set; } = false;
+
 }
 
 /// <summary>

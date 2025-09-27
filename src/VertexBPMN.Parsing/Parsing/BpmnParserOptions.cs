@@ -1,5 +1,6 @@
-using System.Diagnostics;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
+using VertexBPMN.Parsing.Ecosystem;
 using VertexBPMN.Parsing.Hardening;
 
 namespace VertexBPMN.Parsing;
@@ -197,6 +198,30 @@ public sealed class BpmnParserOptions
     /// Fail parsing on any detected security threat.
     /// </summary>
     public bool FailOnSecurityThreat { get; init; } = true;
+    /// <summary>
+    /// Pluggable vendor extension handlers for custom namespace processing.
+    /// </summary>
+    public IReadOnlyList<IBpmnVendorExtensionInterpreter> VendorExtensionHandlers { get; init; } = Array.Empty<IBpmnVendorExtensionInterpreter>();
+
+    /// <summary>
+    /// Enable streaming parse mode for large BPMN files.
+    /// </summary>
+    public bool EnableStreamingParse { get; init; } = false;
+
+    /// <summary>
+    /// Threshold file size (in bytes) to trigger streaming mode.
+    /// </summary>
+    public int StreamingThreshold { get; init; } = 5 * 1024 * 1024; // 5MB
+
+    /// <summary>
+    /// Chunk size for streaming operations.
+    /// </summary>
+    public int StreamingChunkSize { get; init; } = 64 * 1024; // 64KB
+
+    /// <summary>
+    /// Policy-based redaction configuration.
+    /// </summary>
+    public BpmnRedactionPolicies? RedactionPolicies { get; init; }
 
 }
 

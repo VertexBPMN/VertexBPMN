@@ -8,11 +8,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="BenchmarkDotNet" Version="0.14.0" />
+    <PackageReference Include="BenchmarkDotNet" Version="0.15.4" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\VertexBPMN.Parsing\VertexBPMN.Parsing.csproj" />
+    <ProjectReference Include="..\..\tests\VertexBPMN.Test.Parsing\VertexBPMN.Test.Parsing.csproj" />
   </ItemGroup>
 
 </Project>

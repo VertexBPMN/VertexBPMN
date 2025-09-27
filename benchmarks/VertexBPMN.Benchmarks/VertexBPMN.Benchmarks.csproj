@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
+    <StartupObject>VertexBPMN.Benchmarks.Program</StartupObject>
   </PropertyGroup>
 
   <ItemGroup>

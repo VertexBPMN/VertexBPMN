@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
-using BenchmarkDotNet.Running;
 using VertexBPMN.Domain.Model.Bpmn;
 using VertexBPMN.Parsing;
 
@@ -351,13 +350,5 @@ public class BpmnParserPerformanceBenchmarks
 </definitions>
 """;
         return xml;
-    }
-}
-
-public class Program
-{
-    public static void Main(string[] args)
-    {
-        BenchmarkRunner.Run<BpmnParserPerformanceBenchmarks>();
     }
 }

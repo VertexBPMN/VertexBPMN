@@ -43,6 +43,9 @@ public partial class BpmnParser : IBpmnParser
     public BpmnParser() : this(new BpmnParserOptions(), Microsoft.Extensions.Logging.Abstractions.NullLogger<BpmnParser>.Instance, TracerProvider.Default) { }
     public BpmnParser(BpmnParserOptions options) : this(options, Microsoft.Extensions.Logging.Abstractions.NullLogger<BpmnParser>.Instance, TracerProvider.Default) { }
 
+    public BpmnParser(BpmnParserOptions options, ILogger<BpmnParser> logger):this(options, logger, TracerProvider.Default)
+    {
+    }
     public BpmnParser(BpmnParserOptions options, ILogger<BpmnParser> logger, TracerProvider tracerProvider) 
     { 
         _options = options; 
@@ -98,13 +101,12 @@ public partial class BpmnParser : IBpmnParser
         {
             var streamingParser = new BpmnStreamingParser(_options);
             var streamingModel = await streamingParser.ParseAsync(xml, cancellationToken);
-            return ApplyPhase12PostProcessing(streamingModel);
+            return ApplyPostProcessing(streamingModel);
         }
 
-        // Existing parse logic...
         var model = await Parse(xml, cancellationToken);
 
-        return ApplyPhase12PostProcessing(model);      
+        return ApplyPostProcessing(model);      
     }
 
 
@@ -2345,7 +2347,7 @@ public partial class BpmnParser : IBpmnParser
         }
     }
 
-    private BpmnModel ApplyPhase12PostProcessing(BpmnModel model)
+    private BpmnModel ApplyPostProcessing(BpmnModel model)
     {
         var processedModel = model;
 

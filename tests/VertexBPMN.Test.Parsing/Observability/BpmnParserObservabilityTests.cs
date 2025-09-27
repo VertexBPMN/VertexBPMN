@@ -20,6 +20,19 @@ internal class TestLogger : ILogger
     }
 }
 
+internal class TestLogger<T> : ILogger<T>
+{
+    public List<LogEntry> LogEntries { get; } = new();
+
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+    public bool IsEnabled(LogLevel logLevel) => true;
+
+    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+    {
+        LogEntries.Add(new LogEntry(logLevel, formatter(state, exception), state?.ToString()));
+    }
+}
+
 internal record LogEntry(LogLevel Level, string Message, string? StructuredState);
 
 public class BpmnParserObservabilityTests
@@ -103,7 +116,7 @@ public class BpmnParserObservabilityTests
     public async Task EnableLogging_CapturesStructuredMessages()
     {
         // Arrange
-        var logger = new TestLogger();
+        var logger = new TestLogger<BpmnParser>();
         var options = new BpmnParserOptions
         {
             EnableLogging = true,
@@ -113,7 +126,7 @@ public class BpmnParserObservabilityTests
             EnableAdvancedValidation = true
         };
 
-        var parser = new BpmnParser(options);
+        var parser = new BpmnParser(options, logger);
 
         // Act
         var model = await parser.ParseAsync(SimpleXml);
@@ -143,6 +156,7 @@ public class BpmnParserObservabilityTests
     public async Task TracingDisabled_NoAllocationOverhead()
     {
         // Arrange - tracing disabled by default
+        var logger = new TestLogger<BpmnParser>();
         var options = new BpmnParserOptions
         {
             EnableTracing = false, // explicit
@@ -150,8 +164,8 @@ public class BpmnParserObservabilityTests
             RoundtripMode = BpmnRoundtripMode.Normalized
         };
 
-        var parser = new BpmnParser(options);
-        
+        var parser = new BpmnParser(options, logger);
+
         // Act & Assert - should not throw or allocate tracing objects
         var model = await parser.ParseAsync(SimpleXml);
         
@@ -165,7 +179,7 @@ public class BpmnParserObservabilityTests
     public async Task LoggingDisabled_NoLoggerCalls()
     {
         // Arrange
-        var mockLogger = new TestLogger();
+        var mockLogger = new TestLogger<BpmnParser>();
         var options = new BpmnParserOptions
         {
             EnableLogging = false,
@@ -173,7 +187,7 @@ public class BpmnParserObservabilityTests
             RoundtripMode = BpmnRoundtripMode.Normalized
         };
 
-        var parser = new BpmnParser(options);
+        var parser = new BpmnParser(options, mockLogger);
 
         // Act
         var model = await parser.ParseAsync(SimpleXml);

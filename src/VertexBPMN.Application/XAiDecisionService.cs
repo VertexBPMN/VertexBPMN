@@ -3,9 +3,9 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using OpenTelemetry.Trace;
 using VertexBPMN.Domain.Entities;
-using VertexBPMN.Domain.Entities.Modeling;
 using VertexBPMN.Domain.Exceptions;
 using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Domain.Model.Cmn;
 
 namespace VertexBPMN.Application;
 

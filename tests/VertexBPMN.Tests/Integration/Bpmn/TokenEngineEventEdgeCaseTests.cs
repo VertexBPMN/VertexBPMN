@@ -1,6 +1,7 @@
 
 
-using VertexBPMN.Domain.Entities.Modeling;
+
+using VertexBPMN.Domain.Model.Bpmn;
 using VertexBPMN.Engine.Execution;
 
 namespace VertexBPMN.Tests.Integration.Bpmn

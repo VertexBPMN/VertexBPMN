@@ -2,7 +2,7 @@
 using Moq;
 using OpenTelemetry.Trace;
 using Shouldly;
-using VertexBPMN.Domain.Entities.Modeling;
+using VertexBPMN.Domain.Model.Bpmn;
 using VertexBPMN.Engine.Parsing;
 using VertexBPMN.Infrastructure.Scripting;
 
@@ -107,14 +107,14 @@ public class ScriptTaskTests
         );
 
         var model = new BpmnModel(
-             "process1",
-           "TestProcess",
+           ProcessId: "process1",
+           Name: "TestProcess",
             new List<BpmnEvent>(),
-           new List<BpmnTask> { scriptTask },
             new List<BpmnGateway>(),
             new List<BpmnSubprocess>(),
             new List<BpmnSequenceFlow>(),
-             new Dictionary<string, object>
+            new List<BpmnTask> { scriptTask },
+            ProcessVariables: new Dictionary<string, object>
             {
                     { "a", 2 },
                     { "b", 3 }
@@ -149,11 +149,11 @@ public class ScriptTaskTests
             "process2",
              "TestProcessJS",
             new List<BpmnEvent>(),
-            new List<BpmnTask> { scriptTask },
             new List<BpmnGateway>(),
             new List<BpmnSubprocess>(),
             new List<BpmnSequenceFlow>(),
-            new Dictionary<string, object>
+            new List<BpmnTask> { scriptTask },
+            ProcessVariables:new Dictionary<string, object>
             {
                     { "a", 7 },
                     { "b", 8 }

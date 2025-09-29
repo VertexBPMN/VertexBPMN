@@ -35,7 +35,7 @@ public class Phase3AdvancedValidationThrowEscalationTests
     [Fact]
     public void EscalationEnabled_ThrowsOnError()
     {
-        var ex = Assert.Throws<UnifiedBpmnValidationException>(() =>
+        var ex = Assert.Throws<BpmnValidationException>(() =>
         {
             new BpmnParser(new BpmnParserOptions
             {
@@ -68,7 +68,7 @@ public class Phase3AdvancedValidationThrowEscalationTests
     public void MissingProcess_ThrowsWhenEnabled()
     {
         const string noProcess = "<bpmn:definitions xmlns:bpmn=\"http://www.omg.org/spec/BPMN/20100524/MODEL\" />";
-        var ex = Assert.Throws<UnifiedBpmnValidationException>(() =>
+        var ex = Assert.Throws<BpmnValidationException>(() =>
         {
             new BpmnParser(new BpmnParserOptions
             {

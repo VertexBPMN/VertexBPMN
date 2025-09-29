@@ -3,10 +3,12 @@ using Jint;
 using Microsoft.Extensions.Logging;
 using OpenTelemetry.Trace;
 using VertexBPMN.Domain.Entities;
-using VertexBPMN.Domain.Entities.Modeling;
 using VertexBPMN.Domain.Exceptions;
 using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Domain.Model.Bpmn;
+using VertexBPMN.Domain.Model.Cmn;
 using VertexBPMN.Infrastructure.Scripting;
+using ExecutionToken = VertexBPMN.Domain.Entities.ExecutionToken;
 
 namespace VertexBPMN.Engine.Execution
 {
@@ -82,7 +84,7 @@ namespace VertexBPMN.Engine.Execution
                 var nextIds = model.SequenceFlows.Where(f => f.SourceRef == startEvent.Id).Select(f => f.TargetRef).ToList();
                 foreach (var id in nextIds)
                 {
-                    var token = new ExecutionToken(Guid.NewGuid(), processInstanceId, id, "start", new Dictionary<string, object>(model.ProcessVariables ?? new()), DateTime.UtcNow);
+                    var token = new ExecutionToken(Guid.NewGuid(), processInstanceId, id, "start", new Dictionary<string, object>(model.ProcessVariables ?? new Dictionary<string, object>()), DateTime.UtcNow);
                     token.ProcessInstanceId = processInstanceId;
                     await DistributeTokenAsync(token, cancellationToken);
                     trace.Add($"Start->Token:{id}");
@@ -111,10 +113,10 @@ namespace VertexBPMN.Engine.Execution
             var token = new ExecutionToken(
                 Guid.NewGuid(),
                 Guid.Parse(processModel.Id),
-                processModel.Events.FirstOrDefault(pi => pi.Type == "eventListener" && pi.AttachedToRef == "startEvent")?.Id
+                processModel.Events.FirstOrDefault(pi => pi.Type == "eventListener" && pi.Definitions.SingleOrDefault().Kind == "startEvent")?.Id
                 ?? throw new DistributedTokenException("No start event found in process"),
                 "eventListener",
-                processModel.ProcessVariables,
+                (Dictionary<string, object>) processModel.ProcessVariables,
                 DateTime.UtcNow
             );
 
@@ -490,7 +492,7 @@ namespace VertexBPMN.Engine.Execution
                    throw new DistributedTokenException($"No active tokens found for case {caseId}");
                 }
 
-               // Prädiktive Optimierung mit externem Kontext
+                // Prädiktive Optimierung mit externem Kontext
                var historicalData = await _store.GetHistoricalCaseDataAsync(caseId);
                var predictedPlanItems = await _aiDecisionService.PredictOptimalPlanItemsAsync(caseId, caseToken.CaseFile, historicalData, cancellationToken);
 
@@ -791,14 +793,15 @@ namespace VertexBPMN.Engine.Execution
                     trace.Add($"EndEvent: {evt.Id}");
                     break;
 
-                case "intermediateCatchEvent" when evt.EventDefinitionType == "timer":
-                    var duration = evt.Attributes?.TryGetValue("timeDuration", out var dur) == true ? dur.ToString() : "PT1M";
+                case "intermediateCatchEvent" when evt.Definitions.OfType<TimerEventDefinition>().Any():
+                    var t = evt.Definitions.OfType<TimerEventDefinition>().First();
+                    var duration = !string.IsNullOrWhiteSpace(t.TimeDuration) ? t.TimeDuration : "PT1M";
                     await Task.Delay(ParseDuration(duration), cancellationToken);
                     trace.Add($"TimerEvent: {evt.Id} triggered after {duration}");
                     await ContinueToNextNodeAsync(evt.Id, token, model, trace, cancellationToken);
                     break;
 
-                case "boundaryEvent" when evt.EventDefinitionType == "timer":
+                case "boundaryEvent" :
                     if (evt.AttachedToRef != null && model.Tasks.Any(t => t.Id == evt.AttachedToRef))
                     {
                         trace.Add($"BoundaryTimerEvent: {evt.Id} attached to {evt.AttachedToRef}");
@@ -809,8 +812,8 @@ namespace VertexBPMN.Engine.Execution
                     }
                     break;
 
-                case "intermediateCatchEvent" when evt.EventDefinitionType == "message":
-                    var messageName = evt.Attributes?.TryGetValue("messageRef", out var msg) == true ? msg.ToString() : null;
+                case "intermediateCatchEvent" when evt.Definitions.First() is MessageEventDefinition m:
+                    var messageName = m.MessageRef ?? null;
                     if (messageName != null)
                     {
                         trace.Add($"MessageEvent: {evt.Id} waiting for message {messageName}");
@@ -888,10 +891,11 @@ namespace VertexBPMN.Engine.Execution
                     }
 
                     if (model.ProcessVariables == null)
-                        model.ProcessVariables = new Dictionary<string, object>(variables);
+                         model = model with { ProcessVariables = new Dictionary<string, object>(variables) };
                     else
                         foreach (var kv in variables)
                             model.ProcessVariables[kv.Key] = kv.Value;
+
                     token = new ExecutionToken
                     {
                         Id = token.Id,
@@ -944,7 +948,7 @@ namespace VertexBPMN.Engine.Execution
                                 var decisionResult = await _messageDispatcher.DispatchDmnTaskAsync(targetWorker, decisionRef, token.Variables, cancellationToken);
                                 token.Variables[resultVariable] = decisionResult;
                                 if (model.ProcessVariables == null)
-                                    model.ProcessVariables = new Dictionary<string, object>();
+                                    model = model with { ProcessVariables = new Dictionary<string, object>() };
                                 model.ProcessVariables[resultVariable] = decisionResult;
                                 trace.Add($"BusinessRuleTaskCompleted: {task.Id} result stored in {resultVariable}");
                             }
@@ -956,7 +960,7 @@ namespace VertexBPMN.Engine.Execution
                                 var decisionResult = await _dmnEngine.EvaluateDecisionAsync(decision, token.Variables);
                                 token.Variables[resultVariable] = decisionResult;
                                 if (model.ProcessVariables == null)
-                                    model.ProcessVariables = new Dictionary<string, object>();
+                                    model = model with { ProcessVariables = new Dictionary<string, object>() };
                                 model.ProcessVariables[resultVariable] = decisionResult;
                                 trace.Add($"BusinessRuleTaskCompleted: {task.Id} result stored in {resultVariable}");
                             }
@@ -1010,7 +1014,7 @@ namespace VertexBPMN.Engine.Execution
                 attributes.TryGetValue("flowable:processRef", out processRef))
             {
                 trace.Add($"ProcessTask: {planItem.Id} starting process {processRef}");
-                var bpmnModel = new BpmnModel(processRef, processRef,[], [], [], [], []); // Placeholder, lade echtes Modell
+                var bpmnModel = new BpmnModel(processRef,  processRef); // Placeholder, lade echtes Modell
                 var processTrace = await ExecuteAsync(bpmnModel, cancellationToken);
                 trace.AddRange(processTrace);
             }
@@ -1057,7 +1061,7 @@ namespace VertexBPMN.Engine.Execution
             trace.Add($"Subprocess: {subprocess.Id}");
             if (subprocess.IsMultiInstance)
             {
-                int cardinality = subprocess.LoopCardinality ?? 1;
+                int cardinality = subprocess.LoopCardinality;
                 for (int i = 0; i < cardinality; i++)
                 {
                     var instanceToken = new ExecutionToken(

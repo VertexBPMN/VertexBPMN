@@ -1,7 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using VertexBPMN.Domain.Entities;
-using VertexBPMN.Domain.Entities.Modeling;
 using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Domain.Model.Cmn;
 using Task = System.Threading.Tasks.Task;
 
 namespace VertexBPMN.Application.Messaging;

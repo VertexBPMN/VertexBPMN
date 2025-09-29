@@ -2,7 +2,7 @@
 
 using Microsoft.Extensions.Logging;
 using VertexBPMN.Application;
-using VertexBPMN.Domain.Entities.Modeling;
+using VertexBPMN.Domain.Model.Bpmn;
 using VertexBPMN.Engine.Execution;
 using VertexBPMN.Infrastructure.Persistence.InMemory;
 

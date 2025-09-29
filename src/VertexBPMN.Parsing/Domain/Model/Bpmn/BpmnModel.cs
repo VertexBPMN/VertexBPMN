@@ -47,7 +47,7 @@ public record BpmnParticipant(string Id,string? Name,string? ProcessRef);
 public record BpmnLane(string Id,string? Name,IReadOnlyList<string> FlowNodeRefs);
 public record BpmnMessageFlow(string Id,string SourceRef,string TargetRef,string? Name);
 public record BpmnTextAnnotation(string Id,string? Text);
-public record BpmnAssociationArtifact(string Id,string SourceRef,string TargetRef,string? Direction);
+public record BpmnAssociation(string Id,string SourceRef,string TargetRef,string? Direction);
 public record BpmnGroup(string Id,string? CategoryValueRef);
 public abstract record EventDefinition(string Kind);
 public sealed record TimerEventDefinition(string? TimeDate, string? TimeDuration, string? TimeCycle) : EventDefinition("timer");
@@ -195,7 +195,7 @@ public record BpmnModel(
     IReadOnlyList<BpmnLane>? Lanes = null,
     IReadOnlyList<BpmnMessageFlow>? MessageFlows = null,
     IReadOnlyList<BpmnTextAnnotation>? TextAnnotations = null,
-    IReadOnlyList<BpmnAssociationArtifact>? Associations = null,
+    IReadOnlyList<BpmnAssociation>? Associations = null,
     IReadOnlyList<BpmnGroup>? Groups = null,
     IDictionary<string, object>? ProcessVariables = null,
     IEnumerable<object>? Activities = null,

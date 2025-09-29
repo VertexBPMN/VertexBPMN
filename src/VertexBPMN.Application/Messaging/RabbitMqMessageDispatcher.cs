@@ -2,8 +2,8 @@
 using System.Text.Json;
 using RabbitMQ.Client;
 using VertexBPMN.Domain.Entities;
-using VertexBPMN.Domain.Entities.Modeling;
 using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Domain.Model.Cmn;
 
 namespace VertexBPMN.Application.Messaging
 {

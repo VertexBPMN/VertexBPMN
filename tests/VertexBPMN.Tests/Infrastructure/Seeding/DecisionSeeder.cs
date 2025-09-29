@@ -1,9 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using VertexBPMN.Domain.Entities;
-using VertexBPMN.Domain.Entities.Modeling;
+using VertexBPMN.Domain.Model.Dmn;
 using VertexBPMN.Infrastructure.Persistence;
+using DecisionDefinition = VertexBPMN.Domain.Entities.DecisionDefinition;
 
 namespace VertexBPMN.Tests.Infrastructure.Seeding;
 

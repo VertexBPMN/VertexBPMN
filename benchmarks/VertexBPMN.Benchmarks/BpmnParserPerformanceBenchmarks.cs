@@ -3,7 +3,7 @@ using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
 using VertexBPMN.Domain.Model.Bpmn;
-using VertexBPMN.Parsing;
+using VertexBPMN.Engine.Parsing;
 
 namespace VertexBPMN.Benchmarks;
 

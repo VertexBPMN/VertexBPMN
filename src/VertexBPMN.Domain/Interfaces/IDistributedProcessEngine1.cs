@@ -1,5 +1,5 @@
 //using VertexBPMN.Domain.Entities;
-//using VertexBPMN.Domain.Entities.Modeling;
+//
 //using Task = System.Threading.Tasks.Task;
 
 //namespace VertexBPMN.Domain.Interfaces;

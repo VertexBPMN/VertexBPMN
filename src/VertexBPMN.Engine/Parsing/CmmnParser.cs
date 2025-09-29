@@ -1,7 +1,7 @@
 ﻿using System.Xml.Linq;
-using VertexBPMN.Domain.Entities.Modeling;
 using VertexBPMN.Domain.Exceptions;
 using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Domain.Model.Cmn;
 
 namespace VertexBPMN.Engine.Parsing;
 

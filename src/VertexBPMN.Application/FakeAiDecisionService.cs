@@ -1,6 +1,7 @@
 #nullable enable
-using VertexBPMN.Domain.Entities.Modeling;
+
 using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Domain.Model.Cmn;
 
 namespace VertexBPMN.Application;
 

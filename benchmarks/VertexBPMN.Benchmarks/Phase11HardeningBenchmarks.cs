@@ -1,7 +1,9 @@
 using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
-using VertexBPMN.Parsing;
-using VertexBPMN.Parsing.Hardening;
+using VertexBPMN.Domain.Model.Bpmn;
+using VertexBPMN.Domain.Model.Security;
+using VertexBPMN.Engine.Parsing;
+using VertexBPMN.Engine.Security;
 
 namespace VertexBPMN.Benchmarks;
 

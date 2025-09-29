@@ -191,7 +191,7 @@ public class BpmnDbContext : DbContext
         // Artifacts & collaboration
         foreach (var ta in model.TextAnnotations ?? Array.Empty<BpmnTextAnnotation>())
             def.TextAnnotations.Add(new BpmnArtifactTextAnnotationEntity { Id = Guid.NewGuid(), BpmnId = ta.Id, Text = ta.Text, ProcessDefinitionId = def.Id });
-        foreach (var assoc in model.Associations ?? Array.Empty<BpmnAssociationArtifact>())
+        foreach (var assoc in model.Associations ?? Array.Empty<BpmnAssociation>())
             def.Associations.Add(new BpmnAssociationEntity { Id = Guid.NewGuid(), BpmnId = assoc.Id, SourceRef = assoc.SourceRef, TargetRef = assoc.TargetRef, Direction = assoc.Direction, ProcessDefinitionId = def.Id });
         foreach (var grp in model.Groups ?? Array.Empty<BpmnGroup>())
             def.Groups.Add(new BpmnGroupEntity { Id = Guid.NewGuid(), BpmnId = grp.Id, CategoryValueRef = grp.CategoryValueRef, ProcessDefinitionId = def.Id });

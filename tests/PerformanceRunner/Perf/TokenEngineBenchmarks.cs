@@ -5,10 +5,12 @@ using Moq;
 using OpenTelemetry.Trace;
 using VertexBPMN.Application;
 using VertexBPMN.Domain.Entities;
-using VertexBPMN.Domain.Entities.Modeling;
 using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Domain.Model.Bpmn;
+using VertexBPMN.Domain.Model.Cmn;
 using VertexBPMN.Engine.Execution;
 using Xunit;
+using ExecutionToken = VertexBPMN.Domain.Entities.ExecutionToken;
 
 namespace PerformanceRunner.Perf;
 
@@ -21,10 +23,10 @@ public class TokenEngineBenchmarks
             "P1",
             "Benchmark",
             new List<BpmnEvent> { new("start1", "startEvent"), new("end1", "endEvent") },
-            new List<BpmnTask>(),
             new List<BpmnGateway>(),
-            new List<BpmnSequenceFlow> { new("flow1", "start1", "end1") },
-                new List<BpmnSubprocess>()
+            new List<BpmnSubprocess>(),
+        new List<BpmnSequenceFlow> { new("flow1", "start1", "end1") },
+            new List<BpmnTask>()
         );
         var engine = new ProcessEngine();
         var sw = Stopwatch.StartNew();
@@ -43,11 +45,12 @@ public class TokenEngineBenchmarks
         var model = new BpmnModel(
             "P1",
             "Benchmark",
-            new List<BpmnEvent> { new("start1", "startEvent"), new("end1", "endEvent") },
-            new List<BpmnTask>(),
+            new List<BpmnEvent> { new("start1", "startEvent"), new("end1", "endEvent") },     
             new List<BpmnGateway>(),
+            new List<BpmnSubprocess>(),
             new List<BpmnSequenceFlow> { new("flow1", "start1", "end1") },
-            new List<BpmnSubprocess>()
+        
+        new List<BpmnTask>()
         );
         var logger = new LoggerFactory().CreateLogger<DistributedProcessEngine>();
         var registry = new ServiceTaskRegistry();

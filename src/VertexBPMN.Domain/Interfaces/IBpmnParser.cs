@@ -1,4 +1,4 @@
-using VertexBPMN.Domain.Entities.Modeling;
+using VertexBPMN.Domain.Model.Bpmn;
 
 namespace VertexBPMN.Domain.Interfaces
 {

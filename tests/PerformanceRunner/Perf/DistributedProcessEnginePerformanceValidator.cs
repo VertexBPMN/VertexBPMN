@@ -2,7 +2,7 @@ using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Moq;
 using VertexBPMN.Application;
-using VertexBPMN.Domain.Entities.Modeling;
+using VertexBPMN.Domain.Model.Bpmn;
 using VertexBPMN.Engine.Execution;
 
 namespace PerformanceRunner.Perf;
@@ -21,10 +21,10 @@ public class DistributedProcessEnginePerformanceValidator
             "TestProcess",
             "Performance Test",
             new List<BpmnEvent> { new("start1", "startEvent"), new("end1", "endEvent") },
-            new List<BpmnTask>(),
             new List<BpmnGateway>(),
+            new List<BpmnSubprocess>(),
             new List<BpmnSequenceFlow> { new("flow1", "start1", "end1") },
-            new List<BpmnSubprocess>()
+            new List<BpmnTask>()
         );
 
 

@@ -8,17 +8,17 @@ namespace VertexBPMN.Parsing;
 /// Exception thrown when BPMN validation fails and ThrowOnFatalValidation is enabled.
 /// Contains structured validation diagnostics for programmatic access.
 /// </summary>
-public class UnifiedBpmnValidationException : Exception
+public class BpmnValidationException : Exception
 {
     public IReadOnlyList<ValidationDiagnostic> Diagnostics { get; }
 
-    public UnifiedBpmnValidationException(string message, IReadOnlyList<ValidationDiagnostic> diagnostics)
+    public BpmnValidationException(string message, IReadOnlyList<ValidationDiagnostic> diagnostics)
         : base(message)
     {
         Diagnostics = diagnostics ?? throw new ArgumentNullException(nameof(diagnostics));
     }
 
-    public UnifiedBpmnValidationException(string message, IReadOnlyList<ValidationDiagnostic> diagnostics, Exception innerException)
+    public BpmnValidationException(string message, IReadOnlyList<ValidationDiagnostic> diagnostics, Exception innerException)
         : base(message, innerException)
     {
         Diagnostics = diagnostics ?? throw new ArgumentNullException(nameof(diagnostics));
@@ -26,7 +26,7 @@ public class UnifiedBpmnValidationException : Exception
     /// <summary>
     /// Creates a new validation exception with the given message, inner exception, and diagnostics.
     /// </summary>
-    public UnifiedBpmnValidationException(string message, Exception innerException, IReadOnlyList<ValidationDiagnostic> diagnostics)
+    public BpmnValidationException(string message, Exception innerException, IReadOnlyList<ValidationDiagnostic> diagnostics)
         : base(message, innerException)
     {
         Diagnostics = diagnostics ?? throw new ArgumentNullException(nameof(diagnostics));

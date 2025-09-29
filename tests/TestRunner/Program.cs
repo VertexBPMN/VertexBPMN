@@ -3,9 +3,12 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using VertexBPMN.Application;
 using VertexBPMN.Domain.Entities;
-using VertexBPMN.Domain.Entities.Modeling;
+
 using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Domain.Model.Bpmn;
+using VertexBPMN.Domain.Model.Cmn;
 using VertexBPMN.Engine.Execution;
+using ExecutionToken = VertexBPMN.Domain.Entities.ExecutionToken;
 
 namespace VertexBPMN.TestRunner;
 
@@ -58,10 +61,10 @@ class Program
             "P1",
             "Benchmark",
             new List<BpmnEvent> { new("start1", "startEvent"), new("end1", "endEvent") },
-            new List<BpmnTask>(),
             new List<BpmnGateway>(),
+            new List<BpmnSubprocess>(),
             new List<BpmnSequenceFlow> { new("flow1", "start1", "end1") },
-            new List<BpmnSubprocess>()
+            new List<BpmnTask>()
         );
         
         var engine = new ProcessEngine();
@@ -97,10 +100,11 @@ class Program
             "P1",
             "Benchmark",
             new List<BpmnEvent> { new("start1", "startEvent"), new("end1", "endEvent") },
-            new List<BpmnTask>(),
             new List<BpmnGateway>(),
+            new List<BpmnSubprocess>(),
             new List<BpmnSequenceFlow> { new("flow1", "start1", "end1") },
-            new List<BpmnSubprocess>()
+            new List<BpmnTask>()
+
         );
         
         var logger = new LoggerFactory().CreateLogger<DistributedProcessEngine>();
@@ -152,11 +156,11 @@ class Program
         var model = new BpmnModel(
             "P1",
             "Benchmark",
-            new List<BpmnEvent> { new("start1", "startEvent"), new("end1", "endEvent") },
-            new List<BpmnTask>(),
+            new List<BpmnEvent> { new("start1", "startEvent"), new("end1", "endEvent") },     
             new List<BpmnGateway>(),
+            new List<BpmnSubprocess>(),
             new List<BpmnSequenceFlow> { new("flow1", "start1", "end1") },
-            new List<BpmnSubprocess>()
+        new List<BpmnTask>()
         );
         
         var logger = new Mock<ILogger<ProposalTokenEngine>>();

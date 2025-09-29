@@ -1,5 +1,3 @@
-using VertexBPMN.Domain.Entities.Modeling;
-
 namespace VertexBPMN.Domain.Entities;
 
 /// <summary>

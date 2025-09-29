@@ -2,8 +2,8 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using VertexBPMN.Domain;
 using VertexBPMN.Domain.Entities;
-using VertexBPMN.Domain.Entities.Modeling;
 using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Domain.Model.Cmn;
 using VertexBPMN.Infrastructure.Persistence;
 
 namespace VertexBPMN.Infrastructure.Stores;
@@ -131,13 +131,11 @@ public sealed class ProductionProcessInstanceStore : IProcessInstanceStore
     // DMN / CMMN / Case – analog (separate Tabellen / Repos)
     public Task SaveDmnModelAsync(string decisionId, string dmnXml) => Task.CompletedTask;
     public Task<string> GetDmnModelAsync(string decisionId, CancellationToken cancellationToken = default) => Task.FromResult("");
-
     public Task SaveCaseTokenAsync(CaseToken token) => Task.CompletedTask;
     public Task<CaseToken> GetCaseTokenAsync(Guid tokenId) => Task.FromResult<CaseToken>(new CaseToken() { Id = tokenId });
     public Task<List<CaseToken>> GetPendingCaseTokensAsync() => Task.FromResult(new List<CaseToken>());
     public Task SaveCmmnModelAsync(string caseId, string cmmnXml) => Task.CompletedTask;
     public Task<string> GetCmmnModelAsync(string caseId) => Task.FromResult("");
-
     public Task UpdateCaseModelAsync(CaseModel model) => Task.CompletedTask;
     public Task SaveHistoricalCaseDataAsync(HistoricalCaseData data) => Task.CompletedTask;
     public Task<List<HistoricalCaseData>> GetHistoricalCaseDataAsync(string caseId) => Task.FromResult(new List<HistoricalCaseData>());

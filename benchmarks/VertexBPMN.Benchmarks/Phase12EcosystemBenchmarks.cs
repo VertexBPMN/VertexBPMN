@@ -1,8 +1,12 @@
-using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
-using VertexBPMN.Parsing;
-using VertexBPMN.Parsing.Ecosystem;
-using VertexBPMN.Test.Parsing.Ecosystem;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using System.Xml.Linq;
+using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Domain.Model;
+using VertexBPMN.Domain.Model.Bpmn;
+using VertexBPMN.Engine.Ecosystem;
+using VertexBPMN.Engine.Parsing;
 
 namespace VertexBPMN.Benchmarks;
 
@@ -99,5 +103,78 @@ public class Phase12EcosystemBenchmarks
   </process>
 </definitions>
 """;
+    }
+}
+
+
+/// <summary>
+/// Test implementation of custom vendor handler.
+/// </summary>
+public class TestCustomVendorHandler : IBpmnVendorExtensionInterpreter
+{
+    public bool WasInvoked { get; private set; }
+    public List<string> ProcessedElements { get; } = new();
+
+    public string[] SupportedNamespaces => new[] { "http://test.vendor/extensions" };
+
+    public bool CanHandle(string namespaceUri, string localName)
+    {
+        return namespaceUri == "http://test.vendor/extensions";
+    }
+
+    public VendorExtensionResult ProcessExtension(XElement element, string ownerElementId)
+    {
+        WasInvoked = true;
+        ProcessedElements.Add($"{element.Name.LocalName}");
+
+        var result = new VendorExtensionResult();
+
+        if (element.Name.LocalName == "specialProcessor")
+        {
+            result.NormalizedAttributes["custom:processor.type"] = element.Attribute("type")?.Value ?? "";
+        }
+        else if (element.Name.LocalName == "config")
+        {
+            foreach (var attr in element.Attributes())
+            {
+                result.NormalizedAttributes[$"custom:config.{attr.Name.LocalName}"] = attr.Value;
+            }
+        }
+
+        return result;
+    }
+}
+
+/// <summary>
+/// Test implementation of namespace-specific vendor handler.
+/// </summary>
+public class NamespaceSpecificVendorHandler : IBpmnVendorExtensionInterpreter
+{
+    private readonly string _targetNamespace;
+
+    public NamespaceSpecificVendorHandler(string targetNamespace)
+    {
+        _targetNamespace = targetNamespace;
+    }
+
+    public bool WasInvoked { get; private set; }
+    public string? ProcessedNamespace { get; private set; }
+
+    public string[] SupportedNamespaces => new[] { _targetNamespace };
+
+    public bool CanHandle(string namespaceUri, string localName)
+    {
+        return namespaceUri == _targetNamespace;
+    }
+
+    public VendorExtensionResult ProcessExtension(XElement element, string ownerElementId)
+    {
+        WasInvoked = true;
+        ProcessedNamespace = element.Name.NamespaceName;
+
+        return new VendorExtensionResult
+        {
+            NormalizedAttributes = { [$"{element.Name.LocalName}.processed"] = "true" }
+        };
     }
 }

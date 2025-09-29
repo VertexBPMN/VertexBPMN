@@ -1,7 +1,7 @@
 ﻿using Jint;
 using Microsoft.CodeAnalysis.CSharp.Scripting;
 using Microsoft.CodeAnalysis.Scripting;
-using VertexBPMN.Domain.Entities.Modeling;
+using VertexBPMN.Domain.Model.Bpmn;
 
 namespace VertexBPMN.Infrastructure.Scripting;
 
@@ -78,7 +78,7 @@ public static class ScriptTaskExecution
     private static object? ExecuteJavaScript(string code, IDictionary<string, object> variables)
     {
         // Einfache Ressourcenbegrenzungen; passe bei Bedarf an.
-        var engine = new Engine(cfg => cfg.Strict().LimitMemory(8_000_000).TimeoutInterval(TimeSpan.FromSeconds(2)));
+        var engine = new Jint.Engine(cfg => cfg.Strict().LimitMemory(8_000_000).TimeoutInterval(TimeSpan.FromSeconds(2)));
         engine.SetValue("variables", variables);
         var eval = engine.Evaluate(code);
         return eval.ToObject();

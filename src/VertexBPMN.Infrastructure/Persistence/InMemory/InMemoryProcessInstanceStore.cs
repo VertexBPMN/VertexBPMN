@@ -4,8 +4,8 @@ using System.Linq;
 using System.Text.Json;
 using System.Xml.Linq;
 using VertexBPMN.Domain.Entities;
-using VertexBPMN.Domain.Entities.Modeling;
 using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Domain.Model.Cmn;
 
 namespace VertexBPMN.Infrastructure.Persistence.InMemory;
 

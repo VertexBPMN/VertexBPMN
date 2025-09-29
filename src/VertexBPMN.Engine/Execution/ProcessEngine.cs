@@ -1,10 +1,12 @@
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Text.Json;
 using VertexBPMN.Domain.Entities;
-using VertexBPMN.Domain.Entities.Modeling;
 using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Domain.Model.Bpmn;
+using VertexBPMN.Domain.Model.Cmn;
 using VertexBPMN.Infrastructure.Scripting;
+using ExecutionToken = VertexBPMN.Domain.Entities.ExecutionToken;
 using Task = System.Threading.Tasks.Task;
 
 namespace VertexBPMN.Engine.Execution;
@@ -550,8 +552,8 @@ public class ProcessEngine : IProcessEngine
                 var ioMapping = JsonSerializer.Deserialize<Dictionary<string, string>>(ioMappingJson);
                 if (ioMapping != null)
                 {
-                    model.ProcessVariables ??= new Dictionary<string, object>();
-                    
+                    if (model.ProcessVariables == null)
+                        model = model with { ProcessVariables = new Dictionary<string, object>() };
                     foreach (var (target, source) in ioMapping)
                     {
                         if (source.StartsWith("="))
@@ -658,7 +660,7 @@ public class ProcessEngine : IProcessEngine
     {
         trace.Add($"MultiInstance: {subprocess.Id}");
         
-        var totalInstances = subprocess.LoopCardinality ?? 3;
+        var totalInstances = subprocess.LoopCardinality >= 1 ? subprocess.LoopCardinality : 3;
         var isSequential = subprocess.IsSequential;
         
         var context = new MultiInstanceContext(subprocess.Id, totalInstances, 0, isSequential);
@@ -838,10 +840,12 @@ public class ProcessEngine : IProcessEngine
     {
         _logger.LogInformation("Simulating message event for event: {EventId}", targetEvent.Id);
         
-        if (targetEvent.CorrelationKey != null && targetEvent.CorrelationKey == "expectedCorrelationKey")
+        var definition = targetEvent.Definitions.FirstOrDefault(d => d.Kind == "message") as MessageEventDefinition;
+
+        if (definition?.CorrelationKey != null && definition.CorrelationKey == "expectedCorrelationKey")
         {
             _logger.LogInformation("Message event {EventId} triggered with correlation key: {CorrelationKey}", 
-                targetEvent.Id, targetEvent.CorrelationKey);
+                targetEvent.Id, definition.CorrelationKey);
             return true;
         }
 
@@ -867,11 +871,12 @@ public class ProcessEngine : IProcessEngine
     private bool SimulateSignalEvent(BpmnEvent targetEvent)
     {
         _logger.LogInformation("Simulating signal event for event: {EventId}", targetEvent.Id);
-        
-        if (targetEvent.SignalName == "expectedSignal")
+        var definition = targetEvent.Definitions.FirstOrDefault(d => d.Kind == "signal") as SignalEventDefinition;
+
+        if (definition.SignalRef == "expectedSignal")
         {
             _logger.LogInformation("Signal event {EventId} triggered with signal name: {SignalName}", 
-                targetEvent.Id, targetEvent.SignalName);
+                targetEvent.Id, definition.SignalRef);
             return true;
         }
 
@@ -882,11 +887,12 @@ public class ProcessEngine : IProcessEngine
     private bool SimulateErrorEvent(BpmnEvent targetEvent)
     {
         _logger.LogInformation("Simulating error event for event: {EventId}", targetEvent.Id);
-        
-        if (targetEvent.ErrorCode == "expectedErrorCode")
+        var definition = targetEvent.Definitions.FirstOrDefault(d => d.Kind == "error") as ErrorEventDefinition;
+
+        if (definition.ErrorCode == "expectedErrorCode")
         {
             _logger.LogInformation("Error event {EventId} triggered with error code: {ErrorCode}", 
-                targetEvent.Id, targetEvent.ErrorCode);
+                targetEvent.Id, definition.ErrorCode);
             return true;
         }
 
@@ -897,8 +903,9 @@ public class ProcessEngine : IProcessEngine
     private bool SimulateConditionEvent(BpmnEvent targetEvent)
     {
         _logger.LogInformation("Simulating condition event for event: {EventId}", targetEvent.Id);
-        
-        if (targetEvent.ConditionExpression == "expectedCondition")
+        var definition = targetEvent.Definitions.FirstOrDefault(d => d.Kind == "condition") as ConditionalEventDefinition;
+
+        if (definition.Condition == "expectedCondition")
         {
             _logger.LogInformation("Condition event {EventId} triggered. Condition is met.", targetEvent.Id);
             return true;

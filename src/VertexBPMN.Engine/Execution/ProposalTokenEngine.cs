@@ -3,8 +3,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 using OpenTelemetry.Trace;
 using VertexBPMN.Application;
 using VertexBPMN.Application.Messaging;
-using VertexBPMN.Domain.Entities.Modeling;
 using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Domain.Model.Bpmn;
+using VertexBPMN.Domain.Model.Cmn;
 using VertexBPMN.Engine.Parsing;
 using VertexBPMN.Infrastructure.Persistence.InMemory;
 
@@ -42,7 +43,7 @@ public sealed class ProposalTokenEngine : IProcessEngine, IDisposable
         var tracer = tracerProvider ?? TracerProvider.Default;
         var baseLogger = (ILogger)logger;
 
-        var resolvedBpmnParser = bpmnParser ?? new BpmnParser(new ForwardingLogger<BpmnParser>(baseLogger), tracer);
+        var resolvedBpmnParser = bpmnParser ?? new BpmnParser( new BpmnParserOptions(), new ForwardingLogger<BpmnParser>(baseLogger), tracer);
         var resolvedDmnParser = dmnParser ?? new DmnParser(new ForwardingLogger<DmnParser>(baseLogger));
         var resolvedDmnEngine = dmnEngine ?? new DmnEngine(new ForwardingLogger<DmnEngine>(baseLogger));
         var resolvedCmmnParser = cmmnParser ?? new CmmnParser();

@@ -1,7 +1,8 @@
 using Microsoft.EntityFrameworkCore;
-using VertexBPMN.Domain.Entities;
-using VertexBPMN.Domain.Entities.Modeling;
 using VertexBPMN.Domain.Interfaces.Repositories;
+using VertexBPMN.Domain.Model.Dmn;
+using DecisionDefinition = VertexBPMN.Domain.Entities.DecisionDefinition;
+using DecisionInstance = VertexBPMN.Domain.Entities.DecisionInstance;
 
 namespace VertexBPMN.Infrastructure.Persistence.Repositories;
 

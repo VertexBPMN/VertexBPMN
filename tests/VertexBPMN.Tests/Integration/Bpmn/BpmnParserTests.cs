@@ -77,7 +77,7 @@ public class BpmnParserTests
     {
         const string xml = @"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='P7'><userTask id='task1'/><boundaryEvent id='b1' attachedToRef='task1'/></process></definitions>";
         var logger = new Mock<ILogger<BpmnParser>>();var parser = new BpmnParser(logger.Object, TracerProvider.Default);
-         var model =  parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
+        var model =  parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
         var boundary = model.Events.FirstOrDefault(e => e.Type == "boundaryEvent");
         Assert.NotNull(boundary);
         Assert.Equal("b1", boundary.Id);

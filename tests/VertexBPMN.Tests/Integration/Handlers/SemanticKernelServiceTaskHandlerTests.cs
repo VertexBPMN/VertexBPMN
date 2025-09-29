@@ -103,7 +103,7 @@ public class SemanticKernelServiceTaskHandlerTests
             { "customerMessage", "Wie ist das Wetter heute?" }
         };
         var model = parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
-        model.ProcessVariables = processVariables;
+        model = model with {ProcessVariables = processVariables};
         Assert.NotNull(model);
 
         var task = Assert.Single(model.Tasks);

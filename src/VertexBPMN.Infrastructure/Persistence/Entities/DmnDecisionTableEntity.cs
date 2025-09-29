@@ -1,5 +1,5 @@
 using System.Text.Json;
-using VertexBPMN.Domain.Entities.Modeling;
+using VertexBPMN.Domain.Model.Dmn;
 
 namespace VertexBPMN.Infrastructure.Persistence.Entities;
 

@@ -3,7 +3,7 @@ using Moq;
 using OpenTelemetry.Trace;
 using System.Text.Json;
 using System.Threading.Tasks;
-using VertexBPMN.Domain.Entities.Modeling;
+
 using VertexBPMN.Domain.Exceptions;
 using VertexBPMN.Engine.Parsing;
 

@@ -1,5 +1,5 @@
 using VertexBPMN.Domain.Entities;
-using VertexBPMN.Domain.Entities.Modeling;
+using VertexBPMN.Domain.Model.Cmn;
 
 namespace VertexBPMN.Domain.Interfaces;
 

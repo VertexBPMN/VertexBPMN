@@ -6,13 +6,17 @@ using OpenTelemetry.Trace;
 using VertexBPMN.Application;
 using VertexBPMN.Application.Messaging;
 using VertexBPMN.Domain.Entities;
-using VertexBPMN.Domain.Entities.Modeling;
+
 using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Domain.Model.Bpmn;
+using VertexBPMN.Domain.Model.Cmn;
+using VertexBPMN.Domain.Model.Dmn;
 using VertexBPMN.Engine.Configuration;
 using VertexBPMN.Engine.Execution;
 using VertexBPMN.Engine.Parsing;
 using VertexBPMN.Infrastructure.Persistence.InMemory;
 using Xunit;
+using ExecutionToken = VertexBPMN.Domain.Entities.ExecutionToken;
 
 namespace VertexBPMN.Tests.Integration.Engine;
 

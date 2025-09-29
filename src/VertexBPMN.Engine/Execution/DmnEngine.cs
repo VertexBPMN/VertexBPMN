@@ -1,8 +1,8 @@
 ﻿using Jint;
 using Microsoft.Extensions.Logging;
-using VertexBPMN.Domain.Entities.Modeling;
 using VertexBPMN.Domain.Exceptions;
 using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Domain.Model.Dmn;
 
 namespace VertexBPMN.Engine.Execution;
 

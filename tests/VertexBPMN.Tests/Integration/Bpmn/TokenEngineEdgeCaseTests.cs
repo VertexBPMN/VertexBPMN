@@ -2,7 +2,7 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using OpenTelemetry.Trace;
 using VertexBPMN.Application;
-using VertexBPMN.Domain.Entities.Modeling;
+using VertexBPMN.Domain.Model.Bpmn;
 using VertexBPMN.Engine.Execution;
 using VertexBPMN.Engine.Parsing;
 using VertexBPMN.Infrastructure.Persistence.InMemory;
@@ -18,14 +18,14 @@ namespace VertexBPMN.Tests.Integration.Bpmn
                 "P3",
                 "Test",
                 new List<BpmnEvent> { new("start1", "startEvent"), new("end1", "endEvent") },
-                new List<BpmnTask>(),
                 new List<BpmnGateway>(),
                 new List<BpmnSubprocess> { new("sub1", false), new("sub2", false) },
                 new List<BpmnSequenceFlow> {
                     new("f1", "start1", "sub1"),
                     new("f2", "sub1", "sub2"),
                     new("f3", "sub2", "end1")
-                }
+                },
+                new List<BpmnTask>()
             );
             var engine = new ProcessEngine();
             var trace = engine.Execute(model);
@@ -40,14 +40,13 @@ namespace VertexBPMN.Tests.Integration.Bpmn
                 "P4",
                 "Test",
                 new List<BpmnEvent> { new("start1", "startEvent"), new("e1", "intermediateCatchEvent"), new("e2", "intermediateThrowEvent") },
-                new List<BpmnTask>(),
                 new List<BpmnGateway> { new("gw1", "parallelGateway") },
                 new List<BpmnSubprocess>(),
                 new List<BpmnSequenceFlow> {
                     new("f1", "start1", "gw1"),
                     new("f2", "gw1", "e1"),
                     new("f3", "gw1", "e2"),
-                }
+                }, new List<BpmnTask>()
             );
             var engine = new ProcessEngine();
             var trace = engine.Execute(model);
@@ -64,10 +63,10 @@ namespace VertexBPMN.Tests.Integration.Bpmn
                 "P1",
                 "NoStart",
                 new List<BpmnEvent>(),
-                new List<BpmnTask>(),
                 new List<BpmnGateway>(),
                 new List<BpmnSubprocess>(),
-                new List<BpmnSequenceFlow>()
+                new List<BpmnSequenceFlow>(),
+                new List<BpmnTask>()
             );
             var engine = new ProcessEngine();
             Assert.Throws<InvalidOperationException>(() => engine.Execute(model));
@@ -96,14 +95,14 @@ namespace VertexBPMN.Tests.Integration.Bpmn
             var model = new BpmnModel(
                 "P2",
                 "UnknownTask",
-                new List<BpmnEvent> { new("start1", "startEvent"), new("end1", "endEvent") },
-                new List<BpmnTask> { new("t1", "customTask") },
+                new List<BpmnEvent> { new("start1", "startEvent"), new("end1", "endEvent") },     
                 new List<BpmnGateway>(),
                 new List<BpmnSubprocess>(),
                 new List<BpmnSequenceFlow> {
                     new("flow1", "start1", "t1"),
                     new("flow2", "t1", "end1")
-                }
+                },
+                new List<BpmnTask> { new("t1", "customTask") }
             );
             var engine = new ProcessEngine();
             var trace = engine.Execute(model);

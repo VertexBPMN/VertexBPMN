@@ -1,6 +1,10 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <Compile Remove="Parsing\BpmnParser1.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\VertexBPMN.Domain\VertexBPMN.Domain.csproj" />
     <ProjectReference Include="..\VertexBPMN.Application\VertexBPMN.Application.csproj" />
     <ProjectReference Include="..\VertexBPMN.Infrastructure\VertexBPMN.Infrastructure.csproj" />

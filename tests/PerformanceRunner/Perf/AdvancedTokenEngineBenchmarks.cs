@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using VertexBPMN.Application;
-using VertexBPMN.Domain.Entities.Modeling;
+using VertexBPMN.Domain.Model.Bpmn;
 using VertexBPMN.Engine.Execution;
 using VertexBPMN.Infrastructure.Persistence.InMemory;
 using VertexBPMN.Infrastructure.Persistence.Repositories;
@@ -18,8 +18,8 @@ public class AdvancedTokenEngineBenchmarks
              "P2",
             "ComplexBenchmark",
             new List<BpmnEvent> { new("start1", "startEvent"), new("end1", "endEvent") },
-            new List<BpmnTask> { new("t1", "userTask"), new("brt1", "businessRuleTask") },
             new List<BpmnGateway> { new("gw1", "parallelGateway") },
+            new List<BpmnSubprocess> { new("sub1", true) },
             new List<BpmnSequenceFlow> {
                 new("flow1", "start1", "gw1"),
                 new("flow2", "gw1", "t1"),
@@ -28,7 +28,7 @@ public class AdvancedTokenEngineBenchmarks
                 new("flow5", "sub1", "brt1"),
                 new("flow6", "brt1", "end1")
             },
-            new List<BpmnSubprocess> { new("sub1", true) }
+            new List<BpmnTask> { new("t1", "userTask"), new("brt1", "businessRuleTask") }
         );
         var engine = new ProcessEngine();
         var logger = new LoggerFactory().CreateLogger<DecisionService>();

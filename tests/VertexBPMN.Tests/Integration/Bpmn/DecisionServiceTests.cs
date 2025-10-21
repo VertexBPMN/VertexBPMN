@@ -2,7 +2,6 @@
 using Microsoft.Extensions.Logging;
 using VertexBPMN.Application;
 using VertexBPMN.Infrastructure.Persistence.InMemory;
-using VertexBPMN.Infrastructure.Persistence.Repositories;
 
 namespace VertexBPMN.Tests.Integration.Bpmn;
 

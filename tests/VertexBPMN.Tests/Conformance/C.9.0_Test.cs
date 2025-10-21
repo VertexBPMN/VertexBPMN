@@ -3,7 +3,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using OpenTelemetry.Trace;
-using VertexBPMN.Application;
 using VertexBPMN.Application.Extensions;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Engine.Execution;

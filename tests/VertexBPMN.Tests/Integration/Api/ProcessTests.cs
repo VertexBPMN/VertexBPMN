@@ -1,8 +1,6 @@
-using Microsoft.VisualStudio.TestPlatform.Utilities;
 using System.Net;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using System.Data.Common;
 using VertexBPMN.Infrastructure.Persistence.Services;
 using VertexBPMN.Tests.Infrastructure;
 

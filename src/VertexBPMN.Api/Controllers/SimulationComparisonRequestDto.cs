@@ -1,4 +1,3 @@
-using VertexBPMN.Domain;
 using VertexBPMN.Domain.Entities;
 
 namespace VertexBPMN.Api.Controllers

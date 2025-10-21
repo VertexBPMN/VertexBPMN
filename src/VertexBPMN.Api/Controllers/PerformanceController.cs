@@ -1,7 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
 using System.Diagnostics;
-using VertexBPMN.Api.Hubs;
-using VertexBPMN.Domain;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 using Task = System.Threading.Tasks.Task;

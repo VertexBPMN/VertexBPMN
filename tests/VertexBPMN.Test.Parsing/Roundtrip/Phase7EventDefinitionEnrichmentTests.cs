@@ -1,9 +1,5 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using VertexBPMN.Domain.Model.Bpmn;
-using VertexBPMN.Parsing;
+using VertexBPMN.Engine.Parsing;
 using Xunit;
 
 namespace VertexBPMN.Test.Parsing.Roundtrip;
@@ -266,7 +262,7 @@ public class Phase7EventDefinitionEnrichmentTests
 </definitions>
 """;
 
-        var options = new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict };
+        var options = new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict, EnableNormalizedProjectionSerializer = true };
         var parser = new BpmnParser(options);
 
         // Act

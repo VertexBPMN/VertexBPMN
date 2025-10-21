@@ -1,6 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
-using System.Collections.Generic;
 using VertexBPMN.Domain.Interfaces;
 
 namespace VertexBPMN.Api.Controllers;

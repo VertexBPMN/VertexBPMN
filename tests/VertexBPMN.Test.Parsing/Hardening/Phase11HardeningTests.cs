@@ -1,13 +1,9 @@
-﻿using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
+﻿using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Xml;
-using VertexBPMN.Parsing;
-using VertexBPMN.Parsing.Hardening;
+using VertexBPMN.Domain.Model.Bpmn;
+using VertexBPMN.Engine.Parsing;
+using VertexBPMN.Engine.Security;
 using Xunit;
 
 namespace VertexBPMN.Test.Parsing.Hardening;

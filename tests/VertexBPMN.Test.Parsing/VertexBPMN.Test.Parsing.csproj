@@ -54,13 +54,16 @@
 		<PackageReference Include="Shouldly" Version="4.3.0" />
 		<PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.0.9" />
 	</ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\..\src\VertexBPMN.Parsing\VertexBPMN.Parsing.csproj" />
-  </ItemGroup>
 	<ItemGroup>
 		<Content Include="..\..\tests\VertexBPMN.Tests\TestData\**\*.*">
 		<Link>TestData\%(RecursiveDir)%(Filename)%(Extension)</Link>
 		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>
+	</ItemGroup>
+	<ItemGroup>
+	  <ProjectReference Include="..\..\src\VertexBPMN.Application\VertexBPMN.Application.csproj" />
+	  <ProjectReference Include="..\..\src\VertexBPMN.Domain\VertexBPMN.Domain.csproj" />
+	  <ProjectReference Include="..\..\src\VertexBPMN.Engine\VertexBPMN.Engine.csproj" />
+	  <ProjectReference Include="..\..\src\VertexBPMN.Infrastructure\VertexBPMN.Infrastructure.csproj" />
 	</ItemGroup>
 </Project>

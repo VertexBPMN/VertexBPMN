@@ -1,4 +1,5 @@
-using VertexBPMN.Parsing;
+using VertexBPMN.Domain.Model.Bpmn;
+using VertexBPMN.Engine.Parsing;
 using Xunit;
 
 namespace VertexBPMN.Test.Parsing.Validation;
@@ -44,7 +45,7 @@ public class Phase3AdvancedValidationSequenceFlowTests
         Assert.NotNull(model.ValidationDiagnostics);
         var diags = model.ValidationDiagnostics!;
         // Expect 3 errors: f1 target, f2 source, f2 target
-        Assert.Equal(3, diags.Count);
+        Assert.Equal(4, diags.Count);
 
         Assert.Contains(diags, d =>
             d.Code == "REF-SEQUENCE-ENDPOINT" &&

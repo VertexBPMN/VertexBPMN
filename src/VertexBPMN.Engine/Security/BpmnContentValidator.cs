@@ -12,6 +12,7 @@ public sealed class BpmnContentValidator
     private static readonly Regex[] _maliciousPatterns = 
     {
         new(@"<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+        new(@"&lt;script&gt;\b[^<]*(?:(?!<\/script>)<[^<]*)*&lt;/script&gt;", RegexOptions.IgnoreCase | RegexOptions.Compiled),
         new(@"javascript:", RegexOptions.IgnoreCase | RegexOptions.Compiled),
         new(@"data:.*base64", RegexOptions.IgnoreCase | RegexOptions.Compiled),
         new(@"vbscript:", RegexOptions.IgnoreCase | RegexOptions.Compiled),

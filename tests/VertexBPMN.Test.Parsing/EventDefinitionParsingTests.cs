@@ -1,7 +1,6 @@
 using Xunit;
-using System.Threading.Tasks;
 using VertexBPMN.Domain.Model.Bpmn;
-using VertexBPMN.Parsing;
+using VertexBPMN.Engine.Parsing;
 
 namespace VertexBPMN.Test.Parsing;
 
@@ -80,7 +79,7 @@ public class EventDefinitionParsingTests
   <process id='p1'>
     <intermediateCatchEvent id='cond1'>
       <conditionalEventDefinition>
-        <conditionExpression><![CDATA[${x > 10}]]></conditionExpression>
+        <condition><![CDATA[${x > 10}]]></condition>
       </conditionalEventDefinition>
     </intermediateCatchEvent>
   </process>

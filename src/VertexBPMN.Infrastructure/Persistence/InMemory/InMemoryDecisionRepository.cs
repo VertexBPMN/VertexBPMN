@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
-using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces.Repositories;
+using VertexBPMN.Domain.Model.Dmn;
 
 namespace VertexBPMN.Infrastructure.Persistence.InMemory;
 

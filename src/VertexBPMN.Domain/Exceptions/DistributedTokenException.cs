@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace VertexBPMN.Domain.Exceptions;
+﻿namespace VertexBPMN.Domain.Exceptions;
 
 public class DistributedTokenException : Exception
 {

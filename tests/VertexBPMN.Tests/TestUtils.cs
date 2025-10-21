@@ -1,6 +1,4 @@
-﻿using Xunit;
-
-namespace VertexBPMN.Tests;
+﻿namespace VertexBPMN.Tests;
 
 using Microsoft.Extensions.Logging;
 using Polly;

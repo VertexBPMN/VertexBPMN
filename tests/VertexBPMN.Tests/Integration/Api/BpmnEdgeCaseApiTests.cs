@@ -1,5 +1,3 @@
-using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.VisualStudio.TestPlatform.Utilities;
 using System.Net.Http.Json;
 using VertexBPMN.Tests.Infrastructure;
 

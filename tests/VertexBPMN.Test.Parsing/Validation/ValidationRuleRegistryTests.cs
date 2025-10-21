@@ -1,5 +1,4 @@
-using System.Linq;
-using VertexBPMN.Parsing;
+using VertexBPMN.Domain.Model.Validation;
 using Xunit;
 
 namespace VertexBPMN.Test.Parsing.Validation;

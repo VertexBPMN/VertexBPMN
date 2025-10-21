@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using VertexBPMN.Api.Dto;
 using VertexBPMN.Domain.Interfaces;
-using CoreDef = VertexBPMN.Domain.Entities.ProcessDefinition;
 
 namespace VertexBPMN.Api.Controllers;
 

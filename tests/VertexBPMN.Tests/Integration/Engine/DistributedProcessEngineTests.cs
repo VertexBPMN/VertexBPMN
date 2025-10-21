@@ -15,7 +15,6 @@ using VertexBPMN.Engine.Configuration;
 using VertexBPMN.Engine.Execution;
 using VertexBPMN.Engine.Parsing;
 using VertexBPMN.Infrastructure.Persistence.InMemory;
-using Xunit;
 using ExecutionToken = VertexBPMN.Domain.Entities.ExecutionToken;
 
 namespace VertexBPMN.Tests.Integration.Engine;

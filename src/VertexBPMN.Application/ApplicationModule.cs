@@ -2,7 +2,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Http;
 using VertexBPMN.Application.Extensions;
 using VertexBPMN.Domain.Interfaces;
 namespace VertexBPMN.Application;

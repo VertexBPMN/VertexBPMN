@@ -1,5 +1,4 @@
 using Polly;
-using VertexBPMN.Domain;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 

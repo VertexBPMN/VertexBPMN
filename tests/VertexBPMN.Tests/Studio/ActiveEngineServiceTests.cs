@@ -1,8 +1,4 @@
-using System;
-using System.ComponentModel;
-using System.Threading.Tasks;
 using Shouldly;
-using Xunit;
 using VertexBPMN.Studio.Services;
 
 namespace VertexBPMN.Tests.Studio

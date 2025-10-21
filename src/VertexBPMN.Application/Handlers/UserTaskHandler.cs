@@ -1,7 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
-using OpenTelemetry.Trace;
 using System.Text.Json;
-using VertexBPMN.Application.Extensions;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Exceptions;
 using VertexBPMN.Domain.Interfaces;

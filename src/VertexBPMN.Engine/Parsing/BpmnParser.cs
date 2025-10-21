@@ -1,16 +1,10 @@
-﻿using Microsoft.CodeAnalysis;
-using Microsoft.Extensions.Logging;
-using OpenAI.Assistants;
+﻿using Microsoft.Extensions.Logging;
 using OpenTelemetry.Trace;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Runtime.InteropServices.ComTypes;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.RegularExpressions;
-using System.Threading;
 using System.Xml.Linq;
 using VertexBPMN.Domain.Exceptions;
 using VertexBPMN.Domain.Interfaces;
@@ -19,7 +13,6 @@ using VertexBPMN.Domain.Model.Runtime;
 using VertexBPMN.Engine.Ecosystem;
 using VertexBPMN.Engine.Performance;
 using VertexBPMN.Engine.Serialization;
-using static System.Reflection.Metadata.BlobBuilder;
 
 namespace VertexBPMN.Engine.Parsing;
 
@@ -33,16 +26,7 @@ public partial class BpmnParser : IBpmnParser
     //Observability Infrastructure
     private readonly ActivitySource? _activitySource;
     private readonly ILogger<BpmnParser> _logger;
-    private static readonly ActivitySource DefaultActivitySource = new("VertexBPMN.Parsing");
-
-    private string Intern(string s)
-    {
-        if (!_options.InternIds) return s;
-        if (string.IsNullOrEmpty(s)) return s;
-        
-        // Use SharedStringAtomTable for cross-parser memory efficiency
-        return SharedStringAtomTable.Intern(s);
-    }
+    private static readonly ActivitySource DefaultActivitySource = new("VertexBPMN.Engine.Parsing");
 
     private readonly Tracer _tracer;
     private readonly Dictionary<string, XDocument> _documentCache = new();
@@ -173,7 +157,8 @@ public partial class BpmnParser : IBpmnParser
         XElement? diRoot = null;
         var diagnostics = new List<string>();
         var doc = XDocument.Parse(xml, LoadOptions.PreserveWhitespace);
-        var root = doc.Root!; var ns = root.Name.Namespace;
+        var root = doc.Root!; 
+        var ns = root.Name.Namespace;
         if (strict)
         {
             foreach (var attr in root.Attributes()) if (attr.IsNamespaceDeclaration)
@@ -231,8 +216,7 @@ public partial class BpmnParser : IBpmnParser
             return Task.FromResult(empty);
         }
 
-        rawDocumentation = (strict &&
-                                !(IsLargeModel(process, _options) && _options.SkipDocumentationForLargeModels))
+        rawDocumentation = (strict && !(IsLargeModel(process, _options) && _options.SkipDocumentationForLargeModels))
             ? new Dictionary<string, List<XElement>>() : null;
 
         rawArtifacts = (strict &&
@@ -316,7 +300,7 @@ public partial class BpmnParser : IBpmnParser
                 var currentSub = subprocessStack.Count > 0 ? subprocessStack.Peek() : null;
                 if (!string.IsNullOrEmpty(id))
                     if (!idIndex.Add(id) && _options.StrictValidation)
-                        diagnostics.Add($"Duplicate ID: {id}");
+                        diagnostics.Add($"Duplicate ID: {id}");   
                 var ext = ExtractExtensions(el, ns, strict, rawExtensions);
                 switch (local)
                 {
@@ -408,6 +392,7 @@ public partial class BpmnParser : IBpmnParser
                             var stdNodeT = el.Element(ns + "standardLoopCharacteristics") ?? el.Element("standardLoopCharacteristics");
                             if (miNodeT != null || stdNodeT != null) rawMultiInstance![id] = new XElement(miNodeT ?? stdNodeT);
                         }
+
                         if (local == "scriptTask" && !string.IsNullOrEmpty(id))
                         {
                             var fmt = el.Attribute("scriptFormat")?.Value;
@@ -415,10 +400,10 @@ public partial class BpmnParser : IBpmnParser
                             var resVar = el.Attribute("resultVariable")?.Value;
                             scriptTaskRaw[id] = (fmt, body, resVar);
                         }
-                        // NEW: potentialOwner extraction (resourceRole or potentialOwner)
+        
                         if (local == "userTask" && !string.IsNullOrEmpty(id))
                         {
-                            // Either explicit <potentialOwner> or <resourceRole xsi:type="potentialOwner">
+
                             IEnumerable<XElement> roles = el.Elements().Where(e =>
                                 e.Name.LocalName == "potentialOwner" ||
                                 (e.Name.LocalName == "resourceRole" &&
@@ -435,17 +420,57 @@ public partial class BpmnParser : IBpmnParser
                                 var text = expr?.Value?.Trim();
                                 if (!string.IsNullOrWhiteSpace(text))
                                 {
-                                    // last one wins if multiple
+        
                                     potentialOwnerExtras[id] = text!;
                                 }
                             }
                         }
                         var task = new BpmnTask(id, local, currentSub, ext) { Name = el.Attribute("name")?.Value ?? string.Empty };
-                        tasks.Add(task); 
+                        
+                        if(tasks.All(x => x.Id != id)) tasks.Add(task); 
                         flowNodeIds.Add(id);
                         // IO spec & associations
                         {
-                            var ioSpec = el.Element(ns + "ioSpecification") ?? el.Element("ioSpecification"); if (ioSpec != null) { var dataInputs = ioSpec.Elements(ns + "dataInput").Concat(ioSpec.Elements("dataInput")).Select(di => { var did = Intern(di.Attribute("id")?.Value ?? string.Empty); if (string.IsNullOrEmpty(did)) return null; return new BpmnDataInput(did, di.Attribute("name")?.Value); }).OfType<BpmnDataInput>().ToList(); var dataOutputs = ioSpec.Elements(ns + "dataOutput").Concat(ioSpec.Elements("dataOutput")).Select(dout => { var oid = Intern(dout.Attribute("id")?.Value ?? string.Empty); if (string.IsNullOrEmpty(oid)) return null; return new BpmnDataOutput(oid, dout.Attribute("name")?.Value); }).OfType<BpmnDataOutput>().ToList(); var inputAssociations = el.Elements(ns + "dataInputAssociation").Concat(el.Elements("dataInputAssociation")).Select(a => { var src = a.Element(ns + "sourceRef")?.Value ?? a.Element("sourceRef")?.Value; var tgt = a.Element(ns + "targetRef")?.Value ?? a.Element("targetRef")?.Value; if (string.IsNullOrWhiteSpace(src) || string.IsNullOrWhiteSpace(tgt)) return null; return new BpmnDataAssociation(Intern(src), Intern(tgt)); }).OfType<BpmnDataAssociation>().ToList(); var outputAssociations = el.Elements(ns + "dataOutputAssociation").Concat(el.Elements("dataOutputAssociation")).Select(a => { var src = a.Element(ns + "sourceRef")?.Value ?? a.Element("sourceRef")?.Value; var tgt = a.Element(ns + "targetRef")?.Value ?? a.Element("targetRef")?.Value; if (string.IsNullOrWhiteSpace(src) || string.IsNullOrWhiteSpace(tgt)) return null; return new BpmnDataAssociation(Intern(src), Intern(tgt)); }).OfType<BpmnDataAssociation>().ToList(); if (dataInputs.Count > 0 || dataOutputs.Count > 0 || inputAssociations.Count > 0 || outputAssociations.Count > 0) activityIo.Add(new BpmnActivityIo(id, dataInputs, dataOutputs, inputAssociations, outputAssociations)); }
+                            var ioSpec = el.Element(ns + "ioSpecification") ?? el.Element("ioSpecification"); 
+                            if (ioSpec != null) 
+                            {
+                                var dataInputs = ioSpec.Elements(ns + "dataInput").Concat(ioSpec.Elements("dataInput"))
+                                    .Select(di =>
+                                    {
+                                        var did = Intern(di.Attribute("id")?.Value ?? string.Empty);
+                                        if (string.IsNullOrEmpty(did)) return null;
+                                        return new BpmnDataInput(did, di.Attribute("name")?.Value);
+                                    }).OfType<BpmnDataInput>().ToList();
+                                var dataOutputs = ioSpec.Elements(ns + "dataOutput")
+                                    .Concat(ioSpec.Elements("dataOutput")).Select(dout =>
+                                    {
+                                        var oid = Intern(dout.Attribute("id")?.Value ?? string.Empty);
+                                        if (string.IsNullOrEmpty(oid)) return null;
+                                        return new BpmnDataOutput(oid, dout.Attribute("name")?.Value);
+                                    }).OfType<BpmnDataOutput>().ToList();
+                                var inputAssociations = el.Elements(ns + "dataInputAssociation")
+                                    .Concat(el.Elements("dataInputAssociation")).Select(a =>
+                                    {
+                                        var src = a.Element(ns + "sourceRef")?.Value ?? a.Element("sourceRef")?.Value;
+                                        var tgt = a.Element(ns + "targetRef")?.Value ?? a.Element("targetRef")?.Value;
+                                        if (string.IsNullOrWhiteSpace(src) || string.IsNullOrWhiteSpace(tgt))
+                                            return null;
+                                        return new BpmnDataAssociation(Intern(src), Intern(tgt));
+                                    }).OfType<BpmnDataAssociation>().ToList();
+                                var outputAssociations = el.Elements(ns + "dataOutputAssociation")
+                                    .Concat(el.Elements("dataOutputAssociation")).Select(a =>
+                                    {
+                                        var src = a.Element(ns + "sourceRef")?.Value ?? a.Element("sourceRef")?.Value;
+                                        var tgt = a.Element(ns + "targetRef")?.Value ?? a.Element("targetRef")?.Value;
+                                        if (string.IsNullOrWhiteSpace(src) || string.IsNullOrWhiteSpace(tgt))
+                                            return null;
+                                        return new BpmnDataAssociation(Intern(src), Intern(tgt));
+                                    }).OfType<BpmnDataAssociation>().ToList();
+                                if (dataInputs.Count > 0 || dataOutputs.Count > 0 || inputAssociations.Count > 0 ||
+                                    outputAssociations.Count > 0)
+                                    activityIo.Add(new BpmnActivityIo(id, dataInputs, dataOutputs, inputAssociations,
+                                        outputAssociations));
+                            }
                         }
                         CaptureElementMeta(strict, flowNodeAttributes, rawDocumentation, elementsMetadata, orderCounter, ns, el, id); break;
                     case var _ when local.EndsWith("Gateway"):
@@ -603,6 +628,20 @@ public partial class BpmnParser : IBpmnParser
                     diagnostics.Add($"Boundary compensation event {bev.Id} must have cancelActivity='false'");
                 }
             }
+
+        }
+        foreach (var bev in events.Where(e =>
+                     e.Type == "boundaryEvent" &&  e.Definitions.OfType<EscalationEventDefinition>().Any()))
+        {
+            if (elementsMetadata != null && elementsMetadata.TryGetValue(bev.Id, out var meta))
+            {
+                if (!meta.Attributes.TryGetValue("escalationRef", out var es) ||
+                    !string.IsNullOrEmpty(es))
+                {
+                    diagnostics.Add($"Unknown escalationRef fir boundaryEvent {bev.Id}");
+                }
+            }
+
         }
 
         foreach (var kv in linkThrowCounts)
@@ -746,7 +785,6 @@ public partial class BpmnParser : IBpmnParser
 
         var vendorNormalized = ParseVendorExtensions(strict, rawExtensions);
 
-        // NEW: merge potentialOwner extras into vendorNormalized even if normalization disabled
         if (potentialOwnerExtras.Count > 0)
         {
             // Ensure dictionary exists
@@ -971,15 +1009,30 @@ public partial class BpmnParser : IBpmnParser
 
         void Harvest(XElement node)
         {
+            var elemPrefix = node.GetPrefixOfNamespace(node.Name.Namespace);
             foreach (var attr in node.Attributes())
             {
-                var key = $"{node.Name}:{attr.Name.LocalName}";
+                // Element qualified name (with prefix if present)           
+                var elemQName = string.IsNullOrEmpty(elemPrefix)
+                    ? node.Name.LocalName
+                    : $"{elemPrefix}:{node.Name.LocalName}";
+
+                // Attribute qualified name (attributes can also be namespaced)
+                string? attrPrefix = null;
+                if (attr.Name.Namespace != XNamespace.None)
+                    attrPrefix = node.GetPrefixOfNamespace(attr.Name.Namespace);
+
+                var attrQName = string.IsNullOrEmpty(attrPrefix)
+                    ? attr.Name.LocalName
+                    : $"{attrPrefix}:{attr.Name.LocalName}";
+
+                var key = $"{elemQName}.{attrQName}";
                 dict[key] = attr.Value;
             }
 
             if (!node.HasAttributes && node != extParent)
             {
-                var key = $"{node.Name}:__present";
+                var key = $"{elemPrefix}:{node.Name.LocalName}";
                 dict[key] = "true";
             }
 
@@ -1009,61 +1062,6 @@ public partial class BpmnParser : IBpmnParser
     {
         return escalations.Select(e => new BpmnEscalation(Intern(e.Attribute("id")?.Value ?? string.Empty), e.Attribute("name")?.Value, e.Attribute("escalationCode")?.Value))
             .Where(e => !string.IsNullOrEmpty(e.Id)).ToList();
-    }
-
-    private List<BpmnEvent> ParseEvents(XElement process, XNamespace ns)
-    { 
-        List<BpmnEvent> events = new List<BpmnEvent>();
-        return events;
-    }
-
-    private List<BpmnTask> ParseTasks(XElement process, XNamespace ns)
-    {
-        return new List<BpmnTask>();
-    }
-
-    private List<BpmnGateway> ParseGateways(XElement process, XNamespace ns)
-    {
-        return new List<BpmnGateway>();
-    }
-
-    private List<BpmnSubprocess> ParseSubprocesses(XElement process, XNamespace ns)
-    {
-        return new List<BpmnSubprocess>();
-    }
-
-    private List<BpmnSequenceFlow> ParseSequenceFlows(XElement process, XNamespace ns)
-    {
-        return new List<BpmnSequenceFlow>();
-    }
-
-    private List<BpmnLane> ParseLanes(XElement process, XNamespace ns)
-    {
-        return new List<BpmnLane>();
-    }
-    private List<BpmnDataObject> ParseDataObjects(XElement process, XNamespace ns)
-    {
-        return new List<BpmnDataObject>();
-    }
-
-    private List<BpmnAssociation> ParseAssociations(XElement process, XNamespace ns)
-    {
-        return new List<BpmnAssociation>();
-    }
-
-    private List<BpmnTextAnnotation> ParseTextAnnotations(XElement process, XNamespace ns)
-    {
-        return new List<BpmnTextAnnotation>();
-    }
-    private List<BpmnParticipant> ParseParticipants(XElement collaboration, XNamespace ns)
-    {
-        return new List<BpmnParticipant>();
-    }
-
-
-    private List<BpmnMessageFlow> ParseMessageFlows(XElement collaboration, XNamespace ns)
-    {
-        return new List<BpmnMessageFlow>();
     }
 
     /// <summary>
@@ -1742,7 +1740,7 @@ public partial class BpmnParser : IBpmnParser
    
     private IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? ParseVendorExtensions(bool strict, Dictionary<string, XElement>? rawExtensions)
     {
-        // NEW Phase B: vendor extension normalization capture (expanded all vendors + generics)
+        // vendor extension normalization capture (expanded all vendors + generics)
         IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? vendorNormalized = null;
         if (strict && _options.NormalizeVendorExtensions && rawExtensions is { Count: > 0 })
         {
@@ -1757,9 +1755,9 @@ public partial class BpmnParser : IBpmnParser
             var mcpNs = "http://vertexbpmn.io/mcp";
 
             var knownSet = new HashSet<string>(StringComparer.Ordinal)
-    {
-        camundaNs, zeebeNs, flowableNs, activitiNs, cibNs, jbpmNs, osmanthusNs, alfrescoNs, mcpNs
-    };
+            {
+                camundaNs, zeebeNs, flowableNs, activitiNs, cibNs, jbpmNs, osmanthusNs, alfrescoNs, mcpNs
+            };
 
             static string NextIndexedKey(Dictionary<string, string> bucket, string baseKey)
             {
@@ -1807,6 +1805,29 @@ public partial class BpmnParser : IBpmnParser
                                         if (!string.IsNullOrEmpty(fName))
                                             bucket[$"camunda:formField.{fid}.name"] = fName;
                                     }
+                                    break;
+                                }
+                            case "formData":
+                                {
+         
+                                    bucket["camunda:formData"] = child.Name.LocalName;
+
+                                    child.Elements().ToList().ForEach(ff =>
+                                    {
+                                        var fid = ff.Attribute("id")?.Value;
+                                        if (!string.IsNullOrEmpty(fid))
+                                        {
+                                            var fType = ff.Attribute("type")?.Value;
+                                            var fName = ff.Attribute("name")?.Value;
+                                            var flabel = ff.Attribute("label")?.Value;
+                                            if (!string.IsNullOrEmpty(fType))
+                                                bucket[$"camunda:formField.{fid}.type"] = fType;
+                                            if (!string.IsNullOrEmpty(fName))
+                                                bucket[$"camunda:formField.{fid}.name"] = fName;
+                                            if (!string.IsNullOrEmpty(flabel))
+                                                bucket[$"camunda:formField.{fid}.label"] = flabel;
+                                        }
+                                    });
                                     break;
                                 }
                             case "properties":
@@ -2106,7 +2127,7 @@ public partial class BpmnParser : IBpmnParser
                                     bucket[$"mcp:mcpServiceTask.{attr.Name.LocalName}"] = attr.Value;
                             }
                         }
-                    }
+                    }                     
                     // GENERICS (nur wenn aktiviert)
                     else if (_options.NormalizeUnknownVendorExtensions && nsUri.Length > 0)
                     {
@@ -2155,14 +2176,12 @@ public partial class BpmnParser : IBpmnParser
 
     public string Serialize(BpmnModel model)
     {
-        // Phase 8: Use NormalizedProjectionSerializer when enabled
         if (_options.EnableNormalizedProjectionSerializer)
         {
             var normalizedSerializer = new NormalizedProjectionSerializer(_options);
             return normalizedSerializer.Serialize(model);
         }
 
-        // Existing behavior: use BpmnSerializer for strict/roundtrip mode
         return new BpmnSerializer { RoundtripMode = _options.RoundtripMode }.Serialize(model);
     }
 
@@ -2210,45 +2229,6 @@ public partial class BpmnParser : IBpmnParser
         var defaultOptions = new BpmnParserOptions { ValidateEventDefinitions = false };
         var (definitions, _) = ParseEventDefinitionsWithDiagnostics(evt, ns, defaultOptions);
         return definitions;
-        //var definitions = new List<EventDefinition>();
-        //foreach (var defElem in evt.Elements())
-        //{
-        //    switch (defElem.Name.LocalName)
-        //    {
-        //        case "timerEventDefinition":
-        //            definitions.Add(new TimerEventDefinition(defElem.Element(ns + "timeDate")?.Value ?? defElem.Element("timeDate")?.Value, defElem.Element(ns + "timeDuration")?.Value ?? defElem.Element("timeDuration")?.Value, defElem.Element(ns + "timeCycle")?.Value ?? defElem.Element("timeCycle")?.Value));
-        //            break;
-        //        case "messageEventDefinition":
-        //            definitions.Add(new MessageEventDefinition(defElem.Attribute("messageRef")?.Value ?? string.Empty, defElem.Attribute("correlationKey")?.Value));
-        //            break;
-        //        case "signalEventDefinition":
-        //            definitions.Add(new SignalEventDefinition(defElem.Attribute("signalRef")?.Value ?? string.Empty));
-        //            break;
-        //        case "errorEventDefinition":
-        //            definitions.Add(new ErrorEventDefinition(defElem.Attribute("errorRef")?.Value ?? string.Empty));
-        //            break;
-        //        case "conditionalEventDefinition":
-        //            var cond = defElem.Element(ns + "conditionExpression")?.Value ?? defElem.Element("conditionExpression")?.Value ?? string.Empty;
-        //            definitions.Add(new ConditionalEventDefinition(cond));
-        //            break;
-        //        case "terminateEventDefinition":
-        //            definitions.Add(new TerminateEventDefinition());
-        //            break;
-        //        case "cancelEventDefinition":
-        //            definitions.Add(new CancelEventDefinition());
-        //            break;
-        //        case "compensateEventDefinition":
-        //            definitions.Add(new CompensationEventDefinition(defElem.Attribute("activityRef")?.Value));
-        //            break;
-        //        case "escalationEventDefinition":
-        //            definitions.Add(new EscalationEventDefinition(defElem.Attribute("escalationRef")?.Value ?? string.Empty));
-        //            break;
-        //        case "linkEventDefinition":
-        //            definitions.Add(new LinkEventDefinition(defElem.Attribute("name")?.Value ?? string.Empty));
-        //            break;
-        //    }
-        //}
-        //return definitions;
     }
 
     private static void MaybeThrowOnValidation(BpmnParserOptions options, IReadOnlyList<ValidationDiagnostic> diagnostics)
@@ -2372,8 +2352,8 @@ public partial class BpmnParser : IBpmnParser
                 defElem.Attribute("errorRef")?.Value ?? string.Empty),
 
             "conditionalEventDefinition" => new ConditionalEventDefinition(
-                defElem.Element(ns + "conditionExpression")?.Value ??
-                defElem.Element("conditionExpression")?.Value ?? string.Empty),
+                defElem.Element(ns + "condition")?.Value ??
+                defElem.Element("condition")?.Value ?? string.Empty),
 
             "terminateEventDefinition" => new TerminateEventDefinition(),
 
@@ -2672,5 +2652,15 @@ public partial class BpmnParser : IBpmnParser
 
         return updatedTasks;
     }
+
+    private string Intern(string s)
+    {
+        if (!_options.InternIds) return s;
+        if (string.IsNullOrEmpty(s)) return s;
+
+        // Use SharedStringAtomTable for cross-parser memory efficiency
+        return SharedStringAtomTable.Intern(s);
+    }
+
 
 }

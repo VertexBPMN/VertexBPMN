@@ -34,6 +34,94 @@ public class BpmnSerializer
             
             if (!string.IsNullOrEmpty(evt.Name))
                 eventElement.Add(new XAttribute("name", evt.Name));
+
+            if (evt.Definitions.Any())
+            {
+                var elements = new List<XElement>();
+                foreach (var def in evt.Definitions)
+                {
+                    if (def is MessageEventDefinition m && !string.IsNullOrEmpty(m.MessageRef))
+                    {
+                        elements.Add(new XElement(ns + "messageRef", m.MessageRef));
+                    }
+                    else if (def is SignalEventDefinition s && !string.IsNullOrEmpty(s.SignalRef))
+                    {
+                        var signalElement = new XElement(ns + "signalEventDefinition");
+                        if (!string.IsNullOrEmpty(s.SignalRef))
+                            signalElement.Add(new XAttribute("signalRef", s.SignalRef));
+                        elements.Add(signalElement);
+                    }
+                    else if (def is ErrorEventDefinition e && !string.IsNullOrEmpty(e.ErrorRef))
+                    {
+                        var el = new XElement(ns + "ErrorEventDefinition");
+                        if (!string.IsNullOrEmpty(e.ErrorRef))
+                            el.Add(new XAttribute("errorRef", e.ErrorRef));
+                        elements.Add(el);
+                    }
+                    else if (def is EscalationEventDefinition es && !string.IsNullOrEmpty(es.EscalationRef))
+                    {
+                        var el = new XElement(ns + "escalationEventDefinition");
+                        if (!string.IsNullOrEmpty(es.EscalationRef))
+                            el.Add(new XAttribute("escalationRef", es.EscalationRef));
+                        elements.Add(el);
+                    }
+                    else if (def is TimerEventDefinition t)
+                    {
+                        var timerElement = new XElement(ns + "timerEventDefinition");
+                         if (!string.IsNullOrEmpty(t.TimeDuration))
+                                timerElement.Add(new XElement(ns + "timeDuration", new XCData(t.TimeDuration)));
+                         else if (!string.IsNullOrEmpty(t.TimeDate))
+                                timerElement.Add(new XElement(ns + "timeDate", new XCData(t.TimeDate)));
+                         else if (!string.IsNullOrEmpty(t.TimeCycle))
+                                timerElement.Add(new XElement(ns + "timeCycle", new XCData(t.TimeCycle)));
+                        
+                        elements.Add(timerElement);
+                    }
+                    else if (def is ConditionalEventDefinition c && !string.IsNullOrEmpty(c.Condition))
+                    {
+                        var conditionalElement = new XElement(ns + "conditionalEventDefinition");
+                        conditionalElement.Add(new XElement(ns + "condition", new XCData(c.Condition)));
+                        elements.Add(conditionalElement);
+                    }
+                    else if (def is TerminateEventDefinition)
+                    {
+                        elements.Add(new XElement(ns + "terminateEventDefinition"));
+                    }
+                    else if (def is CompensationEventDefinition comp)
+                    {
+                        var compensateElement = new XElement(ns + "compensateEventDefinition");
+                        if (!string.IsNullOrEmpty(comp.ActivityRef))
+                            compensateElement.Add(new XAttribute("activityRef", comp.ActivityRef));
+                        if (comp.WaitForCompletion?.Any() == true)
+                            if (comp.WaitForCompletion?.Any() == true)
+                            {
+                                foreach (var co in comp.WaitForCompletion)
+                                    compensateElement.Add(new XAttribute("waitForCompletion", co.ToString().ToLowerInvariant()));
+                            }
+                       
+                        elements.Add(compensateElement);
+                    }
+                    else if (def is LinkEventDefinition l)
+                    {
+                        var linkElement = new XElement(ns + "linkEventDefinition");
+                        if (!string.IsNullOrEmpty(l.Name))
+                            linkElement.Add(new XAttribute("name", l.Name));
+                        if (l.Sources?.Any() == true)
+                        {
+                            foreach (var source in l.Sources)
+                                linkElement.Add(new XElement(ns + "source", source));
+                        }
+                        if (!string.IsNullOrEmpty(l.Target))
+                            linkElement.Add(new XElement(ns + "target", l.Target));
+                        elements.Add(linkElement);
+                    }
+                    else if (def is CancelEventDefinition)
+                    {
+                        elements.Add(new XElement(ns + "cancelEventDefinition"));
+                    }
+                }
+                eventElement.Add(elements);
+            }
             
             process.Add(eventElement);
         }

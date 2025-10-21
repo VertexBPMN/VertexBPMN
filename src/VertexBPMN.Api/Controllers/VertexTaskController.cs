@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
 using VertexBPMN.Api.Dto;
-using VertexBPMN.Domain;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 

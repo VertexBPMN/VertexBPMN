@@ -1,6 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using VertexBPMN.Domain.Model.Bpmn;
+﻿using VertexBPMN.Domain.Model.Bpmn;
 
 namespace VertexBPMN.Domain.Exceptions;
 

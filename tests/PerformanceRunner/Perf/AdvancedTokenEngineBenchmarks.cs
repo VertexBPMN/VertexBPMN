@@ -4,7 +4,6 @@ using VertexBPMN.Application;
 using VertexBPMN.Domain.Model.Bpmn;
 using VertexBPMN.Engine.Execution;
 using VertexBPMN.Infrastructure.Persistence.InMemory;
-using VertexBPMN.Infrastructure.Persistence.Repositories;
 using Xunit;
 
 namespace PerformanceRunner.Perf;

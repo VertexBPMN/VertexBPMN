@@ -2,9 +2,7 @@ using Microsoft.Extensions.Logging;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Domain.Interfaces.Repositories;
 using VertexBPMN.Domain.Model.Dmn;
-using DecisionDefinition = VertexBPMN.Domain.Entities.DecisionDefinition;
-using DecisionInstance = VertexBPMN.Domain.Entities.DecisionInstance;
-using DecisionResult = VertexBPMN.Domain.Entities.DecisionResult;
+
 
 namespace VertexBPMN.Application;
 

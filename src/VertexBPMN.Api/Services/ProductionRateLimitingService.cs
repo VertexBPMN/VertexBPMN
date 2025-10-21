@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Mvc.Filters;
 using System.Collections.Concurrent;
-using VertexBPMN.Domain;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 

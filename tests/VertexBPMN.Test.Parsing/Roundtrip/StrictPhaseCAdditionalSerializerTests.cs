@@ -1,6 +1,6 @@
-using System;
-using System.Linq;
-using VertexBPMN.Parsing;
+using VertexBPMN.Domain.Model.Bpmn;
+using VertexBPMN.Engine.Parsing;
+using VertexBPMN.Engine.Serialization;
 using Xunit;
 
 namespace VertexBPMN.Test.Parsing.Roundtrip;
@@ -60,7 +60,7 @@ public class StrictPhaseCAdditionalSerializerTests
   </bpmn:process>
 </bpmn:definitions>";
         var model = P.ParseAsync(xml).GetAwaiter().GetResult();
-        var serializer = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict, PreserveGeneratedIfMissing = false };
+        var serializer = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict };
         var outXml = serializer.Serialize(model);
         Assert.DoesNotContain("<bpmn:incoming>f1</bpmn:incoming>", outXml);
         Assert.DoesNotContain("<bpmn:outgoing>f1</bpmn:outgoing>", outXml);

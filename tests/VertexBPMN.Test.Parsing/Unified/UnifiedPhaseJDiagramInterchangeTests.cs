@@ -1,7 +1,6 @@
-using System.Threading.Tasks;
-using System.Linq;
 using VertexBPMN.Domain.Model.Bpmn;
-using VertexBPMN.Parsing;
+using VertexBPMN.Engine.Parsing;
+using VertexBPMN.Engine.Serialization;
 using Xunit;
 
 namespace VertexBPMN.Test.Parsing.Unified;
@@ -53,7 +52,7 @@ public class UnifiedPhaseJDiagramInterchangeTests
     {
         var parser = new BpmnParser(new BpmnParserOptions { ParseDiagramInterchange = true });
         var xml = """
-<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>
+<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL' xmlns:bpmndi='http://www.omg.org/spec/BPMN/20100524/DI' xmlns:omgdc='http://www.omg.org/spec/DD/20100524/DC' xmlns:omgdi='http://www.omg.org/spec/DD/20100524/DI'>
   <process id='p2'>
     <startEvent id='s1'/>
     <endEvent id='e1'/>
@@ -64,7 +63,7 @@ public class UnifiedPhaseJDiagramInterchangeTests
         var model = await parser.ParseAsync(xml);
         // Add synthetic DI
         var updated = model with { Shapes = new [] { new BpmnShape("shape_s1","s1",10,20,30,40) }, Edges = new [] { new BpmnEdge("edge_f1","f1", new [] { (0d,0d),(10d,10d) }) } };
-        var serializer = new BpmnSerializer();
+        var serializer = new NormalizedProjectionSerializer();
         var outXml = serializer.Serialize(updated);
         Assert.Contains("BPMNDiagram", outXml);
         Assert.Contains("waypoint", outXml);

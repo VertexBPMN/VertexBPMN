@@ -1,6 +1,5 @@
 #nullable enable
 using System.Collections.Concurrent;
-using System.Linq;
 using System.Text.Json;
 using System.Xml.Linq;
 using VertexBPMN.Domain.Entities;

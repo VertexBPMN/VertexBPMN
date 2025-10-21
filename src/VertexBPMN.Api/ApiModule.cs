@@ -1,14 +1,10 @@
 #nullable enable
 using VertexBPMN.Api.Debug;
-using VertexBPMN.Api.Hubs;
 using VertexBPMN.Api.Migration;
 using VertexBPMN.Api.ML;
 using VertexBPMN.Api.Plugins;
 using VertexBPMN.Api.Services;
-using VertexBPMN.Application;
-using VertexBPMN.Application.Extensions;
 using VertexBPMN.Domain.Interfaces;
-using VertexBPMN.Infrastructure.Persistence.Services;
 
 namespace VertexBPMN.Api;
 

@@ -1,5 +1,5 @@
-using System.Linq;
-using VertexBPMN.Parsing;
+using VertexBPMN.Engine.Parsing;
+using VertexBPMN.Domain.Model.Bpmn;
 using Xunit;
 
 namespace VertexBPMN.Test.Parsing.Roundtrip;

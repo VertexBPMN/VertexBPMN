@@ -1,11 +1,7 @@
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using VertexBPMN.Api.Plugins;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Domain.Interfaces.Repositories;
-using VertexBPMN.Engine;
-using VertexBPMN.Engine.Execution;
 using VertexBPMN.Infrastructure.Persistence;
-using VertexBPMN.Infrastructure.Persistence.Repositories;
 
 namespace VertexBPMN.Api.Health;
 

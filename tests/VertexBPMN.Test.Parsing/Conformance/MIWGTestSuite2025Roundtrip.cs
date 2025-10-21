@@ -1,5 +1,5 @@
-using VertexBPMN.Engine;
-using VertexBPMN.Parsing;
+using VertexBPMN.Engine.Execution;
+using VertexBPMN.Engine.Parsing;
 using Xunit;
 
 namespace VertexBPMN.Test.Parsing.Conformance

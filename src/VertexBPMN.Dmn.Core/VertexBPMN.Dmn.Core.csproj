@@ -1,0 +1,36 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <LangVersion>preview</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+	  <AssemblyName>VertexBPMN.Domain.Model.Dmn.Gpt5</AssemblyName>
+	  <RootNamespace>VertexBPMN.Domain.Model.Dmn</RootNamespace>
+	  <IncludeSymbols>false</IncludeSymbols>
+	  <PackageId>VertexBPMN.Domain.Model.Dmn</PackageId>
+    <Authors>VertexBPMN</Authors>
+    <Description>DMN 1.5 Core Structure (Metamodel) in C# for .NET 9</Description>
+    <PackageTags>DMN;Decision;OMG;Metamodel</PackageTags>
+	  <EnableMicrosoftTestingPlatform>true</EnableMicrosoftTestingPlatform>
+	  <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+	  <TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
+  </PropertyGroup>
+	<ItemGroup>
+		<PackageReference Include="MartinCostello.Logging.XUnit.v3" Version="0.6.0" />
+		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+		<PackageReference Include="xunit.v3" Version="3.0.1" />
+		<PackageReference Include="Microsoft.Testing.Platform" Version="1.8.4" />
+		<PackageReference Include="Microsoft.Testing.Platform.MSBuild" Version="1.8.4" />
+		<PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" Version="17.14.2" />
+		<PackageReference Include="BenchmarkDotNet" Version="0.15.4" />
+		<PackageReference Include="coverlet.collector" Version="6.0.4">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="Grpc.Net.Client" Version="2.71.0" />
+		<PackageReference Include="Moq" Version="4.20.72" />
+		<PackageReference Include="Shouldly" Version="4.3.0" />
+		<PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.0.9" />
+	</ItemGroup>
+</Project>

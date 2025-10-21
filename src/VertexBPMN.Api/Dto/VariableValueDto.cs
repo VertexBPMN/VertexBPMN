@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-
 namespace VertexBPMN.Api.Dto;
 
 public class VariableValueDto

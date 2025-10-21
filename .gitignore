@@ -46,7 +46,7 @@ TestResult.xml
 dlldata.c
 
 # Benchmark Results
-BenchmarkDotNet.Artifacts/
+#BenchmarkDotNet.Artifacts/
 
 # .NET Core
 project.lock.json

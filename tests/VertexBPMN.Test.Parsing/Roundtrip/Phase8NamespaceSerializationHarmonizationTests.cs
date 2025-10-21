@@ -1,13 +1,7 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
-using System.Threading.Tasks;
 using System.Xml.Linq;
 using VertexBPMN.Domain.Model.Bpmn;
-using VertexBPMN.Parsing;
-using VertexBPMN.Parsing.Serialization;
+using VertexBPMN.Engine.Parsing;
+using VertexBPMN.Engine.Serialization;
 using Xunit;
 
 namespace VertexBPMN.Test.Parsing.Roundtrip;
@@ -56,6 +50,7 @@ public class Phase8NamespaceSerializationHarmonizationTests
             RoundtripMode = BpmnRoundtripMode.Normalized,
             EnableNormalizedProjectionSerializer = true,
             EnableCanonicalSort = true
+
         };
         var parser = new BpmnParser(options);
 

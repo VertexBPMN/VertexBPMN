@@ -3,7 +3,6 @@ using System.Diagnostics;
 using System.Net.NetworkInformation;
 using System.Reflection;
 using Microsoft.EntityFrameworkCore;
-using VertexBPMN.Domain;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 

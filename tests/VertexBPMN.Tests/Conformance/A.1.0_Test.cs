@@ -3,7 +3,6 @@ using Moq;
 using OpenTelemetry.Trace;
 using VertexBPMN.Engine.Execution;
 using VertexBPMN.Engine.Parsing;
-using Xunit;
 
 namespace VertexBPMN.Tests.Conformance
 {

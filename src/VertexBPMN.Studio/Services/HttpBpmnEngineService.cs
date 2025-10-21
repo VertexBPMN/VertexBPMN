@@ -1,7 +1,5 @@
 using Microsoft.AspNetCore.Components.Forms;
 using VertexBPMN.Domain.Entities;
-using System.Net.Http.Json;
-using System.Text.Json;
 
 namespace VertexBPMN.Studio.Services;
 
@@ -156,7 +154,7 @@ public class HttpBpmnEngineService : IBpmnEngineService
     {
         var connections = new List<EngineConnection>
         {
-            new() { Id = "api", Name = "VertexBPMN API", Url = "http://localhost:5074", IsActive = true }
+            new() { Id = "api", Name = "VertexBPMN API", Url = "https://localhost:51869/api/", IsActive = true }
         };
         return Task.FromResult<IEnumerable<EngineConnection>>(connections);
     }

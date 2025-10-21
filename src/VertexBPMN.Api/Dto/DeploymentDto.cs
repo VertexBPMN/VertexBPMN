@@ -1,5 +1,3 @@
-using System;
-
 namespace VertexBPMN.Api.Dto;
 
 public class DeploymentDto

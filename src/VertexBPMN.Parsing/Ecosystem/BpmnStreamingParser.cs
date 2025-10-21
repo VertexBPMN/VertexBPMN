@@ -304,7 +304,7 @@ public sealed class BpmnStreamingParser
             Lanes: Array.Empty<BpmnLane>(),
             MessageFlows: Array.Empty<BpmnMessageFlow>(),
             TextAnnotations: Array.Empty<BpmnTextAnnotation>(),
-            Associations: Array.Empty<BpmnAssociationArtifact>(),
+            Associations: Array.Empty<BpmnAssociation>(),
             Groups: Array.Empty<BpmnGroup>(),
             Activities: context.Tasks.Cast<object>().Concat(context.Subprocesses),
             RawMetadata: null

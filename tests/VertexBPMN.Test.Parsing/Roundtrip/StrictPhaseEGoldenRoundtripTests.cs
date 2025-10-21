@@ -1,8 +1,7 @@
-using System;
-using System.Linq;
 using System.Xml.Linq;
-using VertexBPMN.Parsing;
-using VertexBPMN.Domain.Model.Bpmn; // added for BpmnRoundtripUtil
+using VertexBPMN.Engine.Parsing;
+using VertexBPMN.Domain.Model.Bpmn;
+using VertexBPMN.Engine.Serialization; // added for BpmnRoundtripUtil
 using Xunit;
 
 namespace VertexBPMN.Test.Parsing.Roundtrip;

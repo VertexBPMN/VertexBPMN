@@ -17,7 +17,7 @@ public sealed class BpmnParserOptions
     /// <summary>Maximum number of cached parsed models (0 disables caching).</summary>
     public int CacheSize { get; set; } = 0;
     /// <summary>Parse BPMN Diagram Interchange (shapes/edges) when true.</summary>
-    public bool ParseDiagramInterchange { get; set; } = false;
+    public bool ParseDiagramInterchange { get; set; } = true;
     /// <summary>
     /// Roundtrip mode: Normalized (current default behaviour) vs Strict (attempt lossless preservation).
     /// </summary>
@@ -50,10 +50,10 @@ public sealed class BpmnParserOptions
     /// Phase 2: Enable vendor extension normalization (flatten known camunda / zeebe / flowable / cib / jbpm / osmanthus / alfresco / mcp patterns).
     /// Default false (zero-break).
     /// </summary>
-    public bool NormalizeVendorExtensions { get; set; } = false;
+    public bool NormalizeVendorExtensions { get; set; } = true;
 
     // (generische/unbekannte Namespaces – zusätzlich)
-    public bool NormalizeUnknownVendorExtensions { get; set; } = false;
+    public bool NormalizeUnknownVendorExtensions { get; set; } = true;
     /// <summary>
     /// Enable advanced structured validation diagnostics (incremental rules).
     /// Zero-break: off by default.

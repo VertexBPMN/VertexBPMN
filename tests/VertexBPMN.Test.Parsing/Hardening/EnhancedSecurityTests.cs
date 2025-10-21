@@ -1,7 +1,8 @@
-using System;
-using System.Threading.Tasks;
-using VertexBPMN.Parsing;
-using VertexBPMN.Parsing.Hardening;
+using VertexBPMN.Domain.Exceptions;
+using VertexBPMN.Domain.Model.Bpmn;
+using VertexBPMN.Domain.Model.Security;
+using VertexBPMN.Engine.Parsing;
+using VertexBPMN.Engine.Security;
 using Xunit;
 
 namespace VertexBPMN.Test.Parsing.Hardening;

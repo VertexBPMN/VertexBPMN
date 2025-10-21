@@ -4,9 +4,9 @@ using VertexBPMN.Domain.Model.Runtime;
 
 namespace VertexBPMN.Domain.Model.Bpmn;
 
-using System.Runtime.CompilerServices;
 using System.Xml.Linq;
 
+public record BpmnDefinition(string Id, string? Name, string? TargetNamespace, string? Expression);
 public record BpmnEvent(string Id,string Type, IReadOnlyList<EventDefinition> Definitions = null, string? SubprocessId = null, Dictionary<string,string>? Attributes=null)
 {
     public string Name => Attributes?.TryGetValue("name", out var name) == true ? name : string.Empty;
@@ -62,9 +62,15 @@ public sealed record MessageEventDefinition(string MessageRef, string? Correlati
 public sealed record SignalEventDefinition(string SignalRef) : EventDefinition("signal");
 public sealed record ErrorEventDefinition(string ErrorRef, string? ErrorCode = null) : EventDefinition("error");
 public sealed record EscalationEventDefinition(string EscalationRef) : EventDefinition("escalation");
-public sealed record LinkEventDefinition(string Name, string? Target = null) : EventDefinition("link");
+public sealed record LinkEventDefinition(string Name, string? Target = null) : EventDefinition("link")
+{
+    public IEnumerable<object?> Sources { get; set; } = new List<object?>();
+}
 public sealed record ConditionalEventDefinition(string Condition) : EventDefinition("conditional");
-public sealed record CompensationEventDefinition(string? ActivityRef) : EventDefinition("compensation");
+public sealed record CompensationEventDefinition(string? ActivityRef) : EventDefinition("compensation")
+{
+    public IEnumerable<object?> WaitForCompletion { get; set; }
+}
 public sealed record CancelEventDefinition() : EventDefinition("cancel");
 public sealed record TerminateEventDefinition() : EventDefinition("terminate");
 public abstract record LoopCharacteristics(string Kind);
@@ -217,15 +223,6 @@ public record BpmnModel(
 
     public RuntimeProcessModel? Runtime { get; set; }
     public IReadOnlyList<ValidationDiagnostic>? ValidationDiagnostics { get; set; }
+    public IReadOnlyList<BpmnDefinition> Definitions { get; set; } = new List<BpmnDefinition>();
     public string Id => ProcessId;
-
-    public string ProcessRef1 { get; }
-    public string ProcessRef2 { get; }
-    public string V1 { get; }
-    public string V2 { get; }
-    public List<BpmnEvent> BpmnEvents { get; }
-    public List<BpmnTask> BpmnTasks { get; }
-    public List<BpmnGateway> BpmnGateways { get; }
-    public List<BpmnSequenceFlow> BpmnSequenceFlows { get; }
-    public List<BpmnSubprocess> BpmnSubprocesses { get; }
 }

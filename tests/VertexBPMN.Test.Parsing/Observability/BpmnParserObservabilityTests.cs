@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
-using System.Threading.Tasks;
-using VertexBPMN.Parsing;
+using VertexBPMN.Engine.Parsing;
+using VertexBPMN.Domain.Model.Bpmn;
 using Xunit;
 
 namespace VertexBPMN.Test.Parsing.Observability;

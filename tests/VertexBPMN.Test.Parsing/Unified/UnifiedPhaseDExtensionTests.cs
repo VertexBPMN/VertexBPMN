@@ -1,14 +1,15 @@
-using System.Linq;
-using System.Threading.Tasks;
-using VertexBPMN.Parsing;
+using VertexBPMN.Domain.Model.Bpmn;
+using VertexBPMN.Engine.Parsing;
+using VertexBPMN.Engine.Serialization;
 using Xunit;
 
 namespace VertexBPMN.Test.Parsing.Unified;
 
 public class UnifiedPhaseDExtensionTests
 {
-    private readonly BpmnParser _parser = new();
-    private readonly BpmnSerializer _serializer = new();
+    private readonly BpmnParser _parser = new(new BpmnParserOptions { EnableNormalizedProjectionSerializer = true, NormalizeVendorExtensions = true} );
+    //private readonly BpmnSerializer _serializer = new();
+    private readonly NormalizedProjectionSerializer  _serializer = new(new BpmnParserOptions());
 
     [Fact]
     public async Task Parses_Camunda_FormFields_Extensions()

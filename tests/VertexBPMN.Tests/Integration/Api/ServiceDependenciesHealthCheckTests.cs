@@ -1,5 +1,4 @@
 ﻿using Microsoft.Extensions.Configuration;
-using System.Configuration;
 using VertexBPMN.Infrastructure;
 
 namespace VertexBPMN.Tests.Integration.Api;
@@ -9,13 +8,9 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using System.Threading;
 using VertexBPMN.Api;
 using VertexBPMN.Api.Health;
-using VertexBPMN.Api.Plugins;
 using VertexBPMN.Application;
 using VertexBPMN.Domain.Interfaces;
-using VertexBPMN.Domain.Interfaces.Repositories;
 using VertexBPMN.Engine;
-using VertexBPMN.Infrastructure.Persistence;
-using VertexBPMN.Infrastructure.Persistence.InMemory;
 using Xunit;
 
 [Collection("IntegratedApi")]

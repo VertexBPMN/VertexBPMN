@@ -1,0 +1,134 @@
+@page "/tasks"
+@inject VertexBPMN.Studio.Services.IBpmnEngineService BpmnEngineService
+@inject VertexBPMN.Studio.Services.ActiveEngineService ActiveEngineService
+@inject MudBlazor.IDialogService DialogService
+@inject MudBlazor.ISnackbar Snackbar
+
+<PageTitle>Tasks</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Tasks</MudText>
+
+<MudTable Items="@_tasks" Hover="true" Striped="true" Class="mt-4" Filter="new Func<UserTask, bool>(FilterFunc)">
+    <ToolBarContent>
+        <MudTextField @bind-Value="_searchString" Placeholder="Search" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0"></MudTextField>
+    </ToolBarContent>
+    <HeaderContent>
+        <MudTh><MudTableSortLabel SortBy="new Func<UserTask, object>(x => x.Id)">Id</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<UserTask, object>(x => x.Name)">Name</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<UserTask, object>(x => x.ProcessInstanceId)">Process Instance Id</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<UserTask, object>(x => x.CreatedAt)">Created Time</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<UserTask, object>(x => x.Assignee)">Assignee</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<UserTask, object>(x => x.DueDate)">Due Date</MudTableSortLabel></MudTh>
+        <MudTh>Actions</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Id">@context.Id</MudTd>
+        <MudTd DataLabel="Name">@context.Name</MudTd>
+        <MudTd DataLabel="Process Instance Id">@context.ProcessInstanceId</MudTd>
+        <MudTd DataLabel="Created Time">@context.CreatedAt</MudTd>
+        <MudTd DataLabel="Assignee">@context.Assignee</MudTd>
+        <MudTd DataLabel="Due Date">
+            <MudText Color="@(context.DueDate.HasValue && context.DueDate.Value < DateTime.Now ? Color.Error : Color.Inherit)">@context.DueDate?.ToShortDateString()</MudText>
+        </MudTd>
+        <MudTd DataLabel="Actions">
+            @if (string.IsNullOrEmpty(context.Assignee))
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.PersonAdd" Size="Size.Small" OnClick="@(() => ClaimTask(context.Id))" Title="Claim Task" />
+            }
+            else if (context.Assignee == "John Doe") // Assuming "John Doe" is the current user
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.PersonRemove" Size="Size.Small" OnClick="@(() => UnclaimTask(context.Id))" Title="Unclaim Task" />
+                <MudIconButton Icon="@Icons.Material.Filled.Check" Size="Size.Small" OnClick="@(() => CompleteTask(context.Id))" Title="Complete Task" />
+            }
+            <MudIconButton Icon="@Icons.Material.Filled.Info" Size="Size.Small" OnClick="@(() => ViewTaskDetails(context))" Title="View Details" />
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+@code {
+    private IEnumerable<UserTask> _tasks = new List<UserTask>();
+    private string _searchString = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        ActiveEngineService.OnChange += StateHasChanged; // Subscribe to state changes
+        await LoadTasks();
+    }
+
+    public void Dispose()
+    {
+        ActiveEngineService.OnChange -= StateHasChanged; // Unsubscribe
+    }
+
+    private async Task LoadTasks()
+    {
+        _tasks = await BpmnEngineService.GetTasksAsync();
+    }
+
+    private bool FilterFunc(UserTask task)
+    {
+        if (string.IsNullOrWhiteSpace(_searchString))
+            return true;
+        if (task.Id.ToString().Contains(_searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (task.Name?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false)
+            return true;
+        if (task.ProcessInstanceId.ToString().Contains(_searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (task.Assignee?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false)
+            return true;
+        return false;
+    }
+
+    private async Task ClaimTask(Guid taskId)
+    {
+        // Simulate claiming task
+        var task = _tasks.FirstOrDefault(t => t.Id == taskId);
+        if (task != null)
+        {
+            task.Assignee = "John Doe"; // Assign to current user
+            Snackbar.Add($"Task {task.Name} claimed!", Severity.Success);
+            StateHasChanged();
+        }
+    }
+
+    private async Task UnclaimTask(Guid taskId)
+    {
+        // Simulate unclaiming task
+        var task = _tasks.FirstOrDefault(t => t.Id == taskId);
+        if (task != null)
+        {
+            task.Assignee = null;
+            Snackbar.Add($"Task {task.Name} unclaimed!", Severity.Success);
+            StateHasChanged();
+        }
+    }
+
+    private async Task CompleteTask(Guid taskId)
+    {
+        // Simulate completing task
+        var task = _tasks.FirstOrDefault(t => t.Id == taskId);
+        if (task != null)
+        {
+            // In a real application, you would remove the task from the list
+            // For now, just change its state or remove it from the dummy data
+            Snackbar.Add($"Task {task.Name} completed!", Severity.Success);
+            await LoadTasks(); // Reload tasks to reflect changes
+        }
+    }
+
+    private async Task ViewTaskDetails(UserTask task)
+    {
+        var parameters = new DialogParameters<VertexBPMN.Studio.Components.TaskDetailsDialog>();
+        parameters.Add(x => x.Task, task);
+
+        var dialog = DialogService.Show<VertexBPMN.Studio.Components.TaskDetailsDialog>($"Task Details: {task.Name}", parameters);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            // Task was completed from the dialog, reload tasks
+            await LoadTasks();
+        }
+    }
+}

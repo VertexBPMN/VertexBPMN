@@ -1,0 +1,88 @@
+@page "/deployments"
+@inject VertexBPMN.Studio.Services.IBpmnEngineService BpmnEngineService
+@inject MudBlazor.ISnackbar Snackbar
+@inject VertexBPMN.Studio.Services.ActiveEngineService ActiveEngineService
+@inject ILogger<Deployments> Logger
+@implements IDisposable
+
+<PageTitle>Deployments</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Deployments</MudText>
+
+<MudFileUpload T="IReadOnlyList<Microsoft.AspNetCore.Components.Forms.IBrowserFile>" id="fileUpload" FilesChanged="UploadFiles">
+    <ButtonTemplate>
+        <MudButton HtmlTag="label"
+                   Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.CloudUpload" 
+                   for="fileUpload">
+            Upload BPMN File
+        </MudButton>
+    </ButtonTemplate>
+</MudFileUpload>
+
+@if (_isLoading)
+{
+    <MudProgressCircular Indeterminate="true" Class="my-4" />
+    <MudText>Deploying...</MudText>
+}
+
+<MudTable Items="@_deployments" Hover="true" Striped="true" Class="mt-4">
+    <HeaderContent>
+        <MudTh>Id</MudTh>
+        <MudTh>Name</MudTh>
+        <MudTh>Deployment Time</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Id">@context.Id</MudTd>
+        <MudTd DataLabel="Name">@context.Name</MudTd>
+        <MudTd DataLabel="Deployment Time">@context.DeploymentTime</MudTd>
+    </RowTemplate>
+</MudTable>
+
+@code {
+    private IEnumerable<VertexBPMN.Studio.Services.Deployment> _deployments = new List<VertexBPMN.Studio.Services.Deployment>();
+    private bool _isLoading = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        ActiveEngineService.OnChange += StateHasChanged;
+        await LoadDeployments();
+    }
+
+    public void Dispose()
+    {
+        ActiveEngineService.OnChange -= StateHasChanged;
+    }
+
+    private async Task LoadDeployments()
+    {
+        _deployments = await BpmnEngineService.GetDeploymentsAsync();
+    }
+
+    private async Task UploadFiles(IReadOnlyList<Microsoft.AspNetCore.Components.Forms.IBrowserFile> files)
+    {
+        if (files != null && files.Count > 0)
+        {
+            _isLoading = true;
+            StateHasChanged();
+
+            var file = files[0];
+            try
+            {
+                await BpmnEngineService.DeployAsync(file);
+                Snackbar.Add($"File {file.Name} deployed successfully!", Severity.Success);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error deploying file {file.Name}: {ex.Message}", Severity.Error);
+            }
+            finally
+            {
+                _isLoading = false;
+                await LoadDeployments();
+                StateHasChanged();
+            }
+        }
+    }
+}

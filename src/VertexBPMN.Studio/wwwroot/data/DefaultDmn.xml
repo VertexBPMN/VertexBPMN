@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="definitions_1">
+  <decision id="decision_1" name="Decision 1">
+    <decisionTable id="decisionTable_1">
+      <input id="input_1" label="Input 1">
+        <inputExpression id="inputExpression_1" typeRef="string">
+          <text>Input 1</text>
+        </inputExpression>
+      </input>
+      <output id="output_1" label="Output 1" name="output_1" typeRef="string" />
+      <rule id="rule_1">
+        <inputEntry id="inputEntry_1">
+          <text>"hello"</text>
+        </inputEntry>
+        <outputEntry id="outputEntry_1">
+          <text>"world"</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+</definitions>

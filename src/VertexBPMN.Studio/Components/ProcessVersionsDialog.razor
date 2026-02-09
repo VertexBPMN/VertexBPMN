@@ -1,0 +1,99 @@
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.History" Class="mr-3"/>
+            Process Versions: @ProcessKey
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudTable Items="@Versions" 
+                  Hover="true" 
+                  Dense="true" 
+                  Striped="true">
+            <HeaderContent>
+                <MudTh><MudTableSortLabel SortBy="new Func<ProcessDefinition, object>(x => x.Version)">Version</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortBy="new Func<ProcessDefinition, object>(x => x.Name)">Name</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortBy="new Func<ProcessDefinition, object>(x => x.CreatedAt)">Created At</MudTableSortLabel></MudTh>
+                <MudTh>Deployment</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Version">
+                    <MudChip T="string" Color="@(context.Version == Versions.Max(v => v.Version) ? Color.Success : Color.Default)" 
+                            Size="Size.Small">
+                        v@context.Version
+                        @if (context.Version == Versions.Max(v => v.Version))
+                        {
+                            <span class="ml-1">(Latest)</span>
+                        }
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Name">@context.Name</MudTd>
+                <MudTd DataLabel="Created At">@context.CreatedAt.ToString("yyyy-MM-dd HH:mm")</MudTd>
+                <MudTd DataLabel="Deployment">
+                    @if (context.DeploymentId != Guid.Empty)
+                    {
+                        <MudText Typo="Typo.body2" Class="font-monospace">
+                            @context.DeploymentId.ToString("N")[..8]...
+                        </MudText>
+                    }
+                    else
+                    {
+                        <MudText Color="Color.Tertiary">N/A</MudText>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Actions">
+                    <MudButtonGroup Size="Size.Small" Variant="Variant.Text">
+                        <MudIconButton Icon="@Icons.Material.Filled.Visibility" 
+                                      Size="Size.Small" 
+                                      OnClick="@(() => ViewDefinition(context))" 
+                                      Title="View BPMN" />
+                        <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" 
+                                      Size="Size.Small" 
+                                      Color="Color.Success"
+                                      OnClick="@(() => StartProcess(context))" 
+                                      Title="Start Process Instance" />
+                        @if (context.Version != Versions.Max(v => v.Version))
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Restore" 
+                                          Size="Size.Small" 
+                                          Color="Color.Warning"
+                                          OnClick="@(() => SetAsLatest(context))" 
+                                          Title="Set as Latest Version" />
+                        }
+                    </MudButtonGroup>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => Dialog.Close())" Color="Color.Primary">
+            Close
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] public MudBlazor.IDialogReference Dialog { get; set; } = default!;
+    [Parameter] public string ProcessKey { get; set; } = string.Empty;
+    [Parameter] public List<ProcessDefinition> Versions { get; set; } = new();
+
+    private void ViewDefinition(ProcessDefinition definition)
+    {
+        // Close this dialog and let parent handle the view action
+        Dialog.Close(DialogResult.Ok(new { Action = "View", Definition = definition }));
+    }
+
+    private void StartProcess(ProcessDefinition definition)
+    {
+        // Close this dialog and let parent handle the start action
+        Dialog.Close(DialogResult.Ok(new { Action = "Start", Definition = definition }));
+    }
+
+    private async Task SetAsLatest(ProcessDefinition definition)
+    {
+        // TODO: Implement rollback functionality
+        // This would typically involve deploying this version again or changing the "latest" flag
+        Dialog.Close(DialogResult.Ok(new { Action = "SetAsLatest", Definition = definition }));
+    }
+}

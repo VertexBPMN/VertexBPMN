@@ -1,0 +1,203 @@
+@page "/process-definitions"
+@inject VertexBPMN.Studio.Services.IBpmnEngineService BpmnEngineService
+@inject VertexBPMN.Studio.Services.ActiveEngineService ActiveEngineService
+@inject MudBlazor.IDialogService DialogService
+@inject MudBlazor.ISnackbar Snackbar
+@implements IDisposable
+
+<PageTitle>Process Definitions</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Process Definitions</MudText>
+
+@if (_isLoading)
+{
+    <MudProgressLinear Indeterminate="true" Class="my-4" />
+    <MudText>Loading process definitions...</MudText>
+}
+else
+{
+    <MudDataGrid T="ProcessDefinition" 
+                 Items="@_processDefinitions" 
+                 Filterable="true" 
+                 Sortable="true"
+                 Groupable="true"
+                 Hover="true"
+                 Dense="true"
+                 Class="mt-4">
+        <ToolBarContent>
+            <MudText Typo="Typo.h6">Process Definitions</MudText>
+            <MudSpacer />
+            <MudButton Variant="Variant.Filled" 
+                      Color="Color.Primary" 
+                      StartIcon="@Icons.Material.Filled.Refresh"
+                      OnClick="RefreshData">
+                Refresh
+            </MudButton>
+        </ToolBarContent>
+        <Columns>
+            <PropertyColumn Property="x => x.Key" Title="Key" Grouping />
+            <PropertyColumn Property="x => x.Name" Title="Name" />
+            <PropertyColumn Property="x => x.Version" Title="Version" />
+            <TemplateColumn Title="Deployment" Sortable="false">
+                <CellTemplate>
+                    @if (context.Item.DeploymentId != Guid.Empty)
+                    {
+                        <MudText Typo="Typo.body2" Class="font-monospace">
+                            @context.Item.DeploymentId.ToString("N")[..8]...
+                        </MudText>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Tertiary">N/A</MudText>
+                    }
+                </CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn Title="Tenant" Sortable="false">
+                <CellTemplate>
+                    <MudText Typo="Typo.body2">
+                        @(context.Item.TenantId ?? "Default")
+                    </MudText>
+                </CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn Title="Actions" Sortable="false">
+                <CellTemplate>
+                    <MudButtonGroup Size="Size.Small" Variant="Variant.Text">
+                        <MudIconButton Icon="@Icons.Material.Filled.Visibility" 
+                                      Size="Size.Small" 
+                                      OnClick="@(() => ViewDefinition(context.Item))" 
+                                      Title="View BPMN" />
+                        <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" 
+                                      Size="Size.Small" 
+                                      Color="Color.Success"
+                                      OnClick="@(() => StartProcess(context.Item))" 
+                                      Title="Start Process Instance" />
+                        <MudIconButton Icon="@Icons.Material.Filled.History" 
+                                      Size="Size.Small" 
+                                      OnClick="@(() => ViewVersions(context.Item.Key))" 
+                                      Title="View Versions" />
+                    </MudButtonGroup>
+                </CellTemplate>
+            </TemplateColumn>
+        </Columns>
+        <PagerContent>
+            <MudDataGridPager T="ProcessDefinition" />
+        </PagerContent>
+    </MudDataGrid>
+}
+
+@if (_error != null)
+{
+    <MudAlert Severity="Severity.Error" Class="mt-4">
+        Error loading process definitions: @_error
+    </MudAlert>
+}
+
+@code {
+    private List<ProcessDefinition> _processDefinitions = new();
+    private bool _isLoading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        ActiveEngineService.OnChange += StateHasChanged;
+        await LoadProcessDefinitions();
+    }
+
+    public void Dispose()
+    {
+        ActiveEngineService.OnChange -= StateHasChanged;
+    }
+
+    private async Task LoadProcessDefinitions()
+    {
+        try
+        {
+            _isLoading = true;
+            _error = null;
+            StateHasChanged();
+
+            var definitions = await BpmnEngineService.GetProcessDefinitionsAsync();
+            _processDefinitions = definitions.ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _processDefinitions.Clear();
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshData()
+    {
+        await LoadProcessDefinitions();
+        Snackbar.Add("Process definitions refreshed", Severity.Success);
+    }
+
+    private async Task ViewDefinition(ProcessDefinition definition)
+    {
+        try
+        {
+            var xml = await BpmnEngineService.GetProcessDefinitionXmlAsync(definition.Id.ToString());
+            
+            var parameters = new DialogParameters
+            {
+                ["BpmnXml"] = xml,
+                ["Title"] = $"Process Definition: {definition.Name}"
+            };
+
+            var options = new DialogOptions
+            {
+                MaxWidth = MaxWidth.ExtraExtraLarge,
+                FullWidth = true
+            };
+
+            DialogService.Show<BpmnViewerDialog>("BPMN Viewer", parameters, options);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading BPMN: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task StartProcess(ProcessDefinition definition)
+    {
+        var parameters = new DialogParameters
+        {
+            ["ProcessDefinition"] = definition
+        };
+
+        var dialog = DialogService.Show<StartProcessDialog>(
+            $"Start Process: {definition.Name}", parameters);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            Snackbar.Add($"Process instance started for {definition.Name}", Severity.Success);
+        }
+    }
+
+    private async Task ViewVersions(string processKey)
+    {
+        try
+        {
+            var versions = await BpmnEngineService.GetProcessDefinitionVersionsAsync(processKey);
+            
+            var parameters = new DialogParameters
+            {
+                ["ProcessKey"] = processKey,
+                ["Versions"] = versions.ToList()
+            };
+
+            DialogService.Show<ProcessVersionsDialog>(
+                $"Versions: {processKey}", parameters);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading versions: {ex.Message}", Severity.Error);
+        }
+    }
+}

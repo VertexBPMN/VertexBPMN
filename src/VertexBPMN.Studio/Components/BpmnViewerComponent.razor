@@ -1,0 +1,30 @@
+@inject IJSRuntime JSRuntime
+@implements IDisposable
+
+<div id="@_viewerContainerId" style="height: 500px; border: 1px solid #ccc;"></div>
+
+@code {
+    [Parameter]
+    public string BpmnXml { get; set; }
+
+    private string _viewerContainerId = $"bpmn-viewer-{Guid.NewGuid().ToString().Replace("-", "")}";
+    private IJSObjectReference _module;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _module = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/bpmn-viewer.js");
+        }
+
+        if (!string.IsNullOrEmpty(BpmnXml))
+        {
+            await _module.InvokeVoidAsync("BpmnViewerInterop.createViewer", _viewerContainerId, BpmnXml);
+        }
+    }
+
+    public void Dispose()
+    {
+        _module?.DisposeAsync();
+    }
+}

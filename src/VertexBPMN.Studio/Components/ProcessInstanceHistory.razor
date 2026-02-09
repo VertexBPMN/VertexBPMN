@@ -1,0 +1,31 @@
+@inject VertexBPMN.Studio.Services.IBpmnEngineService BpmnEngineService
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Process Instance History: @ProcessInstanceId</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudList T="string">
+            <MudListItem T="string">Event 1: Process Started</MudListItem>
+            <MudListItem T="string">Event 2: Task A Completed</MudListItem>
+            <MudListItem T="string">Event 3: Task B Started</MudListItem>
+            <MudListItem T="string">Event 4: Process Completed</MudListItem>
+        </MudList>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => Dialog.Close())">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] public MudBlazor.IDialogReference Dialog { get; set; }
+
+    [Parameter]
+    public string ProcessInstanceId { get; set; }
+
+    protected override void OnInitialized()
+    {
+        // In a real application, you would fetch the history for the given ProcessInstanceId
+        Console.WriteLine($"Loading history for process instance: {ProcessInstanceId}");
+    }
+}

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<cmmn:definitions xmlns:cmmn="http://www.omg.org/spec/CMMN/20151109/MODEL" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="definitions_1">
+  <cmmn:case id="case_1" name="Case 1">
+    <cmmn:casePlanModel id="casePlanModel_1">
+      <cmmn:planItem id="planItem_1" definitionRef="humanTask_1" />
+      <cmmn:humanTask id="humanTask_1" name="Human Task 1" />
+    </cmmn:casePlanModel>
+  </cmmn:case>
+</cmmn:definitions>

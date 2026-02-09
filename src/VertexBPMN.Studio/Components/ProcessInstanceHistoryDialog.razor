@@ -1,0 +1,131 @@
+@inject VertexBPMN.Studio.Services.IHistoryService HistoryService
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.History" Class="mr-3"/>
+            Process Instance History
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_isLoading)
+        {
+            <MudProgressLinear Indeterminate="true" Class="my-4" />
+            <MudText>Loading history events...</MudText>
+        }
+        else if (_error != null)
+        {
+            <MudAlert Severity="Severity.Error">
+                Error loading history: @_error
+            </MudAlert>
+        }
+        else if (!_historyEvents.Any())
+        {
+            <MudAlert Severity="Severity.Info">
+                No history events found for this process instance.
+            </MudAlert>
+        }
+        else
+        {
+            <MudTimeline>
+                @foreach (var historyEvent in _historyEvents.OrderBy(e => e.Timestamp))
+                {
+                    <MudTimelineItem Color="GetEventColor(historyEvent.EventType)" 
+                                    Size="Size.Small"
+                                    TimelineAlign="TimelineAlign.Start">
+                        <ItemOpposite>
+                            <MudText Typo="Typo.body2" Color="Color.Tertiary">
+                                @historyEvent.Timestamp.ToString("HH:mm:ss")
+                            </MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Tertiary">
+                                @historyEvent.Timestamp.ToString("yyyy-MM-dd")
+                            </MudText>
+                        </ItemOpposite>
+                        <ItemContent>
+                            <MudCard Elevation="2" Class="pa-3">
+                                <MudCardContent Class="pa-2">
+                                    <MudText Typo="Typo.subtitle2" Class="mb-1">
+                                        @GetEventTitle(historyEvent.EventType)
+                                    </MudText>
+                                    <MudText Typo="Typo.body2" Class="mb-2">
+                                        Element: <code>@historyEvent.ElementId</code>
+                                    </MudText>
+                                    @if (!string.IsNullOrEmpty(historyEvent.Details))
+                                    {
+                                        <MudText Typo="Typo.body2" Class="mb-2">
+                                            @historyEvent.Details
+                                        </MudText>
+                                    }
+                                    @if (!string.IsNullOrEmpty(historyEvent.Data))
+                                    {
+                                        <MudExpansionPanels Elevation="0" Dense="true">
+                                            <MudExpansionPanel Text="Event Data">
+                                                <div class="pa-2">
+                                                    <pre style="font-size: 0.8em; background-color: var(--mud-palette-background-grey); padding: 8px; border-radius: 4px;">@historyEvent.Data</pre>
+                                                </div>
+                                            </MudExpansionPanel>
+                                        </MudExpansionPanels>
+                                    }
+                                </MudCardContent>
+                            </MudCard>
+                        </ItemContent>
+                    </MudTimelineItem>
+                }
+            </MudTimeline>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => Dialog.Close())">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] public MudBlazor.IDialogReference Dialog { get; set; } = default!;
+    [Parameter] public Guid ProcessInstanceId { get; set; }
+
+    private List<HistoryEvent> _historyEvents = new();
+    private bool _isLoading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadHistoryEvents();
+    }
+
+    private async Task LoadHistoryEvents()
+    {
+        try
+        {
+            _isLoading = true;
+            _error = null;
+            StateHasChanged();
+
+            var events = await HistoryService.GetHistoryByProcessInstanceAsync(ProcessInstanceId);
+            _historyEvents = events.ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _historyEvents.Clear();
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private Color GetEventColor(string eventType) => eventType?.ToLower() switch
+    {
+        "process_started" => Color.Success,
+        "process_completed" => Color.Info,
+        "process_terminated" => Color.Error,
+        "activity_started" => Color.Primary,
+        "activity_completed" => Color.Secondary,
+        "task_created" => Color.Tertiary,
+        "task_completed" => Color.Success,
+        _ => Color.Default
+    };
+
+    private string GetEventTitle(string eventType) => eventType?.Replace('_', ' ').ToTitleCase() ?? "Unknown Event";
+}

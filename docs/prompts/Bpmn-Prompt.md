@@ -80,7 +80,7 @@ Ziel: Das Projekt ist so robust, vollständig dokumentiert, getestet und perform
 ---
 
 ## Datenmodell & Beispiel-SQL (essentiell)
-Erstelle Tabellen (minimale/Beispiel-Spalten). Liefere vollständige DDL-Skripte für PostgreSQL und MS SQL.
+Erstelle Tabellen (minimale/Beispiel-Spalten). Liefere vollständige DDL-Skripte für  PostgreSQL und MS SQL.
 
 Beispiel (Postgres-like pseudo DDL, implementiere wirklich ausführlich in Repo):
 

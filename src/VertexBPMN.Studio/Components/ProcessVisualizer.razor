@@ -1,0 +1,143 @@
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+
+<div class="process-visualizer">
+    <MudPaper Class="pa-2 mb-4">
+        <div class="d-flex align-center gap-2">
+            <MudButton Variant="Variant.Filled" 
+                      Color="Color.Primary" 
+                      StartIcon="@Icons.Material.Filled.PlayArrow"
+                      OnClick="PlayExecution">
+                Play
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" 
+                      StartIcon="@Icons.Material.Filled.Pause"
+                      OnClick="PauseExecution">
+                Pause
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" 
+                      StartIcon="@Icons.Material.Filled.Stop"
+                      OnClick="StopExecution">
+                Stop
+            </MudButton>
+            
+            <MudSpacer />
+            
+            <MudSlider @bind-Value="_executionSpeed" 
+                      Min="1" 
+                      Max="10" 
+                      Step="1"
+                      Style="width: 120px;">
+                <MudText Typo="Typo.caption">Speed: @_executionSpeed</MudText>
+            </MudSlider>
+        </div>
+    </MudPaper>
+
+    <div id="@_viewerContainerId" style="height: 600px; border: 1px solid #ddd; position: relative;">
+        <!-- BPMN diagram will be rendered here -->
+        
+        <!-- Token overlays -->
+        @foreach (var token in _activeTokens)
+        {
+            <div class="execution-token" 
+                 style="position: absolute; left: @(token.X)px; top: @(token.Y)px;">
+                <MudChip T="string" Color="Color.Success" Size="Size.Small">
+                    Token @token.Id
+                </MudChip>
+            </div>
+        }
+    </div>
+    
+    <!-- Execution timeline -->
+    <MudPaper Class="pa-4 mt-4">
+        <MudText Typo="Typo.h6" Class="mb-3">Execution Timeline</MudText>
+        <MudTimeline>
+            @foreach (var step in _executionSteps.TakeLast(5))
+            {
+                <MudTimelineItem Color="@GetStepColor(step.Type)">
+                    <ItemContent>
+                        <MudText Typo="Typo.body2">@step.Description</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Tertiary">
+                            @step.Timestamp.ToString("HH:mm:ss.fff")
+                        </MudText>
+                    </ItemContent>
+                </MudTimelineItem>
+            }
+        </MudTimeline>
+    </MudPaper>
+</div>
+
+<style>
+    .execution-token {
+        z-index: 1000;
+        pointer-events: none;
+        animation: pulse 1s infinite;
+    }
+
+    @@keyframes pulse {
+        0% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.1); opacity: 0.8; }
+        100% { transform: scale(1); opacity: 1; }
+    }
+</style>
+
+@code {
+    [Parameter] public string BpmnXml { get; set; } = string.Empty;
+    [Parameter] public string ProcessInstanceId { get; set; } = string.Empty;
+
+    private string _viewerContainerId = $"bpmn-viewer-{Guid.NewGuid():N}";
+    private IJSObjectReference? _module;
+    private List<VisualExecutionToken> _activeTokens = new(); // renamed to avoid clash with domain ExecutionToken
+    private List<ExecutionStep> _executionSteps = new();
+    private int _executionSpeed = 5;
+    private bool _isPlaying = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !string.IsNullOrEmpty(BpmnXml))
+        {
+            _module = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/process-visualizer.js");
+            await _module.InvokeVoidAsync("ProcessVisualizer.init", _viewerContainerId, BpmnXml);
+        }
+    }
+
+    private async Task PlayExecution()
+    {
+        _isPlaying = true;
+        // Implement execution simulation logic
+    }
+
+    private async Task PauseExecution()
+    {
+        _isPlaying = false;
+    }
+
+    private async Task StopExecution()
+    {
+        _isPlaying = false;
+        _activeTokens.Clear();
+        _executionSteps.Clear();
+        StateHasChanged();
+    }
+
+    private static Color GetStepColor(string stepType) => stepType switch
+    {
+        "START" => Color.Success,
+        "TASK" => Color.Primary,
+        "GATEWAY" => Color.Warning,
+        "END" => Color.Error,
+        _ => Color.Default
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module != null)
+        {
+            await _module.DisposeAsync();
+        }
+    }
+
+    // Local lightweight visualization token (avoid name collision with domain ExecutionToken)
+    private sealed record VisualExecutionToken(string Id, double X, double Y);
+    private sealed record ExecutionStep(string Type, string Description, DateTime Timestamp);
+}

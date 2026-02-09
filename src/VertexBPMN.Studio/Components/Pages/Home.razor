@@ -1,0 +1,287 @@
+@page "/";
+@inject IBpmnEngineService BpmnEngineService;
+@inject IHistoryService HistoryService;
+@inject ActiveEngineService ActiveEngineService;
+@inject ILogger<Home> Logger;
+@implements IDisposable
+
+<PageTitle>Dashboard - VertexBPMN Studio</PageTitle>
+
+<MudText Typo="Typo.h3" Class="mb-6">
+    <MudIcon Icon="@Icons.Material.Filled.Dashboard" Class="mr-3" />
+    Dashboard
+</MudText>
+
+@if (_isLoading)
+{
+    <MudProgressLinear Indeterminate="true" Class="my-4" />
+}
+else if (_error != null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">
+        Failed to load dashboard data: @_error
+        <MudButton OnClick="RefreshData" 
+                  Color="Color.Primary" 
+                  Size="Size.Small" 
+                  Class="ml-2">
+            Retry
+        </MudButton>
+    </MudAlert>
+}
+
+<!-- Key Metrics Cards -->
+<MudGrid Class="mb-6">
+    <MudItem xs="12" sm="6" md="3">
+        <StatsCard Title="Process Instances"
+                  Value="_metrics.TotalProcessInstances"
+                  Icon="@Icons.Material.Filled.PlayArrow"
+                  Color="Color.Primary"
+                  IsLoading="_isLoading" />
+    </MudItem>
+    <MudItem xs="12" sm="6" md="3">
+        <StatsCard Title="Active Instances"
+                  Value="_metrics.ActiveProcessInstances"
+                  Icon="@Icons.Material.Filled.PlayCircleOutline"
+                  Color="Color.Success"
+                  IsLoading="_isLoading" />
+    </MudItem>
+    <MudItem xs="12" sm="6" md="3">
+        <StatsCard Title="Pending Tasks"
+                  Value="_metrics.PendingTasks"
+                  Icon="@Icons.Material.Filled.Assignment"
+                  Color="Color.Warning"
+                  IsLoading="_isLoading" />
+    </MudItem>
+    <MudItem xs="12" sm="6" md="3">
+        <StatsCard Title="Process Definitions"
+                  Value="_metrics.TotalProcessDefinitions"
+                  Icon="@Icons.Material.Filled.List"
+                  Color="Color.Info"
+                  IsLoading="_isLoading" />
+    </MudItem>
+</MudGrid>
+
+<!-- Charts and Recent Activity -->
+<MudGrid>
+    <MudItem xs="12" md="8">
+        <MudPaper Class="pa-4" Style="height: 400px;">
+            <MudText Typo="Typo.h6" Class="mb-4">Process Activity (Last 7 Days)</MudText>
+            @if (_isLoading)
+            {
+                <div class="d-flex justify-center align-center" style="height: 300px;">
+                    <MudProgressCircular Indeterminate="true" />
+                </div>
+            }
+            else
+            {
+                <!-- Placeholder for charts - implement with your preferred charting library -->
+                <MudText Typo="Typo.body2" Color="Color.Tertiary">
+                    Chart implementation goes here (ApexCharts, Chart.js, etc.)
+                </MudText>
+            }
+        </MudPaper>
+    </MudItem>
+    
+    <MudItem xs="12" md="4">
+        <MudPaper Class="pa-4" Style="height: 400px;">
+            <div class="d-flex justify-space-between align-center mb-4">
+                <MudText Typo="Typo.h6">Recent Tasks</MudText>
+                <MudButton Href="/tasks" 
+                          Size="Size.Small" 
+                          Variant="Variant.Text">
+                    View All
+                </MudButton>
+            </div>
+            
+            @if (_recentTasks.Any())
+            {
+                <MudList T="UserTask" Dense="true" Style="height: 320px; overflow-y: auto;">
+                    @foreach (var task in _recentTasks.Take(10))
+                    {
+                        <MudListItem>
+                            <div class="d-flex justify-space-between align-center">
+                                <div>
+                                    <MudText Typo="Typo.body2">@task.Name</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Tertiary">
+                                        @task.ProcessInstanceId
+                                    </MudText>
+                                </div>
+                                <MudChip Size="Size.Small" 
+                                        Color="@GetTaskPriorityColor(task.DueDate)">
+                                    @GetTaskStatus(task.DueDate)
+                                </MudChip>
+                            </div>
+                        </MudListItem>
+                    }
+                </MudList>
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Info">
+                    No recent tasks found
+                </MudAlert>
+            }
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private DashboardMetrics _metrics = new();
+    private List<UserTask> _recentTasks = new();
+    private bool _isLoading = true;
+    private string? _error;
+    private Timer? _refreshTimer;
+    private bool disposedValue;
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        ActiveEngineService.OnEngineChanged += OnEngineChanged;
+        await LoadDashboardData();
+        StartAutoRefresh();
+    }
+
+    private async void OnEngineChanged(string engineId)
+    {
+        await InvokeAsync(async () => await LoadDashboardData());
+    }
+
+    private async Task LoadDashboardData()
+    {
+        try
+        {
+            _isLoading = true;
+            _error = null;
+            StateHasChanged();
+
+            var tasks = LoadTasks();
+            var instances = LoadProcessInstances();
+            var definitions = LoadProcessDefinitions();
+
+            await Task.WhenAll(tasks, instances, definitions);
+
+            var allTasks = await tasks;
+            var allInstances = await instances;
+            var allDefinitions = await definitions;
+
+            _metrics = new DashboardMetrics
+            {
+                TotalProcessInstances = allInstances.Count(),
+                ActiveProcessInstances = allInstances.Count(i => i.State == "Active"),
+                PendingTasks = allTasks.Count(t => string.IsNullOrEmpty(t.Assignee)),
+                TotalProcessDefinitions = allDefinitions.Count()
+            };
+
+            _recentTasks = allTasks
+                .OrderByDescending(t => t.CreatedAt)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load dashboard data");
+            _error = ex.Message;
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task<IEnumerable<UserTask>> LoadTasks()
+    {
+        try
+        {
+            return await BpmnEngineService.GetTasksAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to load tasks for dashboard");
+            return Enumerable.Empty<UserTask>();
+        }
+    }
+
+    private async Task<IEnumerable<ProcessInstance>> LoadProcessInstances()
+    {
+        try
+        {
+            return await BpmnEngineService.GetProcessInstancesAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to load process instances for dashboard");
+            return Enumerable.Empty<ProcessInstance>();
+        }
+    }
+
+    private async Task<IEnumerable<ProcessDefinition>> LoadProcessDefinitions()
+    {
+        try
+        {
+            return await BpmnEngineService.GetProcessDefinitionsAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to load process definitions for dashboard");
+            return Enumerable.Empty<ProcessDefinition>();
+        }
+    }
+
+    private void StartAutoRefresh()
+    {
+        _refreshTimer = new Timer(async _ => await RefreshData(), null, TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
+    }
+
+    private async Task RefreshData()
+    {
+        await LoadDashboardData();
+    }
+
+
+
+    private static Color GetTaskPriorityColor(DateTime? dueDate)
+    {
+        if (!dueDate.HasValue) return Color.Default;
+        
+        var timeUntilDue = dueDate.Value - DateTime.Now;
+        return timeUntilDue.TotalHours switch
+        {
+            var hours when hours < 0 => Color.Error,      // Overdue
+            var hours when hours < 24 => Color.Warning,   // Due within 24 hours
+            var hours when hours < 72 => Color.Info,      // Due within 3 days
+            _ => Color.Success        // Due later
+        };
+    }
+
+    private static string GetTaskStatus(DateTime? dueDate)
+    {
+        if (!dueDate.HasValue) return "No Due Date";
+        
+        var timeUntilDue = dueDate.Value - DateTime.Now;
+        switch (timeUntilDue.TotalHours)
+        {
+            case < 0:
+                return "Overdue";
+            case < 24:
+                return "Due Soon";
+            case < 72:
+                return "Due This Week";
+            default:
+                return "Due Later";
+        }
+    }
+
+    public void Dispose()
+    {
+        ActiveEngineService.OnEngineChanged -= OnEngineChanged;
+        _refreshTimer?.Dispose();
+    }
+
+    private sealed record DashboardMetrics
+    {
+        public int TotalProcessInstances { get; init; }
+        public int ActiveProcessInstances { get; init; }
+        public int PendingTasks { get; init; }
+        public int TotalProcessDefinitions { get; init; }
+    }
+}

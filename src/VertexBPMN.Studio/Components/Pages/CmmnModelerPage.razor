@@ -1,0 +1,78 @@
+@page "/cmmn-modeler"
+@inject MudBlazor.ISnackbar Snackbar
+@inject IHttpClientFactory HttpClientFactory
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+
+<PageTitle>CMMN Modeler</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">CMMN Modeler</MudText>
+
+<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveCmmnXml">Save XML</MudButton>
+<MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="LoadCmmnXml">Load XML</MudButton>
+
+<div id="@_modelerContainerId" style="height:500px; border:1px solid #ccc;"></div>
+
+@code {
+    private string _cmmnXml = string.Empty;
+    private HttpClient _httpClient;
+
+    private string _modelerContainerId = $"cmmn-modeler-{Guid.NewGuid():N}";
+    private IJSObjectReference? _module;
+    private IJSObjectReference? _modelerInstance;
+    private bool _initialized;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _httpClient = HttpClientFactory.CreateClient("Default");
+        await LoadCmmnXml();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _module = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/cmmn-modeler.js");
+            _modelerInstance = await _module.InvokeAsync<IJSObjectReference>("CmmnModelerInterop.createModeler", _modelerContainerId, _cmmnXml);
+            _initialized = true;
+        }
+    }
+
+    private async Task SaveCmmnXml()
+    {
+        if (_module == null || _modelerInstance == null)
+        {
+            Snackbar.Add("Modeler not initialized yet", Severity.Warning);
+            return;
+        }
+        var xml = await _module.InvokeAsync<string>("CmmnModelerInterop.getXml", _modelerInstance);
+        Snackbar.Add("CMMN XML saved (simulated)!", Severity.Success);
+        Console.WriteLine(xml); // TODO replace with persistence
+    }
+
+    private async Task LoadCmmnXml()
+    {
+        _cmmnXml = await _httpClient.GetStringAsync("data/DefaultCmmn.xml");
+        Snackbar.Add("CMMN XML loaded!", Severity.Info);
+        if (_initialized && _module != null && _modelerInstance != null)
+        {
+            await _module.InvokeVoidAsync("CmmnModelerInterop.loadXml", _modelerInstance, _cmmnXml);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_modelerInstance is not null)
+            {
+                await _modelerInstance.DisposeAsync();
+            }
+            if (_module is not null)
+            {
+                await _module.DisposeAsync();
+            }
+        }
+        catch { }
+    }
+}

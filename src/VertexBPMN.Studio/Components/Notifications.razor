@@ -1,0 +1,30 @@
+@inject VertexBPMN.Studio.Services.NotificationClient NotificationClient
+
+<ul>
+    @foreach (var n in _notifications)
+    {
+        <li><b>@n.Category</b>: @n.Message (@n.Timestamp.ToLocalTime())</li>
+    }
+</ul>
+
+@code {
+    private readonly List<UserNotificationDto> _notifications = [];
+    private string _userId = "demo-user"; // Replace with actual identity
+
+    protected override async Task OnInitializedAsync()
+    {
+        NotificationClient.OnNotification += n =>
+        {
+            _notifications.Insert(0, n);
+            InvokeAsync(StateHasChanged);
+        };
+
+        await NotificationClient.StartAsync(_userId);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        NotificationClient.OnNotification -= n => { };
+        await NotificationClient.StopAsync();
+    }
+}

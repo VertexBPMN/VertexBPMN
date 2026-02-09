@@ -1,11 +1,10 @@
-
 # VertexBPMN – AI Agent Coding Instructions
 
 This document guides AI coding agents to be productive in the VertexBPMN codebase. It merges project-specific conventions with actionable, up-to-date instructions. **Focus on these points for best results:**
 
 ## Project Overview
 
-- **VertexBPMN** is a modular, high-performance BPMN 2.0 & DMN 1.4 engine for .NET 9, inspired by Camunda but built natively for .NET and C# 13.
+- **VertexBPMN** is a modular, high-performance BPMN 2.0, CMMN 1.4 & DMN 1.4 engine for .NET 9, inspired by Camunda but built natively for .NET and C# 13.
 - The architecture is service-oriented: core services (e.g., `RepositoryService`, `RuntimeService`, `TaskService`) are accessed via interfaces (e.g., `IRepositoryService`).
 - Persistence is abstracted: **never** use `DbContext` directly in business logic—always go through repository interfaces (e.g., `IProcessDefinitionRepository`).
 - The engine is stateless; all state is persisted in the database or distributed cache.
@@ -49,6 +48,26 @@ This document guides AI coding agents to be productive in the VertexBPMN codebas
 - **Test structure:** Use Arrange-Act-Assert (AAA) in all tests.
 - **End-to-end/integration:** Test cross-component flows (API → Service → DB) as integration tests.
 - **Conformance:** Code must pass BPMN MIWG and DMN TCK test suites.
+- **TDD:** Schreibe zuerst einen fehlgeschlagenen Test (Red), dann minimalen Code (Green), anschließend gezieltes Refactoring (Refactor) – keine produktive Logik ohne vorgelagerten Test.
+
+# VertexBPMN vs. Camunda REST-API: Paritätsmatrix
+
+| Camunda Endpoint                | VertexBPMN-Status | Bemerkung / Mapping / TODO |
+|---------------------------------|-------------------|---------------------------|
+| /process-definition             | Teilweise         | RepositoryController, aber Filter/Paging/DTOs fehlen |
+| /process-instance               | Teilweise         | RuntimeController, aber Camunda-typische Query/DTOs fehlen |
+| /task                           | Teilweise         | TaskController, aber Filter, Paging, DTOs, Variablen fehlen |
+| /history/task                   | Teilweise         | HistoryController, aber Query/DTOs fehlen |
+| /deployment                     | Teilweise         | RepositoryController, aber Camunda-typische Response fehlt |
+| /message                        | Fehlend           | Muss ergänzt werden |
+| /signal                         | Fehlend           | Muss ergänzt werden |
+| /job                            | Fehlend           | Muss ergänzt werden |
+| /incident                       | Fehlend           | Muss ergänzt werden |
+| /variable                       | Fehlend           | Muss ergänzt werden |
+| /user, /group, /authorization   | Teilweise         | IdentityController, aber Camunda-typische Endpunkte fehlen |
+| /filter                         | Fehlend           | Muss ergänzt werden |
+| /decision-definition            | Teilweise         | DecisionController, aber Camunda-typische Query/DTOs fehlen |
+| /decision-instance              | Fehlend           | Muss ergänzt werden |
 
 ## Absolute No-Gos
 
@@ -71,9 +90,25 @@ var engine = await new EngineBuilder()
 
 ## Key Files & Directories
 
-- `VertexBPMN.Core/` – Core engine logic, services, and interfaces
+- `VertexBPMN.Core/` – Core engine logic, services
+- `VertexBPMN.Api/` – Core engine logic, services, and interfaces
+- `VertexBPMN.Application/` – Core engine logic, services, and interfaces
+- `VertexBPMN.Domain/` – Core engine logic, services, and interfaces
+- `VertexBPMN.Infrastructure/` – Core engine logic, services, and interfaces
+- `VertexBPMN.Integration/` – Core engine logic, services, and interfaces
+- `VertexBPMN.Plugins/` – Core engine logic, services, and interfaces
+- `VertexBPMN.Studio/` – Core engine logic, services, and interfaces
 - `README.md` – Project overview, usage, and architecture
 - `.github/` – Contribution, issue, and PR templates
+
+
+Always follow docs/AI-CODEGEN-GUIDE.md.
+NEVER modify existing Camunda-compatible routes/DTOs; only add new APIs under /cmmn, /events, /migrations, /history (cleanup), /connectors.
+Enforce tenant-aware queries (X-Tenant-Id), OpenAPI-first, TDD (contracts before code), and additive DB migrations only.
+If unsure, ask to read specs/*/ (plan/spec/contracts/quickstart).
+
+## Strict Roundtrip Roadmap
+- See docs/ROUNDTRIP_STRICT_PLAN.md
 
 ---
 **For any unclear or missing conventions, consult the README and CONTRIBUTING.md, or ask for clarification.**

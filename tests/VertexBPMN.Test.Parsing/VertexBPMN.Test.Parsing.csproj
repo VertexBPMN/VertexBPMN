@@ -1,0 +1,69 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+	  <TargetFramework>net9.0</TargetFramework>
+	  <EnableMicrosoftTestingPlatform>true</EnableMicrosoftTestingPlatform>
+	  <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+	  <TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
+	  <OutputType>Exe</OutputType>
+	  <ImplicitUsings>enable</ImplicitUsings>
+	  <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="Conformance\**" />
+    <EmbeddedResource Remove="Conformance\**" />
+    <None Remove="Conformance\**" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Conformance\A.1.0_Test.cs" />
+    <Compile Include="Conformance\A.2.0_Test.cs" />
+    <Compile Include="Conformance\A.2.1_Test.cs" />
+    <Compile Include="Conformance\A.3.0_Test.cs" />
+    <Compile Include="Conformance\A.4.0_Test.cs" />
+    <Compile Include="Conformance\A.4.1_Test.cs" />
+    <Compile Include="Conformance\B.1.0_Test.cs" />
+    <Compile Include="Conformance\B.2.0_Test.cs" />
+    <Compile Include="Conformance\C.1.0_Test.cs" />
+    <Compile Include="Conformance\C.1.1_Test.cs" />
+    <Compile Include="Conformance\C.2.0_Test.cs" />
+    <Compile Include="Conformance\C.3.0_Test.cs" />
+    <Compile Include="Conformance\C.4.0_Test.cs" />
+    <Compile Include="Conformance\C.5.0_Test.cs" />
+    <Compile Include="Conformance\C.6.0_Test.cs" />
+    <Compile Include="Conformance\C.7.0_Test.cs" />
+    <Compile Include="Conformance\C.8.0_Test.cs" />
+    <Compile Include="Conformance\C.8.1_Test.cs" />
+    <Compile Include="Conformance\C.9.0_Test.cs" />
+    <Compile Include="Conformance\C.9.1_Test.cs" />
+    <Compile Include="Conformance\C.9.2_Test.cs" />
+    <Compile Include="Conformance\MIWGTestSuite2025Roundtrip.cs" />
+  </ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="MartinCostello.Logging.XUnit.v3" Version="0.6.0" />
+		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+		<PackageReference Include="xunit.v3" Version="3.0.1" />
+		<PackageReference Include="Microsoft.Testing.Platform" Version="1.8.4" />
+		<PackageReference Include="Microsoft.Testing.Platform.MSBuild" Version="1.8.4" />
+		<PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" Version="17.14.2" />
+		<PackageReference Include="BenchmarkDotNet" Version="0.15.4" />
+		<PackageReference Include="coverlet.collector" Version="6.0.4">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="Grpc.Net.Client" Version="2.71.0" />
+		<PackageReference Include="Moq" Version="4.20.72" />
+		<PackageReference Include="Shouldly" Version="4.3.0" />
+		<PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.0.9" />
+	</ItemGroup>
+	<ItemGroup>
+		<Content Include="..\..\tests\VertexBPMN.Tests\TestData\**\*.*">
+		<Link>TestData\%(RecursiveDir)%(Filename)%(Extension)</Link>
+		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+	</ItemGroup>
+	<ItemGroup>
+	  <ProjectReference Include="..\..\src\VertexBPMN.Application\VertexBPMN.Application.csproj" />
+	  <ProjectReference Include="..\..\src\VertexBPMN.Domain\VertexBPMN.Domain.csproj" />
+	  <ProjectReference Include="..\..\src\VertexBPMN.Engine\VertexBPMN.Engine.csproj" />
+	  <ProjectReference Include="..\..\src\VertexBPMN.Infrastructure\VertexBPMN.Infrastructure.csproj" />
+	</ItemGroup>
+</Project>

@@ -1,0 +1,35 @@
+@page "/event-log"
+@inject VertexBPMN.Studio.Services.IBpmnEngineService BpmnEngineService
+@inject VertexBPMN.Studio.Services.ActiveEngineService ActiveEngineService
+@implements IDisposable
+
+<PageTitle>Event Log</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Event Log</MudText>
+
+<MudList T="string">
+    @foreach (var logEntry in _eventLog.AsEnumerable().Reverse())
+    {
+        <MudListItem T="string" Icon="@Icons.Material.Filled.Event">@logEntry</MudListItem>
+    }
+</MudList>
+
+@code {
+    private List<string> _eventLog = new List<string>();
+
+    protected override void OnInitialized()
+    {
+        BpmnEngineService.OnEventEmitted += HandleEventEmitted;
+    }
+
+    public void Dispose()
+    {
+        BpmnEngineService.OnEventEmitted -= HandleEventEmitted;
+    }
+
+    private void HandleEventEmitted(string eventMessage)
+    {
+        _eventLog.Add($"{DateTime.Now} [User: {ActiveEngineService.CurrentUserRole}]: {eventMessage}");
+        StateHasChanged();
+    }
+}

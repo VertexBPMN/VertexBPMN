@@ -1,0 +1,118 @@
+@page "/engine-management"
+@inject VertexBPMN.Studio.Services.IBpmnEngineService BpmnEngineService
+@inject MudBlazor.ISnackbar Snackbar
+
+<PageTitle>Engine Management</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Engine Management</MudText>
+
+<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OpenAddEngineDialog">Add New Engine</MudButton>
+
+<MudTable Items="@_engineConnections" Hover="true" Striped="true" Class="mt-4">
+    <HeaderContent>
+        <MudTh>Name</MudTh>
+        <MudTh>URL</MudTh>
+        <MudTh>Active</MudTh>
+        <MudTh>Actions</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Name">@context.Name</MudTd>
+        <MudTd DataLabel="URL">@context.Url</MudTd>
+        <MudTd DataLabel="Active">
+            <MudCheckBox @bind-Checked="@context.IsActive" ReadOnly="true" T="bool" />
+        </MudTd>
+        <MudTd DataLabel="Actions">
+            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => OpenEditEngineDialog(context))" />
+            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => DeleteEngine(context.Id))" />
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+<MudDialog @bind-IsVisible="_showEngineDialog">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(string.IsNullOrEmpty(_currentEngineConnection.Id) ? "Add New Engine" : "Edit Engine")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm Model="@_currentEngineConnection" @ref="form">
+            <MudTextField Label="Name" @bind-Value="_currentEngineConnection.Name" For="@(() => _currentEngineConnection.Name)" Required="true" />
+            <MudTextField Label="URL" @bind-Value="_currentEngineConnection.Url" For="@(() => _currentEngineConnection.Url)" Required="true" />
+            <MudCheckBox Label="Set as Active" @bind-Checked="@_currentEngineConnection.IsActive" T="bool" />
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showEngineDialog = false)">Cancel</MudButton>
+        <MudButton Color="Color.Primary" OnClick="SaveEngine">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private IEnumerable<VertexBPMN.Studio.Services.EngineConnection> _engineConnections = new List<VertexBPMN.Studio.Services.EngineConnection>();
+    private VertexBPMN.Studio.Services.EngineConnection _currentEngineConnection = new();
+    private bool _showEngineDialog = false;
+    private MudForm form;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadEngineConnections();
+    }
+
+    private async Task LoadEngineConnections()
+    {
+        _engineConnections = await BpmnEngineService.GetEngineConnectionsAsync();
+    }
+
+    private void OpenAddEngineDialog()
+    {
+        _currentEngineConnection = new VertexBPMN.Studio.Services.EngineConnection { IsActive = false };
+        _showEngineDialog = true;
+    }
+
+    private void OpenEditEngineDialog(VertexBPMN.Studio.Services.EngineConnection connection)
+    {
+        _currentEngineConnection = connection;
+        _showEngineDialog = true;
+    }
+
+    private async Task SaveEngine()
+    {
+        await form.Validate();
+        if (form.IsValid)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(_currentEngineConnection.Id))
+                {
+                    await BpmnEngineService.AddEngineConnectionAsync(_currentEngineConnection);
+                    Snackbar.Add("Engine added successfully!", Severity.Success);
+                }
+                else
+                {
+                    await BpmnEngineService.UpdateEngineConnectionAsync(_currentEngineConnection);
+                    Snackbar.Add("Engine updated successfully!", Severity.Success);
+                }
+                _showEngineDialog = false;
+                await LoadEngineConnections();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error saving engine: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task DeleteEngine(string? connectionId)
+    {
+        if (connectionId == null) return;
+
+        try
+        {
+            await BpmnEngineService.RemoveEngineConnectionAsync(connectionId);
+            Snackbar.Add("Engine deleted successfully!", Severity.Success);
+            await LoadEngineConnections();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error deleting engine: {ex.Message}", Severity.Error);
+        }
+    }
+}

@@ -1,0 +1,101 @@
+@page "/bpmn-modeler"
+@inject VertexBPMN.Studio.Services.IBpmnEngineService BpmnEngineService
+@inject MudBlazor.ISnackbar Snackbar
+@inject IHttpClientFactory HttpClientFactory
+@inject VertexBPMN.Studio.Services.ActiveEngineService ActiveEngineService
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+
+<PageTitle>BPMN Modeler</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">BPMN Modeler</MudText>
+
+<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveBpmnXml">Save XML</MudButton>
+<MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="LoadBpmnXml">Load XML</MudButton>
+
+<div id="@_modelerContainerId" style="height:500px; border:1px solid #ccc;"></div>
+
+@code {
+    private string _bpmnXml = string.Empty;
+    private HttpClient _httpClient = default!;
+
+    private string _modelerContainerId = $"bpmn-modeler-{Guid.NewGuid():N}";
+    private IJSObjectReference? _module;
+    private IJSObjectReference? _modelerInstance;
+    private bool _initialized;
+
+    // Inline fallback BPMN if static file not found
+    private const string FallbackBpmn = """<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<bpmn:definitions xmlns:bpmn=\"http://www.omg.org/spec/BPMN/20100524/MODEL\" id=\"Defs_Fallback\" targetNamespace=\"http://vertexbpmn.io/schema/bpmn\">\n  <bpmn:process id=\"Process_Fallback\" isExecutable=\"false\">\n    <bpmn:startEvent id=\"StartEvent_Fallback\" />\n    <bpmn:sequenceFlow id=\"Flow_1\" sourceRef=\"StartEvent_Fallback\" targetRef=\"EndEvent_Fallback\" />\n    <bpmn:endEvent id=\"EndEvent_Fallback\" />\n  </bpmn:process>\n</bpmn:definitions>""";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _httpClient = HttpClientFactory.CreateClient("Default");
+        ActiveEngineService.OnChange += StateHasChanged; // Subscribe to state changes
+        await LoadBpmnXml();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _module = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/bpmn-modeler.js");
+            _modelerInstance = await _module.InvokeAsync<IJSObjectReference>("BpmnModelerInterop.createModeler", _modelerContainerId, _bpmnXml);
+            _initialized = true;
+        }
+    }
+
+    public void Dispose()
+    {
+        ActiveEngineService.OnChange -= StateHasChanged; // Unsubscribe (sync dispose for interface compatibility)
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_modelerInstance is not null)
+            {
+                await _modelerInstance.DisposeAsync();
+            }
+            if (_module is not null)
+            {
+                await _module.DisposeAsync();
+            }
+        }
+        catch { }
+    }
+
+    private async Task SaveBpmnXml()
+    {
+        if (_module == null || _modelerInstance == null)
+        {
+            Snackbar.Add("Modeler not initialized yet", Severity.Warning);
+            return;
+        }
+
+        var xml = await _module.InvokeAsync<string>("BpmnModelerInterop.getXml", _modelerInstance);
+        Snackbar.Add("BPMN XML saved (simulated)!", Severity.Success);
+        Console.WriteLine(xml); // TODO replace with persistence
+    }
+
+    private async Task LoadBpmnXml()
+    {
+        try
+        {
+            // Use leading slash to avoid relative path issues
+            _bpmnXml = await _httpClient.GetStringAsync("/data/DefaultBpmn.xml");
+            Snackbar.Add("BPMN XML loaded!", Severity.Info);
+        }
+        catch (Exception ex)
+        {
+            // Fallback inline definition
+            _bpmnXml = FallbackBpmn;
+            Snackbar.Add($"DefaultBpmn.xml not found – using fallback. ({ex.Message})", Severity.Warning);
+        }
+
+        if (_initialized && _module != null && _modelerInstance != null)
+        {
+            await _module.InvokeVoidAsync("BpmnModelerInterop.loadXml", _modelerInstance, _bpmnXml);
+        }
+    }
+}

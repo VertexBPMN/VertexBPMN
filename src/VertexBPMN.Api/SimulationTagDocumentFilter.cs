@@ -1,4 +1,4 @@
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using Swashbuckle.AspNetCore.SwaggerGen;
 
 namespace VertexBPMN.Api
@@ -8,7 +8,7 @@ namespace VertexBPMN.Api
         public void Apply(OpenApiDocument swaggerDoc, DocumentFilterContext context)
         {
             if (swaggerDoc.Tags == null)
-                swaggerDoc.Tags = new List<OpenApiTag>();
+                swaggerDoc.Tags = new HashSet<OpenApiTag>();
             swaggerDoc.Tags.Add(new OpenApiTag
             {
                 Name = "Simulation",

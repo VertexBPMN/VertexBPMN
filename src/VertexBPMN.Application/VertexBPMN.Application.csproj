@@ -6,11 +6,11 @@
 <ItemGroup>
 		<PackageReference Include="Confluent.Kafka" Version="2.11.1" />
 		<PackageReference Include="Jint" Version="4.4.1" />
-		<PackageReference Include="Microsoft.CodeAnalysis.Common" Version="4.14.0" />
-		<PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="4.14.0" />
-		<PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.9" />
-		<PackageReference Include="Microsoft.Extensions.Http" Version="9.0.9" />
-		<PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.9" />
+        <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="5.0.0" />
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.0.0" />
+        <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.2" />
+        <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.2" />
+        <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.2" />
 		<PackageReference Include="Microsoft.SemanticKernel" Version="1.65.0" />
 		<PackageReference Include="Microsoft.SemanticKernel.Connectors.AzureOpenAI" Version="1.65.0" />
 		<PackageReference Include="Microsoft.SemanticKernel.Connectors.OpenAI" Version="1.65.0" />
@@ -20,7 +20,7 @@
 		<PackageReference Include="SendGrid" Version="9.29.3" />
 	</ItemGroup>
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>

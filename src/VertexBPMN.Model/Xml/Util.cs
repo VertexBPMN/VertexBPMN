@@ -1,15 +1,49 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Xml;
 using System.Xml.Linq;
-using VertexBPMN.Domain.Model.Bpmn.Infrastructure;
+using VertexBPMN.Domain.Model.Bpmn;
 
 namespace VertexBPMN.Domain.Model;
 
 internal static class Util
 {
     public static string? Attr(this XElement el, XName name) => (string?)el.Attribute(name) ?? "";
+    public static XAttribute? Attribute(this XElement el, XName name) => el.Attribute(name);
+    public static XmlAttribute? XmlAttribute(this XElement el, XName name)
+    {
+        var attr = el.Attribute(name);
+        if (attr == null) return null;
+        // Create XmlAttribute using XmlDocument
+        var doc = new XmlDocument();
+        return doc.CreateAttribute(attr.Name.LocalName, attr.Name.NamespaceName);
+    }
+    public static XmlQualifiedName? QualifiedName(this XElement el, XName name)
+    {
+        var attr = el.Attribute(name);
+        return new XmlQualifiedName(attr?.Value, null);
+    }
+    public static List<XmlQualifiedName>? QualifiedNames(this XElement el, XName name)
+    {
+        var qualifiedNames = new List<XmlQualifiedName>();
+        foreach (var attr in el.Attributes(name))
+        {
+            qualifiedNames.Add(new XmlQualifiedName(attr.Value, null));
+        }
+        return qualifiedNames;
+    }
+
+    public static XmlElement? XmlElement(this XElement el, XName name)
+    {
+        var attr = el.Element(name);
+        if (attr == null) return null;
+        // Create XmlElement using XmlDocument
+        var doc = new XmlDocument();
+        return doc.CreateElement(attr.Name.LocalName, attr.Name.NamespaceName);
+    }
     public static bool? AttrBool(this XElement el, XName name) => el.Attribute(name) is XAttribute a ? bool.Parse(a.Value) : false;
     public static int? AttrInt(this XElement el, XName name) => el.Attribute(name) is XAttribute a ? int.Parse(a.Value) : 0;
+    public static double AttrDouble(this XElement el, XName name) => el.Attribute(name) is XAttribute a ? double.Parse(a.Value) : 0;
 
     public static XName B(this string local) => Ns.BPMN + local;
     public static XName BPMNDI(this string local) => Ns.BPMNDI + local;

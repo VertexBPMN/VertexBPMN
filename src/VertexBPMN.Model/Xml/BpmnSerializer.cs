@@ -1,26 +1,76 @@
 ﻿using System;
 using System.Linq;
+using System.Xml;
 using System.Xml.Linq;
-using VertexBPMN.Domain.Model.Bpmn.Choreography;
-using VertexBPMN.Domain.Model.Bpmn.Collaboration;
-using VertexBPMN.Domain.Model.Bpmn.Common;
-using VertexBPMN.Domain.Model.Bpmn.Data;
-using VertexBPMN.Domain.Model.Bpmn.Diagram;
-using VertexBPMN.Domain.Model.Bpmn.Event;
-using VertexBPMN.Domain.Model.Bpmn.Foundation;
-using VertexBPMN.Domain.Model.Bpmn.Gateway;
-using VertexBPMN.Domain.Model.Bpmn.Infrastructure;
-using VertexBPMN.Domain.Model.Bpmn.Process;
-using VertexBPMN.Domain.Model.Bpmn.Service;
+using System.Xml.Schema;
+using System.Xml.Serialization;
+using VertexBPMN.Domain.Model.Bpmn;
 
 namespace VertexBPMN.Domain.Model;
 
-public class BpmnSerializer
+public static class BpmnSerializer
 {
-    public BpmnSerializer()
+    private static readonly XmlSerializer Serializer = null;
+    private static readonly XmlSerializerNamespaces Namespaces = new();
+    static BpmnSerializer()
     {
-        
+        try
+        {
+            Serializer = new XmlSerializer(
+                typeof(Definitions),
+               null,
+                 new Type[]
+                        {
+                            // RootElement subtypes (from schema)
+                            typeof(Collaboration), typeof(Choreography), typeof(GlobalChoreographyTask),
+                            typeof(GlobalConversation), typeof(CorrelationProperty), typeof(DataStore), typeof(EndPoint),
+                            typeof(Error), typeof(Escalation), typeof(EventDefinition), typeof(CancelEventDefinition),
+                            typeof(CompensateEventDefinition), typeof(ConditionalEventDefinition), typeof(ErrorEventDefinition),
+                            typeof(EscalationEventDefinition), typeof(LinkEventDefinition), typeof(MessageEventDefinition),
+                            typeof(SignalEventDefinition), typeof(TerminateEventDefinition), typeof(TimerEventDefinition),
+                            typeof(GlobalBusinessRuleTask), typeof(GlobalManualTask), typeof(GlobalScriptTask), typeof(GlobalTask),
+                            typeof(GlobalUserTask), typeof(Interface), typeof(ItemDefinition), typeof(Message), typeof(PartnerEntity),
+                            typeof(PartnerRole), typeof(Process), typeof(Resource), typeof(Signal),
+                            // FlowElement subtypes (key for Activity chain)
+                             typeof(BoundaryEvent), typeof(CallActivity), typeof(Conversation), typeof(EndEvent),
+                            typeof(Event), typeof(ExclusiveGateway), typeof(ImplicitThrowEvent), typeof(IntermediateCatchEvent),
+                            typeof(IntermediateThrowEvent), typeof(SequenceFlow), typeof(ServiceTask), typeof(StartEvent),
+                            typeof(SubProcess), typeof(Bpmn.Task), typeof(UserTask),
+                            // Add more as needed (e.g., from document: SubChoreography, TextAnnotation, etc.)
+                            typeof(SubChoreography), typeof(TextAnnotation), typeof(Transaction)
+                            ,typeof(Activity),typeof(Category),
+                        },
+                  new XmlRootAttribute("definitions") { Namespace = "http://www.omg.org/spec/BPMN/20100524/MODEL" }, null, null);
+
+            Namespaces.Add("bpmn", Ns.BPMN.NamespaceName);
+            Namespaces.Add("bpmndi", Ns.BPMNDI.NamespaceName);
+            Namespaces.Add("bpmnio", Ns.BPMNIO.NamespaceName);
+            Namespaces.Add("dc", Ns.DC.NamespaceName);
+            Namespaces.Add("di", Ns.DI.NamespaceName);
+            Namespaces.Add("bpmne", Ns.BPMNE.NamespaceName); // Extension namespace
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            throw;
+        }
     }
+
+    private static readonly Lazy<XmlSchemaSet> _bpmnSchemas = new(() =>
+    {
+        var set = new XmlSchemaSet();
+
+        set.XmlResolver = null; // Prevent external resolution
+        set.Add("http://www.omg.org/spec/BPMN/20100524/MODEL", "Schemas/BPMN20/BPMN20.xsd");
+        set.Add("http://www.omg.org/spec/BPMN/20100524/DI", "Schemas/BPMN20/BPMNDI.xsd");
+        set.Add("http://www.omg.org/spec/DD/20100524/DC", "Schemas/BPMN20/DC.xsd");
+        set.Add("http://www.omg.org/spec/DD/20100524/DI", "Schemas/BPMN20/DI.xsd");
+        set.Add("http://www.omg.org/spec/BPMN/20100524/MODEL", "Schemas/BPMN20/Semantic.xsd");
+        set.CompilationSettings = new XmlSchemaCompilationSettings { EnableUpaCheck = true };
+        set.ValidationEventHandler += (sender, e) => { /* Global handler if needed */ };
+        set.Compile();
+        return set;
+    });
     public static XDocument Write(Definitions defs)
     {
         var bpmn = Ns.BPMN;
@@ -53,13 +103,13 @@ public class BpmnSerializer
             var xr = new XElement("relationship".B(),
                 new XAttribute("type", rel.Type),
                 new XAttribute("direction", rel.Direction.ToString()));
-            foreach (var s in rel.Sources) xr.Add(new XElement("source".B(), s.Id));
-            foreach (var t in rel.Targets) xr.Add(new XElement("target".B(), t.Id));
+            foreach (var s in rel.Sources) xr.Add(new XElement("source".B(), s));
+            foreach (var t in rel.Targets) xr.Add(new XElement("target".B(), t));
             root.Add(xr);
         }
 
         // BPMN-DI
-        foreach (var d in defs.Diagrams.OfType<BPMNDiagram>())
+        foreach (var d in defs.BpmnDiagrams.OfType<BpmnDiagram>())
             root.Add(WriteDiagram(d));
 
         return new XDocument(new XDeclaration("1.0", "utf-8", "yes"), root);
@@ -75,7 +125,7 @@ public class BpmnSerializer
         Message x => new XElement("message".B(),
             new XAttribute("id", x.Id ?? Guid.NewGuid().ToString("N")),
             new XAttribute("name", x.Name),
-            x.ItemRef?.Id is null ? null : new XAttribute("itemRef", x.ItemRef.Id)),
+            x.ItemRef is null ? null : new XAttribute("itemRef", x.ItemRef)),
 
         Resource x => new XElement("resource".B(),
             new XAttribute("id", x.Id ?? Guid.NewGuid().ToString("N")),
@@ -121,9 +171,9 @@ public class BpmnSerializer
         new XAttribute("id", op.Id ?? Guid.NewGuid().ToString("N")),
         new XAttribute("name", op.Name),
         op.ImplementationRef is null ? null : new XAttribute("implementationRef", op.ImplementationRef),
-        new XAttribute("inMessageRef", op.InMessageRef.Id ?? ""),
-        op.OutMessageRef?.Id is null ? null : new XAttribute("outMessageRef", op.OutMessageRef.Id),
-        op.ErrorRefs.Select(er => new XElement("errorRef".B(), er.Id)));
+        new XAttribute("inMessageRef", op.InMessageRef.Name ?? ""),
+        op.OutMessageRef?.Name is null ? null : new XAttribute("outMessageRef", op.OutMessageRef.Name),
+        op.ErrorRefs.Select(er => new XElement("errorRef".B(), er.Name)));
 
     static XElement WriteProcess(Process p)
     {
@@ -145,7 +195,7 @@ public class BpmnSerializer
                 var xl = new XElement("lane".B(),
                     new XAttribute("id", l.Id ?? Guid.NewGuid().ToString("N")),
                     l.Name is null ? null : new XAttribute("name", l.Name));
-                foreach (var fn in l.FlowNodeRefs) xl.Add(new XElement("flowNodeRef".B(), fn.Id));
+                foreach (var fn in l.FlowNodeRefs) xl.Add(new XElement("flowNodeRef".B(), fn));
                 xls.Add(xl);
             }
             xe.Add(xls);
@@ -159,10 +209,10 @@ public class BpmnSerializer
         {
             SequenceFlow sf => new XElement("sequenceFlow".B(),
                 new XAttribute("id", sf.Id ?? Guid.NewGuid().ToString("N")),
-                sf.SourceRef?.Id is null ? null : new XAttribute("sourceRef", sf.SourceRef.Id),
-                sf.TargetRef?.Id is null ? null : new XAttribute("targetRef", sf.TargetRef.Id),
+                sf.SourceRef is null ? null : new XAttribute("sourceRef", sf.SourceRef),
+                sf.TargetRef is null ? null : new XAttribute("targetRef", sf.TargetRef),
                 sf.ConditionExpression is FormalExpression fe2
-                    ? new XElement("conditionExpression".B(), fe2.Body ?? "")
+                    ? new XElement("conditionExpression".B(), fe2.Text.ToString() ?? "")
                     : null),
 
             // Tasks / Activities
@@ -178,20 +228,20 @@ public class BpmnSerializer
 
             SendTask t => new XElement("sendTask".B(),
                 new XAttribute("id", t.Id ?? Guid.NewGuid().ToString("N")),
-                t.MessageRef?.Id is null ? null : new XAttribute("messageRef", t.MessageRef.Id)),
+                t.MessageRef is null ? null : new XAttribute("messageRef", t.MessageRef)),
 
             ReceiveTask t => new XElement("receiveTask".B(),
                 new XAttribute("id", t.Id ?? Guid.NewGuid().ToString("N")),
                 new XAttribute("instantiate", t.Instantiate),
-                t.MessageRef?.Id is null ? null : new XAttribute("messageRef", t.MessageRef.Id)),
+                t.MessageRef is null ? null : new XAttribute("messageRef", t.MessageRef)),
 
-            Bpmn.Process.Task t => new XElement("task".B(),
+            Bpmn.Task t => new XElement("task".B(),
                 new XAttribute("id", t.Id ?? Guid.NewGuid().ToString("N")),
                 t.Name is null ? null : new XAttribute("name", t.Name)),
 
             CallActivity ca => new XElement("callActivity".B(),
                 new XAttribute("id", ca.Id ?? Guid.NewGuid().ToString("N")),
-                new XAttribute("calledElement", ca.CalledElementRef)),
+                new XAttribute("calledElement", ca.CalledElement)),
 
             // Sub-Process-Varianten
 
@@ -246,55 +296,64 @@ public class BpmnSerializer
 
             BoundaryEvent be => new XElement("boundaryEvent".B(),
                 new XAttribute("id", be.Id ?? Guid.NewGuid().ToString("N")),
-                new XAttribute("attachedToRef", be.AttachedToRef.Id ?? ""),
+                new XAttribute("attachedToRef", be.AttachedToRef.Name ?? ""),
                 new XAttribute("cancelActivity", be.CancelActivity),
                 be.EventDefinitions.Select(WriteEventDefinition)),
 
-            // Artifacts
-            TextAnnotation ta => new XElement("textAnnotation".B(),
-                new XAttribute("id", ta.Id ?? Guid.NewGuid().ToString("N")),
-                ta.TextFormat is null ? null : new XAttribute("textFormat", ta.TextFormat),
-                ta.Text is null ? null : new XElement("text".B(), ta.Text)),
-
-            Association a => new XElement("association".B(),
-                new XAttribute("id", a.Id ?? Guid.NewGuid().ToString("N")),
-                a.SourceRef?.Id is null ? null : new XAttribute("sourceRef", a.SourceRef.Id),
-                a.TargetRef?.Id is null ? null : new XAttribute("targetRef", a.TargetRef.Id),
-                new XAttribute("associationDirection", a.Direction.ToString())),
-
-            _ => new XElement("flowElement".B(),
-                new XAttribute("id", fe.Id ?? Guid.NewGuid().ToString("N")))
+           
         };
     }
+    static XElement WriteArtifacts(Artifact ar) => ar switch
+    {
+        // Artifacts
+        TextAnnotation ta => new XElement("textAnnotation".B(),
+            new XAttribute("id", ta.Id ?? Guid.NewGuid().ToString("N")),
+            ta.TextFormat is null ? null : new XAttribute("textFormat", ta.TextFormat),
+            ta.Text is null ? null : new XElement("text".B(), ta.Text)),
+
+        Association a => new XElement("association".B(),
+            new XAttribute("id", a.Id ?? Guid.NewGuid().ToString("N")),
+            a.SourceRef is null ? null : new XAttribute("sourceRef", a.SourceRef),
+            a.TargetRef is null ? null : new XAttribute("targetRef", a.TargetRef),
+            new XAttribute("associationDirection", a.AssociationDirection.ToString())),
+
+        Group g => new XElement("group".B(),
+            new XAttribute("id", g.Id ?? Guid.NewGuid().ToString("N")),
+            g.CategoryValueRef is null ? null : new XAttribute("categoryValueRef", g.CategoryValueRef)),
+
+
+        _ => new XElement("artifact".B(),
+            new XAttribute("id", ar.Id ?? Guid.NewGuid().ToString("N")))
+    };
 
     static object WriteEventDefinition(EventDefinition ed) => ed switch
     {
         TimerEventDefinition t => new XElement("timerEventDefinition".B(),
-            t.TimeDate is null ? null : new XElement("timeDate".B(), t.TimeDate.Body ?? ""),
-            t.TimeDuration is null ? null : new XElement("timeDuration".B(), t.TimeDuration.Body ?? ""),
-            t.TimeCycle is null ? null : new XElement("timeCycle".B(), t.TimeCycle.Body ?? "")),
+            t.TimeDate is null ? null : new XElement("timeDate".B(), t.TimeDate.Text.ToString() ?? ""),
+            t.TimeDuration is null ? null : new XElement("timeDuration".B(), t.TimeDuration.Text.ToString() ?? ""),
+            t.TimeCycle is null ? null : new XElement("timeCycle".B(), t.TimeCycle.Text.ToString() ?? "")),
 
         MessageEventDefinition m => new XElement("messageEventDefinition".B(),
-            m.MessageRef?.Id is null ? null : new XAttribute("messageRef", m.MessageRef.Id)),
+            m.MessageRef is null ? null : new XAttribute("messageRef", m.MessageRef)),
 
         ErrorEventDefinition e => new XElement("errorEventDefinition".B(),
-            e.ErrorRef?.Id is null ? null : new XAttribute("errorRef", e.ErrorRef.Id)),
+            e.ErrorRef is null ? null : new XAttribute("errorRef", e.ErrorRef)),
 
         EscalationEventDefinition es => new XElement("escalationEventDefinition".B(),
-            es.EscalationRef?.Id is null ? null : new XAttribute("escalationRef", es.EscalationRef.Id)),
+            es.EscalationRef is null ? null : new XAttribute("escalationRef", es.EscalationRef)),
 
         ConditionalEventDefinition c => new XElement("conditionalEventDefinition".B(),
-            c.Condition is null ? null : new XElement("condition".B(), c.Condition.Body ?? "")),
+            c.Condition is null ? null : new XElement("condition".B(), c.Condition.Text.ToString() ?? "")),
 
         LinkEventDefinition l => new XElement("linkEventDefinition".B(),
             l.Name is null ? null : new XAttribute("name", l.Name)),
 
         SignalEventDefinition s => new XElement("signalEventDefinition".B(),
-            s.SignalRef?.Id is null ? null : new XAttribute("signalRef", s.SignalRef.Id)),
+            s.SignalRef is null ? null : new XAttribute("signalRef", s.SignalRef)),
 
         CancelEventDefinition => new XElement("cancelEventDefinition".B()),
-        CompensationEventDefinition ce => new XElement("compensateEventDefinition".B(),
-            ce.ActivityRef?.Id is null ? null : new XAttribute("activityRef", ce.ActivityRef.Id)),
+        CompensateEventDefinition ce => new XElement("compensateEventDefinition".B(),
+            ce.ActivityRef is null ? null : new XAttribute("activityRef", ce.ActivityRef)),
         TerminateEventDefinition => new XElement("terminateEventDefinition".B()),
         _ => new XElement("eventDefinition".B())
     };
@@ -302,8 +361,8 @@ public class BpmnSerializer
     static XElement WriteIOSpec(InputOutputSpecification io) => new XElement("ioSpecification".B(),
         io.DataInputs.Select(di => new XElement("dataInput".B(), new XAttribute("id", di.Id ?? Guid.NewGuid().ToString("N")), di.Name is null ? null : new XAttribute("name", di.Name))),
         io.DataOutputs.Select(d => new XElement("dataOutput".B(), new XAttribute("id", d.Id ?? Guid.NewGuid().ToString("N")), d.Name is null ? null : new XAttribute("name", d.Name))),
-        io.InputSets.Select(s => new XElement("inputSet".B(), s.DataInputRefs.Select(r => new XElement("dataInputRef".B(), r.Id)))),
-        io.OutputSets.Select(s => new XElement("outputSet".B(), s.DataOutputRefs.Select(r => new XElement("dataOutputRef".B(), r.Id)))));
+        io.InputSets.Select(s => new XElement("inputSet".B(), s.DataInputRefs.Select(r => new XElement("dataInputRef".B(), r)))),
+        io.OutputSets.Select(s => new XElement("outputSet".B(), s.DataOutputRefs.Select(r => new XElement("dataOutputRef".B(), r)))));
 
     static XElement WriteCollaboration(Collaboration c)
     {
@@ -312,33 +371,35 @@ public class BpmnSerializer
             xe.Add(new XElement("participant".B(),
                 new XAttribute("id", p.Id ?? Guid.NewGuid().ToString("N")),
                 p.Name is null ? null : new XAttribute("name", p.Name),
-                p.ProcessRef?.Id is null ? null : new XAttribute("processRef", p.ProcessRef.Id)));
+                p.ProcessRef is null ? null : new XAttribute("processRef", p.ProcessRef)));
         foreach (var mf in c.MessageFlows)
             xe.Add(new XElement("messageFlow".B(),
                 new XAttribute("id", mf.Id ?? Guid.NewGuid().ToString("N")),
                 mf.Name is null ? null : new XAttribute("name", mf.Name),
-                mf.SourceRef?.Id is null ? null : new XAttribute("sourceRef", mf.SourceRef.Id!),
-                mf.TargetRef?.Id is null ? null : new XAttribute("targetRef", mf.TargetRef.Id!),
-                mf.MessageRef?.Id is null ? null : new XAttribute("messageRef", mf.MessageRef.Id!)));
+                mf.SourceRef is null ? null : new XAttribute("sourceRef", mf.SourceRef!),
+                mf.TargetRef is null ? null : new XAttribute("targetRef", mf.TargetRef!),
+                mf.MessageRef is null ? null : new XAttribute("messageRef", mf.MessageRef!)));
+        foreach (var ar in c.Artifacts)
+            xe.Add(new XElement("artifact".B(), WriteArtifacts(ar)));
         return xe;
     }
 
     static XElement WriteChoreography(Choreography c)
         => new XElement("choreography".B(), new XAttribute("id", c.Id ?? Guid.NewGuid().ToString("N")));
 
-    static XElement WriteDiagram(BPMNDiagram d)
+    static XElement WriteDiagram(BpmnDiagram d)
     {
         var x = new XElement("BPMNDiagram".BPMNDI(), new XAttribute("id", d.Id ?? $"diag_{Guid.NewGuid():N}"));
         var plane = new XElement("BPMNPlane".BPMNDI(),
-            new XAttribute("id", d.BPMNPlane.Id ?? $"plane_{Guid.NewGuid():N}"),
-            d.BPMNPlane.BpmnElement.Id is null ? null : new XAttribute("bpmnElement", d.BPMNPlane.BpmnElement.Id));
+            new XAttribute("id", d.BpmnPlane.Id ?? $"plane_{Guid.NewGuid():N}"),
+            d.BpmnPlane.BpmnElement is null ? null : new XAttribute("bpmnElement", d.BpmnPlane.BpmnElement));
         x.Add(plane);
 
-        foreach (var s in d.BPMNPlane.Shapes)
+        foreach (var s in d.BpmnPlane.DiagramElements.OfType<BpmnShape>())
         {
             var xs = new XElement("BPMNShape".BPMNDI(),
                 new XAttribute("id", s.Id ?? $"shape_{Guid.NewGuid():N}"),
-                s.BpmnElement.Id is null ? null : new XAttribute("bpmnElement", s.BpmnElement.Id));
+                s.BpmnElement is null ? null : new XAttribute("bpmnElement", s.BpmnElement));
             if (s.Bounds is not null)
                 xs.Add(new XElement("Bounds".DC(),
                     new XAttribute("x", s.Bounds.X),
@@ -348,20 +409,89 @@ public class BpmnSerializer
             plane.Add(xs);
         }
 
-        foreach (var e in d.BPMNPlane.Edges)
+        foreach (var e in d.BpmnPlane.DiagramElements.OfType<BpmnEdge>())
         {
             var xe = new XElement("BPMNEdge".BPMNDI(),
                 new XAttribute("id", e.Id ?? $"edge_{Guid.NewGuid():N}"),
-                e.BpmnElement.Id is null ? null : new XAttribute("bpmnElement", e.BpmnElement.Id));
-            foreach (var p in e.WayPoints)
+                e.BpmnElement is null ? null : new XAttribute("bpmnElement", e.BpmnElement));
+            foreach (var p in e.Waypoints)
                 xe.Add(new XElement("waypoint".DI(), new XAttribute("x", p.X), new XAttribute("y", p.Y)));
             plane.Add(xe);
         }
         return x;
     }
 
-    public static string? Serialize(BpmnModel model)
+    //public static string? Serialize(BpmnModel model)
+    //{
+    //   return Write(model.ProcessDefinitions).ToString();
+    //}
+
+
+    public static string Serialize(BpmnModel model)
     {
-       return Write(model.ProcessDefinitions).ToString();
+        if (model is null) throw new ArgumentNullException(nameof(model));
+
+        var defs = BpmnModelMapper.ToDefinitions(model); // Ensure model is mapped to Definitions if needed
+
+        using var sw = new StringWriter();
+        using var xw = XmlWriter.Create(sw, new XmlWriterSettings { Indent = true, IndentChars = "  " });
+        Serializer.Serialize(xw, defs, Namespaces);
+        var xml = sw.ToString();
+        ValidateXml(xml); // See validation method below
+        return xml;
+    }
+    public static XmlValidationResult ValidateXml(string xml)
+    {
+        try
+        {
+            var settings = new XmlReaderSettings
+            {
+                ValidationType = ValidationType.Schema,
+                Schemas = _bpmnSchemas.Value,
+                DtdProcessing = DtdProcessing.Prohibit,
+                XmlResolver = null
+            };
+
+            var errors = new List<string>();
+            settings.ValidationEventHandler += (sender, e) =>
+            {
+                errors.Add($"{e.Severity}: {e.Message}");
+            };
+
+            using var stringReader = new StringReader(xml);
+            using var reader = XmlReader.Create(stringReader, settings);
+            while (reader.Read()) { } // Read to trigger full validation
+
+            if (errors.Any(e => e.StartsWith("Error:")))
+                return new XmlValidationResult(false, errors);
+            return new XmlValidationResult(true, Array.Empty<string>());
+
+        }
+        catch (Exception e)
+        {
+            throw e;
+        }
+    }
+
+    public static BpmnModel Deserialize(string xml)
+    {
+        try
+        {
+            using var sr = new StringReader(xml);
+            var defs = (Definitions)Serializer.Deserialize(sr);
+            var model = BpmnModelMapper.FromDefinitions(defs);
+            return model;
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            throw;
+        }
     }
 }
+
+
+public record XmlValidationResult(
+    bool IsValid,
+    IEnumerable<string> Errors
+);

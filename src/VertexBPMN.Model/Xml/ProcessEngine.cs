@@ -1,10 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Text.Json;
-using VertexBPMN.Domain.Model.Bpmn.Common;
-using VertexBPMN.Domain.Model.Bpmn.Event;
-using VertexBPMN.Domain.Model.Bpmn.Infrastructure;
-using VertexBPMN.Domain.Model.Bpmn.Process;
+using VertexBPMN.Domain.Model.Bpmn;
 using Task = System.Threading.Tasks.Task;
 
 namespace VertexBPMN.Domain.Model;
@@ -144,20 +141,12 @@ public class ProcessEngine
         while (iterations < maxIterations)
         {
             iterations++;
-            
-            // Check if current element is an end event
-            var endEvent = model.Events.FirstOrDefault(e => e.Id == currentId && e is EndEvent);
-            if (endEvent != null)
-            {
-                trace.Add($"EndEvent: {endEvent.Id}");
-                break;
-            }
-            
-            var flows = model.SequenceFlows.Where(f => f.Id == currentId).ToList();
-            if (flows.Count == 0) 
+
+            var flows = model.SequenceFlows.Where(f => f.SourceRef.Contains(currentId)).ToList();
+            if (flows.Count == 0)
             {
                 trace.Add($"NoOutgoingFlows: {currentId}");
-                break;
+                continue;
             }
 
             // Gateway handling
@@ -196,7 +185,14 @@ public class ProcessEngine
             
             trace.Add($"SequenceFlow: {defaultFlow.Id}");
             currentId = defaultFlow.Id;
-            
+
+            // Check if current element is an end event
+            var endEvent = model.Events.FirstOrDefault(e => e is EndEvent);
+            if (endEvent != null)
+            {
+                trace.Add($"EndEvent: {endEvent.Id}");
+                break;
+            }
             var evt = model.Events.FirstOrDefault(e => e.Id == currentId);
             if (evt is EndEvent)
             {
@@ -229,7 +225,7 @@ public class ProcessEngine
             _ => HandleDefaultGateway(gateway, flows, trace)
         };
     }
-
+    //ExclusiveGateway
     private string? HandleParallelGateway(Gateway gateway, List<SequenceFlow> flows, List<string> trace)
     {
         trace.Add($"ParallelGateway: {gateway.Id}");
@@ -259,7 +255,7 @@ public class ProcessEngine
         if (flow == null) return null;
         
         trace.Add($"SequenceFlow: {flow.Id}");
-        return flow.TargetRef.Name;
+        return flow.TargetRef;
     }
 
     private string? HandleComplexGateway(Gateway gateway, List<SequenceFlow> flows, BpmnModel model, List<string> trace)
@@ -272,7 +268,7 @@ public class ProcessEngine
             var firstFlow = selectedFlows[0];
             trace.Add($"SequenceFlow: {firstFlow.Id}");
             trace.Add($"ComplexBranch: {firstFlow.TargetRef}");
-            return firstFlow.TargetRef.Name;
+            return firstFlow.TargetRef;
         }
         return null;
     }
@@ -284,19 +280,19 @@ public class ProcessEngine
         if (selectedFlow != null)
         {
             trace.Add($"SequenceFlow: {selectedFlow.Id}");
-            return selectedFlow.TargetRef.Name;
+            return selectedFlow.TargetRef;
         }
         return null;
     }
 
     private string? HandleDefaultGateway(Gateway gateway, List<SequenceFlow> flows, List<string> trace)
     {
-        trace.Add($"UnknownGateway: {gateway.Id} ({gateway.Type})");
+        trace.Add($"UnknownGateway: {gateway.Id} ({gateway.GetType()})");
         var flow = flows.FirstOrDefault();
         if (flow == null) return null;
         
         trace.Add($"SequenceFlow: {flow.Id}");
-        return flow.TargetRef.Name;
+        return flow.TargetRef;
     }
 
     /// <summary>
@@ -312,10 +308,10 @@ public class ProcessEngine
             trace.Add($"EventSubprocess: {subprocess.Id}");
             HandleEventSubprocess(subprocess, model, trace);
         }
-        else if (subprocess.IsTransaction)
+        else if (subprocess.IsForCompensation)
         {
             trace.Add($"TransactionSubprocess: {subprocess.Id}");
-            //HandleCompensationEvent(subprocess, subprocess.Id, trace);
+            HandleCompensationSubprocess(subprocess, subprocess.Id, trace);
             //_compensationStack[subprocess.Id] = new CompensationContext($"tx_{subprocess.Id}", subprocess.Id);
         }
         else
@@ -323,7 +319,7 @@ public class ProcessEngine
             trace.Add($"Subprocess: {subprocess.Id}");
         }
         
-        if (subprocess.IsMultiInstance)
+        if (subprocess.LoopCharacteristics is MultiInstanceLoopCharacteristics)
         {
             HandleMultiInstanceSubprocess(subprocess, model, trace);
         }
@@ -333,10 +329,11 @@ public class ProcessEngine
 
         // Check for compensation handlers
         var compensation = model.Events.FirstOrDefault(e =>
-            e.Type == "boundaryEvent");
-            //&& 
+             e is BoundaryEvent 
+            // && 
             //e.AttachedToRef == subprocess.Id && 
-            //e.IsCompensation);
+            //e.IsCompensation
+            );
         if (compensation != null)
         {
             trace.Add($"CompensationHandler: {compensation.Id}");
@@ -351,20 +348,20 @@ public class ProcessEngine
         trace.Add($"SequenceFlow: {flow.Id}");
         
         // Check if target is end event
-        var endEvent = model.Events.FirstOrDefault(e => e.Id == flow.TargetRef.Id && e.Type == "endEvent");
+        var endEvent = model.Events.FirstOrDefault(e => e.Id == flow.TargetRef && e is EndEvent);
         if (endEvent != null)
         {
             trace.Add($"EndEvent: {endEvent.Id}");
             return null; // End execution
         }
         
-        return flow.TargetRef.Name;
+        return flow.TargetRef;
     }
 
     /// <summary>
     /// Handles task execution and returns next node ID.
     /// </summary>
-    private async Task<string?> HandleTaskAsync(VertexBPMN.Domain.Model.Bpmn.Process.Task task, List<SequenceFlow> flows, BpmnModel model, List<string> trace, object? decisionService)
+    private async Task<string?> HandleTaskAsync(Bpmn.Task task, List<SequenceFlow> flows, BpmnModel model, List<string> trace, object? decisionService)
     {
         // Check for boundary events on task
         CheckAndHandleBoundaryEvents(task.Id, model, trace);
@@ -380,11 +377,11 @@ public class ProcessEngine
                 break;
                 
             case "serviceTask":
-                await HandleServiceTaskAsync(task, model, trace);
+                await HandleServiceTaskAsync(task as ServiceTask, model, trace);
                 break;
                 
             case "userTask":
-                return HandleUserTask(task, trace); // User tasks pause execution
+                return HandleUserTask(task as UserTask, trace); // User tasks pause execution
                 
             default:
                 trace.Add($"Task: {task.Id} ({task.Name})");
@@ -398,17 +395,17 @@ public class ProcessEngine
         trace.Add($"SequenceFlow: {flow.Id}");
         
         // Check if target is end event
-        var endEvent = model.Events.FirstOrDefault(e => e.Id == flow.TargetRef.Id && e.Type == "endEvent");
+        var endEvent = model.Events.FirstOrDefault(e => e.Id == flow.TargetRef && e is EndEvent);
         if (endEvent != null)
         {
             trace.Add($"EndEvent: {endEvent.Id}");
             return null; // End execution
         }
         
-        return flow.TargetRef.Name;
+        return flow.TargetRef;
     }
 
-    private async Task HandleBusinessRuleTaskAsync(VertexBPMN.Domain.Model.Bpmn.Process.Task task, BpmnModel model, List<string> trace, object? decisionService)
+    private async Task HandleBusinessRuleTaskAsync(Bpmn.Task task, BpmnModel model, List<string> trace, object? decisionService)
     {
         trace.Add($"BusinessRuleTask: {task.Id}");
         
@@ -433,7 +430,7 @@ public class ProcessEngine
         //}
     }
 
-    private async Task HandleScriptTaskAsync(VertexBPMN.Domain.Model.Bpmn.Process.Task task, BpmnModel model, List<string> trace)
+    private async Task HandleScriptTaskAsync(Bpmn.Task task, BpmnModel model, List<string> trace)
     {
         trace.Add($"ScriptTask: {task.Id}");
         
@@ -458,7 +455,7 @@ public class ProcessEngine
         //}
     }
 
-    private async Task HandleServiceTaskAsync(VertexBPMN.Domain.Model.Bpmn.Process.Task task, BpmnModel model, List<string> trace)
+    private async Task HandleServiceTaskAsync(ServiceTask task, BpmnModel model, List<string> trace)
     {
         trace.Add($"ServiceTask: {task.Id} ({task.Implementation})");
         
@@ -493,28 +490,27 @@ public class ProcessEngine
         //await HandleZeebeAttributesAsync(task, model, trace);
     }
 
-    private string? HandleUserTask(VertexBPMN.Domain.Model.Bpmn.Process.Task task, List<string> trace)
+    private string? HandleUserTask(UserTask task, List<string> trace)
     {
         trace.Add($"UserTask: {task.Id} ({task.Name})");
-        
+        var attributes = new Dictionary<string, string>();
         // Log task attributes
-        if (task.Attributes != null)
+        foreach (var property in task.Properties)
+        foreach (var attribute in property.AnyAttributes)
         {
-            foreach (var attribute in task.Attributes)
-            {
-                trace.Add($"Attribute: {attribute.Key} = {attribute.Value}");
-            }
+            trace.Add($"Attribute: {attribute.Name} = {attribute.Value}");
+            attributes.Add(attribute.Name, attribute.Value);
         }
-        
+
         // Create user task
         var userTaskId = Guid.NewGuid().ToString();
         var userTaskDetails = new
         {
             TaskId = task.Id,
             Name = task.Name,
-            Attributes = task.Attributes,
-            AssignedTo = task.Attributes?.ContainsKey("assignee") == true ? task.Attributes["assignee"] : "Unassigned",
-            DueDate = task.Attributes?.ContainsKey("dueDate") == true ? task.Attributes["dueDate"] : null
+            Attributes = attributes,
+            AssignedTo = attributes.ContainsKey("assignee") ? attributes["assignee"] : "Unassigned",
+            DueDate = attributes.ContainsKey("dueDate") ? attributes["dueDate"] : null
         };
         
         trace.Add($"UserTaskCreated: {userTaskId} for task {task.Id}");
@@ -601,20 +597,27 @@ public class ProcessEngine
         return variables.TryGetValue(variableName, out var value) ? value : null;
     }
 
-    private async Task HandleUnregisteredServiceTaskAsync(VertexBPMN.Domain.Model.Bpmn.Process.Task task, IDictionary<string, object>? processVariables, List<string> trace)
+    private async Task HandleUnregisteredServiceTaskAsync(Bpmn.Task task, IDictionary<string, object>? processVariables, List<string> trace)
     {
         trace.Add($"ExecutingDefaultHandler: {task.Id}");
-        
-        if (task.Attributes != null)
+        var attributes = new Dictionary<string, string>();
+        // Log task attributes
+        foreach (var property in task.Properties)
+        foreach (var attribute in property.AnyAttributes)
         {
-            foreach (var attribute in task.Attributes)
+            trace.Add($"Attribute: {attribute.Name} = {attribute.Value}");
+            attributes.Add(attribute.Name, attribute.Value);
+        }
+        if (attributes != null)
+        {
+            foreach (var attribute in attributes)
             {
                 trace.Add($"Attribute: {attribute.Key} = {attribute.Value}");
             }
         }
-        
-        var resultVariable = task.Attributes?.ContainsKey("resultVariable") == true
-            ? task.Attributes["resultVariable"]
+
+        var resultVariable = attributes.ContainsKey("resultVariable")
+            ? attributes["resultVariable"]
             : $"{task.Id}_Result";
         
         var result = $"Default result for task {task.Id}";
@@ -630,7 +633,7 @@ public class ProcessEngine
     /// </summary>
     private void CheckAndHandleBoundaryEvents(string activityId, BpmnModel model, List<string> trace)
     {
-        var boundaryEvents = model.Events.Where(e => e is BoundaryEvent b && b.AttachedToRef.Id == activityId);
+        var boundaryEvents = model.Events.Where(e => e is BoundaryEvent b && b.AttachedToRef.Name == activityId);
         
         foreach (BoundaryEvent boundaryEvent in boundaryEvents)
         {
@@ -664,8 +667,11 @@ public class ProcessEngine
     private void HandleMultiInstanceSubprocess(SubProcess subprocess, BpmnModel model, List<string> trace)
     {
         trace.Add($"MultiInstance: {subprocess.Id}");
-        
-        var totalInstances = subprocess.LoopCardinality >= 1 ? subprocess.LoopCardinality : 3;
+
+        //var totalInstances = subprocess.LoopCharacteristics is MultiInstanceLoopCharacteristics m
+        //    ? m.LoopCardinality >= 1 ? m.LoopCardinality : 3
+        //    : 3;
+
         var isSequential = subprocess.IsForCompensation;
 
         //var context = new MultiInstanceContext(subprocess.Id, totalInstances, 0, isSequential);
@@ -701,31 +707,31 @@ public class ProcessEngine
     private void HandleEventSubprocess(SubProcess subprocess, BpmnModel model, List<string> trace)
     {
         trace.Add($"EventSubprocessTriggering: {subprocess.Id}");
-        
-        var subprocessStartEvents = model.Events.Where(e => 
-            e.Type == "startEvent" && 
+
+        var subprocessStartEvents = model.Events.Where(e =>
+            e is StartEvent &&
             IsWithinSubprocess(e.Id, subprocess.Id, model)).ToList();
             
-        foreach (var startEvent in subprocessStartEvents)
+        foreach (StartEvent startEvent in subprocessStartEvents)
         {
             trace.Add($"EventSubprocessStart: {startEvent.Id}");
             
             if (startEvent.EventDefinitions.Any())
             {
                 trace.Add($"EventType: {startEvent.EventDefinitions.FirstOrDefault()}");
-                
-                switch (startEvent.Type)
+                var definition = startEvent.EventDefinitions.FirstOrDefault();
+                switch (definition)
                 {
-                    case "message":
+                    case MessageEventDefinition _:
                         trace.Add($"MessageEventSubprocess: {subprocess.Id} triggered by message");
                         break;
-                    case "error":
+                    case ErrorEventDefinition _:
                         trace.Add($"ErrorEventSubprocess: {subprocess.Id} triggered by error");
                         break;
-                    case "timer":
+                    case TimerEventDefinition _:
                         trace.Add($"TimerEventSubprocess: {subprocess.Id} triggered by timer");
                         break;
-                    case "signal":
+                    case SignalEventDefinition _:
                         trace.Add($"SignalEventSubprocess: {subprocess.Id} triggered by signal");
                         break;
                     default:
@@ -736,9 +742,9 @@ public class ProcessEngine
         }
         
         trace.Add($"EventSubprocessExecution: {subprocess.Id}");
-        
-        var subprocessEndEvents = model.Events.Where(e => 
-            e.Type == "endEvent" && 
+
+        var subprocessEndEvents = model.Events.Where(e =>
+            e is EndEvent &&
             IsWithinSubprocess(e.Id, subprocess.Id, model)).ToList();
             
         foreach (var endEvent in subprocessEndEvents)
@@ -754,13 +760,13 @@ public class ProcessEngine
     
     private bool ShouldTriggerBoundaryEvent(BoundaryEvent boundaryEvent)
     {
-        return boundaryEvent.EventDefinitions.First().Id switch
+        return boundaryEvent.EventDefinitions.First() switch
         {
-            "timer" => false, // Simplified for demo
-            "message" => false, // Simplified for demo
-            "error" => false, // Simplified for demo
-            "signal" => false, // Simplified for demo
-            "compensation" => false, // Handled separately
+            TimerEventDefinition _ => false, // Simplified for demo
+            MessageEventDefinition _ => false, // Simplified for demo
+            ErrorEventDefinition _ => false, // Simplified for demo
+            SignalEventDefinition _ => false, // Simplified for demo
+            CompensateEventDefinition _ => false, // Handled separately
             _ => false
         };
     }
@@ -771,7 +777,14 @@ public class ProcessEngine
         //_compensationStack[compensationEvent.Id] = new CompensationContext(compensationEvent.Id, activityId);
         trace.Add($"CompensationHandler: {compensationEvent.Id} attached to {activityId}");
     }
+    private void HandleCompensationSubprocess(SubProcess subprocess, string activityId, List<string> trace)
+    {
+        trace.Add($"CompensationTriggered: {subprocess.Id}");
+        //_compensationStack[compensationEvent.Id] = new CompensationContext(compensationEvent.Id, activityId);
+        trace.Add($"CompensationHandler: {subprocess.Id} attached to {activityId}");
+    }
     
+
     private bool DetermineBoundaryEventType(BoundaryEvent boundaryEvent)
     {
         return boundaryEvent.CancelActivity;
@@ -802,10 +815,9 @@ public class ProcessEngine
         
         foreach (var flow in flows)
         {
-            var targetEvent = model.Events.FirstOrDefault(e => e.Id == flow.TargetRef.Id);
-            if (targetEvent != null)
+            if (model.Events.FirstOrDefault(e => e.Id == flow.TargetRef) is CatchEvent targetEvent)
             {
-                trace.Add($"EventTarget: {targetEvent.Type} {targetEvent.Id}");
+                trace.Add($"EventTarget: {targetEvent.GetType().Name} {targetEvent.Id}");
                 
                 if (SimulateEventArrival(targetEvent))
                 {
@@ -819,7 +831,7 @@ public class ProcessEngine
         return flows.FirstOrDefault();
     }
     
-    private bool SimulateEventArrival(Event targetEvent)
+    private bool SimulateEventArrival(CatchEvent targetEvent)
     {
         if (targetEvent == null)
         {
@@ -828,29 +840,30 @@ public class ProcessEngine
         }
 
         _logger.LogInformation("Simulating event arrival for event: {EventId} of type: {EventType}", 
-            targetEvent.Id, targetEvent.Type);
+            targetEvent.Id, targetEvent.GetType().Name);
 
-        return targetEvent.Type switch
+        var definition = targetEvent.EventDefinitions.FirstOrDefault();
+        return definition switch
         {
-            "message" => SimulateMessageEvent(targetEvent),
-            "timer" => SimulateTimerEvent(targetEvent),
-            "signal" => SimulateSignalEvent(targetEvent),
-            "error" => SimulateErrorEvent(targetEvent),
-            "condition" => SimulateConditionEvent(targetEvent),
+            MessageEventDefinition _ => SimulateMessageEvent(targetEvent),
+            TimerEventDefinition _ => SimulateTimerEvent(targetEvent),
+            SignalEventDefinition _ => SimulateSignalEvent(targetEvent),
+            ErrorEventDefinition _ => SimulateErrorEvent(targetEvent),
+            ConditionalEventDefinition _ => SimulateConditionEvent(targetEvent),
             _ => false
         };
     }
     
-    private bool SimulateMessageEvent(Event targetEvent)
+    private bool SimulateMessageEvent(CatchEvent targetEvent)
     {
         _logger.LogInformation("Simulating message event for event: {EventId}", targetEvent.Id);
 
         var definition = targetEvent.EventDefinitions.FirstOrDefault(d => d is MessageEventDefinition) as MessageEventDefinition;
 
-        if (definition?.CorrelationKey != null && definition.CorrelationKey == "expectedCorrelationKey")
+        if (definition?.MessageRef != null && definition.MessageRef.Name == "expectedCorrelationKey")
         {
             _logger.LogInformation("Message event {EventId} triggered with correlation key: {CorrelationKey}", 
-                targetEvent.Id, definition.CorrelationKey);
+                targetEvent.Id, definition.MessageRef.Name);
             return true;
         }
 
@@ -858,11 +871,11 @@ public class ProcessEngine
         return false;
     }
     
-    private bool SimulateTimerEvent(Event targetEvent)
+    private bool SimulateTimerEvent(CatchEvent targetEvent)
     {
         _logger.LogInformation("Simulating timer event for event: {EventId}", targetEvent.Id);
-        
-        var timerDueDate = DateTime.UtcNow.AddSeconds(-10);
+        var definition = targetEvent.EventDefinitions.FirstOrDefault(d => d is TimerEventDefinition) as TimerEventDefinition;
+        var timerDueDate = DateTime.Parse(definition.TimeDate.Text.FirstOrDefault());
         if (DateTime.UtcNow >= timerDueDate)
         {
             _logger.LogInformation("Timer event {EventId} triggered. Timer is due.", targetEvent.Id);
@@ -873,12 +886,12 @@ public class ProcessEngine
         return false;
     }
     
-    private bool SimulateSignalEvent(Event targetEvent)
+    private bool SimulateSignalEvent(CatchEvent targetEvent)
     {
         _logger.LogInformation("Simulating signal event for event: {EventId}", targetEvent.Id);
         var definition = targetEvent.EventDefinitions.FirstOrDefault(d => d is SignalEventDefinition) as SignalEventDefinition;
 
-        if (definition.SignalRef.Id ==  "expectedSignal") 
+        if (definition.SignalRef.Name ==  "expectedSignal") 
         {
             _logger.LogInformation("Signal event {EventId} triggered with signal name: {SignalName}", 
                 targetEvent.Id, definition.SignalRef);
@@ -889,15 +902,15 @@ public class ProcessEngine
         return false;
     }
     
-    private bool SimulateErrorEvent(Event targetEvent)
+    private bool SimulateErrorEvent(CatchEvent targetEvent)
     {
         _logger.LogInformation("Simulating error event for event: {EventId}", targetEvent.Id);
         var definition = targetEvent.EventDefinitions.FirstOrDefault(d => d is ErrorEventDefinition) as ErrorEventDefinition;
 
-        if (definition.ErrorRef?.ErrorCode == "expectedErrorCode")
+        if (definition.ErrorRef?.Name == "expectedErrorCode")
         {
             _logger.LogInformation("Error event {EventId} triggered with error code: {ErrorCode}", 
-                targetEvent.Id, definition.ErrorRef?.ErrorCode);
+                targetEvent.Id, definition.ErrorRef?.Name);
             return true;
         }
 
@@ -905,7 +918,7 @@ public class ProcessEngine
         return false;
     }
     
-    private bool SimulateConditionEvent(Event targetEvent)
+    private bool SimulateConditionEvent(CatchEvent targetEvent)
     {
         _logger.LogInformation("Simulating condition event for event: {EventId}", targetEvent.Id);
         var definition = targetEvent.EventDefinitions.FirstOrDefault(d => d is ConditionalEventDefinition) as ConditionalEventDefinition;

@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="ISO-8859-1" standalone="yes"?>
+<definitions id="Defs_OrderProcess"
+             targetNamespace="http://vertexbpmn.example/order"
+             xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+  <process id="OrderProcess" name="Order Processing" isExecutable="true">
+
+    <!-- Start -->
+    <startEvent id="StartEvent_OrderReceived" name="Order received">
+      <outgoing>Flow_Start_CheckStock</outgoing>
+    </startEvent>
+
+    <!-- Service Task: Check Stock -->
+    <serviceTask id="Task_CheckStock" name="Check stock" 
+                 vertex:activityName="CheckStockActivity">
+      <incoming>Flow_Start_CheckStock</incoming>
+      <outgoing>Flow_CheckStock_Gateway</outgoing>
+    </serviceTask>
+
+    <!-- XOR-Gateway: enough stock? -->
+    <exclusiveGateway id="Gateway_StockAvailable" name="Stock available?">
+      <incoming>Flow_CheckStock_Gateway</incoming>
+      <outgoing>Flow_Stock_Yes_Reserve</outgoing>
+      <outgoing>Flow_Stock_No_OnHold</outgoing>
+    </exclusiveGateway>
+
+    <!-- Path: Stock NO -->
+    <serviceTask id="Task_SetOrderOnHold" name="Set order on hold"
+                 vertex:activityName="SetOrderOnHoldActivity">
+      <incoming>Flow_Stock_No_OnHold</incoming>
+      <outgoing>Flow_OnHold_End</outgoing>
+    </serviceTask>
+
+    <!-- End: On hold -->
+    <endEvent id="EndEvent_OnHold" name="On hold">
+      <incoming>Flow_OnHold_End</incoming>
+    </endEvent>
+
+    <!-- Path: Stock YES -->
+    <serviceTask id="Task_ReserveStock" name="Reserve stock"
+                 vertex:activityName="ReserveStockActivity" 
+                 vertex:compensationActivity="CompensateReserveStockActivity">
+      <incoming>Flow_Stock_Yes_Reserve</incoming>
+      <outgoing>Flow_Reserve_Payment</outgoing>
+    </serviceTask>
+
+    <!-- Service Task: Request payment -->
+    <serviceTask id="Task_RequestPayment" name="Request payment"
+                 vertex:activityName="RequestPaymentActivity">
+      <incoming>Flow_Reserve_Payment</incoming>
+      <outgoing>Flow_Payment_EventGateway</outgoing>
+    </serviceTask>
+
+    <!-- Event-based gateway: Wait for payment or timeout -->
+    <eventBasedGateway id="Gateway_WaitForPayment" name="Wait for payment">
+      <incoming>Flow_Payment_EventGateway</incoming>
+      <outgoing>Flow_PaymentReceived</outgoing>
+      <outgoing>Flow_PaymentTimeout</outgoing>
+    </eventBasedGateway>
+
+    <!-- Message catch: Payment received -->
+    <intermediateCatchEvent id="Event_PaymentReceived" name="Payment received">
+      <incoming>Flow_PaymentReceived</incoming>
+      <outgoing>Flow_PaymentReceived_Ship</outgoing>
+      <messageEventDefinition messageRef="Msg_PaymentReceived"/>
+    </intermediateCatchEvent>
+
+    <!-- Timer catch: Payment timeout -->
+    <intermediateCatchEvent id="Event_PaymentTimeout" name="Payment timeout">
+      <incoming>Flow_PaymentTimeout</incoming>
+      <outgoing>Flow_PaymentTimeout_Compensate</outgoing>
+      <timerEventDefinition>
+        <timeDuration>PT24H</timeDuration>
+      </timerEventDefinition>
+    </intermediateCatchEvent>
+
+    <!-- Service Task: Ship order -->
+    <serviceTask id="Task_ShipOrder" name="Ship order"
+                 vertex:activityName="ShipOrderActivity">
+      <incoming>Flow_PaymentReceived_Ship</incoming>
+      <outgoing>Flow_Ship_End</outgoing>
+    </serviceTask>
+
+    <!-- End: Completed -->
+    <endEvent id="EndEvent_Completed" name="Completed">
+      <incoming>Flow_Ship_End</incoming>
+    </endEvent>
+
+    <!-- After timeout: compensation (cancel reservation) -->
+    <serviceTask id="Task_CompensateReserve" name="Compensate reservation"
+                 vertex:activityName="CompensateReserveStockActivity">
+      <incoming>Flow_PaymentTimeout_Compensate</incoming>
+      <outgoing>Flow_Compensate_End</outgoing>
+    </serviceTask>
+
+    <endEvent id="EndEvent_Cancelled" name="Cancelled">
+      <incoming>Flow_Compensate_End</incoming>
+    </endEvent>
+
+    <!-- Sequence Flows -->
+    <sequenceFlow id="Flow_Start_CheckStock" 
+                  sourceRef="StartEvent_OrderReceived" 
+                  targetRef="Task_CheckStock"/>
+    <sequenceFlow id="Flow_CheckStock_Gateway"
+                  sourceRef="Task_CheckStock"
+                  targetRef="Gateway_StockAvailable"/>
+    <sequenceFlow id="Flow_Stock_Yes_Reserve" 
+                  sourceRef="Gateway_StockAvailable" 
+                  targetRef="Task_ReserveStock"/>
+    <sequenceFlow id="Flow_Stock_No_OnHold" 
+                  sourceRef="Gateway_StockAvailable" 
+                  targetRef="Task_SetOrderOnHold"/>
+
+    <sequenceFlow id="Flow_OnHold_End" 
+                  sourceRef="Task_SetOrderOnHold" 
+                  targetRef="EndEvent_OnHold"/>
+
+    <sequenceFlow id="Flow_Reserve_Payment"
+                  sourceRef="Task_ReserveStock"
+                  targetRef="Task_RequestPayment"/>
+    <sequenceFlow id="Flow_Payment_EventGateway"
+                  sourceRef="Task_RequestPayment"
+                  targetRef="Gateway_WaitForPayment"/>
+
+    <sequenceFlow id="Flow_PaymentReceived" 
+                  sourceRef="Gateway_WaitForPayment" 
+                  targetRef="Event_PaymentReceived"/>
+    <sequenceFlow id="Flow_PaymentTimeout"
+                  sourceRef="Gateway_WaitForPayment"
+                  targetRef="Event_PaymentTimeout"/>
+
+    <sequenceFlow id="Flow_PaymentReceived_Ship"
+                  sourceRef="Event_PaymentReceived"
+                  targetRef="Task_ShipOrder"/>
+    <sequenceFlow id="Flow_Ship_End"
+                  sourceRef="Task_ShipOrder"
+                  targetRef="EndEvent_Completed"/>
+
+    <sequenceFlow id="Flow_PaymentTimeout_Compensate"
+                  sourceRef="Event_PaymentTimeout"
+                  targetRef="Task_CompensateReserve"/>
+    <sequenceFlow id="Flow_Compensate_End"
+                  sourceRef="Task_CompensateReserve"
+                  targetRef="EndEvent_Cancelled"/>
+
+  </process>
+
+  <message id="Msg_PaymentReceived" name="PaymentReceived"/>
+
+</definitions>

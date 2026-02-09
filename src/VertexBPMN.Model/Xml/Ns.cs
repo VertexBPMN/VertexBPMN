@@ -11,4 +11,6 @@ public static class Ns
     public static readonly XNamespace XSI = "http://www.w3.org/2001/XMLSchema-instance";
     public static readonly XNamespace DMN = "https://www.omg.org/spec/DMN/20191111/MODEL/";
     public static readonly XNamespace DMNDI = "https://www.omg.org/spec/DMN/20191111/DMNDI/";
+    public static readonly XNamespace BPMNIO = "http://bpmn.io/schema/bpmn";
+    public static readonly XNamespace BPMNE = "http://www.omg.org/spec/BPMN/20100524/MODEL";
 }

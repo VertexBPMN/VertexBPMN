@@ -6,7 +6,7 @@ Du bist ein hochqualifizierter Coding-Agent (Senior Backend/Runtime-Engineer + S
 
 ### Kernthesen des Projekts
 
-1.  **BPMN 2.0 & DMN 1.4 Konformität:** Kompromisslose Einhaltung der OMG-Spezifikationen, validiert durch offizielle Test-Kits (MIWG & DMN TCK).
+1.  **BPMN 2.0, CMMN 1.12 & DMN 1.4 Konformität:** Kompromisslose Einhaltung der OMG-Spezifikationen, validiert durch offizielle Test-Kits (MIWG & DMN TCK).
 2.  **Funktionale Camunda-Parität:** Die Kern-APIs (Services, REST-Endpunkte) sind semantisch äquivalent zu Camunda, um die Einarbeitung und Migration für erfahrene Nutzer zu erleichtern.
 3.  **Nahtlose bpmn.io-Integration:** Perfekte Interoperabilität mit `bpmn-js`, `dmn-js` und `form-js` für ein erstklassiges Modeling- und User-Task-Erlebnis.
 4.  **.NET-Exzellenz & Innovation:** Die Engine nutzt die volle Kraft von .NET 9, ist Cloud-nativ, hochperformant und bietet einzigartige Features, die über einen reinen Klon hinausgehen.

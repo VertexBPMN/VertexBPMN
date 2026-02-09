@@ -1,36 +1,21 @@
-﻿using DiffEngine;
+﻿
 using Microsoft.Diagnostics.Utilities;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
 using System.Xml.Schema;
-using VertexBPMN.Domain.Model.Bpmn.Choreography;
-using VertexBPMN.Domain.Model.Bpmn.Collaboration;
-using VertexBPMN.Domain.Model.Bpmn.Common;
-using VertexBPMN.Domain.Model.Bpmn.Diagram;
-using VertexBPMN.Domain.Model.Bpmn.Enums;
-using VertexBPMN.Domain.Model.Bpmn.Event;
-using VertexBPMN.Domain.Model.Bpmn.Exceptions;
-using VertexBPMN.Domain.Model.Bpmn.Foundation;
-using VertexBPMN.Domain.Model.Bpmn.Gateway;
-using VertexBPMN.Domain.Model.Bpmn.Infrastructure;
-using VertexBPMN.Domain.Model.Bpmn.Process;
-using VertexBPMN.Domain.Model.Bpmn.Service;
+using VertexBPMN.Domain.Model.Bpmn;
+using VertexBPMN.Domain.Model.Extensions;
 using VertexBPMN.Domain.Model.Validation;
 using VertexBPMN.Domain.Model.Xml.Validation;
-using Association = VertexBPMN.Domain.Model.Bpmn.Common.Association;
-using DataInput = VertexBPMN.Domain.Model.Bpmn.Process.DataInput;
-using DataOutput = VertexBPMN.Domain.Model.Bpmn.Process.DataOutput;
-using InputSet = VertexBPMN.Domain.Model.Bpmn.Process.InputSet;
-using Operation = VertexBPMN.Domain.Model.Bpmn.Common.Operation;
-using ScriptTask = VertexBPMN.Domain.Model.Bpmn.Process.ScriptTask;
-using Signal = VertexBPMN.Domain.Model.Bpmn.Common.Signal;
-using Task = VertexBPMN.Domain.Model.Bpmn.Process.Task;
-using TextAnnotation = VertexBPMN.Domain.Model.Bpmn.Common.TextAnnotation;
+using Xunit.Internal;
+using Definitions = VertexBPMN.Domain.Model.Bpmn.Definitions;
+using Group = VertexBPMN.Domain.Model.Bpmn.Group;
 
 namespace VertexBPMN.Domain.Model;
 
@@ -38,6 +23,10 @@ namespace VertexBPMN.Domain.Model;
 public class BpmnParser
 {
     private readonly ILogger<BpmnParser> _logger;
+
+    // Raw reference capture for forward resolution (additive, zero-break)
+    private static readonly Dictionary<string, (string? SourceRef, string? TargetRef)> _rawSequenceFlowRefs = new(StringComparer.Ordinal);
+    private static readonly Dictionary<string, string?> _rawBoundaryAttachRefs = new(StringComparer.Ordinal);
 
     public BpmnParser() : this(Microsoft.Extensions.Logging.Abstractions.NullLogger<BpmnParser>.Instance) { }
     public BpmnParser(ILogger<BpmnParser> logger)
@@ -74,30 +63,12 @@ public class BpmnParser
                 throw new BpmnSchemaValidationException(diagnostics);
             }
 
-            ValidateXmlAgainstSchemas(bpmnXml, diagnostics);
+            ValidateXml(bpmnXml, diagnostics);
             if (diagnostics.Any(d => d.StartsWith("Error:", StringComparison.Ordinal)))
                 throw new BpmnSchemaValidationException(diagnostics);
 
-            // 2. Robust Parse mit LineInfo & Kontext
-            XDocument doc;
-            try
-            {
-                doc = XDocument.Parse(bpmnXml, LoadOptions.SetLineInfo | LoadOptions.PreserveWhitespace);
-            }
-            catch (XmlException ex)
-            {
-                var ctx = ExtractErrorContext(bpmnXml, ex.LineNumber, ex.LinePosition);
-                _logger.LogError(ex, "XML parse failed at line {Line}, pos {Pos}. Context: {Context}", ex.LineNumber, ex.LinePosition, ctx);
-                throw new BpmnParseException($"XML not well-formed at line {ex.LineNumber}, pos {ex.LinePosition}. Context: {ctx}", ex);
-            }
-
-            var definitions = Read(doc);
-            var model = ToModel(definitions);
-
-            model.ValidationDiagnostics = RunSemanticValidation(model, _logger);
-            if (model.ValidationDiagnostics.Any())
-                throw new BpmnSchemaValidationException(model.ValidationDiagnostics);
-            return model;
+            var model = BpmnSerializer.Deserialize(bpmnXml);
+            return model;           
         }
         catch (XmlSchemaValidationException ex)
         {
@@ -170,7 +141,32 @@ public class BpmnParser
         }
         return "<line out of range>";
     }
+    private void ValidateXml(string xml, List<string> diagnostics)
+    {
+        if (xml is null) throw new ArgumentNullException(nameof(xml));
+        if (diagnostics is null) throw new ArgumentNullException(nameof(diagnostics));
 
+        if (string.IsNullOrWhiteSpace(xml))
+        {
+            diagnostics.Add("Error: Input BPMN XML is empty.");
+            return;
+        }
+
+
+        // Defensive size guard (tunable – avoids pathological payloads)
+        const long MaxChars = 25_000_000; // ~25 MB of character data
+        if (xml.Length > MaxChars)
+        {
+            diagnostics.Add($"Error: BPMN XML exceeds maximum allowed size ({MaxChars} chars).");
+            return;
+        }
+        var result = BpmnSerializer.ValidateXml(xml);
+
+        if (result is not { IsValid: true })
+        {
+            result.Errors.ForEach(diagnostics.Add);
+        }
+    }
     private void ValidateXmlAgainstSchemas(string xml, List<string> diagnostics)
     {
         if (xml is null) throw new ArgumentNullException(nameof(xml));
@@ -349,16 +345,24 @@ public class BpmnParser
         }
     }
 
-    public static Bpmn.Infrastructure.Definitions Read(XDocument doc)
+    public static Definitions Read(XDocument doc)
     {
         var bpmn = Ns.BPMN;
         var root = doc.Root ?? throw new InvalidOperationException("Missing definitions");
 
-        var defs = new Bpmn.Infrastructure.Definitions{Id = root.Attr("id"),
+        // Clear raw reference caches for this document
+        _rawSequenceFlowRefs.Clear();
+        _rawBoundaryAttachRefs.Clear();
+
+        var defs = new Definitions{Id = root.Attr("id"),
             TargetNamespace = root.Attr("targetNamespace") ?? "http://example.com"};
+        // Optional: capture definitions @name as exporter placeholder (additive)
+        var defsName = root.Attr("name");
+        if (!string.IsNullOrWhiteSpace(defsName))
+            defs.Exporter = defsName; // reuse property to persist original name without model change
 
         foreach (var imp in root.Elements("import".B()))
-            defs.Imports.Add(new Bpmn.Infrastructure.Import()
+            defs.Imports.Add(new Import()
             {
                 ImportType = imp.Attr("importType") ?? "",
                 Location = imp.Attr("location") ?? "",
@@ -378,7 +382,7 @@ public class BpmnParser
                     var idef1 = new ItemDefinition
                     {
                         Id = el.Attr("id"),
-                        StructureRef = el.Attr("structureRef"),
+                        StructureRef = new XmlQualifiedName(el.Attr("structureRef"), null),
                         IsCollection = el.Attr("isCollection") is string value && bool.TryParse(value, out var bc) && bc
                     };
                     defs.RootElements.Add(idef1); if (idef1.Id is not null) idMap[idef1.Id] = idef1;
@@ -390,11 +394,10 @@ public class BpmnParser
                     break;
 
                 case "resource":
-                    var res = new Resource(
-                    Name: el.Attr("name") ?? "",
-                    ResourceParameters: []
-                    )
-                    { Id = el.Attr("id") };
+                    var res = new Resource(el.Attr("name") ?? "", null)
+                    {
+                        Id = el.Attr("id")
+                    };
                     defs.RootElements.Add(res); if (res.Id is not null) idMap[res.Id] = res;
                     break;
 
@@ -402,7 +405,7 @@ public class BpmnParser
                     var cat = new Category { Id = el.Attr("id"), Name = el.Attr("name") };
                     foreach (var cv in el.Elements("categoryValue".B()))
                     {
-                        var v = new CategoryValue { Id = cv.Attr("id"), Value = cv.Attr("value"), Category = cat };
+                        var v = new CategoryValue { Id = cv.Attr("id"), Value = cv.Attr("value") };
                         cat.CategoryValues.Add(v); if (v.Id is not null) idMap[v.Id] = v;
                     }
                     defs.RootElements.Add(cat); if (cat.Id is not null) idMap[cat.Id] = cat;
@@ -414,7 +417,7 @@ public class BpmnParser
                         Id = el.Attr("id"),
                         Name = el.Attr("name"),
                         ErrorCode = el.Attr("errorCode"),
-                        StructureRef = el.Attr("structureRef") is string stref && idMap.TryGetValue(stref, out var itdef) && itdef is ItemDefinition itemdf ? itemdf : null
+                        StructureRef = new XmlQualifiedName(el.Attr("structureRef"), el.Attr("ns") ?? "")
                     };
                     defs.RootElements.Add(err); if (err.Id is not null) idMap[err.Id] = err;
                     break;
@@ -425,26 +428,26 @@ public class BpmnParser
                         Id = el.Attr("id"),
                         Name = el.Attr("name"),
                         EscalationCode = el.Attr("escalationCode"),
-                        StructureRef = el.Attr("structureRef") is string sref && idMap.TryGetValue(sref, out var idef) && idef is ItemDefinition idf ? idf : null
+                        StructureRef = new XmlQualifiedName(el.Attr("structureRef"), el.Attr("ns") ?? "")
                     };
                     defs.RootElements.Add(esc); if (esc.Id is not null) idMap[esc.Id] = esc;
                     break;
 
                 case "interface":
 
-                    var ops = new List<Operation>();    
+                    var ops = new List<Operation>();
                     foreach (var op in el.Elements("operation".B()))
                         ops.Add(new Operation(
                             Name: op.Attr("name") ?? "",
                             InMessageRef: null
                         )
                         {
-                           Id = op.Attr("id") ?? ""
+                            Id = op.Attr("id") ?? ""
                         });
-                    var i = new Interface(Name: el.Attr("name") ?? "",  ops)
+                    var i = new Interface(Name: el.Attr("name") ?? "", ops)
                     {
                         Id = el.Attr("id") ?? "",
-                        ImplementationRef = el.Attr("implementationRef") ?? ""
+                        ImplementationRef = new XmlQualifiedName(el.Attr("implementationRef") ?? "", el.Attr("ns") ?? "")
                     };
 
                     defs.RootElements.Add(i); if (i.Id is not null) idMap[i.Id] = i;
@@ -456,7 +459,7 @@ public class BpmnParser
                     break;
 
                 case "process":
-                    var p = new Process { Id = el.Attr("id"), Name = el.Attr("name"), IsExecutable = el.AttrBool("isExecutable") ?? false, Properties = [], Resources = [] };
+                    var p = new Process { Id = el.Attr("id"), Name = el.Attr("name"), IsExecutable = el.AttrBool("isExecutable") ?? false };
                     defs.RootElements.Add(p); if (p.Id is not null) idMap[p.Id] = p;
                     break;
 
@@ -471,13 +474,13 @@ public class BpmnParser
                     break;
 
                 case "relationship":
-                    var rel = new Relationship(
-                        Type: el.Attr("type") ?? "",
-                        Direction: RelationshipDirection.None,
-                        Sources: [],
-                        Targets: [],
-                        Id: el.Attr("id")
-                    );
+                    var rel = new Relationship {
+                        Type = el.Attr("type") ?? "",
+                        Direction = RelationshipDirection.None,
+                        Sources = [],
+                        Targets = [],
+                        Id = el.Attr("id")
+                    };
                     defs.Relationships.Add(rel); if (rel.Id is not null) idMap[rel.Id] = rel;
                     break;
 
@@ -497,9 +500,8 @@ public class BpmnParser
             {
                 case "message":
                     var msg = (Message)idMap[el.Attr("id")!];
-                    var iref = el.Attr("itemRef");
-                    if (iref is not null && idMap.TryGetValue(iref, out var ide) && ide is ItemDefinition idf)
-                        idMap[msg.Id!] = msg with { ItemRef = idf };
+                    var iref = new XmlQualifiedName(el.Attr("itemRef"), el.Attr("ns") ?? "");
+                    idMap[msg.Id!] = msg with { ItemRef = iref };
                     break;
 
                 case "interface":
@@ -507,15 +509,24 @@ public class BpmnParser
                     foreach (var opEl in el.Elements("operation".B()))
                     {
                         var op = iface.Operations.First(x => x.Id == opEl.Attr("id"));
-                        var inMsg = (opEl.Attr("inMessageRef") is string inRef && idMap.TryGetValue(inRef, out var im) && im is Message inMsgVal) ? inMsgVal : op.InMessageRef;
-                        var outMsg = (opEl.Attr("outMessageRef") is string outRef && idMap.TryGetValue(outRef, out var om) && om is Message outMsgVal) ? outMsgVal : op.OutMessageRef;
+                        var inMsg = op.InMessageRef;
+                        if (opEl.Attr("inMessageRef") is string inRef)
+                        {
+                            inMsg = new XmlQualifiedName(inRef, null);
+                        }
+
+                        var outMsg = op.OutMessageRef;
+                        if (opEl.Attr("outMessageRef") is string outRef)
+                        {
+                            outMsg = new XmlQualifiedName(outRef, null);
+                        }
                         var errorRefs = op.ErrorRefs.ToList();
                         foreach (var er in opEl.Elements("errorRef".B()))
-                            if ((string?)er is string eid && idMap.TryGetValue(eid, out var e) && e is Error err && !errorRefs.Contains(err)) errorRefs.Add(err);
+                            if ((string?)er is string eid && idMap.TryGetValue(eid, out var e) && e is Error err && !errorRefs.Contains(new XmlQualifiedName(eid, null))) errorRefs.Add(new XmlQualifiedName(eid, null));
                         // Replace the operation in the list with a new instance with updated properties
                         var updatedOp = op with
                         {
-                            ImplementationRef = opEl.Attr("implementationRef"),
+                            ImplementationRef = new XmlQualifiedName(opEl.Attr("implementationRef"), null),
                             InMessageRef = inMsg,
                             OutMessageRef = outMsg,
                             ErrorRefs = errorRefs
@@ -537,16 +548,15 @@ public class BpmnParser
                             var ls = new LaneSet { Id = child.Attr("id"), Name = child.Attr("name") };
                             foreach (var ln in child.Elements("lane".B()))
                             {
-                                var lane = new Lane(
-                                    Name: ln.Attr("name") ?? "",
-                                    FlowNodeRefs: [],
-                                    ChildLaneSet: null,
-                                    PartitionElement: null,
-                                    PartitionElementRef: null
-                                )
-                                { Id = ln.Attr("id") };
+                                var lane = new Lane { 
+                                    Name = ln.Attr("name") ?? "",
+                                    Id = ln.Attr("id"),
+                                    ChildLaneSet = new LaneSet { Id = ln.Attr("childLaneSet") ?? null },
+                                    PartitionElement =   null,
+                                    PartitionElementRef = new XmlQualifiedName(ln.Attr("partitionElementRef") ?? null ),
+                                };
                                 foreach (var fnr in ln.Elements("flowNodeRef".B()))
-                                    if ((string?)fnr is string id && idMap.TryGetValue(id, out var fn) && fn is FlowNode fnode) lane.FlowNodeRefs.Add(fnode);
+                                    if ((string?)fnr is string id && idMap.TryGetValue(id, out var fn) && fn is FlowNode fnode) lane.FlowNodeRefs.Add(fnode.Id);
                                 ls.Lanes.Add(lane);
                             }
                             p.LaneSets.Add(ls);
@@ -556,6 +566,70 @@ public class BpmnParser
                         var fe = ReadFlowElement(child, idMap);
                         if (fe != null)
                             p.FlowElements.Add(fe);
+
+                        // Additive: parse data-related elements that are flow-scoped but not handled by ReadFlowElement
+                        if (child.Name.LocalName == "dataObject" && child.Name.Namespace == bpmn)
+                        {
+                            var dobj = new DataObject { Id = child.Attr("id"), Name = child.Attr("name"), IsCollection = child.AttrBool("isCollection") == true };
+                            if (dobj.Id is not null) idMap[dobj.Id] = dobj;
+                            p.FlowElements.Add(dobj);
+                        }
+                        else if (child.Name.LocalName == "dataObjectReference" && child.Name.Namespace == bpmn)
+                        {
+                            var refId = child.Attr("dataObjectRef");
+                            var itemSubjectRef = new XmlQualifiedName( child.Attr("itemSubjectRef"), null);
+                            var dataState = new DataState { Name = child.Attr("dataState") };
+                            var dref =  new DataObjectReference { Id = child.Attr("id"), DataObjectRef = refId, ItemSubjectRef = itemSubjectRef, DataState = dataState } ;
+                            if (dref is not null && dref.Id is not null) { idMap[dref.Id] = dref; p.FlowElements.Add(dref); }
+                        }
+                        else if (child.Name.LocalName == "dataStore" && child.Name.Namespace == bpmn)
+                        {
+                            var itemSubjectRef = new XmlQualifiedName(child.Attr("itemSubjectRef"), null);
+                            var dataState = new DataState { Name = child.Attr("dataState") };
+                            var isUnlimited = child.AttrBool("isUnlimited") ?? false;
+                            var ds = new DataStore() { Id = child.Attr("id") , Name = child.Attr("name") ?? "",
+                                IsUnlimited = isUnlimited,
+                                Capacity = child.Attr("capacity"),
+                                DataState = dataState, ItemSubjectRef = itemSubjectRef};
+                            if (ds.Id is not null) idMap[ds.Id] = ds; // do not add to FlowElements (not a FlowElement)
+                        }
+                        else if (child.Name.LocalName == "dataStoreReference" && child.Name.Namespace == bpmn)
+                        {
+                            var refId = child.QualifiedName("dataStoreRef");
+                            var itemSubjectRef = child.QualifiedName("itemSubjectRef");
+                            var dsr =  new DataStoreReference() { Id = child.Attr("id"), DataStoreRef = refId, ItemSubjectRef = itemSubjectRef } ;
+                             idMap[dsr.Id] = dsr; p.FlowElements.Add(dsr);
+                        }
+
+                        // Data associations at process scope activities
+                        if (fe is Activity actRoot)
+                        {
+                            var inAssocs = new List<DataInputAssociation>();
+                            foreach (var dia in child.Elements("dataInputAssociation".B()))
+                            {
+                                var sources = new List<string>();
+                                foreach (var sr in dia.Elements("sourceRef".B()))
+                                    if (!string.IsNullOrWhiteSpace(sr.Value)) sources.Add(sr.Value);
+                                var targetRef = dia.Element("targetRef".B())?.Value;
+                                inAssocs.Add(new DataInputAssociation { SourceRefs = sources, TargetRef = targetRef });
+                            }
+                            var outAssocs = new List<DataOutputAssociation>();
+                            foreach (var doa in child.Elements("dataOutputAssociation".B()))
+                            {
+                                var sourceRefs = new List<string>();
+                                foreach (var sr in doa.Elements("sourceRef".B()))
+                                    if (!string.IsNullOrWhiteSpace(sr.Value)) sourceRefs.Add(sr.Value);
+                                var targetRef = doa.Element("targetRef".B())?.Value;
+                                    outAssocs.Add(new DataOutputAssociation { SourceRefs = sourceRefs, TargetRef = targetRef });
+                            }
+                            if (inAssocs.Count > 0 || outAssocs.Count > 0)
+                            {
+                                var updated = actRoot with {  DataInputAssociations = inAssocs, DataOutputAssociations = outAssocs };
+                                // replace in FlowElements
+                                p.FlowElements[p.FlowElements.Count - 1] = updated;
+                                if (updated.Id is not null) idMap[updated.Id] = updated;
+                            }
+                        }
                     }
                     break;
 
@@ -566,33 +640,24 @@ public class BpmnParser
                         switch (child.Name.LocalName)
                         {
                             case "participant":
-                                var part = new Participant(
-                                    Name: child.Attr("name") ?? "",
-                                    ProcessRef: null,
-                                    InterfaceRefs: [],
-                                    EndPointRefs: [],
-                                    ParticipantMultiplicity: null,
-                                    PartnerRoleRef: null,
-                                    PartnerEntityRef: null
-                                )
-                                { Id = child.Attr("id") };
-                                if (child.Attr("processRef") is string pref && idMap.TryGetValue(pref, out var pe) && pe is Process pr)
-                                    part = part with { ProcessRef = pr };
+                                var part = new Participant { 
+                                    Name = child.Attr("name") ?? "",
+                                    Id = child.Attr("id"),
+                                    ProcessRef =  child.QualifiedName("processRef"),
+                                    EndPointRefs = child.QualifiedNames("endPointRefs"),
+                                    InterfaceRefs = child.QualifiedNames("interfaceRefs"),
+                                };
                                 c.Participants.Add(part);
                                 break;
 
                             // Replace the instantiation of MessageFlow in the "collaboration" case with the required constructor arguments
                             case "messageFlow":
-                                var mf = new MessageFlow(
-                                    Name: child.Attr("name"),
-                                    SourceRef: null!,
-                                    TargetRef: null!,
-                                    MessageRef: null
-                                )
-                                { Id = child.Attr("id") };
-                                if (child.Attr("sourceRef") is string sref && idMap.TryGetValue(sref, out var se) && se is InteractionNode src) mf = mf with { SourceRef = src };
-                                if (child.Attr("targetRef") is string tref && idMap.TryGetValue(tref, out var te) && te is InteractionNode tgt) mf = mf with { TargetRef = tgt };
-                                if (child.Attr("messageRef") is string mref && idMap.TryGetValue(mref, out var me) && me is Message m) mf = mf with { MessageRef = m };
+                                var mf = new MessageFlow { 
+                                    Name= child.Attr("name"),
+                                    SourceRef = child.QualifiedName("sourceRef"),
+                                    TargetRef = child.QualifiedName("targetRef"),
+                                    MessageRef = child.QualifiedName("messageRef"),
+                                    Id = child.Attr("id") };
                                 c.MessageFlows.Add(mf);
                                 break;
                         }
@@ -605,17 +670,14 @@ public class BpmnParser
         foreach (var xdiag in root.Elements("BPMNDiagram".BPMNDI()))
         {
             var planeEl = xdiag.Element("BPMNPlane".BPMNDI());
-            if (planeEl is null) continue;
 
-            var planeBpmnRef = planeEl.Attr("bpmnElement");
-            var planeRef = (planeBpmnRef is not null && idMap.TryGetValue(planeBpmnRef, out var be)) ? be : null;
-            var plane = new BPMNPlane(planeRef) { Id = planeEl.Attr("id") };
+            var planeBpmn = planeEl.QualifiedName("bpmnElement");
+            var plane = new BpmnPlane() { Id = planeEl.Attr("id"), BpmnElement = planeBpmn };
 
             foreach (var s in planeEl.Elements("BPMNShape".BPMNDI()))
             {
-                var bRef = s.Attr("bpmnElement");
-                var elRef = (bRef is not null && idMap.TryGetValue(bRef, out var bel)) ? bel : null;
-                var shape = new BPMNShape(elRef) { Id = s.Attr("id") };
+                var bRef = s.QualifiedName("bpmnElement");
+                var shape = new BpmnShape(){ Id = s.Attr("id"),  BpmnElement = bRef };
                 var b = s.Element("Bounds".DC());
                 if (b is not null)
                     shape.Bounds = new Bounds(
@@ -623,27 +685,89 @@ public class BpmnParser
                         double.Parse(b.Attr("y") ?? "0"),
                         double.Parse(b.Attr("width") ?? "0"),
                         double.Parse(b.Attr("height") ?? "0"));
-                plane.Shapes.Add(shape);
+                plane.DiagramElements.Add(shape);
             }
 
             foreach (var e in planeEl.Elements("BPMNEdge".BPMNDI()))
             {
-                var bRef = e.Attr("bpmnElement");
-                var elRef = (bRef is not null && idMap.TryGetValue(bRef, out var bel)) ? bel :null;
-                var edge = new BPMNEdge(elRef, null) { Id = e.Attr("id") };
+                var bpmnElement = e.QualifiedName("bpmnElement");
+                var sourceElement = e.QualifiedName("sourceElement");
+                var targetElement = e.QualifiedName("targetElement");
+               
+                var label = new BpmnLabel { LabelStyle = e.QualifiedName("labelStyle")  };
+                var b = e.Element("Bounds".DC());
+                if (b is not null)
+                    label.Bounds = new Bounds(
+                        double.Parse(b.Attr("x") ?? "0"),
+                        double.Parse(b.Attr("y") ?? "0"),
+                        double.Parse(b.Attr("width") ?? "0"),
+                        double.Parse(b.Attr("height") ?? "0"));
+                var edge = new BpmnEdge { Id = e.Attr("id"),  BpmnElement = bpmnElement, BpmnLabel = label };
                 foreach (var wp in e.Elements("waypoint".DI()))
-                    edge.WayPoints.Add(new Point(double.Parse(wp.Attr("x") ?? "0"), double.Parse(wp.Attr("y") ?? "0")));
-                plane.Edges.Add(edge);
+                    edge.Waypoints.Add(new Point(double.Parse(wp.Attr("x") ?? "0"), double.Parse(wp.Attr("y") ?? "0")));
+
+                plane.DiagramElements.Add(edge);
+            }
+           var bpmnLabelStyles = new List<BpmnLabelStyle>();
+            foreach (var s in xdiag.Elements("BPMNLabelStyle".BPMNDI()))
+            {
+                var bpmnLabelStyle = new BpmnLabelStyle() { Id = s.Attr("id") };
+                var b = s.Element("Bounds".DC());
+                if (b is not null)
+                    bpmnLabelStyle.Font = new Font(b.Attr("name"),
+                        b.AttrDouble("size"),
+                        b.AttrBool("isBold").Value,
+                        b.AttrBool("isItalic").Value,
+                        b.AttrBool("isUnderline").Value,
+                        b.AttrBool("isStrikeThrough").Value
+                        );
+                bpmnLabelStyles.Add(bpmnLabelStyle);
             }
 
-            defs.Diagrams.Add(new BPMNDiagram(
-                Name: xdiag.Attr("name") ?? "",
-                BPMNPlane: plane,
-                BPMNLabelStyles: []
-            ) { Id = xdiag.Attr("id") });
+            defs.BpmnDiagrams.Add(new BpmnDiagram { 
+                Name= xdiag.Attr("name") ?? "",
+                BpmnPlane = plane,
+                BpmnLabelStyles = bpmnLabelStyles,
+                Id = xdiag.Attr("id") });
         }
 
+        // Forward reference fix-up (sequenceFlow source/target, boundaryEvent attachment)
+        ResolveForwardReferences(defs, idMap);
+
         return defs;
+    }
+
+    private static void ResolveForwardReferences(Definitions defs, Dictionary<string, BaseElement> idMap)
+    {
+        foreach (var proc in defs.RootElements.OfType<Process>())
+        {
+            for (int i = 0; i < proc.FlowElements.Count; i++)
+            {
+                switch (proc.FlowElements[i])
+                {
+                    case SequenceFlow sf when sf.Id is not null && _rawSequenceFlowRefs.TryGetValue(sf.Id, out var raw):
+                        var updated = sf;
+                        if (sf.SourceRef == null && raw.SourceRef is string sId && idMap.TryGetValue(sId, out var sEl) && sEl is FlowNode sNode)
+                            updated = updated with { SourceRef = sNode.Name };
+                        if (sf.TargetRef == null && raw.TargetRef is string tId && idMap.TryGetValue(tId, out var tEl) && tEl is FlowNode tNode)
+                            updated = updated with { TargetRef = tNode.Name };
+                        if (!ReferenceEquals(updated, sf))
+                        {
+                            proc.FlowElements[i] = updated;
+                            idMap[sf.Id] = updated;
+                        }
+                        break;
+                    case BoundaryEvent be when be.Id is not null && be.AttachedToRef == null && _rawBoundaryAttachRefs.TryGetValue(be.Id, out var attId) && attId is not null:
+                        if (idMap.TryGetValue(attId, out var aEl) && aEl is Activity act)
+                        {
+                            var updatedBe = be with { AttachedToRef = new XmlQualifiedName( act.Name) };
+                            proc.FlowElements[i] = updatedBe;
+                            idMap[be.Id] = updatedBe;
+                        }
+                        break;
+                }
+            }
+        }
     }
 
     static InputOutputSpecification ReadIOSpec(XElement x)
@@ -667,14 +791,15 @@ public class BpmnParser
         {
             var s = new InputSet { Id = set.Attr("id") };
             foreach (var r in set.Elements("dataInputRef".B()))
-                if ((string?)r is string id && inMap.TryGetValue(id, out var d)) s.DataInputRefs.Add(d);
+                if ((string?)r is string id && inMap.TryGetValue(id, out var d)) s.DataInputRefs.Add(d.
+                    Id);
             io.InputSets.Add(s);
         }
         foreach (var set in x.Elements("outputSet".B()))
         {
             var s = new OutputSet { Id = set.Attr("id") };
             foreach (var r in set.Elements("dataOutputRef".B()))
-                if ((string?)r is string id && outMap.TryGetValue(id, out var d)) s.DataOutputRefs.Add(d);
+                if ((string?)r is string id && outMap.TryGetValue(id, out var d)) s.DataOutputRefs.AddRange(d.Name);
             io.OutputSets.Add(s);
         }
         return io;
@@ -685,37 +810,48 @@ public class BpmnParser
         FlowElement? fe = x.Name.LocalName switch
         {
             // Activities / Tasks
-            "task" => new Task { Id = x.Attr("id"), Name = x.Attr("name") },
-            "serviceTask" => new ServiceTask { Id = x.Attr("id"), Name = x.Attr("name"), Implementation = x.Attr("Implementation") },
+            "task" => new Bpmn.Task { Id = x.Attr("id"), Name = x.Attr("name"), AnyAttributes = [
+                    x.XmlAttribute("isForCompensation"),
+                    x.XmlAttribute("startQuantity"),
+                    x.XmlAttribute("completionQuantity")
+                ]
+            },
+            // ServiceTask: correct BPMN attribute is 'implementation' (lowercase)
+            "serviceTask" => new ServiceTask { Id = x.Attr("id"), Name = x.Attr("name"), Implementation = x.Attr("implementation") },
             "userTask" => new UserTask { Id = x.Attr("id"), Name = x.Attr("name") },
-            "scriptTask" => new ScriptTask(
-                x.Attr("scriptFormat") ?? "",
-                x.Element("script".B())?.Value ?? ""
-            )
-            {
-                Id = x.Attr("id"),
-                Name = x.Attr("name")
+            "scriptTask" => new ScriptTask { 
+                ScriptFormat = x.Attr("scriptFormat") ?? "",
+                Script = new Script(x.Element("script".B()) is XElement scriptEl && !string.IsNullOrEmpty(scriptEl.Value)
+                        ? new[] { scriptEl.Value }
+                        : Array.Empty<string>(), x.XmlElement("any".B())
+                )
             },
             "manualTask" => new ManualTask { Id = x.Attr("id"), Name = x.Attr("name") },
             "businessRuleTask" => new BusinessRuleTask { Id = x.Attr("id"), Name = x.Attr("name") },
             "sendTask" => new SendTask { Id = x.Attr("id"), Name = x.Attr("name") },
-            "receiveTask" => new ReceiveTask { Id = x.Attr("id"), Name = x.Attr("name"), Implementation = x.Attr("Implementation"), Instantiate = x.AttrBool("instantiate") ?? false },
+            "receiveTask" => new ReceiveTask { Id = x.Attr("id"), Name = x.Attr("name"), Implementation = x.Attr("implementation"), Instantiate = x.AttrBool("instantiate") ?? false },
             "callActivity" => new CallActivity
             {
                 Id = x.Attr("id"),
-                // CalledElementRef must be a CallableElement, not a string.
-                // We need to resolve the reference from idMap if possible, otherwise leave it null.
-                CalledElementRef = x.Attr("calledElementRef") is string cref && idMap.TryGetValue(cref, out var ce) && ce is CallableElement callable ? callable : null
+                // Normalize both attributes: prefer calledElementRef, fallback calledElement
+                CalledElement = x.QualifiedName("calledElement") 
             },
 
             // Subprocess
-            "subProcess" => new SubProcess { Id = x.Attr("id"), TriggeredByEvent = x.AttrBool("triggeredByEvent") ?? false },
+            "subProcess" => new SubProcess
+            {
+                Id = x.Attr("id"),
+                TriggeredByEvent = x.AttrBool("triggeredByEvent") ?? false,
+                LoopCharacteristics = new MultiInstanceLoopCharacteristics { Id = x.Attr("multiInstanceLoopCharacteristics".B()) }
+            },
             "transaction" => new Transaction(x.Attr("method") ?? string.Empty) { Id = x.Attr("id") },
-            "adHocSubProcess" => new AdHocSubProcess(
-                CompletionCondition: null!,
-                Ordering: default,
-                CancelRemainingInstances: false
-            ) { Id = x.Attr("id") },
+            "adHocSubProcess" => new AdHocSubProcess()
+            {
+                Id = x.Attr("id"),
+                CompletionCondition = null!,
+                Ordering = default,
+                CancelRemainingInstances = false
+            },
 
             // Gateways
             "exclusiveGateway" => new ExclusiveGateway { Id = x.Attr("id"), Name = x.Attr("name") },
@@ -725,37 +861,21 @@ public class BpmnParser
             "eventBasedGateway" => new EventBasedGateway { Id = x.Attr("id"), Name = x.Attr("name"), Instantiate = x.AttrBool("instantiate") ?? false },
 
             // Events
-            "startEvent" => new StartEvent { Id = x.Attr("id"), IsInterrupting = x.AttrBool("isInterrupting") ?? false, Name = "startEvent" },
-            "endEvent" => new EndEvent { Id = x.Attr("id"), Name = "endEvent" },
+            "startEvent" => new StartEvent { Id = x.Attr("id"), IsInterrupting = x.AttrBool("isInterrupting") ?? false, Name = x.Attr("name") ?? "startEvent" },
+            "endEvent" => new EndEvent { Id = x.Attr("id"), Name = x.Attr("name") ?? "endEvent" },
             "intermediateCatchEvent" => new IntermediateCatchEvent { Id = x.Attr("id") },
             "intermediateThrowEvent" => new IntermediateThrowEvent { Id = x.Attr("id") },
-            "boundaryEvent" => new BoundaryEvent(
-                x.Attr("attachedToRef") is string att && idMap.TryGetValue(att, out var bae) && bae is Activity act ? act : null!,
-                x.AttrBool("cancelActivity") ?? false
-            )
-            {
+            "boundaryEvent" => new BoundaryEvent { 
+               AttachedToRef = new XmlQualifiedName( x.Attr("attachedToRef"), null),
+               CancelActivity = x.AttrBool("cancelActivity").Value,
                 Id = x.Attr("id"),
                 Name = x.Attr("name")
             },
 
             // SequenceFlow / Artifacts
-            "sequenceFlow" => new SequenceFlow(
-                SourceRef: null!, // Will be set later in the switch(fe) block below if possible
-                TargetRef: null!, // Will be set later in the switch(fe) block below if possible
-                ConditionExpression: null,
-                IsImmediate: false
-            )
-            { Id = x.Attr("id") },
+            "sequenceFlow" => new SequenceFlow()
+            { Id = x.Attr("id"), Name = x.Attr("name")},
 
-            "textAnnotation" => new TextAnnotation(
-                x.Element("text".B())?.Value,
-                x.Attr("textFormat")
-            ) { Id = x.Attr("id") },
-            "association" => new Association(
-                SourceRef: null!, // Will be set later in the switch(fe) block below if possible
-                TargetRef: null!, // Will be set later in the switch(fe) block below if possible
-                Direction: AssociationDirection.None
-            ) { Id = x.Attr("id") },
 
             _ => null
         };
@@ -780,35 +900,154 @@ public class BpmnParser
                 break;
             case BoundaryEvent be:
                 var att = x.Attr("attachedToRef");
+                if (be.AttachedToRef == null && att is not null)
+                {
+                    // store raw for later resolution
+                    if (be.Id is not null) _rawBoundaryAttachRefs[be.Id] = att;
+                }
                 if (att is not null && idMap.TryGetValue(att, out var bae) && bae is FlowElement fo && fo is Activity act)
-                    be = be with {AttachedToRef = act};
+                    be = be with { AttachedToRef = new XmlQualifiedName(act.Id) };
                 foreach (var ed in x.Elements()) be.EventDefinitions.Add(ReadEventDefinition(ed, idMap));
                 break;
             case SubProcess sp:
                 foreach (var child in x.Elements())
                 {
+                    // Capture loop cardinality textual body if present (multiInstanceLoopCharacteristics)
+                    if (child.Name.LocalName == "multiInstanceLoopCharacteristics")
+                    {
+                        var loopCard = child.Element("loopCardinality".B())?.Value;
+                        var isSequential = child.AttrBool("isSequential") ?? false;
+                        var completionCondition = child.Element("completionCondition".B())?.Value;
+                        if (!string.IsNullOrWhiteSpace(loopCard))
+                        {
+                            // store multi-instance characteristics
+                            var miLoop = new MultiInstanceLoopCharacteristics {
+                                LoopCardinality = new FormalExpression { Text = [loopCard] },
+                                IsSequential= isSequential,
+                                Behavior = MultiInstanceFlowCondition.All,
+                                CompletionCondition = string.IsNullOrWhiteSpace(completionCondition) ? null : new FormalExpression { Text = [completionCondition] }
+                            };
+                            sp = sp with { LoopCharacteristics = miLoop };
+                        }
+                    }
+                    else if (child.Name.LocalName == "standardLoopCharacteristics")
+                    {
+                        var loopCond = child.Element("loopCondition".B())?.Value;
+                        var testBefore = child.AttrBool("testBefore") ?? false;
+                        var maxStr = child.Attr("loopMaximum");
+                        int? max = null;
+                        if (int.TryParse(maxStr, out var mv)) max = mv;
+                        if (!string.IsNullOrWhiteSpace(loopCond) || testBefore || max.HasValue)
+                        {
+                            var stdLoop = new StandardLoopCharacteristics();
+                            sp = sp with { LoopCharacteristics = stdLoop };
+                        }
+                    }
+                    // Data associations for activities inside subprocess
+                    if (child.Name.LocalName == "dataInputAssociation" || child.Name.LocalName == "dataOutputAssociation")
+                    {
+                        // handled below after activity creation
+                    }
                     var cfe = ReadFlowElement(child, idMap);
                     if (cfe is not null) sp.FlowElements.Add(cfe);
+                    if (cfe is Activity activity)
+                    {
+                        var inAssocs = new List<DataInputAssociation>();
+                        foreach (var dia in child.Elements("dataInputAssociation".B()))
+                        {
+                            var sources = new List<string>();
+                            foreach (var sr in dia.Elements("sourceRef".B()))
+                                if (!string.IsNullOrWhiteSpace(sr.Value)) sources.Add(sr.Value);
+                            var target = dia.Element("targetRef".B())?.Value;
+                            inAssocs.Add(new DataInputAssociation(sources, target));
+                        }
+                        var outAssocs = new List<DataOutputAssociation>();
+                        foreach (var doa in child.Elements("dataOutputAssociation".B()))
+                        {
+                            var sources = new List<string>();
+                            foreach (var sr in doa.Elements("sourceRef".B()))
+                                if (!string.IsNullOrWhiteSpace(sr.Value)) sources.Add(sr.Value);
+                            var target = doa.Element("targetRef".B())?.Value;
+                            outAssocs.Add(new DataOutputAssociation(sources, target));
+                        }
+                        if (inAssocs.Count > 0 || outAssocs.Count > 0)
+                        {
+                            var updatedAct = activity with { DataInputAssociations = inAssocs, DataOutputAssociations = outAssocs };
+                            sp.FlowElements[sp.FlowElements.Count - 1] = updatedAct;
+                            if (updatedAct.Id is not null) idMap[updatedAct.Id] = updatedAct;
+                        }
+                        foreach (var doa in child.Elements("artifact".B()))
+                        {
+                            Artifact ar = ReadArtifactElement(child, idMap);
+                            if (ar.Id is not null) idMap[ar.Id] = ar;
+                        }
+
+                        break;
+                    }
                 }
                 break;
             case SequenceFlow sf:
-                if (x.Attr("sourceRef") is string sref && idMap.TryGetValue(sref, out var s) && s is FlowNode sn)
-                    sf = sf with {SourceRef = sn};
-                if (x.Attr("targetRef") is string tref && idMap.TryGetValue(tref, out var t) && t is FlowNode tn)
-                    sf = sf with {TargetRef = tn};
+                var rawSource = x.Attr("sourceRef");
+                var rawTarget = x.Attr("targetRef");
+                if (sf.Id is not null) _rawSequenceFlowRefs[sf.Id] = (rawSource, rawTarget);
                 var cond = x.Element("conditionExpression".B());
                 if (cond is not null)
-                    sf = sf with {ConditionExpression = new FormalExpression {Body = cond.Value}};
-                break;
-            case Association a:
-                if (x.Attr("sourceRef") is string asrc && idMap.TryGetValue(asrc, out var sourceRef))
-                    a = a with {SourceRef = sourceRef};
-                if (x.Attr("targetRef") is string atgt && idMap.TryGetValue(atgt, out var targetRef))
-                    a = a with {TargetRef = targetRef};
+                    sf = sf with { ConditionExpression = new FormalExpression { Text = [cond.Value] },
+                        SourceRef = rawSource,
+                        TargetRef = rawTarget
+                    };
                 break;
         }
 
+        // Parse <incoming> / <outgoing> textual references for FlowNodes (tasks, events, gateways)
+        if (fe is FlowNode fn)
+        {
+            var incomingIds = x.Elements("incoming".B()).Select(e => e.Value).Where(v => !string.IsNullOrWhiteSpace(v)).ToList();
+            var outgoingIds = x.Elements("outgoing".B()).Select(e => e.Value).Where(v => !string.IsNullOrWhiteSpace(v)).ToList();
+            if (incomingIds.Count > 0 || outgoingIds.Count > 0)
+            {
+                var inFlowNames = new List<XmlQualifiedName>();
+                foreach (var id in incomingIds)
+                    inFlowNames.Add(new XmlQualifiedName (id));
+                var outFlowNames = new List<XmlQualifiedName>();
+                foreach (var id in outgoingIds)
+                    outFlowNames.Add(new XmlQualifiedName(id));
+                fe = fn with { Incomings = inFlowNames, Outgoings = outFlowNames };
+                if (fe.Id is not null) idMap[fe.Id] = fe; // refresh mapping with updated collections
+            }
+        }
+
         return fe;
+    }
+
+    static Artifact? ReadArtifactElement(XElement x, Dictionary<string, BaseElement> idMap)
+    {
+        Artifact? ar = x.Name.LocalName switch
+        {
+            "textAnnotation" => new TextAnnotation
+            {
+                Text = new TText { Text = new[] { x.Element("text".B())?.Value } },
+                TextFormat = x.Attr("textFormat"),
+                Id = x.Attr("id")
+            },
+
+            "association" => new Association
+            {
+                SourceRef = x.QualifiedName("sourceRef"),
+                TargetRef = x.QualifiedName("targetRef"),
+                AssociationDirection = Enum.TryParse<AssociationDirection>(x.Attr("associationDirection"), out var dir) ? dir : AssociationDirection.None,
+                Id = x.Attr("id")
+            },
+
+            "group" => new Group
+            {
+                Id = x.Attr("id"),
+                CategoryValueRef = x.QualifiedName("categoryValueRef")
+            },
+
+            _ => null
+        };
+        return ar;
     }
 
     static EventDefinition ReadEventDefinition(XElement x, Dictionary<string, BaseElement> idMap)
@@ -816,62 +1055,62 @@ public class BpmnParser
         {
             "timerEventDefinition" => new TimerEventDefinition
             {
-                TimeDate = x.Element("timeDate".B()) is XElement td ? new FormalExpression { Body = td.Value } : null,
-                TimeDuration = x.Element("timeDuration".B()) is XElement tdu ? new FormalExpression { Body = tdu.Value } : null,
-                TimeCycle = x.Element("timeCycle".B()) is XElement tc ? new FormalExpression { Body = tc.Value } : null,
+                TimeDate = x.Element("timeDate".B()) is XElement td ? new FormalExpression { Text = [td.Value] } : null,
+                TimeDuration = x.Element("timeDuration".B()) is XElement tdu ? new FormalExpression { Text = [tdu.Value] } : null,
+                TimeCycle = x.Element("timeCycle".B()) is XElement tc ? new FormalExpression { Text = [tc.Value] } : null,
             },
-            "messageEventDefinition" => new MessageEventDefinition { MessageRef = x.Attr("messageRef") is string mr && idMap.TryGetValue(mr, out var me) && me is Message m ? m : null },
-            "errorEventDefinition" => new ErrorEventDefinition { ErrorRef = x.Attr("errorRef") is string er && idMap.TryGetValue(er, out var ee) && ee is Error e ? e : null },
-            "escalationEventDefinition" => new EscalationEventDefinition { EscalationRef = x.Attr("escalationRef") is string er && idMap.TryGetValue(er, out var es) && es is Escalation esc ? esc : null },
+            "messageEventDefinition" => new MessageEventDefinition { MessageRef = x.QualifiedName("messageRef") },
+            "errorEventDefinition" => new ErrorEventDefinition { ErrorRef = x.QualifiedName("errorRef")  },
+            "escalationEventDefinition" => new EscalationEventDefinition { EscalationRef = x.QualifiedName("escalationRef") },
             "conditionalEventDefinition" => new ConditionalEventDefinition(
-                x.Element("condition".B()) is XElement c ? new FormalExpression { Body = c.Value } : null!
+                x.Element("condition".B()) is XElement c ? new FormalExpression { Text = [c.Value] } : null!
             ),
             "linkEventDefinition" => new LinkEventDefinition(
                 x.Attr("name") ?? string.Empty,
-                [],
-                null
+                x.QualifiedNames("source"),
+                x.QualifiedName("target")
             ),
-            "signalEventDefinition" => new SignalEventDefinition { SignalRef = x.Attr("signalRef") is string sr && idMap.TryGetValue(sr, out var s) && s is Signal sig ? sig : null },
+            "signalEventDefinition" => new SignalEventDefinition { SignalRef = x.QualifiedName("signalRef")  },
             "cancelEventDefinition" => new CancelEventDefinition(),
-            "compensateEventDefinition" => new CompensationEventDefinition { ActivityRef = x.Attr("activityRef") is string ar && idMap.TryGetValue(ar, out var a) && a is Activity act ? act : null },
+            "compensateEventDefinition" => new CompensateEventDefinition { ActivityRef = x.QualifiedName("activityRef") },
             "terminateEventDefinition" => new TerminateEventDefinition(),
             _ => null
         };
 
-    public static BpmnModel ToModel(Bpmn.Infrastructure.Definitions definitions)
+    public static BpmnModel ToModel(Definitions definitions)
     {
         if (definitions == null) throw new ArgumentNullException(nameof(definitions));
 
         var model = new BpmnModel
         {
-            ProcessId = definitions.Id ?? string.Empty,
+            ProcessId = string.Empty,
             Name = string.Empty,
             Events = new List<Event>(),
             Gateways = new List<Gateway>(),
             Subprocesses = new List<SubProcess>(),
             SequenceFlows = new List<SequenceFlow>(),
-            Tasks = new List<Task>(),
+            Tasks = new List<Bpmn.Task>(),
             DataObjects = new List<DataObject>(),
             DataObjectReferences = new List<DataObjectReference>(),
             DataStores = new List<DataStore>(),
             DataStoreReferences = new List<DataStoreReference>(),
             Properties = new List<Property>(),
-            ActivityIo = new List<Activity>(),
+            ActivityIo = [],
             Messages = new List<Message>(),
             Signals = new List<Signal>(),
             Errors = new List<Error>(),
             Escalations = new List<Escalation>(),
             Diagnostics = new List<string>(),
-            Shapes = new List<BPMNShape>(),
-            Edges = new List<BPMNEdge>(),
+            Shapes = new List<BpmnShape>(),
+            Edges = new List<BpmnEdge>(),
             Participants = new List<Participant>(),
             Lanes = new List<Lane>(),
             MessageFlows = new List<MessageFlow>(),
             TextAnnotations = new List<TextAnnotation>(),
             Associations = new List<Association>(),
             ProcessVariables = new Dictionary<string, object>(),
-            Activities = new List<object>(),
-            Definitions = new List<Definition>(),
+            Activities = new List<Activity>(),
+            //Definitions  = new List<Definitions>(),
             ProcessDefinitions = definitions
         };
 
@@ -884,16 +1123,16 @@ public class BpmnParser
                     ProcessProcess(process, model);
                     break;
                 case Message message:
-                    model.Messages.Add(message);
+                    model = model with { Messages = model.Messages.Append(message).ToList() };
                     break;
                 case Signal signal:
-                    model.Signals.Add(signal);
+                    model = model with { Signals = model.Signals.Append(signal).ToList() };
                     break;
                 case Error error:
-                    model.Errors.Add(error);
+                    model = model with { Errors = model.Errors.Append(error).ToList() };
                     break;
                 case Escalation escalation:
-                    model.Escalations.Add(escalation);
+                    model = model with { Escalations = model.Escalations.Append(escalation).ToList() };
                     break;
                 case Collaboration collaboration:
                     ProcessCollaboration(collaboration, model);
@@ -902,7 +1141,7 @@ public class BpmnParser
         }
 
         // Process Diagrams to extract shapes and edges
-        foreach (var diagram in definitions.Diagrams)
+        foreach (var diagram in definitions.BpmnDiagrams)
         {
             ProcessDiagram(diagram, model);
         }
@@ -926,7 +1165,7 @@ public class BpmnParser
         // Add process properties
         if (process.Properties != null)
         {
-            model.Properties.AddRange(process.Properties);
+            model = model with { Properties = model.Properties.Concat(process.Properties).ToList() };
         }
 
         // Add process lanes
@@ -936,7 +1175,7 @@ public class BpmnParser
             {
                 if (laneSet.Lanes != null)
                 {
-                    model.Lanes.AddRange(laneSet.Lanes);
+                    model = model with { Lanes = model.Lanes.Concat(laneSet.Lanes).ToList() };
                 }
             }
         }
@@ -948,40 +1187,35 @@ public class BpmnParser
             {
                 switch (flowElement)
                 {
-                    case Task task:
-                        model.Tasks.Add(task);
-                        model.ActivityIo.Add(task);
+                    case Bpmn.Task task:
+                        model = model with { Tasks = model.Tasks.Append(task).ToList() };
+                        model = model with { ActivityIo = model.ActivityIo.Append(task.IoSpecification).ToList() };
                         break;
                     case Event eventElement:
-                        model.Events.Add(eventElement);
+                        model = model with { Events = model.Events.Append(eventElement).ToList() };
                         break;
                     case Gateway gateway:
-                        model.Gateways.Add(gateway);
+                        model = model with { Gateways = model.Gateways.Append(gateway).ToList() };
                         break;
                     case SequenceFlow sequenceFlow:
-                        model.SequenceFlows.Add(sequenceFlow);
+                        model = model with { SequenceFlows = model.SequenceFlows.Append(sequenceFlow).ToList() };
                         break;
                     case SubProcess subProcess:
-                        model.Subprocesses.Add(subProcess);
-                        model.ActivityIo.Add(subProcess);
+                        model = model with { Subprocesses = model.Subprocesses.Append(subProcess).ToList() };
+                        model = model with { ActivityIo = model.ActivityIo.Append(subProcess.IoSpecification).ToList() };
                         break;
                     case DataObject dataObject:
-                        model.DataObjects.Add(dataObject);
+                        model = model with { DataObjects = model.DataObjects.Append(dataObject).ToList() };
                         break;
                     case DataObjectReference dataObjectRef:
-                        model.DataObjectReferences.Add(dataObjectRef);
+                        model = model with { DataObjectReferences = model.DataObjectReferences.Append(dataObjectRef).ToList() };
                         break;
                     case DataStoreReference dataStoreRef:
-                        model.DataStoreReferences.Add(dataStoreRef);
-                        break;
-                    case TextAnnotation textAnnotation:
-                        model.TextAnnotations.Add(textAnnotation);
-                        break;
-                    case Association association:
-                        model.Associations.Add(association);
+                        model = model with { DataStoreReferences = model.DataStoreReferences.Append(dataStoreRef).ToList() };
                         break;
                 }
             }
+            
         }
 
         // Process artifacts
@@ -992,10 +1226,13 @@ public class BpmnParser
                 switch (artifact)
                 {
                     case TextAnnotation textAnnotation:
-                        model.TextAnnotations.Add(textAnnotation);
+                        model = model with { TextAnnotations = model.TextAnnotations.Append(textAnnotation).ToList() };
                         break;
                     case Association association:
-                        model.Associations.Add(association);
+                        model = model with { Associations = model.Associations.Append(association).ToList() };
+                        break;
+                    case Group group:
+                        model = model with { Groups = model.Groups.Append(group).ToList() };
                         break;
                 }
             }
@@ -1007,13 +1244,13 @@ public class BpmnParser
         // Add participants
         if (collaboration.Participants != null)
         {
-            model.Participants.AddRange(collaboration.Participants);
+            model = model with { Participants = model.Participants.Concat(collaboration.Participants).ToList() };
         }
 
         // Add message flows
         if (collaboration.MessageFlows != null)
         {
-            model.MessageFlows.AddRange(collaboration.MessageFlows);
+            model = model with { MessageFlows = model.MessageFlows.Concat(collaboration.MessageFlows).ToList() };
         }
 
         // Add conversations (if any artifacts)
@@ -1024,26 +1261,26 @@ public class BpmnParser
                 switch (artifact)
                 {
                     case TextAnnotation textAnnotation:
-                        model.TextAnnotations.Add(textAnnotation);
+                        model = model with { TextAnnotations = model.TextAnnotations.Append(textAnnotation).ToList() };
                         break;
                     case Association association:
-                        model.Associations.Add(association);
+                        model = model with { Associations = model.Associations.Append(association).ToList() };
                         break;
                 }
             }
         }
     }
 
-    private static void ProcessDiagram(BPMNDiagram diagram, BpmnModel model)
+    private static void ProcessDiagram(BpmnDiagram diagram, BpmnModel model)
     {
-        if (diagram.BPMNPlane?.Shapes != null)
+        if (diagram.BpmnPlane?.DiagramElements.OfType<BpmnShape>().ToList() != null)
         {
-            model.Shapes.AddRange(diagram.BPMNPlane.Shapes);
+            model = model with { Shapes = model.Shapes.Concat(diagram.BpmnPlane?.DiagramElements.OfType<BpmnShape>().ToList()).ToList() };
         }
 
-        if (diagram.BPMNPlane?.Edges != null)
+        if (diagram.BpmnPlane?.DiagramElements.OfType<BpmnEdge>().ToList() != null)
         {
-            model.Edges.AddRange(diagram.BPMNPlane.Edges);
+            model = model with { Edges = model.Edges.Concat(diagram.BpmnPlane?.DiagramElements.OfType<BpmnEdge>().ToList()).ToList() };
         }
     }
 

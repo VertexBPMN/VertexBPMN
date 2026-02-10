@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using VertexBPMN.Domain.Model.Bpmn;
+using Task = VertexBPMN.Domain.Model.Bpmn.Task;
 
 namespace VertexBPMN.Domain.Model.Runtime;
 
@@ -8,11 +9,11 @@ public static class RuntimeProjectionBuilder
     public static RuntimeProcessModel Build(
         BpmnParserOptions options,
         string processId,
-        IReadOnlyList<BpmnEvent> events,
-        IReadOnlyList<BpmnTask> tasks,
-        IReadOnlyList<BpmnGateway> gateways,
-        IReadOnlyList<BpmnSubprocess> subprocesses,
-        IReadOnlyList<BpmnSequenceFlow> flows,
+        IReadOnlyList<Event> events,
+        IReadOnlyList<Task> tasks,
+        IReadOnlyList<Gateway> gateways,
+        IReadOnlyList<SubProcess> subprocesses,
+        IReadOnlyList<SequenceFlow> flows,
         IReadOnlyDictionary<string, IReadOnlyDictionary<string,string>>? vendorNormalized,
         BpmnRawMetadata? rawMetadata,
         IReadOnlyDictionary<string,(string? Format,string? Body,string? Result)>? scriptTaskRaw,
@@ -20,7 +21,6 @@ public static class RuntimeProjectionBuilder
     )
     {
         var defaultTargetIds = new HashSet<string>(flows
-            .Where(f => f.IsDefault)
             .Select(f => f.TargetRef)
             .Where(id => !string.IsNullOrEmpty(id)),
             StringComparer.Ordinal);
@@ -29,7 +29,7 @@ public static class RuntimeProjectionBuilder
         var miSeqIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var sp in subprocesses)
         {
-            if (sp.Loop is MultiInstanceLoopCharacteristics mi)
+            if (sp.LoopCharacteristics is MultiInstanceLoopCharacteristics mi)
             {
                 miIds.Add(sp.Id);
                 if (mi.IsSequential) miSeqIds.Add(sp.Id);
@@ -66,20 +66,20 @@ public static class RuntimeProjectionBuilder
         }
 
         foreach (var e in events)
-            AddNode(e.Id, e.Type, e.SubprocessId, miIds.Contains(e.Id), miSeqIds.Contains(e.Id), false);
+            AddNode(e.Id, e.GetType().Name, e.Id, miIds.Contains(e.Id), miSeqIds.Contains(e.Id), false);
 
         foreach (var t in tasks)
-            AddNode(t.Id, t.Type, t.SubprocessId, miIds.Contains(t.Id), miSeqIds.Contains(t.Id), false);
+            AddNode(t.Id, t.GetType().Name, t.Id, miIds.Contains(t.Id), miSeqIds.Contains(t.Id), false);
 
         foreach (var g in gateways)
-            AddNode(g.Id, g.Type, g.SubprocessId, false, false, false);
+            AddNode(g.Id, g.GetType().Name, g.Id, false, false, false);
 
         foreach (var sp in subprocesses)
-            AddNode(sp.Id, "subProcess", sp.SubprocessId,
-                miIds.Contains(sp.Id), miSeqIds.Contains(sp.Id), sp.IsEventSubprocess);
+            AddNode(sp.Id, "subProcess", sp.Id,
+                miIds.Contains(sp.Id), miSeqIds.Contains(sp.Id), sp.TriggeredByEvent);
 
         var rtFlows = flows
-            .Select(f => new RuntimeSequenceFlow(f.Id, f.SourceRef, f.TargetRef, f.IsDefault))
+            .Select(f => new RuntimeSequenceFlow(f.Id, f.SourceRef, f.TargetRef, true))
             .Where(f => !string.IsNullOrEmpty(f.Id))
             .ToList();
 

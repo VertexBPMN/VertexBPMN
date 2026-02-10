@@ -105,28 +105,20 @@ if (moduleOptions.Swagger || opMode is OperationalMode.Development or Operationa
 	builder.Services.AddSwaggerGen(options =>
 	{
 		// Add JWT Bearer security definition
-		options.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+		var securityScheme = new Microsoft.OpenApi.OpenApiSecurityScheme
 		{
 			Description = "JWT Authorization header using the Bearer scheme. Example: 'Authorization: Bearer {token}'",
 			Name = "Authorization",
-			In = Microsoft.OpenApi.Models.ParameterLocation.Header,
-			Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+			In = Microsoft.OpenApi.ParameterLocation.Header,
+			Type = Microsoft.OpenApi.SecuritySchemeType.Http,
 			Scheme = "bearer",
 			BearerFormat = "JWT"
-		});
-		options.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+		};
+		options.AddSecurityDefinition("Bearer", securityScheme);
+		var securityRef = new Microsoft.OpenApi.OpenApiSecuritySchemeReference("Bearer", null);
+		options.AddSecurityRequirement((_) => new Microsoft.OpenApi.OpenApiSecurityRequirement
 		{
-			{
-				new Microsoft.OpenApi.Models.OpenApiSecurityScheme
-				{
-					Reference = new Microsoft.OpenApi.Models.OpenApiReference
-					{
-						Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
-						Id = "Bearer"
-					}
-				},
-				Array.Empty<string>()
-			}
+			{ securityRef, new List<string>() }
 		});
 		
 		// Add Simulation API tag

@@ -1,5 +1,5 @@
 using System.Collections.Generic;
-using VertexBPMN.Domain.Model.Xml.Validation.Rules;
+using VertexBPMN.Domain.Model.Validation.Rules;
 
 namespace VertexBPMN.Domain.Model.Validation;
 

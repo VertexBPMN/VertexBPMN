@@ -12,7 +12,6 @@ using System.Xml.Schema;
 using VertexBPMN.Domain.Model.Bpmn;
 using VertexBPMN.Domain.Model.Extensions;
 using VertexBPMN.Domain.Model.Validation;
-using VertexBPMN.Domain.Model.Xml.Validation;
 using Xunit.Internal;
 using Definitions = VertexBPMN.Domain.Model.Bpmn.Definitions;
 using Group = VertexBPMN.Domain.Model.Bpmn.Group;
@@ -1285,10 +1284,10 @@ public class BpmnParser
     }
 
     //Regelbasierte semantische Validierung
-    private static List<ValidationDiagnostic> RunSemanticValidation(BpmnModel model, ILogger logger)
+    private static List<Validation.ValidationDiagnostic> RunSemanticValidation(BpmnModel model, ILogger logger)
     {
         var context = new SemanticValidationContext(model);
-        var diagnostics = new List<ValidationDiagnostic>();
+        var diagnostics = new List<Validation.ValidationDiagnostic>();
 
         foreach (var rule in SemanticRules.All)
         {
@@ -1303,7 +1302,7 @@ public class BpmnParser
             catch (Exception ex)
             {
                 logger.LogError(ex, "Semantic rule '{Rule}' failed", rule.GetType().Name);
-                diagnostics.Add(new ValidationDiagnostic("BPMN000", ValidationSeverity.Fatal,
+                diagnostics.Add(new Validation.ValidationDiagnostic("BPMN000", Validation.ValidationSeverity.Fatal,
                     $"Semantic rule '{rule.GetType().Name}' internal error: {ex.Message}", null, "Internal"));
             }
         }

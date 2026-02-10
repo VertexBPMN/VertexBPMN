@@ -55,3 +55,5 @@ Branch: upgrade-to-NET10
 Message: Upgrade to .NET 10.0
 
 31 files changed, 11535 insertions(+), 90 deletions(-)
+
+[408aca9](https://github.com/CrawfordSystems/VertexBPMN/commit/408aca9) - Fix performance tests for .NET 10 compatibility

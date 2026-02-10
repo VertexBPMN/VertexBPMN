@@ -1,6 +1,6 @@
 # VertexBPMN™
 
-**Eine moderne, hochperformante BPMN 2.0 & DMN 1.4 Engine für .NET 9.**
+**Eine moderne, hochperformante BPMN 2.0, DMN 1.4 & CMMN 1.1 Engine für .NET**
 
 ![Build Status](https://img.shields.io/github/actions/workflow/status/DEIN-NAME/VertexBPMN/build.yml?branch=main&style=for-the-badge)
 ![NuGet Version](https://img.shields.io/nuget/v/VertexBPMN.Core?style=for-the-badge)

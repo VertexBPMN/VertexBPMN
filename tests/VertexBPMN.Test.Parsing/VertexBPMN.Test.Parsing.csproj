@@ -38,18 +38,18 @@
     <Compile Include="Conformance\MIWGTestSuite2025Roundtrip.cs" />
   </ItemGroup>
 	<ItemGroup>
-		<PackageReference Include="MartinCostello.Logging.XUnit.v3" Version="0.6.0" />
-		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
-		<PackageReference Include="xunit.v3" Version="3.0.1" />
-		<PackageReference Include="Microsoft.Testing.Platform" Version="1.8.4" />
-		<PackageReference Include="Microsoft.Testing.Platform.MSBuild" Version="1.8.4" />
-		<PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" Version="17.14.2" />
-		<PackageReference Include="BenchmarkDotNet" Version="0.15.4" />
+		<PackageReference Include="MartinCostello.Logging.XUnit.v3" Version="0.7.0" />
+		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
+		<PackageReference Include="xunit.v3" Version="3.2.2" />
+		<PackageReference Include="Microsoft.Testing.Platform" Version="2.1.0" />
+		<PackageReference Include="Microsoft.Testing.Platform.MSBuild" Version="2.1.0" />
+		<PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.4.1" />
+		<PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
 		<PackageReference Include="coverlet.collector" Version="6.0.4">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
-		<PackageReference Include="Grpc.Net.Client" Version="2.71.0" />
+		<PackageReference Include="Grpc.Net.Client" Version="2.76.0" />
 		<PackageReference Include="Moq" Version="4.20.72" />
 		<PackageReference Include="Shouldly" Version="4.3.0" />
         <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.2" />

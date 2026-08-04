@@ -2,10 +2,8 @@
 using System.Xml;
 using System.Xml.Linq;
 using System.Xml.Schema;
-using DiffEngine;
 using Microsoft.Extensions.Logging;
 using VertexBPMN.Domain.Model.Bpmn.Validation;
-using Xunit.Internal;
 
 namespace VertexBPMN.Domain.Model.Bpmn;
 
@@ -335,7 +333,10 @@ public class BpmnParser
 
         if (result is not { IsValid: true })
         {
-           result.Errors.ForEach(diagnostics.Add);
+           foreach (var error in result.Errors)
+           {
+               diagnostics.Add(error);
+           }
         }
     }
     private void ValidateXmlAgainstSchemas(string xml, List<string> diagnostics)

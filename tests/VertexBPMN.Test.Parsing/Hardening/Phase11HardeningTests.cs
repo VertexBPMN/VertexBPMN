@@ -1,6 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Xml;
+using VertexBPMN.Domain.Exceptions;
 using VertexBPMN.Domain.Model.Bpmn;
 using VertexBPMN.Engine.Parsing;
 using VertexBPMN.Engine.Security;
@@ -130,7 +131,7 @@ public class Phase11HardeningTests
 """;
 
         // Should fail safely without exposing system files
-        var exception = await Assert.ThrowsAsync<XmlException>(
+        var exception = await Assert.ThrowsAsync<SecurityException>(
             () => parser.ParseAsync(xxeAttempt));
         
         // Verify the error is related to DTD/entity processing

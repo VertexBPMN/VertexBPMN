@@ -50,7 +50,7 @@ public sealed class BpmnParserOptions
     /// Phase 2: Enable vendor extension normalization (flatten known camunda / zeebe / flowable / cib / jbpm / osmanthus / alfresco / mcp patterns).
     /// Default false (zero-break).
     /// </summary>
-    public bool NormalizeVendorExtensions { get; set; } = true;
+    public bool NormalizeVendorExtensions { get; set; } = false;
 
     // (generische/unbekannte Namespaces – zusätzlich)
     public bool NormalizeUnknownVendorExtensions { get; set; } = true;

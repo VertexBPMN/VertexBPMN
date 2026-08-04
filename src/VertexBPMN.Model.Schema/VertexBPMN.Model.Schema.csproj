@@ -8,9 +8,6 @@
 		<Description>BPMN2.0 Metamodel for .NET9</Description>
 		<AssemblyName>VertexBPMN.Model.Domain.Model.Schema</AssemblyName>
 		<RootNamespace>VertexBPMN.Domain.Model</RootNamespace>
-		<EnableMicrosoftTestingPlatform>true</EnableMicrosoftTestingPlatform>
-		<TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
-		<TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
 		<!--Disable caching to prevent infinite regeneration--><!-- 
 		<SourceGeneratorsCacheEnabled>false</SourceGeneratorsCacheEnabled>
 		--><!--View generated code in obj/Generated/ for debugging without compiling them twice--><!-- 
@@ -22,31 +19,19 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="MartinCostello.Logging.XUnit.v3" Version="0.7.0" />
-		<PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.2" />
-		<PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.2" />
-		<PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.2" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.4" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.4" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.4" />
 		<!--<PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.9" />
 		<PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.9" />
 		<PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />-->
-		<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.2">
+		<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.4">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
-		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
-		<PackageReference Include="xunit.v3" Version="3.2.2" />
-		<PackageReference Include="Microsoft.Testing.Platform" Version="2.1.0" />
-		<PackageReference Include="Microsoft.Testing.Platform.MSBuild" Version="2.1.0" />
-		<PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.4.1" />
-		<PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
-		<PackageReference Include="coverlet.collector" Version="6.0.4">
-			<PrivateAssets>all</PrivateAssets>
-			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-		</PackageReference>
-		<PackageReference Include="Grpc.Net.Client" Version="2.76.0" />
-		<PackageReference Include="Moq" Version="4.20.72" />
-		<PackageReference Include="Shouldly" Version="4.3.0" />
-		<PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.2" />
+	</ItemGroup>
+	<ItemGroup>
+		<Compile Remove="Tests\**\*.cs" />
 	</ItemGroup>
 	<ItemGroup>
 		<Content Include="..\..\tests\VertexBPMN.Tests\TestData\**\*.*">

@@ -1,4 +1,5 @@
 using System.Xml;
+using System.Text;
 using VertexBPMN.Domain.Exceptions;
 using VertexBPMN.Domain.Model.Security;
 
@@ -25,10 +26,11 @@ public sealed class BpmnResourceLimiter
         var result = new ValidationResult { IsValid = true };
 
         // 1. XML Size Limit (DoS prevention)
-        if (xml.Length > _options.MaxXmlSizeBytes)
+        var inputSizeBytes = Encoding.UTF8.GetByteCount(xml);
+        if (inputSizeBytes > _options.MaxXmlSizeBytes)
         {
             result.IsValid = false;
-            result.Violations.Add($"XML size {xml.Length:N0} bytes exceeds limit of {_options.MaxXmlSizeBytes:N0} bytes");
+            result.Violations.Add($"XML size {inputSizeBytes:N0} bytes exceeds limit of {_options.MaxXmlSizeBytes:N0} bytes");
         }
 
         // 2. Basic structure validation (prevent deeply nested or malformed XML)
@@ -114,49 +116,26 @@ public sealed class BpmnResourceLimiter
         
         try
         {
-            int maxDepth = 0;
-            int currentDepth = 0;
-            int elementCount = 0;
-            
-            // Quick structure scan without full parsing
-            using var reader = new StringReader(xml);
-            char? prevChar = null;
-            bool inElement = false;
-            
-            int c;
-            while ((c = reader.Read()) != -1)
+            var settings = new XmlReaderSettings
             {
-                char ch = (char)c;
-                
-                if (ch == '<' && prevChar != '\\')
-                {
-                    inElement = true;
-                    elementCount++;
-                    
-                    // Peek ahead to see if it's a closing tag
-                    int nextChar = reader.Peek();
-                    if (nextChar == '/')
-                    {
-                        currentDepth--;
-                    }
-                    else if (nextChar != '!' && nextChar != '?') // Not comment or PI
-                    {
-                        currentDepth++;
-                        maxDepth = Math.Max(maxDepth, currentDepth);
-                    }
-                }
-                else if (ch == '>' && inElement)
-                {
-                    inElement = false;
-                }
-                
-                prevChar = ch;
-                
-                // Early termination if limits exceeded
-                if (maxDepth > _options.MaxXmlDepth)
+                DtdProcessing = DtdProcessing.Prohibit,
+                XmlResolver = null,
+                MaxCharactersInDocument = _options.MaxXmlSizeBytes,
+                MaxCharactersFromEntities = 0,
+                Async = false
+            };
+
+            using var stringReader = new StringReader(xml);
+            using var reader = XmlReader.Create(stringReader, settings);
+            while (reader.Read())
+            {
+                if (reader.NodeType != XmlNodeType.Element) continue;
+
+                var depth = reader.Depth + 1;
+                if (depth > _options.MaxXmlDepth)
                 {
                     result.IsValid = false;
-                    result.Violations.Add($"XML nesting depth {maxDepth} exceeds limit of {_options.MaxXmlDepth}");
+                    result.Violations.Add($"XML nesting depth {depth} exceeds limit of {_options.MaxXmlDepth}");
                     break;
                 }
             }

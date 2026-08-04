@@ -201,7 +201,7 @@ else
             FullWidth = true
         };
 
-        DialogService.Show<ProcessInstanceHistoryDialog>(
+        await DialogService.ShowAsync<ProcessInstanceHistoryDialog>(
             $"History: {instance.InstanceId}", parameters, options);
     }
 
@@ -218,7 +218,7 @@ else
             FullWidth = true
         };
 
-        DialogService.Show<ProcessInstanceDetailsDialog>(
+        await DialogService.ShowAsync<ProcessInstanceDetailsDialog>(
             $"Details: {instance.InstanceId}", parameters, options);
     }
 
@@ -254,7 +254,7 @@ else
 
     private async Task DeleteInstance(Guid instanceId)
     {
-        bool? result = await DialogService.ShowMessageBox(
+        bool? result = await DialogService.ShowMessageBoxAsync(
             "Delete Process Instance",
             "Are you sure you want to delete this process instance? This action cannot be undone.",
             yesText: "Delete", cancelText: "Cancel");

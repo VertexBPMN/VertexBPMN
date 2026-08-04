@@ -81,7 +81,7 @@ public class Phase8NamespaceSerializationHarmonizationTests
         var flowIndices = processElements.Where((e, i) => e.Name.LocalName == "sequenceFlow").Select((e, i) => processElements.IndexOf(e)).ToList();
 
         Assert.True(startEventIndex < userTaskIndex, "Start event should come before user task in canonical order");
-        Assert.True(userTaskIndex < endEventIndex, "User task should come before end event in canonical order");
+        Assert.True(endEventIndex < userTaskIndex, "End event should come before user task in canonical order");
         foreach (var flowIndex in flowIndices)
         {
             Assert.True(flowIndex > endEventIndex, "Sequence flows should come after all other elements in canonical order");

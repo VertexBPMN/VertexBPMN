@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Xml.Linq;
 using VertexBPMN.Domain.Exceptions;
 using VertexBPMN.Domain.Interfaces;
@@ -12,6 +13,7 @@ using VertexBPMN.Domain.Model.Bpmn;
 using VertexBPMN.Domain.Model.Runtime;
 using VertexBPMN.Engine.Ecosystem;
 using VertexBPMN.Engine.Performance;
+using VertexBPMN.Engine.Security;
 using VertexBPMN.Engine.Serialization;
 
 namespace VertexBPMN.Engine.Parsing;
@@ -103,16 +105,39 @@ public partial class BpmnParser : IBpmnParser
 
     public async Task<BpmnModel> ParseAsync(string xml, CancellationToken cancellationToken = default)
     {
-        if (_options.EnableStreamingParse && xml.Length > _options.StreamingThreshold)
+        ArgumentNullException.ThrowIfNull(xml);
+
+        var resourceLimiter = new BpmnResourceLimiter(_options.SecurityOptions);
+        var limitResult = resourceLimiter.ValidateInputLimits(xml);
+        if (!limitResult.IsValid)
         {
-            var streamingParser = new BpmnStreamingParser(_options);
-            var streamingModel = await streamingParser.ParseAsync(xml, cancellationToken);
-            return ApplyPostProcessing(streamingModel);
+            throw new SecurityException(
+                $"BPMN input exceeds resource limits: {string.Join("; ", limitResult.Violations)}");
         }
 
-        var model = await Parse(xml, cancellationToken);
+        if (_options.EnableSecurityValidation)
+        {
+            var securityValidator = new BpmnSecurityValidator(_options.SecurityOptions);
+            var securityResult = securityValidator.ValidateSecurityConfiguration(xml);
+            if (_options.FailOnSecurityThreat && !securityResult.IsSecure)
+            {
+                throw new SecurityException(
+                    $"BPMN input failed security validation: {string.Join("; ", securityResult.Vulnerabilities)}");
+            }
+        }
 
-        return ApplyPostProcessing(model);      
+        return await resourceLimiter.ExecuteWithResourceLimitsAsync(async parseToken =>
+        {
+            if (_options.EnableStreamingParse && xml.Length > _options.StreamingThreshold)
+            {
+                var streamingParser = new BpmnStreamingParser(_options);
+                var streamingModel = await streamingParser.ParseAsync(xml, parseToken);
+                return ApplyPostProcessing(streamingModel);
+            }
+
+            var model = await Parse(xml, parseToken);
+            return ApplyPostProcessing(model);
+        }, cancellationToken);
     }
 
     private Task<BpmnModel> Parse(string xml, CancellationToken cancellationToken = default)
@@ -156,7 +181,9 @@ public partial class BpmnParser : IBpmnParser
 
         XElement? diRoot = null;
         var diagnostics = new List<string>();
-        var doc = XDocument.Parse(xml, LoadOptions.PreserveWhitespace);
+        using var secureReader = new BpmnResourceLimiter(_options.SecurityOptions)
+            .CreateSecureXmlReader(xml, cancellationToken);
+        var doc = XDocument.Load(secureReader, LoadOptions.PreserveWhitespace);
         var root = doc.Root!; 
         var ns = root.Name.Namespace;
         if (strict)
@@ -341,7 +368,8 @@ public partial class BpmnParser : IBpmnParser
                         var (defs, eventDefDiagnostics) = ParseEventDefinitionsWithDiagnostics(el, ns, _options);
                         unknownEventDefinitionDiagnostics.AddRange(eventDefDiagnostics);
 
-                        events.Add(new BpmnEvent(id, local, defs, currentSub, ext));
+                        var eventAttributes = BuildEventAttributes(el, ext);
+                        events.Add(new BpmnEvent(id, local, defs, currentSub, eventAttributes));
                         flowNodeIds.Add(id);
 
                         if (local == "boundaryEvent")
@@ -425,7 +453,12 @@ public partial class BpmnParser : IBpmnParser
                                 }
                             }
                         }
-                        var task = new BpmnTask(id, local, currentSub, ext) { Name = el.Attribute("name")?.Value ?? string.Empty };
+                        var taskAttributes = BuildTaskAttributes(el, ns, ext);
+                        var implementation = el.Attribute("implementation")?.Value;
+                        var task = new BpmnTask(id, local, currentSub, taskAttributes, implementation)
+                        {
+                            Name = el.Attribute("name")?.Value ?? string.Empty
+                        };
                         
                         if(tasks.All(x => x.Id != id)) tasks.Add(task); 
                         flowNodeIds.Add(id);
@@ -481,7 +514,7 @@ public partial class BpmnParser : IBpmnParser
                         Walk(el); // recurse into lanes
                         continue; // prevent double attribute handling
                     case "sequenceFlow":
-                        int? priority = null; var prAttr = el.Attribute(XName.Get("priority", "http://vertexbpmn.io/schema/1.0")) ?? el.Attribute(XName.Get("priority", "http://camunda.org/schema/1.0/bpmn")) ?? el.Attribute("priority"); if (prAttr != null && int.TryParse(prAttr.Value, out var pVal)) priority = pVal; if (strict && prAttr != null && !string.IsNullOrEmpty(id)) priorityAttrNs![id] = prAttr.Name.NamespaceName; var condNode = el.Element(ns + "conditionExpression") ?? el.Element("conditionExpression"); var condText = condNode?.Value?.Trim(); flows.Add(new BpmnSequenceFlow(id, Intern(el.Attribute("sourceRef")?.Value ?? string.Empty), Intern(el.Attribute("targetRef")?.Value ?? string.Empty), defaultIds.Contains(id), condText, currentSub, ext, priority)); if (strict && condNode != null) { bool wasCData = condNode.Nodes().OfType<XCData>().Any(); rawCond![id] = (condNode.Value, wasCData); }
+                        int? priority = null; var prAttr = el.Attribute(XName.Get("priority", "http://vertexbpmn.io/schema/1.0")) ?? el.Attribute(XName.Get("priority", "http://camunda.org/schema/1.0/bpmn")) ?? el.Attribute("priority"); if (prAttr != null && int.TryParse(prAttr.Value, out var pVal)) priority = pVal; if (strict && prAttr != null && !string.IsNullOrEmpty(id)) priorityAttrNs![id] = prAttr.Name.NamespaceName; var condNode = el.Element(ns + "conditionExpression") ?? el.Element("conditionExpression"); var condText = condNode?.Value?.Trim(); if (!string.IsNullOrWhiteSpace(condText)) { ext ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase); ext["conditionExpression"] = condText; } flows.Add(new BpmnSequenceFlow(id, Intern(el.Attribute("sourceRef")?.Value ?? string.Empty), Intern(el.Attribute("targetRef")?.Value ?? string.Empty), defaultIds.Contains(id), condText, currentSub, ext, priority)); if (strict && condNode != null) { bool wasCData = condNode.Nodes().OfType<XCData>().Any(); rawCond![id] = (condNode.Value, wasCData); }
                         CaptureElementMeta(strict, flowNodeAttributes, rawDocumentation, elementsMetadata, orderCounter, ns, el, id); break;
                     case "dataObject": dataObjects.Add(new BpmnDataObject(id, el.Attribute("name")?.Value));
                         CaptureElementMeta(strict, flowNodeAttributes, rawDocumentation, elementsMetadata, orderCounter, ns, el, id); break;
@@ -990,13 +1023,75 @@ public partial class BpmnParser : IBpmnParser
         }
     }
 
+    private static Dictionary<string, string>? BuildEventAttributes(XElement element, Dictionary<string, string>? extensionAttributes)
+    {
+        var attributes = extensionAttributes == null
+            ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, string>(extensionAttributes, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var name in new[] { "name", "attachedToRef", "cancelActivity", "isInterrupting", "isCompensation" })
+        {
+            if (element.Attribute(name)?.Value is { } value)
+                attributes[name] = value;
+        }
+
+        return attributes.Count == 0 ? null : attributes;
+    }
+
+    private static Dictionary<string, string>? BuildTaskAttributes(
+        XElement element, XNamespace bpmnNamespace, Dictionary<string, string>? extensionAttributes)
+    {
+        var attributes = extensionAttributes == null
+            ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, string>(extensionAttributes, StringComparer.OrdinalIgnoreCase);
+        var extensionElements = element.Element(bpmnNamespace + "extensionElements") ?? element.Element("extensionElements");
+
+        if (extensionElements != null)
+        {
+            foreach (var property in extensionElements.Descendants().Where(e => e.Name.LocalName == "property"))
+            {
+                var name = property.Attribute("name")?.Value;
+                var value = property.Attribute("value")?.Value;
+                if (!string.IsNullOrEmpty(name) && value != null)
+                    attributes[name] = value;
+            }
+
+            foreach (var mcpTask in extensionElements.Descendants().Where(e => e.Name.LocalName == "mcpServiceTask"))
+            {
+                foreach (var attribute in mcpTask.Attributes().Where(a => !a.IsNamespaceDeclaration))
+                    attributes[attribute.Name.LocalName] = attribute.Value;
+            }
+
+            const string flowableNamespace = "http://flowable.org/bpmn";
+            var listeners = extensionElements
+                .Descendants(XName.Get("taskListener", flowableNamespace))
+                .Select(listener => new
+                {
+                    Event = listener.Attribute("event")?.Value ?? string.Empty,
+                    Class = listener.Attribute("class")?.Value ?? string.Empty,
+                    Expression = listener.Attribute("expression")?.Value ?? string.Empty
+                })
+                .ToList();
+            if (listeners.Count > 0)
+                attributes["flowable:taskListeners"] = JsonSerializer.Serialize(listeners);
+        }
+
+        if (element.Attribute("scriptFormat")?.Value is { } scriptFormat)
+            attributes["scriptFormat"] = scriptFormat;
+        if ((element.Element(bpmnNamespace + "script") ?? element.Element("script"))?.Value is { } script)
+            attributes["script"] = script;
+        if (element.Attribute("resultVariable")?.Value is { } resultVariable)
+            attributes["resultVariable"] = resultVariable;
+
+        return attributes.Count == 0 ? null : attributes;
+    }
+
     private Dictionary<string, string>? ExtractExtensions(XElement el, XNamespace ns, bool strict, Dictionary<string, XElement>? rawExtensions)
     {
         if (!_options.PreserveUnknownExtensions) return null;
         var extParent = el.Element(ns + "extensionElements") ?? el.Element("extensionElements");
-        if (extParent == null) return null;
         var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (strict && rawExtensions != null)
+        if (strict && rawExtensions != null && extParent != null)
         {
             var ownerId = el.Attribute("id")?.Value;
             if (!string.IsNullOrEmpty(ownerId))
@@ -1032,14 +1127,40 @@ public partial class BpmnParser : IBpmnParser
 
             if (!node.HasAttributes && node != extParent)
             {
-                var key = $"{elemPrefix}:{node.Name.LocalName}";
+                var key = string.IsNullOrEmpty(elemPrefix)
+                    ? node.Name.LocalName
+                    : $"{elemPrefix}:{node.Name.LocalName}";
                 dict[key] = "true";
             }
 
             foreach (var child in node.Elements()) Harvest(child);
         }
 
-        foreach (var top in extParent.Elements()) Harvest(top);
+        if (extParent != null)
+        {
+            foreach (var top in extParent.Elements()) Harvest(top);
+        }
+
+        // Vendor attributes may be attached directly to the BPMN element
+        // (for example camunda:assignee). They are semantic extensions too and
+        // must remain visible to normalized serialization and consumers.
+        foreach (var attr in el.Attributes())
+        {
+            if (attr.IsNamespaceDeclaration ||
+                attr.Name.Namespace == XNamespace.None ||
+                attr.Name.Namespace == XNamespace.Xml ||
+                attr.Name.Namespace == ns)
+            {
+                continue;
+            }
+
+            var prefix = el.GetPrefixOfNamespace(attr.Name.Namespace);
+            var key = string.IsNullOrEmpty(prefix)
+                ? attr.Name.ToString()
+                : $"{prefix}:{attr.Name.LocalName}";
+            dict[key] = attr.Value;
+        }
+
         return dict.Count == 0 ? null : dict;
     }
 

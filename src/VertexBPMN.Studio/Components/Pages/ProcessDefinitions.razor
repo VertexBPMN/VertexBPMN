@@ -155,7 +155,7 @@ else
                 FullWidth = true
             };
 
-            DialogService.Show<BpmnViewerDialog>("BPMN Viewer", parameters, options);
+            await DialogService.ShowAsync<BpmnViewerDialog>("BPMN Viewer", parameters, options);
         }
         catch (Exception ex)
         {
@@ -170,7 +170,7 @@ else
             ["ProcessDefinition"] = definition
         };
 
-        var dialog = DialogService.Show<StartProcessDialog>(
+        var dialog = await DialogService.ShowAsync<StartProcessDialog>(
             $"Start Process: {definition.Name}", parameters);
         var result = await dialog.Result;
 
@@ -192,7 +192,7 @@ else
                 ["Versions"] = versions.ToList()
             };
 
-            DialogService.Show<ProcessVersionsDialog>(
+            await DialogService.ShowAsync<ProcessVersionsDialog>(
                 $"Versions: {processKey}", parameters);
         }
         catch (Exception ex)

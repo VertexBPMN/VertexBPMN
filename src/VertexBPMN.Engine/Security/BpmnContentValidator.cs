@@ -1,3 +1,5 @@
+using System.Xml;
+using System.Xml.Linq;
 using System.Text.RegularExpressions;
 using VertexBPMN.Domain.Model.Security;
 
@@ -9,14 +11,16 @@ namespace VertexBPMN.Engine.Security;
 /// </summary>
 public sealed class BpmnContentValidator
 {
+    private const string BpmnModelNamespace = "http://www.omg.org/spec/BPMN/20100524/MODEL";
+    private const string UnsafeScriptElementDescription = "Script element outside the BPMN model namespace detected";
+
     private static readonly Regex[] _maliciousPatterns = 
     {
-        new(@"<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>", RegexOptions.IgnoreCase | RegexOptions.Compiled),
         new(@"&lt;script&gt;\b[^<]*(?:(?!<\/script>)<[^<]*)*&lt;/script&gt;", RegexOptions.IgnoreCase | RegexOptions.Compiled),
         new(@"javascript:", RegexOptions.IgnoreCase | RegexOptions.Compiled),
         new(@"data:.*base64", RegexOptions.IgnoreCase | RegexOptions.Compiled),
         new(@"vbscript:", RegexOptions.IgnoreCase | RegexOptions.Compiled),
-        new(@"on\w+\s*=", RegexOptions.IgnoreCase | RegexOptions.Compiled), // Event handlers
+        new(@"(?:^|[<\s])on[a-z][\w:-]*\s*=", RegexOptions.IgnoreCase | RegexOptions.Compiled), // HTML-style event-handler attributes
         new(@"expression\s*\(", RegexOptions.IgnoreCase | RegexOptions.Compiled), // CSS expressions
         new(@"<iframe\b", RegexOptions.IgnoreCase | RegexOptions.Compiled),
         new(@"<object\b", RegexOptions.IgnoreCase | RegexOptions.Compiled),
@@ -24,15 +28,6 @@ public sealed class BpmnContentValidator
         new(@"<!ENTITY", RegexOptions.IgnoreCase | RegexOptions.Compiled),
         new(@"SYSTEM\s+['""]", RegexOptions.IgnoreCase | RegexOptions.Compiled),
         new(@"PUBLIC\s+['""]", RegexOptions.IgnoreCase | RegexOptions.Compiled)
-    };
-
-    private static readonly HashSet<string> _suspiciousNamespaces = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "http://www.w3.org/1999/xhtml",
-        "http://www.w3.org/2000/svg",
-        "http://schemas.microsoft.com/expression/",
-        "urn:oasis:names:tc:SAML:",
-        "http://schemas.xmlsoap.org/ws/2005/05/identity"
     };
 
     /// <summary>
@@ -58,19 +53,17 @@ public sealed class BpmnContentValidator
             }
         }
 
-        // 2. Check for suspicious namespaces
-        foreach (var suspiciousNs in _suspiciousNamespaces)
+        // 2. BPMN script tasks legitimately use a BPMN <script> element. Only
+        // script elements outside the BPMN model namespace are executable-content threats.
+        var unsafeScriptElements = CountUnsafeScriptElements(xml);
+        if (unsafeScriptElements > 0)
         {
-            if (xml.Contains(suspiciousNs, StringComparison.OrdinalIgnoreCase))
+            result.Threats.Add(new SecurityThreat
             {
-                result.Threats.Add(new SecurityThreat
-                {
-                    Type = ThreatType.SuspiciousNamespace,
-                    Pattern = suspiciousNs,
-                    Occurrences = 1,
-                    Description = "Non-BPMN namespace detected that could indicate malicious content"
-                });
-            }
+                Type = ThreatType.MaliciousContent,
+                Occurrences = unsafeScriptElements,
+                Description = UnsafeScriptElementDescription
+            });
         }
 
         // 3. Check for excessive CDATA usage (potential data exfiltration)
@@ -108,6 +101,12 @@ public sealed class BpmnContentValidator
             return xml;
 
         var sanitized = xml;
+
+        if (validationResult.Threats.Any(t =>
+                string.Equals(t.Description, UnsafeScriptElementDescription, StringComparison.Ordinal)))
+        {
+            sanitized = RemoveUnsafeScriptElements(sanitized);
+        }
         
         // Remove malicious patterns
         foreach (var threat in validationResult.Threats.Where(t => t.Type == ThreatType.MaliciousContent))
@@ -129,5 +128,57 @@ public sealed class BpmnContentValidator
     {
         // Check for null bytes and other binary indicators
         return xml.Any(c => c == '\0' || (c < 32 && c != '\t' && c != '\n' && c != '\r'));
+    }
+
+    private static int CountUnsafeScriptElements(string xml)
+    {
+        try
+        {
+            using var reader = CreateSecureReader(xml);
+            var document = XDocument.Load(reader, LoadOptions.None);
+            return document.Root?
+                .DescendantsAndSelf()
+                .Count(IsUnsafeScriptElement) ?? 0;
+        }
+        catch (XmlException)
+        {
+            // Malformed XML and prohibited DTDs are handled by the secure parser pipeline.
+            return 0;
+        }
+    }
+
+    private static string RemoveUnsafeScriptElements(string xml)
+    {
+        try
+        {
+            using var reader = CreateSecureReader(xml);
+            var document = XDocument.Load(reader, LoadOptions.PreserveWhitespace);
+            if (document.Root is { } root)
+            {
+                root.DescendantsAndSelf()
+                    .Where(IsUnsafeScriptElement)
+                    .Remove();
+            }
+            return document.ToString(SaveOptions.DisableFormatting);
+        }
+        catch (XmlException)
+        {
+            return xml;
+        }
+    }
+
+    private static XmlReader CreateSecureReader(string xml)
+    {
+        return XmlReader.Create(new StringReader(xml), new XmlReaderSettings
+        {
+            DtdProcessing = DtdProcessing.Prohibit,
+            XmlResolver = null
+        });
+    }
+
+    private static bool IsUnsafeScriptElement(XElement element)
+    {
+        return string.Equals(element.Name.LocalName, "script", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(element.Name.NamespaceName, BpmnModelNamespace, StringComparison.Ordinal);
     }
 }

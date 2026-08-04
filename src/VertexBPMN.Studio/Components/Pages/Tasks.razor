@@ -122,7 +122,7 @@
         var parameters = new DialogParameters<VertexBPMN.Studio.Components.TaskDetailsDialog>();
         parameters.Add(x => x.Task, task);
 
-        var dialog = DialogService.Show<VertexBPMN.Studio.Components.TaskDetailsDialog>($"Task Details: {task.Name}", parameters);
+        var dialog = await DialogService.ShowAsync<VertexBPMN.Studio.Components.TaskDetailsDialog>($"Task Details: {task.Name}", parameters);
         var result = await dialog.Result;
 
         if (!result.Canceled)

@@ -55,6 +55,61 @@ public class EnhancedSecurityTests
     }
 
     [Fact]
+    public void ContentValidator_AllowsBpmnScriptTask()
+    {
+        var validator = new BpmnContentValidator();
+        var bpmnXml = """
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
+  <process id="process">
+    <scriptTask id="scriptTask" scriptFormat="javascript">
+      <script>console.log('valid BPMN script task');</script>
+    </scriptTask>
+  </process>
+</definitions>
+""";
+
+        var result = validator.ValidateContent(bpmnXml);
+
+        Assert.True(result.IsSecure);
+    }
+
+    [Fact]
+    public void ContentValidator_AllowsUnusedForeignNamespaceDeclarations()
+    {
+        var validator = new BpmnContentValidator();
+        var bpmnXml = """
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:svg="http://www.w3.org/2000/svg"
+             xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <process id="process" />
+</definitions>
+""";
+
+        var result = validator.ValidateContent(bpmnXml);
+
+        Assert.True(result.IsSecure);
+    }
+
+    [Fact]
+    public void ContentValidator_BlocksScriptOutsideBpmnNamespace()
+    {
+        var validator = new BpmnContentValidator();
+        var maliciousXml = """
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <process id="process">
+    <xhtml:script>alert('XSS')</xhtml:script>
+  </process>
+</definitions>
+""";
+
+        var result = validator.ValidateContent(maliciousXml);
+
+        Assert.False(result.IsSecure);
+        Assert.Contains(result.Threats, t => t.Type == ThreatType.MaliciousContent);
+    }
+
+    [Fact]
     public void SecurityValidator_GeneratesAuditTrail()
     {
         var validator = new BpmnSecurityValidator();
@@ -82,7 +137,7 @@ public class EnhancedSecurityTests
     }
 
     [Fact]
-    public async Task ParsingTimeout_PreventsDoSAttacks()
+    public async Task ParsingLimits_PreventDeepNestingDoSAttacks()
     {
         var options = new BpmnParserOptions
         {
@@ -97,7 +152,7 @@ public class EnhancedSecurityTests
         var ex = await Assert.ThrowsAsync<SecurityException>(
             () => parser.ParseAsync(deepXml));
         
-        Assert.Contains("timeout", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("nesting depth", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string GenerateDeeplyNestedXml(int depth)

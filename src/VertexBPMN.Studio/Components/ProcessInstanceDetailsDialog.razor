@@ -435,7 +435,7 @@
                 FullWidth = true
             };
 
-            DialogService.Show<BpmnViewerDialog>("BPMN Viewer", parameters, options);
+            await DialogService.ShowAsync<BpmnViewerDialog>("BPMN Viewer", parameters, options);
         }
         catch (Exception ex)
         {
@@ -448,7 +448,7 @@
         Snackbar.Add($"Opening task: {taskId}", Severity.Info);
     }
 
-    private void ShowFullHistory()
+    private async Task ShowFullHistory()
     {
         var parameters = new DialogParameters
         {
@@ -461,7 +461,7 @@
             FullWidth = true
         };
 
-        DialogService.Show<ProcessInstanceHistoryDialog>(
+        await DialogService.ShowAsync<ProcessInstanceHistoryDialog>(
             $"Full History: {ProcessInstance.InstanceId}", parameters, options);
     }
 

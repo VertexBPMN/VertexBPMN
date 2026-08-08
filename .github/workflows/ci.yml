@@ -18,7 +18,7 @@ jobs:
     - name: Build
       run: dotnet build VertexBPMN.sln --configuration Release --no-restore
     - name: Test
-      run: dotnet test VertexBPMN.Tests/VertexBPMN.Tests.csproj --no-build --verbosity normal
+      run: dotnet test VertexBPMN.sln --configuration Release --no-build --verbosity normal
     - name: Publish Docker image
       uses: docker/build-push-action@v5
       with:

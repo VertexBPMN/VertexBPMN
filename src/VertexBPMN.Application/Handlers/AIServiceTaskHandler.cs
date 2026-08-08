@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using OpenTelemetry.Trace;
 using VertexBPMN.Application.Extensions;
+using VertexBPMN.Application.Configuration;
 using VertexBPMN.Domain.Exceptions;
 using VertexBPMN.Domain.Interfaces;
 
@@ -18,17 +19,20 @@ public class AIServiceTaskHandler : IServiceTaskHandler
     private readonly HttpClient _httpClient;
     private readonly TracerProvider? _tracerProvider;
     private readonly IAiDecisionService? _aiDecisionService;
+    private readonly AiDependencyOptions _aiOptions;
 
     public AIServiceTaskHandler(
         ILogger<AIServiceTaskHandler> logger,
         HttpClient httpClient,
         TracerProvider? tracerProvider = null,
-        IAiDecisionService? aiDecisionService = null)
+        IAiDecisionService? aiDecisionService = null,
+        DependencyOptions? dependencyOptions = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _tracerProvider = tracerProvider;
         _aiDecisionService = aiDecisionService;
+        _aiOptions = dependencyOptions?.Ai ?? new AiDependencyOptions();
     }
 
     /// <summary>
@@ -98,10 +102,14 @@ public class AIServiceTaskHandler : IServiceTaskHandler
     /// </summary>
     private AITaskConfiguration ParseAIConfiguration(IDictionary<string, string> attributes)
     {
+        var provider = attributes.GetValueOrDefault("ai:provider", _aiOptions.DefaultProvider);
+        var model = ResolveModel(attributes, provider);
         return new AITaskConfiguration
         {
-            Provider = attributes.GetValueOrDefault("ai:provider", "openai"),
-            Model = attributes.GetValueOrDefault("ai:model", "gpt-4"),
+            Provider = provider,
+            Model = model,
+            Endpoint = ResolveModelOption(provider, model)?.Endpoint,
+            ApiKeyEnvironmentVariable = ResolveModelOption(provider, model)?.ApiKeyEnvironmentVariable,
             TaskType = attributes.GetValueOrDefault("ai:taskType", "analysis"),
             Prompt = attributes.GetValueOrDefault("ai:prompt", ""),
             SystemMessage = attributes.GetValueOrDefault("ai:systemMessage", "You are an AI assistant for business process automation."),
@@ -117,6 +125,44 @@ public class AIServiceTaskHandler : IServiceTaskHandler
             Timeout = int.TryParse(attributes.GetValueOrDefault("ai:timeout", "60"), out var timeout) ? timeout : 60,
             RetryCount = int.TryParse(attributes.GetValueOrDefault("ai:retryCount", "3"), out var retries) ? retries : 3
         };
+    }
+
+    private string ResolveModel(IDictionary<string, string> attributes, string provider)
+    {
+        if (attributes.TryGetValue("ai:model", out var configuredModel) &&
+            !string.IsNullOrWhiteSpace(configuredModel))
+            return configuredModel;
+
+        if (_aiOptions.Models.TryGetValue(provider, out var model) &&
+            model.Enabled && !string.IsNullOrWhiteSpace(model.Model))
+            return model.Model;
+
+        return _aiOptions.DefaultModel;
+    }
+
+    private AiModelOptions? ResolveModelOption(string provider, string model)
+    {
+        if (_aiOptions.Models.TryGetValue(provider, out var providerOptions) &&
+            providerOptions.Enabled &&
+            (string.IsNullOrWhiteSpace(providerOptions.Model) ||
+             string.Equals(providerOptions.Model, model, StringComparison.OrdinalIgnoreCase)))
+            return providerOptions;
+
+        return _aiOptions.Models.Values.FirstOrDefault(options =>
+            options.Enabled &&
+            string.Equals(options.Provider, provider, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(options.Model, model, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string GetApiKey(AITaskConfiguration config, params string[] fallbackNames)
+    {
+        var environmentVariable = string.IsNullOrWhiteSpace(config.ApiKeyEnvironmentVariable)
+            ? fallbackNames.FirstOrDefault(name => !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(name)))
+            : config.ApiKeyEnvironmentVariable;
+
+        return Environment.GetEnvironmentVariable(environmentVariable ?? string.Empty)
+            ?? throw new ServiceTaskExecutionException(
+                $"{config.Provider} API key environment variable '{environmentVariable ?? fallbackNames[0]}' not set");
     }
 
     /// <summary>
@@ -175,8 +221,7 @@ public class AIServiceTaskHandler : IServiceTaskHandler
     /// </summary>
     private async Task<AITaskResult> ExecuteOpenAIAsync(AITaskConfiguration config, IDictionary<string, object> variables, CancellationToken ct)
     {
-        var apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY")
-                     ?? throw new ServiceTaskExecutionException("OPENAI_API_KEY environment variable not set");
+        var apiKey = GetApiKey(config, "OPENAI_API_KEY");
 
         var context = BuildContextString(config.InputVariables, variables);
         var userMessage = string.IsNullOrEmpty(context)
@@ -195,7 +240,7 @@ public class AIServiceTaskHandler : IServiceTaskHandler
             max_tokens = config.MaxTokens
         };
 
-        return await ExecuteHttpAIRequest("https://api.openai.com/v1/chat/completions", requestBody,
+        return await ExecuteHttpAIRequest(config.Endpoint ?? "https://api.openai.com/v1/chat/completions", requestBody,
             apiKey, "Bearer", config, ct);
     }
 
@@ -204,8 +249,7 @@ public class AIServiceTaskHandler : IServiceTaskHandler
     /// </summary>
     private async Task<AITaskResult> ExecuteAnthropicAsync(AITaskConfiguration config, IDictionary<string, object> variables, CancellationToken ct)
     {
-        var apiKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY")
-                     ?? throw new ServiceTaskExecutionException("ANTHROPIC_API_KEY environment variable not set");
+        var apiKey = GetApiKey(config, "ANTHROPIC_API_KEY");
 
         var context = BuildContextString(config.InputVariables, variables);
         var userMessage = string.IsNullOrEmpty(context)
@@ -222,7 +266,7 @@ public class AIServiceTaskHandler : IServiceTaskHandler
         };
 
         // Anthropic verwendet x-api-key Header
-        return await ExecuteHttpAIRequest("https://api.anthropic.com/v1/messages", requestBody,
+        return await ExecuteHttpAIRequest(config.Endpoint ?? "https://api.anthropic.com/v1/messages", requestBody,
             apiKey, "x-api-key", config, ct);
     }
 
@@ -231,9 +275,7 @@ public class AIServiceTaskHandler : IServiceTaskHandler
     /// </summary>
     private async Task<AITaskResult> ExecuteGeminiAsync(AITaskConfiguration config, IDictionary<string, object> variables, CancellationToken ct)
     {
-        var apiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY")
-                     ?? Environment.GetEnvironmentVariable("GOOGLE_API_KEY")
-                     ?? throw new ServiceTaskExecutionException("GEMINI_API_KEY or GOOGLE_API_KEY environment variable not set");
+        var apiKey = GetApiKey(config, "GEMINI_API_KEY", "GOOGLE_API_KEY");
 
         var context = BuildContextString(config.InputVariables, variables);
         var fullPrompt = string.IsNullOrEmpty(context)
@@ -253,7 +295,9 @@ public class AIServiceTaskHandler : IServiceTaskHandler
             }
         };
 
-        var url = $"https://generativelanguage.googleapis.com/v1/models/{config.Model}:generateContent?key={apiKey}";
+        var endpoint = config.Endpoint ?? "https://generativelanguage.googleapis.com/v1/models/{model}:generateContent?key={apiKey}";
+        var url = endpoint.Replace("{model}", Uri.EscapeDataString(config.Model), StringComparison.OrdinalIgnoreCase)
+            .Replace("{apiKey}", Uri.EscapeDataString(apiKey), StringComparison.OrdinalIgnoreCase);
 
         // Gemini verwendet API-Key in URL
         return await ExecuteHttpAIRequest(url, requestBody, null, null, config, ct);
@@ -516,6 +560,8 @@ public class AIServiceTaskHandler : IServiceTaskHandler
     {
         public string Provider { get; init; } = "openai";
         public string Model { get; init; } = "gpt-4";
+        public string? Endpoint { get; init; }
+        public string? ApiKeyEnvironmentVariable { get; init; }
         public string TaskType { get; init; } = "analysis";
         public string Prompt { get; init; } = "";
         public string SystemMessage { get; init; } = "";

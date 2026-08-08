@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using VertexBPMN.Application.Extensions;
+using VertexBPMN.Application.Configuration;
 using VertexBPMN.Domain.Interfaces;
 namespace VertexBPMN.Application;
 
@@ -19,6 +20,9 @@ public static class ApplicationModule
     /// <param name="useInMemory">If true, register in-memory implementations instead of persistent ones (for tests).</param>
     public static IServiceCollection AddApplicationServices(this IServiceCollection services, IConfiguration configuration)
     {
+        var dependencies = new DependencyOptions();
+        configuration.GetSection("Dependencies").Bind(dependencies);
+        services.AddSingleton(dependencies);
         // Shared singleton/event sink
         services.AddScoped<IProcessMiningEventSink, ProcessMiningEventSink>();
 
@@ -33,15 +37,18 @@ public static class ApplicationModule
         services.AddScoped<ITaskService, TaskService>();
         services.AddScoped<IProcessMigrationService, ProcessMigrationService>();
         //services.AddHttpClient<IAiDecisionService, XAiDecisionService>();
-        services.AddHttpClient<IMcpAgentService, McpAgentService>();
-        services.AddScoped<ILoadBalancingService, LoadBalancingService>();
+        if (dependencies.Mcp.Enabled && dependencies.Interfaces.McpAgentService)
+            services.AddHttpClient<IMcpAgentService, McpAgentService>();
+        if (dependencies.Interfaces.LoadBalancing)
+            services.AddScoped<ILoadBalancingService, LoadBalancingService>();
 
 
-        services.AddSingleton<IAiDecisionService, FakeAiDecisionService>();
+        if (dependencies.Interfaces.AiDecisionService)
+            services.AddSingleton<IAiDecisionService, FakeAiDecisionService>();
         services.AddSingleton<ISemanticValidationService, SemanticValidationService>();
         services.AddSingleton<IIdentityService, IdentityService>();
         services.AddSingleton<IHostedService, JobExecutorService>();
-        services.AddServiceTaskHandlers();
+        services.AddServiceTaskHandlers(configuration);
         return services;
     }
 }

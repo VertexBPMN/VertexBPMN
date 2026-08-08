@@ -1,5 +1,5 @@
 {
-  "McpAgents": [
+  "agents": [
     {
       "name": "NLP",
       "type": "REST",

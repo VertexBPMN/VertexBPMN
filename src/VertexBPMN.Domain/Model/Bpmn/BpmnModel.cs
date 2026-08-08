@@ -131,7 +131,8 @@ public sealed record BpmnRawMetadata(
     XElement? RawDiRoot = null,
     IReadOnlySet<string>? PartiallyDirtyElements = null,
     IReadOnlyDictionary<string,string>? GlobalElementKinds = null,
-    IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? VendorNormalizedExtensions = null
+    IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? VendorNormalizedExtensions = null,
+    string? OriginalXml = null
 );
 public static class BpmnRoundtripUtil
 {

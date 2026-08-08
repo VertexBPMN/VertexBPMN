@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using VertexBPMN.Application.Configuration;
 using VertexBPMN.Application.Messaging;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Domain.Interfaces.Repositories;
@@ -16,6 +17,9 @@ public static class InfrastructureModule
 {
     public static IServiceCollection AddBpmnPersistenceServices(this IServiceCollection services, IConfiguration configuration)
     {
+        services.AddDbContext<DependencyRegistryDbContext>(options =>
+            options.UseSqlite(DependencyConfigurationLoader.ResolveConnectionString(configuration)));
+        services.AddScoped<IDependencyRegistry, DependencyRegistryService>();
         services.AddScoped<IDesignTimeDbContextFactory<ProcessMiningEventDbContext>, ProcessMiningEventDbContextFactory>();
         services.AddScoped<IProcessInstanceStore, ProductionProcessInstanceStore>();
         services.AddScoped<ISimulationScenarioService, SimulationScenarioService>();

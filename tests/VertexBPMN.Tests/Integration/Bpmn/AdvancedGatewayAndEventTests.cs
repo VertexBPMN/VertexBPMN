@@ -37,241 +37,169 @@ public class AdvancedGatewayAndEventTests
             new List<BpmnSubprocess>()
         );
 
-        var engine = new ProcessEngine();
+        var engine = new FullConformanceProcessEngine();
         var trace = engine.Execute(model);
 
-        Assert.Contains("StartEvent: start1", trace);
-        Assert.Contains("ComplexGateway: complex1", trace);
-        Assert.Contains("EvaluatingComplexConditions: complex1", trace);
-        Assert.Contains("ComplexGatewayResult: 2 flows selected", trace);
-        Assert.Contains("ComplexBranch: end1", trace);
+        Assert.Contains(trace, r => r.ToString().Contains("StartEvent: start1"));
+        Assert.Contains(trace, r => r.ToString().Contains("ComplexGateway: complex1"));
+        Assert.Contains(trace, r => r.Contains("SequenceFlow: flow2"));
+        Assert.Contains(trace, r => r.Contains("SequenceFlow: flow3"));
+        Assert.Contains(trace, r => r.Contains("SequenceFlow: flow4"));
     }
 
-    //[Fact]
-    //public void Handles_Event_Based_Gateway_With_Message_Events()
-    //{
-    //    // Test event-based gateway waiting for message events
-    //    var model = new BpmnModel(
-    //        "P_Event_Gateway",
-    //        "Event-Based Gateway Process",
-    //        new List<BpmnEvent> 
-    //        { 
-    //            new("start1", "startEvent"),
-    //            new("msg_event1", "intermediateCatchEvent", null, false, true, "message"),
-    //            new("msg_event2", "intermediateCatchEvent", null, false, true, "message"),
-    //            new("end1", "endEvent"),
-    //            new("end2", "endEvent")
-    //        },
-    //        new List<BpmnTask>(),
-    //        new List<BpmnGateway> { new("event_gw1", "eventBasedGateway") },
-    //        new List<BpmnSequenceFlow>
-    //        {
-    //            new("flow1", "start1", "event_gw1"),
-    //            new("flow2", "event_gw1", "msg_event1"),
-    //            new("flow3", "event_gw1", "msg_event2"),
-    //            new("flow4", "msg_event1", "end1"),
-    //            new("flow5", "msg_event2", "end2")
-    //        },
-    //        new List<BpmnSubprocess>()
-    //    );
+    [Fact]
+    public void Handles_Event_Based_Gateway_With_Message_Events()
+    {
+        var model = new BpmnModel(
+            "P_Event_Gateway",
+            "Event-Based Gateway Process",
+            new List<BpmnEvent>
+            {
+                new("start1", "startEvent"),
+                new("msg_event1", "intermediateCatchEvent", new EventDefinition[] { new MessageEventDefinition("message1", null) }),
+                new("msg_event2", "intermediateCatchEvent", new EventDefinition[] { new MessageEventDefinition("message2", null) }),
+                new("end1", "endEvent"),
+                new("end2", "endEvent")
+            },
+            new List<BpmnTask>(),
+            new List<BpmnGateway> { new("event_gw1", "eventBasedGateway") },
+            new List<BpmnSequenceFlow>
+            {
+                new("flow1", "start1", "event_gw1"),
+                new("flow2", "event_gw1", "msg_event1"),
+                new("flow3", "event_gw1", "msg_event2"),
+                new("flow4", "msg_event1", "end1"),
+                new("flow5", "msg_event2", "end2")
+            },
+            new List<BpmnSubprocess>());
 
-    //    var engine = new ProcessEngine();
-    //    var trace = engine.Execute(model);
+        var trace = new FullConformanceProcessEngine().Execute(model);
 
-    //    Assert.Contains("StartEvent: start1", trace);
-    //    Assert.Contains("EventBasedGateway: event_gw1", trace);
-    //    Assert.Contains("WaitingForEvents: event_gw1", trace);
-    //    Assert.Contains("EventTarget: intermediateCatchEvent msg_event1", trace);
-    //}
+        Assert.Contains(trace, r => r.Contains("StartEvent: start1"));
+        Assert.Contains(trace, r => r.Contains("EventBasedGateway: event_gw1"));
+        Assert.Contains(trace, r => r.Contains("intermediateCatchEvent: msg_event1"));
+        Assert.Contains(trace, r => r.Contains("EndEvent: end1"));
+    }
 
-    //[Fact]
-    //public void Handles_Message_Event_Subprocess()
-    //{
-    //    // Test message-triggered event subprocess
-    //    var model = new BpmnModel(
-    //        "P_Message_Event_Sub",
-    //        "Message Event Subprocess Process",
-    //        new List<BpmnEvent> 
-    //        { 
-    //            new("start1", "startEvent"),
-    //            new("msg_start", "startEvent", null, false, true, "message"),
-    //            new("event_end", "endEvent"),
-    //            new("normal_end", "endEvent")
-    //        },
-    //        new List<BpmnTask> { new("task1", "userTask") },
-    //        new List<BpmnGateway>(),
-    //        new List<BpmnSequenceFlow>
-    //        {
-    //            new("flow1", "start1", "task1"),
-    //            new("flow2", "task1", "normal_end"),
-    //            new("event_flow1", "msg_start", "event_end")
-    //        },
-    //        new List<BpmnSubprocess> 
-    //        { 
-    //            new("msg_subprocess", false, true) // Event subprocess
-    //        }
-    //    );
+    [Fact]
+    public void Handles_Message_Event_Subprocess()
+    {
+        var model = CreateEventSubprocessModel("message", new MessageEventDefinition("message1", null), "msg_subprocess", "msg_subprocess_start", "event_end", "task1");
 
-    //    var engine = new ProcessEngine();
-    //    var trace = engine.Execute(model);
+        var trace = new FullConformanceProcessEngine().Execute(model);
 
-    //    Assert.Contains("StartEvent: start1", trace);
-    //    Assert.Contains("UserTask: task1", trace);
-    //    Assert.Contains("EndEvent: normal_end", trace);
-    //}
+        Assert.Contains(trace, r => r.Contains("IndexedEventSubprocessStart: msg_subprocess_start (message)"));
+        Assert.Contains(trace, r => r.Contains("UserTask: task1"));
+        Assert.Contains(trace, r => r.Contains("EndEvent: normal_end"));
+        Assert.Contains(trace, r => r.Contains("EndEvent: event_end"));
+    }
 
-    //[Fact]
-    //public void Handles_Error_Event_Subprocess()
-    //{
-    //    // Test error-triggered event subprocess
-    //    var model = new BpmnModel(
-    //        "P_Error_Event_Sub",
-    //        "Error Event Subprocess Process",
-    //        new List<BpmnEvent> 
-    //        { 
-    //            new("start1", "startEvent"),
-    //            new("error_start", "startEvent", null, false, true, "error"),
-    //            new("error_end", "endEvent"),
-    //            new("normal_end", "endEvent")
-    //        },
-    //        new List<BpmnTask> { new("risky_task", "serviceTask") },
-    //        new List<BpmnGateway>(),
-    //        new List<BpmnSequenceFlow>
-    //        {
-    //            new("flow1", "start1", "risky_task"),
-    //            new("flow2", "risky_task", "normal_end"),
-    //            new("error_flow1", "error_start", "error_end")
-    //        },
-    //        new List<BpmnSubprocess> 
-    //        { 
-    //            new("error_subprocess", false, true) // Event subprocess
-    //        }
-    //    );
+    [Fact]
+    public void Handles_Error_Event_Subprocess()
+    {
+        var model = CreateEventSubprocessModel("error", new ErrorEventDefinition("error1"), "error_subprocess", "error_subprocess_start", "error_end", "risky_task");
 
-    //    var engine = new ProcessEngine();
-    //    var trace = engine.Execute(model);
+        var trace = new FullConformanceProcessEngine().Execute(model);
 
-    //    Assert.Contains("StartEvent: start1", trace);
-    //    Assert.Contains("UserTask: risky_task", trace);
-    //    Assert.Contains("EndEvent: normal_end", trace);
-    //}
+        Assert.Contains(trace, r => r.Contains("IndexedEventSubprocessStart: error_subprocess_start (error)"));
+        Assert.Contains(trace, r => r.Contains("ServiceTask: risky_task"));
+        Assert.Contains(trace, r => r.Contains("EndEvent: normal_end"));
+        Assert.Contains(trace, r => r.Contains("EndEvent: error_end"));
+    }
 
-    //[Fact]
-    //public void Handles_Timer_Event_Subprocess()
-    //{
-    //    // Test timer-triggered event subprocess
-    //    var model = new BpmnModel(
-    //        "P_Timer_Event_Sub",
-    //        "Timer Event Subprocess Process",
-    //        new List<BpmnEvent> 
-    //        { 
-    //            new("start1", "startEvent"),
-    //            new("timer_start", "startEvent", null, false, true, "timer"),
-    //            new("timer_end", "endEvent"),
-    //            new("normal_end", "endEvent")
-    //        },
-    //        new List<BpmnTask> { new("long_task", "userTask") },
-    //        new List<BpmnGateway>(),
-    //        new List<BpmnSequenceFlow>
-    //        {
-    //            new("flow1", "start1", "long_task"),
-    //            new("flow2", "long_task", "normal_end"),
-    //            new("timer_flow1", "timer_start", "timer_end")
-    //        },
-    //        new List<BpmnSubprocess> 
-    //        { 
-    //            new("timer_subprocess", false, true) // Event subprocess
-    //        }
-    //    );
+    [Fact]
+    public void Handles_Timer_Event_Subprocess()
+    {
+        var model = CreateEventSubprocessModel("timer", new TimerEventDefinition(null, "PT1M", null), "timer_subprocess", "timer_subprocess_start", "timer_end", "long_task");
 
-    //    var engine = new ProcessEngine();
-    //    var trace = engine.Execute(model);
+        var trace = new FullConformanceProcessEngine().Execute(model);
 
-    //    Assert.Contains("StartEvent: start1", trace);
-    //    Assert.Contains("UserTask: long_task", trace);
-    //    Assert.Contains("EndEvent: normal_end", trace);
-    //}
+        Assert.Contains(trace, r => r.Contains("IndexedEventSubprocessStart: timer_subprocess_start (timer)"));
+        Assert.Contains(trace, r => r.Contains("UserTask: long_task"));
+        Assert.Contains(trace, r => r.Contains("EndEvent: normal_end"));
+        Assert.Contains(trace, r => r.Contains("EndEvent: timer_end"));
+    }
 
-    //[Fact]
-    //public void Handles_Signal_Event_Subprocess()
-    //{
-    //    // Test signal-triggered event subprocess
-    //    var model = new BpmnModel(
-    //        "P_Signal_Event_Sub",
-    //        "Signal Event Subprocess Process",
-    //        new List<BpmnEvent> 
-    //        { 
-    //            new("start1", "startEvent"),
-    //            new("signal_start", "startEvent", null, false, true, "signal"),
-    //            new("signal_end", "endEvent"),
-    //            new("normal_end", "endEvent")
-    //        },
-    //        new List<BpmnTask> { new("waiting_task", "userTask") },
-    //        new List<BpmnGateway>(),
-    //        new List<BpmnSequenceFlow>
-    //        {
-    //            new("flow1", "start1", "waiting_task"),
-    //            new("flow2", "waiting_task", "normal_end"),
-    //            new("signal_flow1", "signal_start", "signal_end")
-    //        },
-    //        new List<BpmnSubprocess> 
-    //        { 
-    //            new("signal_subprocess", false, true) // Event subprocess
-    //        }
-    //    );
+    [Fact]
+    public void Handles_Signal_Event_Subprocess()
+    {
+        var model = CreateEventSubprocessModel("signal", new SignalEventDefinition("signal1"), "signal_subprocess", "signal_subprocess_start", "signal_end", "waiting_task");
 
-    //    var engine = new ProcessEngine();
-    //    var trace = engine.Execute(model);
+        var trace = new FullConformanceProcessEngine().Execute(model);
 
-    //    Assert.Contains("StartEvent: start1", trace);
-    //    Assert.Contains("UserTask: waiting_task", trace);
-    //    Assert.Contains("EndEvent: normal_end", trace);
-    //}
+        Assert.Contains(trace, r => r.Contains("IndexedEventSubprocessStart: signal_subprocess_start (signal)"));
+        Assert.Contains(trace, r => r.Contains("UserTask: waiting_task"));
+        Assert.Contains(trace, r => r.Contains("EndEvent: normal_end"));
+        Assert.Contains(trace, r => r.Contains("EndEvent: signal_end"));
+    }
 
-    //[Fact]
-    //public void Handles_Mixed_Gateway_Types_In_Complex_Process()
-    //{
-    //    // Test complex process with multiple gateway types
-    //    var model = new BpmnModel(
-    //        "P_Mixed_Gateways",
-    //        "Mixed Gateway Types Process",
-    //        new List<BpmnEvent> 
-    //        { 
-    //            new("start1", "startEvent"),
-    //            new("timer_catch", "intermediateCatchEvent", null, false, true, "timer"),
-    //            new("end1", "endEvent"),
-    //            new("end2", "endEvent"),
-    //            new("end3", "endEvent")
-    //        },
-    //        new List<BpmnTask> { new("prep_task", "userTask") },
-    //        new List<BpmnGateway> 
-    //        { 
-    //            new("parallel1", "parallelGateway"),
-    //            new("event_gw1", "eventBasedGateway"),
-    //            new("exclusive1", "exclusiveGateway")
-    //        },
-    //        new List<BpmnSequenceFlow>
-    //        {
-    //            new("flow1", "start1", "prep_task"),
-    //            new("flow2", "prep_task", "parallel1"),
-    //            new("flow3", "parallel1", "event_gw1"),
-    //            new("flow4", "parallel1", "exclusive1"),
-    //            new("flow5", "event_gw1", "timer_catch"),
-    //            new("flow6", "timer_catch", "end1"),
-    //            new("flow7", "exclusive1", "end2"),
-    //            new("flow8", "exclusive1", "end3")
-    //        },
-    //        new List<BpmnSubprocess>()
-    //    );
+    [Fact]
+    public void Handles_Mixed_Gateway_Types_In_Complex_Process()
+    {
+        var model = new BpmnModel(
+            "P_Mixed_Gateways",
+            "Mixed Gateway Types Process",
+            new List<BpmnEvent>
+            {
+                new("start1", "startEvent"),
+                new("timer_catch", "intermediateCatchEvent", new EventDefinition[] { new TimerEventDefinition(null, "PT1M", null) }),
+                new("end1", "endEvent"), new("end2", "endEvent"), new("end3", "endEvent")
+            },
+            new List<BpmnTask> { new("prep_task", "userTask") },
+            new List<BpmnGateway>
+            {
+                new("parallel1", "parallelGateway"),
+                new("event_gw1", "eventBasedGateway"),
+                new("exclusive1", "exclusiveGateway")
+            },
+            new List<BpmnSequenceFlow>
+            {
+                new("flow1", "start1", "prep_task"), new("flow2", "prep_task", "parallel1"),
+                new("flow3", "parallel1", "event_gw1"), new("flow4", "parallel1", "exclusive1"),
+                new("flow5", "event_gw1", "timer_catch"), new("flow6", "timer_catch", "end1"),
+                new("flow7", "exclusive1", "end2"), new("flow8", "exclusive1", "end3")
+            },
+            new List<BpmnSubprocess>());
 
-    //    var engine = new ProcessEngine();
-    //    var trace = engine.Execute(model);
+        var trace = new FullConformanceProcessEngine().Execute(model);
 
-    //    Assert.Contains("StartEvent: start1", trace);
-    //    Assert.Contains("UserTask: prep_task", trace);
-    //    Assert.Contains("ParallelGateway: parallel1", trace);
-    //    // Simplified assertion - just check that execution completes
-    //    Assert.NotEmpty(trace);
-    //}
+        Assert.Contains(trace, r => r.Contains("StartEvent: start1"));
+        Assert.Contains(trace, r => r.Contains("UserTask: prep_task"));
+        Assert.Contains(trace, r => r.Contains("ParallelGateway: parallel1"));
+        Assert.Contains(trace, r => r.Contains("EventBasedGateway: event_gw1"));
+        Assert.NotEmpty(trace);
+    }
+
+    private static BpmnModel CreateEventSubprocessModel(
+        string eventType,
+        EventDefinition definition,
+        string subprocessId,
+        string startId,
+        string eventEndId,
+        string taskId)
+    {
+        return new BpmnModel(
+            $"P_{eventType}_Event_Sub",
+            $"{eventType} Event Subprocess Process",
+            new List<BpmnEvent>
+            {
+                new("start1", "startEvent"),
+                new(startId, "startEvent", new[] { definition }, subprocessId),
+                new(eventEndId, "endEvent", null, subprocessId),
+                new("normal_end", "endEvent"),
+            },
+            new List<BpmnTask> { new(taskId, eventType == "error" ? "serviceTask" : "userTask", subprocessId) },
+            new List<BpmnGateway>(),
+            new List<BpmnSequenceFlow>
+            {
+                new("flow1", "start1", taskId), new("flow2", taskId, "normal_end"),
+                new("event_flow1", startId, eventEndId, false, null, subprocessId)
+            },
+            new List<BpmnSubprocess>
+            {
+                new(subprocessId, true, false, null, null, null,
+                    new[] { startId, eventEndId, taskId }, new[] { "event_flow1" })
+            });
+    }
 
 }

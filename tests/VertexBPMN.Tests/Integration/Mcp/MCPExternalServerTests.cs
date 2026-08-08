@@ -49,7 +49,7 @@ public class MCPExternalServerTests
     public async Task ProcessCaseTokenAsync_ExecutesMcpAction_Successfully()
     {
         // Arrange
-        var caseId = "case1";
+        var caseId = Guid.NewGuid().ToString();
         var planItemId = "adHoc1";
         var caseModel = new CaseModel(
             caseId,
@@ -92,14 +92,11 @@ public class MCPExternalServerTests
             {
                 new HistoricalCaseData(caseId, caseFile, ["planItem1"], DateTime.UtcNow)
             };
-        var externalContext = new Dictionary<string, object> { { "externalKey", "externalValue" } };
         var predictedPlanItems = new List<PlanItem>
             {
                 new PlanItem("predicted1", "humanTask", "humanTaskDef", new Dictionary<string, string> { { "camunda:assignee", "user1" } })
             };
 
-        _aiDecisionServiceMock.Setup(s => s.FetchExternalContextAsync(caseId, "external_workflow_data", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(externalContext);
         _aiDecisionServiceMock.Setup(s => s.PredictOptimalPlanItemsAsync(caseId, caseFile, historicalData, It.IsAny<CancellationToken>()))
             .ReturnsAsync(predictedPlanItems);
 
@@ -108,6 +105,6 @@ public class MCPExternalServerTests
 
         // Assert
         Assert.Equal(predictedPlanItems, result);
-        _aiDecisionServiceMock.Verify(s => s.FetchExternalContextAsync(caseId, "external_workflow_data", It.IsAny<CancellationToken>()), Times.Once());
+        _aiDecisionServiceMock.Verify(s => s.PredictOptimalPlanItemsAsync(caseId, caseFile, historicalData, It.IsAny<CancellationToken>()), Times.Once());
     }
 }

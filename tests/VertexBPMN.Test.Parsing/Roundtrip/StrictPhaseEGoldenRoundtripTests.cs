@@ -52,8 +52,7 @@ public class StrictPhaseEGoldenRoundtripTests
 </bpmn:definitions>";
         var model = StrictParser.ParseAsync(xml).GetAwaiter().GetResult();
         var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
-        Assert.NotNull(outXml);
-       // AssertCanonicalEqual(xml, outXml);
+        AssertCanonicalEqual(xml, outXml);
     }
 
     [Fact]
@@ -83,8 +82,7 @@ public class StrictPhaseEGoldenRoundtripTests
 </bpmn:definitions>";
         var model = StrictParser.ParseAsync(xml).GetAwaiter().GetResult();
         var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
-        Assert.NotNull(outXml);
-       // AssertCanonicalEqual(xml, outXml);
+        AssertCanonicalEqual(xml, outXml);
     }
 
     [Fact]
@@ -105,8 +103,7 @@ public class StrictPhaseEGoldenRoundtripTests
 </bpmn:definitions>";
         var model = StrictParser.ParseAsync(xml).GetAwaiter().GetResult();
         var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
-        Assert.NotNull(outXml);
-      //  AssertCanonicalEqual(xml, outXml);
+        AssertCanonicalEqual(xml, outXml);
     }
 
     [Fact]
@@ -123,8 +120,7 @@ public class StrictPhaseEGoldenRoundtripTests
 </bpmn:definitions>";
         var model = StrictParser.ParseAsync(xml).GetAwaiter().GetResult();
         var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
-        Assert.NotNull(outXml);
-       // AssertCanonicalEqual(xml, outXml);
+        AssertCanonicalEqual(xml, outXml);
     }
 
     [Fact]

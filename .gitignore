@@ -52,6 +52,9 @@ dlldata.c
 project.lock.json
 project.fragment.lock.json
 artifacts/
+vertexbpmn.db
+vertexbpmn.db-shm
+vertexbpmn.db-wal
 **/Properties/launchSettings.json
 
 # StyleCop

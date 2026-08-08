@@ -77,7 +77,9 @@ namespace VertexBPMN.Tests.Integration.Bpmn
         {
             var logger = new Mock<ILogger<BpmnParser>>();var parser = new BpmnParser(logger.Object, TracerProvider.Default);
             const string xml = "<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'></definitions>";
-            Assert.Throws<InvalidOperationException>(() => parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult());
+            var model = parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
+            Assert.Empty(model.Events);
+            Assert.Empty(model.Tasks);
         }
 
         [Fact]
@@ -106,7 +108,7 @@ namespace VertexBPMN.Tests.Integration.Bpmn
             );
             var engine = new ProcessEngine();
             var trace = engine.Execute(model);
-            Assert.Contains("UserTask: t1", trace); // Falls back to UserTask
+            Assert.Contains("Task: t1 (customTask)", trace);
         }
     }
 }

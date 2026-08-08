@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.14.36623.8 d17.14
+VisualStudioVersion = 17.14.36623.8
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VertexBPMN.Domain", "src\VertexBPMN.Domain\VertexBPMN.Domain.csproj", "{B8CEE0DD-76DA-D783-366A-E616777848F0}"
 EndProject
@@ -71,6 +71,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VertexBPMN.Model.Schema", "src\VertexBPMN.Model.Schema\VertexBPMN.Model.Schema.csproj", "{035BC9DE-6CC4-DF0F-BAD5-F93523C081D0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VertexBPMN.Cli", "src\VertexBPMN.Cli\VertexBPMN.Cli.csproj", "{EDDE9E8F-7121-49D6-84BB-3100651FE721}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -298,6 +300,18 @@ Global
 		{035BC9DE-6CC4-DF0F-BAD5-F93523C081D0}.Release|x64.Build.0 = Release|Any CPU
 		{035BC9DE-6CC4-DF0F-BAD5-F93523C081D0}.Release|x86.ActiveCfg = Release|Any CPU
 		{035BC9DE-6CC4-DF0F-BAD5-F93523C081D0}.Release|x86.Build.0 = Release|Any CPU
+		{EDDE9E8F-7121-49D6-84BB-3100651FE721}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EDDE9E8F-7121-49D6-84BB-3100651FE721}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EDDE9E8F-7121-49D6-84BB-3100651FE721}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{EDDE9E8F-7121-49D6-84BB-3100651FE721}.Debug|x64.Build.0 = Debug|Any CPU
+		{EDDE9E8F-7121-49D6-84BB-3100651FE721}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{EDDE9E8F-7121-49D6-84BB-3100651FE721}.Debug|x86.Build.0 = Debug|Any CPU
+		{EDDE9E8F-7121-49D6-84BB-3100651FE721}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EDDE9E8F-7121-49D6-84BB-3100651FE721}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EDDE9E8F-7121-49D6-84BB-3100651FE721}.Release|x64.ActiveCfg = Release|Any CPU
+		{EDDE9E8F-7121-49D6-84BB-3100651FE721}.Release|x64.Build.0 = Release|Any CPU
+		{EDDE9E8F-7121-49D6-84BB-3100651FE721}.Release|x86.ActiveCfg = Release|Any CPU
+		{EDDE9E8F-7121-49D6-84BB-3100651FE721}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -327,6 +341,7 @@ Global
 		{F27ECD05-4447-4BD3-855A-07BC5DD89345} = {31E3FE0D-E2F6-44AF-ADE7-60EEA1F1CFF6}
 		{00F9914B-6345-4FE3-83F3-92042ECE447A} = {43FD9450-6CEF-47AA-A9F0-3597D74FC038}
 		{035BC9DE-6CC4-DF0F-BAD5-F93523C081D0} = {31E3FE0D-E2F6-44AF-ADE7-60EEA1F1CFF6}
+		{EDDE9E8F-7121-49D6-84BB-3100651FE721} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {A60A1F1A-65F9-446F-99F1-BE27DDB55AAC}

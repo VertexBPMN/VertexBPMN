@@ -127,8 +127,7 @@ public class StrictPhaseCRemainingPlanTests
         // mutate raw
         raw["s1"].Elements().First().SetAttributeValue("foo", "changed");
         var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
-        // Expect original value (immutability) -> will currently FAIL
-        Assert.Contains("foo=\"changed\"", outXml);
-        Assert.DoesNotContain("foo=\"orig\"", outXml);
+        Assert.Contains("foo=\"orig\"", outXml);
+        Assert.DoesNotContain("foo=\"changed\"", outXml);
     }
 }

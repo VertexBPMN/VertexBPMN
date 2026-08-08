@@ -1,6 +1,7 @@
 
 using Microsoft.Extensions.Logging;
 using VertexBPMN.Application;
+using VertexBPMN.Domain.Model.Dmn;
 using VertexBPMN.Infrastructure.Persistence.InMemory;
 
 namespace VertexBPMN.Tests.Integration.Bpmn;
@@ -11,7 +12,9 @@ public class DecisionServiceTests
     public async Task Evaluate_Decision_Returns_Inputs_As_Outputs()
     {
         var logger = new LoggerFactory().CreateLogger<DecisionService>();
-        var service = new DecisionService(logger, new InMemoryDecisionRepository());
+        var repository = new InMemoryDecisionRepository();
+        await repository.UpsertDefinitionAsync(new DecisionDefinition("test", "Test", string.Empty, null));
+        var service = new DecisionService(logger, repository);
         var inputs = new Dictionary<string, object> { { "foo", 42 } };
         var result = await service.EvaluateDecisionByKeyAsync("test", inputs);
         Assert.NotNull(result);

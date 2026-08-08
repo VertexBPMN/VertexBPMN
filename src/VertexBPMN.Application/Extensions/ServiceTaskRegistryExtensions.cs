@@ -1,7 +1,9 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Configuration;
 using SendGrid;
 using VertexBPMN.Application.Fakes;
+using VertexBPMN.Application.Configuration;
 using VertexBPMN.Application.Handlers;
 using VertexBPMN.Domain.Interfaces;
 using OpenTelemetry;
@@ -11,7 +13,7 @@ namespace VertexBPMN.Application.Extensions;
 
 public static class ServiceTaskRegistryExtensions
 {
-    public static IServiceCollection AddServiceTaskHandlers(this IServiceCollection services)
+    public static IServiceCollection AddServiceTaskHandlers(this IServiceCollection services, IConfiguration? configuration = null)
     {
         // Registriere alle Handler und Abhängigkeiten
         RegisterCoreDependencies(services);
@@ -69,11 +71,45 @@ public static class ServiceTaskRegistryExtensions
             registry.Register("ai:local", provider.GetRequiredService<GenericAiServiceTaskHandler>());
             registry.Register("ai:custom", provider.GetRequiredService<GenericAiServiceTaskHandler>());
 
+            var options = provider.GetService<DependencyOptions>() ?? new DependencyOptions();
+            if (!options.ServiceTasks.Enabled || !options.Ai.Enabled)
+            {
+                foreach (var implementation in new[] { "aiServiceTask", "ai:universal", "ai:smart", "ai:openai", "openAiServiceTask", "ai:anthropic", "ai:claude", "anthropicServiceTask", "ai:google", "ai:gemini", "ai:gemini:pro", "geminiServiceTask", "ai:generic", "genericAi", "ai:cohere", "ai:huggingface", "ai:ollama", "ai:local", "ai:custom" })
+                    registry.Remove(implementation);
+            }
+
+            foreach (var implementation in options.ServiceTasks.Disabled)
+                registry.Remove(implementation);
+
+            foreach (var mapping in options.ServiceTasks.Mappings)
+            {
+                if (!handlers.TryGetValue(mapping.Value, out var handlerFactory))
+                    throw new InvalidOperationException($"Unknown service task handler '{mapping.Value}' configured for '{mapping.Key}'.");
+                registry.Register(mapping.Key, handlerFactory(provider));
+            }
+
             return registry;
         });
 
         return services;
     }
+
+    private static readonly IReadOnlyDictionary<string, Func<IServiceProvider, IServiceTaskHandler>> handlers =
+        new Dictionary<string, Func<IServiceProvider, IServiceTaskHandler>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["AIServiceTaskHandler"] = p => p.GetRequiredService<AIServiceTaskHandler>(),
+            ["OpenAiServiceTaskHandler"] = p => p.GetRequiredService<OpenAiServiceTaskHandler>(),
+            ["AnthropicServiceTaskHandler"] = p => p.GetRequiredService<AnthropicServiceTaskHandler>(),
+            ["GeminiServiceTaskHandler"] = p => p.GetRequiredService<GeminiServiceTaskHandler>(),
+            ["GenericAiServiceTaskHandler"] = p => p.GetRequiredService<GenericAiServiceTaskHandler>(),
+            ["ContextEnrichmentServiceTaskHandler"] = p => p.GetRequiredService<ContextEnrichmentServiceTaskHandler>(),
+            ["McpServiceTaskHandler"] = p => p.GetRequiredService<McpServiceTaskHandler>(),
+            ["CalculateScoreServiceTaskHandler"] = p => p.GetRequiredService<CalculateScoreServiceTaskHandler>(),
+            ["CancelApplicationServiceTaskHandler"] = p => p.GetRequiredService<CancelApplicationServiceTaskHandler>(),
+            ["IssuePolicyServiceTaskHandler"] = p => p.GetRequiredService<IssuePolicyServiceTaskHandler>(),
+            ["RejectPolicyServiceTaskHandler"] = p => p.GetRequiredService<RejectPolicyServiceTaskHandler>(),
+            ["SendGridServiceTaskHandler"] = p => p.GetRequiredService<SendGridServiceTaskHandler>()
+        };
 
     private static void RegisterCoreDependencies(IServiceCollection services)
     {

@@ -9,6 +9,7 @@ using VertexBPMN.Api.Plugins;
 using VertexBPMN.Api.Security;
 using VertexBPMN.Api.Services;
 using VertexBPMN.Application;
+using VertexBPMN.Application.Configuration;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Domain.Interfaces.Repositories;
 using VertexBPMN.Engine;
@@ -25,6 +26,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.Configure<ModuleOptions>(builder.Configuration.GetSection("Modules"));
 var moduleOptions = new ModuleOptions();
 builder.Configuration.GetSection("Modules").Bind(moduleOptions);
+var dependencyOptions = new DependencyOptions();
+builder.Configuration.GetSection("Dependencies").Bind(dependencyOptions);
 
 // Resolve operational mode
 var opMode = builder.Environment.ResolveOperationalMode(builder.Configuration);
@@ -170,10 +173,12 @@ using (var scope = app.Services.CreateScope())
 }
 
 // Plugin system gating
-var enablePlugins = moduleOptions.Plugins && opMode != OperationalMode.Test;
+var enablePlugins = moduleOptions.Plugins && dependencyOptions.Plugins.Enabled && opMode != OperationalMode.Test;
 if (enablePlugins)
 {
-	var pluginsDir = Path.Combine(AppContext.BaseDirectory, "plugins");
+	var pluginsDir = Path.IsPathRooted(dependencyOptions.Plugins.Directory)
+		? dependencyOptions.Plugins.Directory
+		: Path.Combine(AppContext.BaseDirectory, dependencyOptions.Plugins.Directory);
 	if (!Directory.Exists(pluginsDir))
 	{
 		Directory.CreateDirectory(pluginsDir);
@@ -183,7 +188,9 @@ if (enablePlugins)
 	{
 		var pluginManager = pluginScope.ServiceProvider.GetRequiredService<IPluginManager>();
 		var logger = pluginScope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("PluginLoader");
-		var pluginFiles = Directory.GetFiles(pluginsDir, "*.dll", SearchOption.TopDirectoryOnly);
+		var pluginFiles = dependencyOptions.Plugins.Files.Count == 0
+			? Directory.GetFiles(pluginsDir, "*.dll", SearchOption.TopDirectoryOnly)
+			: dependencyOptions.Plugins.Files.Select(file => Path.IsPathRooted(file) ? file : Path.Combine(pluginsDir, file));
 		foreach (var pluginPath in pluginFiles)
 		{
 			var result = await pluginManager.LoadPluginAsync(pluginPath);

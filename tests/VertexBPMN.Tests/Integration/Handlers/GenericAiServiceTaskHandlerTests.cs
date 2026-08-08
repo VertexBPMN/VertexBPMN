@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Moq;
+using OpenTelemetry.Trace;
 using Shouldly;
 using VertexBPMN.Application.Handlers;
 
@@ -28,7 +29,7 @@ public class GenericAiServiceTaskHandlerTests
     {
         // Arrange
         var logger = new Mock<ILogger<GenericAiServiceTaskHandler>>();
-        var handler = new GenericAiServiceTaskHandler(_httpClient, logger.Object, null);
+        var handler = new GenericAiServiceTaskHandler(_httpClient, logger.Object, TracerProvider.Default);
 
         var attributes = new Dictionary<string, string>
         {

@@ -201,7 +201,7 @@ public partial class BpmnParser : IBpmnParser
         {
             if (_options.StrictValidation)
                 diagnostics.Add("No <process> element");
-            var rawMeta0 = strict ? new BpmnRawMetadata(rawDefinitionsAttr, rawProcessAttr) : null;
+            var rawMeta0 = strict ? new BpmnRawMetadata(rawDefinitionsAttr, rawProcessAttr, OriginalXml: xml) : null;
 
             var empty = new BpmnModel(
                  string.Empty,
@@ -892,7 +892,8 @@ public partial class BpmnParser : IBpmnParser
                 RawDiRoot: diRoot,
                 PartiallyDirtyElements: null,
                 GlobalElementKinds: globalKinds,
-                VendorNormalizedExtensions: vendorNormalized
+                VendorNormalizedExtensions: vendorNormalized,
+                OriginalXml: xml
             );
         }
 

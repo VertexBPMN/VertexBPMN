@@ -1,0 +1,27 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.4" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.4" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\VertexBPMN.Domain\VertexBPMN.Domain.csproj" />
+    <ProjectReference Include="..\VertexBPMN.Application\VertexBPMN.Application.csproj" />
+    <ProjectReference Include="..\VertexBPMN.Engine\VertexBPMN.Engine.csproj" />
+    <ProjectReference Include="..\VertexBPMN.Infrastructure\VertexBPMN.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

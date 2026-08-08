@@ -241,7 +241,7 @@ public class OpenAiServiceTaskHandlerTests : IDisposable
         try
         {
             // Act
-            await _handler.ExecuteAsync(attributes, variables);
+            await _handler.ExecuteAsync(attributes, variables, CancellationToken.None);
 
             // Assert
             var resultKey = $"result_{model.Replace(".", "_").Replace("-", "_")}";

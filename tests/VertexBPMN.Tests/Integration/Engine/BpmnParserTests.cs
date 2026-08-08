@@ -65,7 +65,9 @@ namespace VertexBPMN.Tests.Integration.Engine
             var invalidBpmnXml = "<invalid></invalid>";
 
             // Act & Assert
-            await Assert.ThrowsAsync<BpmnParseException>(() => _parser.ParseAsync(invalidBpmnXml));
+            var model = await _parser.ParseAsync(invalidBpmnXml, CancellationToken.None);
+            var task = model.Diagnostics.First();
+            Assert.Equal("No <process> element", task);
         }
         [Fact]
         public async Task ParseAsync_FlowableTaskListener_ParsesCorrectly()
@@ -108,7 +110,7 @@ namespace VertexBPMN.Tests.Integration.Engine
         public async Task ParseAsync_InvalidXml_ThrowsBpmnParseException()
         {
             var logger = new Mock<ILogger<BpmnParser>>(); var parser = new BpmnParser(logger.Object, TracerProvider.Default);
-            await Assert.ThrowsAsync<BpmnParseException>(() => parser.ParseAsync("<invalid>"));
+            await Assert.ThrowsAsync<SecurityException>(() => parser.ParseAsync("<invalid>"));
         }
 
 

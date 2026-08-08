@@ -22,7 +22,7 @@ public class ContextEnrichmentServiceTaskHandler : IServiceTaskHandler
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _tracer = tracerProvider.GetTracer("VertexBPMN.ContextEnrichment");
+        _tracer = (tracerProvider ?? TracerProvider.Default).GetTracer("VertexBPMN.ContextEnrichment");
     }
 
     /// <summary>
@@ -59,6 +59,9 @@ public class ContextEnrichmentServiceTaskHandler : IServiceTaskHandler
                 case "cache":
                     await EnrichFromMemoryAsync(config, variables, span, cancellationToken);
                     break;
+                case "mock":
+                    await EnrichFromMockAsync(config, variables, span, cancellationToken);
+                    break;
                 case "composite":
                     await EnrichFromMultipleSourcesAsync(config, variables, span, cancellationToken);
                     break;
@@ -84,6 +87,7 @@ public class ContextEnrichmentServiceTaskHandler : IServiceTaskHandler
         {
             SourceType = attributes.GetValueOrDefault("context:sourceType", "api"),
             EnrichmentType = attributes.GetValueOrDefault("context:type", "general"),
+            DataType = attributes.GetValueOrDefault("context:dataType", "general"),
             SourceUrl = attributes.GetValueOrDefault("context:sourceUrl", ""),
             SourceQuery = attributes.GetValueOrDefault("context:query", ""),
             HttpMethod = attributes.GetValueOrDefault("context:httpMethod", "GET"),
@@ -331,6 +335,26 @@ public class ContextEnrichmentServiceTaskHandler : IServiceTaskHandler
         await Task.CompletedTask;
     }
 
+    private async Task EnrichFromMockAsync(ContextEnrichmentConfiguration config, IDictionary<string, object> variables,
+        TelemetrySpan span, CancellationToken cancellationToken)
+    {
+        var dataType = config.DataType;
+        var entityId = variables.TryGetValue("entityId", out var idValue)
+            ? idValue?.ToString() ?? string.Empty
+            : string.Empty;
+
+        var mockData = new Dictionary<string, object>
+        {
+            ["dataType"] = dataType,
+            ["entityId"] = entityId,
+            ["enrichmentSource"] = "mock",
+            ["enrichedAt"] = DateTime.UtcNow
+        };
+
+        variables[config.ResultVariable] = JsonSerializer.Serialize(mockData, JsonOptions);
+        await Task.CompletedTask;
+    }
+
     private async Task EnrichFromMultipleSourcesAsync(ContextEnrichmentConfiguration config, IDictionary<string, object> variables,
         TelemetrySpan span, CancellationToken cancellationToken)
     {
@@ -556,6 +580,7 @@ public class ContextEnrichmentServiceTaskHandler : IServiceTaskHandler
     {
         public string SourceType { get; init; } = "api";
         public string EnrichmentType { get; init; } = "general";
+        public string DataType { get; init; } = "general";
         public string SourceUrl { get; init; } = "";
         public string SourceQuery { get; init; } = "";
         public string HttpMethod { get; init; } = "GET";

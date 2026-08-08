@@ -49,6 +49,7 @@ CREATE INDEX IF NOT EXISTS IX_ProcessInstance_BusinessKey ON ProcessInstance(Bus
 CREATE INDEX IF NOT EXISTS IX_ProcessInstance_Tenant ON ProcessInstance(TenantId);
 CREATE INDEX IF NOT EXISTS IX_ProcessInstance_State ON ProcessInstance(State);
 CREATE INDEX IF NOT EXISTS IX_ProcessInstance_StartedAt ON ProcessInstance(StartedAt);
+CREATE VIEW IF NOT EXISTS ProcessInstances AS SELECT * FROM ProcessInstance;
 
 CREATE TABLE IF NOT EXISTS ExecutionToken (
     Id TEXT PRIMARY KEY,

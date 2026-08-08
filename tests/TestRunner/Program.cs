@@ -39,6 +39,8 @@ class Program
     static async Task RunTokenEngineBenchmarksAsync()
     {
         Console.WriteLine("Running Token Engine Benchmarks...");
+        // Test 0: ProcessEngine Benchmar
+        await RunFullConformanceProcessEngineBenchmark();
         
         // Test 1: ProcessEngine Benchmark
         await RunProcessEngineBenchmark();
@@ -91,7 +93,46 @@ class Program
             Console.WriteLine("   ? Performance test passed");
         }
     }
-    
+     
+    static async Task RunFullConformanceProcessEngineBenchmark()
+    {
+        Console.WriteLine("1. ProcessEngine Benchmark...");
+        
+        var model = new BpmnModel(
+            "P1",
+            "Benchmark",
+            new List<BpmnEvent> { new("start1", "startEvent"), new("end1", "endEvent") },
+            new List<BpmnGateway>(),
+            new List<BpmnSubprocess>(),
+            new List<BpmnSequenceFlow> { new("flow1", "start1", "end1") },
+            new List<BpmnTask>()
+        );
+        
+        var engine = new FullConformanceProcessEngine();
+        var sw = Stopwatch.StartNew();
+        
+        for (int i = 0; i < 10000; i++)
+        {
+            var trace = engine.Execute(model);
+            if (trace.Count == 0)
+            {
+                throw new Exception("ProcessEngine returned empty trace");
+            }
+        }
+        
+        sw.Stop();
+        Console.WriteLine($"   ? ProcessEngine executed 10,000 processes in {sw.ElapsedMilliseconds}ms");
+        
+        if (sw.ElapsedMilliseconds >= 5000)
+        {
+            Console.WriteLine($"   ? Performance warning: {sw.ElapsedMilliseconds}ms >= 5000ms threshold");
+        }
+        else
+        {
+            Console.WriteLine("   ? Performance test passed");
+        }
+    }
+
     static async Task RunDistributedProcessEngineBenchmark()
     {
         Console.WriteLine("2. DistributedProcessEngine Benchmark...");

@@ -423,6 +423,42 @@ public sealed partial class FullConformanceProcessEngine : IProcessEngine
    
         var varsRef = GetOrCreateWorkingVariables(model);
 
+        if (task.Type == "serviceTask")
+        {
+            var implementation = task.Implementation;
+            if (string.IsNullOrWhiteSpace(implementation))
+            {
+                trace.Add($"ServiceTaskNoImplementation: {task.Id}");
+            }
+            else
+            {
+                try
+                {
+                    if (_serviceTaskRegistry.TryResolve(implementation, out var handler) && handler != null)
+                    {
+                        handler.ExecuteAsync(
+                                task.Attributes ?? new Dictionary<string, string>(),
+                                varsRef,
+                                CancellationToken.None)
+                            .GetAwaiter()
+                            .GetResult();
+                        trace.Add($"ServiceTaskCompleted: {task.Id}");
+                    }
+                    else
+                    {
+                        trace.Add($"ServiceTaskHandlerNotFound: {implementation}");
+                        _logger.LogWarning("Service task handler not found for implementation: {Implementation}", implementation);
+                        ExecuteDefaultServiceTask(task, varsRef, trace);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    trace.Add($"ServiceTaskError: {task.Id} => {ex.GetType().Name}: {ex.Message}");
+                    _logger.LogError(ex, "Error executing service task {TaskId}", task.Id);
+                }
+            }
+        }
+
         // BusinessRuleTask variable production (simulation or real DMN)
         if (task.Type == "businessRuleTask" && decisionService == null)
         {
@@ -474,6 +510,23 @@ public sealed partial class FullConformanceProcessEngine : IProcessEngine
         if (_tokens.TryGetValue(tokenId, out var tk))
             _tokens[tokenId] = tk with { Active = false };
     }
+
+    private static void ExecuteDefaultServiceTask(BpmnTask task, IDictionary<string, object> variables, List<string> trace)
+    {
+        trace.Add($"ExecutingDefaultHandler: {task.Id}");
+
+        if (task.Attributes != null)
+        {
+            foreach (var attribute in task.Attributes)
+                trace.Add($"Attribute: {attribute.Key} = {attribute.Value}");
+        }
+
+        var resultVariable = task.Attributes?.GetValueOrDefault("resultVariable") ?? $"{task.Id}_Result";
+        var result = $"Default result for task {task.Id}";
+        variables[resultVariable] = result;
+        trace.Add($"DefaultResultSet: {task.Id} => {result}");
+    }
+
     // Add near other private helpers (bottom helper region)
 
     private IDictionary<string, object> GetOrCreateWorkingVariables(BpmnModel model)
@@ -836,7 +889,7 @@ partial class FullConformanceProcessEngine
     public Task<List<string>> ExecuteCaseAsync(CaseModel model, CancellationToken cancellationToken = default)
         => Task.FromResult(new List<string> { "CaseExecutionNotSupported: BPMN-only reference engine" });
 
-    // --- Exclusive Gateway helpers (Step 1–3 implementation) ---
+    // --- Exclusive Gateway helpers (Step 1ï¿½3 implementation) ---
     private BpmnSequenceFlow? SelectExclusiveGatewayFlow(string gatewayId, List<BpmnSequenceFlow> flows,
         IDictionary<string, object> vars, List<string> trace)
     {

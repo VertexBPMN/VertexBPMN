@@ -11,7 +11,7 @@ public class StrictPhaseCDeepCloneTests
     private static BpmnParser P => new(new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict, PreserveUnknownExtensions = true });
 
     [Fact]
-    public void RawExtensionElements_Mutation_Reflected_In_Output()
+    public void RawExtensionElements_Mutation_DoesNotChange_StrictSnapshot()
     {
         const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL' xmlns:v='http://vendor/x'>
   <bpmn:process id='p1'>
@@ -30,8 +30,8 @@ public class StrictPhaseCDeepCloneTests
         Assert.True(rawExt.ContainsKey("s1"));
         rawExt["s1"].Elements().First().SetAttributeValue("foo", "mutated");
         var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
-        Assert.Contains("foo=\"mutated\"", outXml);
-        Assert.DoesNotContain("foo=\"bar\"", outXml);
+        Assert.Contains("foo=\"bar\"", outXml);
+        Assert.DoesNotContain("foo=\"mutated\"", outXml);
     }
 
 //    [Fact]

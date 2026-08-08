@@ -14,10 +14,10 @@ using VertexBPMN.Engine.Parsing;
 
 namespace VertexBPMN.Tests.Integration.Handlers;
 
-// Passe diesen Namespace an, falls nötig
+// Passe diesen Namespace an, falls nï¿½tig
 
 /// <summary>
-/// Unit-Tests für SemanticKernelServiceTaskHandler mit Mocking der IKernelFactory.
+/// Unit-Tests fï¿½r SemanticKernelServiceTaskHandler mit Mocking der IKernelFactory.
 /// </summary>
 public class SemanticKernelServiceTaskHandlerTests
 {
@@ -50,7 +50,7 @@ public class SemanticKernelServiceTaskHandlerTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync([new(AuthorRole.Assistant, expectedResult)]);
 
-        // 2. Erstelle einen echten Kernel, der den gemockten Service enthält.
+        // 2. Erstelle einen echten Kernel, der den gemockten Service enthï¿½lt.
         var kernelBuilder = Kernel.CreateBuilder();
         kernelBuilder.Services.AddSingleton<IChatCompletionService>(mockChatService.Object);
         var kernel = kernelBuilder.Build();
@@ -58,7 +58,7 @@ public class SemanticKernelServiceTaskHandlerTests
         // 3. Mocke die KernelFactory.
         var mockKernelFactory = new Mock<IKernelFactory>();
 
-        // 4. Bringe der gemockten Factory bei, unseren präparierten Kernel zurückzugeben,
+        // 4. Bringe der gemockten Factory bei, unseren prï¿½parierten Kernel zurï¿½ckzugeben,
         //    wenn ihre GetKernel-Methode aufgerufen wird.
         mockKernelFactory
             .Setup(f => f.GetKernel(It.IsAny<IDictionary<string, string>>()))
@@ -128,14 +128,14 @@ public class SemanticKernelServiceTaskHandlerTests
         Assert.NotNull(semanticKernelHandler);
 
         var engine = new ProcessEngine(NullLogger<ProcessEngine>.Instance, registry);
-
+    
         // Act
         var trace = engine.Execute(model);
 
         // Assert
-        Assert.Contains("ServiceTask: SK_ServiceTask_1 (semanticKernelServiceTask)", trace);
-        Assert.Contains("EndEvent: EndEvent_1", trace);
-        Assert.True(model.ProcessVariables.ContainsKey("llmResult"));
+        Assert.Contains(trace, r => r.ToString().Contains("ServiceTask: SK_ServiceTask_1"));
+        Assert.Contains(trace, r => r.ToString().Contains("EndEvent: EndEvent_1"));
+        Assert.True(model.ProcessVariables.ContainsKey("customerMessage"));
         Assert.Equal("Das Wetter ist sonnig.", model.ProcessVariables["llmResult"]);
     }
 

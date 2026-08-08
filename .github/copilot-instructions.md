@@ -112,3 +112,10 @@ If unsure, ask to read specs/*/ (plan/spec/contracts/quickstart).
 
 ---
 **For any unclear or missing conventions, consult the README and CONTRIBUTING.md, or ask for clarification.**
+
+<!-- mermaid-ai-skills:start -->
+## Mermaid Diagrams
+
+When the user asks to create, edit, or visualize a diagram, follow the
+instructions in `.github/instructions/mermaid.instructions.md`.
+<!-- mermaid-ai-skills:end -->

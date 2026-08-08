@@ -142,13 +142,13 @@ public class ProcessEngine : IProcessEngine
             iterations++;
 
             // Check if current element is an end event
-            var endEvent = model.Events.FirstOrDefault(e => e.Id == currentId && e.Type == "endEvent");
+            /* var endEvent = model.Events.FirstOrDefault(e => e.Id == currentId && e.Type == "endEvent");
             if (endEvent != null)
             {
                 trace.Add($"EndEvent: {endEvent.Id}");
                 break;
             }
-
+              */
             var flows = model.SequenceFlows.Where(f => f.SourceRef == currentId).ToList();
             if (flows.Count == 0) 
             {
@@ -199,6 +199,7 @@ public class ProcessEngine : IProcessEngine
                 trace.Add($"EndEvent: {evt.Id}");
                 break;
             }
+
         }
         
         if (iterations >= maxIterations)

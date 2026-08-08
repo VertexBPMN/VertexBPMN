@@ -1,6 +1,11 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
+using Moq;
+using Moq.Protected;
+using System.Net;
+using System.Net.Http;
+using System.Text;
 using VertexBPMN.Api.Plugins;
 
 namespace VertexBPMN.Tests.Integration.Mcp;
@@ -8,10 +13,21 @@ public class McpAgentPluginTests
 {
      private readonly static string _agentFilePath = Path.Combine(Directory.GetCurrentDirectory(), "TestData",  "agents.json");
 
-     [Fact(Skip = "Needs external service")]
+     [Fact]
     public async Task ServiceTaskExecutesAgent()
     {
-        var plugin = new McpAgentPlugin.McpAgentPlugin();
+        var handler = new Mock<HttpMessageHandler>();
+        handler
+            .Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"result\":\"ok\"}", Encoding.UTF8, "application/json")
+            });
+        var plugin = new McpAgentPlugin.McpAgentPlugin(new HttpClient(handler.Object));
         var context = new PluginContext
         {
             Configuration = new TestConfig(),

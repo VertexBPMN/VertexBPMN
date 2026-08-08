@@ -14,6 +14,8 @@ public sealed class ServiceTaskRegistry : IServiceTaskRegistry
         _handlers[implementation] = handler ?? throw new ArgumentNullException(nameof(handler));
     }
 
+    public bool Remove(string implementation) => _handlers.TryRemove(implementation, out _);
+
     public bool TryResolve(string implementation, out IServiceTaskHandler? handler)
     {
         return _handlers.TryGetValue(implementation ?? string.Empty, out handler);

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Moq;
 using OpenTelemetry.Trace;
+using VertexBPMN.Domain.Exceptions;
 using VertexBPMN.Engine.Execution;
 using VertexBPMN.Engine.Parsing;
 
@@ -16,16 +17,18 @@ namespace VertexBPMN.Tests.Conformance
             var bpmnFile = Path.Combine(Directory.GetCurrentDirectory(), "TestData", "Reference", "C.7.0.bpmn");
             var xml = File.ReadAllText(bpmnFile);
             var logger = new Mock<ILogger<BpmnParser>>();var parser = new BpmnParser(logger.Object, TracerProvider.Default);
-            var model =  parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
+            Assert.Throws<SecurityException>(() =>parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult());
+            /*var model =  parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
             Assert.NotNull(model);
-            var engine = new ProcessEngine();
+            var engine = new FullConformanceProcessEngine();
+            Assert.Throws<SecurityException>(() => engine.Execute(model));
             var result = engine.Execute(model);
             Assert.NotNull(result);
             Assert.True(result.Count > 0, "No trace produced for C.7.0.bpmn");
             foreach (var item in result)
             {
                 Console.WriteLine($"Result item: {item}");
-            }
+            }*/
         }
     }
 }

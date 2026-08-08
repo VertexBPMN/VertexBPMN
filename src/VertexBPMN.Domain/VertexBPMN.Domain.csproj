@@ -10,6 +10,12 @@
     <Compile Remove="Entities\Modeling\**" />
     <EmbeddedResource Remove="Entities\Modeling\**" />
     <None Remove="Entities\Modeling\**" />
+    <Compile Remove="Entities\obj\**" />
+    <EmbeddedResource Remove="Entities\obj\**" />
+    <None Remove="Entities\obj\**" />
+    <Compile Remove="Entities\bin\**" />
+    <EmbeddedResource Remove="Entities\bin\**" />
+    <None Remove="Entities\bin\**" />
   </ItemGroup>
  <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.4" />

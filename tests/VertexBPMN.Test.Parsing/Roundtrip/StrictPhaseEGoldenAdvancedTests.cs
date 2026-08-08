@@ -41,16 +41,16 @@ public class StrictPhaseEGoldenAdvancedTests
         var model = StrictParser.ParseAsync(xml).GetAwaiter().GetResult();
         var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
 
-        // Basic structure checks
-        Assert.Contains("<bpmn:message id=\"msg1\"", outXml);
-        Assert.Contains("<bpmn:signal id=\"sig1\"", outXml);
-        Assert.Contains("<bpmn:boundaryEvent id=\"b1\"", outXml);
-        Assert.Contains("attachedToRef=\"ut1\"", outXml);
-        Assert.Contains("cancelActivity=\"false\"", outXml);
-        Assert.Contains("<bpmn:timerEventDefinition", outXml);
-        Assert.Contains("<bpmn:subProcess id=\"sp1\"", outXml);
+        var document = XDocument.Parse(outXml);
+        Assert.Equal("msg1", (string?)document.Descendants(BPMN + "message").Single().Attribute("id"));
+        Assert.Equal("sig1", (string?)document.Descendants(BPMN + "signal").Single().Attribute("id"));
+        var boundaryEvent = document.Descendants(BPMN + "boundaryEvent").Single();
+        Assert.Equal("b1", (string?)boundaryEvent.Attribute("id"));
+        Assert.Equal("ut1", (string?)boundaryEvent.Attribute("attachedToRef"));
+        Assert.Equal("false", (string?)boundaryEvent.Attribute("cancelActivity"));
+        Assert.Single(boundaryEvent.Elements(BPMN + "timerEventDefinition"));
+        Assert.Equal("sp1", (string?)document.Descendants(BPMN + "subProcess").Single().Attribute("id"));
 
-        // Canonical (whitespace-normalized) equality expectation
-        //Assert.Equal(Normalize(Canonical(xml)), Normalize(Canonical(outXml)));
+        Assert.Equal(Normalize(Canonical(xml)), Normalize(Canonical(outXml)));
     }
 }

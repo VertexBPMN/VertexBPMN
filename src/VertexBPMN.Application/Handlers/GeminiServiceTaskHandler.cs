@@ -210,12 +210,16 @@ public class GeminiServiceTaskHandler : IServiceTaskHandler
 
     private string GetApiKey(IDictionary<string, string> attributes)
     {
-        var apiKey = attributes.GetValueOrDefault("ai:apiKey", "") 
-                     ?? Environment.GetEnvironmentVariable("GEMINI_API_KEY")
-                     ?? Environment.GetEnvironmentVariable("GOOGLE_API_KEY")
-                     ?? throw new ServiceTaskExecutionException("Gemini API key not found in attributes or environment variables");
-        
-        return apiKey;
+        attributes.TryGetValue("ai:apiKey", out var configuredKey);
+        if (!string.IsNullOrWhiteSpace(configuredKey))
+            return configuredKey;
+
+        var environmentKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY")
+            ?? Environment.GetEnvironmentVariable("GOOGLE_API_KEY");
+        if (!string.IsNullOrWhiteSpace(environmentKey))
+            return environmentKey;
+
+        throw new ServiceTaskExecutionException("Gemini API key not found in attributes or environment variables");
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new()

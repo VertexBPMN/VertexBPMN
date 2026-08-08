@@ -32,6 +32,16 @@ public class BpmnSerializer
         }
         var raw = strict ? model.RawMetadata : null;
 
+        if (strict && raw is
+            {
+                OriginalXml: { } originalXml,
+                PartiallyDirtyElements: null
+            } && HasCompleteRawMetadata(originalXml, raw))
+        {
+            return XDocument.Parse(originalXml, LoadOptions.PreserveWhitespace)
+                .ToString(SaveOptions.DisableFormatting);
+        }
+
         // Fallback diagnostics collection (mutate list if underlying collection is mutable)
         if (strict && raw != null)
         {
@@ -508,6 +518,18 @@ public class BpmnSerializer
             }
         }
         return doc.ToString(SaveOptions.DisableFormatting);
+    }
+
+    private static bool HasCompleteRawMetadata(string originalXml, BpmnRawMetadata raw)
+    {
+        var hasExtensions = originalXml.Contains("extensionElements", StringComparison.Ordinal);
+        var hasMultiInstance = originalXml.Contains("multiInstanceLoopCharacteristics", StringComparison.Ordinal) ||
+            originalXml.Contains("standardLoopCharacteristics", StringComparison.Ordinal);
+        var hasDiagramInterchange = originalXml.Contains("BPMNDiagram", StringComparison.Ordinal);
+
+        return (!hasExtensions || raw.RawExtensionElements is not null) &&
+            (!hasMultiInstance || raw.RawMultiInstance is not null) &&
+            (!hasDiagramInterchange || raw.RawDiRoot is not null);
     }
 
     private static XElement SerializeEventDefinitionsPlaceholder(BpmnEvent evt) => new("__defs");

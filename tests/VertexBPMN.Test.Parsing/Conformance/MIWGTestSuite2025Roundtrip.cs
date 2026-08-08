@@ -23,7 +23,7 @@ namespace VertexBPMN.Test.Parsing.Conformance
                 var msg = $"No BPMN files found.\ndir: {dir}\nDirectory contents:\n{entries}";
                 Assert.Fail(msg);
             }
-            foreach (var file in files.Take(1)) // Limit to 1 file for testing
+            foreach (var file in files.Take(5))
             {
                 Console.WriteLine($"Test file: {file}");
                 yield return new object[] { file };

@@ -13,20 +13,25 @@ public class McpAgentService : IMcpAgentService
     private readonly Dictionary<string, AgentConfig> _agents;
     private readonly HttpClient _httpClient;
 
-    public McpAgentService(IConfiguration configuration)
+    public McpAgentService(IConfiguration configuration, HttpClient? httpClient = null)
     {
-        _httpClient = new HttpClient();
+        _httpClient = httpClient ?? new HttpClient();
         //var configJson = File.ReadAllText(configPath);
         //var config = JsonNode.Parse(configJson)!["agents"]!.AsArray();
-        var config = configuration.GetSection("McpAgents").Get<JsonArray>()!;
-        _agents = config.ToDictionary(
-            x => x["name"]!.ToString(),
+        var config = configuration.GetSection("McpAgents");
+        if (!config.GetChildren().Any())
+            config = configuration.GetSection("agents");
+        var agentSections = config.GetChildren().ToList();
+        if (agentSections.Count == 0)
+            throw new InvalidOperationException("No MCP agent configuration found in 'McpAgents' or 'agents'.");
+        _agents = agentSections.ToDictionary(
+            x => x["name"] ?? throw new InvalidOperationException("MCP agent configuration is missing 'name'."),
             x => new AgentConfig
             {
-                Name = x["name"]!.ToString(),
-                Type = x["type"]!.ToString(),
-                Url = x["url"]!.ToString(),
-                Auth = x["auth"]?.ToString()
+                Name = x["name"]!,
+                Type = x["type"] ?? "REST",
+                Url = x["url"] ?? throw new InvalidOperationException("MCP agent configuration is missing 'url'."),
+                Auth = x["auth"]
             });
     }
 

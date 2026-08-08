@@ -14,6 +14,7 @@ public class MCPIntegrationTests
 {
     private readonly Mock<ILogger<DistributedProcessEngine>> _loggerMock;
     private readonly Mock<IProcessInstanceStore> _storeMock;
+    private readonly Mock<ICmmnParser> _cmmnParserMock;
     private readonly Mock<IAiDecisionService> _aiDecisionServiceMock;
     private readonly DistributedProcessEngine _engine;
 
@@ -23,7 +24,7 @@ public class MCPIntegrationTests
         _storeMock = new Mock<IProcessInstanceStore>();
         _aiDecisionServiceMock = new Mock<IAiDecisionService>();
         var dispatcherMock = new Mock<IMessageDispatcher>();
-        var cmmnParserMock = new Mock<ICmmnParser>();
+        _cmmnParserMock = new Mock<ICmmnParser>();
         var dmnEngineMock = new Mock<IDmnEngine>();
         var dmnParserMock = new Mock<IDmnParser>();
         var bpmnParserMock = new Mock<IBpmnParser>();
@@ -37,7 +38,7 @@ public class MCPIntegrationTests
             _storeMock.Object,
             dmnEngineMock.Object,
             dmnParserMock.Object,
-            cmmnParserMock.Object,
+            _cmmnParserMock.Object,
             bpmnParserMock.Object,
             _aiDecisionServiceMock.Object,
             tracerProvider
@@ -48,7 +49,7 @@ public class MCPIntegrationTests
     public async Task GenerateAdHocSubprocessAsync_WithMCPContext_Successfully()
     {
         // Arrange
-        var caseId = "case1";
+        var caseId = Guid.NewGuid().ToString();
         var caseModel = new CaseModel(caseId, "Test Case", [], [], []);
         var caseToken = new CaseToken(Guid.NewGuid(), Guid.Parse(caseId), "planItem1", "humanTask", new Dictionary<string, object>(), DateTime.UtcNow);
         var historicalData = new List<HistoricalCaseData>
@@ -61,11 +62,13 @@ public class MCPIntegrationTests
             };
 
         _storeMock.Setup(s => s.GetCmmnModelAsync(caseId)).ReturnsAsync("<cmmn:case id='case1'>...</cmmn:case>");
+        _cmmnParserMock.Setup(p => p.ParseAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(caseModel);
         _storeMock.Setup(s => s.GetPendingCaseTokensAsync()).ReturnsAsync([caseToken]);
         _storeMock.Setup(s => s.GetHistoricalCaseDataAsync(caseId)).ReturnsAsync(historicalData);
         _aiDecisionServiceMock.Setup(s => s.PredictOptimalPlanItemsAsync(caseId, It.IsAny<Dictionary<string, object>>(), historicalData, It.IsAny<CancellationToken>()))
             .ReturnsAsync(predictedPlanItems);
         _storeMock.Setup(s => s.SaveHistoricalCaseDataAsync(It.IsAny<HistoricalCaseData>())).Returns(Task.CompletedTask);
+        _storeMock.Setup(s => s.UpdateCaseModelAsync(It.IsAny<CaseModel>())).Returns(Task.CompletedTask);
 
         // Act
         await _engine.GenerateAdHocSubprocessAsync(caseId);

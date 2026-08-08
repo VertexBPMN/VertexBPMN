@@ -25,7 +25,8 @@ namespace VertexBPMN.Tests.Integration.Bpmn
             var engine = new ProcessEngine();
             var trace = engine.Execute(model);
             Assert.Contains("StartEvent: start1", trace);
-            Assert.Contains("UserTask: call1", trace); // callActivity mapped as UserTask for now
+            Assert.Contains("SequenceFlow: f1", trace);
+            Assert.Contains("Task: call1 (callActivity)", trace); // callActivity mapped as UserTask for now
             Assert.Contains("SequenceFlow: f2", trace);
             Assert.Contains("EndEvent: end1", trace);
         }

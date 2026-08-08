@@ -2,6 +2,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Moq.Protected;
 using OpenTelemetry.Trace;
 using VertexBPMN.Domain.Exceptions;
 using VertexBPMN.Application.Handlers;
@@ -12,16 +13,18 @@ namespace VertexBPMN.Tests.Integration.Mcp;
 public class McpServiceTaskHandlerTests
 {
     private readonly Mock<ILogger<McpServiceTaskHandler>> _loggerMock;
-    private readonly Mock<HttpClient> _httpClientMock;
+    private readonly Mock<HttpMessageHandler> _httpMessageHandlerMock;
+    private readonly HttpClient _httpClient;
     private readonly Mock<TracerProvider> _tracerProviderMock;
     private readonly McpServiceTaskHandler _handler;
 
     public McpServiceTaskHandlerTests()
     {
         _loggerMock = new Mock<ILogger<McpServiceTaskHandler>>();
-        _httpClientMock = new Mock<HttpClient>();
+        _httpMessageHandlerMock = new Mock<HttpMessageHandler>();
+        _httpClient = new HttpClient(_httpMessageHandlerMock.Object);
         _tracerProviderMock = new Mock<TracerProvider>();
-        _handler = new McpServiceTaskHandler(_httpClientMock.Object, _loggerMock.Object, _tracerProviderMock.Object);
+        _handler = new McpServiceTaskHandler(_httpClient, _loggerMock.Object, _tracerProviderMock.Object);
     }
 
     [Fact]
@@ -41,16 +44,22 @@ public class McpServiceTaskHandlerTests
         var responseContent = JsonSerializer.Serialize(new JsonRpcResponse("2.0", new { result = "success" }, null));
         var httpResponse = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(responseContent) };
 
-        _httpClientMock.Setup(c => c.PostAsync(It.IsAny<string>(), It.IsAny<HttpContent>(), It.IsAny<CancellationToken>()))
+        _httpMessageHandlerMock
+            .Protected()
+            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
             .ReturnsAsync(httpResponse);
 
         // Act
         await _handler.ExecuteAsync(attributes, variables, CancellationToken.None);
 
         // Assert
-        _httpClientMock.Verify(c => c.PostAsync("http://cms-mcp:8080/api/mcp", It.IsAny<HttpContent>(), It.IsAny<CancellationToken>()), Times.Once());
+        _httpMessageHandlerMock
+            .Protected()
+            .Verify("SendAsync", Times.Once(),
+                ItExpr.Is<HttpRequestMessage>(request => request.RequestUri!.ToString() == "http://cms-mcp:8080/api/mcp"),
+                ItExpr.IsAny<CancellationToken>());
         Assert.Contains("result", variables);
-        Assert.Equal("success", variables["result"]);
+        Assert.Equal("success", variables["result"].ToString());
     }
 
     [Fact]

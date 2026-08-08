@@ -118,6 +118,59 @@ Console.WriteLine($"Prozessinstanz mit der ID '{processInstance.Id}' wurde gesta
 // Prozessinstanz mit der ID '...' wurde gestartet!
 ```
 
+## 🖥️ CLI, API & Studio Dashboard
+
+VertexBPMN kann lokal wie eine Control-Plane-Anwendung über die Terminal-CLI bedient werden. Die CLI führt Engine-Kommandos aus und kann nach dem OpenClaw-Prinzip das API-Gateway und das Blazor-Studio gemeinsam starten.
+
+### Dashboard aus der CLI öffnen
+
+```powershell
+dotnet run --project src/VertexBPMN.Cli -- dashboard
+```
+
+Der Befehl:
+
+1. verwendet eine bereits laufende API oder startet `VertexBPMN.Api` lokal,
+2. wartet auf den Health-Endpoint `/api/Health`,
+3. startet `VertexBPMN.Studio`,
+4. öffnet das Dashboard im Standardbrowser.
+
+Die Standardadressen sind:
+
+| Dienst | Adresse |
+| --- | --- |
+| API-Gateway | `http://localhost:51870/` |
+| Blazor Studio | `http://localhost:5263/` |
+| API Health | `http://localhost:51870/api/Health` |
+
+Der Alias `studio` startet denselben Workflow. Für eine interaktive CLI-Sitzung:
+
+```powershell
+dotnet run --project src/VertexBPMN.Cli
+```
+
+Danach kann der Befehl direkt eingegeben werden:
+
+```text
+vertexbpmn> dashboard
+```
+
+Die Dashboard-Startparameter können in [`src/VertexBPMN.Cli/appsettings.json`](src/VertexBPMN.Cli/appsettings.json) oder über `VERTEXBPMN_`-Umgebungsvariablen angepasst werden. Dazu gehören Projektpfade, URLs, automatischer API-/Studio-Start, Browseröffnung und das Readiness-Timeout.
+
+### Architektur
+
+```text
+VertexBPMN.Cli (TUI / Control Plane)
+  |
+  v
+VertexBPMN.Api (Runtime Gateway / REST / SignalR)
+  |
+  v
+VertexBPMN.Studio (Blazor Web Dashboard)
+```
+
+Das Studio ruft die API über HTTP auf. Dadurch greifen CLI, API und Dashboard auf denselben Runtime-Zustand zu, wenn persistente Engine-Datenbanken konfiguriert sind. Die CLI-Dokumentation mit allen Befehlen und Konfigurationsbeispielen befindet sich in [`src/VertexBPMN.Cli/README.md`](src/VertexBPMN.Cli/README.md). Details zur Dependency-Konfiguration, Registry und Priorität der Konfigurationsquellen stehen in [`docs/dependency-configuration.md`](docs/dependency-configuration.md).
+
 **3. Ein einfacher Case (CMMN)**
 
 ```csharp

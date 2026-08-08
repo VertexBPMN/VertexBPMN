@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using VertexBPMN.Domain.Entities;
 using VertexBPMN.Tests.Infrastructure;
 
 namespace VertexBPMN.Tests.Integration.Api;
@@ -55,7 +56,15 @@ public class ApiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     [Fact]
     public async Task Runtime_Start_And_GetById_Works()
     {
-        var start = new { ProcessDefinitionKey = "TestProcess", Variables = new Dictionary<string, object>(), BusinessKey = (string?)null, TenantId = (string?)null };
+        const string bpmn = "<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='RuntimeApiProcess'><startEvent id='start1'/><endEvent id='end1'/><sequenceFlow id='flow1' sourceRef='start1' targetRef='end1'/></process></definitions>";
+        var deploy = new { BpmnXml = bpmn, Name = "RuntimeTestProcess", TenantId = (string?)null };
+        var deployResponse = await _client.PostAsJsonAsync("/api/repository", deploy);
+        deployResponse.EnsureSuccessStatusCode();
+
+        var start = new { ProcessDefinitionKey = "RuntimeApiProcess",
+            Variables = new Dictionary<string, object>(),
+            BusinessKey = (string?)null, 
+            TenantId = (string?)null };
         var post = await _client.PostAsJsonAsync("/api/runtime/start", start);
         post.EnsureSuccessStatusCode();
         var instance = await post.Content.ReadFromJsonAsync<ProcessInstance>();
@@ -66,25 +75,34 @@ public class ApiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         Assert.Equal(instance.Id, loaded!.Id);
     }
 
-    //[Fact]
-    //public async Task Decision_Evaluate_Works()
-    //{
-    //    var eval = new { DecisionKey = "TestDecision", Inputs = new Dictionary<string, object> { { "input1", 42 } } };
-    //    var post = await _client.PostAsJsonAsync("/api/decision/evaluate", eval);
-    //    post.EnsureSuccessStatusCode();
-    //    var result = await post.Content.ReadFromJsonAsync<DecisionResult>();
-    //    Assert.NotNull(result);
-    //    Assert.True(result.Outputs.ContainsKey("input1"));
-    //    // System.Text.Json returns JsonElement for object values, so extract the value
-    //    var element = (System.Text.Json.JsonElement)result.Outputs["input1"];
-    //    Assert.Equal(42, element.GetInt32());
-    //}
+    /* [Fact]
+    public async Task Decision_Evaluate_Works()
+    {
+        const string dmn = "<definitions xmlns='http://www.omg.org/spec/DMN/20191111/MODEL/'><decision id='apiDecisionEvaluate' name='Api Decision'><decisionTable hitPolicy='UNIQUE'><input id='i1'><inputExpression>age</inputExpression></input><output id='o1' name='result'/><rule><inputEntry>42</inputEntry><outputEntry>\"ok\"</outputEntry></rule></decisionTable></decision></definitions>";
+        var deploy = new { DecisionKey = "apiDecisionEvaluate", Name = "Api Decision", DmnXml = dmn, TenantId = (string?)null };
+        var deployResponse = await _client.PostAsJsonAsync("/api/decision/deploy", deploy);
+        deployResponse.EnsureSuccessStatusCode();
+
+        var eval = new { DecisionKey = "apiDecisionEvaluate", Inputs = new Dictionary<string, object> { { "age", 42 } } };
+        var post = await _client.PostAsJsonAsync("/api/decision/evaluate", eval);
+        post.EnsureSuccessStatusCode();
+        var result = await post.Content.ReadFromJsonAsync<DecisionResult>();
+        Assert.NotNull(result);
+        var output = result.Variables["result"];
+        var value = output is System.Text.Json.JsonElement element ? element.GetString() : output?.ToString();
+        Assert.Equal("ok", value);
+    } */
 
     [Fact]
     public async Task Management_Suspend_Resume_Delete_Works()
     {
+        const string bpmn = "<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='ManagementApiProcess'><startEvent id='start1'/><endEvent id='end1'/><sequenceFlow id='flow1' sourceRef='start1' targetRef='end1'/></process></definitions>";
+        var deploy = new { BpmnXml = bpmn, Name = "ManagementTestProcess", TenantId = (string?)null };
+        var deployResponse = await _client.PostAsJsonAsync("/api/repository", deploy);
+        deployResponse.EnsureSuccessStatusCode();
+
         // Start a process instance
-        var start = new { ProcessDefinitionKey = "TestProcess", Variables = new Dictionary<string, object>(), BusinessKey = (string?)null, TenantId = (string?)null };
+        var start = new { ProcessDefinitionKey = "ManagementApiProcess", Variables = new Dictionary<string, object>(), BusinessKey = (string?)null, TenantId = (string?)null };
         var post = await _client.PostAsJsonAsync("/api/runtime/start", start);
         post.EnsureSuccessStatusCode();
         var instance = await post.Content.ReadFromJsonAsync<ProcessInstance>();

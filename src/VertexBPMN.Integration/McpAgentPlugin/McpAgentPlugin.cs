@@ -15,14 +15,16 @@ public class McpAgentPlugin : IPlugin
     private PluginContext? _pluginContext;
     private bool _enabled = true;
 
-    public McpAgentPlugin() { }
+    public McpAgentPlugin(HttpClient? httpClient = null)
+    {
+        _httpClient = httpClient ?? new HttpClient();
+    }
 
 
     // IPlugin: Initialisierung
     public async Task InitializeAsync(PluginContext context)
     {
         _pluginContext = context;
-        _httpClient = new HttpClient();
         _maxRetries = 3;
         // Konfiguration laden
         if (context.Configuration["agentsConfigPath"] is string configPath && File.Exists(configPath))

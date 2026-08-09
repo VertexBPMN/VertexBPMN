@@ -23,8 +23,16 @@ public static class ApplicationModule
         var dependencies = new DependencyOptions();
         configuration.GetSection("Dependencies").Bind(dependencies);
         services.AddSingleton(dependencies);
-        // Shared singleton/event sink
-        services.AddScoped<IProcessMiningEventSink, ProcessMiningEventSink>();
+        services.AddScoped<ProcessMiningEventSink>();
+        services.AddHttpClient("webhooks", client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(10);
+        });
+        services.AddScoped<IProcessMiningEventSink>(sp => new Messaging.WebhookEventSink(
+            sp.GetRequiredService<ProcessMiningEventSink>(),
+            sp.GetRequiredService<IHttpClientFactory>(),
+            configuration,
+            sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Messaging.WebhookEventSink>>()));
 
         services.AddScoped<IRepositoryService, RepositoryService>();
         services.AddScoped<IRuntimeService, RuntimeService>();

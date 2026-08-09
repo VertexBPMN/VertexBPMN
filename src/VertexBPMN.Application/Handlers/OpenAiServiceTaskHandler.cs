@@ -17,13 +17,15 @@ public class OpenAiServiceTaskHandler : IServiceTaskHandler
     private readonly HttpClient _httpClient;
     private readonly ILogger<OpenAiServiceTaskHandler> _logger;
     private readonly TracerProvider? _tracerProvider;
+    private readonly ISecretProvider? _secretProvider;
     private const string BaseUrl = "https://api.openai.com/v1/chat/completions";
 
-    public OpenAiServiceTaskHandler(HttpClient httpClient, ILogger<OpenAiServiceTaskHandler> logger, TracerProvider? tracerProvider = null)
+    public OpenAiServiceTaskHandler(HttpClient httpClient, ILogger<OpenAiServiceTaskHandler> logger, TracerProvider? tracerProvider = null, ISecretProvider? secretProvider = null)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _tracerProvider = tracerProvider;
+        _secretProvider = secretProvider;
     }
 
     /// <summary>
@@ -190,11 +192,12 @@ public class OpenAiServiceTaskHandler : IServiceTaskHandler
 
     private string GetApiKey(IDictionary<string, string> attributes)
     {
-        var apiKey = attributes.GetValueOrDefault("ai:apiKey", "") 
-                     ?? Environment.GetEnvironmentVariable("OPENAI_API_KEY")
-                     ?? throw new ServiceTaskExecutionException("OpenAI API key not found in attributes or environment variables");
-        
-        return apiKey;
+        var configuredKey = attributes.GetValueOrDefault("ai:apiKey", "");
+        var apiKey = !string.IsNullOrWhiteSpace(configuredKey)
+            ? configuredKey
+            : _secretProvider?.GetSecret("AI:OpenAI:ApiKey", "OPENAI_API_KEY");
+
+        return apiKey ?? throw new ServiceTaskExecutionException("OpenAI API key not found in attributes, configuration, or environment variables");
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new()

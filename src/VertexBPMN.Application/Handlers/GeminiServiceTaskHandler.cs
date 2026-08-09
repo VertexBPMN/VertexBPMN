@@ -17,13 +17,15 @@ public class GeminiServiceTaskHandler : IServiceTaskHandler
     private readonly HttpClient _httpClient;
     private readonly ILogger<GeminiServiceTaskHandler> _logger;
     private readonly TracerProvider? _tracerProvider;
+    private readonly ISecretProvider? _secretProvider;
     private const string BaseUrl = "https://generativelanguage.googleapis.com/v1/models/";
 
-    public GeminiServiceTaskHandler(HttpClient httpClient, ILogger<GeminiServiceTaskHandler> logger, TracerProvider? tracerProvider = null)
+    public GeminiServiceTaskHandler(HttpClient httpClient, ILogger<GeminiServiceTaskHandler> logger, TracerProvider? tracerProvider = null, ISecretProvider? secretProvider = null)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _tracerProvider = tracerProvider;
+        _secretProvider = secretProvider;
     }
 
     /// <summary>
@@ -214,12 +216,11 @@ public class GeminiServiceTaskHandler : IServiceTaskHandler
         if (!string.IsNullOrWhiteSpace(configuredKey))
             return configuredKey;
 
-        var environmentKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY")
-            ?? Environment.GetEnvironmentVariable("GOOGLE_API_KEY");
+        var environmentKey = _secretProvider?.GetSecret("AI:Google:ApiKey", "GEMINI_API_KEY", "GOOGLE_API_KEY");
         if (!string.IsNullOrWhiteSpace(environmentKey))
             return environmentKey;
 
-        throw new ServiceTaskExecutionException("Gemini API key not found in attributes or environment variables");
+        throw new ServiceTaskExecutionException("Gemini API key not found in attributes, configuration, or environment variables");
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new()

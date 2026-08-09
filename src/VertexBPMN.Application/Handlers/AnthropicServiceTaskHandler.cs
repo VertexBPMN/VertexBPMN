@@ -17,13 +17,15 @@ public class AnthropicServiceTaskHandler : IServiceTaskHandler
     private readonly HttpClient _httpClient;
     private readonly ILogger<AnthropicServiceTaskHandler> _logger;
     private readonly TracerProvider? _tracerProvider;
+    private readonly ISecretProvider? _secretProvider;
     private const string BaseUrl = "https://api.anthropic.com/v1/messages";
 
-    public AnthropicServiceTaskHandler(HttpClient httpClient, ILogger<AnthropicServiceTaskHandler> logger, TracerProvider? tracerProvider = null)
+    public AnthropicServiceTaskHandler(HttpClient httpClient, ILogger<AnthropicServiceTaskHandler> logger, TracerProvider? tracerProvider = null, ISecretProvider? secretProvider = null)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _tracerProvider = tracerProvider;
+        _secretProvider = secretProvider;
     }
 
     /// <summary>
@@ -210,11 +212,12 @@ public class AnthropicServiceTaskHandler : IServiceTaskHandler
 
     private string GetApiKey(IDictionary<string, string> attributes)
     {
-        var apiKey = attributes.GetValueOrDefault("ai:apiKey", "") 
-                     ?? Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY")
-                     ?? throw new ServiceTaskExecutionException("Anthropic API key not found in attributes or environment variables");
-        
-        return apiKey;
+        var configuredKey = attributes.GetValueOrDefault("ai:apiKey", "");
+        var apiKey = !string.IsNullOrWhiteSpace(configuredKey)
+            ? configuredKey
+            : _secretProvider?.GetSecret("AI:Anthropic:ApiKey", "ANTHROPIC_API_KEY");
+
+        return apiKey ?? throw new ServiceTaskExecutionException("Anthropic API key not found in attributes, configuration, or environment variables");
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new()

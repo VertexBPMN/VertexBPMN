@@ -23,6 +23,7 @@ public static class ApplicationModule
         var dependencies = new DependencyOptions();
         configuration.GetSection("Dependencies").Bind(dependencies);
         services.AddSingleton(dependencies);
+        services.AddSingleton<ISecretProvider, ConfigurationSecretProvider>();
         services.AddScoped<ProcessMiningEventSink>();
         services.AddHttpClient("webhooks", client =>
         {

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.Authorization;
 using Task = System.Threading.Tasks.Task;
 
 namespace VertexBPMN.Api.Hubs;
@@ -7,6 +8,7 @@ namespace VertexBPMN.Api.Hubs;
 /// SignalR Hub for real-time process monitoring and notifications
 /// Olympic-level feature: Enterprise Scalability - Real-time monitoring
 /// </summary>
+[Authorize]
 public class ProcessMonitoringHub : Hub
 {
     private readonly ILogger<ProcessMonitoringHub> _logger;

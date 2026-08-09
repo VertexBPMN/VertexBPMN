@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VertexBPMN.Api.Plugins;
 
@@ -9,28 +10,41 @@ namespace VertexBPMN.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/plugins")]
+[Authorize]
 public class PluginController : ControllerBase
 {
     private readonly IPluginManager _pluginManager;
     private readonly ILogger<PluginController> _logger;
+    private readonly string _pluginDirectory;
 
     public PluginController(
         IPluginManager pluginManager,
-        ILogger<PluginController> logger)
+        ILogger<PluginController> logger,
+        IConfiguration configuration)
     {
         _pluginManager = pluginManager;
         _logger = logger;
+        var configuredDirectory = configuration["Dependencies:Plugins:Directory"] ?? "plugins";
+        _pluginDirectory = Path.GetFullPath(Path.IsPathRooted(configuredDirectory)
+            ? configuredDirectory
+            : Path.Combine(AppContext.BaseDirectory, configuredDirectory));
     }
 
     /// <summary>
     /// Load a plugin from file path
     /// </summary>
     [HttpPost("load")]
+	[Authorize(Policy = "AdminOnly")]
     public async Task<ActionResult<PluginLoadResult>> LoadPlugin([FromBody] LoadPluginRequest request)
     {
         try
         {
-            var result = await _pluginManager.LoadPluginAsync(request.PluginPath);
+            var pluginPath = Path.GetFullPath(request.PluginPath);
+            var pluginRoot = _pluginDirectory.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            if (!pluginPath.StartsWith(pluginRoot, StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { error = "Plugin path must be inside the configured plugin directory." });
+
+            var result = await _pluginManager.LoadPluginAsync(pluginPath);
             if (result.Success)
             {
                 return Ok(result);
@@ -48,6 +62,7 @@ public class PluginController : ControllerBase
     /// Unload a plugin
     /// </summary>
     [HttpPost("unload/{pluginId}")]
+	[Authorize(Policy = "AdminOnly")]
     public async Task<ActionResult> UnloadPlugin(string pluginId)
     {
         try
@@ -110,6 +125,7 @@ public class PluginController : ControllerBase
     /// Enable a plugin
     /// </summary>
     [HttpPost("enable/{pluginId}")]
+	[Authorize(Policy = "AdminOnly")]
     public async Task<ActionResult> EnablePlugin(string pluginId)
     {
         try
@@ -132,6 +148,7 @@ public class PluginController : ControllerBase
     /// Disable a plugin
     /// </summary>
     [HttpPost("disable/{pluginId}")]
+	[Authorize(Policy = "AdminOnly")]
     public async Task<ActionResult> DisablePlugin(string pluginId)
     {
         try

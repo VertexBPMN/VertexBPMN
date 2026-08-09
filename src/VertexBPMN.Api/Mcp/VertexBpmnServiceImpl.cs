@@ -1,9 +1,11 @@
 using Grpc.Core;
+using Microsoft.AspNetCore.Authorization;
 using VertexBPMN.Api.Grpc;
 using VertexBPMN.Domain.Interfaces;
 
 namespace VertexBPMN.Api.Mcp;
 
+[Authorize]
 public class VertexBpmnServiceImpl : VertexBPMNService.VertexBPMNServiceBase
 {
     private readonly IDistributedProcessEngine _engine;

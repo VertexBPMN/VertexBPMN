@@ -1,10 +1,12 @@
 ﻿using Grpc.Core;
+using Microsoft.AspNetCore.Authorization;
 using VertexBPMN.Api.Grpc.Mcp;
 using VertexBPMN.Domain.Interfaces;
 using HistoricalCaseData = VertexBPMN.Api.Grpc.Mcp.HistoricalCaseData;
 
 namespace VertexBPMN.Api.Mcp;
 
+[Authorize]
 public class VertexBpmnMcpServiceImpl : VertexBPMNMCPService.VertexBPMNMCPServiceBase
 {
     private readonly IDistributedProcessEngine _engine;

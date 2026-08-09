@@ -19,10 +19,18 @@ public class TaskService : ITaskService
 
     public async ValueTask ClaimAsync(Guid taskId, string userId, CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(userId))
+            throw new ArgumentException("User id is required", nameof(userId));
+
         var task = await _repo.GetByIdAsync(taskId, cancellationToken);
         if (task != null)
         {
+            if (task.Status != UserTaskStatus.Pending)
+                throw new InvalidOperationException($"Task is in {task.Status} state");
+
             task.Assignee = userId;
+            task.LastModified = DateTime.UtcNow;
+            task.ModifiedBy = userId;
             await _repo.AddAsync(task, cancellationToken); // Upsert
             await _eventSink.EmitAsync(new ProcessMiningEvent
             {
@@ -42,6 +50,10 @@ public class TaskService : ITaskService
         var task = await _repo.GetByIdAsync(taskId, cancellationToken);
         if (task != null)
         {
+            if (task.Status != UserTaskStatus.Pending && task.Status != UserTaskStatus.Delegated)
+                throw new InvalidOperationException($"Task is in {task.Status} state");
+
+            task.Status = UserTaskStatus.Completed;
             task.CompletedAt = DateTime.UtcNow;
             await _repo.AddAsync(task, cancellationToken); // Upsert
             return await _eventSink.EmitAsync(new ProcessMiningEvent
@@ -64,7 +76,15 @@ public class TaskService : ITaskService
         var task = await _repo.GetByIdAsync(taskId, cancellationToken);
         if (task != null)
         {
+            if (string.IsNullOrWhiteSpace(userId))
+                throw new ArgumentException("User id is required", nameof(userId));
+            if (task.Status != UserTaskStatus.Pending)
+                throw new InvalidOperationException($"Task is in {task.Status} state");
+
+            task.Status = UserTaskStatus.Delegated;
             task.Assignee = userId;
+            task.LastModified = DateTime.UtcNow;
+            task.ModifiedBy = userId;
             await _repo.AddAsync(task, cancellationToken); // Upsert
             return await _eventSink.EmitAsync(new ProcessMiningEvent
             {
@@ -100,8 +120,12 @@ public class TaskService : ITaskService
         if (task == null)
             return null;
 
+        if (task.Status == UserTaskStatus.Completed || task.Status == UserTaskStatus.Rejected)
+            throw new InvalidOperationException($"Task is in {task.Status} state");
+
+        task.Status = UserTaskStatus.Rejected;
         task.CompletedAt ??= DateTime.UtcNow;
-        await _repo.AddAsync(task, default); // Upsert
+        await _repo.AddAsync(task, cancellationToken); // Upsert
 
         var evt = await _eventSink.EmitAsync(new ProcessMiningEvent
         {

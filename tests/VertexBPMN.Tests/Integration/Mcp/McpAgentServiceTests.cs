@@ -6,14 +6,15 @@ using Moq.Protected;
 using System.Net;
 using System.Text;
 using VertexBPMN.Application;
+using VertexBPMN.Tests.Infrastructure;
 
 namespace VertexBPMN.Tests.Integration.Mcp;
-public class McpAgentServiceTests : IClassFixture<WebApplicationFactory<VertexBPMN.Api.Program>>
+public class McpAgentServiceTests : IClassFixture<CustomWebApplicationFactory>
 {
     private readonly string _agentFilePath = Path.Combine(Directory.GetCurrentDirectory(), "TestData", "agents.json");
     private readonly HttpClient _client;
 
-    public McpAgentServiceTests(WebApplicationFactory<VertexBPMN.Api.Program> factory)
+    public McpAgentServiceTests(CustomWebApplicationFactory factory)
     {
         _client = factory.CreateClient();
     }

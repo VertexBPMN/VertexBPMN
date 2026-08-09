@@ -216,7 +216,9 @@ public class GeminiServiceTaskHandler : IServiceTaskHandler
         if (!string.IsNullOrWhiteSpace(configuredKey))
             return configuredKey;
 
-        var environmentKey = _secretProvider?.GetSecret("AI:Google:ApiKey", "GEMINI_API_KEY", "GOOGLE_API_KEY");
+        var environmentKey = _secretProvider?.GetSecret("AI:Google:ApiKey", "GEMINI_API_KEY", "GOOGLE_API_KEY")
+            ?? Environment.GetEnvironmentVariable("GEMINI_API_KEY")
+            ?? Environment.GetEnvironmentVariable("GOOGLE_API_KEY");
         if (!string.IsNullOrWhiteSpace(environmentKey))
             return environmentKey;
 

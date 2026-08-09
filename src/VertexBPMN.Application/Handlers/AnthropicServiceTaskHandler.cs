@@ -215,7 +215,8 @@ public class AnthropicServiceTaskHandler : IServiceTaskHandler
         var configuredKey = attributes.GetValueOrDefault("ai:apiKey", "");
         var apiKey = !string.IsNullOrWhiteSpace(configuredKey)
             ? configuredKey
-            : _secretProvider?.GetSecret("AI:Anthropic:ApiKey", "ANTHROPIC_API_KEY");
+            : _secretProvider?.GetSecret("AI:Anthropic:ApiKey", "ANTHROPIC_API_KEY")
+                ?? Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY");
 
         return apiKey ?? throw new ServiceTaskExecutionException("Anthropic API key not found in attributes, configuration, or environment variables");
     }

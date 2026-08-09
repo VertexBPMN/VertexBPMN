@@ -195,7 +195,8 @@ public class OpenAiServiceTaskHandler : IServiceTaskHandler
         var configuredKey = attributes.GetValueOrDefault("ai:apiKey", "");
         var apiKey = !string.IsNullOrWhiteSpace(configuredKey)
             ? configuredKey
-            : _secretProvider?.GetSecret("AI:OpenAI:ApiKey", "OPENAI_API_KEY");
+            : _secretProvider?.GetSecret("AI:OpenAI:ApiKey", "OPENAI_API_KEY")
+                ?? Environment.GetEnvironmentVariable("OPENAI_API_KEY");
 
         return apiKey ?? throw new ServiceTaskExecutionException("OpenAI API key not found in attributes, configuration, or environment variables");
     }

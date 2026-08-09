@@ -22,6 +22,8 @@ public class BpmnDbContext : DbContext
     public DbSet<MultiInstanceExecution> MultiInstanceExecutions => Set<MultiInstanceExecution>();
     public DbSet<EngineDeployment> EngineDeployments => Set<EngineDeployment>();
     public DbSet<User> Users => Set<User>();
+    public DbSet<MigrationPlanRecord> MigrationPlans => Set<MigrationPlanRecord>();
+    public DbSet<MigrationExecutionRecord> MigrationExecutions => Set<MigrationExecutionRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -36,6 +38,7 @@ public class BpmnDbContext : DbContext
         ConfigureIncident(modelBuilder);
         ConfigureMultiInstanceExecution(modelBuilder);
         ConfigureUser(modelBuilder);
+        ConfigureMigrationRecords(modelBuilder);
 
         // Seed sample data (deterministic IDs & timestamps)
         var deploymentId = Guid.Parse("11111111-1111-1111-1111-111111111111");
@@ -190,6 +193,24 @@ public class BpmnDbContext : DbContext
         );
 
         base.OnModelCreating(modelBuilder);
+    }
+
+    private static void ConfigureMigrationRecords(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<MigrationPlanRecord>(entity =>
+        {
+            entity.HasKey(record => record.Id);
+            entity.Property(record => record.Payload).IsRequired();
+            entity.HasIndex(record => record.CreatedAt);
+        });
+
+        modelBuilder.Entity<MigrationExecutionRecord>(entity =>
+        {
+            entity.HasKey(record => record.Id);
+            entity.Property(record => record.Payload).IsRequired();
+            entity.HasIndex(record => record.MigrationPlanId);
+            entity.HasIndex(record => record.StartedAt);
+        });
     }
 
     private static void ConfigureEngineDeployment(ModelBuilder modelBuilder)

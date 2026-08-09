@@ -1,5 +1,10 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using System.Xml.Linq;
+using VertexBPMN.Domain.Entities;
+using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Domain.Interfaces.Repositories;
+using VertexBPMN.Infrastructure.Persistence;
 
 namespace VertexBPMN.Api.Migration;
 
@@ -55,7 +60,7 @@ public class LiveProcessMigrationService : ILiveProcessMigrationService
                 CompatibilityIssues = compatibilityIssues,
                 ActivityMappings = mappingStrategy,
                 AffectedInstances = activeInstances.Count,
-                MigrationSteps = GenerateMigrationSteps(mappingStrategy, options),
+                MigrationSteps = GenerateMigrationSteps(fromProcessKey, toProcessKey, mappingStrategy, options),
                 RiskAssessment = AssessMigrationRisk(compatibilityIssues, activeInstances.Count),
                 RollbackPlan = CreateRollbackPlan(fromProcessKey, toProcessKey)
             };
@@ -102,6 +107,7 @@ public class LiveProcessMigrationService : ILiveProcessMigrationService
             };
 
             _activeMigrations[execution.Id] = execution;
+            await StoreMigrationExecutionAsync(execution, scope);
 
             try
             {
@@ -111,6 +117,7 @@ public class LiveProcessMigrationService : ILiveProcessMigrationService
                 execution.Status = MigrationStatus.Completed;
                 execution.CompletedAt = DateTime.UtcNow;
                 execution.Progress = 100;
+                await StoreMigrationExecutionAsync(execution, scope);
                 
                 _logger.LogInformation("Migration {ExecutionId} completed successfully", execution.Id);
             }
@@ -119,6 +126,7 @@ public class LiveProcessMigrationService : ILiveProcessMigrationService
                 execution.Status = MigrationStatus.Failed;
                 execution.Error = ex.Message;
                 execution.CompletedAt = DateTime.UtcNow;
+                await StoreMigrationExecutionAsync(execution, scope);
                 
                 _logger.LogError(ex, "Migration {ExecutionId} failed", execution.Id);
                 
@@ -171,14 +179,22 @@ public class LiveProcessMigrationService : ILiveProcessMigrationService
             // Restore from snapshots in reverse order
             foreach (var snapshotId in execution.Snapshots.AsEnumerable().Reverse())
             {
-                if (_snapshots.TryGetValue(snapshotId, out var snapshot))
+                LiveMigrationSnapshot? snapshot;
+                if (_snapshots.TryGetValue(snapshotId, out var cachedSnapshot))
+                    snapshot = cachedSnapshot;
+                else
                 {
-                    await RestoreFromSnapshotAsync(snapshot.ProcessInstanceId, snapshotId);
+                    using var snapshotScope = _serviceProvider.CreateScope();
+                    snapshot = await GetStoredSnapshotAsync(snapshotId, snapshotScope);
                 }
+                if (snapshot is not null)
+                    await RestoreFromSnapshotAsync(snapshot.ProcessInstanceId, snapshotId);
             }
 
             execution.Status = MigrationStatus.RolledBack;
             execution.CompletedAt = DateTime.UtcNow;
+            using var storeScope = _serviceProvider.CreateScope();
+            await StoreMigrationExecutionAsync(execution, storeScope);
 
             _logger.LogInformation("Rollback completed for migration {MigrationId}", migrationId);
             return true;
@@ -343,13 +359,6 @@ public class LiveProcessMigrationService : ILiveProcessMigrationService
                 await SetVariableAsync(processInstanceId, variableEntry.Key, value!, restoreScope);
             }
             
-            // Restore activity states
-            foreach (var activityEntry in snapshot.ActivityStates)
-            {
-                var activityState = JsonSerializer.Deserialize<ActivityState>(activityEntry.Value);
-                await RestoreActivityStateAsync(activityState!, restoreScope);
-            }
-
             _logger.LogInformation("Successfully restored process instance {ProcessInstanceId} from snapshot {SnapshotId}", 
                 processInstanceId, snapshotId);
 
@@ -389,6 +398,7 @@ public class LiveProcessMigrationService : ILiveProcessMigrationService
                         await ExecuteMigrateInstancesStep(execution, step, scope);
                         break;
                     case "UpdateDefinitions":
+                    case "UpdateDefinitionsStep":
                         await ExecuteUpdateDefinitionsStep(execution, step, scope);
                         break;
                     case "ValidateResults":
@@ -433,48 +443,106 @@ public class LiveProcessMigrationService : ILiveProcessMigrationService
 
     private async Task ExecuteMigrateInstancesStep(MigrationExecution execution, MigrationStep step, IServiceScope scope)
     {
-        // Simulate instance migration
-        await Task.Delay(100);
+        var fromProcessKey = step.Parameters["fromProcessKey"].ToString()!;
+        var toProcessKey = step.Parameters["toProcessKey"].ToString()!;
+        var definitionRepository = scope.ServiceProvider.GetRequiredService<IProcessDefinitionRepository>();
+        var instanceRepository = scope.ServiceProvider.GetRequiredService<IProcessInstanceRepository>();
+        var targetDefinition = await definitionRepository.GetLatestByKeyAsync(toProcessKey);
+        if (targetDefinition is null)
+            throw new InvalidOperationException($"Target process definition '{toProcessKey}' was not found.");
+
+        var activeInstances = await GetActiveProcessInstancesAsync(fromProcessKey, scope);
+        foreach (var activeInstance in activeInstances)
+        {
+            if (execution.IsDryRun)
+                continue;
+
+            var instance = await instanceRepository.GetByIdAsync(activeInstance.Id);
+            if (instance is null)
+                throw new InvalidOperationException($"Process instance '{activeInstance.Id}' was not found.");
+
+            instance.ProcessDefinitionId = targetDefinition.Id;
+            instance.ProcessId = targetDefinition.Key;
+            await instanceRepository.UpdateAsync(instance);
+        }
     }
 
     private async Task ExecuteUpdateDefinitionsStep(MigrationExecution execution, MigrationStep step, IServiceScope scope)
     {
-        // Simulate definition updates
-        await Task.Delay(50);
+        var toProcessKey = step.Parameters["toProcessKey"].ToString()!;
+        var definitionRepository = scope.ServiceProvider.GetRequiredService<IProcessDefinitionRepository>();
+        if (await definitionRepository.GetLatestByKeyAsync(toProcessKey) is null)
+            throw new InvalidOperationException($"Target process definition '{toProcessKey}' was not found.");
     }
 
     private async Task ExecuteValidateResultsStep(MigrationExecution execution, MigrationStep step, IServiceScope scope)
     {
-        // Simulate validation
-        await Task.Delay(25);
+        var fromProcessKey = step.Parameters.TryGetValue("fromProcessKey", out var fromKey) ? fromKey?.ToString() : null;
+        var toProcessKey = step.Parameters.TryGetValue("toProcessKey", out var toKey) ? toKey?.ToString() : null;
+        if (!string.IsNullOrWhiteSpace(fromProcessKey) && !string.IsNullOrWhiteSpace(toProcessKey))
+        {
+            var remainingIssues = await ValidateCompatibilityAsync(fromProcessKey, toProcessKey);
+            if (remainingIssues.Any(issue => issue.Severity == "High"))
+                throw new InvalidOperationException("Migration validation found high-severity compatibility issues.");
+        }
     }
 
-    // Mock data access methods
     private async Task<ProcessDefinitionInfo> GetProcessDefinitionAsync(string processKey, IServiceScope scope)
     {
-        await Task.Delay(10);
-        return new ProcessDefinitionInfo { Key = processKey, Name = $"Process {processKey}", Version = 1 };
+        var repository = scope.ServiceProvider.GetRequiredService<IProcessDefinitionRepository>();
+        var definition = await repository.GetLatestByKeyAsync(processKey);
+        if (definition is null)
+            throw new InvalidOperationException($"Process definition '{processKey}' was not found.");
+
+        return new ProcessDefinitionInfo
+        {
+            Key = definition.Key,
+            Name = definition.Name,
+            Version = definition.Version,
+            BpmnXml = definition.BpmnXml
+        };
     }
 
     private async Task<List<ProcessInstanceInfo>> GetActiveProcessInstancesAsync(string processKey, IServiceScope scope)
     {
-        await Task.Delay(10);
-        return new List<ProcessInstanceInfo>
+        var definitionRepository = scope.ServiceProvider.GetRequiredService<IProcessDefinitionRepository>();
+        var runtimeService = scope.ServiceProvider.GetRequiredService<IRuntimeService>();
+        var definition = await definitionRepository.GetLatestByKeyAsync(processKey);
+        if (definition is null)
+            throw new InvalidOperationException($"Process definition '{processKey}' was not found.");
+
+        var instances = new List<ProcessInstanceInfo>();
+        await foreach (var instance in runtimeService.ListAsync(definition.Id, cancellationToken: CancellationToken.None))
         {
-            new() { Id = Guid.NewGuid(), ProcessDefinitionKey = processKey, Status = "Active" },
-            new() { Id = Guid.NewGuid(), ProcessDefinitionKey = processKey, Status = "Active" }
-        };
+            if (instance.Status is ProcessInstanceStatus.Completed or ProcessInstanceStatus.Terminated)
+                continue;
+
+            instances.Add(new ProcessInstanceInfo
+            {
+                Id = instance.Id,
+                ProcessDefinitionKey = processKey,
+                Status = instance.Status.ToString()
+            });
+        }
+
+        return instances;
     }
 
     private async Task<List<ActivityMappingRule>> CreateActivityMappingAsync(ProcessDefinitionInfo from, ProcessDefinitionInfo to)
     {
-        await Task.Delay(10);
-        return new List<ActivityMappingRule>
-        {
-            new() { FromActivityId = "start", ToActivityId = "start", MappingType = "Direct" },
-            new() { FromActivityId = "task1", ToActivityId = "task1", MappingType = "Direct" },
-            new() { FromActivityId = "end", ToActivityId = "end", MappingType = "Direct" }
-        };
+        var targetActivities = ExtractActivities(to);
+        return ExtractActivities(from)
+            .Select(source =>
+            {
+                var target = targetActivities.FirstOrDefault(candidate => candidate.Id == source.Id || candidate.Name == source.Name);
+                return new ActivityMappingRule
+                {
+                    FromActivityId = source.Id,
+                    ToActivityId = target?.Id ?? string.Empty,
+                    MappingType = target is null ? "Unmapped" : target.Type == source.Type ? "Direct" : "Transform"
+                };
+            })
+            .ToList();
     }
 
     private string CalculateMigrationComplexity(int instanceCount, int issueCount, List<ActivityMappingRule> mappings)
@@ -503,14 +571,18 @@ public class LiveProcessMigrationService : ILiveProcessMigrationService
         return TimeSpan.FromMinutes(baseMinutes + instanceCount * 0.5);
     }
 
-    private List<MigrationStep> GenerateMigrationSteps(List<ActivityMappingRule> mappings, MigrationOptions options)
+    private List<MigrationStep> GenerateMigrationSteps(
+        string fromProcessKey,
+        string toProcessKey,
+        List<ActivityMappingRule> mappings,
+        MigrationOptions options)
     {
         return new List<MigrationStep>
         {
-            new() { Name = "Create Snapshots", Type = "CreateSnapshots", Order = 1, Parameters = new Dictionary<string, object>() },
-            new() { Name = "Migrate Instances", Type = "MigrateInstances", Order = 2, Parameters = new Dictionary<string, object>() },
-            new() { Name = "Update Definitions", Type = "UpdateDefinitionsStep", Order = 3, Parameters = new Dictionary<string, object>() },
-            new() { Name = "Validate Results", Type = "ValidateResults", Order = 4, Parameters = new Dictionary<string, object>() }
+            new() { Name = "Create Snapshots", Type = "CreateSnapshots", Order = 1, Parameters = new Dictionary<string, object> { ["processKey"] = fromProcessKey } },
+            new() { Name = "Migrate Instances", Type = "MigrateInstances", Order = 2, Parameters = new Dictionary<string, object> { ["fromProcessKey"] = fromProcessKey, ["toProcessKey"] = toProcessKey } },
+            new() { Name = "Update Definitions", Type = "UpdateDefinitionsStep", Order = 3, Parameters = new Dictionary<string, object> { ["toProcessKey"] = toProcessKey } },
+            new() { Name = "Validate Results", Type = "ValidateResults", Order = 4, Parameters = new Dictionary<string, object> { ["fromProcessKey"] = fromProcessKey, ["toProcessKey"] = toProcessKey } }
         };
     }
 
@@ -538,60 +610,218 @@ public class LiveProcessMigrationService : ILiveProcessMigrationService
         };
     }
 
-    // Mock implementation methods
-    private async Task StoreMigrationPlanAsync(MigrationPlan plan, IServiceScope scope) => await Task.Delay(1);
-    private async Task<MigrationPlan> GetMigrationPlanAsync(Guid planId, IServiceScope scope) => await Task.FromResult(new MigrationPlan { Id = planId });
-    private async Task<MigrationExecution?> GetStoredMigrationExecutionAsync(Guid id, IServiceScope scope) => await Task.FromResult<MigrationExecution?>(null);
-    private async Task StoreSnapshotAsync(LiveMigrationSnapshot snapshot, IServiceScope scope) => await Task.Delay(1);
-    private async Task<LiveMigrationSnapshot?> GetStoredSnapshotAsync(Guid id, IServiceScope scope) => await Task.FromResult<LiveMigrationSnapshot?>(null);
+    private async Task StoreMigrationPlanAsync(MigrationPlan plan, IServiceScope scope)
+    {
+        var db = scope.ServiceProvider.GetRequiredService<BpmnDbContext>();
+        var record = await db.MigrationPlans.FindAsync(plan.Id);
+        if (record is null)
+            db.MigrationPlans.Add(new MigrationPlanRecord { Id = plan.Id, CreatedAt = plan.CreatedAt, Payload = JsonSerializer.Serialize(plan) });
+        else
+        {
+            record.CreatedAt = plan.CreatedAt;
+            record.Payload = JsonSerializer.Serialize(plan);
+        }
+        await db.SaveChangesAsync();
+    }
+
+    private async Task<MigrationPlan> GetMigrationPlanAsync(Guid planId, IServiceScope scope)
+    {
+        var db = scope.ServiceProvider.GetRequiredService<BpmnDbContext>();
+        var record = await db.MigrationPlans.FindAsync(planId);
+        if (record is null)
+            throw new InvalidOperationException($"Migration plan '{planId}' was not found.");
+        return JsonSerializer.Deserialize<MigrationPlan>(record.Payload)
+            ?? throw new InvalidOperationException($"Migration plan '{planId}' contains invalid data.");
+    }
+
+    private async Task StoreMigrationExecutionAsync(MigrationExecution execution, IServiceScope scope)
+    {
+        var db = scope.ServiceProvider.GetRequiredService<BpmnDbContext>();
+        var record = await db.MigrationExecutions.FindAsync(execution.Id);
+        if (record is null)
+        {
+            db.MigrationExecutions.Add(new MigrationExecutionRecord
+            {
+                Id = execution.Id,
+                MigrationPlanId = execution.MigrationPlanId,
+                StartedAt = execution.StartedAt,
+                Payload = JsonSerializer.Serialize(execution)
+            });
+        }
+        else
+        {
+            record.Payload = JsonSerializer.Serialize(execution);
+        }
+        await db.SaveChangesAsync();
+    }
+
+    private async Task<MigrationExecution?> GetStoredMigrationExecutionAsync(Guid id, IServiceScope scope)
+    {
+        var db = scope.ServiceProvider.GetRequiredService<BpmnDbContext>();
+        var record = await db.MigrationExecutions.FindAsync(id);
+        return record is null ? null : JsonSerializer.Deserialize<MigrationExecution>(record.Payload);
+    }
+    private async Task StoreSnapshotAsync(LiveMigrationSnapshot snapshot, IServiceScope scope)
+    {
+        var historyRepository = scope.ServiceProvider.GetRequiredService<IHistoryEventRepository>();
+        await historyRepository.AddAsync(new HistoryEvent
+        {
+            Id = snapshot.Id,
+            ProcessInstanceId = snapshot.ProcessInstanceId,
+            EventType = "LIVE_MIGRATION_SNAPSHOT",
+            Timestamp = snapshot.CreatedAt,
+            Details = "Live process migration snapshot",
+            ElementId = snapshot.ProcessInstanceId.ToString(),
+            Data = JsonSerializer.Serialize(snapshot)
+        });
+    }
+
+    private async Task<LiveMigrationSnapshot?> GetStoredSnapshotAsync(Guid id, IServiceScope scope)
+    {
+        var historyRepository = scope.ServiceProvider.GetRequiredService<IHistoryEventRepository>();
+        var historyEvent = await historyRepository.GetByIdAsync(id);
+        if (historyEvent is null || historyEvent.EventType != "LIVE_MIGRATION_SNAPSHOT" || string.IsNullOrWhiteSpace(historyEvent.Data))
+            return null;
+
+        return JsonSerializer.Deserialize<LiveMigrationSnapshot>(historyEvent.Data);
+    }
 
     private List<ActivityInfo> ExtractActivities(ProcessDefinitionInfo process)
     {
-        return new List<ActivityInfo>
-        {
-            new() { Id = "start", Name = "Start Event", Type = "StartEvent" },
-            new() { Id = "task1", Name = "User Task", Type = "UserTask" },
-            new() { Id = "end", Name = "End Event", Type = "EndEvent" }
-        };
+        if (string.IsNullOrWhiteSpace(process.BpmnXml))
+            return new List<ActivityInfo>();
+        var document = XDocument.Parse(process.BpmnXml);
+        return document.Descendants()
+            .Where(element => element.Attribute("id") is not null &&
+                (element.Name.LocalName.EndsWith("Event", StringComparison.Ordinal) ||
+                 element.Name.LocalName.EndsWith("Task", StringComparison.Ordinal) ||
+                 element.Name.LocalName.EndsWith("Gateway", StringComparison.Ordinal)))
+            .Select(element => new ActivityInfo
+            {
+                Id = element.Attribute("id")!.Value,
+                Name = element.Attribute("name")?.Value ?? element.Attribute("id")!.Value,
+                Type = element.Name.LocalName
+            })
+            .ToList();
     }
 
     private List<VariableInfo> ExtractVariables(ProcessDefinitionInfo process)
     {
-        return new List<VariableInfo>
-        {
-            new() { Name = "var1", Type = "string" },
-            new() { Name = "var2", Type = "int" }
-        };
+        if (string.IsNullOrWhiteSpace(process.BpmnXml))
+            return new List<VariableInfo>();
+        var document = XDocument.Parse(process.BpmnXml);
+        return document.Descendants()
+            .Where(element => element.Name.LocalName is "property" or "variable")
+            .Select(element => new VariableInfo
+            {
+                Name = element.Attribute("name")?.Value ?? string.Empty,
+                Type = element.Attribute("type")?.Value ?? "string"
+            })
+            .Where(variable => !string.IsNullOrWhiteSpace(variable.Name))
+            .ToList();
     }
 
     private async Task<ProcessInstanceState> GetProcessInstanceAsync(Guid id, IServiceScope scope)
     {
-        await Task.Delay(1);
-        return new ProcessInstanceState { Id = id, Status = "Active" };
+        var repository = scope.ServiceProvider.GetRequiredService<IProcessInstanceRepository>();
+        var instance = await repository.GetByIdAsync(id)
+            ?? throw new InvalidOperationException($"Process instance '{id}' was not found.");
+        return new ProcessInstanceState
+        {
+            Id = instance.Id,
+            Status = instance.Status.ToString(),
+            State = instance.State,
+            ProcessDefinitionId = instance.ProcessDefinitionId,
+            ProcessId = instance.ProcessId
+        };
     }
 
     private async Task<List<TokenState>> GetActiveTokensAsync(Guid processInstanceId, IServiceScope scope)
     {
-        await Task.Delay(1);
-        return new List<TokenState> { new() { Id = Guid.NewGuid(), ActivityId = "task1" } };
+        var repository = scope.ServiceProvider.GetRequiredService<IExecutionTokenRepository>();
+        var tokens = new List<TokenState>();
+        await foreach (var token in repository.ListByProcessInstanceAsync(processInstanceId))
+        {
+            tokens.Add(new TokenState
+            {
+                Id = token.Id,
+                ProcessInstanceId = token.ProcessInstanceId,
+                ActivityId = token.CurrentNodeId,
+                NodeType = token.NodeType,
+                State = token.State
+            });
+        }
+        return tokens;
     }
 
     private async Task<Dictionary<string, object>> GetVariablesAsync(Guid processInstanceId, IServiceScope scope)
     {
-        await Task.Delay(1);
-        return new Dictionary<string, object> { { "var1", "value1" } };
+        var repository = scope.ServiceProvider.GetRequiredService<IVariableRepository>();
+        var variables = new Dictionary<string, object>();
+        await foreach (var variable in repository.ListByScopeAsync(processInstanceId))
+            variables[variable.Name] = variable.Value ?? string.Empty;
+        return variables;
     }
 
     private async Task<Dictionary<string, string>> CaptureActivityStatesAsync(Guid processInstanceId, IServiceScope scope)
     {
-        await Task.Delay(1);
-        return new Dictionary<string, string> { { "activity1", JsonSerializer.Serialize(new ActivityState { Id = "activity1", Status = "Active" }) } };
+        var repository = scope.ServiceProvider.GetRequiredService<IExecutionTokenRepository>();
+        var states = new Dictionary<string, string>();
+        await foreach (var token in repository.ListByProcessInstanceAsync(processInstanceId))
+            states[token.CurrentNodeId] = JsonSerializer.Serialize(new ActivityState { Id = token.CurrentNodeId, Status = token.State ?? "Active" });
+        return states;
     }
 
-    private async Task RestoreProcessInstanceAsync(ProcessInstanceState state, IServiceScope scope) => await Task.Delay(1);
-    private async Task RestoreTokenAsync(TokenState token, IServiceScope scope) => await Task.Delay(1);
-    private async Task SetVariableAsync(Guid processInstanceId, string name, object value, IServiceScope scope) => await Task.Delay(1);
-    private async Task RestoreActivityStateAsync(ActivityState state, IServiceScope scope) => await Task.Delay(1);
+    private async Task RestoreProcessInstanceAsync(ProcessInstanceState state, IServiceScope scope)
+    {
+        var repository = scope.ServiceProvider.GetRequiredService<IProcessInstanceRepository>();
+        var instance = await repository.GetByIdAsync(state.Id)
+            ?? throw new InvalidOperationException($"Process instance '{state.Id}' was not found.");
+        instance.State = state.State;
+        instance.ProcessDefinitionId = state.ProcessDefinitionId;
+        instance.ProcessId = state.ProcessId;
+        if (Enum.TryParse<ProcessInstanceStatus>(state.Status, out var status))
+            instance.Status = status;
+        await repository.UpdateAsync(instance);
+    }
+
+    private async Task RestoreTokenAsync(TokenState token, IServiceScope scope)
+    {
+        var repository = scope.ServiceProvider.GetRequiredService<IExecutionTokenRepository>();
+        var existing = await repository.GetByIdAsync(token.Id);
+        if (existing is not null)
+            await repository.DeleteAsync(token.Id);
+        await repository.AddAsync(new ExecutionToken(token.Id, token.ProcessInstanceId, token.ActivityId, token.NodeType)
+        {
+            State = token.State
+        });
+    }
+
+    private async Task SetVariableAsync(Guid processInstanceId, string name, object value, IServiceScope scope)
+    {
+        var repository = scope.ServiceProvider.GetRequiredService<IVariableRepository>();
+        var existing = await FindVariableAsync(repository, processInstanceId, name);
+        await repository.UpsertAsync(new Variable
+        {
+            Id = existing?.Id ?? Guid.NewGuid(),
+            ScopeId = processInstanceId,
+            ProcessInstanceId = processInstanceId,
+            Name = name,
+            Type = value?.GetType().Name ?? "object",
+            Value = value is JsonElement element ? element.ToString() : value?.ToString()
+        });
+    }
+
+    private static async Task<Variable?> FindVariableAsync(IVariableRepository repository, Guid processInstanceId, string name)
+    {
+        await foreach (var variable in repository.ListByScopeAsync(processInstanceId))
+        {
+            if (variable.Name == name)
+                return variable;
+        }
+        return null;
+    }
+
 }
 
 // Data Models

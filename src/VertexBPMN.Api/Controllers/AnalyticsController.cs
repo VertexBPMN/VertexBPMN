@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Infrastructure.Persistence.Services;
@@ -7,7 +9,7 @@ namespace VertexBPMN.Api.Controllers
 {
         [ApiController]
         [Route("api/[controller]")]
-        //[Microsoft.AspNetCore.Authorization.Authorize] // Removed for testing
+        [Authorize]
     public class AnalyticsController : ControllerBase
     {
         private readonly IProcessMiningEventSink _eventSink;
@@ -24,8 +26,7 @@ namespace VertexBPMN.Api.Controllers
     [HttpGet("events")]
     public ActionResult<IEnumerable<ProcessMiningEvent>> GetAllEvents()
     {
-    // Persistente Events aus DB
-    var events = _db.Events.ToList();
+    var events = TenantEvents().ToList();
     return Ok(events);
     }
 
@@ -36,6 +37,7 @@ namespace VertexBPMN.Api.Controllers
     public ActionResult<IDictionary<string, int>> GetEventTypeStats()
     {
         var stats = _db.Events
+            .Where(e => e.TenantId == CurrentTenantId())
             .GroupBy(e => e.EventType)
             .ToDictionary(g => g.Key, g => g.Count());
         return Ok(stats);
@@ -48,7 +50,7 @@ namespace VertexBPMN.Api.Controllers
     public ActionResult<IEnumerable<ProcessMiningEvent>> GetTrace(string processInstanceId)
     {
         var trace = _db.Events
-            .Where(e => e.ProcessInstanceId == processInstanceId)
+            .Where(e => e.TenantId == CurrentTenantId() && e.ProcessInstanceId == processInstanceId)
             .AsEnumerable() // Force client-side evaluation for SQLite compatibility
             .OrderBy(e => e.Timestamp)
             .ToList();
@@ -80,7 +82,10 @@ namespace VertexBPMN.Api.Controllers
     [HttpGet("events/by-tenant/{tenantId}")]
     public ActionResult<IEnumerable<ProcessMiningEvent>> GetEventsByTenant(string tenantId)
     {
-        var events = _db.Events.Where(e => e.TenantId == tenantId).ToList();
+        if (!string.Equals(tenantId, CurrentTenantId(), StringComparison.Ordinal))
+            return Forbid();
+
+        var events = TenantEvents().ToList();
         return Ok(events);
     }
 
@@ -91,7 +96,7 @@ namespace VertexBPMN.Api.Controllers
     public ActionResult<IEnumerable<object>> GetEventTimeSeries(string eventType)
     {
         var series = _db.Events
-            .Where(e => e.EventType == eventType)
+            .Where(e => e.TenantId == CurrentTenantId() && e.EventType == eventType)
             .AsEnumerable() // Force client-side evaluation for SQLite compatibility
             .GroupBy(e => e.Timestamp.Date)
             .Select(g => new { Date = g.Key, Count = g.Count() })
@@ -107,7 +112,8 @@ namespace VertexBPMN.Api.Controllers
     public ActionResult<object> GetProcessMetrics()
     {
         var processGroups = _db.Events
-            .Where(e => e.EventType == "ProcessStarted" || e.EventType == "ProcessEnded")
+            .Where(e => e.TenantId == CurrentTenantId() &&
+                        (e.EventType == "ProcessStarted" || e.EventType == "ProcessEnded"))
             .GroupBy(e => e.ProcessInstanceId)
             .ToList()
             .Select(g => {
@@ -125,6 +131,12 @@ namespace VertexBPMN.Api.Controllers
         var avgDuration = processGroups.Any() ? processGroups.Average(x => (x.Ended - x.Started)?.TotalSeconds ?? 0) : 0;
         return Ok(new { Count = count, AvgDurationSeconds = avgDuration });
     }
+
+    private IQueryable<ProcessMiningEvent> TenantEvents()
+        => _db.Events.Where(e => e.TenantId == CurrentTenantId());
+
+    private string? CurrentTenantId()
+        => User.FindFirstValue("tenant_id");
     }
 
     public record PredictDurationRequest(List<int> TraceLengths);

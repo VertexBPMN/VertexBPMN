@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 
@@ -14,6 +15,7 @@ public class JobExecutorService : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<JobExecutorService> _logger;
+    private readonly IServiceTaskRegistry _serviceTaskRegistry;
     private readonly TimeSpan _pollInterval = TimeSpan.FromSeconds(5);
 
     // Retry/backoff configuration
@@ -30,10 +32,14 @@ public class JobExecutorService : BackgroundService
         public const string PermanentlyFailed = "JobPermanentlyFailed";
     }
 
-    public JobExecutorService(IServiceProvider serviceProvider, ILogger<JobExecutorService> logger)
+    public JobExecutorService(
+        IServiceProvider serviceProvider,
+        ILogger<JobExecutorService> logger,
+        IServiceTaskRegistry serviceTaskRegistry)
     {
         _serviceProvider = serviceProvider;
         _logger = logger;
+        _serviceTaskRegistry = serviceTaskRegistry;
     }
     protected override async System.Threading.Tasks.Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -59,7 +65,7 @@ public class JobExecutorService : BackgroundService
             _logger.LogInformation("JobExecutorService stopped");
         }
     }
-    private async Task RunPollingIterationAsync(CancellationToken stoppingToken)
+    internal async Task RunPollingIterationAsync(CancellationToken stoppingToken)
     {
         try
         {
@@ -73,7 +79,11 @@ public class JobExecutorService : BackgroundService
                 try
                 {
                     _logger.LogInformation("Executing job {JobId} of type {JobType}", job.Id, job.Type);
-                    await System.Threading.Tasks.Task.Delay(100, stoppingToken);
+                    if (!_serviceTaskRegistry.TryResolve(job.Type, out var handler) || handler is null)
+                        throw new InvalidOperationException($"No service task handler registered for job type '{job.Type}'.");
+
+                    var payload = ParsePayload(job.Payload);
+                    await handler.ExecuteAsync(payload.Attributes, payload.Variables, stoppingToken);
                     await jobRepo.DeleteAsync(job.Id, stoppingToken);
 
                     if (eventSink != null)
@@ -180,7 +190,7 @@ public class JobExecutorService : BackgroundService
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
-            // Swallow – iteration canceled
+            // Swallow ï¿½ iteration canceled
         }
         catch (Exception ex)
         {
@@ -215,19 +225,34 @@ public class JobExecutorService : BackgroundService
         }
     }
 
-    // Set next due date (adjust property name to match actual job entity)
-    private static void SetNextDue(dynamic job, DateTime dueUtc)
-    {
-        // Try common property names; reflectively set with graceful fallback
-        try { job.DueAt = dueUtc; return; } catch { }
-        try { job.DueDate = dueUtc; return; } catch { }
-        try { job.ExecuteAt = dueUtc; return; } catch { }
-        try { job.NextRunAt = dueUtc; return; } catch { }
-    }
+    private static void SetNextDue(Job job, DateTime dueUtc) => job.DueDate = dueUtc;
 
     // Set error message if property exists
     private static void SetErrorMessage(dynamic job, string error)
     {
         try { job.ErrorMessage = error; } catch { /* ignore if not present */ }
     }
+
+    private static JobPayload ParsePayload(string? payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload))
+            return new JobPayload(new Dictionary<string, string>(), new Dictionary<string, object>());
+
+        using var document = JsonDocument.Parse(payload);
+        var root = document.RootElement;
+        var attributes = root.TryGetProperty("attributes", out var attributesElement)
+            ? JsonSerializer.Deserialize<Dictionary<string, string>>(attributesElement.GetRawText())
+            : null;
+        var variables = root.TryGetProperty("variables", out var variablesElement)
+            ? JsonSerializer.Deserialize<Dictionary<string, object>>(variablesElement.GetRawText())
+            : null;
+
+        return new JobPayload(
+            attributes ?? new Dictionary<string, string>(),
+            variables ?? new Dictionary<string, object>());
+    }
+
+    private sealed record JobPayload(
+        Dictionary<string, string> Attributes,
+        Dictionary<string, object> Variables);
 }

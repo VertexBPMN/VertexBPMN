@@ -9,21 +9,28 @@ namespace VertexBPMN.Application.Messaging
 {
     public class RabbitMqMessageDispatcher : IMessageDispatcher
     {
-        private readonly IConnection _connection;
-        private readonly IChannel _channel;
+        private readonly string _rabbitMqConnectionString;
+        private IConnection? _connection;
+        private IChannel? _channel;
 
         public RabbitMqMessageDispatcher(string rabbitMqConnectionString)
         {
-            var factory = new ConnectionFactory
-            {
-                Uri = new Uri(rabbitMqConnectionString)
-            };
+            if (string.IsNullOrWhiteSpace(rabbitMqConnectionString))
+                throw new ArgumentException("RabbitMQ connection string is required", nameof(rabbitMqConnectionString));
 
-            _connection = factory.CreateConnectionAsync().Result;;
-            _channel = _connection.CreateChannelAsync().Result;
+            _rabbitMqConnectionString = rabbitMqConnectionString;
+        }
 
-            // Optional: Declare a default exchange/queue
-            _channel.ExchangeDeclareAsync(exchange: "service_tasks", type: ExchangeType.Direct, durable: true);
+        private async Task<IChannel> GetChannelAsync(CancellationToken cancellationToken)
+        {
+            if (_channel is not null)
+                return _channel;
+
+            var factory = new ConnectionFactory { Uri = new Uri(_rabbitMqConnectionString) };
+            _connection = await factory.CreateConnectionAsync(cancellationToken);
+            _channel = await _connection.CreateChannelAsync();
+            await _channel.ExchangeDeclareAsync("service_tasks", ExchangeType.Direct, durable: true, cancellationToken: cancellationToken);
+            return _channel;
         }
 
         public async Task DispatchServiceTaskAsync(
@@ -51,7 +58,8 @@ namespace VertexBPMN.Application.Messaging
             properties.DeliveryMode =  DeliveryModes.Persistent;
 
 
-            await _channel.BasicPublishAsync(
+            var channel = await GetChannelAsync(ct);
+            await channel.BasicPublishAsync(
                 exchange: "service_tasks",
                 routingKey: targetWorkerId, // Use the worker ID as the routing key
                 mandatory: true,
@@ -61,14 +69,14 @@ namespace VertexBPMN.Application.Messaging
 
         public void Dispose()
         {
-            _channel?.CloseAsync();
-            _connection?.CloseAsync();
+            _channel?.Dispose();
+            _connection?.Dispose();
         }
 
         public Task DispatchServiceTaskAsync(string targetWorkerId, string implementation, Dictionary<string, string> attributes, Dictionary<string, object> variables,
             CancellationToken cancellationToken = default)
         {
-            return Task.CompletedTask;
+            return DispatchServiceTaskAsync(targetWorkerId, implementation, attributes, variables, cancellationToken);
         }
 
         public Task PublishTokenAsync(ExecutionToken token, CancellationToken cancellationToken = default)
@@ -96,7 +104,7 @@ namespace VertexBPMN.Application.Messaging
         public Task<Dictionary<string, object>> DispatchDmnTaskAsync(string targetWorker, string decisionRef, Dictionary<string, object> variables,
             CancellationToken cancellationToken = default)
         {
-            return null;
+            throw new NotSupportedException("RabbitMQ DMN dispatch requires a response-consumer contract.");
         }
 
         public Task SubscribeToMessageAsync(string messageName, Func<Message, Task> handler, CancellationToken cancellationToken = default)

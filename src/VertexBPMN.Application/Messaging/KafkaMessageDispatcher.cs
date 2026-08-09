@@ -43,7 +43,15 @@ public class KafkaMessageDispatcher : IMessageDispatcher, IDisposable
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _bootstrapServers = bootstrapServers ?? throw new ArgumentNullException(nameof(bootstrapServers));
 
-        var producerConfig = new ProducerConfig { BootstrapServers = _bootstrapServers };
+        var producerConfig = new ProducerConfig
+        {
+            BootstrapServers = _bootstrapServers,
+            EnableIdempotence = true,
+            Acks = Acks.All,
+            MessageSendMaxRetries = 10,
+            RetryBackoffMs = 250,
+            MessageTimeoutMs = 30000
+        };
         _producer = new ProducerBuilder<string, string>(producerConfig).Build();
 
         var consumerConfig = new ConsumerConfig

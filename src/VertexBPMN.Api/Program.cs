@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using VertexBPMN.Api;
 using VertexBPMN.Api.Config;
@@ -143,26 +144,42 @@ if (opMode == OperationalMode.Production && moduleOptions.Emails)
 
 var app = builder.Build();
 
-// Ensure databases are created
+// Apply versioned schemas for relational providers. InMemory remains available
+// for test and local scenarios where relational migrations do not apply.
 using (var scope = app.Services.CreateScope())
 {
 	var services = scope.ServiceProvider;
 	try
 	{
 		var bpmnContext = services.GetRequiredService<BpmnDbContext>();
-		await bpmnContext.Database.EnsureCreatedAsync();
+		if (bpmnContext.Database.IsRelational())
+			await bpmnContext.Database.MigrateAsync();
+		else
+			await bpmnContext.Database.EnsureCreatedAsync();
 				
 		var tenantContext = services.GetRequiredService<TenantDbContext>();
-		await tenantContext.Database.EnsureCreatedAsync();
+		if (tenantContext.Database.IsRelational())
+			await tenantContext.Database.MigrateAsync();
+		else
+			await tenantContext.Database.EnsureCreatedAsync();
 				
 		var simulationContext = services.GetRequiredService<SimulationScenarioDbContext>();
-		await simulationContext.Database.EnsureCreatedAsync();
+		if (simulationContext.Database.IsRelational())
+			await simulationContext.Database.MigrateAsync();
+		else
+			await simulationContext.Database.EnsureCreatedAsync();
 				
 		var processMiningContext = services.GetRequiredService<ProcessMiningEventDbContext>();
-		await processMiningContext.Database.EnsureCreatedAsync();
+		if (processMiningContext.Database.IsRelational())
+			await processMiningContext.Database.MigrateAsync();
+		else
+			await processMiningContext.Database.EnsureCreatedAsync();
 
 		var decisionContext = services.GetRequiredService<DecisionDbContext>();
-		await decisionContext.Database.EnsureCreatedAsync();
+		if (decisionContext.Database.IsRelational())
+			await decisionContext.Database.MigrateAsync();
+		else
+			await decisionContext.Database.EnsureCreatedAsync();
 	}
 	catch (Exception ex)
 	{

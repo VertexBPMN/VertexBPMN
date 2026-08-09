@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using System.Threading.RateLimiting;
 using VertexBPMN.Api;
 using VertexBPMN.Api.Config;
 using VertexBPMN.Api.Debug;
@@ -64,6 +65,25 @@ if (moduleOptions.Engine)
 }
 
 builder.Services.AddApiServices(builder.Configuration);
+
+builder.Services.AddRateLimiter(options =>
+{
+	var permitLimit = builder.Configuration.GetValue("RateLimiting:PermitLimit", 120);
+	var windowSeconds = builder.Configuration.GetValue("RateLimiting:WindowSeconds", 60);
+	var queueLimit = builder.Configuration.GetValue("RateLimiting:QueueLimit", 0);
+
+	options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+	options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+		RateLimitPartition.GetFixedWindowLimiter(
+			context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+			_ => new FixedWindowRateLimiterOptions
+			{
+				PermitLimit = permitLimit,
+				Window = TimeSpan.FromSeconds(windowSeconds),
+				QueueLimit = queueLimit,
+				AutoReplenishment = true
+			}));
+});
 
 // Background hosted services control (example: disable job executor in Test)
 if (opMode == OperationalMode.Test || !moduleOptions.BackgroundJobs)
@@ -223,6 +243,11 @@ if (enablePlugins)
 }
 
 // Configure the HTTP request pipeline.
+if (opMode is OperationalMode.Production or OperationalMode.Stage)
+{
+	app.UseHttpsRedirection();
+}
+
 var pathBase = builder.Configuration["PathBase"]
 			  ?? builder.Configuration["ASPNETCORE_PATHBASE"]
 			  ?? Environment.GetEnvironmentVariable("ASPNETCORE_PATHBASE");
@@ -283,6 +308,8 @@ app.MapHealthChecks("/api/ready", new Microsoft.AspNetCore.Diagnostics.HealthChe
 
 if (opMode != OperationalMode.Test)
 {
+	app.UseCors("Production");
+	app.UseRateLimiter();
 	app.UseAuthentication();
 }
 

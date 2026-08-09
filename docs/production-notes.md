@@ -1,10 +1,10 @@
 # VertexBPMN: Hinweise für produktiven Betrieb
 
 ## Authentifizierung & Sicherheit
-- Aktuell ist die API offen. Für produktiven Einsatz empfiehlt sich:
-  - Authentifizierung (z.B. JWT, OAuth2, API-Key)
-  - HTTPS erzwingen
-  - Rate Limiting und CORS-Konfiguration
+- Außerhalb des Testbetriebs erzwingt die API eine konfigurierte JWT- oder API-Key-Authentifizierung.
+- HTTPS-Redirect, CORS und globales Rate Limiting sind für Production und Stage aktiviert.
+- Produktive JWT-Audience sowie Authority oder Secret Key müssen über Konfiguration beziehungsweise Secret Management gesetzt werden.
+- Plugin-Management und MCP/gRPC-Endpunkte sind authentifizierungspflichtig; mutierende Plugin-Operationen erfordern die Rolle `Admin`.
 
 ## Deployment
 - Empfohlen: Containerisierung (Dockerfile bereitstellen)
@@ -12,15 +12,18 @@
 - Logging-Ausgabe an zentrale Systeme (z.B. ELK, Azure Monitor, CloudWatch)
 
 ## Skalierung
-- Die Engine ist zustandslos (in-memory) und kann horizontal skaliert werden, sobald Persistenz verfügbar ist
-- Für produktive Workflows: Persistenz-Provider (z.B. EF Core/PostgreSQL) aktivieren, sobald .NET 9/EF Core kompatibel
+- Die API unterstützt EF-Core-Persistenz für SQLite, PostgreSQL und SQL Server sowie InMemory für Tests.
+- Relationale Datenbanken werden beim Start über versionierte EF-Migrationen aktualisiert.
+- Für horizontale Skalierung müssen alle Instanzen denselben relationalen Speicher und eine geeignete externe Zustellung für Live-Ereignisse verwenden.
 
 ## Monitoring & Observability
 - Health-Check, strukturierte Logs und Metriken sind integriert
 - Erweiterbar mit OpenTelemetry, Prometheus, Application Insights
 
 ## Backup & Recovery
-- Bei Nutzung von Persistenz: Regelmäßige Backups der Datenbank
+- Regelmäßige Backups der produktiven Datenbanken einrichten und Wiederherstellungen testen.
+- Migrationen vor dem Rollout prüfen und Snapshots beziehungsweise Rollback-Verfahren für die jeweilige Betriebsumgebung dokumentieren.
+- Webhook-Ziele müssen HTTPS verwenden; Zustellungen sind HMAC-SHA256-signiert und nach Ereignistyp filterbar.
 
 ---
-*Letztes Update: August 2025*
+*Letztes Update: 2026-03*

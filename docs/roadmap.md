@@ -11,15 +11,16 @@
 
 ## Nächste Schritte (2025+)
 
-- [ ] Echte Persistenz für Jobs, Instanzen, Variablen (PostgreSQL, Redis, Cloud DBs)
-- [ ] Multi-Tenancy & Mandantenfähigkeit (API, Engine, UI)
+- ✅ Persistenz und versionierte Migrationen für Jobs, Instanzen und Variablen (SQLite, PostgreSQL, SQL Server)
+- ✅ Multi-Tenancy & Mandantenfähigkeit für Analytics und Reporting
 - [ ] Erweiterte User-Task-Formulare (form-js, Custom-Renderer)
-- [ ] Webhooks & Event-Streaming (Kafka, RabbitMQ, Azure EventGrid)
+- ✅ HTTPS-Webhooks mit Ereignisfiltern und HMAC-Signaturen
 - [ ] Echtzeit-Visualisierung (Cockpit, Live-Debugger, UI-Integrationen)
-- [ ] Process Mining API (Event-Log, Token-Log, Predictive Analytics)
-- [ ] Plug-in-Architektur für Custom-Tasks, Listener, Extensions
+- ✅ Process-Mining-Event-Log, Analytics und persistenter Event-Sink
+- ✅ Plug-in-Architektur für Custom-Tasks, Listener und Extensions
 - [ ] Native Cloud-Integrationen (Azure, AWS, GCP)
-- [ ] Security/Compliance: OAuth2, Audit-Logs, Secrets
+- ✅ Security-Grundlagen: JWT/API-Key, OAuth2-kompatible Authority, HTTPS, CORS und Rate Limiting
+- [ ] Compliance-Ausbau: Audit-Logs, zentrale Secrets und formale Betriebsnachweise
 - [ ] Community-Features, SDKs, Beispielprojekte
 
 ## Vision
@@ -27,4 +28,4 @@
 VertexBPMN™ wird die modernste, leichtgewichtigste und innovativste .NET-Workflow-Engine – offen, performant, Cloud-ready und KI-fähig.
 
 ---
-*Letztes Update: 2025-08-12*
+*Letztes Update: 2026-03*

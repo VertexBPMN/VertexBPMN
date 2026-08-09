@@ -5,6 +5,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Encodings.Web;
+using System.Security.Cryptography;
 
 namespace VertexBPMN.Api.Security;
 
@@ -16,30 +17,56 @@ public static class SecurityConfiguration
 {
     public static IServiceCollection AddProductionSecurity(this IServiceCollection services, IConfiguration configuration)
     {
-        // JWT Authentication
+        var authority = configuration["Jwt:Authority"];
+        var issuer = configuration["Jwt:Issuer"];
+        var audience = configuration["Jwt:Audience"];
+        var secretKey = configuration["Jwt:SecretKey"];
+        var isDevelopment = string.Equals(configuration["OperationalMode"], "Development", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(configuration["ASPNETCORE_ENVIRONMENT"], "Development", StringComparison.OrdinalIgnoreCase);
+
+        if (string.IsNullOrWhiteSpace(audience))
+            throw new InvalidOperationException("Jwt:Audience must be configured.");
+
+        if (string.IsNullOrWhiteSpace(authority) && string.IsNullOrWhiteSpace(secretKey))
+        {
+            if (!isDevelopment)
+                throw new InvalidOperationException("Configure Jwt:Authority or Jwt:SecretKey before starting the API outside Development.");
+
+            secretKey = "development-only-vertexbpmn-signing-key-32-bytes!";
+        }
+
+        if (string.IsNullOrWhiteSpace(authority) && Encoding.UTF8.GetByteCount(secretKey!) < 32)
+            throw new InvalidOperationException("Jwt:SecretKey must contain at least 32 bytes.");
+
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
             {
+                options.RequireHttpsMetadata = !isDevelopment;
+                if (!string.IsNullOrWhiteSpace(authority))
+                    options.Authority = authority;
+
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
-                    ValidateIssuer = true,
+                    ValidateIssuer = !string.IsNullOrWhiteSpace(issuer) || !string.IsNullOrWhiteSpace(authority),
                     ValidateAudience = true,
                     ValidateLifetime = true,
-                    ValidateIssuerSigningKey = true,
-                    ValidIssuer = configuration["Jwt:Issuer"],
-                    ValidAudience = configuration["Jwt:Audience"],
-                    IssuerSigningKey = new SymmetricSecurityKey(
-                        Encoding.UTF8.GetBytes(configuration["Jwt:SecretKey"] ?? "default-secret-key-for-development"))
+                    ValidateIssuerSigningKey = string.IsNullOrWhiteSpace(authority),
+                    ValidIssuer = issuer,
+                    ValidAudience = audience,
+                    IssuerSigningKey = string.IsNullOrWhiteSpace(authority)
+                        ? new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey!))
+                        : null
                 };
-            });
-
-        // API Key Authentication
-        services.AddAuthentication()
-            .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>("ApiKey", options => { });
+            })
+            .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>("ApiKey", _ => { });
 
         // Authorization Policies
         services.AddAuthorization(options =>
         {
+            options.FallbackPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
+                .RequireAuthenticatedUser()
+                .Build();
+
             options.AddPolicy("AdminOnly", policy => 
                 policy.RequireClaim(ClaimTypes.Role, "Admin"));
             
@@ -100,7 +127,10 @@ public class ApiKeyAuthenticationHandler : AuthenticationHandler<AuthenticationS
         var apiKey = Request.Headers[ApiKeyHeaderName].FirstOrDefault();
         var validApiKeys = _configuration.GetSection("ApiKeys").Get<string[]>() ?? Array.Empty<string>();
 
-        if (string.IsNullOrEmpty(apiKey) || !validApiKeys.Contains(apiKey))
+        if (string.IsNullOrEmpty(apiKey) || !validApiKeys.Any(configuredKey =>
+            CryptographicOperations.FixedTimeEquals(
+                Encoding.UTF8.GetBytes(configuredKey),
+                Encoding.UTF8.GetBytes(apiKey))))
         {
             return Task.FromResult(AuthenticateResult.Fail("Invalid API Key"));
         }

@@ -80,12 +80,11 @@ builder.Services.AddWhen(moduleOptions.SignalR, s => s.AddSignalR());
 // Add services to the container.
 builder.Services.AddControllers();
 
-// Authentication (could be disabled for Test if desired)
+// Authentication is disabled only in the dedicated test host, where tests install
+// an explicit test scheme. All other modes use the single production security setup.
 if (opMode != OperationalMode.Test)
 {
-	OAuth2AuthenticationExtensions.AddOAuth2Authentication(
-		builder.Services,
-		options => { });
+	builder.Services.AddProductionSecurity(builder.Configuration);
 }
 
 builder.Services.AddEndpointsApiExplorer();

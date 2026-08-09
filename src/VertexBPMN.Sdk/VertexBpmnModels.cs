@@ -1,0 +1,28 @@
+namespace VertexBPMN.Sdk;
+
+public sealed record ProcessDefinition(
+    string Id,
+    string Key,
+    string Name,
+    int Version,
+    string TenantId,
+    bool Suspended);
+
+public sealed record ProcessInstance(
+    Guid Id,
+    string BusinessKey,
+    string ProcessDefinitionId,
+    string ProcessDefinitionKey,
+    string TenantId,
+    string State,
+    IDictionary<string, object?>? Variables);
+
+public sealed record UserTask(
+    Guid Id,
+    string Name,
+    string Assignee,
+    DateTime Created,
+    string? FormKey,
+    string? FormSchema);
+
+public sealed record FormSchema(Guid Id, string? FormKey, string? Schema);

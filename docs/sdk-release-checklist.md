@@ -11,6 +11,14 @@ Before publishing an SDK or NuGet package:
 5. Generate OpenAPI and gRPC client artifacts from the same version as the server.
 6. Publish packages only from explicitly packable project files and attach symbols and source mapping.
 
+For the first .NET client package, use:
+
+```powershell
+dotnet pack src/VertexBPMN.Sdk/VertexBPMN.Sdk.csproj --configuration Release --output artifacts/sdk-pack
+```
+
+The resulting package is `VertexBPMN.Sdk.1.0.0.nupkg`. It contains only the typed REST client and has no server, persistence, or credential-storage dependency.
+
 Recommended local verification:
 
 ```powershell

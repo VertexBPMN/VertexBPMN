@@ -2,6 +2,7 @@
 using VertexBPMN.Api.Debug;
 using VertexBPMN.Api.Migration;
 using VertexBPMN.Api.ML;
+using VertexBPMN.Api.Middleware;
 using VertexBPMN.Api.Plugins;
 using VertexBPMN.Api.Services;
 using VertexBPMN.Domain.Interfaces;
@@ -32,6 +33,7 @@ public static class ApiModule
         services.AddScoped<ILiveProcessMigrationService, LiveProcessMigrationService>();
         services.AddScoped<IVisualDebuggingService, VisualDebuggingService>();
         services.AddSingleton<IPluginManager, PluginManager>();
+        services.AddTransient<AuditLoggingMiddleware>();
 
         return services;
     }

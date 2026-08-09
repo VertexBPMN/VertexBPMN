@@ -7,6 +7,7 @@ using VertexBPMN.Api.Debug;
 using VertexBPMN.Api.Health;
 using VertexBPMN.Api.Hubs;
 using VertexBPMN.Api.Mcp;
+using VertexBPMN.Api.Middleware;
 using VertexBPMN.Api.Plugins;
 using VertexBPMN.Api.Security;
 using VertexBPMN.Api.Services;
@@ -323,6 +324,7 @@ app.Use(async (context, next) =>
 });
 
 app.UseAuthorization();
+app.UseMiddleware<AuditLoggingMiddleware>();
 
 //Enterprise Scalability: SignalR Hub mapping,Only map hubs when enabled
 if (moduleOptions.SignalR)

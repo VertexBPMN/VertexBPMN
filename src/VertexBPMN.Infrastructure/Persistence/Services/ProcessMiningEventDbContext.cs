@@ -6,6 +6,7 @@ namespace VertexBPMN.Infrastructure.Persistence.Services
     public class ProcessMiningEventDbContext : DbContext
     {
         public DbSet<ProcessMiningEvent> Events { get; set; }
+        public DbSet<AuditLog> AuditLogs { get; set; }
         public ProcessMiningEventDbContext(DbContextOptions<ProcessMiningEventDbContext> options) : base(options) { }
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -23,6 +24,19 @@ namespace VertexBPMN.Infrastructure.Persistence.Services
             entity.HasIndex(e => e.ProcessInstanceId);
             entity.HasIndex(e => e.TenantId);
             entity.HasIndex(e => e.Timestamp);
+
+            var audit = modelBuilder.Entity<AuditLog>();
+            audit.HasKey(e => e.Id);
+            audit.Property(e => e.Action).HasMaxLength(200).IsRequired();
+            audit.Property(e => e.Resource).HasMaxLength(300);
+            audit.Property(e => e.ResourceId).HasMaxLength(200);
+            audit.Property(e => e.UserId).HasMaxLength(200);
+            audit.Property(e => e.TenantId).HasMaxLength(64);
+            audit.Property(e => e.CorrelationId).HasMaxLength(128);
+            audit.Property(e => e.DetailsJson).HasMaxLength(8000);
+            audit.HasIndex(e => e.Timestamp);
+            audit.HasIndex(e => new { e.TenantId, e.Timestamp });
+            audit.HasIndex(e => e.Action);
 
             // Seed sample events (if empty DB after first migration)
             var seedTime = new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero);

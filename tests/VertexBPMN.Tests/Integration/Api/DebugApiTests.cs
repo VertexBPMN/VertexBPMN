@@ -38,7 +38,7 @@ public class DebugApiTests : IClassFixture<CustomWebApplicationFactory>
         tracePost.EnsureSuccessStatusCode();
         var trace = await tracePost.Content.ReadFromJsonAsync<List<string>>();
         Assert.NotNull(trace);
-        Assert.Contains("StartEvent: start1", trace);
-        Assert.Contains("EndEvent: end1", trace);
+        Assert.Contains(trace, item => item.Contains("StartEvent: start1"));
+        Assert.Contains(trace, item => item.Contains("EndEvent: end1"));
     }
 }

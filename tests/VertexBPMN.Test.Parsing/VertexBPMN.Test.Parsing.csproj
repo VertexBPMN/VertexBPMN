@@ -63,4 +63,7 @@
 	  <ProjectReference Include="..\..\src\VertexBPMN.Engine\VertexBPMN.Engine.csproj" />
 	  <ProjectReference Include="..\..\src\VertexBPMN.Infrastructure\VertexBPMN.Infrastructure.csproj" />
 	</ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\..\src\VertexBPMN.Parsing\Engine\FullConformanceProcessEngine.cs" Link="ReferenceEngine\FullConformanceProcessEngine.cs" />
+  </ItemGroup>
 </Project>

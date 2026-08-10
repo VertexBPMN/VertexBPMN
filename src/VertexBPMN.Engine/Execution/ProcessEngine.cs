@@ -17,10 +17,15 @@ public partial class ProcessEngine : IProcessEngine
     private readonly IBpmnParser? _bpmnParser;
     private readonly IDmnParser? _dmnParser;
     private readonly IDmnEngine? _dmnEngine;
+    private readonly ICmmnParser? _cmmnParser;
+    private readonly IAiDecisionService? _aiDecisionService;
     private readonly IServiceTaskRegistry _serviceTaskRegistry;
     private readonly BpmnExecutionComponent _executionComponent = new();
     private readonly ConcurrentDictionary<string, BpmnModel> _registeredModels = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, DmnDecision> _registeredDecisions = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, CaseModel> _registeredCases = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, Dictionary<string, object>> _caseFiles = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, List<HistoricalCaseData>> _caseHistory = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, LocalExecutionHistory> _executionHistory = new(StringComparer.OrdinalIgnoreCase);
     private string? _lastExecutionId;
 
@@ -74,7 +79,8 @@ public partial class ProcessEngine : IProcessEngine
 
     public ProcessEngine(ILogger<ProcessEngine> logger,
         IServiceTaskRegistry serviceTaskRegistry, IDecisionService? decisionService = null,
-        IBpmnParser? bpmnParser = null, IDmnParser? dmnParser = null, IDmnEngine? dmnEngine = null)
+        IBpmnParser? bpmnParser = null, IDmnParser? dmnParser = null, IDmnEngine? dmnEngine = null,
+        ICmmnParser? cmmnParser = null, IAiDecisionService? aiDecisionService = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _serviceTaskRegistry = serviceTaskRegistry ?? throw new ArgumentNullException(nameof(serviceTaskRegistry));
@@ -82,6 +88,8 @@ public partial class ProcessEngine : IProcessEngine
         _bpmnParser = bpmnParser;
         _dmnParser = dmnParser;
         _dmnEngine = dmnEngine;
+        _cmmnParser = cmmnParser;
+        _aiDecisionService = aiDecisionService;
     }
 
     // Runtime state
@@ -119,9 +127,18 @@ public partial class ProcessEngine : IProcessEngine
         _registeredModels[processId] = model;
     }
 
-    public Task RegisterCmmnModelAsync(string caseId, string cmmnXml)
+    public async Task RegisterCmmnModelAsync(string caseId, string cmmnXml)
     {
-        return Task.FromException(new NotSupportedException("CMMN not supported"));
+        ArgumentException.ThrowIfNullOrWhiteSpace(caseId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(cmmnXml);
+        if (_cmmnParser == null)
+            throw new NotSupportedException("CMMN XML registration requires an ICmmnParser.");
+
+        var model = await _cmmnParser.ParseAsync(cmmnXml);
+        _registeredCases[caseId] = model;
+        _caseFiles[caseId] = model.CaseFileItems
+            .Where(item => !string.IsNullOrWhiteSpace(item.Id))
+            .ToDictionary(item => item.Id, item => item.Value ?? new object(), StringComparer.OrdinalIgnoreCase);
     }
 
     public async Task RegisterDmnModelAsync(string decisionId, string dmnXml)
@@ -141,12 +158,16 @@ public partial class ProcessEngine : IProcessEngine
 
     public Task<CaseModel> GetCmmnModelAsync(string caseId)
     {
-        return Task.FromException<CaseModel>(new NotSupportedException("CMMN not supported"));
+        if (_registeredCases.TryGetValue(caseId, out var model))
+            return Task.FromResult(model);
+        return Task.FromException<CaseModel>(new KeyNotFoundException($"CMMN case '{caseId}' is not registered."));
     }
 
     public Task<List<HistoricalCaseData>> GetHistoricalCaseDataAsync(string caseId)
     {
-        return Task.FromException<List<HistoricalCaseData>>(new NotSupportedException("History not implemented"));
+        return Task.FromResult(_caseHistory.TryGetValue(caseId, out var history)
+            ? history.ToList()
+            : new List<HistoricalCaseData>());
     }
 
     public async Task<List<string>> ExecuteProcessAsync(string processId, CancellationToken cancellationToken = default)
@@ -171,6 +192,116 @@ public partial class ProcessEngine : IProcessEngine
     {
         _logger.LogInformation("Completing user task: {UserTaskId}", userTaskId);
         return Task.CompletedTask;
+    }
+
+    public async Task<List<string>> ExecuteCaseAsync(CaseModel model, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var caseFile = _caseFiles.GetOrAdd(model.Id, _ => model.CaseFileItems
+            .Where(item => !string.IsNullOrWhiteSpace(item.Id))
+            .ToDictionary(item => item.Id, item => item.Value ?? new object(), StringComparer.OrdinalIgnoreCase));
+        var trace = new List<string> { $"LocalCaseExecution: Starting case {model.Id}" };
+        var completed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var pending = new Queue<PlanItem>(model.PlanItems.Where(item =>
+            !item.IsDiscretionary && (item.EntrySentryRefs == null || item.EntrySentryRefs.Count == 0)));
+
+        while (pending.Count > 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var item = pending.Dequeue();
+            if (!completed.Add(item.Id))
+                continue;
+
+            trace.Add($"PlanItem: {item.Id} ({item.Type})");
+            if (item.Type.Equals("humanTask", StringComparison.OrdinalIgnoreCase) ||
+                item.Type.Equals("userTask", StringComparison.OrdinalIgnoreCase))
+                trace.Add($"UserTask: {item.Id}");
+            else if (item.Type.Equals("serviceTask", StringComparison.OrdinalIgnoreCase))
+                trace.Add($"ServiceTask: {item.Id}");
+            else if (item.Type.Equals("eventListener", StringComparison.OrdinalIgnoreCase))
+                trace.Add($"EventListener: {item.Id}");
+            else
+                trace.Add($"PlanItemCompleted: {item.Id}");
+
+            foreach (var dependent in model.PlanItems.Where(candidate =>
+                !completed.Contains(candidate.Id) &&
+                candidate.EntrySentryRefs?.Any(reference => model.Sentries.Any(sentry =>
+                    sentry.Id == reference && sentry.OnPartRef == item.Id)) == true))
+            {
+                pending.Enqueue(dependent);
+            }
+        }
+
+        var history = new HistoricalCaseData(model.Id, new Dictionary<string, object>(caseFile), completed.ToList(), DateTime.UtcNow);
+        _caseHistory.AddOrUpdate(model.Id, _ => new List<HistoricalCaseData> { history }, (_, entries) =>
+        {
+            entries.Add(history);
+            return entries;
+        });
+        await Task.CompletedTask;
+        return trace;
+    }
+
+    public Task AddDiscretionaryItemAsync(string caseId, PlanItem planItem, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(planItem);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_registeredCases.TryGetValue(caseId, out var model))
+            return Task.FromException(new KeyNotFoundException($"CMMN case '{caseId}' is not registered."));
+        if (!planItem.IsDiscretionary)
+            return Task.FromException(new ArgumentException("Plan item must be discretionary.", nameof(planItem)));
+
+        _registeredCases[caseId] = model with { PlanItems = new List<PlanItem>(model.PlanItems) { planItem } };
+        return Task.CompletedTask;
+    }
+
+    public Task UpdateCaseFileItemAsync(string caseId, string caseFileItemId, object newValue, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_caseFiles.TryGetValue(caseId, out var caseFile))
+            return Task.FromException(new KeyNotFoundException($"CMMN case '{caseId}' is not registered."));
+        caseFile[caseFileItemId] = newValue;
+        return Task.CompletedTask;
+    }
+
+    public Task TriggerUserEventAsync(string caseId, string eventId, Dictionary<string, object> eventData, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_caseFiles.TryGetValue(caseId, out var caseFile))
+            return Task.FromException(new KeyNotFoundException($"CMMN case '{caseId}' is not registered."));
+        foreach (var entry in eventData)
+            caseFile[entry.Key] = entry.Value;
+        return Task.CompletedTask;
+    }
+
+    public async Task GenerateAdHocSubprocessAsync(string caseId, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_caseFiles.TryGetValue(caseId, out var caseFile))
+            throw new KeyNotFoundException($"CMMN case '{caseId}' is not registered.");
+
+        PlanItem item;
+        if (_aiDecisionService != null)
+        {
+            var suggestions = await _aiDecisionService.PredictOptimalPlanItemsAsync(
+                caseId,
+                new Dictionary<string, object>(caseFile),
+                await GetHistoricalCaseDataAsync(caseId),
+                cancellationToken);
+            item = suggestions.FirstOrDefault() ?? await _aiDecisionService.GenerateAdHocSubprocessAsync(
+                caseId,
+                new Dictionary<string, object>(caseFile),
+                cancellationToken);
+        }
+        else
+        {
+            item = new PlanItem($"adhoc-{Guid.NewGuid():N}", "task", "", new Dictionary<string, string>(), new List<string>(), new List<string>(), true);
+        }
+
+        item = item with { IsDiscretionary = true };
+        await AddDiscretionaryItemAsync(caseId, item, cancellationToken);
     }
 
     #endregion
@@ -980,9 +1111,6 @@ partial class ProcessEngine
         try { var v = sp.GetType().GetProperty("IsTransaction")?.GetValue(sp); if (v is bool b) return b; } catch { }
         return false;
     }
-
-    public Task<List<string>> ExecuteCaseAsync(CaseModel model, CancellationToken cancellationToken = default)
-        => Task.FromResult(new List<string> { "CaseExecutionNotSupported: BPMN-only reference engine" });
 
     // ===== Add helper methods for zeebe:ioMapping & expression (step 4) and small FEEL-lite evaluation (step 6 placeholder) =====
     private void ApplyZeebeIoMapping(BpmnTask task, IDictionary<string, object> vars, List<string> trace)

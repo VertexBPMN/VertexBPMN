@@ -143,6 +143,7 @@
   <ProjectReference Include="..\..\src\VertexBPMN.Integration\McpAgentPlugin\VertexBPMN.McpAgentPlugin.csproj" />
   <ProjectReference Include="..\..\src\VertexBPMN.Integration\McpClient\VertexBPMN.McpClient.csproj" />
   <ProjectReference Include="..\..\src\VertexBPMN.Studio\VertexBPMN.Studio.csproj" />
+  <ProjectReference Include="..\..\src\VertexBPMN.Sdk\VertexBPMN.Sdk.csproj" />
 </ItemGroup>
 
 </Project>

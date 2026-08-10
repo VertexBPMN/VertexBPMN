@@ -100,6 +100,26 @@ public interface IProcessEngine
     /// <param name="caseId">Case ID</param>
     /// <returns>Historical case data</returns>
     Task<List<HistoricalCaseData>> GetHistoricalCaseDataAsync(string caseId);
+
+    /// <summary>
+    /// Adds a discretionary item to a running case instance.
+    /// </summary>
+    Task AddDiscretionaryItemAsync(string caseId, PlanItem planItem, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Updates a case file item and evaluates dependent case logic.
+    /// </summary>
+    Task UpdateCaseFileItemAsync(string caseId, string caseFileItemId, object newValue, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Triggers a user event in a case instance.
+    /// </summary>
+    Task TriggerUserEventAsync(string caseId, string eventId, Dictionary<string, object> eventData, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Generates an ad-hoc subprocess using the engine's available decision support.
+    /// </summary>
+    Task GenerateAdHocSubprocessAsync(string caseId, CancellationToken cancellationToken = default);
     
     #endregion
 }

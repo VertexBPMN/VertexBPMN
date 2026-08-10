@@ -12,17 +12,17 @@ namespace VertexBPMN.Engine.Configuration;
 public enum ProcessEngineType
 {
     /// <summary>
-    /// Simple, single-node engine for basic BPMN execution
+    /// Simple, single-node engine with in-memory BPMN, CMMN and DMN execution
     /// - ✅ BPMN execution
-    /// - ❌ CMMN support
-    /// - ❌ DMN registry
+    /// - ✅ CMMN support
+    /// - ✅ DMN registry
     /// - ❌ Distribution
     /// - ❌ Worker management
     /// </summary>
     Simple,
     
     /// <summary>
-    /// Distributed, enterprise-grade engine with full feature set
+    /// Distributed, enterprise-grade engine with the same domain features plus server capabilities
     /// - ✅ BPMN execution
     /// - ✅ CMMN case management
     /// - ✅ DMN decision support
@@ -73,7 +73,9 @@ public static class ProcessEngineFactory
             serviceRegistry ?? throw new InvalidOperationException("IServiceTaskRegistry not registered. Add service task registry."),
             bpmnParser: bpmnParser,
             dmnParser: dmnParser,
-            dmnEngine: dmnEngine
+            dmnEngine: dmnEngine,
+            cmmnParser: services.GetService<ICmmnParser>(),
+            aiDecisionService: services.GetService<IAiDecisionService>()
         );
         
         return tokenEngine;
@@ -126,8 +128,8 @@ public static class ProcessEngineFactory
         bool requiresScalability = false,
         bool requiresAiFeatures = false)
     {
-        // Any advanced feature requires the distributed engine
-        if (requiresCmmn || requiresDmn || requiresDistribution || requiresScalability || requiresAiFeatures)
+        // CMMN and DMN are supported in both engines. Distribution and scalability require the cluster engine.
+        if (requiresDistribution || requiresScalability)
         {
             return ProcessEngineType.Distributed;
         }
@@ -150,12 +152,6 @@ public static class ProcessEngineFactory
         var isDistributed = engine is IDistributedProcessEngine;
         var issues = new List<string>();
         var recommendations = new List<string>();
-
-        if (requiresCmmn && !isDistributed)
-        {
-            issues.Add("CMMN support required but engine does not implement IDistributedProcessEngine");
-            recommendations.Add("Switch to UnifiedDistributedProcessEngine or ProcessEngineType.Distributed");
-        }
 
         if (requiresDistribution && !isDistributed)
         {

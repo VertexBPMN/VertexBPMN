@@ -21,7 +21,7 @@ public sealed class EngineController : ControllerBase
         var isDistributed = _engine is IDistributedProcessEngine;
         return Ok(new EngineCapabilities(
             isDistributed ? ProcessEngineType.Distributed : ProcessEngineType.Simple,
-            SupportsCmmn: isDistributed,
+            SupportsCmmn: true,
             SupportsWorkers: isDistributed,
             SupportsDurablePersistence: isDistributed));
     }

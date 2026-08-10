@@ -107,6 +107,30 @@ public sealed partial class FullConformanceProcessEngine : IProcessEngine
         return Task.FromResult(true);
     }
 
+    public Task AddDiscretionaryItemAsync(string caseId, PlanItem planItem, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromException(new NotSupportedException("CMMN discretionary items are not supported"));
+    }
+
+    public Task UpdateCaseFileItemAsync(string caseId, string caseFileItemId, object newValue, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromException(new NotSupportedException("CMMN case-file updates are not supported"));
+    }
+
+    public Task TriggerUserEventAsync(string caseId, string eventId, Dictionary<string, object> eventData, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromException(new NotSupportedException("CMMN user events are not supported"));
+    }
+
+    public Task GenerateAdHocSubprocessAsync(string caseId, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromException(new NotSupportedException("CMMN ad-hoc subprocesses are not supported"));
+    }
+
     #endregion
 
     public Task<List<string>> ExecuteAsync(BpmnModel model, CancellationToken cancellationToken = default)
@@ -837,7 +861,7 @@ partial class FullConformanceProcessEngine
     public Task<List<string>> ExecuteCaseAsync(CaseModel model, CancellationToken cancellationToken = default)
         => Task.FromResult(new List<string> { "CaseExecutionNotSupported: BPMN-only reference engine" });
 
-    // --- Exclusive Gateway helpers (Step 1–3 implementation) ---
+    // --- Exclusive Gateway helpers (Step 1ï¿½3 implementation) ---
     private BpmnSequenceFlow? SelectExclusiveGatewayFlow(string gatewayId, List<BpmnSequenceFlow> flows,
         IDictionary<string, object> vars, List<string> trace)
     {

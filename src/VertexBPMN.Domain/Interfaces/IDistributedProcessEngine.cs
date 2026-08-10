@@ -64,44 +64,4 @@ public interface IDistributedProcessEngine : IProcessEngine
     
     #endregion
     
-    #region Advanced CMMN Features
-    
-    /// <summary>
-    /// Adds a discretionary item to a running case instance.
-    /// Enables dynamic case evolution during execution.
-    /// </summary>
-    /// <param name="caseId">Case ID</param>
-    /// <param name="planItem">Plan item to add</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    Task AddDiscretionaryItemAsync(string caseId, PlanItem planItem, CancellationToken cancellationToken = default);
-    
-    /// <summary>
-    /// Updates a case file item value and triggers dependent sentries.
-    /// Core CMMN functionality for data-driven case execution.
-    /// </summary>
-    /// <param name="caseId">Case ID</param>
-    /// <param name="caseFileItemId">Case file item ID</param>
-    /// <param name="newValue">New value</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    Task UpdateCaseFileItemAsync(string caseId, string caseFileItemId, object newValue, CancellationToken cancellationToken = default);
-    
-    /// <summary>
-    /// Triggers a user-defined event in a case instance.
-    /// Allows external systems to influence case execution.
-    /// </summary>
-    /// <param name="caseId">Case ID</param>
-    /// <param name="eventId">Event ID</param>
-    /// <param name="eventData">Event data</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    Task TriggerUserEventAsync(string caseId, string eventId, Dictionary<string, object> eventData, CancellationToken cancellationToken = default);
-    
-    /// <summary>
-    /// Generates an ad-hoc subprocess using AI-powered decision making.
-    /// Olympic-level feature: AI-Enhanced Process Optimization.
-    /// </summary>
-    /// <param name="caseId">Case ID</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    Task GenerateAdHocSubprocessAsync(string caseId, CancellationToken cancellationToken = default);
-    
-    #endregion
 }

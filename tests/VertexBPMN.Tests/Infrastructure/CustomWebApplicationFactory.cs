@@ -15,6 +15,7 @@ namespace VertexBPMN.Tests.Infrastructure;
 public class CustomWebApplicationFactory : WebApplicationFactory<VertexBPMN.Api.Program>, IAsyncLifetime
 {
     private bool _initialized;
+    private string _engineType = "Simple";
     private readonly List<SqliteConnection> _ownedConnections = new();
     private SharedSqliteDbFixture? _sharedFixture;
 
@@ -22,6 +23,12 @@ public class CustomWebApplicationFactory : WebApplicationFactory<VertexBPMN.Api.
     public CustomWebApplicationFactory WithSharedFixture(SharedSqliteDbFixture fixture)
     {
         _sharedFixture = fixture;
+        return this;
+    }
+
+    public CustomWebApplicationFactory WithEngineType(string engineType)
+    {
+        _engineType = engineType;
         return this;
     }
 
@@ -40,6 +47,7 @@ public class CustomWebApplicationFactory : WebApplicationFactory<VertexBPMN.Api.
                 .AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["OperationalMode"] = "Test",
+                    ["ProcessEngine:Type"] = _engineType,
                     ["Modules:Swagger"] = "false",
                     ["PathBase"] = "/api"
                 });

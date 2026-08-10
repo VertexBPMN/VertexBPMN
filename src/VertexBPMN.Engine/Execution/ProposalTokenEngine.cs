@@ -106,6 +106,18 @@ public sealed class ProposalTokenEngine : IProcessEngine, IDisposable
     public Task<List<HistoricalCaseData>> GetHistoricalCaseDataAsync(string caseId)
         => _distributedEngine.GetHistoricalCaseDataAsync(caseId);
 
+    public Task AddDiscretionaryItemAsync(string caseId, PlanItem planItem, CancellationToken cancellationToken = default)
+        => _distributedEngine.AddDiscretionaryItemAsync(caseId, planItem, cancellationToken);
+
+    public Task UpdateCaseFileItemAsync(string caseId, string caseFileItemId, object newValue, CancellationToken cancellationToken = default)
+        => _distributedEngine.UpdateCaseFileItemAsync(caseId, caseFileItemId, newValue, cancellationToken);
+
+    public Task TriggerUserEventAsync(string caseId, string eventId, Dictionary<string, object> eventData, CancellationToken cancellationToken = default)
+        => _distributedEngine.TriggerUserEventAsync(caseId, eventId, eventData, cancellationToken);
+
+    public Task GenerateAdHocSubprocessAsync(string caseId, CancellationToken cancellationToken = default)
+        => _distributedEngine.GenerateAdHocSubprocessAsync(caseId, cancellationToken);
+
     public void Dispose()
     {
         if (_disposed) return;

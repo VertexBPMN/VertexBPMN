@@ -1,5 +1,17 @@
 namespace VertexBPMN.Sdk;
 
+public enum VertexBpmnEngineType
+{
+    Simple,
+    Distributed
+}
+
+public sealed record EngineCapabilities(
+    VertexBpmnEngineType EngineType,
+    bool SupportsCmmn,
+    bool SupportsWorkers,
+    bool SupportsDurablePersistence);
+
 public sealed record ProcessDefinition(
     string Id,
     string Key,

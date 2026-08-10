@@ -2,6 +2,7 @@ using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using VertexBPMN.Application.Configuration;
 using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Engine.Configuration;
 using VertexBPMN.Engine.Parsing;
 
 namespace VertexBPMN.Cli;
@@ -10,7 +11,7 @@ internal sealed class CliApplication
 {
     private readonly TextWriter _output;
     private readonly TextWriter _error;
-    private readonly IDistributedProcessEngine _engine;
+    private readonly IProcessEngine _engine;
     private readonly IBpmnParser _bpmnParser;
     private readonly ICmmnParser _cmmnParser;
     private readonly IWorkerNodeManager _workerManager;
@@ -21,7 +22,7 @@ internal sealed class CliApplication
     {
         _output = output;
         _error = error;
-        _engine = services.GetRequiredService<IDistributedProcessEngine>();
+        _engine = services.GetRequiredService<IProcessEngine>();
         _bpmnParser = services.GetRequiredService<IBpmnParser>();
         _cmmnParser = services.GetRequiredService<ICmmnParser>();
         _workerManager = services.GetRequiredService<IWorkerNodeManager>();
@@ -43,7 +44,7 @@ internal sealed class CliApplication
 
     private async Task<int> RunInteractiveAsync(CancellationToken cancellationToken)
     {
-        _output.WriteLine("VertexBPMN CLI - local distributed engine");
+        _output.WriteLine($"VertexBPMN CLI - {GetEngineType()} engine");
         while (!cancellationToken.IsCancellationRequested)
         {
             await _output.WriteAsync("vertexbpmn> ");
@@ -83,6 +84,7 @@ internal sealed class CliApplication
                     await PrintPendingAsync(cancellationToken);
                     return 0;
                 case "workers":
+                    RequireDistributedEngine();
                     await PrintWorkersAsync();
                     return 0;
                 case "dashboard":
@@ -148,17 +150,26 @@ internal sealed class CliApplication
 
     private async Task PrintStatusAsync(CancellationToken cancellationToken)
     {
+        if (_engine is not IDistributedProcessEngine distributedEngine)
+        {
+            await _output.WriteLineAsync($"Engine: {GetEngineType()}");
+            await _output.WriteLineAsync("Workers: unavailable, pending tokens: unavailable, pending case tokens: unavailable");
+            return;
+        }
+
         var workers = await _workerManager.GetActiveWorkersAsync();
-        var pending = await _engine.GetPendingTokensAsync(cancellationToken);
-        var cases = await _engine.GetPendingCaseTokensAsync(cancellationToken);
-        await _output.WriteLineAsync("Engine: DistributedProcessEngine");
+        var pending = await distributedEngine.GetPendingTokensAsync(cancellationToken);
+        var cases = await distributedEngine.GetPendingCaseTokensAsync(cancellationToken);
+        await _output.WriteLineAsync($"Engine: {GetEngineType()}");
         await _output.WriteLineAsync($"Workers: {workers.Count}, pending tokens: {pending.Count}, pending case tokens: {cases.Count}");
     }
 
     private async Task PrintPendingAsync(CancellationToken cancellationToken)
     {
-        var tokens = await _engine.GetPendingTokensAsync(cancellationToken);
-        var caseTokens = await _engine.GetPendingCaseTokensAsync(cancellationToken);
+        RequireDistributedEngine();
+        var distributedEngine = (IDistributedProcessEngine)_engine;
+        var tokens = await distributedEngine.GetPendingTokensAsync(cancellationToken);
+        var caseTokens = await distributedEngine.GetPendingCaseTokensAsync(cancellationToken);
         await _output.WriteLineAsync($"Execution tokens: {tokens.Count}");
         foreach (var token in tokens)
             await _output.WriteLineAsync($"  {token.Id} -> {token.CurrentNodeId} ({token.State})");
@@ -177,6 +188,17 @@ internal sealed class CliApplication
         }
         foreach (var worker in workers)
             await _output.WriteLineAsync($"{worker.Id}: {worker.CurrentLoad}/{worker.MaxCapacity} on {worker.HostName}");
+    }
+
+    private string GetEngineType()
+        => _engine is IDistributedProcessEngine
+            ? ProcessEngineType.Distributed.ToString()
+            : ProcessEngineType.Simple.ToString();
+
+    private void RequireDistributedEngine()
+    {
+        if (_engine is not IDistributedProcessEngine)
+            throw new CliUsageException("This command requires ProcessEngine:Type=Distributed.");
     }
 
     private async Task ExecuteConfigCommandAsync(string[] args, CancellationToken cancellationToken)

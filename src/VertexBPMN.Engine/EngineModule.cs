@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Engine.Configuration;
 using VertexBPMN.Engine.Execution;
 using VertexBPMN.Engine.Parsing;
 
@@ -26,8 +27,11 @@ public static class EngineModule
         services.AddScoped<ICmmnParser, CmmnParser>();
         services.AddScoped<IBpmnParser, BpmnParser>();
         services.AddScoped<IWorkerNodeManager, WorkerNodeManager>();
+        services.AddScoped<ProcessEngine>();
+        services.AddScoped<DistributedProcessEngine>();
         services.AddScoped<IDistributedProcessEngine, DistributedProcessEngine>();
-        services.AddScoped<IProcessEngine, ProcessEngine>();
+        services.AddScoped<IProcessEngine>(provider =>
+            ProcessEngineFactory.CreateFromConfiguration(provider));
         return services;
     }
 }

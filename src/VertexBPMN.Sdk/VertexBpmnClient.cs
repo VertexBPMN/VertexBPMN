@@ -16,6 +16,22 @@ public sealed class VertexBpmnClient
         this.options = options ?? new VertexBpmnClientOptions();
     }
 
+    public async Task<EngineCapabilities> GetEngineCapabilitiesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var capabilities = await SendAsync<EngineCapabilities>(
+            HttpMethod.Get, "api/engine/capabilities", cancellationToken)
+            ?? throw new InvalidOperationException("The API returned no engine capabilities.");
+
+        if (options.ExpectedEngineType is { } expected && capabilities.EngineType != expected)
+        {
+            throw new InvalidOperationException(
+                $"Expected {expected} engine, but the API uses {capabilities.EngineType}.");
+        }
+
+        return capabilities;
+    }
+
     public async Task<IReadOnlyList<ProcessDefinition>> ListProcessDefinitionsAsync(
         string? key = null,
         string? tenantId = null,

@@ -30,7 +30,7 @@ public class AdvancedBpmnDmnScenariosTests
                 new("sub2", false)
             }
         );
-        var engine = new FullConformanceProcessEngine();
+        var engine = new ProcessEngine();
         var trace = engine.Execute(model);
         Assert.Contains("Subprocess: sub1", trace);
         Assert.Contains("Subprocess: sub2", trace);
@@ -57,7 +57,7 @@ public class AdvancedBpmnDmnScenariosTests
              },
              new List<BpmnSubprocess>()
         );
-        var engine = new FullConformanceProcessEngine();
+        var engine = new ProcessEngine();
         var trace = engine.Execute(model);
         Assert.Contains("UserTask: t1", trace);
         // Note: TokenEngine does not yet simulate boundary event token flow, but this test ensures model acceptance

@@ -24,6 +24,7 @@ namespace VertexBPMN.Engine.Execution
         private readonly IBpmnParser _bpmnParser;
         private readonly IAiDecisionService _aiDecisionService;
         private readonly Tracer _tracer;
+        private readonly BpmnExecutionComponent _executionComponent = new();
         private readonly ConcurrentDictionary<Guid, CaseToken> _processingCaseTokens = new();
         private readonly ConcurrentDictionary<Guid, ExecutionToken> _processingTokens = new();
         private readonly ConcurrentDictionary<string, Jint.Engine> _jintCache = new(); // Jint-Cache für Performance
@@ -795,9 +796,16 @@ namespace VertexBPMN.Engine.Execution
 
                 case "intermediateCatchEvent" when evt.Definitions.OfType<TimerEventDefinition>().Any():
                     var t = evt.Definitions.OfType<TimerEventDefinition>().First();
-                    var duration = !string.IsNullOrWhiteSpace(t.TimeDuration) ? t.TimeDuration : "PT1M";
-                    await Task.Delay(ParseDuration(duration), cancellationToken);
-                    trace.Add($"TimerEvent: {evt.Id} triggered after {duration}");
+                    if (string.IsNullOrWhiteSpace(t.TimeDuration) && string.IsNullOrWhiteSpace(t.TimeDate))
+                    {
+                        trace.Add($"TimerEvent: {evt.Id} has no schedule and continues immediately");
+                    }
+                    else
+                    {
+                        var duration = !string.IsNullOrWhiteSpace(t.TimeDuration) ? t.TimeDuration : "PT1M";
+                        await Task.Delay(ParseDuration(duration), cancellationToken);
+                        trace.Add($"TimerEvent: {evt.Id} triggered after {duration}");
+                    }
                     await ContinueToNextNodeAsync(evt.Id, token, model, trace, cancellationToken);
                     break;
 
@@ -833,6 +841,11 @@ namespace VertexBPMN.Engine.Execution
                             };
                             await ContinueToNextNodeAsync(evt.Id, newToken, model, trace, cancellationToken);
                         }, cancellationToken);
+                    }
+                    else
+                    {
+                        trace.Add($"MessageEvent: {evt.Id} has no message reference and continues immediately");
+                        await ContinueToNextNodeAsync(evt.Id, token, model, trace, cancellationToken);
                     }
                     break;
 
@@ -1084,7 +1097,7 @@ namespace VertexBPMN.Engine.Execution
 
         private async Task ProcessGatewayAsync(BpmnGateway gateway, ExecutionToken token, BpmnModel model, List<string> trace, CancellationToken cancellationToken)
         {
-            var outgoingFlows = model.SequenceFlows.Where(f => f.SourceRef == gateway.Id).ToList();
+            var outgoingFlows = _executionComponent.GetOutgoingFlows(model, gateway.Id);
             switch (gateway.Type)
             {
                 case "parallelGateway":
@@ -1104,11 +1117,11 @@ namespace VertexBPMN.Engine.Execution
                     break;
 
                 case "exclusiveGateway":
-                    foreach (var flow in outgoingFlows)
+                    foreach (var flow in _executionComponent.SelectFirstMatchingFlow(
+                        outgoingFlows,
+                        token.Variables,
+                        (condition, variables) => EvaluateConditionAsync(condition, variables).GetAwaiter().GetResult()))
                     {
-                        var condition = flow.Attributes?.TryGetValue("conditionExpression", out var expr) == true ? expr.ToString() : null;
-                        if (condition == null || await EvaluateConditionAsync(condition, token.Variables))
-                        {
                             var newToken = new ExecutionToken
                             {
                                 Id = token.Id,
@@ -1123,18 +1136,16 @@ namespace VertexBPMN.Engine.Execution
                             };
                             await DistributeTokenAsync(newToken, cancellationToken);
                             trace.Add($"ExclusiveBranch: {flow.TargetRef}");
-                            break;
-                        }
                     }
                     break;
 
                 case "inclusiveGateway":
-                    bool atLeastOneBranch = false;
-                    foreach (var flow in outgoingFlows)
+                    var matchingFlows = _executionComponent.SelectMatchingFlows(
+                        outgoingFlows,
+                        token.Variables,
+                        (condition, variables) => EvaluateConditionAsync(condition, variables).GetAwaiter().GetResult());
+                    foreach (var flow in matchingFlows)
                     {
-                        var condition = flow.Attributes?.TryGetValue("conditionExpression", out var expr) == true ? expr.ToString() : null;
-                        if (condition == null || await EvaluateConditionAsync(condition, token.Variables))
-                        {
                             var newToken = new ExecutionToken(
                                 Guid.NewGuid(),
                                 token.ProcessInstanceId,
@@ -1145,11 +1156,25 @@ namespace VertexBPMN.Engine.Execution
                             );
                             await DistributeTokenAsync(newToken, cancellationToken);
                             trace.Add($"InclusiveBranch: {flow.TargetRef}");
-                            atLeastOneBranch = true;
-                        }
                     }
-                    if (!atLeastOneBranch)
+                    if (matchingFlows.Count == 0)
                         throw new DistributedTokenException($"No valid branch for inclusiveGateway {gateway.Id}");
+                    break;
+
+                case "eventBasedGateway":
+                    foreach (var flow in outgoingFlows)
+                    {
+                        var newToken = new ExecutionToken(
+                            Guid.NewGuid(),
+                            token.ProcessInstanceId,
+                            flow.TargetRef,
+                            GetNodeType(model, flow.TargetRef),
+                            new Dictionary<string, object>(token.Variables),
+                            DateTime.UtcNow
+                        );
+                        await DistributeTokenAsync(newToken, cancellationToken);
+                        trace.Add($"EventBasedBranch: {flow.TargetRef}");
+                    }
                     break;
 
                 default:
@@ -1159,7 +1184,7 @@ namespace VertexBPMN.Engine.Execution
 
         private async Task ContinueToNextNodeAsync(string currentNodeId, ExecutionToken token, BpmnModel model, List<string> trace, CancellationToken cancellationToken)
         {
-            var outgoingFlows = model.SequenceFlows.Where(f => f.SourceRef == currentNodeId).ToList();
+            var outgoingFlows = _executionComponent.GetOutgoingFlows(model, currentNodeId);
             foreach (var flow in outgoingFlows)
             {
                 trace.Add($"SequenceFlow: {flow.Id}");
@@ -1179,7 +1204,7 @@ namespace VertexBPMN.Engine.Execution
             }
         }
 
-        private async Task<bool> EvaluateConditionAsync(string condition, Dictionary<string, object> variables)
+        private async Task<bool> EvaluateConditionAsync(string condition, IDictionary<string, object> variables)
         {
             try
             {

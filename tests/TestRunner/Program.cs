@@ -40,7 +40,7 @@ class Program
     {
         Console.WriteLine("Running Token Engine Benchmarks...");
         // Test 0: ProcessEngine Benchmar
-        await RunFullConformanceProcessEngineBenchmark();
+        await RunPromotedProcessEngineBenchmark();
         
         // Test 1: ProcessEngine Benchmark
         await RunProcessEngineBenchmark();
@@ -55,7 +55,7 @@ class Program
         await RunCaseTokenProcessingTest();
     }
     
-    static async Task RunProcessEngineBenchmark()
+    static async Task RunPromotedProcessEngineBenchmark()
     {
         Console.WriteLine("1. ProcessEngine Benchmark...");
         
@@ -94,7 +94,7 @@ class Program
         }
     }
      
-    static async Task RunFullConformanceProcessEngineBenchmark()
+    static async Task RunProcessEngineBenchmark()
     {
         Console.WriteLine("1. ProcessEngine Benchmark...");
         
@@ -108,7 +108,7 @@ class Program
             new List<BpmnTask>()
         );
         
-        var engine = new FullConformanceProcessEngine();
+        var engine = new ProcessEngine();
         var sw = Stopwatch.StartNew();
         
         for (int i = 0; i < 10000; i++)

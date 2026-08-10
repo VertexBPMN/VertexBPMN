@@ -16,7 +16,7 @@ namespace VertexBPMN.Tests.Conformance
             var logger = new Mock<ILogger<BpmnParser>>();var parser = new BpmnParser();
             var model =  parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
             Assert.NotNull(model);
-            var engine = new FullConformanceProcessEngine();
+            var engine = new ProcessEngine();
             var result = engine.Execute(model);
             Assert.NotNull(result);
             Assert.True(result.Count > 0, "No trace produced for C.8.0.bpmn");

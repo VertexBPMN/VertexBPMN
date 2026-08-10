@@ -50,9 +50,9 @@ namespace VertexBPMN.Tests.Integration.Bpmn
             );
             var engine = new ProcessEngine();
             var trace = engine.Execute(model);
-            Assert.Contains("ParallelGateway: gw1", trace);
-            Assert.Contains("ParallelBranch: e1", trace);
-            Assert.Contains("ParallelBranch: e2", trace);
+            Assert.Contains(trace, x => x.StartsWith("ParallelGateway: gw1", StringComparison.Ordinal));
+            Assert.Contains(trace, x => x.StartsWith("ParallelBranch: e1", StringComparison.Ordinal));
+            Assert.Contains(trace, x => x.StartsWith("ParallelBranch: e2", StringComparison.Ordinal));
         }
 
 
@@ -108,7 +108,7 @@ namespace VertexBPMN.Tests.Integration.Bpmn
             );
             var engine = new ProcessEngine();
             var trace = engine.Execute(model);
-            Assert.Contains("Task: t1 (customTask)", trace);
+            Assert.Contains(trace, x => x.StartsWith("Task: t1 (customTask)", StringComparison.Ordinal));
         }
     }
 }

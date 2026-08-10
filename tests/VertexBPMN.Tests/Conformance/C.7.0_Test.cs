@@ -20,7 +20,7 @@ namespace VertexBPMN.Tests.Conformance
             Assert.Throws<SecurityException>(() =>parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult());
             /*var model =  parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
             Assert.NotNull(model);
-            var engine = new FullConformanceProcessEngine();
+            var engine = new ProcessEngine();
             Assert.Throws<SecurityException>(() => engine.Execute(model));
             var result = engine.Execute(model);
             Assert.NotNull(result);

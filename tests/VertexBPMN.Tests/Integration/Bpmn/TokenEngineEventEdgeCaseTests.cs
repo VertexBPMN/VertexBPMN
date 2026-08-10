@@ -25,10 +25,10 @@ namespace VertexBPMN.Tests.Integration.Bpmn
             );
             var engine = new ProcessEngine();
             var trace = engine.Execute(model);
-            Assert.Contains("StartEvent: start1", trace);
-            Assert.Contains("SequenceFlow: f1", trace);
-            Assert.Contains("SequenceFlow: f2", trace);
-            Assert.Contains("EndEvent: end1", trace);
+            Assert.Contains(trace, x => x.StartsWith("StartEvent: start1", StringComparison.Ordinal));
+            Assert.Contains(trace, x => x.StartsWith("SequenceFlow: f1", StringComparison.Ordinal));
+            Assert.Contains(trace, x => x.StartsWith("SequenceFlow: f2", StringComparison.Ordinal));
+            Assert.Contains(trace, x => x.StartsWith("EndEvent: end1", StringComparison.Ordinal));
         }
 
         [Fact]
@@ -47,9 +47,9 @@ namespace VertexBPMN.Tests.Integration.Bpmn
             );
             var engine = new ProcessEngine();
             var trace = engine.Execute(model);
-            Assert.Contains("StartEvent: start1", trace);
-            Assert.Contains("SequenceFlow: f1", trace);
-            Assert.Contains("EndEvent: end1", trace);
+            Assert.Contains(trace, x => x.StartsWith("StartEvent: start1", StringComparison.Ordinal));
+            Assert.Contains(trace, x => x.StartsWith("SequenceFlow: f1", StringComparison.Ordinal));
+            Assert.Contains(trace, x => x.StartsWith("EndEvent: end1", StringComparison.Ordinal));
         }
     }
 }

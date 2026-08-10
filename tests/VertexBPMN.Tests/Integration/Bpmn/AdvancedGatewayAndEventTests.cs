@@ -37,7 +37,7 @@ public class AdvancedGatewayAndEventTests
             new List<BpmnSubprocess>()
         );
 
-        var engine = new FullConformanceProcessEngine();
+        var engine = new ProcessEngine();
         var trace = engine.Execute(model);
 
         Assert.Contains(trace, r => r.ToString().Contains("StartEvent: start1"));
@@ -73,7 +73,7 @@ public class AdvancedGatewayAndEventTests
             },
             new List<BpmnSubprocess>());
 
-        var trace = new FullConformanceProcessEngine().Execute(model);
+        var trace = new ProcessEngine().Execute(model);
 
         Assert.Contains(trace, r => r.Contains("StartEvent: start1"));
         Assert.Contains(trace, r => r.Contains("EventBasedGateway: event_gw1"));
@@ -86,7 +86,7 @@ public class AdvancedGatewayAndEventTests
     {
         var model = CreateEventSubprocessModel("message", new MessageEventDefinition("message1", null), "msg_subprocess", "msg_subprocess_start", "event_end", "task1");
 
-        var trace = new FullConformanceProcessEngine().Execute(model);
+        var trace = new ProcessEngine().Execute(model);
 
         Assert.Contains(trace, r => r.Contains("IndexedEventSubprocessStart: msg_subprocess_start (message)"));
         Assert.Contains(trace, r => r.Contains("UserTask: task1"));
@@ -99,7 +99,7 @@ public class AdvancedGatewayAndEventTests
     {
         var model = CreateEventSubprocessModel("error", new ErrorEventDefinition("error1"), "error_subprocess", "error_subprocess_start", "error_end", "risky_task");
 
-        var trace = new FullConformanceProcessEngine().Execute(model);
+        var trace = new ProcessEngine().Execute(model);
 
         Assert.Contains(trace, r => r.Contains("IndexedEventSubprocessStart: error_subprocess_start (error)"));
         Assert.Contains(trace, r => r.Contains("ServiceTask: risky_task"));
@@ -112,7 +112,7 @@ public class AdvancedGatewayAndEventTests
     {
         var model = CreateEventSubprocessModel("timer", new TimerEventDefinition(null, "PT1M", null), "timer_subprocess", "timer_subprocess_start", "timer_end", "long_task");
 
-        var trace = new FullConformanceProcessEngine().Execute(model);
+        var trace = new ProcessEngine().Execute(model);
 
         Assert.Contains(trace, r => r.Contains("IndexedEventSubprocessStart: timer_subprocess_start (timer)"));
         Assert.Contains(trace, r => r.Contains("UserTask: long_task"));
@@ -125,7 +125,7 @@ public class AdvancedGatewayAndEventTests
     {
         var model = CreateEventSubprocessModel("signal", new SignalEventDefinition("signal1"), "signal_subprocess", "signal_subprocess_start", "signal_end", "waiting_task");
 
-        var trace = new FullConformanceProcessEngine().Execute(model);
+        var trace = new ProcessEngine().Execute(model);
 
         Assert.Contains(trace, r => r.Contains("IndexedEventSubprocessStart: signal_subprocess_start (signal)"));
         Assert.Contains(trace, r => r.Contains("UserTask: waiting_task"));
@@ -161,7 +161,7 @@ public class AdvancedGatewayAndEventTests
             },
             new List<BpmnSubprocess>());
 
-        var trace = new FullConformanceProcessEngine().Execute(model);
+        var trace = new ProcessEngine().Execute(model);
 
         Assert.Contains(trace, r => r.Contains("StartEvent: start1"));
         Assert.Contains(trace, r => r.Contains("UserTask: prep_task"));

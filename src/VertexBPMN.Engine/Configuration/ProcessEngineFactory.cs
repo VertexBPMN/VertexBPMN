@@ -64,10 +64,16 @@ public static class ProcessEngineFactory
     {
         var logger = services.GetService<ILogger<ProcessEngine>>();
         var serviceRegistry = services.GetService<IServiceTaskRegistry>();
+        var bpmnParser = services.GetService<IBpmnParser>();
+        var dmnParser = services.GetService<IDmnParser>();
+        var dmnEngine = services.GetService<IDmnEngine>();
         
         var tokenEngine = new ProcessEngine(
             logger ?? throw new InvalidOperationException("ILogger<TokenEngine> not registered. Add logging services."),
-            serviceRegistry ?? throw new InvalidOperationException("IServiceTaskRegistry not registered. Add service task registry.")
+            serviceRegistry ?? throw new InvalidOperationException("IServiceTaskRegistry not registered. Add service task registry."),
+            bpmnParser: bpmnParser,
+            dmnParser: dmnParser,
+            dmnEngine: dmnEngine
         );
         
         return tokenEngine;

@@ -43,7 +43,7 @@ public class AdvancedBpmn20FeaturesTests
             new List<BpmnSubprocess>()
         );
 
-        var engine = new FullConformanceProcessEngine();
+        var engine = new ProcessEngine();
         var trace = engine.Execute(model);
 
         Assert.Contains(trace, entry => entry.Contains("StartEvent: start1"));
@@ -77,7 +77,7 @@ public class AdvancedBpmn20FeaturesTests
             }
         );
 
-        var engine = new FullConformanceProcessEngine();
+        var engine = new ProcessEngine();
         var trace = engine.Execute(model);
 
         Assert.Contains(trace, entry => entry.Contains("StartEvent: start1"));
@@ -111,7 +111,7 @@ public class AdvancedBpmn20FeaturesTests
             }
         );
 
-        var engine = new FullConformanceProcessEngine();
+        var engine = new ProcessEngine();
         var trace = engine.Execute(model);
 
         Assert.Contains(trace, entry => entry.Contains("StartEvent: start1"));
@@ -153,7 +153,7 @@ public class AdvancedBpmn20FeaturesTests
             }
         );
 
-        var engine = new FullConformanceProcessEngine();
+        var engine = new ProcessEngine();
         var trace = engine.Execute(model);
 
         Assert.Contains(trace, entry => entry.Contains("StartEvent: start1"));
@@ -194,7 +194,7 @@ public class AdvancedBpmn20FeaturesTests
             new List<BpmnSubprocess>()
         );
 
-        var engine = new FullConformanceProcessEngine();
+        var engine = new ProcessEngine();
         var trace = engine.Execute(model);
 
         Assert.Contains(trace, entry => entry.Contains("StartEvent: start1"));
@@ -239,7 +239,7 @@ public class AdvancedBpmn20FeaturesTests
             }
         );
 
-        var engine = new FullConformanceProcessEngine();
+        var engine = new ProcessEngine();
         var trace = engine.Execute(model);
 
         Assert.Contains(trace, entry => entry.Contains("StartEvent: start1"));
@@ -276,7 +276,7 @@ public class AdvancedBpmn20FeaturesTests
             }
         );
 
-        var engine = new FullConformanceProcessEngine();
+        var engine = new ProcessEngine();
         var trace = engine.Execute(model);
 
         Assert.Contains(trace, entry => entry.Contains("StartEvent: start1"));

@@ -24,7 +24,7 @@ namespace VertexBPMN.Tests.Conformance
             var parser = new BpmnParser();
             var model =  parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
             Assert.NotNull(model);
-            var engine = new FullConformanceProcessEngine(Mock.Of<ILogger<FullConformanceProcessEngine>>(),
+            var engine = new ProcessEngine(Mock.Of<ILogger<ProcessEngine>>(),
                 NullServiceTaskRegistry.Instance, mockDecision.Object);
            
             var result = engine.Execute(model);

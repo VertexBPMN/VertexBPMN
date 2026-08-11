@@ -17,11 +17,11 @@ namespace VertexBPMN.Tests.Integration.Bpmn
             var model =  parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
             var engine = new ProcessEngine();
             var trace = engine.Execute(model);
-            Assert.Contains("StartEvent: start1", trace);
-            Assert.Contains("SequenceFlow: f1", trace);
-            Assert.Contains("SequenceFlow: f2", trace);
-            Assert.Contains("SequenceFlow: f3", trace);
-            Assert.Contains("EndEvent: end1", trace);
+            Assert.Contains(trace, entry => entry.Contains("StartEvent: start1"));
+            Assert.Contains(trace, entry => entry.Contains("SequenceFlow: f1"));
+            Assert.Contains(trace, entry => entry.Contains("SequenceFlow: f2"));
+            Assert.Contains(trace, entry => entry.Contains("SequenceFlow: f3"));
+            Assert.Contains(trace, entry => entry.Contains("EndEvent: end1"));
         }
 
         [Fact]

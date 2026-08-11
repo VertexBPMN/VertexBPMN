@@ -1,0 +1,164 @@
+@page "/migration"
+@using System.Text.Json
+@inject IMigrationService MigrationService
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Process Migration</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Process Migration</MudText>
+<MudText Typo="Typo.body2" Color="Color.Tertiary" Class="mb-4">
+    Preview activity mappings before any migration is executed.
+</MudText>
+
+<MudTextField @bind-Value="_sourceProcessDefinitionId" Label="Source process definition id" Variant="Variant.Outlined" Class="mb-3" />
+<MudTextField @bind-Value="_targetProcessDefinitionId" Label="Target process definition id" Variant="Variant.Outlined" Class="mb-3" />
+<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="PreviewAsync" Disabled="_isLoading">
+    Preview migration
+</MudButton>
+<MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="ExecuteAsync" Disabled="_isLoading || _result is null" Class="ml-2">
+    Execute migration (ProcessManager)
+</MudButton>
+
+<MudDivider Class="my-6" />
+<MudText Typo="Typo.h6" GutterBottom="true">Live migration operations</MudText>
+<MudTextField @bind-Value="_migrationId" Label="Migration id" Variant="Variant.Outlined" Class="mb-3" />
+<MudButton Variant="Variant.Outlined" OnClick="GetStatusAsync" Disabled="_isLoading || string.IsNullOrWhiteSpace(_migrationId)">
+    Get status
+</MudButton>
+<MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="RollbackAsync" Disabled="_isLoading || string.IsNullOrWhiteSpace(_migrationId)" Class="ml-2">
+    Rollback (ProcessManager)
+</MudButton>
+
+<MudTextField @bind-Value="_processInstanceId" Label="Process instance id" Variant="Variant.Outlined" Class="mt-4 mb-3" />
+<MudButton Variant="Variant.Outlined" OnClick="CreateSnapshotAsync" Disabled="_isLoading || string.IsNullOrWhiteSpace(_processInstanceId)">
+    Create snapshot
+</MudButton>
+<MudTextField @bind-Value="_snapshotId" Label="Snapshot id" Variant="Variant.Outlined" Class="mt-4 mb-3" />
+<MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="RestoreAsync" Disabled="_isLoading || string.IsNullOrWhiteSpace(_processInstanceId) || string.IsNullOrWhiteSpace(_snapshotId)">
+    Restore snapshot (ProcessManager)
+</MudButton>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mt-4">@_error</MudAlert>
+}
+else if (_result is not null)
+{
+    <MudPaper Class="pa-4 mt-4" Elevation="1">
+        <MudText Typo="Typo.h6">Migration preview</MudText>
+        <pre>@Format(_result.Value)</pre>
+    </MudPaper>
+}
+
+@if (_operationResult is not null)
+{
+    <MudPaper Class="pa-4 mt-4" Elevation="1">
+        <MudText Typo="Typo.h6">Live migration result</MudText>
+        <pre>@Format(_operationResult.Value)</pre>
+    </MudPaper>
+}
+
+@code {
+    private string _sourceProcessDefinitionId = string.Empty;
+    private string _targetProcessDefinitionId = string.Empty;
+    private string _migrationId = string.Empty;
+    private string _processInstanceId = string.Empty;
+    private string _snapshotId = string.Empty;
+    private JsonElement? _result;
+    private JsonElement? _operationResult;
+    private string? _error;
+    private bool _isLoading;
+
+    private async Task PreviewAsync()
+    {
+        _isLoading = true;
+        _error = null;
+        try
+        {
+            _result = await MigrationService.PreviewAsync(_sourceProcessDefinitionId, _targetProcessDefinitionId);
+        }
+        catch (Exception exception)
+        {
+            _error = $"Migration preview failed: {exception.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task ExecuteAsync()
+    {
+        if (_result is null || !await ConfirmAsync("Execute this migration? This changes running process instances."))
+        {
+            return;
+        }
+
+        _isLoading = true;
+        _error = null;
+        try
+        {
+            _result = await MigrationService.ExecuteAsync(_result.Value);
+        }
+        catch (Exception exception)
+        {
+            _error = $"Migration execution failed: {exception.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task GetStatusAsync() => await RunOperationAsync(
+        () => MigrationService.GetStatusAsync(_migrationId),
+        "Migration status failed");
+
+    private async Task CreateSnapshotAsync() => await RunOperationAsync(
+        () => MigrationService.CreateSnapshotAsync(_processInstanceId),
+        "Snapshot creation failed");
+
+    private async Task RestoreAsync()
+    {
+        if (await ConfirmAsync("Restore this snapshot? This changes the process instance."))
+        {
+            await RunOperationAsync(
+                () => MigrationService.RestoreFromSnapshotAsync(_processInstanceId, _snapshotId),
+                "Snapshot restore failed");
+        }
+    }
+
+    private async Task RollbackAsync()
+    {
+        if (await ConfirmAsync("Rollback this migration? This changes running process instances."))
+        {
+            await RunOperationAsync(
+                () => MigrationService.RollbackAsync(_migrationId),
+                "Migration rollback failed");
+        }
+    }
+
+    private async Task<bool> ConfirmAsync(string message) =>
+        await JSRuntime.InvokeAsync<bool>("confirm", message);
+
+    private async Task RunOperationAsync(Func<Task<JsonElement>> operation, string errorPrefix)
+    {
+        _isLoading = true;
+        _error = null;
+        try
+        {
+            _operationResult = await operation();
+        }
+        catch (Exception exception)
+        {
+            _error = $"{errorPrefix}: {exception.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private static string Format(JsonElement value) =>
+        JsonSerializer.Serialize(value, new JsonSerializerOptions { WriteIndented = true });
+}

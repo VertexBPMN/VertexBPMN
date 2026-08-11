@@ -127,7 +127,7 @@ public sealed class ProductionProcessInstanceStore : IProcessInstanceStore
         return Task.CompletedTask;
     }
 
-    // DMN / CMMN / Case – analog (separate Tabellen / Repos)
+    // DMN / CMMN / Case ï¿½ analog (separate Tabellen / Repos)
     public Task SaveDmnModelAsync(string decisionId, string dmnXml) => Task.CompletedTask;
     public Task<string> GetDmnModelAsync(string decisionId, CancellationToken cancellationToken = default) => Task.FromResult("");
     public Task SaveCaseTokenAsync(CaseToken token) => Task.CompletedTask;
@@ -136,6 +136,30 @@ public sealed class ProductionProcessInstanceStore : IProcessInstanceStore
     public Task SaveCmmnModelAsync(string caseId, string cmmnXml) => Task.CompletedTask;
     public Task<string> GetCmmnModelAsync(string caseId) => Task.FromResult("");
     public Task UpdateCaseModelAsync(CaseModel model) => Task.CompletedTask;
-    public Task SaveHistoricalCaseDataAsync(HistoricalCaseData data) => Task.CompletedTask;
-    public Task<List<HistoricalCaseData>> GetHistoricalCaseDataAsync(string caseId) => Task.FromResult(new List<HistoricalCaseData>());
+    public async Task SaveHistoricalCaseDataAsync(HistoricalCaseData data)
+    {
+        _db.CmmnHistory.Add(new CmmnHistoryRecord
+        {
+            Id = Guid.NewGuid(),
+            CaseId = data.CaseId,
+            CaseFileJson = JsonSerializer.Serialize(data.CaseFile, _json),
+            CompletedPlanItemsJson = JsonSerializer.Serialize(data.CompletedPlanItems, _json),
+            Timestamp = data.Timestamp
+        });
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task<List<HistoricalCaseData>> GetHistoricalCaseDataAsync(string caseId)
+    {
+        var records = await _db.CmmnHistory.AsNoTracking()
+            .Where(record => record.CaseId == caseId)
+            .OrderBy(record => record.Timestamp)
+            .ToListAsync();
+
+        return records.Select(record => new HistoricalCaseData(
+            record.CaseId,
+            JsonSerializer.Deserialize<Dictionary<string, object>>(record.CaseFileJson, _json) ?? new(),
+            JsonSerializer.Deserialize<List<string>>(record.CompletedPlanItemsJson, _json) ?? new(),
+            record.Timestamp)).ToList();
+    }
 }

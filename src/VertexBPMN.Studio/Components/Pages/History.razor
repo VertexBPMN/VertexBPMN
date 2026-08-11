@@ -1,0 +1,96 @@
+@page "/history"
+@implements IDisposable
+@inject IHistoryService HistoryService
+@inject StudioTenantContext TenantContext
+
+<PageTitle>History</PageTitle>
+
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+    <div>
+        <MudText Typo="Typo.h4">History</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Tertiary">
+            Persisted process and task events for the active tenant.
+        </MudText>
+    </div>
+    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync" Disabled="_isLoading">
+        Refresh
+    </MudButton>
+</MudStack>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+}
+
+<MudPaper Elevation="1" Class="pa-4">
+    @if (_isLoading)
+    {
+        <MudProgressLinear Indeterminate="true" Class="mb-4" />
+    }
+
+    <MudTable Items="_events" Hover="true" Dense="true" Loading="_isLoading" Breakpoint="Breakpoint.Sm">
+        <HeaderContent>
+            <MudTh>Timestamp</MudTh>
+            <MudTh>Event</MudTh>
+            <MudTh>Process instance</MudTh>
+            <MudTh>Element</MudTh>
+            <MudTh>Details</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Timestamp">@context.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</MudTd>
+            <MudTd DataLabel="Event">@FormatEventType(context.EventType)</MudTd>
+            <MudTd DataLabel="Process instance"><MudText Typo="Typo.body2">@context.ProcessInstanceId</MudText></MudTd>
+            <MudTd DataLabel="Element">@context.ElementId</MudTd>
+            <MudTd DataLabel="Details">@context.Details</MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Class="pa-4">No persisted history events found for the active tenant.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private readonly List<HistoryEvent> _events = [];
+    private bool _isLoading;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        TenantContext.Changed += OnTenantChanged;
+        await LoadAsync();
+    }
+
+    private void OnTenantChanged() => _ = InvokeAsync(async () =>
+    {
+        await LoadAsync();
+        StateHasChanged();
+    });
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        _error = null;
+        try
+        {
+            var events = await HistoryService.GetHistoryAsync(TenantContext.CurrentTenantId);
+            _events.Clear();
+            _events.AddRange(events.OrderByDescending(historyEvent => historyEvent.Timestamp));
+        }
+        catch (Exception exception)
+        {
+            _events.Clear();
+            _error = $"History could not be loaded: {exception.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    public void Dispose() => TenantContext.Changed -= OnTenantChanged;
+
+    private static string FormatEventType(string? eventType) =>
+        string.IsNullOrWhiteSpace(eventType)
+            ? "Unknown"
+            : eventType.Replace('_', ' ').ToTitleCase();
+}

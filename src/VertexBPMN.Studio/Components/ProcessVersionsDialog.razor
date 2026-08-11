@@ -53,14 +53,6 @@
                                       Color="Color.Success"
                                       OnClick="@(() => StartProcess(context))" 
                                       Title="Start Process Instance" />
-                        @if (context.Version != Versions.Max(v => v.Version))
-                        {
-                            <MudIconButton Icon="@Icons.Material.Filled.Restore" 
-                                          Size="Size.Small" 
-                                          Color="Color.Warning"
-                                          OnClick="@(() => SetAsLatest(context))" 
-                                          Title="Set as Latest Version" />
-                        }
                     </MudButtonGroup>
                 </MudTd>
             </RowTemplate>
@@ -90,10 +82,4 @@
         Dialog.Close(DialogResult.Ok(new { Action = "Start", Definition = definition }));
     }
 
-    private async Task SetAsLatest(ProcessDefinition definition)
-    {
-        // TODO: Implement rollback functionality
-        // This would typically involve deploying this version again or changing the "latest" flag
-        Dialog.Close(DialogResult.Ok(new { Action = "SetAsLatest", Definition = definition }));
-    }
 }

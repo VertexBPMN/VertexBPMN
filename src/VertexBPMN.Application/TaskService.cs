@@ -104,8 +104,8 @@ public class TaskService : ITaskService
     public ValueTask<UserTask?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
         => _repo.GetByIdAsync(id, cancellationToken);
 
-    public IAsyncEnumerable<UserTask> ListAsync(Guid? processInstanceId = null, string? assignee = null, CancellationToken cancellationToken = default)
-        => _repo.ListAsync(processInstanceId, assignee, cancellationToken);
+    public IAsyncEnumerable<UserTask> ListAsync(Guid? processInstanceId = null, string? assignee = null, string? tenantId = null, CancellationToken cancellationToken = default)
+        => _repo.ListAsync(processInstanceId, assignee, tenantId, cancellationToken);
 
     /// <summary>
     /// Rejects a user task and emits a corresponding process mining event.

@@ -70,10 +70,10 @@ namespace VertexBPMN.Api.Controllers
     [HttpPost("predict-duration")]
     public ActionResult<PredictionResult> PredictDuration([FromBody] PredictDurationRequest request)
     {
-        // Simple stub: mean + stddev
-        var mean = request.TraceLengths.Any() ? request.TraceLengths.Average() : 0;
-        var stddev = request.TraceLengths.Any() ? Math.Sqrt(request.TraceLengths.Select(x => Math.Pow(x - mean, 2)).Average()) : 0;
-        return Ok(new PredictionResult(mean, stddev));
+        return Problem(
+            statusCode: StatusCodes.Status501NotImplemented,
+            title: "Predictive analytics is not available",
+            detail: "Duration prediction requires a configured historical-data pipeline and trained model.");
     }
 
     /// <summary>

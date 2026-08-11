@@ -1,0 +1,74 @@
+@page "/execution-details"
+@using System.Text.Json
+@inject IExecutionDetailsService ExecutionDetailsService
+
+<PageTitle>Execution Details</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Execution Details</MudText>
+<MudText Typo="Typo.body2" Color="Color.Tertiary" Class="mb-4">
+    Read-only jobs, incidents and process variables from the execution API.
+</MudText>
+
+<MudStack Row="true" Spacing="2" Class="mb-4">
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadJobsAsync" Disabled="_isLoading">Load jobs</MudButton>
+    <MudButton Variant="Variant.Outlined" OnClick="LoadIncidentsAsync" Disabled="_isLoading">Load incidents</MudButton>
+</MudStack>
+
+<MudTextField @bind-Value="_processInstanceIdText" Label="Process instance id for variables" Variant="Variant.Outlined" Class="mb-2" />
+<MudButton Variant="Variant.Outlined" OnClick="LoadVariablesAsync" Disabled="_isLoading" Class="mb-4">Load variables</MudButton>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+}
+else if (_result is not null)
+{
+    <MudPaper Class="pa-4" Elevation="1">
+        <MudText Typo="Typo.h6">@_resultTitle</MudText>
+        <pre>@Format(_result.Value)</pre>
+    </MudPaper>
+}
+
+@code {
+    private JsonElement? _result;
+    private string _resultTitle = string.Empty;
+    private string _processInstanceIdText = string.Empty;
+    private string? _error;
+    private bool _isLoading;
+
+    private Task LoadJobsAsync() => LoadAsync("Jobs", () => ExecutionDetailsService.GetJobsAsync());
+
+    private Task LoadIncidentsAsync() => LoadAsync("Incidents", () => ExecutionDetailsService.GetIncidentsAsync());
+
+    private Task LoadVariablesAsync()
+    {
+        if (!Guid.TryParse(_processInstanceIdText, out var processInstanceId))
+        {
+            _error = "Enter a valid process instance id.";
+            return Task.CompletedTask;
+        }
+        return LoadAsync("Variables", () => ExecutionDetailsService.GetVariablesAsync(processInstanceId));
+    }
+
+    private async Task LoadAsync(string title, Func<Task<JsonElement>> load)
+    {
+        _isLoading = true;
+        _error = null;
+        try
+        {
+            _resultTitle = title;
+            _result = await load();
+        }
+        catch (Exception exception)
+        {
+            _error = $"{title} could not be loaded: {exception.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private static string Format(JsonElement value) =>
+        JsonSerializer.Serialize(value, new JsonSerializerOptions { WriteIndented = true });
+}

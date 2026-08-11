@@ -22,7 +22,18 @@ public class HistoryEventRepository : IHistoryEventRepository
 
     public async IAsyncEnumerable<HistoryEvent> ListByProcessInstanceAsync(Guid processInstanceId, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var query = _db.HistoryEvents.AsNoTracking().Where(e => e.ProcessInstanceId == processInstanceId);
+        await foreach (var evt in ListAsync(processInstanceId, cancellationToken: cancellationToken))
+            yield return evt;
+    }
+
+    public async IAsyncEnumerable<HistoryEvent> ListAsync(Guid? processInstanceId = null, string? tenantId = null, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var query = _db.HistoryEvents.AsNoTracking().AsQueryable();
+        if (processInstanceId.HasValue)
+            query = query.Where(e => e.ProcessInstanceId == processInstanceId.Value);
+        if (!string.IsNullOrWhiteSpace(tenantId))
+            query = query.Where(e => e.TenantId == tenantId);
+
         await foreach (var evt in query.AsAsyncEnumerable().WithCancellation(cancellationToken))
             yield return evt;
     }

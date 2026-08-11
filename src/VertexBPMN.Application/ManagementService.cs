@@ -18,7 +18,7 @@ public class ManagementService : IManagementService
         _serviceProvider = serviceProvider;
     }
 
-    public ValueTask SuspendProcessInstanceAsync(Guid processInstanceId, CancellationToken cancellationToken = default)
+    public ValueTask SuspendProcessInstanceAsync(Guid processInstanceId, string? tenantId = null, CancellationToken cancellationToken = default)
     {
         _suspended[processInstanceId] = true;
         var eventSink = _serviceProvider.GetRequiredService<IProcessMiningEventSink>();
@@ -30,7 +30,7 @@ public class ManagementService : IManagementService
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask ResumeProcessInstanceAsync(Guid processInstanceId, CancellationToken cancellationToken = default)
+    public ValueTask ResumeProcessInstanceAsync(Guid processInstanceId, string? tenantId = null, CancellationToken cancellationToken = default)
     {
         _suspended[processInstanceId] = false;
         var eventSink = _serviceProvider.GetRequiredService<IProcessMiningEventSink>();
@@ -42,7 +42,7 @@ public class ManagementService : IManagementService
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask DeleteProcessInstanceAsync(Guid processInstanceId, CancellationToken cancellationToken = default)
+    public ValueTask DeleteProcessInstanceAsync(Guid processInstanceId, string? tenantId = null, CancellationToken cancellationToken = default)
     {
         _suspended.TryRemove(processInstanceId, out _);
         var eventSink = _serviceProvider.GetRequiredService<IProcessMiningEventSink>();

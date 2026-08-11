@@ -62,6 +62,7 @@ if (moduleOptions.Engine)
 {
 	builder.Services.AddBpmnPersistenceServices(builder.Configuration);
 	builder.Services.AddApplicationServices(builder.Configuration);
+	builder.Services.AddScoped<VertexBPMN.Domain.Interfaces.IIdentityService, VertexBPMN.Infrastructure.Persistence.Services.PersistentIdentityService>();
 	builder.Services.AddEngineServices(builder.Configuration);
 }
 

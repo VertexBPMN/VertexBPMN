@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using VertexBPMN.Api.Migration;
 
 namespace VertexBPMN.Api.Controllers;
@@ -26,6 +27,7 @@ public class MigrationController : ControllerBase
     /// Create a migration plan for moving instances from one process version to another
     /// </summary>
     [HttpPost("plan")]
+    [Authorize(Policy = "ProcessManager")]
     public async Task<ActionResult<MigrationPlan>> CreateMigrationPlan([FromBody] CreateMigrationPlanRequest request)
     {
         try
@@ -48,6 +50,7 @@ public class MigrationController : ControllerBase
     /// Execute a migration plan
     /// </summary>
     [HttpPost("execute/{migrationPlanId}")]
+    [Authorize(Policy = "ProcessManager")]
     public async Task<ActionResult<MigrationExecution>> ExecuteMigration(Guid migrationPlanId, [FromQuery] bool dryRun = false)
     {
         try
@@ -84,6 +87,7 @@ public class MigrationController : ControllerBase
     /// Rollback a migration
     /// </summary>
     [HttpPost("rollback/{migrationId}")]
+    [Authorize(Policy = "ProcessManager")]
     public async Task<ActionResult> RollbackMigration(Guid migrationId)
     {
         try
@@ -127,6 +131,7 @@ public class MigrationController : ControllerBase
     /// Create a process instance snapshot for safe migration
     /// </summary>
     [HttpPost("snapshot/{processInstanceId}")]
+    [Authorize(Policy = "ProcessManager")]
     public async Task<ActionResult<LiveMigrationSnapshot>> CreateSnapshot(Guid processInstanceId)
     {
         try
@@ -145,6 +150,7 @@ public class MigrationController : ControllerBase
     /// Restore process instance from snapshot
     /// </summary>
     [HttpPost("restore/{processInstanceId}/{snapshotId}")]
+    [Authorize(Policy = "ProcessManager")]
     public async Task<ActionResult> RestoreFromSnapshot(Guid processInstanceId, Guid snapshotId)
     {
         try

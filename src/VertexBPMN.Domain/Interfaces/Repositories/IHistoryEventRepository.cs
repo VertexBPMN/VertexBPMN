@@ -24,6 +24,11 @@ public interface IHistoryEventRepository
     IAsyncEnumerable<HistoryEvent> ListByProcessInstanceAsync(Guid processInstanceId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Lists history events, optionally scoped to a process instance and tenant.
+    /// </summary>
+    IAsyncEnumerable<HistoryEvent> ListAsync(Guid? processInstanceId = null, string? tenantId = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Deletes a history event by ID.
     /// </summary>
     ValueTask DeleteAsync(Guid id, CancellationToken cancellationToken = default);

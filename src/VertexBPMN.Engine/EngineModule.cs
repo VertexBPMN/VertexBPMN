@@ -30,7 +30,7 @@ public static class EngineModule
         services.AddScoped<ProcessEngine>();
         services.AddScoped<DistributedProcessEngine>();
         services.AddScoped<IDistributedProcessEngine, DistributedProcessEngine>();
-        services.AddScoped<IProcessEngine>(provider =>
+        services.AddSingleton<IProcessEngine>(provider =>
             ProcessEngineFactory.CreateFromConfiguration(provider));
         return services;
     }

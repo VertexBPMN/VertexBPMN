@@ -4,7 +4,8 @@ using System.Security.Claims;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Domain.Interfaces.Repositories;
-using VertexBPMN.Infrastructure.Features;
+using VertexBPMN.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 
 namespace VertexBPMN.Api.Controllers;
 
@@ -14,10 +15,12 @@ namespace VertexBPMN.Api.Controllers;
 public class InspectorController : ControllerBase
 {
     private readonly IRuntimeService _runtimeService;
+    private readonly BpmnDbContext _db;
 
-    public InspectorController(IRuntimeService runtimeService)
+    public InspectorController(IRuntimeService runtimeService, BpmnDbContext db)
     {
         _runtimeService = runtimeService;
+        _db = db;
     }
 
     /// <summary>
@@ -26,7 +29,11 @@ public class InspectorController : ControllerBase
     [HttpGet("process-instance/{id}/state")]
     public async Task<IActionResult> GetProcessInstanceState(Guid id, CancellationToken cancellationToken)
     {
-        if (!FeatureFlags.LiveInspector)
+        var liveInspectorEnabled = await _db.FeatureFlags.AsNoTracking()
+            .Where(flag => flag.Name == "liveinspector")
+            .Select(flag => (bool?)flag.Enabled)
+            .SingleOrDefaultAsync(cancellationToken) ?? true;
+        if (!liveInspectorEnabled)
             return StatusCode(503, "Live Inspector feature is disabled.");
 
         var instance = await _runtimeService.GetByIdAsync(id, cancellationToken);

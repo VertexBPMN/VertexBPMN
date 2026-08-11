@@ -1,6 +1,7 @@
 @page "/cmmn-modeler"
 @inject MudBlazor.ISnackbar Snackbar
 @inject IHttpClientFactory HttpClientFactory
+@inject ICaseManagementService CaseManagementService
 @inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
 
@@ -8,19 +9,68 @@
 
 <MudText Typo="Typo.h4" GutterBottom="true">CMMN Modeler</MudText>
 
-<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveCmmnXml">Save XML</MudButton>
-<MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="LoadCmmnXml">Load XML</MudButton>
+<MudStack Row="true" Spacing="2" Class="mb-4">
+    <MudTextField Label="Case ID" @bind-Value="_caseId" Required="true" />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveCmmnXml">Register case model</MudButton>
+    <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="ExecuteCase">Execute case</MudButton>
+    <MudButton Variant="Variant.Outlined" OnClick="LoadHistory">Load history</MudButton>
+    <MudButton Variant="Variant.Outlined" OnClick="LoadCmmnXml">Load template</MudButton>
+</MudStack>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h6" GutterBottom="true">Case actions</MudText>
+    <MudStack Row="true" Spacing="2">
+        <MudTextField Label="User event id" @bind-Value="_eventId" />
+        <MudButton Variant="Variant.Outlined" OnClick="TriggerUserEvent">Trigger user event</MudButton>
+        <MudTextField Label="Case-file item id" @bind-Value="_caseFileItemId" />
+        <MudTextField Label="Value" @bind-Value="_caseFileValue" />
+        <MudButton Variant="Variant.Outlined" OnClick="UpdateCaseFile">Update case file</MudButton>
+        <MudButton Variant="Variant.Outlined" OnClick="GenerateAdHoc">Generate ad-hoc subprocess</MudButton>
+    </MudStack>
+</MudPaper>
+
+@if (_trace.Count > 0)
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6">Execution trace</MudText>
+        <MudList T="string">
+            @foreach (var line in _trace)
+            {
+                <MudListItem T="string">@line</MudListItem>
+            }
+        </MudList>
+    </MudPaper>
+}
+
+@if (_history.Count > 0)
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6">Historical context</MudText>
+        @foreach (var snapshot in _history)
+        {
+            <MudText Typo="Typo.subtitle2">@snapshot.Timestamp.ToUniversalTime().ToString("O")</MudText>
+            <MudText>Completed plan items: @string.Join(", ", snapshot.CompletedPlanItems)</MudText>
+            <MudText>Case-file values: @snapshot.CaseFile.Count</MudText>
+        }
+    </MudPaper>
+}
 
 <div id="@_modelerContainerId" style="height:500px; border:1px solid #ccc;"></div>
 
 @code {
     private string _cmmnXml = string.Empty;
-    private HttpClient _httpClient;
+    private HttpClient? _httpClient;
 
     private string _modelerContainerId = $"cmmn-modeler-{Guid.NewGuid():N}";
     private IJSObjectReference? _module;
     private IJSObjectReference? _modelerInstance;
     private bool _initialized;
+    private string _caseId = "studio-case";
+    private List<string> _trace = new();
+    private List<HistoricalCaseSnapshot> _history = new();
+    private string _eventId = string.Empty;
+    private string _caseFileItemId = string.Empty;
+    private string _caseFileValue = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
@@ -46,13 +96,78 @@
             return;
         }
         var xml = await _module.InvokeAsync<string>("CmmnModelerInterop.getXml", _modelerInstance);
-        Snackbar.Add("CMMN XML saved (simulated)!", Severity.Success);
-        Console.WriteLine(xml); // TODO replace with persistence
+        await CaseManagementService.RegisterModelAsync(_caseId, xml);
+        Snackbar.Add($"CMMN model registered for case '{_caseId}'.", Severity.Success);
+    }
+
+    private async Task ExecuteCase()
+    {
+        try
+        {
+            _trace = (await CaseManagementService.ExecuteCaseAsync(_caseId)).ToList();
+            Snackbar.Add($"Case '{_caseId}' executed.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Case execution failed: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task LoadHistory()
+    {
+        try
+        {
+            _history = (await CaseManagementService.GetHistoricalContextAsync(_caseId)).ToList();
+            Snackbar.Add($"Loaded {_history.Count} historical snapshot(s).", Severity.Info);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"History load failed: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task TriggerUserEvent()
+    {
+        try
+        {
+            await CaseManagementService.TriggerUserEventAsync(_caseId, _eventId, new Dictionary<string, string>());
+            Snackbar.Add($"User event '{_eventId}' triggered.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"User event failed: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task UpdateCaseFile()
+    {
+        try
+        {
+            await CaseManagementService.UpdateCaseFileItemAsync(_caseId, _caseFileItemId, _caseFileValue);
+            Snackbar.Add($"Case-file item '{_caseFileItemId}' updated.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Case-file update failed: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task GenerateAdHoc()
+    {
+        try
+        {
+            await CaseManagementService.GenerateAdHocSubprocessAsync(_caseId);
+            Snackbar.Add("Ad-hoc subprocess generated.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Ad-hoc subprocess failed: {ex.Message}", Severity.Error);
+        }
     }
 
     private async Task LoadCmmnXml()
     {
-        _cmmnXml = await _httpClient.GetStringAsync("data/DefaultCmmn.xml");
+        _cmmnXml = await (_httpClient ?? throw new InvalidOperationException("HTTP client is not initialized.")).GetStringAsync("data/DefaultCmmn.xml");
         Snackbar.Add("CMMN XML loaded!", Severity.Info);
         if (_initialized && _module != null && _modelerInstance != null)
         {

@@ -31,7 +31,7 @@ public interface ITaskService
     /// <summary>
     /// Lists all user tasks for a process instance or assignee.
     /// </summary>
-    IAsyncEnumerable<UserTask> ListAsync(Guid? processInstanceId = null, string? assignee = null, CancellationToken cancellationToken = default);
+    IAsyncEnumerable<UserTask> ListAsync(Guid? processInstanceId = null, string? assignee = null, string? tenantId = null, CancellationToken cancellationToken = default);
 
     ValueTask<ProcessMiningEvent> RejectAsync(Guid userTaskId, object rejectionReason, CancellationToken cancellationToken = default);
 }

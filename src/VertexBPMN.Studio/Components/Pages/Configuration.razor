@@ -1,40 +1,40 @@
 @page "/configuration"
-@inject VertexBPMN.Studio.Services.IBpmnEngineService BpmnEngineService
-@inject MudBlazor.ISnackbar Snackbar
+@inject VertexBPMN.Studio.Services.IEngineCapabilitiesService CapabilitiesService
 
 <PageTitle>Configuration</PageTitle>
 
 <MudText Typo="Typo.h4" GutterBottom="true">Configuration</MudText>
 
-<MudForm Model="@_config" @ref="form">
-    <MudTextField Label="Status Message" @bind-Value="_config.StatusMessage" For="@(() => _config.StatusMessage)" />
-    <MudNumericField Label="Deployment Delay (ms)" @bind-Value="_config.DeploymentDelayMs" For="@(() => _config.DeploymentDelayMs)" />
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveConfiguration" Class="mt-4">Save Configuration</MudButton>
-</MudForm>
+<MudAlert Severity="Severity.Info" Class="mb-4">
+    Runtime configuration is read-only in Studio until the API exposes a configuration management contract.
+</MudAlert>
+
+<MudPaper Class="pa-4">
+    <MudText Typo="Typo.h6">Engine capabilities</MudText>
+    @if (_capabilities is null)
+    {
+        <MudProgressCircular Indeterminate="true" />
+    }
+    else
+    {
+        <MudList T="string">
+            <MudListItem T="string">Engine: @_capabilities.EngineType</MudListItem>
+            <MudListItem T="string">CMMN: @(_capabilities.SupportsCmmn ? "supported" : "not supported")</MudListItem>
+            <MudListItem T="string">Workers: @(_capabilities.SupportsWorkers ? "supported" : "not supported")</MudListItem>
+            <MudListItem T="string">Durable persistence: @(_capabilities.SupportsDurablePersistence ? "supported" : "not supported")</MudListItem>
+        </MudList>
+    }
+</MudPaper>
 
 @code {
-    private VertexBPMN.Studio.Services.EngineConfiguration _config = new();
-    private MudForm form;
+    private VertexBPMN.Studio.Services.EngineCapabilities? _capabilities;
 
     protected override async Task OnInitializedAsync()
     {
-        _config = await BpmnEngineService.GetEngineConfigurationAsync();
-    }
-
-    private async Task SaveConfiguration()
-    {
-        await form.Validate();
-        if (form.IsValid)
+        try
         {
-            try
-            {
-                await BpmnEngineService.UpdateEngineConfigurationAsync(_config);
-                Snackbar.Add("Configuration saved successfully!", Severity.Success);
-            }
-            catch (Exception ex)
-            {
-                Snackbar.Add($"Error saving configuration: {ex.Message}", Severity.Error);
-            }
+            _capabilities = await CapabilitiesService.GetAsync();
         }
+        catch { }
     }
 }

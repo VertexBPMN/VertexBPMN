@@ -1,0 +1,271 @@
+@page "/simulation"
+@using System.Text.Json
+@inject ISimulationService SimulationService
+@inject ISimulationScenarioService ScenarioService
+@inject StudioTenantContext TenantContext
+
+<PageTitle>Simulation</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Simulation</MudText>
+<MudText Typo="Typo.body2" Color="Color.Tertiary" Class="mb-4">
+    Run a BPMN simulation through the engine API.
+</MudText>
+
+<MudGrid>
+    <MudItem xs="12" md="6">
+        <MudTextField @bind-Value="_processDefinitionId" Label="Process definition id" Variant="Variant.Outlined" Class="mb-3" />
+        <MudTextField Value="@TenantId" Label="Tenant id" ReadOnly="true" Variant="Variant.Outlined" Class="mb-3" />
+        <MudNumericField @bind-Value="_maxSteps" Label="Maximum steps" Variant="Variant.Outlined" Class="mb-3" />
+        <MudTextField @bind-Value="_bpmnXml" Label="BPMN XML" Lines="12" Variant="Variant.Outlined" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RunAsync" Disabled="_isRunning" Class="mt-3">
+            Run simulation
+        </MudButton>
+        <MudTextField @bind-Value="_scenarioName" Label="Scenario name" Variant="Variant.Outlined" Class="mt-3" />
+        <MudTextField @bind-Value="_scenarioId" Label="Scenario id for update/delete" Variant="Variant.Outlined" Class="mt-3" />
+        <MudButton Variant="Variant.Outlined" OnClick="SaveScenarioAsync" Disabled="_isSavingScenario" Class="mt-2">
+            Save scenario
+        </MudButton>
+        <MudButton Variant="Variant.Outlined" OnClick="LoadScenariosAsync" Disabled="_isLoadingScenarios" Class="mt-2 ml-2">
+            Load scenarios
+        </MudButton>
+        <MudButton Variant="Variant.Outlined" OnClick="UpdateScenarioAsync" Disabled="_isSavingScenario" Class="mt-2 ml-2">
+            Update scenario
+        </MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="DeleteScenarioAsync" Disabled="_isDeletingScenario" Class="mt-2 ml-2">
+            Delete scenario
+        </MudButton>
+    </MudItem>
+    <MudItem xs="12" md="6">
+        @if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error">@_error</MudAlert>
+        }
+        else if (_result is not null)
+        {
+            <MudText Typo="Typo.h6">Result</MudText>
+            <pre>@Format(_result.Value)</pre>
+            <MudTextField @bind-Value="_variableName" Label="Variable to trace" Variant="Variant.Outlined" Class="mt-3" />
+            <MudButton Variant="Variant.Outlined" OnClick="AnalyzeAsync" Disabled="_isAnalyzing" Class="mt-3">
+                Analyze result
+            </MudButton>
+            @if (_analysis is not null)
+            {
+                <MudText Typo="Typo.h6" Class="mt-4">Analytics</MudText>
+                <pre>@Format(_analysis.Value)</pre>
+            }
+            @if (_scenarios is not null)
+            {
+                <MudText Typo="Typo.h6" Class="mt-4">Saved scenarios</MudText>
+                <pre>@Format(_scenarios.Value)</pre>
+            }
+        }
+    </MudItem>
+</MudGrid>
+
+<MudDivider Class="my-4" />
+<MudText Typo="Typo.h6">Compare simulation results</MudText>
+<MudTextField @bind-Value="_comparisonA" Label="Result A JSON" Lines="5" Variant="Variant.Outlined" Class="mt-2" />
+<MudTextField @bind-Value="_comparisonB" Label="Result B JSON" Lines="5" Variant="Variant.Outlined" Class="mt-2" />
+<MudButton Variant="Variant.Outlined" OnClick="CompareAsync" Disabled="_isComparing" Class="mt-2">Compare</MudButton>
+@if (_comparison is not null)
+{
+    <MudPaper Class="pa-4 mt-3" Elevation="1"><pre>@Format(_comparison.Value)</pre></MudPaper>
+}
+
+@code {
+    private string _processDefinitionId = "process";
+    private string? TenantId => TenantContext.CurrentTenantId;
+    private string _bpmnXml = "<definitions />";
+    private int? _maxSteps = 100;
+    private JsonElement? _result;
+    private string? _error;
+    private bool _isRunning;
+    private bool _isAnalyzing;
+    private string _variableName = string.Empty;
+    private JsonElement? _analysis;
+    private JsonElement? _scenarios;
+    private string _scenarioName = "Studio scenario";
+    private string _scenarioId = string.Empty;
+    private bool _isSavingScenario;
+    private bool _isDeletingScenario;
+    private bool _isLoadingScenarios;
+    private bool _isComparing;
+    private string _comparisonA = string.Empty;
+    private string _comparisonB = string.Empty;
+    private JsonElement? _comparison;
+
+    private async Task RunAsync()
+    {
+        _isRunning = true;
+        _error = null;
+        try
+        {
+            _result = await SimulationService.SimulateAsync(
+                _bpmnXml,
+                _processDefinitionId,
+                maxSteps: _maxSteps,
+                tenantId: TenantId);
+        }
+        catch (Exception exception)
+        {
+            _error = $"Simulation failed: {exception.Message}";
+        }
+        finally
+        {
+            _isRunning = false;
+        }
+    }
+
+    private async Task AnalyzeAsync()
+    {
+        if (_result is null)
+        {
+            return;
+        }
+
+        _isAnalyzing = true;
+        _error = null;
+        try
+        {
+            _analysis = string.IsNullOrWhiteSpace(_variableName)
+                ? await SimulationService.GetSummaryAsync(_result.Value)
+                : await SimulationService.GetVariableTraceAsync(_result.Value, _variableName);
+        }
+        catch (Exception exception)
+        {
+            _error = $"Simulation analytics failed: {exception.Message}";
+        }
+        finally
+        {
+            _isAnalyzing = false;
+        }
+    }
+
+    private async Task SaveScenarioAsync()
+    {
+        _isSavingScenario = true;
+        _error = null;
+        try
+        {
+            await ScenarioService.CreateAsync(new
+            {
+                name = _scenarioName,
+                description = "Saved from Studio",
+                processDefinitionId = _processDefinitionId,
+                variables = new Dictionary<string, object>(),
+                maxSteps = _maxSteps,
+                tenantId = TenantId
+            });
+            _scenarios = await ScenarioService.GetAllAsync(TenantId);
+        }
+        catch (Exception exception)
+        {
+            _error = $"Scenario could not be saved: {exception.Message}";
+        }
+        finally
+        {
+            _isSavingScenario = false;
+        }
+    }
+
+    private async Task LoadScenariosAsync()
+    {
+        _isLoadingScenarios = true;
+        _error = null;
+        try
+        {
+            _scenarios = await ScenarioService.GetAllAsync(TenantId);
+        }
+        catch (Exception exception)
+        {
+            _error = $"Scenarios could not be loaded: {exception.Message}";
+        }
+        finally
+        {
+            _isLoadingScenarios = false;
+        }
+    }
+
+    private async Task UpdateScenarioAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_scenarioId))
+        {
+            _error = "Enter a scenario id before updating.";
+            return;
+        }
+
+        _isSavingScenario = true;
+        _error = null;
+        try
+        {
+            await ScenarioService.UpdateAsync(_scenarioId, BuildScenario());
+            _scenarios = await ScenarioService.GetAllAsync(TenantId);
+        }
+        catch (Exception exception)
+        {
+            _error = $"Scenario could not be updated: {exception.Message}";
+        }
+        finally
+        {
+            _isSavingScenario = false;
+        }
+    }
+
+    private async Task DeleteScenarioAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_scenarioId))
+        {
+            _error = "Enter a scenario id before deleting.";
+            return;
+        }
+
+        _isDeletingScenario = true;
+        _error = null;
+        try
+        {
+            await ScenarioService.DeleteAsync(_scenarioId);
+            _scenarios = await ScenarioService.GetAllAsync(TenantId);
+        }
+        catch (Exception exception)
+        {
+            _error = $"Scenario could not be deleted: {exception.Message}";
+        }
+        finally
+        {
+            _isDeletingScenario = false;
+        }
+    }
+
+    private object BuildScenario() => new
+    {
+        name = _scenarioName,
+        description = "Managed from Studio",
+        processDefinitionId = _processDefinitionId,
+        variables = new Dictionary<string, object>(),
+        maxSteps = _maxSteps,
+        tenantId = TenantId
+    };
+
+    private async Task CompareAsync()
+    {
+        _isComparing = true;
+        _error = null;
+        try
+        {
+            using var resultA = JsonDocument.Parse(_comparisonA);
+            using var resultB = JsonDocument.Parse(_comparisonB);
+            _comparison = await SimulationService.CompareAsync(resultA.RootElement, resultB.RootElement);
+        }
+        catch (Exception exception)
+        {
+            _error = $"Simulation comparison failed: {exception.Message}";
+        }
+        finally
+        {
+            _isComparing = false;
+        }
+    }
+
+    private static string Format(JsonElement value) =>
+        JsonSerializer.Serialize(value, new JsonSerializerOptions { WriteIndented = true });
+}

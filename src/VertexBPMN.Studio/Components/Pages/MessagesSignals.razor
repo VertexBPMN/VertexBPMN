@@ -1,0 +1,87 @@
+@page "/messages-signals"
+@using System.Text.Json
+@inject IMessageSignalService MessageSignalService
+
+<PageTitle>Messages &amp; Signals</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Messages &amp; Signals</MudText>
+<MudText Typo="Typo.body2" Color="Color.Tertiary" Class="mb-4">
+    Correlate a message or broadcast a signal to the running engine.
+</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudText Typo="Typo.h6" GutterBottom="true">Message correlation</MudText>
+    <MudTextField @bind-Value="_messageName" Label="Message name" Variant="Variant.Outlined" Class="mb-3" />
+    <MudTextField @bind-Value="_processInstanceId" Label="Process instance id (optional)" Variant="Variant.Outlined" Class="mb-3" />
+    <MudTextField @bind-Value="_messageVariables" Label="Variables JSON" Variant="Variant.Outlined" Lines="4" Class="mb-3" />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CorrelateMessageAsync" Disabled="_isLoading || string.IsNullOrWhiteSpace(_messageName)">
+        Correlate message (ProcessManager)
+    </MudButton>
+</MudPaper>
+
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudText Typo="Typo.h6" GutterBottom="true">Signal broadcast</MudText>
+    <MudTextField @bind-Value="_signalName" Label="Signal name" Variant="Variant.Outlined" Class="mb-3" />
+    <MudTextField @bind-Value="_signalVariables" Label="Variables JSON" Variant="Variant.Outlined" Lines="4" Class="mb-3" />
+    <MudButton Variant="Variant.Filled" Color="Color.Warning" OnClick="BroadcastSignalAsync" Disabled="_isLoading || string.IsNullOrWhiteSpace(_signalName)">
+        Broadcast signal (ProcessManager)
+    </MudButton>
+</MudPaper>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+}
+else if (_result is not null)
+{
+    <MudPaper Class="pa-4" Elevation="1">
+        <MudText Typo="Typo.h6">Result</MudText>
+        <pre>@Format(_result.Value)</pre>
+    </MudPaper>
+}
+
+@code {
+    private string _messageName = string.Empty;
+    private string _processInstanceId = string.Empty;
+    private string _messageVariables = "{}";
+    private string _signalName = string.Empty;
+    private string _signalVariables = "{}";
+    private JsonElement? _result;
+    private string? _error;
+    private bool _isLoading;
+
+    private async Task CorrelateMessageAsync()
+    {
+        await RunAsync(
+            () => MessageSignalService.CorrelateMessageAsync(_messageName, _processInstanceId, _messageVariables),
+            "Message correlation failed");
+    }
+
+    private async Task BroadcastSignalAsync()
+    {
+        await RunAsync(
+            () => MessageSignalService.BroadcastSignalAsync(_signalName, _signalVariables),
+            "Signal broadcast failed");
+    }
+
+    private async Task RunAsync(Func<Task<JsonElement>> operation, string errorPrefix)
+    {
+        _isLoading = true;
+        _error = null;
+        try
+        {
+            _result = await operation();
+        }
+        catch (Exception exception)
+        {
+            _error = $"{errorPrefix}: {exception.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private static string Format(JsonElement value) =>
+        JsonSerializer.Serialize(value, new JsonSerializerOptions { WriteIndented = true });
+}

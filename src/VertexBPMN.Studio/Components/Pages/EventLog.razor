@@ -1,6 +1,5 @@
 @page "/event-log"
-@inject VertexBPMN.Studio.Services.IBpmnEngineService BpmnEngineService
-@inject VertexBPMN.Studio.Services.ActiveEngineService ActiveEngineService
+@inject VertexBPMN.Studio.Services.IEngineEventService EngineEventService
 @implements IDisposable
 
 <PageTitle>Event Log</PageTitle>
@@ -19,17 +18,17 @@
 
     protected override void OnInitialized()
     {
-        BpmnEngineService.OnEventEmitted += HandleEventEmitted;
+        EngineEventService.OnEventEmitted += HandleEventEmitted;
     }
 
     public void Dispose()
     {
-        BpmnEngineService.OnEventEmitted -= HandleEventEmitted;
+        EngineEventService.OnEventEmitted -= HandleEventEmitted;
     }
 
     private void HandleEventEmitted(string eventMessage)
     {
-        _eventLog.Add($"{DateTime.Now} [User: {ActiveEngineService.CurrentUserRole}]: {eventMessage}");
+        _eventLog.Add($"{DateTime.Now} [Source: Studio]: {eventMessage}");
         StateHasChanged();
     }
 }

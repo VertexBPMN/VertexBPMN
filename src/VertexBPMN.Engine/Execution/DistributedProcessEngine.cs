@@ -162,6 +162,11 @@ namespace VertexBPMN.Engine.Execution
                 }
 
                 await ProcessDistributedCaseTokensAsync(model, trace, cancellationToken);
+                await _store.SaveHistoricalCaseDataAsync(new HistoricalCaseData(
+                    model.Id,
+                    new Dictionary<string, object>(initialCaseFile),
+                    trace.ToList(),
+                    DateTime.UtcNow));
                 return trace;
             }
             catch (Exception ex)

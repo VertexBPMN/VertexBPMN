@@ -24,6 +24,11 @@ public class BpmnDbContext : DbContext
     public DbSet<User> Users => Set<User>();
     public DbSet<MigrationPlanRecord> MigrationPlans => Set<MigrationPlanRecord>();
     public DbSet<MigrationExecutionRecord> MigrationExecutions => Set<MigrationExecutionRecord>();
+    public DbSet<CmmnHistoryRecord> CmmnHistory => Set<CmmnHistoryRecord>();
+    public DbSet<FeatureFlagRecord> FeatureFlags => Set<FeatureFlagRecord>();
+    public DbSet<IdentityGroupRecord> IdentityGroups => Set<IdentityGroupRecord>();
+    public DbSet<IdentityGroupMembershipRecord> IdentityGroupMemberships => Set<IdentityGroupMembershipRecord>();
+    public DbSet<IdentityAuthorizationRecord> IdentityAuthorizations => Set<IdentityAuthorizationRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -39,6 +44,9 @@ public class BpmnDbContext : DbContext
         ConfigureMultiInstanceExecution(modelBuilder);
         ConfigureUser(modelBuilder);
         ConfigureMigrationRecords(modelBuilder);
+        ConfigureCmmnHistory(modelBuilder);
+        ConfigureFeatureFlags(modelBuilder);
+        ConfigureIdentity(modelBuilder);
 
         // Seed sample data (deterministic IDs & timestamps)
         var deploymentId = Guid.Parse("11111111-1111-1111-1111-111111111111");
@@ -210,6 +218,67 @@ public class BpmnDbContext : DbContext
             entity.Property(record => record.Payload).IsRequired();
             entity.HasIndex(record => record.MigrationPlanId);
             entity.HasIndex(record => record.StartedAt);
+        });
+    }
+
+    private static void ConfigureCmmnHistory(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<CmmnHistoryRecord>(entity =>
+        {
+            entity.HasKey(record => record.Id);
+            entity.Property(record => record.CaseId).IsRequired().HasMaxLength(255);
+            entity.Property(record => record.CaseFileJson).IsRequired();
+            entity.Property(record => record.CompletedPlanItemsJson).IsRequired();
+            entity.HasIndex(record => new { record.CaseId, record.Timestamp });
+        });
+    }
+
+    private static void ConfigureFeatureFlags(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<FeatureFlagRecord>(entity =>
+        {
+            entity.HasKey(record => record.Name);
+            entity.Property(record => record.Name).HasMaxLength(128);
+        });
+
+        modelBuilder.Entity<FeatureFlagRecord>().HasData(
+            new FeatureFlagRecord { Name = "liveinspector", Enabled = true },
+            new FeatureFlagRecord { Name = "predictiveanalytics", Enabled = false },
+            new FeatureFlagRecord { Name = "processminingapi", Enabled = false });
+    }
+
+    private static void ConfigureIdentity(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<IdentityGroupRecord>(entity =>
+        {
+            entity.HasKey(group => group.Id);
+            entity.Property(group => group.Name).IsRequired().HasMaxLength(256);
+            entity.Property(group => group.Type).IsRequired().HasMaxLength(128);
+            entity.Property(group => group.TenantId).HasMaxLength(64);
+            entity.HasIndex(group => new { group.TenantId, group.Name }).IsUnique();
+        });
+
+        modelBuilder.Entity<IdentityGroupMembershipRecord>(entity =>
+        {
+            entity.HasKey(membership => new { membership.GroupId, membership.UserId });
+            entity.Property(membership => membership.GroupId).HasMaxLength(128);
+            entity.Property(membership => membership.UserId).HasMaxLength(128);
+            entity.Property(membership => membership.TenantId).HasMaxLength(64);
+            entity.HasIndex(membership => membership.TenantId);
+            entity.HasIndex(membership => membership.UserId);
+        });
+
+        modelBuilder.Entity<IdentityAuthorizationRecord>(entity =>
+        {
+            entity.HasKey(authorization => authorization.Id);
+            entity.Property(authorization => authorization.Id).HasMaxLength(128);
+            entity.Property(authorization => authorization.UserId).HasMaxLength(128);
+            entity.Property(authorization => authorization.GroupId).HasMaxLength(128);
+            entity.Property(authorization => authorization.Resource).IsRequired().HasMaxLength(512);
+            entity.Property(authorization => authorization.Permissions).IsRequired().HasMaxLength(512);
+            entity.Property(authorization => authorization.TenantId).HasMaxLength(64);
+            entity.HasIndex(authorization => authorization.TenantId);
+            entity.HasIndex(authorization => new { authorization.UserId, authorization.GroupId, authorization.Resource }).IsUnique();
         });
     }
 
@@ -452,6 +521,7 @@ public class BpmnDbContext : DbContext
         entity.HasKey(e => e.Id);
         entity.Property(e => e.Username).IsRequired().HasMaxLength(200);
         entity.Property(e => e.Email).IsRequired().HasMaxLength(400);
+        entity.Property(e => e.TenantId).HasMaxLength(64);
         entity.Property(e => e.IsActive).IsRequired();
         entity.Property(e => e.Roles)
             .HasConversion(
@@ -459,6 +529,7 @@ public class BpmnDbContext : DbContext
                 v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions)null!) ?? new List<string>());
         entity.HasIndex(e => e.Username).IsUnique(false);
         entity.HasIndex(e => e.Email);
+        entity.HasIndex(e => e.TenantId);
         entity.HasIndex(e => e.IsActive);
         entity.HasIndex(e => e.CreatedAt);
     }

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Engine.Configuration;
 
@@ -6,6 +7,7 @@ namespace VertexBPMN.Api.Controllers;
 
 [ApiController]
 [Route("api/engine")]
+[Authorize]
 public sealed class EngineController : ControllerBase
 {
     private readonly IProcessEngine _engine;

@@ -1,6 +1,8 @@
 @inject MudBlazor.IDialogService DialogService
 @inject MudBlazor.ISnackbar Snackbar
 @inject IJSRuntime JSRuntime
+@inject VertexBPMN.Studio.Services.ITaskService TaskService
+@inject VertexBPMN.Studio.Services.StudioTenantContext TenantContext
 @implements IAsyncDisposable
 
 <MudDialog>
@@ -97,7 +99,10 @@
             {
                 submittedJson = await _module.InvokeAsync<string>("FormBuilderInterop.getJson", _formInstance);
             }
-            // Simulate completing task (would send submittedJson to backend)
+            IDictionary<string, object?>? variables = submittedJson is null
+                ? null
+                : new Dictionary<string, object?> { ["formData"] = submittedJson };
+            await TaskService.CompleteTaskAsync(Task.Id, variables, TenantContext.CurrentTenantId);
             Snackbar.Add($"Task {Task.Name} completed!", Severity.Success);
             Dialog.Close(DialogResult.Ok(submittedJson));
         }

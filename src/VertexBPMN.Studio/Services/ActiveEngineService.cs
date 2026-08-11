@@ -5,14 +5,12 @@ namespace VertexBPMN.Studio.Services
     public sealed class ActiveEngineService : INotifyPropertyChanged, IDisposable
     {
         private string _activeEngineId = "engine1";
-        private string _currentUserRole = "Admin";
         private bool _isConnected = false;
         private DateTime _lastConnectionCheck = DateTime.MinValue;
 
         public event PropertyChangedEventHandler? PropertyChanged;
         public event Action? OnChange;
         public event Action<string>? OnEngineChanged;
-        public event Action<string>? OnUserRoleChanged;
 
         public string ActiveEngineId
         {
@@ -23,18 +21,6 @@ namespace VertexBPMN.Studio.Services
                 {
                     OnEngineChanged?.Invoke(value);
                     _ = CheckConnectionAsync(); // Fire and forget
-                }
-            }
-        }
-
-        public string CurrentUserRole
-        {
-            get => _currentUserRole;
-            set
-            {
-                if (SetProperty(ref _currentUserRole, value))
-                {
-                    OnUserRoleChanged?.Invoke(value);
                 }
             }
         }
@@ -79,7 +65,6 @@ namespace VertexBPMN.Studio.Services
         {
             OnChange = null;
             OnEngineChanged = null;
-            OnUserRoleChanged = null;
             PropertyChanged = null;
         }
     }

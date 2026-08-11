@@ -1,11 +1,91 @@
 @page "/extensions"
+@using System.Text.Json
+@inject IPluginService PluginService
 
 <PageTitle>Extensions</PageTitle>
 
 <MudText Typo="Typo.h4" GutterBottom="true">Extensions</MudText>
+<MudStack Row="true" Spacing="2" Class="mb-4">
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadAsync" StartIcon="@Icons.Material.Filled.Refresh">Refresh</MudButton>
+</MudStack>
 
-<MudList T="string">
-    <MudListItem T="string" Icon="@Icons.Material.Filled.Extension">Custom Task Widget</MudListItem>
-    <MudListItem T="string" Icon="@Icons.Material.Filled.Extension">Process Analytics Plugin</MudListItem>
-    <MudListItem T="string" Icon="@Icons.Material.Filled.Extension">Dark Theme</MudListItem>
-</MudList>
+@if (!string.IsNullOrWhiteSpace(_error))
+{
+    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+}
+else if (_plugins is null)
+{
+    <MudAlert Severity="Severity.Info">Loading installed plugins and extension points...</MudAlert>
+}
+else
+{
+    <MudGrid>
+        <MudItem xs="12" md="7">
+            <MudPaper Class="pa-4">
+                <MudText Typo="Typo.h6" GutterBottom="true">Installed plugins</MudText>
+                <MudTable Items="@AsArray(_plugins)" Dense="true" Hover="true">
+                    <HeaderContent>
+                        <MudTh>Name</MudTh>
+                        <MudTh>Version</MudTh>
+                        <MudTh>Status</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Name">@Value(context, "name", "id")</MudTd>
+                        <MudTd DataLabel="Version">@Value(context, "version")</MudTd>
+                        <MudTd DataLabel="Status">@Value(context, "status")</MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="5">
+            <MudPaper Class="pa-4">
+                <MudText Typo="Typo.h6" GutterBottom="true">Extension points</MudText>
+                <MudList T="JsonElement" Dense="true">
+                    @foreach (var extensionPoint in AsArray(_extensionPoints))
+                    {
+                        <MudListItem T="JsonElement">
+                            <MudText Typo="Typo.body1">@Value(extensionPoint, "name", "id")</MudText>
+                            <MudText Typo="Typo.body2">@Value(extensionPoint, "interfaceType")</MudText>
+                        </MudListItem>
+                    }
+                </MudList>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private JsonElement? _plugins;
+    private JsonElement? _extensionPoints;
+    private string? _error;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _error = null;
+        try
+        {
+            _plugins = await PluginService.GetPluginsAsync();
+            _extensionPoints = await PluginService.GetExtensionPointsAsync();
+        }
+        catch (Exception exception)
+        {
+            _error = exception.Message;
+        }
+    }
+
+    private static IEnumerable<JsonElement> AsArray(JsonElement? value) =>
+        value is { ValueKind: JsonValueKind.Array } element ? element.EnumerateArray() : [];
+
+    private static string Value(JsonElement element, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (element.TryGetProperty(name, out var property))
+                return property.ToString();
+        }
+
+        return "-";
+    }
+}

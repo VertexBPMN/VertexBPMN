@@ -28,16 +28,12 @@ public class PluginSecurityManager
                 };
             }
 
-            // Simulate security scanning
-            await Task.Delay(100);
-
-            // In real implementation, this would:
-            // - Scan for malicious code patterns
-            // - Verify digital signatures
-            // - Check against known threat databases
-            // - Validate assembly integrity
-
-            return new ValidationResult { IsValid = true };
+            await Task.CompletedTask;
+            return new ValidationResult
+            {
+                IsValid = false,
+                Reason = "No signature, integrity, or malware scanner is configured; plugin activation is blocked."
+            };
         }
         catch (Exception ex)
         {

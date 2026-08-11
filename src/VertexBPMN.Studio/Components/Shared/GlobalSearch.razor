@@ -1,4 +1,7 @@
-@inject IBpmnEngineService BpmnEngineService
+@inject ITaskService TaskService
+@inject IWorkflowService WorkflowService
+@inject IRepositoryService RepositoryService
+@inject StudioTenantContext TenantContext
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 
@@ -51,7 +54,7 @@
         try
         {
             // Search process definitions
-            var definitions = await BpmnEngineService.GetProcessDefinitionsAsync();
+            var definitions = await RepositoryService.GetProcessDefinitionsAsync(TenantContext.CurrentTenantId);
             results.AddRange(definitions
                 .Where(d => d.Name.Contains(value, StringComparison.OrdinalIgnoreCase) ||
                            d.Key.Contains(value, StringComparison.OrdinalIgnoreCase))
@@ -60,12 +63,12 @@
                 {
                     Type = "ProcessDefinition",
                     Title = d.Name,
-                    Subtitle = $"Key: {d.Key} • Version: {d.Version}",
+                    Subtitle = $"Key: {d.Key} ï¿½ Version: {d.Version}",
                     Url = $"/process-definitions?highlight={d.Id}"
                 }));
 
             // Search process instances
-            var instances = await BpmnEngineService.GetProcessInstancesAsync();
+            var instances = await WorkflowService.GetProcessInstancesAsync(TenantContext.CurrentTenantId);
             results.AddRange(instances
                 .Where(i => i.InstanceId.Contains(value, StringComparison.OrdinalIgnoreCase) ||
                            (i.BusinessKey?.Contains(value, StringComparison.OrdinalIgnoreCase) ?? false))
@@ -74,12 +77,12 @@
                 {
                     Type = "ProcessInstance",
                     Title = i.InstanceId,
-                    Subtitle = $"State: {i.State} • Started: {i.StartedAt:yyyy-MM-dd}",
+                    Subtitle = $"State: {i.State} ï¿½ Started: {i.StartedAt:yyyy-MM-dd}",
                     Url = $"/process-instances?highlight={i.Id}"
                 }));
 
             // Search tasks
-            var tasks = await BpmnEngineService.GetTasksAsync();
+            var tasks = await TaskService.GetTasksAsync(TenantContext.CurrentTenantId);
             results.AddRange(tasks
                 .Where(t => t.Name.Contains(value, StringComparison.OrdinalIgnoreCase) ||
                            (t.Assignee?.Contains(value, StringComparison.OrdinalIgnoreCase) ?? false))
@@ -88,7 +91,7 @@
                 {
                     Type = "Task",
                     Title = t.Name,
-                    Subtitle = $"Assignee: {t.Assignee ?? "Unassigned"} • Process: {t.ProcessInstanceId}",
+                    Subtitle = $"Assignee: {t.Assignee ?? "Unassigned"} ï¿½ Process: {t.ProcessInstanceId}",
                     Url = $"/tasks?highlight={t.Id}"
                 }));
         }

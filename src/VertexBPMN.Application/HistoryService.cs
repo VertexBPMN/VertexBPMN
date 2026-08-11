@@ -9,16 +9,22 @@ namespace VertexBPMN.Application;
 /// </summary>
 public class HistoryService : IHistoryService
 {
-    public async IAsyncEnumerable<HistoryEvent> ListHistoricTasksAsync(Guid? processInstanceId = null, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<HistoryEvent> ListHistoricTasksAsync(Guid? processInstanceId = null, string? tenantId = null, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        await System.Threading.Tasks.Task.CompletedTask;
-        yield break;
+        await foreach (var historyEvent in _repo.ListAsync(processInstanceId, tenantId, cancellationToken))
+        {
+            if (historyEvent.EventType.Contains("TASK", StringComparison.OrdinalIgnoreCase))
+                yield return historyEvent;
+        }
     }
     private readonly IHistoryEventRepository _repo;
     public HistoryService(IHistoryEventRepository repo) => _repo = repo;
 
-    public IAsyncEnumerable<HistoryEvent> ListByProcessInstanceAsync(Guid processInstanceId, CancellationToken cancellationToken = default)
-        => _repo.ListByProcessInstanceAsync(processInstanceId, cancellationToken);
+    public IAsyncEnumerable<HistoryEvent> ListAsync(string? tenantId = null, CancellationToken cancellationToken = default)
+        => _repo.ListAsync(tenantId: tenantId, cancellationToken: cancellationToken);
+
+    public IAsyncEnumerable<HistoryEvent> ListByProcessInstanceAsync(Guid processInstanceId, string? tenantId = null, CancellationToken cancellationToken = default)
+        => _repo.ListAsync(processInstanceId, tenantId, cancellationToken);
 
     public ValueTask<HistoryEvent?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
         => _repo.GetByIdAsync(id, cancellationToken);

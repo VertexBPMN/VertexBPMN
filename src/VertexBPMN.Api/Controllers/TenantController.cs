@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VertexBPMN.Domain.Entities;
@@ -7,6 +8,7 @@ namespace VertexBPMN.Api.Controllers
 {
     [ApiController]
     [Route("api/tenant")]
+    [Authorize(Policy = "ReadOnly")]
     public class TenantController : ControllerBase
     {
         private readonly TenantDbContext _db;
@@ -30,6 +32,7 @@ namespace VertexBPMN.Api.Controllers
         }
 
         [HttpPost]
+        [Authorize(Policy = "AdminOnly")]
         public async Task<ActionResult<Tenant>> Create([FromBody] Tenant tenant)
         {
             tenant.Id = Guid.NewGuid().ToString();
@@ -40,6 +43,7 @@ namespace VertexBPMN.Api.Controllers
         }
 
         [HttpPut("{id}")]
+        [Authorize(Policy = "AdminOnly")]
         public async Task<IActionResult> Update(string id, [FromBody] Tenant update)
         {
             var tenant = await _db.Tenants.FindAsync(id);
@@ -51,6 +55,7 @@ namespace VertexBPMN.Api.Controllers
         }
 
         [HttpDelete("{id}")]
+        [Authorize(Policy = "AdminOnly")]
         public async Task<IActionResult> Delete(string id)
         {
             var tenant = await _db.Tenants.FindAsync(id);

@@ -9,19 +9,29 @@ namespace VertexBPMN.Infrastructure.Persistence.InMemory;
 /// </summary>
 public class InMemoryHistoryService : IHistoryService
 {
-    public async IAsyncEnumerable<HistoryEvent> ListHistoricTasksAsync(Guid? processInstanceId = null, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<HistoryEvent> ListHistoricTasksAsync(Guid? processInstanceId = null, string? tenantId = null, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        await Task.CompletedTask;
-        yield break;
+        await foreach (var evt in ListAsync(processInstanceId, tenantId, cancellationToken))
+        {
+            if (evt.EventType.Contains("TASK", StringComparison.OrdinalIgnoreCase))
+                yield return evt;
+        }
     }
 
     private readonly ConcurrentDictionary<Guid, HistoryEvent> _events = new();
 
-    public async IAsyncEnumerable<HistoryEvent> ListByProcessInstanceAsync(Guid processInstanceId, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public IAsyncEnumerable<HistoryEvent> ListByProcessInstanceAsync(Guid processInstanceId, string? tenantId = null, CancellationToken cancellationToken = default)
+        => ListAsync(processInstanceId, tenantId, cancellationToken);
+
+    public IAsyncEnumerable<HistoryEvent> ListAsync(string? tenantId = null, CancellationToken cancellationToken = default)
+        => ListAsync(null, tenantId, cancellationToken);
+
+    private async IAsyncEnumerable<HistoryEvent> ListAsync(Guid? processInstanceId, string? tenantId, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
         foreach (var evt in _events.Values)
         {
-            if (evt.ProcessInstanceId == processInstanceId)
+            if ((!processInstanceId.HasValue || evt.ProcessInstanceId == processInstanceId.Value) &&
+                (string.IsNullOrWhiteSpace(tenantId) || evt.TenantId == tenantId))
                 yield return evt;
         }
         await Task.CompletedTask;

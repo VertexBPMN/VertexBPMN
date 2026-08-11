@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 using VertexBPMN.Api.Dto;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
@@ -19,10 +20,17 @@ public class VertexTaskController : ControllerBase
     }
 
     [HttpGet]
-    public async IAsyncEnumerable<TaskDto> GetAll([FromQuery] Guid? processInstanceId = null, [FromQuery] string? assignee = null)
+    public async Task<ActionResult<IReadOnlyList<TaskDto>>> GetAll(
+        [FromQuery] Guid? processInstanceId = null,
+        [FromQuery] string? assignee = null,
+        [FromQuery] string? tenantId = null)
     {
-        await foreach (var task in _taskService.ListAsync(processInstanceId, assignee))
-            yield return ToDto(task);
+        var effectiveTenantId = ResolveTenantId(tenantId);
+        if (effectiveTenantId is null && !User.IsInRole("Admin")) return Forbid();
+        var tasks = new List<TaskDto>();
+        await foreach (var task in _taskService.ListAsync(processInstanceId, assignee, effectiveTenantId))
+            tasks.Add(ToDto(task));
+        return tasks;
     }
 
     [HttpGet("{id}")]
@@ -30,6 +38,7 @@ public class VertexTaskController : ControllerBase
     {
         var task = await _taskService.GetByIdAsync(id);
         if (task is null) return NotFound();
+        if (!CanAccessTenant(task.TenantId)) return Forbid();
         return ToDto(task);
     }
 
@@ -41,6 +50,7 @@ public class VertexTaskController : ControllerBase
     {
         var task = await _taskService.GetByIdAsync(id);
         if (task is null) return NotFound();
+        if (!CanAccessTenant(task.TenantId)) return Forbid();
         return Ok(new { id = task.Id, formKey = task.FormKey, schema = task.FormSchema });
     }
 
@@ -48,17 +58,33 @@ public class VertexTaskController : ControllerBase
     /// Updates the form schema for a user task (form-js save).
     /// </summary>
     [HttpPut("{id}/form-schema")]
+    [Authorize(Policy = "ProcessManager")]
     public async Task<IActionResult> UpdateFormSchema(Guid id, [FromBody] UpdateFormSchemaRequest request)
     {
         var task = await _taskService.GetByIdAsync(id);
         if (task is null) return NotFound();
-        task.FormSchema = request.Schema;
-        task.FormKey = request.FormKey;
-        // In-memory update: nothing else needed for now
-        return NoContent();
+        if (!CanAccessTenant(task.TenantId)) return Forbid();
+        return Problem(
+            statusCode: StatusCodes.Status501NotImplemented,
+            title: "Task form persistence is not available",
+            detail: "Updating task form schemas requires a persistence-backed form service.");
     }
 
     public record UpdateFormSchemaRequest(string? FormKey, string? Schema);
+
+    private bool CanAccessTenant(string? tenantId)
+    {
+        if (User.IsInRole("Admin")) return true;
+
+        var currentTenantId = User.FindFirstValue("tenant_id");
+        return !string.IsNullOrWhiteSpace(currentTenantId)
+            && string.Equals(currentTenantId, tenantId, StringComparison.Ordinal);
+    }
+
+    private string? ResolveTenantId(string? requestedTenantId) =>
+        User.IsInRole("Admin")
+            ? (string.IsNullOrWhiteSpace(requestedTenantId) ? null : requestedTenantId.Trim())
+            : User.FindFirstValue("tenant_id");
 
     private static TaskDto ToDto(UserTask t) => new()
     {

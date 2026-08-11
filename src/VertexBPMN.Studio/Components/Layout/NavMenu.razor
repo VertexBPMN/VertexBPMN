@@ -1,14 +1,30 @@
+@inject IEngineCapabilitiesService CapabilitiesService
+
 <MudNavMenu>
     <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
     <MudNavLink Href="/bpmn-modeler" Icon="@Icons.Material.Filled.Edit">BPMN Modeler</MudNavLink>
     <MudNavLink Href="/dmn-modeler" Icon="@Icons.Material.Filled.Edit">DMN Modeler</MudNavLink>
-    <MudNavLink Href="/cmmn-modeler" Icon="@Icons.Material.Filled.Edit">CMMN Modeler</MudNavLink>
+    @if (_capabilities?.SupportsCmmn == true)
+    {
+        <MudNavLink Href="/cmmn-modeler" Icon="@Icons.Material.Filled.Edit">CMMN Modeler</MudNavLink>
+    }
     <MudNavLink Href="/form-builder" Icon="@Icons.Material.Filled.Edit">Form Builder</MudNavLink>
     <MudNavLink Href="/deployments" Icon="@Icons.Material.Filled.CloudUpload">Deployments</MudNavLink>
     <MudNavLink Href="/process-definitions" Icon="@Icons.Material.Filled.List">Process Definitions</MudNavLink>
     <MudNavLink Href="/process-instances" Icon="@Icons.Material.Filled.PlayArrow">Process Instances</MudNavLink>
+    <MudNavLink Href="/history" Icon="@Icons.Material.Filled.History">History</MudNavLink>
     <MudNavLink Href="/tasks" Icon="@Icons.Material.Filled.Assignment">Tasks</MudNavLink>
     <MudNavLink Href="/configuration" Icon="@Icons.Material.Filled.Settings">Configuration</MudNavLink>
+    <MudNavLink Href="/health" Icon="@Icons.Material.Filled.HealthAndSafety">Health</MudNavLink>
+    <MudNavLink Href="/performance" Icon="@Icons.Material.Filled.Speed">Performance</MudNavLink>
+    <MudNavLink Href="/analytics" Icon="@Icons.Material.Filled.Analytics">Analytics</MudNavLink>
+    <MudNavLink Href="/simulation" Icon="@Icons.Material.Filled.Science">Simulation</MudNavLink>
+    <MudNavLink Href="/migration" Icon="@Icons.Material.Filled.SwapHoriz">Migration</MudNavLink>
+    <MudNavLink Href="/debugging" Icon="@Icons.Material.Filled.BugReport">Debugging</MudNavLink>
+    <MudNavLink Href="/execution-details" Icon="@Icons.Material.Filled.FactCheck">Execution Details</MudNavLink>
+    <MudNavLink Href="/messages-signals" Icon="@Icons.Material.Filled.Campaign">Messages &amp; Signals</MudNavLink>
+    <MudNavLink Href="/feature-flags" Icon="@Icons.Material.Filled.Flag">Feature Flags</MudNavLink>
+    <MudNavLink Href="/tenants" Icon="@Icons.Material.Filled.Group">Tenants</MudNavLink>
     <MudNavLink Href="/engine-management" Icon="@Icons.Material.Filled.Storage">Engine Management</MudNavLink>
     <MudNavLink Href="/connectors" Icon="@Icons.Material.Filled.Extension">Connectors</MudNavLink>
     <MudNavLink Href="/extensions" Icon="@Icons.Material.Filled.Extension">Extensions</MudNavLink>
@@ -16,3 +32,19 @@
     <MudNavLink Href="/compliance" Icon="@Icons.Material.Filled.VerifiedUser">Compliance</MudNavLink>
     <MudNavLink Href="/sso" Icon="@Icons.Material.Filled.VpnKey">Single Sign-On</MudNavLink>
 </MudNavMenu>
+
+@code {
+    private EngineCapabilities? _capabilities;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _capabilities = await CapabilitiesService.GetAsync();
+        }
+        catch
+        {
+            _capabilities = null;
+        }
+    }
+}

@@ -73,12 +73,13 @@ public class InMemoryTaskService : ITaskService
     public ValueTask<UserTask?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
         => ValueTask.FromResult(_tasks.TryGetValue(id, out var task) ? task : null);
 
-    public async IAsyncEnumerable<UserTask> ListAsync(Guid? processInstanceId = null, string? assignee = null, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<UserTask> ListAsync(Guid? processInstanceId = null, string? assignee = null, string? tenantId = null, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         foreach (var task in _tasks.Values)
         {
             if ((processInstanceId == null || task.ProcessInstanceId == processInstanceId) &&
-                (assignee == null || task.Assignee == assignee))
+                (assignee == null || task.Assignee == assignee) &&
+                (tenantId == null || task.TenantId == tenantId))
             {
                 yield return task;
             }

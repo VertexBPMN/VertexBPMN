@@ -6,19 +6,19 @@ namespace VertexBPMN.Domain.Interfaces;
 public interface IIdentityService
 {
     // Vertex-kompatible User-API
-    IAsyncEnumerable<UserInfo> ListUsersAsync(CancellationToken cancellationToken = default);
-    ValueTask<UserInfo?> GetUserByIdAsync(string id, CancellationToken cancellationToken = default);
+    IAsyncEnumerable<UserInfo> ListUsersAsync(CancellationToken cancellationToken = default, string? tenantId = null);
+    ValueTask<UserInfo?> GetUserByIdAsync(string id, CancellationToken cancellationToken = default, string? tenantId = null);
 
     // Vertex-kompatible Group-API
-    IAsyncEnumerable<GroupInfo> ListGroupsAsync(CancellationToken cancellationToken = default);
-    ValueTask<GroupInfo?> GetGroupByIdAsync(string id, CancellationToken cancellationToken = default);
+    IAsyncEnumerable<GroupInfo> ListGroupsAsync(CancellationToken cancellationToken = default, string? tenantId = null);
+    ValueTask<GroupInfo?> GetGroupByIdAsync(string id, CancellationToken cancellationToken = default, string? tenantId = null);
 
     // Vertex-kompatible Authorization-API
-    IAsyncEnumerable<AuthorizationInfo> ListAuthorizationsAsync(CancellationToken cancellationToken = default);
+    IAsyncEnumerable<AuthorizationInfo> ListAuthorizationsAsync(CancellationToken cancellationToken = default, string? tenantId = null);
 
     // Vorhandene Methoden
     ValueTask<UserInfo?> ValidateUserAsync(string username, string password, CancellationToken cancellationToken = default);
-    IAsyncEnumerable<UserInfo> ListUsersByGroupAsync(string groupId, CancellationToken cancellationToken = default);
+    IAsyncEnumerable<UserInfo> ListUsersByGroupAsync(string groupId, CancellationToken cancellationToken = default, string? tenantId = null);
     IAsyncEnumerable<TenantInfo> ListTenantsAsync(CancellationToken cancellationToken = default);
 }
 

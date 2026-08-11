@@ -10,7 +10,6 @@ namespace VertexBPMN.Tests.Studio
         {
             var svc = new ActiveEngineService();
             svc.ActiveEngineId.ShouldBe("engine1");
-            svc.CurrentUserRole.ShouldBe("Admin");
             svc.IsConnected.ShouldBeFalse();
             svc.LastConnectionCheck.ShouldBe(DateTime.MinValue);
         }
@@ -35,25 +34,6 @@ namespace VertexBPMN.Tests.Studio
         }
 
         [Fact]
-        public void Setting_UserRole_Should_Raise_Events()
-        {
-            var svc = new ActiveEngineService();
-            string? raisedRole = null;
-            bool propertyChanged = false;
-            bool genericChanged = false;
-
-            svc.OnUserRoleChanged += role => raisedRole = role;
-            svc.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(ActiveEngineService.CurrentUserRole)) propertyChanged = true; };
-            svc.OnChange += () => genericChanged = true;
-
-            svc.CurrentUserRole = "Reader";
-
-            raisedRole.ShouldBe("Reader");
-            propertyChanged.ShouldBeTrue();
-            genericChanged.ShouldBeTrue();
-        }
-
-        [Fact]
         public async Task Setting_Same_Value_Should_Not_Raise_Events()
         {
             var svc = new ActiveEngineService();
@@ -65,7 +45,6 @@ namespace VertexBPMN.Tests.Studio
 
             // assign same value
             svc.ActiveEngineId = svc.ActiveEngineId;
-            svc.CurrentUserRole = svc.CurrentUserRole;
 
             // allow potential async actions to run
             await Task.Delay(150);

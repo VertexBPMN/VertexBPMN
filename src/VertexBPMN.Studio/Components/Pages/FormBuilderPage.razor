@@ -46,8 +46,7 @@
             return;
         }
         var json = await _module.InvokeAsync<string>("FormBuilderInterop.getJson", _formInstance);
-        Snackbar.Add("Form JSON saved (simuliert)!", Severity.Success);
-        Console.WriteLine(json); // TODO replace with persistence
+        Snackbar.Add("Form persistence is not supported by the API yet.", Severity.Warning);
     }
 
     private async Task LoadFormJson()

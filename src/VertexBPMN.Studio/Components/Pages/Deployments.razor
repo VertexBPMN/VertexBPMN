@@ -1,7 +1,8 @@
 @page "/deployments"
-@inject VertexBPMN.Studio.Services.IBpmnEngineService BpmnEngineService
+@inject VertexBPMN.Studio.Services.IRepositoryService RepositoryService
 @inject MudBlazor.ISnackbar Snackbar
 @inject VertexBPMN.Studio.Services.ActiveEngineService ActiveEngineService
+@inject VertexBPMN.Studio.Services.StudioTenantContext TenantContext
 @inject ILogger<Deployments> Logger
 @implements IDisposable
 
@@ -9,17 +10,14 @@
 
 <MudText Typo="Typo.h4" GutterBottom="true">Deployments</MudText>
 
-<MudFileUpload T="IReadOnlyList<Microsoft.AspNetCore.Components.Forms.IBrowserFile>" id="fileUpload" FilesChanged="UploadFiles">
-    <ButtonTemplate>
-        <MudButton HtmlTag="label"
-                   Variant="Variant.Filled"
-                   Color="Color.Primary"
-                   StartIcon="@Icons.Material.Filled.CloudUpload" 
-                   for="fileUpload">
-            Upload BPMN File
-        </MudButton>
-    </ButtonTemplate>
-</MudFileUpload>
+<InputFile id="fileUpload" OnChange="UploadFiles" hidden />
+<MudButton HtmlTag="label"
+           Variant="Variant.Filled"
+           Color="Color.Primary"
+           StartIcon="@Icons.Material.Filled.CloudUpload"
+           for="fileUpload">
+    Upload BPMN File
+</MudButton>
 
 @if (_isLoading)
 {
@@ -47,30 +45,38 @@
     protected override async Task OnInitializedAsync()
     {
         ActiveEngineService.OnChange += StateHasChanged;
+        TenantContext.Changed += OnTenantChanged;
         await LoadDeployments();
     }
 
     public void Dispose()
     {
         ActiveEngineService.OnChange -= StateHasChanged;
+        TenantContext.Changed -= OnTenantChanged;
     }
 
     private async Task LoadDeployments()
     {
-        _deployments = await BpmnEngineService.GetDeploymentsAsync();
+        _deployments = await RepositoryService.GetDeploymentsAsync(TenantContext.CurrentTenantId);
     }
 
-    private async Task UploadFiles(IReadOnlyList<Microsoft.AspNetCore.Components.Forms.IBrowserFile> files)
+    private async void OnTenantChanged()
     {
-        if (files != null && files.Count > 0)
+        await LoadDeployments();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task UploadFiles(InputFileChangeEventArgs args)
+    {
+        var file = args.File;
+        if (file != null)
         {
             _isLoading = true;
             StateHasChanged();
 
-            var file = files[0];
             try
             {
-                await BpmnEngineService.DeployAsync(file);
+                await RepositoryService.DeployAsync(file, TenantContext.CurrentTenantId);
                 Snackbar.Add($"File {file.Name} deployed successfully!", Severity.Success);
             }
             catch (Exception ex)

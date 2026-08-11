@@ -29,7 +29,7 @@ public static class ApiModule
         services.AddScoped<IResilienceService, ProductionResilienceService>();
         services.AddScoped<IRateLimitingService, ProductionRateLimitingService>();
         services.AddScoped<IHealthMonitoringService, ProductionHealthMonitoringService>();
-        services.AddScoped<IPredictiveAnalyticsService, MLPredictiveAnalyticsService>();
+        services.AddScoped<IPredictiveAnalyticsService, UnavailablePredictiveAnalyticsService>();
         services.AddScoped<ILiveProcessMigrationService, LiveProcessMigrationService>();
         services.AddScoped<IVisualDebuggingService, VisualDebuggingService>();
         services.AddSingleton<IPluginManager, PluginManager>();

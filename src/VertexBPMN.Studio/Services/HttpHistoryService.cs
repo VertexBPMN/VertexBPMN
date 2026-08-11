@@ -13,6 +13,24 @@ public class HttpHistoryService : IHistoryService
         _logger = logger;
     }
 
+    public async Task<IEnumerable<HistoryEvent>> GetHistoryAsync(string? tenantId = null, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var query = string.IsNullOrWhiteSpace(tenantId)
+                ? string.Empty
+                : $"?tenantId={Uri.EscapeDataString(tenantId)}";
+            var events = await _httpClient.GetFromJsonAsync<IEnumerable<HistoryEvent>>(
+                $"api/history{query}", cancellationToken);
+            return events ?? Enumerable.Empty<HistoryEvent>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error fetching history for tenant {TenantId}", tenantId);
+            throw;
+        }
+    }
+
     public async Task<IEnumerable<HistoryEvent>> GetHistoryByProcessInstanceAsync(Guid processInstanceId)
     {
         try

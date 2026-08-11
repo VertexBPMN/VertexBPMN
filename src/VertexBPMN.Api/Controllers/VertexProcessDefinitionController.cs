@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 using VertexBPMN.Api.Dto;
 using VertexBPMN.Domain.Interfaces;
 using CoreDef = VertexBPMN.Domain.Entities.ProcessDefinition;
@@ -7,6 +9,7 @@ namespace VertexBPMN.Api.Controllers;
 
 [ApiController]
 [Route("api/vertex/process-definition")]
+[Authorize]
 public class VertexProcessDefinitionController : ControllerBase
 {
     private readonly IRepositoryService _repositoryService;
@@ -17,10 +20,14 @@ public class VertexProcessDefinitionController : ControllerBase
     }
 
     [HttpGet]
-    public async IAsyncEnumerable<ProcessDefinitionDto> GetAll([FromQuery] string? key = null, [FromQuery] string? tenantId = null)
+    public async Task<ActionResult<IReadOnlyList<ProcessDefinitionDto>>> GetAll([FromQuery] string? key = null, [FromQuery] string? tenantId = null)
     {
-        await foreach (var def in _repositoryService.ListAsync(key, tenantId))
-            yield return ToDto(def);
+        var effectiveTenantId = ResolveTenantId(tenantId);
+        if (effectiveTenantId is null && !User.IsInRole("Admin")) return Forbid();
+        var definitions = new List<ProcessDefinitionDto>();
+        await foreach (var def in _repositoryService.ListAsync(key, effectiveTenantId))
+            definitions.Add(ToDto(def));
+        return definitions;
     }
 
     [HttpGet("{id}")]
@@ -28,6 +35,7 @@ public class VertexProcessDefinitionController : ControllerBase
     {
         var def = await _repositoryService.GetByIdAsync(id);
         if (def is null) return NotFound();
+        if (!CanAccessTenant(def.TenantId)) return Forbid();
         return ToDto(def);
     }
 
@@ -39,6 +47,7 @@ public class VertexProcessDefinitionController : ControllerBase
     {
         var def = await _repositoryService.GetByIdAsync(id);
         if (def is null) return NotFound();
+        if (!CanAccessTenant(def.TenantId)) return Forbid();
         // bpmn-js expects { id, bpmn20Xml }
         return Ok(new { id = def.Id.ToString(), bpmn20Xml = def.BpmnXml });
     }
@@ -49,14 +58,22 @@ public class VertexProcessDefinitionController : ControllerBase
     [HttpPut("{id}/xml")]
     public async Task<IActionResult> UpdateXml(Guid id, [FromBody] UpdateXmlRequest request)
     {
-        var def = await _repositoryService.GetByIdAsync(id);
-        if (def is null) return NotFound();
-        def.BpmnXml = request.BpmnXml;
-        // In-memory update: nothing else needed for now
-        return NoContent();
+        return StatusCode(StatusCodes.Status501NotImplemented, new ProblemDetails
+        {
+            Title = "BPMN XML update is unavailable",
+            Detail = "The repository contract does not provide a durable XML update operation."
+        });
     }
 
     public record UpdateXmlRequest(string BpmnXml);
+
+    private string? ResolveTenantId(string? requestedTenantId) =>
+        User.IsInRole("Admin")
+            ? (string.IsNullOrWhiteSpace(requestedTenantId) ? null : requestedTenantId.Trim())
+            : User.FindFirstValue("tenant_id");
+
+    private bool CanAccessTenant(string? tenantId) =>
+        User.IsInRole("Admin") || string.Equals(User.FindFirstValue("tenant_id"), tenantId, StringComparison.Ordinal);
 
     private static ProcessDefinitionDto ToDto(CoreDef d) => new()
     {

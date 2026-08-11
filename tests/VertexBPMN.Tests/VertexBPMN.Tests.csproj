@@ -134,7 +134,7 @@
   <Folder Include="Parsing\" />
 </ItemGroup>
 <ItemGroup>
-  <ProjectReference Include="..\..\src\VertexBPMN.Api\VertexBPMN.Api.csproj" />
+  <ProjectReference Include="..\..\src\VertexBPMN.Api\VertexBPMN.Api.csproj" Aliases="global,api" />
   <ProjectReference Include="..\..\src\VertexBPMN.Application\VertexBPMN.Application.csproj" />
   <ProjectReference Include="..\..\src\VertexBPMN.Domain\VertexBPMN.Domain.csproj" />
   <ProjectReference Include="..\..\src\VertexBPMN.Engine\VertexBPMN.Engine.csproj" />

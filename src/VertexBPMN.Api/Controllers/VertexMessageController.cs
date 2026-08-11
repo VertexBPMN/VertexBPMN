@@ -7,7 +7,7 @@ namespace VertexBPMN.Api.Controllers;
 using Microsoft.AspNetCore.Authorization;
 [ApiController]
 [Route("api/vertex/message")]
-[Authorize]
+[Authorize(Policy = "ProcessManager")]
 public class VertexMessageController : ControllerBase
 {
     private readonly IRuntimeService _runtimeService;

@@ -1,16 +1,51 @@
 @page "/dmn-modeler"
+@using System.Text.Json
 @inject MudBlazor.ISnackbar Snackbar
-@inject IHttpClientFactory HttpClientFactory
+@inject IDmnService DmnService
+@inject StudioTenantContext TenantContext
 @inject IJSRuntime JSRuntime
-@inject IWebHostEnvironment Env
 @implements IAsyncDisposable
 
 <PageTitle>DMN Modeler</PageTitle>
 
 <MudText Typo="Typo.h4" GutterBottom="true">DMN Modeler</MudText>
 
-<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveDmnXml">Save XML</MudButton>
-<MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="LoadDmnXml">Load XML</MudButton>
+<MudStack Row="true" Spacing="2" Class="mb-4">
+    <MudTextField Label="Decision key" @bind-Value="_decisionKey" Required="true" />
+    <MudTextField Label="Name" @bind-Value="_decisionName" Required="true" />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveDmnXml">Deploy DMN</MudButton>
+    <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="LoadDmnXml">Load from API</MudButton>
+</MudStack>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h6">Evaluate decision</MudText>
+    <MudStack Row="true" Spacing="2" Class="mt-2">
+        <MudTextField Label="Input name" @bind-Value="_inputName" />
+        <MudTextField Label="Input value" @bind-Value="_inputValue" />
+        <MudButton Variant="Variant.Outlined" OnClick="EvaluateDecision">Evaluate</MudButton>
+    </MudStack>
+    @if (_evaluationResult.Count > 0)
+    {
+        <MudList T="string" Class="mt-2">
+            @foreach (var result in _evaluationResult)
+            {
+                <MudListItem T="string">@result.Key: @result.Value</MudListItem>
+            }
+        </MudList>
+    }
+</MudPaper>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h6">Decision administration</MudText>
+    <MudButton Variant="Variant.Outlined" OnClick="LoadDecisionOverview">Load definitions and instances</MudButton>
+    @if (_definitions is not null || _instances is not null)
+    {
+        <MudGrid Class="mt-2">
+            <MudItem xs="12" md="6"><pre>@Format(_definitions)</pre></MudItem>
+            <MudItem xs="12" md="6"><pre>@Format(_instances)</pre></MudItem>
+        </MudGrid>
+    }
+</MudPaper>
 
 <div id="@_modelerContainerId" style="height:500px; border:1px solid #ccc;"></div>
 
@@ -21,14 +56,12 @@
     private IJSObjectReference? _modelerInstance;
     private bool _initialized;
 
-    private string DmnFilePath => Path.Combine(Env.ContentRootPath, "wwwroot", "data", "DefaultDmn.xml");
-
     // Inline fallback minimal DMN (decision table skeleton)
     private const string FallbackDmn = """<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<definitions xmlns=\"https://www.omg.org/spec/DMN/20191111/MODEL/\" id=\"Defs_Fallback\" name=\"Fallback\" namespace=\"http://vertexbpmn.io/dmn\">\n  <decision id=\"Decision_Fallback\" name=\"FallbackDecision\">\n    <decisionTable id=\"DecisionTable_1\">\n      <output id=\"OutputClause_1\" name=\"result\" />\n    </decisionTable>\n  </decision>\n</definitions>""";
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadDmnXml();
+        _dmnXml = FallbackDmn;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -51,10 +84,9 @@
         try
         {
             var xml = await _module.InvokeAsync<string>("DmnModelerInterop.getXml", _modelerInstance);
-            Directory.CreateDirectory(Path.GetDirectoryName(DmnFilePath)!);
-            await File.WriteAllTextAsync(DmnFilePath, xml);
             _dmnXml = xml;
-            Snackbar.Add($"DMN XML saved to file: {Path.GetFileName(DmnFilePath)}", Severity.Success);
+            await DmnService.DeployAsync(_decisionKey, _decisionName, xml, TenantContext.CurrentTenantId);
+            Snackbar.Add($"DMN '{_decisionKey}' deployed successfully.", Severity.Success);
         }
         catch (Exception ex)
         {
@@ -66,15 +98,23 @@
     {
         try
         {
-            if (File.Exists(DmnFilePath))
+            if (string.IsNullOrWhiteSpace(_decisionKey))
             {
-                _dmnXml = await File.ReadAllTextAsync(DmnFilePath);
-                Snackbar.Add("DMN XML loaded from file system", Severity.Info);
+                Snackbar.Add("Enter a decision key before loading.", Severity.Warning);
+                return;
+            }
+
+            var definition = await DmnService.GetByKeyAsync(_decisionKey, TenantContext.CurrentTenantId);
+            if (definition is not null)
+            {
+                _decisionName = definition.Name;
+                _dmnXml = definition.DmnXml;
+                Snackbar.Add("DMN loaded from API.", Severity.Success);
             }
             else
             {
-                _dmnXml = FallbackDmn;
-                Snackbar.Add("DMN file not found. Using fallback.", Severity.Warning);
+                Snackbar.Add($"No DMN found for '{_decisionKey}'.", Severity.Warning);
+                return;
             }
         }
         catch (Exception ex)
@@ -104,4 +144,55 @@
         }
         catch { }
     }
+
+    private string _decisionKey = "default-decision";
+    private string _decisionName = "Default decision";
+    private string _inputName = "amount";
+    private string _inputValue = "0";
+    private IDictionary<string, object> _evaluationResult = new Dictionary<string, object>();
+    private JsonElement? _definitions;
+    private JsonElement? _instances;
+
+    private async Task EvaluateDecision()
+    {
+        if (string.IsNullOrWhiteSpace(_decisionKey) || string.IsNullOrWhiteSpace(_inputName))
+        {
+            Snackbar.Add("Enter a decision key and input name before evaluating.", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            object value = decimal.TryParse(_inputValue, out var number) ? number : _inputValue;
+            var result = await DmnService.EvaluateAsync(
+                _decisionKey,
+                new Dictionary<string, object> { [_inputName] = value },
+                TenantContext.CurrentTenantId);
+            _evaluationResult = result.Variables;
+            Snackbar.Add("Decision evaluated successfully.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Decision evaluation failed: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task LoadDecisionOverview()
+    {
+        try
+        {
+            _definitions = await DmnService.ListDefinitionsAsync(_decisionKey, TenantContext.CurrentTenantId);
+            _instances = await DmnService.ListInstancesAsync(_decisionKey, TenantContext.CurrentTenantId);
+            Snackbar.Add("Decision definitions and instances loaded.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Decision overview failed: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private static string Format(JsonElement? value) =>
+        value is { } element
+            ? JsonSerializer.Serialize(element, new JsonSerializerOptions { WriteIndented = true })
+            : "No data loaded.";
 }

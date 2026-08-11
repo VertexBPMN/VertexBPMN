@@ -1,5 +1,8 @@
 @page "/";
-@inject IBpmnEngineService BpmnEngineService;
+@inject ITaskService TaskService
+@inject IWorkflowService WorkflowService
+@inject IRepositoryService RepositoryService
+@inject StudioTenantContext TenantContext
 @inject IHistoryService HistoryService;
 @inject ActiveEngineService ActiveEngineService;
 @inject ILogger<Home> Logger;
@@ -74,10 +77,13 @@ else if (_error != null)
             }
             else
             {
-                <!-- Placeholder for charts - implement with your preferred charting library -->
-                <MudText Typo="Typo.body2" Color="Color.Tertiary">
-                    Chart implementation goes here (ApexCharts, Chart.js, etc.)
-                </MudText>
+                <MudStack Spacing="3" Class="mt-6">
+                    <MudText Typo="Typo.body2">Current workload</MudText>
+                    <MudProgressLinear Color="Color.Primary" Value="@GetWorkloadPercentage()" />
+                    <MudText Typo="Typo.caption" Color="Color.Tertiary">
+                        @_metrics.PendingTasks pending tasks across @_metrics.ActiveProcessInstances active instances
+                    </MudText>
+                </MudStack>
             }
         </MudPaper>
     </MudItem>
@@ -192,7 +198,7 @@ else if (_error != null)
     {
         try
         {
-            return await BpmnEngineService.GetTasksAsync();
+            return await TaskService.GetTasksAsync(TenantContext.CurrentTenantId);
         }
         catch (Exception ex)
         {
@@ -205,7 +211,7 @@ else if (_error != null)
     {
         try
         {
-            return await BpmnEngineService.GetProcessInstancesAsync();
+            return await WorkflowService.GetProcessInstancesAsync(TenantContext.CurrentTenantId);
         }
         catch (Exception ex)
         {
@@ -218,7 +224,7 @@ else if (_error != null)
     {
         try
         {
-            return await BpmnEngineService.GetProcessDefinitionsAsync();
+            return await RepositoryService.GetProcessDefinitionsAsync(TenantContext.CurrentTenantId);
         }
         catch (Exception ex)
         {
@@ -269,6 +275,12 @@ else if (_error != null)
             default:
                 return "Due Later";
         }
+    }
+
+    private double GetWorkloadPercentage()
+    {
+        var total = _metrics.PendingTasks + _metrics.ActiveProcessInstances;
+        return total == 0 ? 0 : Math.Min(100, _metrics.PendingTasks * 100d / total);
     }
 
     public void Dispose()

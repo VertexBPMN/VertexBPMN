@@ -1,5 +1,6 @@
-@inject VertexBPMN.Studio.Services.IBpmnEngineService BpmnEngineService
+@inject VertexBPMN.Studio.Services.IRepositoryService RepositoryService
 @inject VertexBPMN.Studio.Services.IHistoryService HistoryService
+@inject VertexBPMN.Studio.Services.StudioTenantContext TenantContext
 @inject MudBlazor.IDialogService DialogService
 @inject MudBlazor.ISnackbar Snackbar
 @inject ILogger<ProcessInstanceDetailsDialog> Logger
@@ -334,7 +335,7 @@
             StateHasChanged();
 
             // Load process definition
-            var definitions = await BpmnEngineService.GetProcessDefinitionsAsync();
+            var definitions = await RepositoryService.GetProcessDefinitionsAsync(TenantContext.CurrentTenantId);
             _processDefinition = definitions.FirstOrDefault(d => d.Id == ProcessInstance.ProcessDefinitionId);
 
             // Load recent history events
@@ -421,7 +422,7 @@
 
         try
         {
-            var xml = await BpmnEngineService.GetProcessDefinitionXmlAsync(_processDefinition.Id.ToString());
+            var xml = await RepositoryService.GetProcessDefinitionXmlAsync(_processDefinition.Id.ToString(), TenantContext.CurrentTenantId);
             
             var parameters = new DialogParameters
             {

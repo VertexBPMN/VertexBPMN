@@ -285,23 +285,31 @@ public partial class ProcessEngine : IProcessEngine
         PlanItem item;
         if (_aiDecisionService != null)
         {
-            var suggestions = await _aiDecisionService.PredictOptimalPlanItemsAsync(
+            var predictionTask = _aiDecisionService.PredictOptimalPlanItemsAsync(
                 caseId,
                 new Dictionary<string, object>(caseFile),
                 await GetHistoricalCaseDataAsync(caseId),
                 cancellationToken);
-            item = suggestions.FirstOrDefault() ?? await _aiDecisionService.GenerateAdHocSubprocessAsync(
-                caseId,
-                new Dictionary<string, object>(caseFile),
-                cancellationToken);
+            var suggestions = predictionTask is null ? null : await predictionTask;
+            item = suggestions?.FirstOrDefault() ?? await GetAdHocFallbackAsync(caseId, caseFile, cancellationToken);
         }
         else
         {
-            item = new PlanItem($"adhoc-{Guid.NewGuid():N}", "task", "", new Dictionary<string, string>(), new List<string>(), new List<string>(), true);
+            item = await GetAdHocFallbackAsync(caseId, caseFile, cancellationToken);
         }
 
         item = item with { IsDiscretionary = true };
         await AddDiscretionaryItemAsync(caseId, item, cancellationToken);
+    }
+
+    private async Task<PlanItem> GetAdHocFallbackAsync(string caseId, Dictionary<string, object> caseFile, CancellationToken cancellationToken)
+    {
+        var generationTask = _aiDecisionService?.GenerateAdHocSubprocessAsync(
+            caseId,
+            new Dictionary<string, object>(caseFile),
+            cancellationToken);
+        var generatedItem = generationTask is null ? null : await generationTask;
+        return generatedItem ?? new PlanItem($"adhoc-{Guid.NewGuid():N}", "task", "", new Dictionary<string, string>(), new List<string>(), new List<string>(), true);
     }
 
     #endregion

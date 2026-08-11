@@ -6,6 +6,7 @@ using VertexBPMN.Domain.Interfaces;
 namespace VertexBPMN.Api.Controllers;
 
 using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 [ApiController]
 [Route("api/vertex/history/task")]
 [Authorize]
@@ -19,11 +20,20 @@ public class VertexHistoricTaskInstanceController : ControllerBase
     }
 
     [HttpGet]
-    public async IAsyncEnumerable<HistoricTaskInstanceDto> GetAll([FromQuery] Guid? processInstanceId = null)
+    public async Task<ActionResult<IReadOnlyList<HistoricTaskInstanceDto>>> GetAll([FromQuery] Guid? processInstanceId = null, [FromQuery] string? tenantId = null)
     {
-        await foreach (var evt in _historyService.ListHistoricTasksAsync(processInstanceId))
-            yield return ToDto(evt);
+        var effectiveTenantId = ResolveTenantId(tenantId);
+        if (effectiveTenantId is null && !User.IsInRole("Admin")) return Forbid();
+        var events = new List<HistoricTaskInstanceDto>();
+        await foreach (var evt in _historyService.ListHistoricTasksAsync(processInstanceId, effectiveTenantId))
+            events.Add(ToDto(evt));
+        return events;
     }
+
+    private string? ResolveTenantId(string? requestedTenantId) =>
+        User.IsInRole("Admin")
+            ? (string.IsNullOrWhiteSpace(requestedTenantId) ? null : requestedTenantId.Trim())
+            : User.FindFirstValue("tenant_id");
 
     private static HistoricTaskInstanceDto ToDto(HistoryEvent e) => new()
     {

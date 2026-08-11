@@ -17,25 +17,25 @@ namespace VertexBPMN.Application
         private readonly ConcurrentBag<string> _groups = new() { "admins", "users" };
         private readonly ConcurrentBag<TenantInfo> _tenants = new() { new TenantInfo("1", "default") };
 
-        public async IAsyncEnumerable<UserInfo> ListUsersAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        public async IAsyncEnumerable<UserInfo> ListUsersAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default, string? tenantId = null)
         {
             foreach (var user in _users)
                 yield return user;
             await Task.CompletedTask;
         }
 
-        public ValueTask<UserInfo?> GetUserByIdAsync(string id, CancellationToken cancellationToken = default)
+        public ValueTask<UserInfo?> GetUserByIdAsync(string id, CancellationToken cancellationToken = default, string? tenantId = null)
             => new((UserInfo?)null);
 
-        public async IAsyncEnumerable<GroupInfo> ListGroupsAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        public async IAsyncEnumerable<GroupInfo> ListGroupsAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default, string? tenantId = null)
         {
             yield break;
         }
 
-        public ValueTask<GroupInfo?> GetGroupByIdAsync(string id, CancellationToken cancellationToken = default)
+        public ValueTask<GroupInfo?> GetGroupByIdAsync(string id, CancellationToken cancellationToken = default, string? tenantId = null)
             => new((GroupInfo?)null);
 
-        public async IAsyncEnumerable<AuthorizationInfo> ListAuthorizationsAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        public async IAsyncEnumerable<AuthorizationInfo> ListAuthorizationsAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default, string? tenantId = null)
         {
             yield break;
         }
@@ -47,7 +47,7 @@ namespace VertexBPMN.Application
             return ValueTask.FromResult<UserInfo?>(user);
         }
 
-        public async IAsyncEnumerable<UserInfo> ListUsersByGroupAsync(string groupId, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        public async IAsyncEnumerable<UserInfo> ListUsersByGroupAsync(string groupId, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default, string? tenantId = null)
         {
             // In-memory stub: return all users for any group
             foreach (var user in _users)

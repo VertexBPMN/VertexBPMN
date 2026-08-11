@@ -1,7 +1,8 @@
 @page "/process-instances"
-@inject VertexBPMN.Studio.Services.IBpmnEngineService BpmnEngineService
+@inject VertexBPMN.Studio.Services.IWorkflowService WorkflowService
 @inject VertexBPMN.Studio.Services.IHistoryService HistoryService
 @inject VertexBPMN.Studio.Services.ActiveEngineService ActiveEngineService
+@inject VertexBPMN.Studio.Services.StudioTenantContext TenantContext
 @inject MudBlazor.IDialogService DialogService
 @inject MudBlazor.ISnackbar Snackbar
 @implements IDisposable
@@ -147,7 +148,7 @@ else
             _error = null;
             StateHasChanged();
 
-            var instances = await BpmnEngineService.GetProcessInstancesAsync();
+            var instances = await WorkflowService.GetProcessInstancesAsync(TenantContext.CurrentTenantId);
             _processInstances = instances.ToList();
         }
         catch (Exception ex)
@@ -226,8 +227,7 @@ else
     {
         try
         {
-            // This would call your management API
-            // await ManagementService.SuspendProcessInstanceAsync(instanceId);
+            await WorkflowService.SuspendProcessInstanceAsync(instanceId, TenantContext.CurrentTenantId);
             Snackbar.Add("Process instance suspended", Severity.Success);
             await LoadProcessInstances();
         }
@@ -241,8 +241,7 @@ else
     {
         try
         {
-            // This would call your management API
-            // await ManagementService.ResumeProcessInstanceAsync(instanceId);
+            await WorkflowService.ResumeProcessInstanceAsync(instanceId, TenantContext.CurrentTenantId);
             Snackbar.Add("Process instance resumed", Severity.Success);
             await LoadProcessInstances();
         }
@@ -263,8 +262,7 @@ else
         {
             try
             {
-                // This would call your management API
-                // await ManagementService.DeleteProcessInstanceAsync(instanceId);
+                await WorkflowService.DeleteProcessInstanceAsync(instanceId, TenantContext.CurrentTenantId);
                 Snackbar.Add("Process instance deleted", Severity.Success);
                 await LoadProcessInstances();
             }

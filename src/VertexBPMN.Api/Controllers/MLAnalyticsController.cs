@@ -34,6 +34,10 @@ public class MLAnalyticsController : ControllerBase
             var prediction = await _analyticsService.PredictProcessCompletionAsync(processInstanceId);
             return Ok(prediction);
         }
+        catch (NotSupportedException ex)
+        {
+            return StatusCode(501, new ProblemDetails { Title = "Predictive analytics is unavailable", Detail = ex.Message });
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error predicting completion for process {ProcessInstanceId}", processInstanceId);
@@ -51,6 +55,10 @@ public class MLAnalyticsController : ControllerBase
         {
             var prediction = await _analyticsService.PredictProcessDurationAsync(request.ProcessDefinitionKey, request.Variables);
             return Ok(prediction);
+        }
+        catch (NotSupportedException ex)
+        {
+            return StatusCode(501, new ProblemDetails { Title = "Predictive analytics is unavailable", Detail = ex.Message });
         }
         catch (Exception ex)
         {
@@ -70,6 +78,10 @@ public class MLAnalyticsController : ControllerBase
             var prediction = await _analyticsService.PredictBottlenecksAsync(processDefinitionKey);
             return Ok(prediction);
         }
+        catch (NotSupportedException ex)
+        {
+            return StatusCode(501, new ProblemDetails { Title = "Predictive analytics is unavailable", Detail = ex.Message });
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error predicting bottlenecks for process {ProcessKey}", processDefinitionKey);
@@ -88,6 +100,10 @@ public class MLAnalyticsController : ControllerBase
             var suggestions = await _analyticsService.GetOptimizationSuggestionsAsync(processDefinitionKey);
             return Ok(suggestions);
         }
+        catch (NotSupportedException ex)
+        {
+            return StatusCode(501, new ProblemDetails { Title = "Predictive analytics is unavailable", Detail = ex.Message });
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting optimization suggestions for process {ProcessKey}", processDefinitionKey);
@@ -105,6 +121,10 @@ public class MLAnalyticsController : ControllerBase
         {
             await _analyticsService.TrainModelsAsync();
             return Ok(new { message = "ML models training started successfully" });
+        }
+        catch (NotSupportedException ex)
+        {
+            return StatusCode(501, new ProblemDetails { Title = "Predictive analytics is unavailable", Detail = ex.Message });
         }
         catch (Exception ex)
         {

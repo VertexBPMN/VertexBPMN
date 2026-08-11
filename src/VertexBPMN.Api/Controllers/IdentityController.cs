@@ -19,10 +19,11 @@
             => _identityService.ListTenantsAsync();
 
         [HttpGet("validate-user")]
-    public async Task<ActionResult<UserInfo>> ValidateUser([FromQuery] string username, [FromQuery] string password)
-        {
-            var user = await _identityService.ValidateUserAsync(username, password);
-            if (user is null) return NotFound();
-            return user;
-        }
+        public ActionResult<UserInfo> ValidateUser([FromQuery] string username, [FromQuery] string password)
+            => StatusCode(StatusCodes.Status501NotImplemented,
+                new ProblemDetails
+                {
+                    Title = "Password validation is unavailable",
+                    Detail = "Authentication is delegated to the configured external identity provider."
+                });
     }

@@ -23,11 +23,12 @@ public class TaskRepository : ITaskRepository
         return await _db.Tasks.FindAsync(new object[] { id }, cancellationToken);
     }
 
-    public async IAsyncEnumerable<UserTask> ListAsync(Guid? processInstanceId = null, string? assignee = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<UserTask> ListAsync(Guid? processInstanceId = null, string? assignee = null, string? tenantId = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var query = _db.Tasks.AsQueryable();
         if (processInstanceId != null) query = query.Where(t => t.ProcessInstanceId == processInstanceId);
         if (assignee != null) query = query.Where(t => t.Assignee == assignee);
+        if (tenantId != null) query = query.Where(t => t.TenantId == tenantId);
         await foreach (var task in query.AsAsyncEnumerable().WithCancellation(cancellationToken))
             yield return task;
     }

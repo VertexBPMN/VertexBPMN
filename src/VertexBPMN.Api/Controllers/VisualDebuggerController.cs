@@ -89,19 +89,11 @@ namespace VertexBPMN.Api.Controllers
             var instance = await _runtimeService.GetByIdAsync(id, cancellationToken);
             if (instance == null) return NotFound();
 
-            // Simulate step-through: advance token to next activity (demo logic)
-            // In production, this should invoke engine logic to move the token
-            if (!string.IsNullOrEmpty(instance.State))
+            return StatusCode(StatusCodes.Status501NotImplemented, new ProblemDetails
             {
-                // Example: append step marker
-                instance.State += " -> Stepped";
-            }
-            else
-            {
-                instance.State = "Stepped";
-            }
-            // TODO: Persist updated state if needed
-            return Ok(instance);
+                Title = "Visual stepping is not available",
+                Detail = "The runtime does not expose a persisted step operation for this process instance."
+            });
         }
     }
 }

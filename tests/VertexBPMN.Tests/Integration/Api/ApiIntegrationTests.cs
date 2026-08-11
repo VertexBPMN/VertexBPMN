@@ -122,6 +122,35 @@ public class ApiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     }
 
     [Fact]
+    public async Task Management_RejectsWrongTenantAndAcceptsMatchingTenant()
+    {
+        const string bpmn = "<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='TenantManagementApiProcess'><startEvent id='start1'/><endEvent id='end1'/><sequenceFlow id='flow1' sourceRef='start1' targetRef='end1'/></process></definitions>";
+        var deploy = new { BpmnXml = bpmn, Name = "TenantManagementTestProcess", TenantId = "tenant-a" };
+        var deployResponse = await _client.PostAsJsonAsync("/api/repository", deploy);
+        deployResponse.EnsureSuccessStatusCode();
+
+        var start = new
+        {
+            ProcessDefinitionKey = "TenantManagementApiProcess",
+            Variables = new Dictionary<string, object>(),
+            BusinessKey = (string?)null,
+            TenantId = "tenant-a"
+        };
+        var startResponse = await _client.PostAsJsonAsync("/api/runtime/start", start);
+        startResponse.EnsureSuccessStatusCode();
+        var instance = await startResponse.Content.ReadFromJsonAsync<ProcessInstance>();
+        Assert.NotNull(instance);
+
+        var wrongTenant = await _client.PostAsync(
+            $"/api/management/suspend-process-instance/{instance!.Id}?tenantId=tenant-b", null);
+        Assert.Equal(HttpStatusCode.Forbidden, wrongTenant.StatusCode);
+
+        var matchingTenant = await _client.PostAsync(
+            $"/api/management/suspend-process-instance/{instance.Id}?tenantId=tenant-a", null);
+        matchingTenant.EnsureSuccessStatusCode();
+    }
+
+    [Fact]
     public async Task Identity_ListTenants_Works()
     {
         var response = await _client.GetAsync("/api/identity/list-tenants");
@@ -129,8 +158,67 @@ public class ApiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         var tenants = await response.Content.ReadFromJsonAsync<List<TenantInfo>>();
         Assert.NotNull(tenants);
         Assert.NotEmpty(tenants);
-        Assert.Equal("default", tenants![0].Name);
+        Assert.Contains(tenants!, tenant => tenant.Name is "default" or "Acme Corp");
     }
+
+    [Fact]
+    public async Task Identity_AdminCanManageGroupsMembershipsAndAuthorizations()
+    {
+        var groupResponse = await _client.PostAsJsonAsync("/api/vertex/group", new
+        {
+            Name = "Integration Operators",
+            Type = "role",
+            TenantId = (string?)null
+        });
+        groupResponse.EnsureSuccessStatusCode();
+        var group = await groupResponse.Content.ReadFromJsonAsync<GroupResponse>();
+        Assert.NotNull(group);
+
+        var membership = await _client.PostAsync($"/api/vertex/group/{group!.Id}/users/1", null);
+        membership.EnsureSuccessStatusCode();
+
+        var authorizationResponse = await _client.PostAsJsonAsync("/api/vertex/authorization", new
+        {
+            UserId = "1",
+            GroupId = group.Id,
+            Resource = "process-definition:integration",
+            Permissions = "read"
+        });
+        authorizationResponse.EnsureSuccessStatusCode();
+        var authorization = await authorizationResponse.Content.ReadFromJsonAsync<AuthorizationResponse>();
+        Assert.NotNull(authorization);
+
+        var deleteAuthorization = await _client.DeleteAsync($"/api/vertex/authorization/{authorization!.Id}");
+        deleteAuthorization.EnsureSuccessStatusCode();
+        var removeMembership = await _client.DeleteAsync($"/api/vertex/group/{group.Id}/users/1");
+        removeMembership.EnsureSuccessStatusCode();
+
+        var auditResponse = await _client.GetAsync("/api/audit/logs?action=HTTP_POST&limit=500");
+        auditResponse.EnsureSuccessStatusCode();
+        var auditLogs = await auditResponse.Content.ReadFromJsonAsync<List<AuditLog>>();
+        Assert.NotNull(auditLogs);
+        Assert.Contains(auditLogs!, log => log.Resource is "/vertex/group" or "/api/vertex/group");
+    }
+
+    [Fact]
+    public async Task Migration_RollbackMutation_IsPersistedInAuditLog()
+    {
+        var migrationId = Guid.NewGuid();
+        var response = await _client.PostAsync($"/api/migration/rollback/{migrationId}", null);
+
+        Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.NotEqual(HttpStatusCode.Forbidden, response.StatusCode);
+
+        var auditResponse = await _client.GetAsync("/api/audit/logs?action=HTTP_POST&limit=500");
+        auditResponse.EnsureSuccessStatusCode();
+        var auditLogs = await auditResponse.Content.ReadFromJsonAsync<List<AuditLog>>();
+        Assert.NotNull(auditLogs);
+        Assert.Contains(auditLogs!, log =>
+            log.Resource.Contains($"/migration/rollback/{migrationId}", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private sealed record GroupResponse(string Id, string Name, string Type);
+    private sealed record AuthorizationResponse(string Id, string UserId, string GroupId, string Resource, string Permissions);
 
     [Fact]
     public async Task History_ListByProcessInstance_Works()
@@ -160,13 +248,10 @@ public class ApiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     }
 
     [Fact]
-    public async Task Identity_ValidateUser_Works()
+    public async Task Identity_ValidateUser_IsExplicitlyUnavailableWithoutLocalCredentials()
     {
         var response = await _client.GetAsync("/api/identity/validate-user?username=admin&password=irrelevant");
-        response.EnsureSuccessStatusCode();
-        var user = await response.Content.ReadFromJsonAsync<UserInfo>();
-        Assert.NotNull(user);
-        Assert.Equal("admin", user!.UserName);
+        Assert.Equal(HttpStatusCode.NotImplemented, response.StatusCode);
     }
 
     [Fact]
@@ -215,6 +300,8 @@ public class ApiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         post.EnsureSuccessStatusCode();
         var created = await post.Content.ReadFromJsonAsync<ProcessDefinition>();
         Assert.NotNull(created);
+        var wrongTenantDelete = await _client.DeleteAsync($"/api/repository/{created!.Id}?tenantId=other-tenant");
+        Assert.Equal(HttpStatusCode.Forbidden, wrongTenantDelete.StatusCode);
         var delete = await _client.DeleteAsync($"/api/repository/{created!.Id}");
         delete.EnsureSuccessStatusCode();
         var get = await _client.GetAsync($"/api/repository/{created.Id}");
@@ -227,5 +314,4 @@ public class ApiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     public record TenantInfo(string Id, string Name);
     public record HistoryEvent(Guid Id, Guid ProcessInstanceId, string EventType, DateTime Timestamp, string? Details, string? TenantId);
     public record TaskInstance(Guid Id, Guid ProcessInstanceId, string Name, string Type, string? Assignee, string? TenantId, DateTime CreatedAt, DateTime? CompletedAt);
-    public record UserInfo(string Id, string UserName, string Email);
 }

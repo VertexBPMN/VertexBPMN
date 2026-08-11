@@ -8,17 +8,17 @@ namespace VertexBPMN.Domain.Interfaces;
         /// <summary>
         /// Suspends a process instance.
         /// </summary>
-        ValueTask SuspendProcessInstanceAsync(Guid processInstanceId, CancellationToken cancellationToken = default);
+        ValueTask SuspendProcessInstanceAsync(Guid processInstanceId, string? tenantId = null, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Resumes a suspended process instance.
         /// </summary>
-        ValueTask ResumeProcessInstanceAsync(Guid processInstanceId, CancellationToken cancellationToken = default);
+        ValueTask ResumeProcessInstanceAsync(Guid processInstanceId, string? tenantId = null, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Deletes a process instance.
         /// </summary>
-        ValueTask DeleteProcessInstanceAsync(Guid processInstanceId, CancellationToken cancellationToken = default);
+        ValueTask DeleteProcessInstanceAsync(Guid processInstanceId, string? tenantId = null, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Executes a job by ID (e.g., timer, async continuation).

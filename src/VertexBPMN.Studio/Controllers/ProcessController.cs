@@ -7,17 +7,17 @@ namespace VertexBPMN.Studio.Controllers
     [Route("api/[controller]")]
     public class ProcessController : ControllerBase
     {
-        private readonly IBpmnEngineService _bpmnEngineService;
+        private readonly IRepositoryService _repositoryService;
 
-        public ProcessController(IBpmnEngineService bpmnEngineService)
+        public ProcessController(IRepositoryService repositoryService)
         {
-            _bpmnEngineService = bpmnEngineService;
+            _repositoryService = repositoryService;
         }
 
         [HttpGet("definitions")]
         public async Task<IActionResult> GetProcessDefinitions()
         {
-            var definitions = await _bpmnEngineService.GetProcessDefinitionsAsync();
+            var definitions = await _repositoryService.GetProcessDefinitionsAsync();
             return Ok(definitions);
         }
     }

@@ -1,0 +1,111 @@
+@page "/debugging"
+@using System.Text.Json
+@inject IDebuggingService DebuggingService
+
+<PageTitle>Debugging</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Debugging Trace</MudText>
+<MudText Typo="Typo.body2" Color="Color.Tertiary" Class="mb-4">
+    Execute a BPMN trace through the debug API.
+</MudText>
+
+<MudTextField @bind-Value="_bpmnXml" Label="BPMN XML" Lines="16" Variant="Variant.Outlined" />
+<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="TraceAsync" Disabled="_isRunning" Class="mt-3 mb-4">
+    Run trace
+</MudButton>
+
+<MudDivider Class="my-4" />
+<MudText Typo="Typo.h6">Visual debug session</MudText>
+<MudTextField @bind-Value="_processInstanceIdText" Label="Process instance id" Variant="Variant.Outlined" Class="mb-3" />
+<MudTextField @bind-Value="_sessionIdText" Label="Session id" Variant="Variant.Outlined" Class="mb-3" />
+<MudTextField @bind-Value="_activityId" Label="Breakpoint activity id" Variant="Variant.Outlined" Class="mb-3" />
+<MudButton Variant="Variant.Outlined" OnClick="StartSessionAsync" Disabled="_isRunning">Start session</MudButton>
+<MudButton Variant="Variant.Outlined" OnClick="StepOverAsync" Disabled="_isRunning" Class="ml-2">Step over</MudButton>
+<MudButton Variant="Variant.Outlined" OnClick="ContinueAsync" Disabled="_isRunning" Class="ml-2">Continue</MudButton>
+<MudButton Variant="Variant.Outlined" OnClick="SetBreakpointAsync" Disabled="_isRunning" Class="ml-2">Set breakpoint</MudButton>
+<MudButton Variant="Variant.Outlined" OnClick="VisualizeAsync" Disabled="_isRunning" Class="ml-2">Visualize process</MudButton>
+<MudButton Variant="Variant.Outlined" OnClick="InspectVariablesAsync" Disabled="_isRunning" Class="ml-2">Inspect variables</MudButton>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+}
+else if (_trace is not null)
+{
+    <MudPaper Class="pa-4" Elevation="1">
+        <pre>@Format(_trace.Value)</pre>
+    </MudPaper>
+}
+
+@code {
+    private string _bpmnXml = "<definitions />";
+    private JsonElement? _trace;
+    private string? _error;
+    private bool _isRunning;
+    private string _processInstanceIdText = string.Empty;
+    private string _sessionIdText = string.Empty;
+    private string _activityId = string.Empty;
+
+    private async Task TraceAsync()
+    {
+        _isRunning = true;
+        _error = null;
+        try
+        {
+            _trace = await DebuggingService.TraceAsync(_bpmnXml);
+        }
+        catch (Exception exception)
+        {
+            _error = $"Debug trace failed: {exception.Message}";
+        }
+        finally
+        {
+            _isRunning = false;
+        }
+    }
+
+    private async Task StartSessionAsync()
+    {
+        if (!Guid.TryParse(_processInstanceIdText, out var processInstanceId))
+        {
+            _error = "Enter a valid process instance id.";
+            return;
+        }
+        await RunSessionActionAsync(async () =>
+        {
+            var result = await DebuggingService.StartSessionAsync(processInstanceId);
+            _sessionIdText = result.TryGetProperty("id", out var id) ? id.GetString() ?? string.Empty : _sessionIdText;
+            return result;
+        });
+    }
+
+    private Task StepOverAsync() => RunSessionActionAsync(() => DebuggingService.StepOverAsync(ParseSessionId()));
+
+    private Task ContinueAsync() => RunSessionActionAsync(() => DebuggingService.ContinueAsync(ParseSessionId()));
+
+    private Task SetBreakpointAsync() => RunSessionActionAsync(() => DebuggingService.SetBreakpointAsync(ParseSessionId(), _activityId));
+
+    private Task VisualizeAsync() => RunSessionActionAsync(() => DebuggingService.GetProcessVisualizationAsync(ParseProcessInstanceId()));
+
+    private Task InspectVariablesAsync() => RunSessionActionAsync(() => DebuggingService.InspectVariablesAsync(ParseSessionId()));
+
+    private Guid ParseProcessInstanceId() => Guid.TryParse(_processInstanceIdText, out var processInstanceId)
+        ? processInstanceId
+        : throw new InvalidOperationException("Enter a valid process instance id.");
+
+    private Guid ParseSessionId() => Guid.TryParse(_sessionIdText, out var sessionId)
+        ? sessionId
+        : throw new InvalidOperationException("Enter a valid debug session id.");
+
+    private async Task RunSessionActionAsync(Func<Task<JsonElement>> action)
+    {
+        _isRunning = true;
+        _error = null;
+        try { _trace = await action(); }
+        catch (Exception exception) { _error = $"Debug session action failed: {exception.Message}"; }
+        finally { _isRunning = false; }
+    }
+
+    private static string Format(JsonElement value) =>
+        JsonSerializer.Serialize(value, new JsonSerializerOptions { WriteIndented = true });
+}

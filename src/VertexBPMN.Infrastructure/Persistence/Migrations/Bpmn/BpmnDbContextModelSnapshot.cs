@@ -567,6 +567,10 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("TenantId")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Username")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -579,6 +583,8 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                     b.HasIndex("Email");
 
                     b.HasIndex("IsActive");
+
+                    b.HasIndex("TenantId");
 
                     b.HasIndex("Username");
 
@@ -768,6 +774,156 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                             Type = "boolean",
                             Value = "true"
                         });
+                });
+
+            modelBuilder.Entity("VertexBPMN.Infrastructure.Persistence.CmmnHistoryRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CaseFileJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CaseId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CompletedPlanItemsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CaseId", "Timestamp");
+
+                    b.ToTable("CmmnHistory");
+                });
+
+            modelBuilder.Entity("VertexBPMN.Infrastructure.Persistence.FeatureFlagRecord", b =>
+                {
+                    b.Property<string>("Name")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Name");
+
+                    b.ToTable("FeatureFlags");
+
+                    b.HasData(
+                        new
+                        {
+                            Name = "liveinspector",
+                            Enabled = true
+                        },
+                        new
+                        {
+                            Name = "predictiveanalytics",
+                            Enabled = false
+                        },
+                        new
+                        {
+                            Name = "processminingapi",
+                            Enabled = false
+                        });
+                });
+
+            modelBuilder.Entity("VertexBPMN.Infrastructure.Persistence.IdentityAuthorizationRecord", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("GroupId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Permissions")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Resource")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TenantId")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("UserId", "GroupId", "Resource")
+                        .IsUnique();
+
+                    b.ToTable("IdentityAuthorizations");
+                });
+
+            modelBuilder.Entity("VertexBPMN.Infrastructure.Persistence.IdentityGroupMembershipRecord", b =>
+                {
+                    b.Property<string>("GroupId")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TenantId")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("GroupId", "UserId");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("IdentityGroupMemberships");
+                });
+
+            modelBuilder.Entity("VertexBPMN.Infrastructure.Persistence.IdentityGroupRecord", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TenantId")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("IdentityGroups");
                 });
 
             modelBuilder.Entity("VertexBPMN.Domain.Entities.ExecutionToken", b =>

@@ -442,22 +442,15 @@ public class PluginManager : IPluginManager, IDisposable
 
     private async Task<bool> CheckDependencyAvailabilityAsync(PluginDependency dependency)
     {
-        // Simulate dependency checking
-        await Task.Delay(10);
-        
-        // In real implementation, this would check:
-        // - Required assemblies
-        // - System components
-        // - Other plugins
-        // - External services
-        
-        return dependency.Name switch
-        {
-            "VertexBPMN.Core" => true,
-            "Microsoft.Extensions.DependencyInjection" => true,
-            "System.Text.Json" => true,
-            _ => false
-        };
+        await Task.CompletedTask;
+
+        var assembly = AppDomain.CurrentDomain.GetAssemblies()
+            .FirstOrDefault(candidate => string.Equals(candidate.GetName().Name, dependency.Name, StringComparison.OrdinalIgnoreCase));
+        if (assembly is null)
+            return false;
+
+        return !Version.TryParse(dependency.Version, out var requiredVersion) ||
+               (assembly.GetName().Version is { } loadedVersion && loadedVersion >= requiredVersion);
     }
 
     private async Task<IPlugin?> CreatePluginInstanceAsync(Assembly assembly, PluginMetadata metadata)

@@ -1,5 +1,6 @@
 @page "/bpmn-modeler"
-@inject VertexBPMN.Studio.Services.IBpmnEngineService BpmnEngineService
+@inject VertexBPMN.Studio.Services.IRepositoryService RepositoryService
+@inject VertexBPMN.Studio.Services.StudioTenantContext TenantContext
 @inject MudBlazor.ISnackbar Snackbar
 @inject IHttpClientFactory HttpClientFactory
 @inject VertexBPMN.Studio.Services.ActiveEngineService ActiveEngineService
@@ -74,8 +75,15 @@
         }
 
         var xml = await _module.InvokeAsync<string>("BpmnModelerInterop.getXml", _modelerInstance);
-        Snackbar.Add("BPMN XML saved (simulated)!", Severity.Success);
-        Console.WriteLine(xml); // TODO replace with persistence
+        try
+        {
+            await RepositoryService.DeployXmlAsync(xml, "studio-model.bpmn", TenantContext.CurrentTenantId);
+            Snackbar.Add("BPMN XML deployed successfully.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving BPMN XML: {ex.Message}", Severity.Error);
+        }
     }
 
     private async Task LoadBpmnXml()
@@ -90,7 +98,7 @@
         {
             // Fallback inline definition
             _bpmnXml = FallbackBpmn;
-            Snackbar.Add($"DefaultBpmn.xml not found – using fallback. ({ex.Message})", Severity.Warning);
+            Snackbar.Add($"DefaultBpmn.xml not found ï¿½ using fallback. ({ex.Message})", Severity.Warning);
         }
 
         if (_initialized && _module != null && _modelerInstance != null)

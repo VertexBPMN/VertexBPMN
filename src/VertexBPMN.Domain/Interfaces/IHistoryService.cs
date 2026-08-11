@@ -9,9 +9,10 @@ namespace VertexBPMN.Domain.Interfaces;
 public interface IHistoryService
 {
     // Vertex-kompatible Historic Task API
-    IAsyncEnumerable<HistoryEvent> ListHistoricTasksAsync(Guid? processInstanceId = null, CancellationToken cancellationToken = default);
+    IAsyncEnumerable<HistoryEvent> ListHistoricTasksAsync(Guid? processInstanceId = null, string? tenantId = null, CancellationToken cancellationToken = default);
 
     // Vorhandene Methoden
-    IAsyncEnumerable<HistoryEvent> ListByProcessInstanceAsync(Guid processInstanceId, CancellationToken cancellationToken = default);
+    IAsyncEnumerable<HistoryEvent> ListAsync(string? tenantId = null, CancellationToken cancellationToken = default);
+    IAsyncEnumerable<HistoryEvent> ListByProcessInstanceAsync(Guid processInstanceId, string? tenantId = null, CancellationToken cancellationToken = default);
     ValueTask<HistoryEvent?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
 }

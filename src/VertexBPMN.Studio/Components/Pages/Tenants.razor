@@ -1,0 +1,114 @@
+@page "/tenants"
+@inject IIdentityService IdentityService
+
+<PageTitle>Tenants</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Tenants</MudText>
+<MudText Typo="Typo.body2" Color="Color.Tertiary" Class="mb-4">
+    Tenants currently visible through the identity API.
+</MudText>
+
+<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RefreshAsync" Disabled="_isLoading" Class="mb-4">
+    Refresh
+</MudButton>
+<MudTextField @bind-Value="_name" Label="Tenant name" Variant="Variant.Outlined" Class="mb-3" />
+<MudTextField @bind-Value="_description" Label="Description" Variant="Variant.Outlined" Class="mb-3" />
+<MudButton Variant="Variant.Outlined" Color="Color.Success" OnClick="CreateAsync" Disabled="_isLoading || string.IsNullOrWhiteSpace(_name)" Class="mb-4">
+    Create tenant (Admin)
+</MudButton>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+}
+else if (_tenants is not null)
+{
+    <MudTable Items="_tenants" Hover="true" Striped="true">
+        <HeaderContent>
+            <MudTh>Id</MudTh>
+            <MudTh>Name</MudTh>
+            <MudTh>Description</MudTh>
+            <MudTh>Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Id">@context.Id</MudTd>
+            <MudTd DataLabel="Name">@context.Name</MudTd>
+            <MudTd DataLabel="Description">@context.Description</MudTd>
+            <MudTd DataLabel="Actions">
+                <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="() => UpdateAsync(context)" Disabled="_isLoading">Update</MudButton>
+                <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="() => DeleteAsync(context.Id)" Disabled="_isLoading">Delete</MudButton>
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private IReadOnlyList<StudioTenant>? _tenants;
+    private bool _isLoading;
+    private string? _error;
+    private string _name = string.Empty;
+    private string _description = string.Empty;
+
+    protected override Task OnInitializedAsync() => RefreshAsync();
+
+    private async Task RefreshAsync()
+    {
+        _isLoading = true;
+        _error = null;
+        try
+        {
+            _tenants = await IdentityService.ListTenantsAsync();
+        }
+        catch (Exception exception)
+        {
+            _error = $"Tenants could not be loaded: {exception.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task CreateAsync()
+    {
+        await RunAdminOperationAsync(async () =>
+        {
+            await IdentityService.CreateTenantAsync(_name, _description);
+            _name = string.Empty;
+            _description = string.Empty;
+            await RefreshAsync();
+        });
+    }
+
+    private async Task UpdateAsync(StudioTenant tenant)
+    {
+        await RunAdminOperationAsync(() => IdentityService.UpdateTenantAsync(tenant.Id, tenant.Name, tenant.Description));
+    }
+
+    private async Task DeleteAsync(string id)
+    {
+        await RunAdminOperationAsync(async () =>
+        {
+            await IdentityService.DeleteTenantAsync(id);
+            await RefreshAsync();
+        });
+    }
+
+    private async Task RunAdminOperationAsync(Func<Task> operation)
+    {
+        _isLoading = true;
+        _error = null;
+        try
+        {
+            await operation();
+        }
+        catch (Exception exception)
+        {
+            _error = $"Tenant operation failed: {exception.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+}

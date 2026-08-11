@@ -5,30 +5,31 @@ namespace VertexBPMN.Studio.Services;
 
 public sealed class NotificationClient : IAsyncDisposable
 {
-    private readonly NavigationManager _nav;
+    private readonly IConfiguration _configuration;
     private HubConnection? _connection;
     public event Action<UserNotificationDto>? OnNotification;
 
-    public NotificationClient(NavigationManager nav)
+    public NotificationClient(IConfiguration configuration)
     {
-        _nav = nav;
+        _configuration = configuration;
     }
 
     public async Task StartAsync(string userId, CancellationToken ct = default)
     {
         if (_connection is not null) return;
 
+        var apiBaseUrl = _configuration["ApiBaseUrl"]
+            ?? throw new InvalidOperationException("ApiBaseUrl is not configured.");
+        var hubUri = new Uri(new Uri(apiBaseUrl), "api/monitoring-hub");
+
         _connection = new HubConnectionBuilder()
-            .WithUrl(_nav.ToAbsoluteUri("/processmonitoringhub"))
+            .WithUrl(hubUri)
             .WithAutomaticReconnect()
             .Build();
 
-        _connection.On<object>("UserNotification", payload =>
+        _connection.On<UserNotificationDto>("UserNotification", payload =>
         {
-            // Lightweight mapping
-            var dto = System.Text.Json.JsonSerializer.Deserialize<UserNotificationDto>(
-                System.Text.Json.JsonSerializer.Serialize(payload))!;
-            OnNotification?.Invoke(dto);
+            OnNotification?.Invoke(payload);
         });
 
         await _connection.StartAsync(ct);

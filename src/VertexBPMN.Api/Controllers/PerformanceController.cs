@@ -308,16 +308,13 @@ public class PerformanceController : ControllerBase
 
     private async Task<object> CheckDatabaseHealth()
     {
-        try
+        await Task.CompletedTask;
+        return new
         {
-            // This would check database connectivity
-            await Task.Delay(10); // Simulate check
-            return new { Healthy = true, ResponseTime = "10ms", Message = "Database responsive" };
-        }
-        catch (Exception ex)
-        {
-            return new { Healthy = false, Error = ex.Message };
-        }
+            Healthy = false,
+            Available = false,
+            Message = "Database health probe is not configured for the performance dashboard."
+        };
     }
 
     private async Task<object> CheckDistributedEngineHealth()
@@ -373,7 +370,7 @@ public class PerformanceController : ControllerBase
                 };
             }
             
-            return new { Healthy = true, Message = "Disk check skipped" };
+            return new { Healthy = false, Available = false, Message = "Disk health check could not identify the system drive" };
         }
         catch (Exception ex)
         {
@@ -385,9 +382,14 @@ public class PerformanceController : ControllerBase
     {
         try
         {
-            // Simulate network check
-            await Task.Delay(50);
-            return new { Healthy = true, Message = "Network connectivity OK" };
+            var available = System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable();
+            await Task.CompletedTask;
+            return new
+            {
+                Healthy = available,
+                Available = available,
+                Message = available ? "Network connectivity available" : "No network connection detected"
+            };
         }
         catch (Exception ex)
         {

@@ -5,6 +5,7 @@ using VertexBPMN.Domain.Interfaces;
 namespace VertexBPMN.Api.Controllers;
 
 using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 [ApiController]
 [Route("api/vertex/deployment")]
 [Authorize]
@@ -18,16 +19,24 @@ public class VertexDeploymentController : ControllerBase
     }
 
     [HttpGet]
-    public async IAsyncEnumerable<DeploymentDto> GetAll([FromQuery] string? tenantId = null)
+    public async Task<ActionResult<IReadOnlyList<DeploymentDto>>> GetAll([FromQuery] string? tenantId = null)
     {
-        // Annahme: Deployment-Infos werden aus ProcessDefinitions aggregiert
-        await foreach (var def in _repositoryService.ListAsync(null, tenantId))
-            yield return new DeploymentDto
+        var effectiveTenantId = ResolveTenantId(tenantId);
+        if (effectiveTenantId is null && !User.IsInRole("Admin")) return Forbid();
+        var deployments = new List<DeploymentDto>();
+        await foreach (var def in _repositoryService.ListAsync(null, effectiveTenantId))
+            deployments.Add(new DeploymentDto
             {
                 Id = def.Id.ToString(),
                 Name = def.Name,
                 DeploymentTime = def.CreatedAt,
                 TenantId = def.TenantId ?? string.Empty
-            };
+            });
+        return deployments;
     }
+
+    private string? ResolveTenantId(string? requestedTenantId) =>
+        User.IsInRole("Admin")
+            ? (string.IsNullOrWhiteSpace(requestedTenantId) ? null : requestedTenantId.Trim())
+            : User.FindFirstValue("tenant_id");
 }

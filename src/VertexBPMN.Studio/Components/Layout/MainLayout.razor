@@ -1,6 +1,8 @@
 @inherits LayoutComponentBase
-@inject VertexBPMN.Studio.Services.IBpmnEngineService BpmnEngineService
+@inject VertexBPMN.Studio.Services.IEngineAdministrationService EngineAdministrationService
 @inject VertexBPMN.Studio.Services.ActiveEngineService ActiveEngineService
+@inject VertexBPMN.Studio.Services.IIdentityService IdentityService
+@inject VertexBPMN.Studio.Services.StudioTenantContext TenantContext
 @inject ILogger<MainLayout> Logger
 @implements IDisposable
 
@@ -19,6 +21,14 @@
         <MudText Typo="Typo.h5" Class="ml-3">VertexBPMN Studio</MudText>
         <MudSpacer />
 
+        <MudSelect T="string" Label="Tenant" Value="TenantContext.CurrentTenantId" ValueChanged="SelectTenant" Variant="Variant.Outlined" Dense="true" Class="mr-4">
+            <MudSelectItem Value="@((string?)null)">Default</MudSelectItem>
+            @foreach (var tenant in _tenants)
+            {
+                <MudSelectItem Value="@tenant.Id">@tenant.Name</MudSelectItem>
+            }
+        </MudSelect>
+
         <!-- Connection Status -->
         <MudChip T="string" 
                 Color="@(ActiveEngineService.IsConnected ? Color.Success : Color.Error)" 
@@ -27,19 +37,6 @@
                 Class="mr-2">
             @(ActiveEngineService.IsConnected ? "Connected" : "Disconnected")
         </MudChip>
-
-        <!-- User Role Selector -->
-        <MudSelect T="string" 
-                  Label="Role" 
-                  @bind-Value="ActiveEngineService.CurrentUserRole" 
-                  Variant="Variant.Outlined" 
-                  Dense="true" 
-                  Class="mr-4">
-            <MudSelectItem Value="@("Admin")">Admin</MudSelectItem>
-            <MudSelectItem Value="@("User")">User</MudSelectItem>
-            <MudSelectItem Value="@("Manager")">Manager</MudSelectItem>
-            <MudSelectItem Value="@("Viewer")">Viewer</MudSelectItem>
-        </MudSelect>
 
         <!-- Engine Selector -->
         <MudSelect T="string" 
@@ -86,12 +83,14 @@
     private bool _drawerOpen = true;
     private bool _isLoadingEngines = false;
     private List<VertexBPMN.Studio.Services.EngineConnection> _engineConnections = new();
+    private IReadOnlyList<VertexBPMN.Studio.Services.StudioTenant> _tenants = Array.Empty<VertexBPMN.Studio.Services.StudioTenant>();
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
             await LoadEngineConnections();
+            _tenants = await IdentityService.ListTenantsAsync();
         }
         catch (Exception ex)
         {
@@ -106,7 +105,7 @@
             _isLoadingEngines = true;
             StateHasChanged();
 
-            var connections = await BpmnEngineService.GetEngineConnectionsAsync();
+            var connections = await EngineAdministrationService.GetEngineConnectionsAsync();
             _engineConnections = connections.ToList();
         }
         catch (Exception ex)
@@ -126,6 +125,8 @@
     }
 
     private void DrawerToggle() => _drawerOpen = !_drawerOpen;
+
+    private void SelectTenant(string? tenantId) => TenantContext.SetTenant(tenantId);
 
     public void Dispose()
     {

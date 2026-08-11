@@ -29,6 +29,6 @@ public sealed class AuditController(ProcessMiningEventDbContext db) : Controller
         if (to.HasValue)
             query = query.Where(log => log.Timestamp <= to.Value);
 
-        return Ok(await query.OrderByDescending(log => log.Timestamp).Take(limit).ToListAsync(cancellationToken));
+        return Ok(await query.OrderByDescending(log => log.Id).Take(limit).ToListAsync(cancellationToken));
     }
 }

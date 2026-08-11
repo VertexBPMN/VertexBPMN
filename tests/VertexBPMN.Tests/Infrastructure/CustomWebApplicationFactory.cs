@@ -1,5 +1,8 @@
 ﻿using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -55,6 +58,15 @@ public class CustomWebApplicationFactory : WebApplicationFactory<VertexBPMN.Api.
 
         builder.ConfigureServices(services =>
         {
+            services.AddAuthentication("Test")
+                .AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>("Test", _ => { });
+            services.AddAuthorization(options =>
+            {
+                options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
+                options.AddPolicy("ProcessManager", policy => policy.RequireRole("Admin", "ProcessManager"));
+                options.AddPolicy("ReadOnly", policy => policy.RequireRole("Admin", "ProcessManager", "ReadOnly"));
+            });
+
             // Remove existing DbContext options so we can inject unified connection
             services.RemoveAll<DbContextOptions<BpmnDbContext>>();
             services.RemoveAll<DbContextOptions<TenantDbContext>>();

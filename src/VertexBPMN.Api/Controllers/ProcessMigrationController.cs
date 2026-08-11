@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
@@ -53,6 +54,7 @@ namespace VertexBPMN.Api.Controllers
         /// <param name="plan">Migration plan with activity mappings.</param>
         /// <returns>Migration result with analytics and diagnostics.</returns>
         [HttpPost("plan/execute")]
+        [Authorize(Policy = "ProcessManager")]
         [ProducesResponseType(typeof(ProcessMigrationResult), 200)]
         public ActionResult<ProcessMigrationResult> ExecuteMigration([FromBody] ProcessMigrationPlan plan)
         {

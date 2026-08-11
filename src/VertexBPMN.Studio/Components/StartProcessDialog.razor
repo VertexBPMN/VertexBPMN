@@ -1,4 +1,6 @@
 @inject MudBlazor.ISnackbar Snackbar
+@inject VertexBPMN.Studio.Services.IWorkflowService WorkflowService
+@inject VertexBPMN.Studio.Services.StudioTenantContext TenantContext
 
 <MudDialog>
     <TitleContent>
@@ -123,7 +125,7 @@
 
     protected override void OnInitialized()
     {
-        _tenantId = ProcessDefinition?.TenantId ?? string.Empty;
+        _tenantId = TenantContext.CurrentTenantId ?? ProcessDefinition?.TenantId ?? string.Empty;
         AddVariable(); // Start with one empty variable
     }
 
@@ -149,14 +151,13 @@
             // Create variables dictionary from the list
             var variables = _variables
                 .Where(v => !string.IsNullOrWhiteSpace(v.Name))
-                .ToDictionary(v => v.Name, v => (object)v.Value);
+                .ToDictionary(v => v.Name, v => (object?)v.Value);
 
-            // TODO: Call your runtime service to start the process instance
-            // var processInstance = await RuntimeService.StartProcessInstanceByKeyAsync(
-            //     ProcessDefinition.Key, 
-            //     _businessKey, 
-            //     variables, 
-            //     _tenantId);
+            await WorkflowService.StartProcessAsync(
+                ProcessDefinition.Key,
+                variables,
+                _businessKey,
+                _tenantId);
 
             Snackbar.Add($"Process instance started successfully!", Severity.Success);
             Dialog.Close(DialogResult.Ok(true));

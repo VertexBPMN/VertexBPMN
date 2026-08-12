@@ -1,13 +1,26 @@
 @page "/extensions"
 @using System.Text.Json
+@using Microsoft.AspNetCore.Components.Authorization
 @inject IPluginService PluginService
 
 <PageTitle>Extensions</PageTitle>
 
 <MudText Typo="Typo.h4" GutterBottom="true">Extensions</MudText>
 <MudStack Row="true" Spacing="2" Class="mb-4">
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadAsync" StartIcon="@Icons.Material.Filled.Refresh">Refresh</MudButton>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadAsync" Disabled="@_busy" StartIcon="@Icons.Material.Filled.Refresh">Refresh</MudButton>
 </MudStack>
+
+<AuthorizeView Roles="Admin">
+    <Authorized>
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6">Load plugin</MudText>
+            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                <MudTextField @bind-Value="_pluginPath" Label="Plugin DLL path" Variant="Variant.Outlined" Class="flex-grow-1" />
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadPluginAsync" Disabled="@(_busy || string.IsNullOrWhiteSpace(_pluginPath))">Load</MudButton>
+            </MudStack>
+        </MudPaper>
+    </Authorized>
+</AuthorizeView>
 
 @if (!string.IsNullOrWhiteSpace(_error))
 {
@@ -20,7 +33,7 @@ else if (_plugins is null)
 else
 {
     <MudGrid>
-        <MudItem xs="12" md="7">
+        <MudItem xs="12" md="8">
             <MudPaper Class="pa-4">
                 <MudText Typo="Typo.h6" GutterBottom="true">Installed plugins</MudText>
                 <MudTable Items="@AsArray(_plugins)" Dense="true" Hover="true">
@@ -28,16 +41,32 @@ else
                         <MudTh>Name</MudTh>
                         <MudTh>Version</MudTh>
                         <MudTh>Status</MudTh>
+                        <MudTh>Actions</MudTh>
                     </HeaderContent>
                     <RowTemplate>
                         <MudTd DataLabel="Name">@Value(context, "name", "id")</MudTd>
                         <MudTd DataLabel="Version">@Value(context, "version")</MudTd>
                         <MudTd DataLabel="Status">@Value(context, "status")</MudTd>
+                        <MudTd DataLabel="Actions">
+                            <AuthorizeView Roles="Admin">
+                                <Authorized Context="authState">
+                                    @if (BoolValue(context, "isEnabled"))
+                                    {
+                                        <MudButton Size="Size.Small" Color="Color.Warning" OnClick="@(() => DisableAsync(Value(context, "id")))">Disable</MudButton>
+                                    }
+                                    else
+                                    {
+                                        <MudButton Size="Size.Small" Color="Color.Success" OnClick="@(() => EnableAsync(Value(context, "id")))">Enable</MudButton>
+                                    }
+                                    <MudButton Size="Size.Small" Color="Color.Error" OnClick="@(() => UnloadAsync(Value(context, "id")))">Unload</MudButton>
+                                </Authorized>
+                            </AuthorizeView>
+                        </MudTd>
                     </RowTemplate>
                 </MudTable>
             </MudPaper>
         </MudItem>
-        <MudItem xs="12" md="5">
+        <MudItem xs="12" md="4">
             <MudPaper Class="pa-4">
                 <MudText Typo="Typo.h6" GutterBottom="true">Extension points</MudText>
                 <MudList T="JsonElement" Dense="true">
@@ -58,12 +87,15 @@ else
     private JsonElement? _plugins;
     private JsonElement? _extensionPoints;
     private string? _error;
+    private string _pluginPath = string.Empty;
+    private bool _busy;
 
     protected override Task OnInitializedAsync() => LoadAsync();
 
     private async Task LoadAsync()
     {
         _error = null;
+        _busy = true;
         try
         {
             _plugins = await PluginService.GetPluginsAsync();
@@ -72,6 +104,34 @@ else
         catch (Exception exception)
         {
             _error = exception.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private Task LoadPluginAsync() => MutateAsync(() => PluginService.LoadAsync(_pluginPath));
+    private Task EnableAsync(string pluginId) => MutateAsync(() => PluginService.EnableAsync(pluginId));
+    private Task DisableAsync(string pluginId) => MutateAsync(() => PluginService.DisableAsync(pluginId));
+    private Task UnloadAsync(string pluginId) => MutateAsync(() => PluginService.UnloadAsync(pluginId));
+
+    private async Task MutateAsync(Func<Task> mutation)
+    {
+        _error = null;
+        _busy = true;
+        try
+        {
+            await mutation();
+            await LoadAsync();
+        }
+        catch (Exception exception)
+        {
+            _error = exception.Message;
+        }
+        finally
+        {
+            _busy = false;
         }
     }
 
@@ -85,7 +145,9 @@ else
             if (element.TryGetProperty(name, out var property))
                 return property.ToString();
         }
-
         return "-";
     }
+
+    private static bool BoolValue(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var property) && property.ValueKind == JsonValueKind.True;
 }

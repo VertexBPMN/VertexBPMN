@@ -30,6 +30,7 @@ public class BpmnDbContext : DbContext
     public DbSet<IdentityGroupMembershipRecord> IdentityGroupMemberships => Set<IdentityGroupMembershipRecord>();
     public DbSet<IdentityAuthorizationRecord> IdentityAuthorizations => Set<IdentityAuthorizationRecord>();
     public DbSet<CredentialRecord> Credentials => Set<CredentialRecord>();
+    public DbSet<ConnectorRecord> Connectors => Set<ConnectorRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -49,6 +50,7 @@ public class BpmnDbContext : DbContext
         ConfigureFeatureFlags(modelBuilder);
         ConfigureIdentity(modelBuilder);
         ConfigureCredentials(modelBuilder);
+        ConfigureConnectors(modelBuilder);
 
         // Seed sample data (deterministic IDs & timestamps)
         var deploymentId = Guid.Parse("11111111-1111-1111-1111-111111111111");
@@ -203,6 +205,23 @@ public class BpmnDbContext : DbContext
         );
 
         base.OnModelCreating(modelBuilder);
+    }
+
+    private static void ConfigureConnectors(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<ConnectorRecord>();
+        entity.HasKey(e => e.Id);
+        entity.Property(e => e.TenantId).IsRequired().HasMaxLength(64);
+        entity.Property(e => e.Name).IsRequired().HasMaxLength(256);
+        entity.Property(e => e.Type).IsRequired().HasMaxLength(128);
+        entity.Property(e => e.Description).HasMaxLength(2000);
+        entity.Property(e => e.Endpoint).HasMaxLength(2048);
+        entity.Property(e => e.CredentialId).HasMaxLength(128);
+        entity.Property(e => e.Enabled).IsRequired();
+        entity.HasIndex(e => new { e.TenantId, e.Name }).IsUnique();
+        entity.HasIndex(e => e.TenantId);
+        entity.HasIndex(e => e.CredentialId);
+        entity.HasIndex(e => e.LastModified);
     }
 
     private static void ConfigureMigrationRecords(ModelBuilder modelBuilder)

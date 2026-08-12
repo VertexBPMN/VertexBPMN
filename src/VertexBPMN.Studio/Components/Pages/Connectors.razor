@@ -1,9 +1,183 @@
 @page "/connectors"
+@implements IDisposable
+@inject IConnectorService ConnectorService
+@inject ICredentialService CredentialService
+@inject StudioTenantContext TenantContext
 
 <PageTitle>Connectors</PageTitle>
 
 <MudText Typo="Typo.h4" GutterBottom="true">Connectors</MudText>
-<MudAlert Severity="Severity.Info">
-    Connector management is not exposed by the current API contract.
-    Connector entries are therefore not displayed as active runtime features.
-</MudAlert>
+
+@if (string.IsNullOrWhiteSpace(TenantContext.CurrentTenantId))
+{
+    <MudAlert Severity="Severity.Warning">Select a tenant before managing connectors.</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6">Create connector</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_name" Label="Name" Variant="Variant.Outlined" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_type" Label="Type" Variant="Variant.Outlined" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_endpoint" Label="Endpoint (optional)" Variant="Variant.Outlined" /></MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="string" @bind-Value="_credentialId" Label="Credential reference" Variant="Variant.Outlined">
+                    <MudSelectItem T="string" Value="@string.Empty">No credential</MudSelectItem>
+                    @foreach (var credential in _credentials)
+                    {
+                        <MudSelectItem T="string" Value="@credential.Id">@credential.Name (@credential.Type)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_description" Label="Description (optional)" Variant="Variant.Outlined" /></MudItem>
+        </MudGrid>
+        <MudButton Class="mt-3" Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateAsync" Disabled="@_busy">Create</MudButton>
+    </MudPaper>
+
+    @if (!string.IsNullOrWhiteSpace(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+    }
+
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h6" GutterBottom="true">Tenant connectors</MudText>
+        <MudTable Items="_connectors" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>Name</MudTh>
+                <MudTh>Type</MudTh>
+                <MudTh>Endpoint</MudTh>
+                <MudTh>Credential</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Name">@context.Name</MudTd>
+                <MudTd DataLabel="Type">@context.Type</MudTd>
+                <MudTd DataLabel="Endpoint">@context.Endpoint</MudTd>
+                <MudTd DataLabel="Credential">@CredentialName(context.CredentialId)</MudTd>
+                <MudTd DataLabel="Status">@(context.Enabled ? "Enabled" : "Disabled")</MudTd>
+                <MudTd DataLabel="Actions">
+                    <MudButton Size="Size.Small" Color="@(context.Enabled ? Color.Warning : Color.Success)" OnClick="@(() => SetEnabledAsync(context))">
+                        @(context.Enabled ? "Disable" : "Enable")
+                    </MudButton>
+                    <MudButton Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteAsync(context))">Delete</MudButton>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    private IReadOnlyList<StudioConnector> _connectors = [];
+    private IReadOnlyList<StudioCredential> _credentials = [];
+    private string _name = string.Empty;
+    private string _type = string.Empty;
+    private string _description = string.Empty;
+    private string _endpoint = string.Empty;
+    private string _credentialId = string.Empty;
+    private string? _error;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        TenantContext.Changed += OnTenantChanged;
+        await LoadAsync();
+    }
+
+    private async void OnTenantChanged()
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadAsync();
+            StateHasChanged();
+        });
+    }
+
+    private async Task LoadAsync()
+    {
+        _error = null;
+        var tenantId = TenantContext.CurrentTenantId;
+        if (string.IsNullOrWhiteSpace(tenantId))
+        {
+            _connectors = [];
+            _credentials = [];
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            _connectors = await ConnectorService.ListAsync(tenantId);
+            _credentials = await CredentialService.ListAsync(tenantId);
+        }
+        catch (Exception exception)
+        {
+            _error = exception.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task CreateAsync()
+    {
+        var tenantId = TenantContext.CurrentTenantId;
+        if (string.IsNullOrWhiteSpace(tenantId)) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            await ConnectorService.CreateAsync(tenantId, _name, _type, _description, _endpoint,
+                string.IsNullOrWhiteSpace(_credentialId) ? null : _credentialId);
+            _name = _type = _description = _endpoint = string.Empty;
+            _credentialId = string.Empty;
+            await LoadAsync();
+        }
+        catch (Exception exception)
+        {
+            _error = exception.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task SetEnabledAsync(StudioConnector connector)
+    {
+        await MutateAsync(() => ConnectorService.SetEnabledAsync(
+            connector.TenantId, connector.Id, !connector.Enabled));
+    }
+
+    private async Task DeleteAsync(StudioConnector connector)
+    {
+        await MutateAsync(() => ConnectorService.DeleteAsync(connector.TenantId, connector.Id));
+    }
+
+    private async Task MutateAsync(Func<Task> mutation)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            await mutation();
+            await LoadAsync();
+        }
+        catch (Exception exception)
+        {
+            _error = exception.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private string CredentialName(string? credentialId) =>
+        string.IsNullOrWhiteSpace(credentialId)
+            ? "-"
+            : _credentials.FirstOrDefault(credential => credential.Id == credentialId)?.Name ?? credentialId;
+
+    public void Dispose() => TenantContext.Changed -= OnTenantChanged;
+}

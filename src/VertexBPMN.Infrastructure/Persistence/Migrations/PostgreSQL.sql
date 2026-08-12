@@ -204,6 +204,23 @@ CREATE UNIQUE INDEX IF NOT EXISTS ix_credentials_tenant_name ON credentials(tena
 CREATE INDEX IF NOT EXISTS ix_credentials_tenant ON credentials(tenant_id);
 CREATE INDEX IF NOT EXISTS ix_credentials_last_modified ON credentials(last_modified);
 
+CREATE TABLE IF NOT EXISTS connectors (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,
+    description TEXT,
+    endpoint TEXT,
+    credential_id TEXT,
+    enabled BOOLEAN NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    last_modified TIMESTAMPTZ NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ix_connectors_tenant_name ON connectors(tenant_id, name);
+CREATE INDEX IF NOT EXISTS ix_connectors_tenant ON connectors(tenant_id);
+CREATE INDEX IF NOT EXISTS ix_connectors_credential ON connectors(credential_id);
+CREATE INDEX IF NOT EXISTS ix_connectors_last_modified ON connectors(last_modified);
+
 -- Decision (DMN)
 CREATE TABLE decision_definitions (
     id TEXT PRIMARY KEY,

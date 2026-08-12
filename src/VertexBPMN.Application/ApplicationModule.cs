@@ -36,6 +36,7 @@ public static class ApplicationModule
             sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Messaging.WebhookEventSink>>()));
 
         services.AddScoped<IRepositoryService, RepositoryService>();
+        services.AddScoped<IWorkflowTriggerService, WorkflowTriggerService>();
         services.AddScoped<IRuntimeService, RuntimeService>();
         services.AddScoped<ITaskService, TaskService>();
         services.AddScoped<IHistoryService, HistoryService>();

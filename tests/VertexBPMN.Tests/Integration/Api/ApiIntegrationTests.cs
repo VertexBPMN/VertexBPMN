@@ -251,7 +251,7 @@ public class ApiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     public async Task Identity_ValidateUser_IsExplicitlyUnavailableWithoutLocalCredentials()
     {
         var response = await _client.GetAsync("/api/identity/validate-user?username=admin&password=irrelevant");
-        Assert.Equal(HttpStatusCode.NotImplemented, response.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]

@@ -26,6 +26,7 @@ public static class InfrastructureModule
         services.AddScoped<ISimulationScenarioService, SimulationScenarioService>();
         services.AddScoped<IMessageDispatcher, InMemoryMessageDispatcher>();
         services.AddScoped<IProcessDefinitionRepository, ProcessDefinitionRepository>();
+        services.AddScoped<IWorkflowTriggerRepository, WorkflowTriggerRepository>();
         services.AddScoped<IProcessInstanceRepository, ProcessInstanceRepository>();
         services.AddScoped<IAuditLogService, AuditLogService>();
         services.AddScoped<IExecutionTokenRepository, ExecutionTokenRepository>();
@@ -38,6 +39,7 @@ public static class InfrastructureModule
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddDataProtection().SetApplicationName("VertexBPMN");
         services.AddScoped<ICredentialService, PersistentCredentialService>();
+        services.AddScoped<IConnectorService, PersistentConnectorService>();
         return services;
     }
 
@@ -93,7 +95,7 @@ public static class InfrastructureModule
                     break;
                 case "ProcessMiningEvents":
                     RegisterDbContext<ProcessMiningEventDbContext>(services, provider, cs, descriptor.LogicalName);
-                    break; 
+                    break;
                 case "Decision":
                     RegisterDbContext<DecisionDbContext>(services, provider, cs, descriptor.LogicalName);
                     break;
@@ -132,7 +134,7 @@ public static class InfrastructureModule
             }
         });
     }
-        
+
 
     private static string InferProvider(string? cs)
     {

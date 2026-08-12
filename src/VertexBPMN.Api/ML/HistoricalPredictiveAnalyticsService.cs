@@ -20,6 +20,7 @@ namespace VertexBPMN.Api.ML;
 public sealed class HistoricalPredictiveAnalyticsService : IPredictiveAnalyticsService
 {
     private const int MinimumTrainingSamples = 2;
+    private const int MinimumReliableModelSamples = 3;
     private readonly ProcessMiningEventDbContext _db;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly ILogger<HistoricalPredictiveAnalyticsService> _logger;
@@ -87,7 +88,13 @@ public sealed class HistoricalPredictiveAnalyticsService : IPredictiveAnalyticsS
                 ActivityCount = model.MedianActivityCount
             });
 
-        var estimate = MathF.Max(0.1f, prediction.EstimatedDurationMinutes);
+        // A regression trained on only two observations can extrapolate wildly
+        // when the current hour/day differs from the training rows. Use the
+        // empirical mean until the model has enough samples to generalize.
+        var estimate = records.Count < MinimumReliableModelSamples
+            ? records.Average(record => record.DurationMinutes)
+            : prediction.EstimatedDurationMinutes;
+        estimate = MathF.Max(0.1f, estimate);
         var margin = MathF.Max((float)model.RootMeanSquaredError, estimate * 0.15f);
         return new ProcessDurationPrediction
         {

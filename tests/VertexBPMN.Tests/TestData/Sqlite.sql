@@ -301,6 +301,8 @@ INSERT OR IGNORE INTO ProcessMiningEvents(Id,EventType,ProcessInstanceId,TaskId,
 INSERT OR IGNORE INTO SimulationScenarios(Id,Name,Description,ProcessDefinitionId,BpmnXml,MaxSteps,TenantId) VALUES
  ('sim-sample-1','Throughput Test','Ein einfacher Simulationstest','22222222-2222-2222-2222-222222222222',NULL,100,'tenant-default');
 
+DROP TABLE IF EXISTS WorkflowTriggers;
+
 -- Downgrade (drop all) ------------------------------------------------------
 -- To rollback execute:
 -- DROP TABLE ProcessMiningEvents; DROP TABLE SimulationScenarios; DROP TABLE DecisionInstances; DROP TABLE DmnDecisionTables; DROP TABLE DecisionDefinitions; DROP TABLE Users; DROP TABLE MultiInstanceExecution; DROP TABLE Incident; DROP TABLE HistoryEvent; DROP TABLE Tasks; DROP TABLE Job; DROP TABLE Variable; DROP TABLE ExecutionToken; DROP TABLE ProcessInstance; DROP TABLE ProcessDefinition; DROP TABLE EngineDeployment; DROP TABLE Tenants;

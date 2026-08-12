@@ -195,6 +195,23 @@ CREATE UNIQUE INDEX IX_Credentials_TenantId_Name ON Credentials(TenantId, Name);
 CREATE INDEX IX_Credentials_TenantId ON Credentials(TenantId);
 CREATE INDEX IX_Credentials_LastModified ON Credentials(LastModified);
 
+CREATE TABLE Connectors (
+    Id NVARCHAR(128) PRIMARY KEY,
+    TenantId NVARCHAR(64) NOT NULL,
+    Name NVARCHAR(256) NOT NULL,
+    Type NVARCHAR(128) NOT NULL,
+    Description NVARCHAR(2000) NULL,
+    Endpoint NVARCHAR(2048) NULL,
+    CredentialId NVARCHAR(128) NULL,
+    Enabled BIT NOT NULL,
+    CreatedAt DATETIME2 NOT NULL,
+    LastModified DATETIME2 NOT NULL
+);
+CREATE UNIQUE INDEX IX_Connectors_TenantId_Name ON Connectors(TenantId, Name);
+CREATE INDEX IX_Connectors_TenantId ON Connectors(TenantId);
+CREATE INDEX IX_Connectors_CredentialId ON Connectors(CredentialId);
+CREATE INDEX IX_Connectors_LastModified ON Connectors(LastModified);
+
 CREATE TABLE DecisionDefinitions (
     Id NVARCHAR(200) PRIMARY KEY,
     [Key] NVARCHAR(200) NOT NULL,

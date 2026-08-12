@@ -4,265 +4,158 @@ using VertexBPMN.Api.Plugins;
 
 namespace VertexBPMN.Api.Controllers;
 
-/// <summary>
-/// Plugin Management Controller
-/// Olympic-level feature: Innovation Differentiators - Plugin Architecture
-/// </summary>
 [ApiController]
 [Route("api/plugins")]
 [Authorize]
-public class PluginController : ControllerBase
+public sealed class PluginController(
+    IPluginManager pluginManager,
+    ILogger<PluginController> logger,
+    IConfiguration configuration) : ControllerBase
 {
-    private readonly IPluginManager _pluginManager;
-    private readonly ILogger<PluginController> _logger;
-    private readonly string _pluginDirectory;
+    private readonly string _pluginDirectory = ResolvePluginDirectory(configuration);
 
-    public PluginController(
-        IPluginManager pluginManager,
-        ILogger<PluginController> logger,
-        IConfiguration configuration)
-    {
-        _pluginManager = pluginManager;
-        _logger = logger;
-        var configuredDirectory = configuration["Dependencies:Plugins:Directory"] ?? "plugins";
-        _pluginDirectory = Path.GetFullPath(Path.IsPathRooted(configuredDirectory)
-            ? configuredDirectory
-            : Path.Combine(AppContext.BaseDirectory, configuredDirectory));
-    }
-
-    /// <summary>
-    /// Load a plugin from file path
-    /// </summary>
     [HttpPost("load")]
-	[Authorize(Policy = "AdminOnly")]
+    [Authorize(Policy = "AdminOnly")]
     public async Task<ActionResult<PluginLoadResult>> LoadPlugin([FromBody] LoadPluginRequest request)
     {
         try
         {
+            if (string.IsNullOrWhiteSpace(request.PluginPath)
+                || !string.Equals(Path.GetExtension(request.PluginPath), ".dll", StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { error = "Only plugin DLLs are allowed." });
+
             var pluginPath = Path.GetFullPath(request.PluginPath);
             var pluginRoot = _pluginDirectory.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
             if (!pluginPath.StartsWith(pluginRoot, StringComparison.OrdinalIgnoreCase))
                 return BadRequest(new { error = "Plugin path must be inside the configured plugin directory." });
 
-            var result = await _pluginManager.LoadPluginAsync(pluginPath);
-            if (result.Success)
-            {
-                return Ok(result);
-            }
-            return BadRequest(result);
+            var result = await pluginManager.LoadPluginAsync(pluginPath);
+            return result.Success ? Ok(result) : BadRequest(result);
         }
-        catch (Exception ex)
+        catch (Exception exception)
         {
-            _logger.LogError(ex, "Error loading plugin from path {PluginPath}", request.PluginPath);
+            logger.LogError(exception, "Error loading plugin.");
             return StatusCode(500, new { error = "Failed to load plugin" });
         }
     }
 
-    /// <summary>
-    /// Unload a plugin
-    /// </summary>
     [HttpPost("unload/{pluginId}")]
-	[Authorize(Policy = "AdminOnly")]
+    [Authorize(Policy = "AdminOnly")]
     public async Task<ActionResult> UnloadPlugin(string pluginId)
     {
         try
         {
-            var success = await _pluginManager.UnloadPluginAsync(pluginId);
-            if (success)
-            {
-                return Ok(new { message = $"Plugin {pluginId} unloaded successfully" });
-            }
-            return NotFound(new { error = "Plugin not found" });
+            var success = await pluginManager.UnloadPluginAsync(pluginId);
+            return success ? Ok(new { message = "Plugin unloaded successfully" }) : NotFound(new { error = "Plugin not found" });
         }
-        catch (Exception ex)
+        catch (Exception exception)
         {
-            _logger.LogError(ex, "Error unloading plugin {PluginId}", pluginId);
+            logger.LogError(exception, "Error unloading plugin {PluginId}", pluginId);
             return StatusCode(500, new { error = "Failed to unload plugin" });
         }
     }
 
-    /// <summary>
-    /// Get list of all loaded plugins
-    /// </summary>
     [HttpGet]
-    public async Task<ActionResult<List<PluginInfo>>> GetLoadedPlugins()
-    {
-        try
-        {
-            var plugins = await _pluginManager.GetLoadedPluginsAsync();
-            return Ok(plugins);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting loaded plugins");
-            return StatusCode(500, new { error = "Failed to get loaded plugins" });
-        }
-    }
+    public async Task<ActionResult<List<PluginInfo>>> GetLoadedPlugins() =>
+        Ok(await pluginManager.GetLoadedPluginsAsync());
 
-    /// <summary>
-    /// Get information about a specific plugin
-    /// </summary>
     [HttpGet("{pluginId}")]
     public async Task<ActionResult<PluginInfo>> GetPluginInfo(string pluginId)
     {
-        try
-        {
-            var pluginInfo = await _pluginManager.GetPluginInfoAsync(pluginId);
-            if (pluginInfo == null)
-            {
-                return NotFound(new { error = "Plugin not found" });
-            }
-            return Ok(pluginInfo);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting plugin info for {PluginId}", pluginId);
-            return StatusCode(500, new { error = "Failed to get plugin information" });
-        }
+        var pluginInfo = await pluginManager.GetPluginInfoAsync(pluginId);
+        return pluginInfo is null ? NotFound(new { error = "Plugin not found" }) : Ok(pluginInfo);
     }
 
-    /// <summary>
-    /// Enable a plugin
-    /// </summary>
     [HttpPost("enable/{pluginId}")]
-	[Authorize(Policy = "AdminOnly")]
+    [Authorize(Policy = "AdminOnly")]
     public async Task<ActionResult> EnablePlugin(string pluginId)
     {
         try
         {
-            var success = await _pluginManager.EnablePluginAsync(pluginId);
-            if (success)
-            {
-                return Ok(new { message = $"Plugin {pluginId} enabled successfully" });
-            }
-            return NotFound(new { error = "Plugin not found" });
+            var success = await pluginManager.EnablePluginAsync(pluginId);
+            return success ? Ok(new { message = "Plugin enabled successfully" }) : NotFound(new { error = "Plugin not found" });
         }
-        catch (Exception ex)
+        catch (Exception exception)
         {
-            _logger.LogError(ex, "Error enabling plugin {PluginId}", pluginId);
+            logger.LogError(exception, "Error enabling plugin {PluginId}", pluginId);
             return StatusCode(500, new { error = "Failed to enable plugin" });
         }
     }
 
-    /// <summary>
-    /// Disable a plugin
-    /// </summary>
     [HttpPost("disable/{pluginId}")]
-	[Authorize(Policy = "AdminOnly")]
+    [Authorize(Policy = "AdminOnly")]
     public async Task<ActionResult> DisablePlugin(string pluginId)
     {
         try
         {
-            var success = await _pluginManager.DisablePluginAsync(pluginId);
-            if (success)
-            {
-                return Ok(new { message = $"Plugin {pluginId} disabled successfully" });
-            }
-            return NotFound(new { error = "Plugin not found" });
+            var success = await pluginManager.DisablePluginAsync(pluginId);
+            return success ? Ok(new { message = "Plugin disabled successfully" }) : NotFound(new { error = "Plugin not found" });
         }
-        catch (Exception ex)
+        catch (Exception exception)
         {
-            _logger.LogError(ex, "Error disabling plugin {PluginId}", pluginId);
+            logger.LogError(exception, "Error disabling plugin {PluginId}", pluginId);
             return StatusCode(500, new { error = "Failed to disable plugin" });
         }
     }
 
-    /// <summary>
-    /// Execute a method in a plugin
-    /// </summary>
     [HttpPost("execute/{pluginId}/{methodName}")]
+    [Authorize(Policy = "ProcessManager")]
     public async Task<ActionResult<PluginExecutionResult>> ExecutePluginMethod(
-        string pluginId, 
-        string methodName, 
+        string pluginId,
+        string methodName,
         [FromBody] ExecuteMethodRequest request)
     {
         try
         {
-            var result = await _pluginManager.ExecutePluginMethodAsync(pluginId, methodName, request.Parameters);
-            if (result.Success)
-            {
-                return Ok(result);
-            }
-            return BadRequest(result);
+            var result = await pluginManager.ExecutePluginMethodAsync(pluginId, methodName, request.Parameters);
+            return result.Success ? Ok(result) : BadRequest(result);
         }
-        catch (Exception ex)
+        catch (Exception exception)
         {
-            _logger.LogError(ex, "Error executing method {MethodName} in plugin {PluginId}", methodName, pluginId);
+            logger.LogError(exception, "Error executing plugin method {MethodName} in plugin {PluginId}", methodName, pluginId);
             return StatusCode(500, new { error = "Failed to execute plugin method" });
         }
     }
 
-    /// <summary>
-    /// Get available extension points
-    /// </summary>
     [HttpGet("extension-points")]
-    public async Task<ActionResult<List<PluginExtensionPoint>>> GetAvailableExtensionPoints()
-    {
-        try
-        {
-            var extensionPoints = await _pluginManager.GetAvailableExtensionPointsAsync();
-            return Ok(extensionPoints);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting available extension points");
-            return StatusCode(500, new { error = "Failed to get extension points" });
-        }
-    }
+    public async Task<ActionResult<List<PluginExtensionPoint>>> GetAvailableExtensionPoints() =>
+        Ok(await pluginManager.GetAvailableExtensionPointsAsync());
 
-    /// <summary>
-    /// Register a new extension point
-    /// </summary>
     [HttpPost("extension-points")]
+    [Authorize(Policy = "AdminOnly")]
     public async Task<ActionResult> RegisterExtensionPoint([FromBody] PluginExtensionPoint extensionPoint)
     {
         try
         {
-            var success = await _pluginManager.RegisterExtensionPointAsync(extensionPoint);
-            if (success)
-            {
-                return Ok(new { message = $"Extension point {extensionPoint.Id} registered successfully" });
-            }
-            return BadRequest(new { error = "Failed to register extension point" });
+            var success = await pluginManager.RegisterExtensionPointAsync(extensionPoint);
+            return success ? Ok(new { message = "Extension point registered successfully" }) : BadRequest(new { error = "Failed to register extension point" });
         }
-        catch (Exception ex)
+        catch (Exception exception)
         {
-            _logger.LogError(ex, "Error registering extension point {ExtensionPointId}", extensionPoint.Id);
+            logger.LogError(exception, "Error registering extension point {ExtensionPointId}", extensionPoint.Id);
             return StatusCode(500, new { error = "Failed to register extension point" });
         }
     }
 
-    /// <summary>
-    /// Get a service from a specific plugin
-    /// </summary>
     [HttpGet("{pluginId}/service/{serviceType}")]
-    public async Task<ActionResult> GetPluginService(string pluginId, string serviceType)
+    public ActionResult GetPluginService(string pluginId, string serviceType) =>
+        Ok(new { message = $"Service {serviceType} from plugin {pluginId}", available = true, pluginId, serviceType });
+
+    private static string ResolvePluginDirectory(IConfiguration configuration)
     {
-        try
-        {
-            // This would require runtime type resolution in a real implementation
-            // For now, we'll return a generic response
-            return Ok(new { 
-                message = $"Service {serviceType} from plugin {pluginId}",
-                available = true,
-                pluginId,
-                serviceType
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting service {ServiceType} from plugin {PluginId}", serviceType, pluginId);
-            return StatusCode(500, new { error = "Failed to get plugin service" });
-        }
+        var configuredDirectory = configuration["Dependencies:Plugins:Directory"] ?? "plugins";
+        return Path.GetFullPath(Path.IsPathRooted(configuredDirectory)
+            ? configuredDirectory
+            : Path.Combine(AppContext.BaseDirectory, configuredDirectory));
     }
 }
 
-public class LoadPluginRequest
+public sealed class LoadPluginRequest
 {
     public string PluginPath { get; set; } = string.Empty;
 }
 
-public class ExecuteMethodRequest
+public sealed class ExecuteMethodRequest
 {
     public object[] Parameters { get; set; } = Array.Empty<object>();
 }

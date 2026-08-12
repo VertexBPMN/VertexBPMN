@@ -14,6 +14,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\VertexBPMN.Domain\VertexBPMN.Domain.csproj" />
     <ProjectReference Include="..\VertexBPMN.Application\VertexBPMN.Application.csproj" />
     <ProjectReference Include="..\VertexBPMN.Engine\VertexBPMN.Engine.csproj" />

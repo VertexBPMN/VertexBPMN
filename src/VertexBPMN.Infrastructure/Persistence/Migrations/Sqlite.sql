@@ -199,6 +199,23 @@ CREATE UNIQUE INDEX IF NOT EXISTS IX_Credentials_TenantId_Name ON Credentials(Te
 CREATE INDEX IF NOT EXISTS IX_Credentials_TenantId ON Credentials(TenantId);
 CREATE INDEX IF NOT EXISTS IX_Credentials_LastModified ON Credentials(LastModified);
 
+CREATE TABLE IF NOT EXISTS Connectors (
+    Id TEXT PRIMARY KEY,
+    TenantId TEXT NOT NULL,
+    Name TEXT NOT NULL,
+    Type TEXT NOT NULL,
+    Description TEXT,
+    Endpoint TEXT,
+    CredentialId TEXT,
+    Enabled INTEGER NOT NULL,
+    CreatedAt TEXT NOT NULL,
+    LastModified TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS IX_Connectors_TenantId_Name ON Connectors(TenantId, Name);
+CREATE INDEX IF NOT EXISTS IX_Connectors_TenantId ON Connectors(TenantId);
+CREATE INDEX IF NOT EXISTS IX_Connectors_CredentialId ON Connectors(CredentialId);
+CREATE INDEX IF NOT EXISTS IX_Connectors_LastModified ON Connectors(LastModified);
+
 CREATE TABLE IF NOT EXISTS DecisionDefinitions (
     Id TEXT PRIMARY KEY,
     [Key] TEXT NOT NULL,

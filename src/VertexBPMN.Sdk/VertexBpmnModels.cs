@@ -38,3 +38,19 @@ public sealed record UserTask(
     string? FormSchema);
 
 public sealed record FormSchema(Guid Id, string? FormKey, string? Schema);
+
+public sealed record WorkflowTrigger(
+    Guid Id,
+    string Name,
+    string ProcessDefinitionKey,
+    string? TenantId,
+    bool Enabled,
+    DateTime CreatedAt,
+    DateTime LastModified,
+    DateTime? LastTriggeredAt,
+    long InvocationCount);
+
+public sealed record WorkflowTriggerCreated(
+    WorkflowTrigger Trigger,
+    string Secret,
+    string InvokePath);

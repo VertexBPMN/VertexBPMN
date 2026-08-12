@@ -1,19 +1,28 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 using VertexBPMN.Domain.Entities;
+using VertexBPMN.Domain.Entities.Debugging;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Domain.Interfaces.Repositories;
 
 namespace VertexBPMN.Api.Controllers
 {
     [ApiController]
+    [Authorize]
     [Route("api/visual-debugger")]
     [ApiExplorerSettings(GroupName = "Debugger")]
     public class VisualDebuggerController : ControllerBase
     {
         private readonly IRuntimeService _runtimeService;
-        public VisualDebuggerController(IRuntimeService runtimeService)
+        private readonly IVisualDebugStepService _stepService;
+
+        public VisualDebuggerController(
+            IRuntimeService runtimeService,
+            IVisualDebugStepService stepService)
         {
             _runtimeService = runtimeService;
+            _stepService = stepService;
         }
 
         /// <summary>
@@ -83,17 +92,31 @@ namespace VertexBPMN.Api.Controllers
         /// Step the process instance to the next activity (Step-API).
         /// </summary>
         [HttpPost("instance/{id}/step")]
-        [ProducesResponseType(typeof(ProcessInstance), 200)]
-        public async Task<ActionResult<ProcessInstance>> StepInstance(Guid id, CancellationToken cancellationToken)
+        [ProducesResponseType(typeof(VisualDebugStepResult), 200)]
+        public async Task<ActionResult<VisualDebugStepResult>> StepInstance(Guid id, CancellationToken cancellationToken)
         {
             var instance = await _runtimeService.GetByIdAsync(id, cancellationToken);
             if (instance == null) return NotFound();
+            if (!CanAccessTenant(instance.TenantId)) return Forbid();
 
-            return StatusCode(StatusCodes.Status501NotImplemented, new ProblemDetails
+            try
             {
-                Title = "Visual stepping is not available",
-                Detail = "The runtime does not expose a persisted step operation for this process instance."
-            });
+                return Ok(await _stepService.StepAsync(id, cancellationToken));
+            }
+            catch (InvalidOperationException exception)
+            {
+                return Conflict(new ProblemDetails
+                {
+                    Title = "Visual stepping cannot advance this process instance",
+                    Detail = exception.Message,
+                    Status = StatusCodes.Status409Conflict
+                });
+            }
         }
+
+        private bool CanAccessTenant(string? tenantId) =>
+            User.IsInRole("Admin") ||
+            string.Equals(User.FindFirstValue("tenant_id"), tenantId, StringComparison.Ordinal);
+
     }
 }

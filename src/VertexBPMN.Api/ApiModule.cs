@@ -31,7 +31,8 @@ public static class ApiModule
         services.AddScoped<IHealthMonitoringService, ProductionHealthMonitoringService>();
         services.AddScoped<IPredictiveAnalyticsService, UnavailablePredictiveAnalyticsService>();
         services.AddScoped<ILiveProcessMigrationService, LiveProcessMigrationService>();
-        services.AddScoped<IVisualDebuggingService, VisualDebuggingService>();
+        services.AddSingleton<IVisualDebuggingService, VisualDebuggingService>();
+        services.AddScoped<IVisualDebugStepService, PersistentVisualDebugStepService>();
         services.AddSingleton<IPluginManager, PluginManager>();
         services.AddTransient<AuditLoggingMiddleware>();
 

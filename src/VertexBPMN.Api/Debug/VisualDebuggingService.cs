@@ -226,20 +226,24 @@ public class VisualDebuggingService : IVisualDebuggingService
             var result = new StepResult
             {
                 Type = StepType.StepOver,
-                StartActivity = session.CurrentActivityId,
                 Timestamp = DateTime.UtcNow
             };
 
-            // Execute single step
             using var scope = _serviceProvider.CreateScope();
-            var nextActivity = await ExecuteSingleStepAsync(session.ProcessInstanceId, scope);
-            
-            session.CurrentActivityId = nextActivity;
-            result.EndActivity = nextActivity;
-            result.Variables = await GetVariablesSnapshotAsync(session.ProcessInstanceId, scope);
+            var persistedStep = await scope.ServiceProvider
+                .GetRequiredService<IVisualDebugStepService>()
+                .StepAsync(session.ProcessInstanceId);
+
+            session.CurrentActivityId = persistedStep.EndActivityId;
+            session.ExecutionState = persistedStep.ProcessCompleted
+                ? ExecutionState.Completed
+                : ExecutionState.Paused;
+            result.StartActivity = persistedStep.StartActivityId;
+            result.EndActivity = persistedStep.EndActivityId;
+            result.Variables = persistedStep.Instance.Variables;
 
             // Check for breakpoints
-            if (await CheckBreakpointHitAsync(sessionId, nextActivity))
+            if (await CheckBreakpointHitAsync(sessionId, persistedStep.EndActivityId))
             {
                 session.ExecutionState = ExecutionState.Paused;
                 result.BreakpointHit = true;
@@ -250,7 +254,7 @@ public class VisualDebuggingService : IVisualDebuggingService
             await AddTraceEventAsync(sessionId, new TraceEvent
             {
                 Type = "StepOver",
-                ActivityId = nextActivity,
+                ActivityId = persistedStep.EndActivityId,
                 Timestamp = DateTime.UtcNow,
                 Details = JsonSerializer.Serialize(result)
             });

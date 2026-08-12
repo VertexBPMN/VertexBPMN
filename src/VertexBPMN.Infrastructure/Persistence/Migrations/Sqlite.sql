@@ -182,6 +182,23 @@ CREATE INDEX IF NOT EXISTS IX_Users_Email ON Users(Email);
 CREATE INDEX IF NOT EXISTS IX_Users_IsActive ON Users(IsActive);
 CREATE INDEX IF NOT EXISTS IX_Users_CreatedAt ON Users(CreatedAt);
 
+
+CREATE TABLE IF NOT EXISTS Credentials (
+    Id TEXT PRIMARY KEY,
+    TenantId TEXT NOT NULL,
+    Name TEXT NOT NULL,
+    Type TEXT NOT NULL,
+    Description TEXT,
+    SecretKeysJson TEXT NOT NULL,
+    ProtectedValues TEXT NOT NULL,
+    CreatedAt TEXT NOT NULL,
+    LastModified TEXT NOT NULL,
+    LastUsedAt TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS IX_Credentials_TenantId_Name ON Credentials(TenantId, Name);
+CREATE INDEX IF NOT EXISTS IX_Credentials_TenantId ON Credentials(TenantId);
+CREATE INDEX IF NOT EXISTS IX_Credentials_LastModified ON Credentials(LastModified);
+
 CREATE TABLE IF NOT EXISTS DecisionDefinitions (
     Id TEXT PRIMARY KEY,
     [Key] TEXT NOT NULL,

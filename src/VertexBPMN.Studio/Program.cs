@@ -126,6 +126,7 @@ builder.Services.AddScoped<IAnalyticsService, HttpAnalyticsService>();
 builder.Services.AddScoped<IMlAnalyticsService, HttpMlAnalyticsService>();
 builder.Services.AddScoped<IFeatureFlagService, HttpFeatureFlagService>();
 builder.Services.AddScoped<IIdentityService, HttpIdentityService>();
+builder.Services.AddScoped<ICredentialService, HttpCredentialService>();
 builder.Services.AddScoped<IPerformanceService, HttpPerformanceService>();
 builder.Services.AddScoped<ISimulationService, HttpSimulationService>();
 builder.Services.AddScoped<ISimulationScenarioService, HttpSimulationScenarioService>();

@@ -178,6 +178,23 @@ CREATE INDEX IX_Users_Email ON Users(Email);
 CREATE INDEX IX_Users_IsActive ON Users(IsActive);
 CREATE INDEX IX_Users_CreatedAt ON Users(CreatedAt);
 
+
+CREATE TABLE Credentials (
+    Id NVARCHAR(128) PRIMARY KEY,
+    TenantId NVARCHAR(64) NOT NULL,
+    Name NVARCHAR(256) NOT NULL,
+    Type NVARCHAR(128) NOT NULL,
+    Description NVARCHAR(2000) NULL,
+    SecretKeysJson NVARCHAR(4000) NOT NULL,
+    ProtectedValues NVARCHAR(MAX) NOT NULL,
+    CreatedAt DATETIME2 NOT NULL,
+    LastModified DATETIME2 NOT NULL,
+    LastUsedAt DATETIME2 NULL
+);
+CREATE UNIQUE INDEX IX_Credentials_TenantId_Name ON Credentials(TenantId, Name);
+CREATE INDEX IX_Credentials_TenantId ON Credentials(TenantId);
+CREATE INDEX IX_Credentials_LastModified ON Credentials(LastModified);
+
 CREATE TABLE DecisionDefinitions (
     Id NVARCHAR(200) PRIMARY KEY,
     [Key] NVARCHAR(200) NOT NULL,

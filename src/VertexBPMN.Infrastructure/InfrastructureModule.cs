@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using VertexBPMN.Application.Configuration;
@@ -35,6 +36,8 @@ public static class InfrastructureModule
         services.AddScoped<IIncidentRepository, IncidentRepository>();
         services.AddScoped<IDecisionRepository, DecisionRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
+        services.AddDataProtection().SetApplicationName("VertexBPMN");
+        services.AddScoped<ICredentialService, PersistentCredentialService>();
         return services;
     }
 

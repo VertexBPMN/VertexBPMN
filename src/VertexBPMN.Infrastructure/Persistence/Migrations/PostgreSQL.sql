@@ -187,6 +187,23 @@ CREATE INDEX IF NOT EXISTS ix_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS ix_users_is_active ON users(is_active);
 CREATE INDEX IF NOT EXISTS ix_users_created_at ON users(created_at);
 
+
+CREATE TABLE IF NOT EXISTS credentials (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,
+    description TEXT,
+    secret_keys_json TEXT NOT NULL,
+    protected_values TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    last_modified TIMESTAMPTZ NOT NULL,
+    last_used_at TIMESTAMPTZ NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ix_credentials_tenant_name ON credentials(tenant_id, name);
+CREATE INDEX IF NOT EXISTS ix_credentials_tenant ON credentials(tenant_id);
+CREATE INDEX IF NOT EXISTS ix_credentials_last_modified ON credentials(last_modified);
+
 -- Decision (DMN)
 CREATE TABLE decision_definitions (
     id TEXT PRIMARY KEY,

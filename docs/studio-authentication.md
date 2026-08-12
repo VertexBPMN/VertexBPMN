@@ -25,3 +25,8 @@ token to the API as a bearer token.
 Studio fails during startup when `Authority` or `ClientId` is missing. This is
 intentional: an unconfigured deployment must not silently become anonymous or
 create a synthetic administrator.
+
+## Passwortverwaltung
+
+VertexBPMN speichert und prüft keine Benutzerpasswörter. Der API-Vertrag `/api/identity/password-management` weist den externen OIDC-Provider als zuständige Stelle aus; optional kann `Identity:PasswordManagementUrl` auf dessen Passwort-/Account-Seite zeigen. Der frühere Validate-User-Endpunkt akzeptiert keinen Passwortwert mehr.
+Für Connector-Credentials muss der Data-Protection-Key-Ring in Produktion persistent gespeichert bzw. als Container-Volume eingebunden werden; ohne denselben Key-Ring können geschützte Werte nach einem Neustart nicht entschlüsselt werden.

@@ -29,6 +29,7 @@ public class BpmnDbContext : DbContext
     public DbSet<IdentityGroupRecord> IdentityGroups => Set<IdentityGroupRecord>();
     public DbSet<IdentityGroupMembershipRecord> IdentityGroupMemberships => Set<IdentityGroupMembershipRecord>();
     public DbSet<IdentityAuthorizationRecord> IdentityAuthorizations => Set<IdentityAuthorizationRecord>();
+    public DbSet<CredentialRecord> Credentials => Set<CredentialRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -47,6 +48,7 @@ public class BpmnDbContext : DbContext
         ConfigureCmmnHistory(modelBuilder);
         ConfigureFeatureFlags(modelBuilder);
         ConfigureIdentity(modelBuilder);
+        ConfigureCredentials(modelBuilder);
 
         // Seed sample data (deterministic IDs & timestamps)
         var deploymentId = Guid.Parse("11111111-1111-1111-1111-111111111111");
@@ -279,6 +281,24 @@ public class BpmnDbContext : DbContext
             entity.Property(authorization => authorization.TenantId).HasMaxLength(64);
             entity.HasIndex(authorization => authorization.TenantId);
             entity.HasIndex(authorization => new { authorization.UserId, authorization.GroupId, authorization.Resource }).IsUnique();
+        });
+    }
+
+    private static void ConfigureCredentials(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<CredentialRecord>(entity =>
+        {
+            entity.HasKey(credential => credential.Id);
+            entity.Property(credential => credential.Id).HasMaxLength(128);
+            entity.Property(credential => credential.TenantId).IsRequired().HasMaxLength(64);
+            entity.Property(credential => credential.Name).IsRequired().HasMaxLength(256);
+            entity.Property(credential => credential.Type).IsRequired().HasMaxLength(128);
+            entity.Property(credential => credential.Description).HasMaxLength(2000);
+            entity.Property(credential => credential.SecretKeysJson).IsRequired().HasMaxLength(4000);
+            entity.Property(credential => credential.ProtectedValues).IsRequired();
+            entity.HasIndex(credential => new { credential.TenantId, credential.Name }).IsUnique();
+            entity.HasIndex(credential => credential.TenantId);
+            entity.HasIndex(credential => credential.LastModified);
         });
     }
 

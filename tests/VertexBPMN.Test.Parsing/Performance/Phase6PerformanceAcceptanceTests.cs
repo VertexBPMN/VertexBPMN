@@ -90,7 +90,7 @@ public class Phase6PerformanceAcceptanceTests
         var overheadPercent = overhead * 100;
         
         Assert.True(overheadPercent <= 70,
-            $"Strict mode overhead {overheadPercent:F1}% exceeds CI tolerance of 60%");
+            $"Strict mode overhead {overheadPercent:F1}% exceeds CI tolerance of 70%");
     }
 
     [Fact]
@@ -198,15 +198,24 @@ public class Phase6PerformanceAcceptanceTests
     // Helper methods
     private async Task<double> MeasureParseTime(BpmnParser parser, string xml, int iterations)
     {
-        var stopwatch = Stopwatch.StartNew();
-        
-        for (int i = 0; i < iterations; i++)
+        // A single short timing window is too sensitive to CPU frequency changes
+        // and neighboring tests on shared CI runners. Use the median of several
+        // independent windows while keeping each window the same size.
+        const int samples = 5;
+        var timings = new double[samples];
+        for (var sample = 0; sample < samples; sample++)
         {
-            await parser.ParseAsync(xml);
+            var stopwatch = Stopwatch.StartNew();
+            for (var i = 0; i < iterations; i++)
+            {
+                await parser.ParseAsync(xml);
+            }
+            stopwatch.Stop();
+            timings[sample] = stopwatch.Elapsed.TotalMilliseconds / iterations;
         }
-        
-        stopwatch.Stop();
-        return stopwatch.Elapsed.TotalMilliseconds / iterations;
+
+        Array.Sort(timings);
+        return timings[samples / 2];
     }
     
     private async Task<long> MeasureMemoryAllocations(Func<Task> action)

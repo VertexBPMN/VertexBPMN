@@ -186,7 +186,7 @@ public class Phase6PerformanceLayerTests
         var overheadPercent = overhead * 100;
 
         Assert.True(overheadPercent <= 60.0, 
-            $"Strict mode overhead ({overheadPercent:F1}%) exceeds 15% target. Baseline: {baselineTime.TotalMilliseconds:F1}ms, Strict: {strictTime.TotalMilliseconds:F1}ms");
+            $"Strict mode overhead ({overheadPercent:F1}%) exceeds 60% CI guard. Baseline: {baselineTime.TotalMilliseconds:F1}ms, Strict: {strictTime.TotalMilliseconds:F1}ms");
     }
 
     [Fact]
@@ -273,7 +273,7 @@ public class Phase6PerformanceLayerTests
         await Task.Delay(10);
         
         var stopwatch = Stopwatch.StartNew();
-        const int iterations = 20; // More iterations for better average
+        const int iterations = 50; // More iterations reduce shared-runner timing noise
         
         for (int i = 0; i < iterations; i++)
         {

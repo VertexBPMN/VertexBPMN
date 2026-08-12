@@ -289,7 +289,7 @@ public class BpmnSerializer
             var elementMap = new Dictionary<string,XElement>();
             foreach (var kv in ext)
             {
-                if (!TryParseExtensionKey(kv.Key, out var nsUri, out var localName, out var attrName)) continue;
+                if (!TryParseExtensionKey(kv.Key, out var nsUri, out var localName, out var attrName, out var attrNsUri)) continue;
                 var key = nsUri + "|" + localName;
                 if (!elementMap.TryGetValue(key, out var el))
                 {
@@ -299,7 +299,7 @@ public class BpmnSerializer
                     extRoot.Add(el);
                 }
                 if (attrName == "__present") continue;
-                el.SetAttributeValue(attrName, kv.Value);
+                el.SetAttributeValue(string.IsNullOrEmpty(attrNsUri) ? XName.Get(attrName) : XName.Get(attrName, attrNsUri), kv.Value);
             }
             if (elementMap.Count > 0) parent.Add(extRoot);
         }
@@ -535,8 +535,93 @@ public class BpmnSerializer
     private static XElement SerializeEventDefinitionsPlaceholder(BpmnEvent evt) => new("__defs");
     private static string ParseLocalName(string qname) => qname.LastIndexOf(':') is var idx and >= 0 ? qname[(idx + 1)..] : qname.StartsWith("{") ? qname[(qname.IndexOf('}') + 1)..] : qname;
     private static string? ParseNamespace(string qname) { if (!qname.StartsWith("{")) return null; var close = qname.IndexOf('}'); return close > 1 ? qname[1..close] : null; }
-    private static bool TryParseExtensionKey(string key, out string nsUri, out string localName, out string attrName) { nsUri = localName = attrName = string.Empty; var parts = key.Split(':'); if (parts.Length < 2) return false; attrName = parts[^1]; var elemPart = string.Join(':', parts[..^1]); if (elemPart.StartsWith("{")) { var close = elemPart.IndexOf('}'); if (close <= 1) return false; nsUri = elemPart[1..close]; localName = elemPart[(close + 1)..]; } else localName = elemPart; return !string.IsNullOrEmpty(localName); }
-    private static string? ParseElementNamespace(string key) { var brace = key.IndexOf('}'); if (key.StartsWith('{') && brace > 1) return key.Substring(1, brace - 1); return null; }
+    private static bool TryParseExtensionKey(string key, out string nsUri, out string localName, out string attrName, out string attrNsUri)
+    {
+        nsUri = localName = attrName = attrNsUri = string.Empty;
+        if (string.IsNullOrWhiteSpace(key)) return false;
+
+        // Engine keys use "elementQName.attributeQName". Older snapshots use
+        // "{namespace}element:attribute". Do not split every colon: URIs and
+        // qualified names both legitimately contain colons.
+        string elementQName;
+        var closeBrace = key.IndexOf('}');
+        var dot = key.IndexOf('.', closeBrace >= 0 ? closeBrace + 1 : 0);
+        if (dot > 0)
+        {
+            elementQName = key[..dot];
+            var attributeQName = key[(dot + 1)..];
+            if (!TryParseQualifiedName(elementQName, out nsUri, out localName)) return false;
+            if (attributeQName == "__present") { attrName = attributeQName; return true; }
+            return TryParseQualifiedName(attributeQName, out attrNsUri, out attrName);
+        }
+
+        if (closeBrace > 0)
+        {
+            var separator = key.IndexOf(':', closeBrace + 1);
+            if (separator <= closeBrace + 1) return false;
+            elementQName = key[..separator];
+            attrName = key[(separator + 1)..];
+            if (!TryParseQualifiedName(elementQName, out nsUri, out localName)) return false;
+            return IsValidXmlLocalName(attrName);
+        }
+
+        // A presence-only legacy key has no attribute separator.
+        if (!TryParseQualifiedName(key, out nsUri, out localName)) return false;
+        attrName = "__present";
+        return true;
+    }
+
+    private static bool TryParseQualifiedName(string qname, out string nsUri, out string localName)
+    {
+        nsUri = localName = string.Empty;
+        if (qname.StartsWith("{"))
+        {
+            var close = qname.IndexOf('}');
+            if (close <= 1) return false;
+            nsUri = qname[1..close];
+            localName = qname[(close + 1)..];
+        }
+        else
+        {
+            var colon = qname.IndexOf(':');
+            if (colon >= 0)
+            {
+                if (colon == 0 || colon == qname.Length - 1) return false;
+                var prefix = qname[..colon];
+                localName = qname[(colon + 1)..];
+                nsUri = NamespaceByPrefix.TryGetValue(prefix, out var mapped) ? mapped : string.Empty;
+            }
+            else localName = qname;
+        }
+        return IsValidXmlLocalName(localName);
+    }
+
+    private static bool IsValidXmlLocalName(string name)
+    {
+        try { System.Xml.XmlConvert.VerifyNCName(name); return true; }
+        catch (System.Xml.XmlException) { return false; }
+    }
+
+    private static readonly Dictionary<string, string> NamespaceByPrefix = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["camunda"] = "http://camunda.org/schema/1.0/bpmn",
+        ["zeebe"] = "http://zeebe.io/schema/zeebe/1.0",
+        ["vertex"] = "http://vertexbpmn.io/schema/1.0",
+        ["xsi"] = "http://www.w3.org/2001/XMLSchema-instance",
+        ["w4graph"] = "http://www.w4.eu/spec/BPMN/20110930/GRAPH"
+    };
+
+    private static string? ParseElementNamespace(string key)
+    {
+        if (key.StartsWith('{'))
+        {
+            var brace = key.IndexOf('}');
+            if (brace > 1) return key.Substring(1, brace - 1);
+        }
+        var separator = key.IndexOfAny([':', '.']);
+        if (separator > 0 && NamespaceByPrefix.TryGetValue(key[..separator], out var uri)) return uri;
+        return null;
+    }
     private static XElement SerializeEventDefinition(EventDefinition def) => def switch
     { TimerEventDefinition t => new(Bpmn + "timerEventDefinition", t.TimeDate != null ? new XElement(Bpmn + "timeDate", t.TimeDate) : null, t.TimeDuration != null ? new XElement(Bpmn + "timeDuration", t.TimeDuration) : null, t.TimeCycle != null ? new XElement(Bpmn + "timeCycle", t.TimeCycle) : null),
       MessageEventDefinition m => new(Bpmn + "messageEventDefinition", new XAttribute("messageRef", m.MessageRef)),

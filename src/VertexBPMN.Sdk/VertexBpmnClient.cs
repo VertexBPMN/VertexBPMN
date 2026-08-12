@@ -41,6 +41,18 @@ public sealed class VertexBpmnClient
         return await SendAsync<List<ProcessDefinition>>(HttpMethod.Get, uri, cancellationToken) ?? [];
     }
 
+    public Task<ProcessDefinition?> DeployProcessAsync(
+        string bpmnXml,
+        string name,
+        string? tenantId = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(bpmnXml);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        var request = new DeployProcessRequest(bpmnXml, name, tenantId ?? options.TenantId);
+        return SendForNullableAsync<ProcessDefinition>(HttpMethod.Post, "api/repository", request, cancellationToken);
+    }
+
     public Task<ProcessDefinition?> GetProcessDefinitionAsync(Guid id, CancellationToken cancellationToken = default)
         => SendForNullableAsync<ProcessDefinition>(HttpMethod.Get, $"api/vertex/process-definition/{id}", cancellationToken);
 
@@ -68,6 +80,62 @@ public sealed class VertexBpmnClient
         return SendForNullableAsync<ProcessInstance>(HttpMethod.Post, "api/runtime/start", request, cancellationToken);
     }
 
+    public async Task<IReadOnlyList<WorkflowTrigger>> ListWorkflowTriggersAsync(
+        string? tenantId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var uri = BuildUri("api/triggers", ("tenantId", tenantId ?? options.TenantId));
+        return await SendAsync<List<WorkflowTrigger>>(HttpMethod.Get, uri, cancellationToken) ?? [];
+    }
+
+    public Task<WorkflowTriggerCreated?> CreateWorkflowTriggerAsync(
+        string name,
+        string processDefinitionKey,
+        string? tenantId = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentException.ThrowIfNullOrWhiteSpace(processDefinitionKey);
+        var request = new CreateWorkflowTriggerRequest(name, processDefinitionKey, tenantId ?? options.TenantId);
+        return SendForNullableAsync<WorkflowTriggerCreated>(HttpMethod.Post, "api/triggers", request, cancellationToken);
+    }
+
+    public Task UpdateWorkflowTriggerAsync(
+        Guid triggerId,
+        string? name = null,
+        bool? enabled = null,
+        string? tenantId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var uri = BuildUri($"api/triggers/{triggerId}", ("tenantId", tenantId ?? options.TenantId));
+        return SendWithoutContentAsync(HttpMethod.Put, uri, new UpdateWorkflowTriggerRequest(name, enabled), cancellationToken);
+    }
+
+    public Task DeleteWorkflowTriggerAsync(
+        Guid triggerId,
+        string? tenantId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var uri = BuildUri($"api/triggers/{triggerId}", ("tenantId", tenantId ?? options.TenantId));
+        return SendWithoutContentAsync(HttpMethod.Delete, uri, null, cancellationToken);
+    }
+
+    public Task<ProcessInstance?> InvokeWorkflowTriggerAsync(
+        Guid triggerId,
+        string secret,
+        IDictionary<string, object?>? variables = null,
+        string? businessKey = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(secret);
+        return SendForNullableAsync<ProcessInstance>(
+            HttpMethod.Post,
+            $"api/triggers/{triggerId}/invoke",
+            new InvokeWorkflowTriggerRequest(variables, businessKey),
+            cancellationToken,
+            secret);
+    }
+
     public async Task<IReadOnlyList<UserTask>> ListTasksAsync(
         Guid? processInstanceId = null,
         string? assignee = null,
@@ -93,12 +161,23 @@ public sealed class VertexBpmnClient
         => await SendForNullableAsync<T>(method, uri, null, cancellationToken);
 
     private async Task<T?> SendForNullableAsync<T>(HttpMethod method, string uri, object? body, CancellationToken cancellationToken)
+        => await SendForNullableAsync<T>(method, uri, body, cancellationToken, null);
+
+    private async Task<T?> SendForNullableAsync<T>(HttpMethod method, string uri, object? body, CancellationToken cancellationToken, string? triggerSecret)
     {
-        using var request = CreateRequest(method, uri, body);
+        using var request = CreateRequest(method, uri, body, triggerSecret);
         using var response = await httpClient.SendAsync(request, cancellationToken);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             return default;
 
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken);
+    }
+
+    private async Task<T?> SendAsync<T>(HttpMethod method, string uri, object body, CancellationToken cancellationToken)
+    {
+        using var request = CreateRequest(method, uri, body);
+        using var response = await httpClient.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken);
     }
@@ -111,20 +190,22 @@ public sealed class VertexBpmnClient
         return await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken);
     }
 
-    private async Task SendWithoutContentAsync(HttpMethod method, string uri, object body, CancellationToken cancellationToken)
+    private async Task SendWithoutContentAsync(HttpMethod method, string uri, object? body, CancellationToken cancellationToken)
     {
         using var request = CreateRequest(method, uri, body);
         using var response = await httpClient.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
     }
 
-    private HttpRequestMessage CreateRequest(HttpMethod method, string uri, object? body = null)
+    private HttpRequestMessage CreateRequest(HttpMethod method, string uri, object? body = null, string? triggerSecret = null)
     {
         var request = new HttpRequestMessage(method, uri);
         if (!string.IsNullOrWhiteSpace(options.BearerToken))
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", options.BearerToken);
         if (!string.IsNullOrWhiteSpace(options.ApiKey))
             request.Headers.Add("X-API-Key", options.ApiKey);
+        if (!string.IsNullOrWhiteSpace(triggerSecret))
+            request.Headers.Add("X-VertexBPMN-Trigger-Secret", triggerSecret);
         if (body is not null)
             request.Content = JsonContent.Create(body, options: JsonOptions);
         return request;
@@ -139,7 +220,11 @@ public sealed class VertexBpmnClient
         return values.Length == 0 ? path : $"{path}?{string.Join("&", values)}";
     }
 
+    private sealed record DeployProcessRequest(string BpmnXml, string Name, string? TenantId);
     private sealed record StartProcessRequest(string ProcessDefinitionKey, IDictionary<string, object?>? Variables, string? BusinessKey, string? TenantId);
+    private sealed record CreateWorkflowTriggerRequest(string Name, string ProcessDefinitionKey, string? TenantId);
+    private sealed record UpdateWorkflowTriggerRequest(string? Name, bool? Enabled);
+    private sealed record InvokeWorkflowTriggerRequest(IDictionary<string, object?>? Variables, string? BusinessKey);
     private sealed record UserRequest(string UserId);
     private sealed record VariablesRequest(IDictionary<string, object?>? Variables);
 }

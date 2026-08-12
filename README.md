@@ -3,8 +3,8 @@
 **Eine moderne, hochperformante BPMN 2.0, CMMN 1.1 & DMN 1.4 Engine für .NET**
 
 ![Build Status](https://img.shields.io/github/actions/workflow/status/VertexBPMN/VertexBPMN/build.yml?branch=main&style=for-the-badge)
-![NuGet Version](https://img.shields.io/nuget/v/VertexBPMN.Core?style=for-the-badge)
-![NuGet Downloads](https://img.shields.io/nuget/dt/VertexBPMN.Core?style=for-the-badge)
+![NuGet Version](https://img.shields.io/nuget/v/VertexBPMN.Sdk?style=for-the-badge)
+![NuGet Downloads](https://img.shields.io/nuget/dt/VertexBPMN.Sdk?style=for-the-badge)
 ![License](https://img.shields.io/github/license/VertexBPMN/VertexBPMN?style=for-the-badge)
 ![.NET](https://img.shields.io/badge/.NET-10.0-512BD4?style=for-the-badge&logo=dotnet)
 
@@ -69,54 +69,66 @@ Alle Endpunkte sind über Swagger/OpenAPI dokumentiert und testbar.
 
 ## 🏁 Getting Started (Quick Start)
 
-Sobald eine erste Version auf NuGet verfügbar ist, können Sie die Engine ganz einfach zu Ihrem Projekt hinzufügen.
+Die öffentliche .NET-Integration von VertexBPMN erfolgt über das NuGet-Paket **VertexBPMN.Sdk**. Das SDK kommuniziert mit einer laufenden VertexBPMN-API und bietet typisierte Methoden für Deployment, Prozessstart, Instanzen und Workflow-Trigger.
 
-**1. Installation**
+**1. SDK installieren**
 
 ```bash
-dotnet add package VertexBPMN.Core
+dotnet add package VertexBPMN.Sdk
 ```
 
-**2. Ein einfacher Prozess**
+**2. API-Client konfigurieren**
 
-Hier ist ein minimales Beispiel, wie man die Engine verwendet, um einen Prozess zu starten:
+Die API muss erreichbar sein. Für geschützte Endpunkte wird ein gültiger Bearer-Token oder API-Key benötigt:
 
 ```csharp
-using VertexBPMN.Core;
-using VertexBPMN.Core.Process;
+using VertexBPMN.Sdk;
 
-// 1. Definiere ein einfaches BPMN 2.0-Prozessmodell als XML-String
-const string bpmnProcess = @"
-<?xml version=""1.0"" encoding=""UTF-8""?>
-<bpmn:definitions xmlns:bpmn=""http://www.omg.org/spec/BPMN/20100524/MODEL"" 
-                  targetNamespace=""http://bpmn.io/schema/bpmn"">
-  <bpmn:process id=""Process_HelloWorld"" isExecutable=""true"">
-    <bpmn:startEvent id=""StartEvent_1""/>
-  </bpmn:process>
-</bpmn:definitions>";
+using var httpClient = new HttpClient
+{
+    BaseAddress = new Uri("http://localhost:51870/")
+};
 
-// 2. Baue eine In-Memory-Engine für einen schnellen Test
-var engine = await new EngineBuilder()
-    .UseInMemoryStorage()
-    .BuildAsync();
-
-// 3. Deploye den Prozess in die Engine
-var deployment = await engine.RepositoryService.DeployAsync(
-    new ProcessResource(bpmnProcess, "hello-world.bpmn")
-);
-
-Console.WriteLine($"Prozess '{deployment.Name}' erfolgreich deployed.");
-
-// 4. Starte eine neue Instanz des Prozesses
-var processInstance = await engine.RuntimeService.StartProcessByKeyAsync("Process_HelloWorld");
-
-Console.WriteLine($"Prozessinstanz mit der ID '{processInstance.Id}' wurde gestartet!");
-
-
-// Output:
-// Prozess 'hello-world.bpmn' erfolgreich deployed.
-// Prozessinstanz mit der ID '...' wurde gestartet!
+var client = new VertexBpmnClient(
+    httpClient,
+    new VertexBpmnClientOptions
+    {
+        BearerToken = Environment.GetEnvironmentVariable("VERTEXBPMN_BEARER_TOKEN"),
+        TenantId = "acme"
+    });
 ```
+
+**3. BPMN deployen und Prozess starten**
+
+```csharp
+const string bpmnXml =
+    "<definitions xmlns=\"http://www.omg.org/spec/BPMN/20100524/MODEL\">" +
+    "<process id=\"Process_HelloWorld\">" +
+    "<startEvent id=\"start\" />" +
+    "<endEvent id=\"end\" />" +
+    "</process>" +
+    "</definitions>";
+
+var deployed = await client.DeployProcessAsync(
+    bpmnXml,
+    "hello-world.bpmn");
+
+if (deployed is null)
+    throw new InvalidOperationException("Das BPMN-Deployment wurde nicht zurückgegeben.");
+
+var processInstance = await client.StartProcessAsync(
+    deployed.Key,
+    new Dictionary<string, object?>
+    {
+        ["source"] = "quick-start"
+    },
+    businessKey: "HELLO-001");
+
+Console.WriteLine($"Prozess '{deployed.Key}' wurde deployt.");
+Console.WriteLine($"Prozessinstanz '{processInstance?.Id}' wurde gestartet.");
+```
+
+Für externe Starts kann anschließend ein Workflow-Trigger registriert und über sein einmalig ausgegebenes Secret aufgerufen werden. Die vollständige Anleitung steht im Abschnitt [Persistente BPMN-Deployments und externe Workflow-Trigger](#persistente-bpmn-deployments-und-externe-workflow-trigger) sowie in [docs/workflow-triggers.md](docs/workflow-triggers.md).
 
 ## 🖥️ CLI, API & Studio Dashboard
 
@@ -156,6 +168,138 @@ vertexbpmn> dashboard
 ```
 
 Die Dashboard-Startparameter können in [`src/VertexBPMN.Cli/appsettings.json`](src/VertexBPMN.Cli/appsettings.json) oder über `VERTEXBPMN_`-Umgebungsvariablen angepasst werden. Dazu gehören Projektpfade, URLs, automatischer API-/Studio-Start, Browseröffnung und das Readiness-Timeout.
+
+### Persistente BPMN-Deployments und externe Workflow-Trigger
+
+BPMN-Workflows können jetzt dauerhaft im Repository registriert und später manuell oder durch externe Systeme gestartet werden. Der typische Ablauf ist:
+
+1. BPMN-Datei persistent deployen.
+2. Einen tenantbezogenen Workflow-Trigger für den Process-Key registrieren.
+3. Das einmalig ausgegebene Secret sicher speichern.
+4. Den Trigger über API, CLI, SDK oder Studio aufrufen.
+
+#### REST API
+
+Ein BPMN-Workflow wird über das Repository deployt:
+
+```http
+POST /api/repository
+Authorization: Bearer <JWT>
+Content-Type: application/json
+
+{
+  "bpmnXml": "<definitions>...</definitions>",
+  "name": "order-process.bpmn",
+  "tenantId": "acme"
+}
+```
+
+Danach kann ein geschützter Trigger angelegt werden:
+
+```http
+POST /api/triggers
+Authorization: Bearer <JWT>
+Content-Type: application/json
+
+{
+  "name": "Order webhook",
+  "processDefinitionKey": "order-process",
+  "tenantId": "acme"
+}
+```
+
+Die Antwort enthält das Secret nur einmal. Persistiert wird ausschließlich ein Hash. Der externe Aufruf benötigt keine Benutzeranmeldung, aber das Trigger-Secret:
+
+```http
+POST /api/triggers/{id}/invoke
+X-VertexBPMN-Trigger-Secret: <secret>
+Content-Type: application/json
+
+{
+  "businessKey": "ORDER-123",
+  "variables": {
+    "customerId": "C-42"
+  }
+}
+```
+
+Weitere Verwaltungsendpunkte:
+
+- `GET /api/triggers` – Trigger auflisten
+- `PUT /api/triggers/{id}` – Trigger umbenennen oder aktivieren/deaktivieren
+- `DELETE /api/triggers/{id}` – Trigger löschen
+
+Die Verwaltung ist authentifiziert und tenantisoliert. Einzelheiten stehen in [docs/workflow-triggers.md](docs/workflow-triggers.md).
+
+#### CLI
+
+Für persistente BPMN-Deployments und Trigger stehen folgende Befehle zur Verfügung:
+
+```text
+deploy-bpmn <bpmn-file> [tenant]
+trigger create <name> <process-key> [tenant]
+trigger list [tenant]
+trigger invoke <id> <secret> [variables-json] [business-key]
+trigger enable|disable <id> [tenant]
+trigger delete <id> [tenant]
+```
+
+Beispiel:
+
+```powershell
+dotnet run --project src/VertexBPMN.Cli -- deploy-bpmn examples/order.bpmn acme
+dotnet run --project src/VertexBPMN.Cli -- trigger create "Order webhook" order-process acme
+```
+
+`register-bpmn` bleibt als lokaler Engine-Registrierungsbefehl für direkte CLI-Ausführung bestehen. Für dauerhaft gespeicherte BPMN-Definitionen, die später über API oder Trigger gestartet werden sollen, wird `deploy-bpmn` verwendet.
+
+#### .NET SDK
+
+```csharp
+var deployed = await client.DeployProcessAsync(
+    bpmnXml,
+    "order-process.bpmn",
+    "acme");
+
+var created = await client.CreateWorkflowTriggerAsync(
+    "Order webhook",
+    "order-process",
+    "acme");
+
+// Das Secret sicher speichern; es wird nur bei der Registrierung zurückgegeben.
+var instance = await client.InvokeWorkflowTriggerAsync(
+    created!.Trigger.Id,
+    created.Secret,
+    new Dictionary<string, object?>
+    {
+        ["customerId"] = "C-42"
+    },
+    "ORDER-123");
+```
+
+#### Studio
+
+Im Studio können BPMN-Dateien unter **Deployments** hochgeladen und tenantbezogen dauerhaft registriert werden. Unter **Workflow Triggers** können anschließend Trigger erstellt, aktiviert/deaktiviert, getestet und gelöscht werden. Das Secret wird nach der Erstellung einmalig angezeigt.
+
+### SDK-NuGet-Release
+
+Das SDK wird durch GitHub Actions als NuGet-Paket veröffentlicht. Der Workflow verwendet [NuGet Trusted Publishing](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing) und keine dauerhaft gespeicherte API-Key-Secret.
+
+Einmalige Einrichtung:
+
+1. Auf nuget.org unter **Trusted Publishing** eine GitHub-Actions-Policy für dieses Repository anlegen:
+   - Repository Owner: `VertexBPMN`
+   - Repository: `VertexBPMN`
+   - Workflow File: `ci.yml` (nur der Dateiname, nicht der Pfad)
+2. Im GitHub-Repository das Actions-Secret `NUGET_USER` mit dem NuGet-Profilnamen hinterlegen. Nicht die E-Mail-Adresse verwenden.
+3. Einen SemVer-Tag erstellen und pushen, zum Beispiel:
+
+   ```bash
+   git tag v1.0.1
+   git push origin v1.0.1
+   ```
+
+Der Workflow baut und testet die Solution, packt `VertexBPMN.Sdk`, tauscht das GitHub-OIDC-Token gegen einen kurzlebigen NuGet-Veröffentlichungsschlüssel und veröffentlicht anschließend `VertexBPMN.Sdk.1.0.1.nupkg` auf NuGet.org. Jeder normale CI-Lauf erzeugt zusätzlich ein herunterladbares SDK-NuGet-Artefakt, veröffentlicht es aber nicht.
 
 ### Architektur
 

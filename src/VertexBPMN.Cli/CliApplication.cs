@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using VertexBPMN.Application.Configuration;
 using VertexBPMN.Domain.Interfaces;
@@ -16,6 +17,8 @@ internal sealed class CliApplication
     private readonly ICmmnParser _cmmnParser;
     private readonly IWorkerNodeManager _workerManager;
     private readonly IDependencyRegistry _dependencyRegistry;
+    private readonly IWorkflowTriggerService _triggerService;
+    private readonly IRepositoryService _repositoryService;
     private readonly DashboardLauncher _dashboardLauncher;
 
     public CliApplication(IServiceProvider services, TextWriter output, TextWriter error)
@@ -27,6 +30,8 @@ internal sealed class CliApplication
         _cmmnParser = services.GetRequiredService<ICmmnParser>();
         _workerManager = services.GetRequiredService<IWorkerNodeManager>();
         _dependencyRegistry = services.GetRequiredService<IDependencyRegistry>();
+        _triggerService = services.GetRequiredService<IWorkflowTriggerService>();
+        _repositoryService = services.GetRequiredService<IRepositoryService>();
         _dashboardLauncher = services.GetRequiredService<DashboardLauncher>();
     }
 
@@ -94,6 +99,9 @@ internal sealed class CliApplication
                 case "config":
                     await ExecuteConfigCommandAsync(args, cancellationToken);
                     return 0;
+                case "trigger":
+                    await ExecuteTriggerCommandAsync(args, cancellationToken);
+                    return 0;
                 case "execute":
                     RequireArguments(args, 2);
                     var model = await _bpmnParser.ParseAsync(await ReadFileAsync(args[1]), cancellationToken);
@@ -102,6 +110,15 @@ internal sealed class CliApplication
                 case "execute-id":
                     RequireArguments(args, 2);
                     await PrintTraceAsync(_engine.ExecuteProcessAsync(args[1], cancellationToken));
+                    return 0;
+                case "deploy-bpmn":
+                    RequireArguments(args, 3);
+                    var deployed = await _repositoryService.DeployAsync(
+                        await ReadFileAsync(args[2]),
+                        Path.GetFileName(args[2]),
+                        args.Length > 3 ? args[3] : null,
+                        cancellationToken);
+                    await _output.WriteLineAsync($"BPMN deployed: {deployed.Key} ({deployed.Id})");
                     return 0;
                 case "register-bpmn":
                     RequireArguments(args, 3);
@@ -201,6 +218,55 @@ internal sealed class CliApplication
             throw new CliUsageException("This command requires ProcessEngine:Type=Distributed.");
     }
 
+    private async Task ExecuteTriggerCommandAsync(string[] args, CancellationToken cancellationToken)
+    {
+        RequireArguments(args, 2);
+        switch (args[1].ToLowerInvariant())
+        {
+            case "create":
+                RequireArguments(args, 4);
+                var created = await _triggerService.CreateAsync(args[2], args[3], args.Length > 4 ? args[4] : null, cancellationToken);
+                await _output.WriteLineAsync($"Trigger registered: {created.Trigger.Id}");
+                await _output.WriteLineAsync($"Invoke path: {created.InvokePath}");
+                await _output.WriteLineAsync($"Secret (store securely; shown once): {created.Secret}");
+                break;
+            case "list":
+                foreach (var trigger in await _triggerService.ListAsync(args.Length > 2 ? args[2] : null, cancellationToken))
+                    await _output.WriteLineAsync($"{trigger.Id}  {trigger.Name}  {trigger.ProcessDefinitionKey}  {(trigger.Enabled ? "enabled" : "disabled")}  invocations={trigger.InvocationCount}");
+                break;
+            case "invoke":
+                RequireArguments(args, 4);
+                var triggerId = ParseGuid(args[2]);
+                Dictionary<string, object?>? variables = null;
+                if (args.Length > 4)
+                    variables = JsonSerializer.Deserialize<Dictionary<string, object?>>(args[4])
+                        ?? throw new CliUsageException("Variables must be a JSON object.");
+                var result = await _triggerService.InvokeAsync(triggerId, args[3], variables, args.Length > 5 ? args[5] : null, cancellationToken);
+                if (result.Status != WorkflowTriggerInvocationStatus.Started)
+                    throw new CliUsageException($"Trigger invocation failed: {result.Status}.");
+                await _output.WriteLineAsync($"Process started: {result.ProcessInstance!.Id}");
+                break;
+            case "enable":
+            case "disable":
+                RequireArguments(args, 3);
+                if (!await _triggerService.UpdateAsync(ParseGuid(args[2]), null, args[1].Equals("enable", StringComparison.OrdinalIgnoreCase), args.Length > 3 ? args[3] : null, cancellationToken))
+                    throw new CliUsageException("Trigger not found.");
+                await _output.WriteLineAsync($"Trigger {args[1].ToLowerInvariant()}d: {args[2]}");
+                break;
+            case "delete":
+                RequireArguments(args, 3);
+                if (!await _triggerService.DeleteAsync(ParseGuid(args[2]), args.Length > 3 ? args[3] : null, cancellationToken))
+                    throw new CliUsageException("Trigger not found.");
+                await _output.WriteLineAsync($"Trigger deleted: {args[2]}");
+                break;
+            default:
+                throw new CliUsageException("Usage: trigger create <name> <process-key> [tenant] | list [tenant] | invoke <id> <secret> [variables-json] [business-key] | enable|disable <id> [tenant] | delete <id> [tenant]");
+        }
+    }
+
+    private static Guid ParseGuid(string value)
+        => Guid.TryParse(value, out var id) ? id : throw new CliUsageException($"Invalid trigger id: {value}");
+
     private async Task ExecuteConfigCommandAsync(string[] args, CancellationToken cancellationToken)
     {
         if (args.Length == 1 || args[1].Equals("list", StringComparison.OrdinalIgnoreCase))
@@ -260,6 +326,7 @@ internal sealed class CliApplication
         _output.WriteLine("VertexBPMN CLI");
         _output.WriteLine("  execute <bpmn-file>                         Execute a BPMN file");
         _output.WriteLine("  execute-id <process-id>                     Execute a registered BPMN process");
+        _output.WriteLine("  deploy-bpmn <bpmn-file> [tenant]            Persist BPMN for later execution or triggers");
         _output.WriteLine("  register-bpmn <id> <bpmn-file>              Register BPMN");
         _output.WriteLine("  register-cmmn <id> <cmmn-file>              Register CMMN");
         _output.WriteLine("  register-dmn <id> <dmn-file>                Register DMN");
@@ -270,6 +337,11 @@ internal sealed class CliApplication
         _output.WriteLine("  config get <key>                           Read persisted configuration");
         _output.WriteLine("  config set <key> <value>                   Persist configuration value");
         _output.WriteLine("  config remove <key>                        Remove persisted configuration");
+        _output.WriteLine("  trigger create <name> <process-key> [tenant]");
+        _output.WriteLine("  trigger list [tenant]                      List registered workflow triggers");
+        _output.WriteLine("  trigger invoke <id> <secret> [json] [key]  Start a workflow through a trigger");
+        _output.WriteLine("  trigger enable|disable <id> [tenant]");
+        _output.WriteLine("  trigger delete <id> [tenant]");
         _output.WriteLine("  clear | help | exit                         REPL commands");
     }
 

@@ -1,9 +1,14 @@
 name: VertexBPMN CI
+
 on:
   push:
     branches: [ master ]
+    tags:
+      - 'v*'
   pull_request:
     branches: [ master ]
+  workflow_dispatch:
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -17,6 +22,15 @@ jobs:
       run: dotnet restore VertexBPMN.sln
     - name: Build
       run: dotnet build VertexBPMN.sln --configuration Release --no-restore
+    - name: Pack SDK
+      run: dotnet pack src/VertexBPMN.Sdk/VertexBPMN.Sdk.csproj --configuration Release --no-build --output artifacts/nuget
+    - name: Upload SDK package artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: vertexbpmn-sdk-nuget
+        path: artifacts/nuget/*
+        if-no-files-found: error
+        retention-days: 14
     - name: Install Playwright Browsers
       run: |
         dotnet tool install --global Microsoft.Playwright.CLI
@@ -29,3 +43,39 @@ jobs:
         context: .
         push: false
         tags: vertexbpmn:ci
+
+  publish-sdk:
+    name: Publish VertexBPMN.Sdk to NuGet
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+    - name: Restore SDK
+      run: dotnet restore src/VertexBPMN.Sdk/VertexBPMN.Sdk.csproj
+    - name: Pack release version
+      shell: bash
+      run: |
+        version="${GITHUB_REF_NAME#v}"
+        if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$ ]]; then
+          echo "Tag '$GITHUB_REF_NAME' is not a valid NuGet version."
+          exit 1
+        fi
+        dotnet pack src/VertexBPMN.Sdk/VertexBPMN.Sdk.csproj --configuration Release --no-restore --output artifacts/nuget -p:PackageVersion="$version"
+        ls -la artifacts/nuget
+    - name: NuGet login (OIDC)
+      uses: NuGet/login@v1
+      id: nuget-login
+      with:
+        user: ${{ secrets.NUGET_USER }}
+    - name: Publish package to NuGet.org
+      run: |
+        version="${GITHUB_REF_NAME#v}"
+        dotnet nuget push "artifacts/nuget/VertexBPMN.Sdk.$version.nupkg" --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate

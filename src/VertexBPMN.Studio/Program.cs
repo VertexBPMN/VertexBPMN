@@ -135,6 +135,8 @@ builder.Services.AddScoped<IMessageSignalService, HttpMessageSignalService>();
 builder.Services.AddScoped<StudioTenantContext>();
 builder.Services.AddScoped<IExecutionDetailsService, HttpExecutionDetailsService>();
 builder.Services.AddScoped<IPluginService, HttpPluginService>();
+builder.Services.AddScoped<IWorkflowTriggerService, HttpWorkflowTriggerService>();
+
 builder.Services.AddScoped<IConnectorService, HttpConnectorService>();
 builder.Services.AddScoped<IDebuggingService, HttpDebuggingService>();
 builder.Services.AddScoped<ICaseManagementService, GrpcCaseManagementService>();

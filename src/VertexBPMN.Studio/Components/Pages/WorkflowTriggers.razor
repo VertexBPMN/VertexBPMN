@@ -1,0 +1,179 @@
+@page "/triggers"
+@implements IDisposable
+@inject IWorkflowTriggerService TriggerService
+@inject StudioTenantContext TenantContext
+
+<PageTitle>Workflow Triggers</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Workflow Triggers</MudText>
+<MudText Typo="Typo.body2" GutterBottom="true">Register a secure external endpoint for starting a deployed BPMN process.</MudText>
+
+@if (string.IsNullOrWhiteSpace(TenantContext.CurrentTenantId))
+{
+    <MudAlert Severity="Severity.Warning">Select a tenant before managing workflow triggers.</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6">Register trigger</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_name" Label="Name" Variant="Variant.Outlined" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_processDefinitionKey" Label="Process definition key" Variant="Variant.Outlined" /></MudItem>
+        </MudGrid>
+        <MudButton Class="mt-3" Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateAsync" Disabled="@_busy">Register trigger</MudButton>
+    </MudPaper>
+
+    @if (!string.IsNullOrWhiteSpace(_newSecret))
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-4">
+            <MudText Typo="Typo.subtitle2">Save this secret now. It is shown only once.</MudText>
+            <MudTextField @bind-Value="_newSecret" ReadOnly="true" Variant="Variant.Outlined" />
+            <MudText Typo="Typo.caption">Invoke path: @_invokePath</MudText>
+        </MudAlert>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+    }
+
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h6" GutterBottom="true">Registered triggers</MudText>
+        <MudTable Items="_triggers" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>Name</MudTh>
+                <MudTh>Process key</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Invocations</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Name">@context.Name</MudTd>
+                <MudTd DataLabel="Process key">@context.ProcessDefinitionKey</MudTd>
+                <MudTd DataLabel="Status">@(context.Enabled ? "Enabled" : "Disabled")</MudTd>
+                <MudTd DataLabel="Invocations">@context.InvocationCount</MudTd>
+                <MudTd DataLabel="Actions">
+                    <MudButton Size="Size.Small" Color="@(context.Enabled ? Color.Warning : Color.Success)" OnClick="@(() => SetEnabledAsync(context))">
+                        @(context.Enabled ? "Disable" : "Enable")
+                    </MudButton>
+                    <MudButton Size="Size.Small" Color="Color.Primary" OnClick="@(() => InvokeAsync(context))" Disabled="@string.IsNullOrWhiteSpace(_newSecret)">Test</MudButton>
+                    <MudButton Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteAsync(context))">Delete</MudButton>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    private IReadOnlyList<StudioWorkflowTrigger> _triggers = [];
+    private string _name = string.Empty;
+    private string _processDefinitionKey = string.Empty;
+    private string _newSecret = string.Empty;
+    private string _invokePath = string.Empty;
+    private string? _error;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        TenantContext.Changed += OnTenantChanged;
+        await LoadAsync();
+    }
+
+    private async void OnTenantChanged()
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadAsync();
+            StateHasChanged();
+        });
+    }
+
+    private async Task LoadAsync()
+    {
+        _error = null;
+        var tenantId = TenantContext.CurrentTenantId;
+        if (string.IsNullOrWhiteSpace(tenantId))
+        {
+            _triggers = [];
+            return;
+        }
+        try
+        {
+            _triggers = await TriggerService.ListAsync(tenantId);
+        }
+        catch (Exception exception)
+        {
+            _error = exception.Message;
+        }
+    }
+
+    private async Task CreateAsync()
+    {
+        var tenantId = TenantContext.CurrentTenantId;
+        if (string.IsNullOrWhiteSpace(tenantId)) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            var created = await TriggerService.CreateAsync(tenantId, _name, _processDefinitionKey);
+            _newSecret = created.Secret;
+            _invokePath = created.InvokePath;
+            _name = _processDefinitionKey = string.Empty;
+            await LoadAsync();
+        }
+        catch (Exception exception)
+        {
+            _error = exception.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private Task SetEnabledAsync(StudioWorkflowTrigger trigger) => MutateAsync(() =>
+        TriggerService.UpdateAsync(trigger.TenantId ?? TenantContext.CurrentTenantId!, trigger.Id, null, !trigger.Enabled));
+
+    private Task DeleteAsync(StudioWorkflowTrigger trigger) => MutateAsync(() =>
+        TriggerService.DeleteAsync(trigger.TenantId ?? TenantContext.CurrentTenantId!, trigger.Id));
+
+    private async Task InvokeAsync(StudioWorkflowTrigger trigger)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            await TriggerService.InvokeAsync(trigger.Id, _newSecret, businessKey: $"studio-{DateTime.UtcNow:yyyyMMddHHmmss}");
+            await LoadAsync();
+        }
+        catch (Exception exception)
+        {
+            _error = exception.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task MutateAsync(Func<Task> mutation)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            await mutation();
+            await LoadAsync();
+        }
+        catch (Exception exception)
+        {
+            _error = exception.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    public void Dispose() => TenantContext.Changed -= OnTenantChanged;
+}

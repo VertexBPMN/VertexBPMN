@@ -26,6 +26,7 @@ public static class InfrastructureModule
         services.AddScoped<ISimulationScenarioService, SimulationScenarioService>();
         services.AddScoped<IMessageDispatcher, InMemoryMessageDispatcher>();
         services.AddScoped<IProcessDefinitionRepository, ProcessDefinitionRepository>();
+        services.AddScoped<IWorkflowTriggerRepository, WorkflowTriggerRepository>();
         services.AddScoped<IProcessInstanceRepository, ProcessInstanceRepository>();
         services.AddScoped<IAuditLogService, AuditLogService>();
         services.AddScoped<IExecutionTokenRepository, ExecutionTokenRepository>();

@@ -1,3 +1,5 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VertexBPMN.Domain.Entities.Debugging;
 using VertexBPMN.Domain.Interfaces;
@@ -9,18 +11,22 @@ namespace VertexBPMN.Api.Controllers;
 /// Olympic-level feature: Innovation Differentiators - Visual Debugging
 /// </summary>
 [ApiController]
+[Authorize]
 [Route("api/visual-debug")]
 public class VisualDebugController : ControllerBase
 {
     private readonly IVisualDebuggingService _debugService;
     private readonly ILogger<VisualDebugController> _logger;
+    private readonly IRuntimeService _runtimeService;
 
     public VisualDebugController(
         IVisualDebuggingService debugService,
-        ILogger<VisualDebugController> logger)
+        ILogger<VisualDebugController> logger,
+        IRuntimeService runtimeService)
     {
         _debugService = debugService;
         _logger = logger;
+        _runtimeService = runtimeService;
     }
 
     /// <summary>
@@ -193,12 +199,31 @@ public class VisualDebugController : ControllerBase
     /// Get visual representation of process with execution state
     /// </summary>
     [HttpGet("visualize/{processInstanceId}")]
-    public async Task<ActionResult<ProcessVisualization>> GetProcessVisualization(Guid processInstanceId)
+    public async Task<ActionResult<ProcessVisualization>> GetProcessVisualization(Guid processInstanceId, CancellationToken cancellationToken)
     {
         try
         {
+            var instance = await _runtimeService.GetByIdAsync(processInstanceId, cancellationToken);
+            if (instance == null)
+                return NotFound();
+            if (!CanAccessTenant(instance.TenantId))
+                return Forbid();
+
             var visualization = await _debugService.GetProcessVisualizationAsync(processInstanceId);
             return Ok(visualization);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
+        catch (InvalidOperationException exception)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Title = "Process visualization is not available",
+                Detail = exception.Message,
+                Status = StatusCodes.Status409Conflict
+            });
         }
         catch (Exception ex)
         {
@@ -206,6 +231,10 @@ public class VisualDebugController : ControllerBase
             return StatusCode(500, new { error = "Failed to get process visualization" });
         }
     }
+
+    private bool CanAccessTenant(string? tenantId) =>
+        User.IsInRole("Admin") ||
+        string.Equals(User.FindFirstValue("tenant_id"), tenantId, StringComparison.Ordinal);
 
     /// <summary>
     /// Inspect variables in current debug session

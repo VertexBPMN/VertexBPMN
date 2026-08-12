@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using VertexBPMN.Domain.Entities;
@@ -57,6 +58,54 @@ public sealed class PersistentVisualDebugStepApiTests : IClassFixture<CustomWebA
             Assert.Equal("Completed", token.State);
             Assert.Empty(instance.ActiveTokens);
         }
+    }
+
+    [Fact]
+    public async Task ProcessVisualizationReadsPersistedDefinitionTokensAndHistory()
+    {
+        var processInstanceId = await SeedProcessAsync();
+        using var client = _factory.CreateClient();
+
+        var initial = await client.GetAsync($"/api/visual-debug/visualize/{processInstanceId}");
+        Assert.Equal(HttpStatusCode.OK, initial.StatusCode);
+        var initialBody = await initial.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Contains("approvalTask", initialBody.GetProperty("bpmnXml").GetString());
+        Assert.Equal("startEvent", initialBody.GetProperty("activeTokens")[0].GetProperty("activityId").GetString());
+        Assert.Empty(initialBody.GetProperty("completedActivities").EnumerateArray());
+        Assert.Equal(3, initialBody.GetProperty("metrics").GetProperty("totalActivities").GetInt32());
+
+        var firstStep = await client.PostAsync($"/api/visual-debugger/instance/{processInstanceId}/step", null);
+        Assert.Equal(HttpStatusCode.OK, firstStep.StatusCode);
+
+        var afterFirstStep = await client.GetFromJsonAsync<JsonElement>($"/api/visual-debug/visualize/{processInstanceId}");
+        Assert.Equal("approvalTask", afterFirstStep.GetProperty("activeTokens")[0].GetProperty("activityId").GetString());
+        Assert.Contains(afterFirstStep.GetProperty("completedActivities").EnumerateArray(), value =>
+            value.GetProperty("activityId").GetString() == "startEvent");
+        Assert.Equal(1, afterFirstStep.GetProperty("metrics").GetProperty("completedActivities").GetInt32());
+        Assert.Equal(1, afterFirstStep.GetProperty("metrics").GetProperty("activeActivities").GetInt32());
+
+        var secondStep = await client.PostAsync($"/api/visual-debugger/instance/{processInstanceId}/step", null);
+        Assert.Equal(HttpStatusCode.OK, secondStep.StatusCode);
+
+        var completed = await client.GetFromJsonAsync<JsonElement>($"/api/visual-debug/visualize/{processInstanceId}");
+        Assert.Empty(completed.GetProperty("activeTokens").EnumerateArray());
+        Assert.Contains(completed.GetProperty("completedActivities").EnumerateArray(), value =>
+            value.GetProperty("activityId").GetString() == "approvalTask");
+        Assert.Equal(3, completed.GetProperty("metrics").GetProperty("completedActivities").GetInt32());
+        Assert.Equal(0, completed.GetProperty("metrics").GetProperty("activeActivities").GetInt32());
+    }
+
+    [Fact]
+    public async Task ProcessVisualizationEnforcesTenantIsolation()
+    {
+        var processInstanceId = await SeedProcessAsync("tenant-a");
+        using var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-User", "tenant-reader");
+        client.DefaultRequestHeaders.Add("X-Test-Tenant", "tenant-b");
+
+        var response = await client.GetAsync($"/api/visual-debug/visualize/{processInstanceId}");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
     [Fact]

@@ -446,45 +446,10 @@ public class VisualDebuggingService : IVisualDebuggingService
 
     public async Task<ProcessVisualization> GetProcessVisualizationAsync(Guid processInstanceId)
     {
-        try
-        {
-            using var scope = _serviceProvider.CreateScope();
-            
-            var processInstance = await GetProcessInstanceAsync(processInstanceId, scope);
-            var processDefinition = await GetProcessDefinitionAsync(processInstance.ProcessDefinitionKey, scope);
-            var activeTokens = await GetActiveTokensAsync(processInstanceId, scope);
-            var completedActivities = await GetCompletedActivitiesAsync(processInstanceId, scope);
-
-            var visualization = new ProcessVisualization
-            {
-                ProcessInstanceId = processInstanceId,
-                ProcessDefinitionKey = processInstance.ProcessDefinitionKey,
-                BpmnXml = processDefinition.BpmnXml,
-                ActiveTokens = activeTokens.Select(t => new VisualToken
-                {
-                    Id = t.Id,
-                    ActivityId = t.ActivityId,
-                    Position = t.Position,
-                    Status = t.Status
-                }).ToList(),
-                CompletedActivities = completedActivities.Select(a => new VisualActivity
-                {
-                    ActivityId = a.ActivityId,
-                    Status = a.Status,
-                    CompletedAt = a.CompletedAt,
-                    Duration = a.Duration,
-                    ExecutionCount = a.ExecutionCount
-                }).ToList(),
-                Metrics = await CalculateVisualizationMetricsAsync(processInstanceId, scope)
-            };
-
-            return visualization;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting process visualization for {ProcessInstanceId}", processInstanceId);
-            throw;
-        }
+        using var scope = _serviceProvider.CreateScope();
+        return await scope.ServiceProvider
+            .GetRequiredService<IProcessVisualizationService>()
+            .GetAsync(processInstanceId);
     }
 
     public async Task<VariableInspection> InspectVariablesAsync(Guid sessionId)
@@ -710,49 +675,6 @@ public class VisualDebuggingService : IVisualDebuggingService
         
         // Simulate process completion
         return ("end_event", false, true);
-    }
-
-    private async Task<ProcessDefinitionInfo> GetProcessDefinitionAsync(string processKey, IServiceScope scope)
-    {
-        await Task.Delay(1);
-        return new ProcessDefinitionInfo 
-        { 
-            Key = processKey, 
-            Name = $"Process {processKey}", 
-            Version = 1,
-            BpmnXml = "<bpmn:definitions>...</bpmn:definitions>"
-        };
-    }
-
-    private async Task<List<TokenInfo>> GetActiveTokensAsync(Guid processInstanceId, IServiceScope scope)
-    {
-        await Task.Delay(1);
-        return new List<TokenInfo>
-        {
-            new() { Id = Guid.NewGuid(), ActivityId = "activity_1", Position = "waiting", Status = "active" }
-        };
-    }
-
-    private async Task<List<ActivityExecutionInfo>> GetCompletedActivitiesAsync(Guid processInstanceId, IServiceScope scope)
-    {
-        await Task.Delay(1);
-        return new List<ActivityExecutionInfo>
-        {
-            new() { ActivityId = "start_event", Status = "completed", CompletedAt = DateTime.UtcNow.AddMinutes(-5), Duration = TimeSpan.FromSeconds(1), ExecutionCount = 1 }
-        };
-    }
-
-    private async Task<VisualizationMetrics> CalculateVisualizationMetricsAsync(Guid processInstanceId, IServiceScope scope)
-    {
-        await Task.Delay(1);
-        return new VisualizationMetrics
-        {
-            TotalActivities = 5,
-            CompletedActivities = 1,
-            ActiveActivities = 1,
-            TotalDuration = TimeSpan.FromMinutes(5),
-            AverageActivityDuration = TimeSpan.FromMinutes(1)
-        };
     }
 
     private async Task<Dictionary<string, object>> GetLocalVariablesAsync(Guid processInstanceId, string activityId, IServiceScope scope)

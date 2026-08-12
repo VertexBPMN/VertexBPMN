@@ -33,6 +33,19 @@ curl -X POST "http://localhost:5000/api/visual-debugger/instance/{processInstanc
   -H "Authorization: Bearer $TOKEN"
 ```
 
+## Persistente Prozessvisualisierung
+- Endpoint: `GET /api/visual-debug/visualize/{processInstanceId}`
+- Berechtigung: authentifizierter Zugriff; der Prozessinstanz-Tenant muss zum Benutzerkontext passen.
+- Die Antwort enthält die gespeicherte BPMN-Definition, aktive ExecutionTokens, aus HistoryEvents abgeleitete abgeschlossene Aktivitäten und Laufzeitmetriken.
+- Aktive Token werden nicht simuliert. Ihre Position entspricht `CurrentNodeId`, ihr Status dem gespeicherten Tokenzustand.
+- Die Metriken basieren auf der BPMN-Flow-Node-Struktur sowie auf dem tatsächlichen Instanzzeitraum; fehlende persistierte Daten werden nicht durch Demo-Werte ersetzt.
+
+Beispiel:
+```bash
+curl "http://localhost:5000/api/visual-debug/visualize/{processInstanceId}" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
 ## Anwendungsfälle
 - Visualisierung des Token-Flows im Frontend (bpmn-js, custom UI)
 - Unit- und Integrationstests für Prozessmodelle

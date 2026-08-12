@@ -33,6 +33,7 @@ public static class ApiModule
         services.AddScoped<ILiveProcessMigrationService, LiveProcessMigrationService>();
         services.AddSingleton<IVisualDebuggingService, VisualDebuggingService>();
         services.AddScoped<IVisualDebugStepService, PersistentVisualDebugStepService>();
+        services.AddScoped<IProcessVisualizationService, PersistentProcessVisualizationService>();
         services.AddSingleton<IPluginManager, PluginManager>();
         services.AddTransient<AuditLoggingMiddleware>();
 

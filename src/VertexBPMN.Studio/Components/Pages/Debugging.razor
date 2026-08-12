@@ -30,7 +30,19 @@
 {
     <MudAlert Severity="Severity.Error">@_error</MudAlert>
 }
-else if (_trace is not null)
+
+@if (_visualizationBpmnXml is not null)
+{
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudText Typo="Typo.h6">Process visualization</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Tertiary" Class="mb-2">
+            Active tokens: @_visualizationActiveTokenCount · Completed activities: @_visualizationCompletedActivityCount
+        </MudText>
+        <BpmnViewerComponent BpmnXml="_visualizationBpmnXml" />
+    </MudPaper>
+}
+
+@if (_trace is not null)
 {
     <MudPaper Class="pa-4" Elevation="1">
         <pre>@Format(_trace.Value)</pre>
@@ -45,6 +57,9 @@ else if (_trace is not null)
     private string _processInstanceIdText = string.Empty;
     private string _sessionIdText = string.Empty;
     private string _activityId = string.Empty;
+    private string? _visualizationBpmnXml;
+    private int _visualizationActiveTokenCount;
+    private int _visualizationCompletedActivityCount;
 
     private async Task TraceAsync()
     {
@@ -85,7 +100,24 @@ else if (_trace is not null)
 
     private Task SetBreakpointAsync() => RunSessionActionAsync(() => DebuggingService.SetBreakpointAsync(ParseSessionId(), _activityId));
 
-    private Task VisualizeAsync() => RunSessionActionAsync(() => DebuggingService.GetProcessVisualizationAsync(ParseProcessInstanceId()));
+    private async Task VisualizeAsync()
+    {
+        await RunSessionActionAsync(async () =>
+        {
+            var result = await DebuggingService.GetProcessVisualizationAsync(ParseProcessInstanceId());
+            _visualizationBpmnXml = result.TryGetProperty("bpmnXml", out var bpmnXml)
+                ? bpmnXml.GetString()
+                : null;
+            _visualizationActiveTokenCount = result.TryGetProperty("activeTokens", out var activeTokens)
+                ? activeTokens.GetArrayLength()
+                : 0;
+            _visualizationCompletedActivityCount = result.TryGetProperty("completedActivities", out var completedActivities)
+                ? completedActivities.GetArrayLength()
+                : 0;
+            return result;
+        });
+    }
+
 
     private Task InspectVariablesAsync() => RunSessionActionAsync(() => DebuggingService.InspectVariablesAsync(ParseSessionId()));
 

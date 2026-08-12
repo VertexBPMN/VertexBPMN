@@ -17,6 +17,9 @@ jobs:
       run: dotnet restore VertexBPMN.sln
     - name: Build
       run: dotnet build VertexBPMN.sln --configuration Release --no-restore
+    - name: Install Playwright Browsers
+        run: |
+           pwsh tests/VertexBPMN.Studio.UiTests/bin/Release/net10.0/playwright.ps1 install --with-deps
     - name: Test
       run: dotnet test VertexBPMN.sln --configuration Release --no-build --verbosity normal
     - name: Publish Docker image

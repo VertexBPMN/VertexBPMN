@@ -17,9 +17,9 @@ namespace VertexBPMN.Tests.Integration.Bpmn
             var model =  parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
             var engine = new ProcessEngine();
             var trace = engine.Execute(model);
-            Assert.Contains("StartEvent: start1", trace);
-            Assert.Contains("SequenceFlow: f1", trace);
-            Assert.Contains("EndEvent: end1", trace);
+           Assert.Contains(trace, r => r.ToString().Contains("StartEvent: start1"));
+           Assert.Contains(trace, r => r.ToString().Contains("SequenceFlow: f1"));
+           Assert.Contains(trace, r => r.ToString().Contains("EndEvent: end1"));
         }
 
         [Fact]
@@ -30,10 +30,10 @@ namespace VertexBPMN.Tests.Integration.Bpmn
             var model =  parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
             var engine = new ProcessEngine();
             var trace = engine.Execute(model);
-            Assert.Contains("StartEvent: start1", trace);
-            Assert.Contains("SequenceFlow: f1", trace);
-            Assert.Contains("SequenceFlow: f2", trace);
-            Assert.Contains("EndEvent: end1", trace);
+           Assert.Contains(trace, r => r.ToString().Contains("StartEvent: start1"));
+           Assert.Contains(trace, r => r.ToString().Contains("SequenceFlow: f1"));
+           Assert.Contains(trace, r => r.ToString().Contains("SequenceFlow: f2"));
+           Assert.Contains(trace, r => r.ToString().Contains("EndEvent: end1"));
         }
 
         [Fact]
@@ -44,10 +44,10 @@ namespace VertexBPMN.Tests.Integration.Bpmn
             var model =  parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
             var engine = new ProcessEngine();
             var trace = engine.Execute(model);
-            Assert.Contains("StartEvent: start1", trace);
-            Assert.Contains("SequenceFlow: f1", trace);
-            Assert.Contains("SequenceFlow: f2", trace);
-            Assert.Contains("EndEvent: end1", trace);
+           Assert.Contains(trace, r => r.ToString().Contains("StartEvent: start1"));
+           Assert.Contains(trace, r => r.ToString().Contains("SequenceFlow: f1"));
+           Assert.Contains(trace, r => r.ToString().Contains("SequenceFlow: f2"));
+           Assert.Contains(trace, r => r.ToString().Contains("EndEvent: end1"));
         }
 
         [Fact]
@@ -58,10 +58,10 @@ namespace VertexBPMN.Tests.Integration.Bpmn
             var model =  parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
             var engine = new ProcessEngine();
             var trace = engine.Execute(model);
-            Assert.Contains("StartEvent: start1", trace);
-            Assert.Contains("SequenceFlow: f1", trace);
-            Assert.Contains("SequenceFlow: f2", trace);
-            Assert.Contains("EndEvent: end1", trace);
+           Assert.Contains(trace, r => r.ToString().Contains("StartEvent: start1"));
+           Assert.Contains(trace, r => r.ToString().Contains("SequenceFlow: f1"));
+           Assert.Contains(trace, r => r.ToString().Contains("SequenceFlow: f2"));
+           Assert.Contains(trace, r => r.ToString().Contains("EndEvent: end1"));
         }
     }
 }

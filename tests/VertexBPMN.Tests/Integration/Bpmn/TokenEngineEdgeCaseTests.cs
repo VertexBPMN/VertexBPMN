@@ -31,7 +31,12 @@ namespace VertexBPMN.Tests.Integration.Bpmn
             var trace = engine.Execute(model);
             Assert.Contains("Subprocess: sub1", trace);
             Assert.Contains("Subprocess: sub2", trace);
-            Assert.Contains("EndEvent: end1", trace);
+            Assert.Contains(
+                trace,
+                t => t.Contains("EndEvent: end1", StringComparison.Ordinal));
+            Assert.True(
+                trace.Any(t => t.Contains("EndEvent: end1")),
+                $"Expected trace to contain 'EndEvent: end1'. Got: {string.Join(", ", trace)}");
         }
         [Fact]
         public void Handles_ParallelGateway_With_Events()

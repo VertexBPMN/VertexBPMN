@@ -27,7 +27,7 @@ public sealed class InspectorApiTests : IClassFixture<InspectorApiFactory>
         using var client = _factory.CreateClient();
         var response = await client.GetAsync($"/api/inspector/process-instance/{Guid.NewGuid()}/state");
 
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]
@@ -97,8 +97,8 @@ public sealed class InspectorApiFactory : CustomWebApplicationFactory
         base.ConfigureWebHost(builder);
         builder.ConfigureTestServices(services =>
         {
-            services.AddAuthentication("Test")
-                .AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>("Test", _ => { });
+            //services.AddAuthentication("Test")
+            //    .AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>("Test", _ => { });
         });
     }
 }

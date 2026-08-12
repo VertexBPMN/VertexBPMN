@@ -32,7 +32,7 @@ namespace VertexBPMN.Tests.Integration.Bpmn
         [Fact]
         public async Task Executes_TransactionalSubprocess_And_CompensationHandler()
         {
-            const string xml = @"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='P2'><startEvent id='start1'/><subProcess id='tx1' transaction='true'><boundaryEvent id='comp1' attachedToRef='tx1'><compensateEventDefinition/></boundaryEvent></subProcess><sequenceFlow id='f1' sourceRef='start1' targetRef='tx1'/><sequenceFlow id='f2' sourceRef='tx1' targetRef='end1'/><endEvent id='end1'/></process></definitions>";
+            const string xml = @"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='P2'><startEvent id='start1'/><subProcess id='tx1' transaction='true'><boundaryEvent id='comp1' attachedToRef='tx1' cancelActivity='false'><compensateEventDefinition/></boundaryEvent></subProcess><sequenceFlow id='f1' sourceRef='start1' targetRef='tx1'/><sequenceFlow id='f2' sourceRef='tx1' targetRef='end1'/><endEvent id='end1'/></process></definitions>";
             var logger = new Mock<ILogger<BpmnParser>>();
             var parser = new BpmnParser(logger.Object, TracerProvider.Default);
             var model = await parser.ParseAsync(xml.Replace('\'', '"'));

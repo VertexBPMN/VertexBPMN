@@ -415,7 +415,7 @@ public partial class ProcessEngine : IProcessEngine
                 }
                 if (parentTxn != null && _transactionContexts.TryGetValue(parentTxn, out var txc))
                 {
-                    txc.ActiveTokenIds.Remove(currentId);
+                    txc.ActiveTokenIds.Remove(tokenId);
                     if (txc.ActiveTokenIds.Count == 0)
                     {
                         trace.Add($"TransactionCompleted: {parentTxn}");
@@ -461,7 +461,7 @@ public partial class ProcessEngine : IProcessEngine
                     if (IsTransactionSubprocess(subprocess))
                     {
                         txnId = subprocess.Id;
-                        _transactionContexts[txnId] = new TransactionContext(txnId, new HashSet<string> { currentId });
+                        _transactionContexts[txnId] = new TransactionContext(txnId, new HashSet<string> { tokenId });
                         trace.Add($"TransactionStart: {txnId} [Token {tokenId}]");
                     }
                     HandleSubprocess(subprocess, model, trace, _tokenQueue, txnId);
@@ -1029,7 +1029,8 @@ partial class ProcessEngine
         Queue<(string TokenId, string NodeId, string? FromFlow, string? ParentTxn)> queue, string? parentTxn)
     {
         var boundaryEvents = model.Events
-            .Where(e => e.Type == "boundaryEvent" && GetAttachedToRef(e) == activityId)
+            .Where(e => e.Type == "boundaryEvent" && GetAttachedToRef(e) == activityId &&
+                        !IsCompensationBoundary(e))
             .ToList();
 
         if (boundaryEvents.Count == 0) return false;
@@ -1195,5 +1196,14 @@ partial class ProcessEngine
 
             return atom; // fallback literal
         }
+    }
+    private static bool IsCompensationBoundary(BpmnEvent evt)
+    {
+        var type = GetEventDefinitionType(evt);
+
+        return type?.Contains(
+                   "compensate",
+                   StringComparison.OrdinalIgnoreCase) == true
+               || HasDefinition(evt, "compensate");
     }
 }

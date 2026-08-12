@@ -1,14 +1,47 @@
 @page "/analytics"
 @using System.Text.Json
+@using Microsoft.JSInterop
 @inject IAnalyticsService AnalyticsService
+@inject IMlAnalyticsService MlAnalyticsService
+@inject StudioTenantContext TenantContext
+@inject IJSRuntime JSRuntime
 
 <PageTitle>Analytics</PageTitle>
 
 <MudText Typo="Typo.h4" GutterBottom="true">Process Analytics</MudText>
 
-<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RefreshAsync" Disabled="_isLoading" Class="mb-4">
+<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RefreshAsync" Disabled="_isLoading || _mlBusy" Class="mb-4">
     Refresh
 </MudButton>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h6">Predictive analytics</MudText>
+    <MudText Typo="Typo.body2" Class="mb-3">
+        Trainiert Modelle ausschließlich aus abgeschlossenen, tenant-isolierten Prozessinstanzen.
+    </MudText>
+    <MudTextField @bind-Value="_processDefinitionKey"
+                  Label="Process definition key (optional)"
+                  Placeholder="Alle Prozessdefinitionen"
+                  Variant="Variant.Outlined"
+                  Class="mb-3" />
+    <MudButton Variant="Variant.Filled"
+               Color="Color.Primary"
+               OnClick="TrainModelsAsync"
+               Disabled="_mlBusy"
+               Class="mr-2">
+        Modelle trainieren
+    </MudButton>
+    <MudButton Variant="Variant.Outlined"
+               Color="Color.Secondary"
+               OnClick="ExportTrainingDataAsync"
+               Disabled="_mlBusy">
+        Trainingsdaten exportieren
+    </MudButton>
+    @if (_mlMessage is not null)
+    {
+        <MudText Typo="Typo.body2" Class="mt-3">@_mlMessage</MudText>
+    }
+</MudPaper>
 
 @if (_error is not null)
 {
@@ -41,7 +74,10 @@
     private JsonElement? _eventStats;
     private JsonElement? _events;
     private bool _isLoading;
+    private bool _mlBusy;
     private string? _error;
+    private string? _mlMessage;
+    private string? _processDefinitionKey;
 
     protected override Task OnInitializedAsync() => RefreshAsync();
 
@@ -68,6 +104,49 @@
         finally
         {
             _isLoading = false;
+        }
+    }
+
+    private async Task TrainModelsAsync()
+    {
+        _mlBusy = true;
+        _mlMessage = null;
+        try
+        {
+            await MlAnalyticsService.TrainModelsAsync(TenantContext.CurrentTenantId);
+            _mlMessage = "Modelltraining abgeschlossen. Die Modelle basieren auf den aktuell verfügbaren historischen Daten.";
+        }
+        catch (Exception exception)
+        {
+            _mlMessage = $"Modelltraining fehlgeschlagen: {exception.Message}";
+        }
+        finally
+        {
+            _mlBusy = false;
+        }
+    }
+
+    private async Task ExportTrainingDataAsync()
+    {
+        _mlBusy = true;
+        _mlMessage = null;
+        try
+        {
+            var bytes = await MlAnalyticsService.ExportTrainingDataAsync(_processDefinitionKey, TenantContext.CurrentTenantId);
+            var dataUri = $"data:text/csv;base64,{Convert.ToBase64String(bytes)}";
+            await JSRuntime.InvokeVoidAsync(
+                "downloadFile",
+                $"vertexbpmn-training-data-{DateTime.UtcNow:yyyyMMdd-HHmmss}.csv",
+                dataUri);
+            _mlMessage = "Trainingsdaten wurden exportiert.";
+        }
+        catch (Exception exception)
+        {
+            _mlMessage = $"Export fehlgeschlagen: {exception.Message}";
+        }
+        finally
+        {
+            _mlBusy = false;
         }
     }
 

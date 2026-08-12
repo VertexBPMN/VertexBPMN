@@ -38,6 +38,7 @@ public class RuntimeService : IRuntimeService
         {
             Id = Guid.NewGuid(),
             ProcessDefinitionId = def.Id,
+            ProcessId = processDefinitionKey,
             BusinessKey = businessKey,
             TenantId = tenantId,
             StartedAt = DateTime.UtcNow
@@ -50,7 +51,11 @@ public class RuntimeService : IRuntimeService
             ProcessInstanceId = instance.Id.ToString(),
             TenantId = tenantId,
             Timestamp = DateTimeOffset.UtcNow,
-            PayloadJson = variables != null ? System.Text.Json.JsonSerializer.Serialize(variables) : null
+            PayloadJson = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                processDefinitionKey,
+                variables = variables ?? new Dictionary<string, object>()
+            })
         }, cancellationToken);
         return instance;
     }
@@ -102,7 +107,8 @@ public class RuntimeService : IRuntimeService
                 EventType = "ProcessResumed",
                 ProcessInstanceId = inst.Id.ToString(),
                 TenantId = inst.TenantId,
-                Timestamp = DateTimeOffset.UtcNow
+                Timestamp = DateTimeOffset.UtcNow,
+                PayloadJson = System.Text.Json.JsonSerializer.Serialize(new { processDefinitionKey = inst.ProcessId })
             }, cancellationToken);
         }
     }

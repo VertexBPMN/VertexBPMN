@@ -56,6 +56,53 @@ public sealed class HttpMlAnalyticsServiceTests
         Assert.Equal("http://api.test/api/ml/predict/bottlenecks/invoice%2Fv2", request.RequestUri!.ToString());
     }
 
+    [Fact]
+    public async Task TrainModelsAsync_PostsToTrainEndpoint()
+    {
+        var requests = new List<HttpRequestMessage>();
+        var client = new HttpClient(new RecordingHandler(
+            requests,
+            new HttpResponseMessage(HttpStatusCode.OK)))
+        {
+            BaseAddress = new Uri("http://api.test/")
+        };
+        var factory = new Mock<IHttpClientFactory>();
+        factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
+        var service = new HttpMlAnalyticsService(factory.Object);
+
+        await service.TrainModelsAsync();
+
+        var request = Assert.Single(requests);
+        Assert.Equal(HttpMethod.Post, request.Method);
+        Assert.Equal("http://api.test/api/ml/train", request.RequestUri!.ToString());
+    }
+
+    [Fact]
+    public async Task ExportTrainingDataAsync_GetsCsvFromExportEndpoint()
+    {
+        var requests = new List<HttpRequestMessage>();
+        var response = new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("tenantId,processDefinitionKey\n")
+        };
+        var client = new HttpClient(new RecordingHandler(requests, response))
+        {
+            BaseAddress = new Uri("http://api.test/")
+        };
+        var factory = new Mock<IHttpClientFactory>();
+        factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
+        var service = new HttpMlAnalyticsService(factory.Object);
+
+        var csv = await service.ExportTrainingDataAsync("invoice/v2");
+
+        Assert.Equal("tenantId,processDefinitionKey\n", System.Text.Encoding.UTF8.GetString(csv));
+        var request = Assert.Single(requests);
+        Assert.Equal(HttpMethod.Get, request.Method);
+        Assert.Equal(
+            "http://api.test/api/ml/export/training-data?processDefinitionKey=invoice%2Fv2",
+            request.RequestUri!.ToString());
+    }
+
     private sealed class RecordingHandler(
         List<HttpRequestMessage> requests,
         HttpResponseMessage response) : HttpMessageHandler

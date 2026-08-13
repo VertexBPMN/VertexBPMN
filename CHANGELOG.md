@@ -35,11 +35,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Cloud-Native-Readiness: Health-/Liveness-/Readiness-Probes, Docker/Kubernetes-Deployment
 - Prometheus/OpenTelemetry-Metriken via /api/metrics und /api/metrics/prometheus
 - Live-Inspector-API für laufende Prozessinstanzen (/api/inspector/process-instance/{id}/state)
-- Neue Entwicklerdoku: docs/cloud-native.md
+- Neue Entwicklerdoku: docs/runbooks/cloud-native.md
 - Innovationen: Live-Inspector-API, Feature-Flag-Architektur, API-Hooks für Analytics/Process Mining
-- Neue Entwicklerdoku: docs/features-innovation.md
+- Neue Entwicklerdoku: docs/architecture/features-innovation.md
 - Process Mining & Analytics Hooks: Event-Log-/Token-Log-API-Design, Predictive Analytics Flag
-- Neue Entwicklerdoku: docs/process-mining-hooks.md
+- Neue Entwicklerdoku: docs/reference/process-mining-hooks.md
 
 ### Changed
 

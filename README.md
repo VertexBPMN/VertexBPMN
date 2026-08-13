@@ -128,7 +128,7 @@ Console.WriteLine($"Prozess '{deployed.Key}' wurde deployt.");
 Console.WriteLine($"Prozessinstanz '{processInstance?.Id}' wurde gestartet.");
 ```
 
-Für externe Starts kann anschließend ein Workflow-Trigger registriert und über sein einmalig ausgegebenes Secret aufgerufen werden. Die vollständige Anleitung steht im Abschnitt [Persistente BPMN-Deployments und externe Workflow-Trigger](#persistente-bpmn-deployments-und-externe-workflow-trigger) sowie in [docs/workflow-triggers.md](docs/workflow-triggers.md).
+Für externe Starts kann anschließend ein Workflow-Trigger registriert und über sein einmalig ausgegebenes Secret aufgerufen werden. Die vollständige Anleitung steht im Abschnitt [Persistente BPMN-Deployments und externe Workflow-Trigger](#persistente-bpmn-deployments-und-externe-workflow-trigger) sowie in [docs/runbooks/workflow-triggers.md](docs/runbooks/workflow-triggers.md).
 
 ## 🖥️ CLI, API & Studio Dashboard
 
@@ -229,7 +229,7 @@ Weitere Verwaltungsendpunkte:
 - `PUT /api/triggers/{id}` – Trigger umbenennen oder aktivieren/deaktivieren
 - `DELETE /api/triggers/{id}` – Trigger löschen
 
-Die Verwaltung ist authentifiziert und tenantisoliert. Einzelheiten stehen in [docs/workflow-triggers.md](docs/workflow-triggers.md).
+Die Verwaltung ist authentifiziert und tenantisoliert. Einzelheiten stehen in [docs/runbooks/workflow-triggers.md](docs/runbooks/workflow-triggers.md).
 
 #### CLI
 
@@ -313,7 +313,7 @@ VertexBPMN.Api (Runtime Gateway / REST / SignalR)
 VertexBPMN.Studio (Blazor Web Dashboard)
 ```
 
-Das Studio ruft die API über HTTP auf. Dadurch greifen CLI, API und Dashboard auf denselben Runtime-Zustand zu, wenn persistente Engine-Datenbanken konfiguriert sind. Die CLI-Dokumentation mit allen Befehlen und Konfigurationsbeispielen befindet sich in [`src/VertexBPMN.Cli/README.md`](src/VertexBPMN.Cli/README.md). Details zur Dependency-Konfiguration, Registry und Priorität der Konfigurationsquellen stehen in [`docs/dependency-configuration.md`](docs/dependency-configuration.md).
+Das Studio ruft die API über HTTP auf. Dadurch greifen CLI, API und Dashboard auf denselben Runtime-Zustand zu, wenn persistente Engine-Datenbanken konfiguriert sind. Die CLI-Dokumentation mit allen Befehlen und Konfigurationsbeispielen befindet sich in [`src/VertexBPMN.Cli/README.md`](src/VertexBPMN.Cli/README.md). Details zur Dependency-Konfiguration, Registry und Priorität der Konfigurationsquellen stehen in [`docs/runbooks/dependency-configuration.md`](docs/runbooks/dependency-configuration.md).
 
 **3. Ein einfacher Case (CMMN)**
 
@@ -353,7 +353,7 @@ VertexBPMN™ ist für Cloud, Container und moderne DevOps-Umgebungen gebaut:
 - Live-Inspector-API für Visual Debugging und Analytics
 
 **Details, Beispiele und Kubernetes-Deployment:**
-Siehe [`docs/cloud-native.md`](docs/cloud-native.md)
+Siehe [`docs/runbooks/cloud-native.md`](docs/runbooks/cloud-native.md)
 
 ## 🚀 Innovationen & Einzigartige Features
 
@@ -364,7 +364,7 @@ VertexBPMN™ bietet mehr als klassische BPMN/CMMN/DMN-Engines:
 - High-Performance-Architektur für .NET
 
 **Details und Beispiele:**
-Siehe [`docs/features-innovation.md`](docs/features-innovation.md)
+Siehe [`docs/architecture/features-innovation.md`](docs/architecture/features-innovation.md)
 
 ## 📊 Process Mining & Analytics Hooks
 
@@ -374,7 +374,7 @@ VertexBPMN™ ist vorbereitet für moderne Analytics- und Mining-Workflows:
 - Kompatibel mit Celonis, Camunda Optimize, Power BI, u.v.m.
 
 **Details und API-Entwürfe:**
-Siehe [`docs/process-mining-hooks.md`](docs/process-mining-hooks.md)
+Siehe [`docs/reference/process-mining-hooks.md`](docs/reference/process-mining-hooks.md)
 
 ## 🛣️ Roadmap & Vision
 

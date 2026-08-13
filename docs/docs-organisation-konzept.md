@@ -169,7 +169,7 @@ Die Dateien bleiben unveraendert, aber werden in der Doku sauber referenziert.
 
 ### Einstieg und Quickstarts
 
-- `docs/wiki/Home.md`
+- `docs/README.md`
 - `docs/getting-started/README.md`
 - `docs/getting-started/api-quickstart.md`
 - `docs/getting-started/csharp-quickstart.md`
@@ -184,11 +184,11 @@ Empfehlung:
 ### API- und Referenzdokumentation
 
 - `docs/reference/openapi.md`
-- `docs/api-mapping-camunda.md`
-- `docs/api-paritaet-camunda.md`
-- `docs/mcp-server.md`
-- `docs/predictive-analytics-api.md`
-- `docs/debugger-trace-api.md`
+- `docs/reference/api-mapping-camunda.md`
+- `docs/reference/api-parity-camunda.md`
+- `docs/reference/mcp-server.md`
+- `docs/reference/predictive-analytics-api.md`
+- `docs/reference/debugger-trace-api.md`
 
 Empfehlung:
 
@@ -199,7 +199,7 @@ Empfehlung:
 
 - `docs/working/studio-api-parity-plan.md`
 - `docs/working/roadmap.md`
-- `docs/phase4-innovation-status.md`
+- `docs/archive/phase4-innovation-status.md`
 - `docs/working/Unified-Gap-Matrix.md`
 - `docs/working/Unified-Parser-Migration-Guide.md`
 - `docs/working/ROUNDTRIP_STRICT_PLAN.md`
@@ -215,8 +215,8 @@ Empfehlung:
 - `docs/AI-Handler-Tests-Summary.md`
 - `docs/AI-Handler-Tests-Fixed-Summary.md`
 - `docs/HttpClient-Mocking-Implementation-Complete.md`
-- `docs/test-coverage.md`
-- `docs/production-notes.md`
+- `docs/archive/test-coverage.md`
+- `docs/runbooks/production-notes.md`
 
 Empfehlung:
 
@@ -227,7 +227,7 @@ Empfehlung:
 
 - `docs/BPMN_by_example.pdf`
 - `docs/Business Process Model and Notation BPMN.pdf`
-- `docs/prompts/*`
+- `docs/archive/prompts/*`
 - `docs/HowToBuildAgenticAISystem.jpg`
 
 Empfehlung:

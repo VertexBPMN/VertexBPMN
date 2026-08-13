@@ -59,7 +59,7 @@ both quality and design/roadmap appropriateness will be merged into the source.
 If you are an outside contributor, please fork the repository to your account.
 See the GitHub documentation for [forking a
 repo](https://help.github.com/articles/fork-a-repo/) if you have any questions
-about this. 
+about this.
 
 **Submitting a pull request**
 
@@ -90,4 +90,4 @@ Guidelines](https://opensource.google.com/conduct/).
 - Die vollständige OpenAPI/Swagger-Spezifikation (`openapi.json`) wird bei jedem Build automatisch generiert.
 - Änderungen an der REST-API sollten immer durch Anpassung der OpenAPI-Doku und entsprechende Integrationstests begleitet werden.
 - Für API-Contract-Tests kann die `openapi.json` direkt in Tools wie Postman, Dredd, Prism oder bpmn.io importiert werden.
-- Details und Beispiele findest du in [`docs/openapi.md`](docs/openapi.md).
+- Details und Beispiele findest du in [`docs/reference/openapi.md`](docs/reference/openapi.md).

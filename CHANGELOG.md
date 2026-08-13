@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Vollständige OpenAPI/Swagger-Spezifikation (`openapi.json`) für alle REST-Endpunkte generiert
 - Nahtlose Integration mit bpmn-js, dmn-js und form-js (bpmn.io)
 - Neue Endpunkte: GET/PUT /camunda/process-definition/{id}/xml, /camunda/decision-definition/{key}/xml, /camunda/task/{id}/form-schema
-- Automatische OpenAPI-Doku und neue Entwicklerdokumentation (`docs/openapi.md`)
+- Automatische OpenAPI-Doku und neue Entwicklerdokumentation (`docs/reference/openapi.md`)
 - Hinweise zur API-Dokumentation und Contract-Tests in README und CONTRIBUTING.md ergänzt
 - Cloud-Native-Readiness: Health-/Liveness-/Readiness-Probes, Docker/Kubernetes-Deployment
 - Prometheus/OpenTelemetry-Metriken via /api/metrics und /api/metrics/prometheus

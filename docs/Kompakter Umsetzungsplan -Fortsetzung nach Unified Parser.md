@@ -2,7 +2,7 @@ GitHub Copilot
 Kompakter Umsetzungsplan (Fortsetzung nach Unified Parser)
 Phase A – Lückenanalyse absichern
 •	Task: Snapshot aktueller Unified Parser Funktionsumfang (Feature-Matrix gegen ursprüngliche Roadmap).
-•	Deliverable: Markdown-Tabelle (docs/Unified-Gap-Matrix.md).
+•	Deliverable: Markdown-Tabelle (docs/working/Unified-Gap-Matrix.md).
 •	Tests: Kein Code, nur Bestandsaufnahme.
 Phase B – Validierung vervollständigen
 •	Fehlt: Multi‑Instance Konflikt (cardinality & collection), Cancel-/Terminate-Regeln (nur in Transaction), Boundary Compensation nur an kompensierbarer Activity/Subprocess, mindestens 1 ausgehender Flow bei Gateways, Link Throw/Catch Rollentrennung.

@@ -1,29 +1,29 @@
-# ? HttpClient Mocking für AI Service Handler Tests - Implementierung Abgeschlossen
+# ? HttpClient Mocking fÃ¼r AI Service Handler Tests - Implementierung Abgeschlossen
 
 ## ?? **Was wurde implementiert?**
 
-Ich habe erfolgreich **HttpClient Mocking** für alle AI Service Task Handler implementiert, damit sie **offline getestet** werden können, ohne echte API-Aufrufe an OpenAI, Anthropic oder Gemini zu machen.
+Ich habe erfolgreich **HttpClient Mocking** fÃ¼r alle AI Service Task Handler implementiert, damit sie **offline getestet** werden kÃ¶nnen, ohne echte API-Aufrufe an OpenAI, Anthropic oder Gemini zu machen.
 
 ---
 
 ## ??? **Implementierte Komponenten**
 
 ### **1. Enhanced AI Service Handlers**
-? **GeminiServiceTaskHandler.cs** - Vollständige HTTP API Integration + Mock Mode  
-? **OpenAiServiceTaskHandler.cs** - Vollständige OpenAI API Integration + Mock Mode  
-? **AnthropicServiceTaskHandler.cs** - Vollständige Claude API Integration + Mock Mode  
+? **GeminiServiceTaskHandler.cs** - VollstÃ¤ndige HTTP API Integration + Mock Mode
+? **OpenAiServiceTaskHandler.cs** - VollstÃ¤ndige OpenAI API Integration + Mock Mode
+? **AnthropicServiceTaskHandler.cs** - VollstÃ¤ndige Claude API Integration + Mock Mode
 
 ### **2. HttpClient Mocked Tests**
-? **OpenAiServiceTaskHandlerMockedTests** - Mit Moq.Protected für HTTP-Mocking  
-? **GeminiServiceTaskHandlerMockedTests** - Mit Google API Response-Simulation  
-? **AnthropicServiceTaskHandlerMockedTests** - Mit Claude API Response-Simulation  
+? **OpenAiServiceTaskHandlerMockedTests** - Mit Moq.Protected fÃ¼r HTTP-Mocking
+? **GeminiServiceTaskHandlerMockedTests** - Mit Google API Response-Simulation
+? **AnthropicServiceTaskHandlerMockedTests** - Mit Claude API Response-Simulation
 
 ### **3. Mock-Strategien**
-- **Moq.Protected** für HttpMessageHandler-Mocking
+- **Moq.Protected** fÃ¼r HttpMessageHandler-Mocking
 - **Realistic API Response** Simulation mit JSON
-- **Header Verification** für Authentifizierung
-- **Request Body Validation** für korrekte API-Calls
-- **Error Scenario Testing** für Fehlerbehandlung
+- **Header Verification** fÃ¼r Authentifizierung
+- **Request Body Validation** fÃ¼r korrekte API-Calls
+- **Error Scenario Testing** fÃ¼r Fehlerbehandlung
 
 ---
 
@@ -47,9 +47,9 @@ public async Task ExecuteAsync_WithMockedHttpClient_ShouldHandleOpenAIResponse()
         },
         usage = new { prompt_tokens = 25, completion_tokens = 15, total_tokens = 40 }
     };
-    
+
     SetupHttpMock(openAiResponse, "openai.com");
-    
+
     // Verify mocked response is processed correctly
     await ExecuteAndVerifyResult();
 }
@@ -57,7 +57,7 @@ public async Task ExecuteAsync_WithMockedHttpClient_ShouldHandleOpenAIResponse()
 
 ### **Gemini API Mock**
 ```csharp
-[Fact] 
+[Fact]
 public async Task ExecuteAsync_WithMockedHttpClient_ShouldHandleGeminiResponse()
 {
     // Mock Gemini API Response
@@ -74,9 +74,9 @@ public async Task ExecuteAsync_WithMockedHttpClient_ShouldHandleGeminiResponse()
             }
         }
     };
-    
+
     SetupHttpMock(geminiResponse, "generativelanguage.googleapis.com");
-    
+
     // Verify mocked response is processed correctly
     await ExecuteAndVerifyResult();
 }
@@ -96,9 +96,9 @@ public async Task ExecuteAsync_WithMockedHttpClient_ShouldHandleClaudeResponse()
         },
         usage = new { input_tokens = 15, output_tokens = 18 }
     };
-    
+
     SetupHttpMock(claudeResponse, "anthropic.com");
-    
+
     // Verify HTTP headers and response processing
     await ExecuteAndVerifyResult();
 }
@@ -110,7 +110,7 @@ public async Task ExecuteAsync_WithMockedHttpClient_ShouldHandleClaudeResponse()
 
 ### **Mock-Mode Tests (Einfach)**
 - ? Basic configuration processing
-- ? Provider-specific result formatting  
+- ? Provider-specific result formatting
 - ? Variable management
 - ? Error handling without API calls
 
@@ -118,7 +118,7 @@ public async Task ExecuteAsync_WithMockedHttpClient_ShouldHandleClaudeResponse()
 - ? **Realistic API Responses** - Echte JSON Response-Strukturen
 - ? **HTTP Header Verification** - Authentifizierung und API-spezifische Headers
 - ? **Request Body Validation** - Model, Prompt und Parameter-Verifikation
-- ? **Error Scenario Testing** - HTTP-Fehler, ungültige API-Keys, Timeouts
+- ? **Error Scenario Testing** - HTTP-Fehler, ungÃ¼ltige API-Keys, Timeouts
 - ? **Usage Metrics Processing** - Token-Tracking und Metadaten
 
 ---
@@ -144,8 +144,8 @@ _httpMessageHandlerMock
     .Protected()
     .Setup<Task<HttpResponseMessage>>(
         "SendAsync",
-        ItExpr.Is<HttpRequestMessage>(req => 
-            req.Method == HttpMethod.Post && 
+        ItExpr.Is<HttpRequestMessage>(req =>
+            req.Method == HttpMethod.Post &&
             req.RequestUri!.ToString().Contains("api-provider.com")),
         ItExpr.IsAny<CancellationToken>())
     .ReturnsAsync(mockHttpResponse);
@@ -167,18 +167,18 @@ _httpMessageHandlerMock.Protected().Verify(
 ## ?? **Vorteile der Implementierung**
 
 ### **Entwicklung**
-- ? **Offline-Entwicklung** möglich
-- ? **Keine API-Kosten** während Tests
+- ? **Offline-Entwicklung** mÃ¶glich
+- ? **Keine API-Kosten** wÃ¤hrend Tests
 - ? **Deterministische Tests** mit vorhersagbaren Ergebnissen
-- ? **Schnelle Test-Ausführung** ohne Netzwerk-Latenzen
+- ? **Schnelle Test-AusfÃ¼hrung** ohne Netzwerk-Latenzen
 
 ### **CI/CD Integration**
 - ? **Build Pipeline Ready** - Tests laufen ohne externe Dependencies
-- ? **Isolierte Tests** - Keine Abhängigkeit von externen Services
+- ? **Isolierte Tests** - Keine AbhÃ¤ngigkeit von externen Services
 - ? **Reproducible Results** - Keine Flaky Tests durch API-Limits
 
 ### **Debugging**
-- ? **Request Inspection** - Vollständige HTTP Request/Response-Verifikation
+- ? **Request Inspection** - VollstÃ¤ndige HTTP Request/Response-Verifikation
 - ? **Error Simulation** - Testen aller Fehlerszenarios
 - ? **Performance Testing** - Ohne API-Limits und Kosten
 
@@ -187,16 +187,16 @@ _httpMessageHandlerMock.Protected().Verify(
 ## ?? **Handler Features**
 
 ### **Production Ready**
-- ? **Real API Integration** - Vollständige HTTP-Client-Integration
+- ? **Real API Integration** - VollstÃ¤ndige HTTP-Client-Integration
 - ? **Error Handling** - Retry-Logic, Timeouts, API-Fehlerbehandlung
 - ? **Token Usage Tracking** - Kosten- und Usage-Monitoring
 - ? **Context Enrichment** - Input-Variable Processing
 - ? **OpenTelemetry Integration** - Tracing und Metriken
 
 ### **Test Ready**
-- ? **Mock Mode Support** - `ai:useMockMode=true` für einfache Tests
-- ? **HttpClient Mocking** - Für realistische API-Response-Tests
-- ? **Environment Clean-up** - Tests räumen nach sich auf
+- ? **Mock Mode Support** - `ai:useMockMode=true` fÃ¼r einfache Tests
+- ? **HttpClient Mocking** - FÃ¼r realistische API-Response-Tests
+- ? **Environment Clean-up** - Tests rÃ¤umen nach sich auf
 - ? **Flexible Configuration** - Testbare Parameter-Kombinationen
 
 ---
@@ -212,13 +212,13 @@ _httpMessageHandlerMock.Protected().Verify(
       <zeebe:header key="ai:provider" value="openai" />
       <zeebe:header key="ai:model" value="gpt-4" />
       <zeebe:header key="ai:prompt" value="Analyze customer sentiment" />
-      <!-- API-Key über Environment-Variable: OPENAI_API_KEY -->
+      <!-- API-Key Ã¼ber Environment-Variable: OPENAI_API_KEY -->
     </zeebe:taskHeaders>
   </extensionElements>
 </serviceTask>
 ```
 
-### **Test-Modus** 
+### **Test-Modus**
 ```xml
 <serviceTask id="ai-task-test" name="AI Analysis Test">
   <extensionElements>
@@ -238,19 +238,19 @@ _httpMessageHandlerMock.Protected().Verify(
 ## ? **Status: Implementierung Abgeschlossen**
 
 - ? **Build Successful** - Alle Komponenten kompilieren fehlerfrei
-- ? **HttpClient Mocking** implementiert für alle AI Provider
-- ? **Test Coverage** für Online- und Offline-Szenarien
-- ? **Documentation** vollständig mit Beispielen
-- ? **Production Ready** - Handlers können sofort verwendet werden
+- ? **HttpClient Mocking** implementiert fÃ¼r alle AI Provider
+- ? **Test Coverage** fÃ¼r Online- und Offline-Szenarien
+- ? **Documentation** vollstÃ¤ndig mit Beispielen
+- ? **Production Ready** - Handlers kÃ¶nnen sofort verwendet werden
 
-Die AI Service Task Handler sind jetzt **vollständig offline-testbar** und **produktionstauglich**! ??
+Die AI Service Task Handler sind jetzt **vollstÃ¤ndig offline-testbar** und **produktionstauglich**! ??
 
 ---
 
 ## ?? **Dokumentation**
 
 - **HttpClient-Mocking-AI-Handler-Tests.md** - Detaillierte Anleitung
-- **AI-Handler-Tests-Summary.md** - Test-Suite Übersicht  
+- **AI-Handler-Tests-Summary.md** - Test-Suite Ãœbersicht
 - **AIServiceTaskHandler-Examples.md** - BPMN Integration-Beispiele
 
-Die Implementierung folgt den VertexBPMN-Konventionen und ist bereit für den Produktions-Einsatz! ??
+Die Implementierung folgt den VertexBPMN-Konventionen und ist bereit fÃ¼r den Produktions-Einsatz! ??

@@ -1,16 +1,16 @@
-# HttpClient Mocking für AI Service Task Handler Tests
+# HttpClient Mocking fÃ¼r AI Service Task Handler Tests
 
-## ?? **Übersicht**
+## ?? **Ãœbersicht**
 
-Die AI Service Task Handler Tests verwenden jetzt **HttpClient Mocking** mit **Moq.Protected**, um offline Tests zu ermöglichen. Dadurch können die Tests ohne echte API-Aufrufe an OpenAI, Anthropic oder Gemini ausgeführt werden.
+Die AI Service Task Handler Tests verwenden jetzt **HttpClient Mocking** mit **Moq.Protected**, um offline Tests zu ermÃ¶glichen. Dadurch kÃ¶nnen die Tests ohne echte API-Aufrufe an OpenAI, Anthropic oder Gemini ausgefÃ¼hrt werden.
 
 ## ?? **Vorteile des HttpClient Mocking**
 
 - ? **Offline-Tests:** Keine Internet-Verbindung erforderlich
-- ? **Keine API-Kosten:** Vermeidung von API-Gebühren während Tests
+- ? **Keine API-Kosten:** Vermeidung von API-GebÃ¼hren wÃ¤hrend Tests
 - ? **Deterministische Tests:** Vorhersagbare Antworten
-- ? **Schnelle Ausführung:** Keine Netzwerk-Latenzen
-- ? **Isolation:** Tests sind unabhängig von externen Services
+- ? **Schnelle AusfÃ¼hrung:** Keine Netzwerk-Latenzen
+- ? **Isolation:** Tests sind unabhÃ¤ngig von externen Services
 
 ---
 
@@ -57,8 +57,8 @@ _httpMessageHandlerMock
     .Protected()
     .Setup<Task<HttpResponseMessage>>(
         "SendAsync",
-        ItExpr.Is<HttpRequestMessage>(req => 
-            req.Method == HttpMethod.Post && 
+        ItExpr.Is<HttpRequestMessage>(req =>
+            req.Method == HttpMethod.Post &&
             req.RequestUri!.ToString().Contains("openai.com")),
         ItExpr.IsAny<CancellationToken>())
     .ReturnsAsync(httpResponse);
@@ -88,9 +88,9 @@ public async Task ExecuteAsync_WithMockedHttpClient_ShouldHandleOpenAIResponse()
         usage = new { prompt_tokens = 25, completion_tokens = 15, total_tokens = 40 },
         model = "gpt-4"
     };
-    
+
     SetupHttpMock(openAiResponse, "openai.com");
-    
+
     // Act & Assert
     await ExecuteAndVerifyResult();
 }
@@ -113,9 +113,9 @@ public async Task ExecuteAsync_WithMockedHttpClient_ShouldHandleClaudeResponse()
         stop_reason = "end_turn",
         usage = new { input_tokens = 15, output_tokens = 18 }
     };
-    
+
     SetupHttpMock(claudeResponse, "anthropic.com");
-    
+
     // Act & Assert
     await ExecuteAndVerifyResult();
 }
@@ -148,9 +148,9 @@ public async Task ExecuteAsync_WithMockedHttpClient_ShouldHandleGeminiResponse()
             totalTokenCount = 32
         }
     };
-    
+
     SetupHttpMock(geminiResponse, "generativelanguage.googleapis.com");
-    
+
     // Act & Assert
     await ExecuteAndVerifyResult();
 }
@@ -158,11 +158,11 @@ public async Task ExecuteAsync_WithMockedHttpClient_ShouldHandleGeminiResponse()
 
 ---
 
-## ?? **Handler-Implementierung mit Mock-Unterstützung**
+## ?? **Handler-Implementierung mit Mock-UnterstÃ¼tzung**
 
-### **Mock-Mode für Tests**
+### **Mock-Mode fÃ¼r Tests**
 
-Die AI Handler unterstützen einen `UseMockMode` Parameter für einfachere Tests:
+Die AI Handler unterstÃ¼tzen einen `UseMockMode` Parameter fÃ¼r einfachere Tests:
 
 ```csharp
 // In Handler-Implementierung
@@ -174,7 +174,7 @@ if (config.UseMockMode)
 }
 ```
 
-### **BPMN-Attribute für Mock-Mode**
+### **BPMN-Attribute fÃ¼r Mock-Mode**
 
 ```xml
 <serviceTask id="ai-task" name="AI Task">
@@ -246,7 +246,7 @@ capturedRequestBody.ShouldContain(prompt);
 
 ### **2. Fehlerbehandlung**
 - ? HTTP-Fehler (401, 429, 500)
-- ? Ungültige API-Keys
+- ? UngÃ¼ltige API-Keys
 - ? Malformed Response
 - ? Timeout-Verhalten
 
@@ -257,7 +257,7 @@ capturedRequestBody.ShouldContain(prompt);
 
 ---
 
-## ?? **Test-Ausführung**
+## ?? **Test-AusfÃ¼hrung**
 
 ### **Einzelne Tests**
 
@@ -268,7 +268,7 @@ dotnet test --filter "FullyQualifiedName~Mocked" --logger console
 # OpenAI Tests
 dotnet test --filter "ClassName~OpenAiServiceTaskHandlerMockedTests" --logger console
 
-# Anthropic Tests  
+# Anthropic Tests
 dotnet test --filter "ClassName~AnthropicServiceTaskHandlerMockedTests" --logger console
 
 # Gemini Tests
@@ -290,7 +290,7 @@ dotnet test --filter "ClassName~GeminiServiceTaskHandlerMockedTests" --logger co
 ### **1. Test-Isolation**
 - Jeder Test reinigt Environment-Variablen nach sich auf
 - HttpClient wird pro Test-Klasse erstellt
-- Mock-Setup ist spezifisch für jeden Test
+- Mock-Setup ist spezifisch fÃ¼r jeden Test
 
 ### **2. Realistische Mock-Daten**
 - Mock-Antworten spiegeln echte API-Strukturen wider
@@ -298,18 +298,18 @@ dotnet test --filter "ClassName~GeminiServiceTaskHandlerMockedTests" --logger co
 - Error-Responses enthalten echte Fehlermeldungen
 
 ### **3. Verifikation**
-- HTTP-Requests werden auf korrekte Headers geprüft
+- HTTP-Requests werden auf korrekte Headers geprÃ¼ft
 - Request-Bodies werden auf erwartete Inhalte getestet
-- Response-Processing wird vollständig validiert
+- Response-Processing wird vollstÃ¤ndig validiert
 
 ---
 
 ## ? **Fazit**
 
-Das HttpClient Mocking ermöglicht:
+Das HttpClient Mocking ermÃ¶glicht:
 - **Offline-Entwicklung** ohne API-Dependencies
 - **Kosteneinsparung** durch Vermeidung echter API-Aufrufe
-- **Zuverlässige Tests** mit deterministischen Ergebnissen
-- **Vollständige Abdeckung** aller Fehler-Szenarien
+- **ZuverlÃ¤ssige Tests** mit deterministischen Ergebnissen
+- **VollstÃ¤ndige Abdeckung** aller Fehler-Szenarien
 
-Die Tests sind jetzt **produktionstauglich** und können sicher in CI/CD-Pipelines ausgeführt werden! ??
+Die Tests sind jetzt **produktionstauglich** und kÃ¶nnen sicher in CI/CD-Pipelines ausgefÃ¼hrt werden! ??

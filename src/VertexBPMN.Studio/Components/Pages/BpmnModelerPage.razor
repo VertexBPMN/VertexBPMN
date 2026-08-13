@@ -1,109 +1,125 @@
 @page "/bpmn-modeler"
+@using System.Text
 @inject VertexBPMN.Studio.Services.IRepositoryService RepositoryService
 @inject VertexBPMN.Studio.Services.StudioTenantContext TenantContext
 @inject MudBlazor.ISnackbar Snackbar
 @inject IHttpClientFactory HttpClientFactory
 @inject VertexBPMN.Studio.Services.ActiveEngineService ActiveEngineService
 @inject IJSRuntime JSRuntime
-@implements IAsyncDisposable
+@implements IDisposable
 
 <PageTitle>BPMN Modeler</PageTitle>
 
-<MudText Typo="Typo.h4" GutterBottom="true">BPMN Modeler</MudText>
+<MudStack Spacing="3">
+    <div>
+        <MudText Typo="Typo.h4" GutterBottom="true">BPMN Modeler</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            bpmn.io Modeler-Shell mit editierbarem Modeler, Properties Panel und getrenntem NavigatedViewer-Fallback fuer read-only Vorschau.
+        </MudText>
+    </div>
 
-<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveBpmnXml">Save XML</MudButton>
-<MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="LoadBpmnXml">Load XML</MudButton>
+    <MudPaper Class="pa-4">
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="DeployBpmnXml" StartIcon="@Icons.Material.Filled.CloudUpload">Deploy BPMN</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="ExportBpmnXml" StartIcon="@Icons.Material.Filled.Download">Export XML</MudButton>
+            <MudButton Variant="Variant.Outlined" OnClick="@(() => LoadBpmnXml())" StartIcon="@Icons.Material.Filled.Refresh">Load template</MudButton>
+            <MudChip T="string" Color="Color.Info" Variant="Variant.Outlined">Tenant: @(TenantContext.CurrentTenantId ?? "default")</MudChip>
+        </MudStack>
+    </MudPaper>
 
-<div id="@_modelerContainerId" style="height:500px; border:1px solid #ccc;"></div>
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h6" GutterBottom="true">Modeler</MudText>
+        <BpmnModelerSurface @ref="_modeler" Xml="_bpmnXml" />
+    </MudPaper>
+
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h6" GutterBottom="true">Viewer</MudText>
+        <BpmnViewerSurface Xml="_bpmnXml" />
+    </MudPaper>
+</MudStack>
 
 @code {
-    private string _bpmnXml = string.Empty;
+    private string _bpmnXml = FallbackBpmn;
     private HttpClient _httpClient = default!;
+    private BpmnModelerSurface? _modeler;
 
-    private string _modelerContainerId = $"bpmn-modeler-{Guid.NewGuid():N}";
-    private IJSObjectReference? _module;
-    private IJSObjectReference? _modelerInstance;
-    private bool _initialized;
-
-    // Inline fallback BPMN if static file not found
-    private const string FallbackBpmn = """<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<bpmn:definitions xmlns:bpmn=\"http://www.omg.org/spec/BPMN/20100524/MODEL\" id=\"Defs_Fallback\" targetNamespace=\"http://vertexbpmn.io/schema/bpmn\">\n  <bpmn:process id=\"Process_Fallback\" isExecutable=\"false\">\n    <bpmn:startEvent id=\"StartEvent_Fallback\" />\n    <bpmn:sequenceFlow id=\"Flow_1\" sourceRef=\"StartEvent_Fallback\" targetRef=\"EndEvent_Fallback\" />\n    <bpmn:endEvent id=\"EndEvent_Fallback\" />\n  </bpmn:process>\n</bpmn:definitions>""";
+    private const string FallbackBpmn = """
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Defs_Fallback" targetNamespace="http://vertexbpmn.io/schema/bpmn">
+  <bpmn:process id="Process_Fallback" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_Fallback" name="Start" />
+    <bpmn:sequenceFlow id="Flow_Start_End" sourceRef="StartEvent_Fallback" targetRef="EndEvent_Fallback" />
+    <bpmn:endEvent id="EndEvent_Fallback" name="Done" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Fallback">
+    <bpmndi:BPMNPlane id="BPMNPlane_Fallback" bpmnElement="Process_Fallback">
+      <bpmndi:BPMNShape id="StartEvent_Fallback_di" bpmnElement="StartEvent_Fallback"><dc:Bounds x="180" y="120" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_Fallback_di" bpmnElement="EndEvent_Fallback"><dc:Bounds x="320" y="120" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_Start_End_di" bpmnElement="Flow_Start_End"><di:waypoint x="216" y="138" /><di:waypoint x="320" y="138" /></bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+""";
 
     protected override async Task OnInitializedAsync()
     {
         _httpClient = HttpClientFactory.CreateClient("Default");
-        ActiveEngineService.OnChange += StateHasChanged; // Subscribe to state changes
-        await LoadBpmnXml();
-    }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender)
-        {
-            _module = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/bpmn-modeler.js");
-            _modelerInstance = await _module.InvokeAsync<IJSObjectReference>("BpmnModelerInterop.createModeler", _modelerContainerId, _bpmnXml);
-            _initialized = true;
-        }
+        ActiveEngineService.OnChange += StateHasChanged;
+        await LoadBpmnXml(showNotification: false);
     }
 
     public void Dispose()
     {
-        ActiveEngineService.OnChange -= StateHasChanged; // Unsubscribe (sync dispose for interface compatibility)
+        ActiveEngineService.OnChange -= StateHasChanged;
     }
 
-    public async ValueTask DisposeAsync()
+    private async Task DeployBpmnXml()
     {
-        try
-        {
-            if (_modelerInstance is not null)
-            {
-                await _modelerInstance.DisposeAsync();
-            }
-            if (_module is not null)
-            {
-                await _module.DisposeAsync();
-            }
-        }
-        catch { }
-    }
-
-    private async Task SaveBpmnXml()
-    {
-        if (_module == null || _modelerInstance == null)
-        {
-            Snackbar.Add("Modeler not initialized yet", Severity.Warning);
-            return;
-        }
-
-        var xml = await _module.InvokeAsync<string>("BpmnModelerInterop.getXml", _modelerInstance);
+        var xml = await CaptureBpmnXml();
         try
         {
             await RepositoryService.DeployXmlAsync(xml, "studio-model.bpmn", TenantContext.CurrentTenantId);
-            Snackbar.Add("BPMN XML deployed successfully.", Severity.Success);
+            Snackbar.Add("BPMN deployed successfully.", Severity.Success);
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error saving BPMN XML: {ex.Message}", Severity.Error);
+            Snackbar.Add($"BPMN deploy failed: {ex.Message}", Severity.Error);
         }
     }
 
-    private async Task LoadBpmnXml()
+    private async Task ExportBpmnXml()
+    {
+        var xml = await CaptureBpmnXml();
+        await DownloadTextAsync("studio-model.bpmn", xml, "application/xml");
+        Snackbar.Add("BPMN XML exported.", Severity.Success);
+    }
+
+    private async Task LoadBpmnXml(bool showNotification = true)
     {
         try
         {
-            // Use leading slash to avoid relative path issues
             _bpmnXml = await _httpClient.GetStringAsync("/data/DefaultBpmn.xml");
-            Snackbar.Add("BPMN XML loaded!", Severity.Info);
+            if (showNotification)
+                Snackbar.Add("BPMN template loaded.", Severity.Info);
         }
         catch (Exception ex)
         {
-            // Fallback inline definition
             _bpmnXml = FallbackBpmn;
-            Snackbar.Add($"DefaultBpmn.xml not found � using fallback. ({ex.Message})", Severity.Warning);
+            if (showNotification)
+                Snackbar.Add($"DefaultBpmn.xml not found. Using fallback. ({ex.Message})", Severity.Warning);
         }
+    }
 
-        if (_initialized && _module != null && _modelerInstance != null)
-        {
-            await _module.InvokeVoidAsync("BpmnModelerInterop.loadXml", _modelerInstance, _bpmnXml);
-        }
+    private async Task<string> CaptureBpmnXml()
+    {
+        if (_modeler is not null)
+            _bpmnXml = await _modeler.GetXmlAsync();
+        return _bpmnXml;
+    }
+
+    private async Task DownloadTextAsync(string fileName, string content, string contentType)
+    {
+        var dataUri = $"data:{contentType};base64,{Convert.ToBase64String(Encoding.UTF8.GetBytes(content))}";
+        await JSRuntime.InvokeVoidAsync("downloadFile", fileName, dataUri);
     }
 }

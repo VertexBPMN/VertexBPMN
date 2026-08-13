@@ -42,12 +42,12 @@ function destroyForm(form) {
     }
 }
 
-export const FormBuilderInterop = {
-    createForm: function (containerId, formJson) {
+export const FormViewerInterop = {
+    createViewer: function (containerId, formJson) {
         const schema = parseSchema(formJson);
-        const ctor = window.FormEditor && window.FormEditor.FormEditor;
+        const ctor = window.FormViewer && window.FormViewer.Form;
         if (typeof ctor !== 'function') {
-            renderFormFallback(containerId, 'bpmn.io form-js Builder fallback', schema);
+            renderFormFallback(containerId, 'bpmn.io form-js Viewer fallback', schema);
             return { __vertexFallback: true, containerId, schema };
         }
 
@@ -55,21 +55,6 @@ export const FormBuilderInterop = {
             container: getElement(containerId),
             schema
         });
-    },
-    getJson: async function (form) {
-        if (!form) {
-            return '{}';
-        }
-
-        if (form.__vertexFallback) {
-            return JSON.stringify(form.schema || {}, null, 2);
-        }
-
-        if (typeof form.getSchema === 'function') {
-            return JSON.stringify(form.getSchema(), null, 2);
-        }
-
-        return '{}';
     },
     loadJson: async function (form, formJson) {
         const schema = parseSchema(formJson);
@@ -79,7 +64,7 @@ export const FormBuilderInterop = {
 
         if (form.__vertexFallback) {
             form.schema = schema;
-            renderFormFallback(form.containerId, 'bpmn.io form-js Builder fallback', schema);
+            renderFormFallback(form.containerId, 'bpmn.io form-js Viewer fallback', schema);
             return;
         }
 
@@ -92,4 +77,4 @@ export const FormBuilderInterop = {
     }
 };
 
-window.FormBuilderInterop = FormBuilderInterop;
+window.FormViewerInterop = FormViewerInterop;

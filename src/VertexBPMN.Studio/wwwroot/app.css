@@ -58,3 +58,62 @@ h1:focus {
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
     text-align: start;
 }
+
+.bpmn-io-shell {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    min-height: 560px;
+    border: 1px solid var(--mud-palette-lines-default);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--mud-palette-surface);
+}
+
+.bpmn-io-shell-single,
+.bpmn-io-shell-viewer {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.bpmn-io-canvas {
+    min-height: 560px;
+    background: #fff;
+}
+
+.bpmn-io-properties-panel {
+    border-left: 1px solid var(--mud-palette-lines-default);
+    background: var(--mud-palette-background-grey);
+    padding: 16px;
+    overflow: auto;
+}
+
+.bpmn-io-fallback {
+    height: 100%;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    color: #1f2937;
+    background: linear-gradient(135deg, #f8fafc, #eef2ff);
+}
+
+.bpmn-io-fallback pre {
+    flex: 1;
+    margin: 0;
+    padding: 12px;
+    overflow: auto;
+    white-space: pre-wrap;
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px solid #dbe3ef;
+    border-radius: 6px;
+    font-size: 0.8rem;
+}
+
+.bpmn-io-canvas-placeholder {
+    min-height: 180px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #64748b;
+    background: repeating-linear-gradient(45deg, #ffffff, #ffffff 12px, #f8fafc 12px, #f8fafc 24px);
+}
+

@@ -39,4 +39,30 @@ public sealed class StudioUiContractTests(StudioUiTestHost host) : IClassFixture
         await page.GetByRole(AriaRole.Heading, new() { Name = "Tasks", Exact = true }).WaitForAsync();
         await page.GetByText("Approve invoice", new() { Exact = true }).WaitForAsync();
     }
+
+    [Theory]
+    [InlineData("bpmn-modeler", "BPMN Modeler", "Deploy BPMN", "Export XML", "bpmn-modeler-shell", "Viewer", "bpmn-viewer-shell")]
+    [InlineData("dmn-modeler", "DMN Modeler", "Deploy DMN", "Export DMN", "dmn-modeler-shell", "Viewer", "dmn-viewer-shell")]
+    [InlineData("form-builder", "Form Builder", "Save JSON", "Export JSON", "form-builder-shell", "Runtime Viewer", "form-viewer-shell")]
+    [InlineData("cmmn-modeler", "CMMN Modeler", "Register case model", "Export CMMN", "cmmn-modeler-shell", "Viewer", "cmmn-viewer-shell")]
+    public async Task BpmnIoModelerShells_Render_EditorViewer_And_ActionButtons(
+        string route,
+        string heading,
+        string primaryAction,
+        string exportAction,
+        string modelerTestId,
+        string viewerTab,
+        string viewerTestId)
+    {
+        var page = await host.Browser.NewPageAsync();
+        await page.GotoAsync($"{host.BaseAddress}{route}");
+
+        await page.GetByRole(AriaRole.Heading, new() { Name = heading, Exact = true }).WaitForAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = primaryAction, Exact = true }).WaitForAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = exportAction, Exact = true }).WaitForAsync();
+        await page.GetByTestId(modelerTestId).WaitForAsync();
+        await page.GetByText(viewerTab, new() { Exact = true }).WaitForAsync();
+        await page.GetByTestId(viewerTestId).WaitForAsync();
+    }
+
 }

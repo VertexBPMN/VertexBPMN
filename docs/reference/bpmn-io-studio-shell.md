@@ -1,0 +1,43 @@
+# bpmn.io Studio Shell
+
+Status: Phase 1 baseline implemented.
+
+The Studio uses a thin, stable shell around the bpmn.io family of toolkits. Razor pages own workflow actions such as load, save, export and deploy. Reusable surface components own the browser canvas and call JavaScript interop modules.
+
+## Surfaces
+
+| Artifact | Editor component | Viewer component | Toolkit target |
+| --- | --- | --- | --- |
+| BPMN | `BpmnModelerSurface` | `BpmnViewerSurface` | `bpmn-js` Modeler / NavigatedViewer |
+| DMN | `DmnModelerSurface` | `DmnViewerSurface` | `dmn-js` Modeler / Viewer |
+| Forms | `FormBuilderSurface` | `FormViewerSurface` | `form-js` Editor / Viewer |
+| CMMN | `CmmnModelerSurface` | `CmmnViewerSurface` | `cmmn-js` Modeler / Viewer |
+
+## Asset convention
+
+Runtime assets stay local under `src/VertexBPMN.Studio/wwwroot/lib/<toolkit>/` and are loaded by `Components/App.razor`. The Studio-specific wrapper modules live under `src/VertexBPMN.Studio/wwwroot/js/`.
+
+The wrapper modules intentionally check for toolkit constructors at runtime:
+
+- BPMN modeler: `window.BpmnJS` or `window.BpmnModeler`
+- BPMN viewer: `window.BpmnNavigatedViewer`, `window.BpmnViewer` or `window.BpmnJS`
+- DMN: `window.DmnJS`, `window.DmnModeler`, `window.DmnViewer`
+- Forms: `window.FormEditor.FormEditor`, `window.FormViewer.Form`
+- CMMN: `window.CmmnJS`, `window.CmmnModeler`, `window.CmmnViewer`
+
+If a bundle is missing or still a placeholder, the wrapper renders a non-editing fallback and preserves the XML/JSON artifact. This keeps Playwright and the Studio shell stable while real toolkit bundles are updated.
+
+## User flows covered
+
+- BPMN: load template, edit, preview, export XML, deploy to repository API.
+- DMN: edit decision table XML, preview, export, deploy, evaluate, list definitions/instances.
+- Forms: edit schema, save a Studio draft, preview runtime rendering, export JSON.
+- CMMN: load template, edit, preview, export, register model and execute existing case actions.
+
+## Test coverage
+
+`tests/VertexBPMN.Studio.UiTests/StudioUiContractTests.cs` contains Playwright smoke coverage for all four shells. The test verifies headings, primary save/deploy buttons, export buttons, editor surfaces and viewer surfaces.
+
+## Follow-up
+
+The next hardening step is replacing placeholder vendored bundles with real pinned bpmn.io distribution files or introducing an npm copy step that writes the same local asset paths. The Razor shell and JS wrappers should not need to change for that swap.

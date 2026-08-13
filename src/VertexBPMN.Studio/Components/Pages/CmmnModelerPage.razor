@@ -1,70 +1,84 @@
 @page "/cmmn-modeler"
+@using System.Text
 @inject MudBlazor.ISnackbar Snackbar
 @inject IHttpClientFactory HttpClientFactory
 @inject ICaseManagementService CaseManagementService
 @inject IJSRuntime JSRuntime
-@implements IAsyncDisposable
 
 <PageTitle>CMMN Modeler</PageTitle>
 
-<MudText Typo="Typo.h4" GutterBottom="true">CMMN Modeler</MudText>
+<MudStack Spacing="3">
+    <div>
+        <MudText Typo="Typo.h4" GutterBottom="true">CMMN Modeler</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            cmmn-js Shell fuer Case-Modelle mit getrenntem Modeler, Viewer und vorhandenen Register-/Run-Flows.
+        </MudText>
+    </div>
 
-<MudStack Row="true" Spacing="2" Class="mb-4">
-    <MudTextField Label="Case ID" @bind-Value="_caseId" Required="true" />
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveCmmnXml">Register case model</MudButton>
-    <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="ExecuteCase">Execute case</MudButton>
-    <MudButton Variant="Variant.Outlined" OnClick="LoadHistory">Load history</MudButton>
-    <MudButton Variant="Variant.Outlined" OnClick="LoadCmmnXml">Load template</MudButton>
+    <MudPaper Class="pa-4">
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+            <MudTextField Label="Case ID" @bind-Value="_caseId" Required="true" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RegisterCmmnXml" StartIcon="@Icons.Material.Filled.CloudUpload">Register case model</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="ExportCmmnXml" StartIcon="@Icons.Material.Filled.Download">Export CMMN</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="ExecuteCase" StartIcon="@Icons.Material.Filled.PlayArrow">Execute case</MudButton>
+            <MudButton Variant="Variant.Outlined" OnClick="LoadHistory">Load history</MudButton>
+            <MudButton Variant="Variant.Outlined" OnClick="@(() => LoadCmmnXml())">Load template</MudButton>
+        </MudStack>
+    </MudPaper>
+
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h6" GutterBottom="true">Case actions</MudText>
+        <MudStack Row="true" Spacing="2">
+            <MudTextField Label="User event id" @bind-Value="_eventId" />
+            <MudButton Variant="Variant.Outlined" OnClick="TriggerUserEvent">Trigger user event</MudButton>
+            <MudTextField Label="Case-file item id" @bind-Value="_caseFileItemId" />
+            <MudTextField Label="Value" @bind-Value="_caseFileValue" />
+            <MudButton Variant="Variant.Outlined" OnClick="UpdateCaseFile">Update case file</MudButton>
+            <MudButton Variant="Variant.Outlined" OnClick="GenerateAdHoc">Generate ad-hoc subprocess</MudButton>
+        </MudStack>
+    </MudPaper>
+
+    @if (_trace.Count > 0)
+    {
+        <MudPaper Class="pa-4">
+            <MudText Typo="Typo.h6">Execution trace</MudText>
+            <MudList T="string">
+                @foreach (var line in _trace)
+                {
+                    <MudListItem T="string">@line</MudListItem>
+                }
+            </MudList>
+        </MudPaper>
+    }
+
+    @if (_history.Count > 0)
+    {
+        <MudPaper Class="pa-4">
+            <MudText Typo="Typo.h6">Historical context</MudText>
+            @foreach (var snapshot in _history)
+            {
+                <MudText Typo="Typo.subtitle2">@snapshot.Timestamp.ToUniversalTime().ToString("O")</MudText>
+                <MudText>Completed plan items: @string.Join(", ", snapshot.CompletedPlanItems)</MudText>
+                <MudText>Case-file values: @snapshot.CaseFile.Count</MudText>
+            }
+        </MudPaper>
+    }
+
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h6" GutterBottom="true">Case Modeler</MudText>
+        <CmmnModelerSurface @ref="_modeler" Xml="_cmmnXml" />
+    </MudPaper>
+
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h6" GutterBottom="true">Viewer</MudText>
+        <CmmnViewerSurface Xml="_cmmnXml" />
+    </MudPaper>
 </MudStack>
 
-<MudPaper Class="pa-4 mb-4">
-    <MudText Typo="Typo.h6" GutterBottom="true">Case actions</MudText>
-    <MudStack Row="true" Spacing="2">
-        <MudTextField Label="User event id" @bind-Value="_eventId" />
-        <MudButton Variant="Variant.Outlined" OnClick="TriggerUserEvent">Trigger user event</MudButton>
-        <MudTextField Label="Case-file item id" @bind-Value="_caseFileItemId" />
-        <MudTextField Label="Value" @bind-Value="_caseFileValue" />
-        <MudButton Variant="Variant.Outlined" OnClick="UpdateCaseFile">Update case file</MudButton>
-        <MudButton Variant="Variant.Outlined" OnClick="GenerateAdHoc">Generate ad-hoc subprocess</MudButton>
-    </MudStack>
-</MudPaper>
-
-@if (_trace.Count > 0)
-{
-    <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.h6">Execution trace</MudText>
-        <MudList T="string">
-            @foreach (var line in _trace)
-            {
-                <MudListItem T="string">@line</MudListItem>
-            }
-        </MudList>
-    </MudPaper>
-}
-
-@if (_history.Count > 0)
-{
-    <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.h6">Historical context</MudText>
-        @foreach (var snapshot in _history)
-        {
-            <MudText Typo="Typo.subtitle2">@snapshot.Timestamp.ToUniversalTime().ToString("O")</MudText>
-            <MudText>Completed plan items: @string.Join(", ", snapshot.CompletedPlanItems)</MudText>
-            <MudText>Case-file values: @snapshot.CaseFile.Count</MudText>
-        }
-    </MudPaper>
-}
-
-<div id="@_modelerContainerId" style="height:500px; border:1px solid #ccc;"></div>
-
 @code {
-    private string _cmmnXml = string.Empty;
+    private string _cmmnXml = FallbackCmmn;
     private HttpClient? _httpClient;
-
-    private string _modelerContainerId = $"cmmn-modeler-{Guid.NewGuid():N}";
-    private IJSObjectReference? _module;
-    private IJSObjectReference? _modelerInstance;
-    private bool _initialized;
+    private CmmnModelerSurface? _modeler;
     private string _caseId = "studio-case";
     private List<string> _trace = new();
     private List<HistoricalCaseSnapshot> _history = new();
@@ -72,32 +86,40 @@
     private string _caseFileItemId = string.Empty;
     private string _caseFileValue = string.Empty;
 
+    private const string FallbackCmmn = """
+<?xml version="1.0" encoding="UTF-8"?>
+<cmmn:definitions xmlns:cmmn="http://www.omg.org/spec/CMMN/20151109/MODEL" id="Defs_Fallback" targetNamespace="http://vertexbpmn.io/cmmn">
+  <cmmn:case id="Case_Fallback" name="Fallback Case">
+    <cmmn:casePlanModel id="CasePlanModel_Fallback" name="Fallback plan" />
+  </cmmn:case>
+</cmmn:definitions>
+""";
+
     protected override async Task OnInitializedAsync()
     {
         _httpClient = HttpClientFactory.CreateClient("Default");
-        await LoadCmmnXml();
+        await LoadCmmnXml(showNotification: false);
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    private async Task RegisterCmmnXml()
     {
-        if (firstRender)
+        try
         {
-            _module = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/cmmn-modeler.js");
-            _modelerInstance = await _module.InvokeAsync<IJSObjectReference>("CmmnModelerInterop.createModeler", _modelerContainerId, _cmmnXml);
-            _initialized = true;
+            _cmmnXml = await CaptureCmmnXml();
+            await CaseManagementService.RegisterModelAsync(_caseId, _cmmnXml);
+            Snackbar.Add($"CMMN model registered for case '{_caseId}'.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"CMMN register failed: {ex.Message}", Severity.Error);
         }
     }
 
-    private async Task SaveCmmnXml()
+    private async Task ExportCmmnXml()
     {
-        if (_module == null || _modelerInstance == null)
-        {
-            Snackbar.Add("Modeler not initialized yet", Severity.Warning);
-            return;
-        }
-        var xml = await _module.InvokeAsync<string>("CmmnModelerInterop.getXml", _modelerInstance);
-        await CaseManagementService.RegisterModelAsync(_caseId, xml);
-        Snackbar.Add($"CMMN model registered for case '{_caseId}'.", Severity.Success);
+        _cmmnXml = await CaptureCmmnXml();
+        await DownloadTextAsync($"{_caseId}.cmmn", _cmmnXml, "application/xml");
+        Snackbar.Add("CMMN XML exported.", Severity.Success);
     }
 
     private async Task ExecuteCase()
@@ -165,29 +187,32 @@
         }
     }
 
-    private async Task LoadCmmnXml()
-    {
-        _cmmnXml = await (_httpClient ?? throw new InvalidOperationException("HTTP client is not initialized.")).GetStringAsync("data/DefaultCmmn.xml");
-        Snackbar.Add("CMMN XML loaded!", Severity.Info);
-        if (_initialized && _module != null && _modelerInstance != null)
-        {
-            await _module.InvokeVoidAsync("CmmnModelerInterop.loadXml", _modelerInstance, _cmmnXml);
-        }
-    }
-
-    public async ValueTask DisposeAsync()
+    private async Task LoadCmmnXml(bool showNotification = true)
     {
         try
         {
-            if (_modelerInstance is not null)
-            {
-                await _modelerInstance.DisposeAsync();
-            }
-            if (_module is not null)
-            {
-                await _module.DisposeAsync();
-            }
+            _cmmnXml = await (_httpClient ?? throw new InvalidOperationException("HTTP client is not initialized.")).GetStringAsync("data/DefaultCmmn.xml");
+            if (showNotification)
+                Snackbar.Add("CMMN template loaded.", Severity.Info);
         }
-        catch { }
+        catch (Exception ex)
+        {
+            _cmmnXml = FallbackCmmn;
+            if (showNotification)
+                Snackbar.Add($"CMMN template not found. Using fallback. ({ex.Message})", Severity.Warning);
+        }
+    }
+
+    private async Task<string> CaptureCmmnXml()
+    {
+        if (_modeler is not null)
+            _cmmnXml = await _modeler.GetXmlAsync();
+        return _cmmnXml;
+    }
+
+    private async Task DownloadTextAsync(string fileName, string content, string contentType)
+    {
+        var dataUri = $"data:{contentType};base64,{Convert.ToBase64String(Encoding.UTF8.GetBytes(content))}";
+        await JSRuntime.InvokeVoidAsync("downloadFile", fileName, dataUri);
     }
 }

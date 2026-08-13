@@ -1,0 +1,61 @@
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+
+<div class="bpmn-io-shell bpmn-io-shell-single" data-testid="form-builder-shell">
+    <div id="@_canvasId" class="bpmn-io-canvas"><div class="bpmn-io-canvas-placeholder">Form builder canvas</div></div>
+</div>
+
+@code {
+    [Parameter] public string Json { get; set; } = "{}";
+
+    private readonly string _canvasId = $"form-builder-{Guid.NewGuid():N}";
+    private IJSObjectReference? _module;
+    private IJSObjectReference? _form;
+    private string _loadedJson = string.Empty;
+    private bool _initialized;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        _module = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/form-builder.js");
+        _form = await _module.InvokeAsync<IJSObjectReference>("FormBuilderInterop.createForm", _canvasId, Json);
+        _loadedJson = Json;
+        _initialized = true;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_initialized && _module is not null && _form is not null && Json != _loadedJson)
+        {
+            await _module.InvokeVoidAsync("FormBuilderInterop.loadJson", _form, Json);
+            _loadedJson = Json;
+        }
+    }
+
+    public async Task<string> GetJsonAsync()
+    {
+        if (_module is null || _form is null)
+            return Json;
+
+        var json = await _module.InvokeAsync<string>("FormBuilderInterop.getJson", _form);
+        _loadedJson = json;
+        return json;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_module is not null && _form is not null)
+                await _module.InvokeVoidAsync("FormBuilderInterop.destroy", _form);
+            if (_module is not null)
+                await _module.DisposeAsync();
+        }
+        catch
+        {
+            // Ignore browser-disconnect cleanup errors.
+        }
+    }
+}

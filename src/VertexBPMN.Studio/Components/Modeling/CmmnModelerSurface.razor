@@ -1,0 +1,61 @@
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+
+<div class="bpmn-io-shell bpmn-io-shell-single" data-testid="cmmn-modeler-shell">
+    <div id="@_canvasId" class="bpmn-io-canvas"><div class="bpmn-io-canvas-placeholder">CMMN modeler canvas</div></div>
+</div>
+
+@code {
+    [Parameter] public string Xml { get; set; } = string.Empty;
+
+    private readonly string _canvasId = $"cmmn-modeler-{Guid.NewGuid():N}";
+    private IJSObjectReference? _module;
+    private IJSObjectReference? _modeler;
+    private string _loadedXml = string.Empty;
+    private bool _initialized;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        _module = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/cmmn-modeler.js");
+        _modeler = await _module.InvokeAsync<IJSObjectReference>("CmmnModelerInterop.createModeler", _canvasId, Xml);
+        _loadedXml = Xml;
+        _initialized = true;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_initialized && _module is not null && _modeler is not null && Xml != _loadedXml)
+        {
+            await _module.InvokeVoidAsync("CmmnModelerInterop.loadXml", _modeler, Xml);
+            _loadedXml = Xml;
+        }
+    }
+
+    public async Task<string> GetXmlAsync()
+    {
+        if (_module is null || _modeler is null)
+            return Xml;
+
+        var xml = await _module.InvokeAsync<string>("CmmnModelerInterop.getXml", _modeler);
+        _loadedXml = xml;
+        return xml;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_module is not null && _modeler is not null)
+                await _module.InvokeVoidAsync("CmmnModelerInterop.destroy", _modeler);
+            if (_module is not null)
+                await _module.DisposeAsync();
+        }
+        catch
+        {
+            // Ignore browser-disconnect cleanup errors.
+        }
+    }
+}

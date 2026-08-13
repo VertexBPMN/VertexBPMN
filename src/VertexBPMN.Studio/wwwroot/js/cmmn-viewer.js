@@ -90,26 +90,23 @@ function destroyInstance(instance) {
     }
 }
 
-export const CmmnModelerInterop = {
-    createModeler: function (containerId, cmmnXml) {
-        const ctor = getConstructor(['CmmnJS', 'CmmnModeler']);
+export const CmmnViewerInterop = {
+    createViewer: function (containerId, cmmnXml) {
+        const ctor = getConstructor(['CmmnViewer', 'CmmnJS', 'CmmnModeler']);
         if (!ctor) {
-            return fallbackInstance('CMMN Modeler', containerId, cmmnXml);
+            return fallbackInstance('CMMN Viewer', containerId, cmmnXml);
         }
 
-        const modeler = new ctor({ container: `#${containerId}` });
-        importArtifact(modeler, cmmnXml, 'bpmn.io CMMN Modeler fallback').catch(err => console.error('CMMN modeler import failed', err));
-        return modeler;
+        const viewer = new ctor({ container: `#${containerId}` });
+        importArtifact(viewer, cmmnXml, 'bpmn.io CMMN Viewer fallback').catch(err => console.error('CMMN viewer import failed', err));
+        return viewer;
     },
-    getXml: async function (modeler) {
-        return await exportXml(modeler);
+    loadXml: async function (viewer, cmmnXml) {
+        await importArtifact(viewer, cmmnXml, 'bpmn.io CMMN Viewer fallback');
     },
-    loadXml: async function (modeler, cmmnXml) {
-        await importArtifact(modeler, cmmnXml, 'bpmn.io CMMN Modeler fallback');
-    },
-    destroy: function (modeler) {
-        destroyInstance(modeler);
+    destroy: function (viewer) {
+        destroyInstance(viewer);
     }
 };
 
-window.CmmnModelerInterop = CmmnModelerInterop;
+window.CmmnViewerInterop = CmmnViewerInterop;

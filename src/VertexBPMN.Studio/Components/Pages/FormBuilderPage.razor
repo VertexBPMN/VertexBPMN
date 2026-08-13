@@ -1,77 +1,106 @@
 @page "/form-builder"
+@using System.Text
 @inject MudBlazor.ISnackbar Snackbar
 @inject IHttpClientFactory HttpClientFactory
 @inject IJSRuntime JSRuntime
-@implements IAsyncDisposable
 
 <PageTitle>Form Builder</PageTitle>
 
-<MudText Typo="Typo.h4" GutterBottom="true">Form Builder</MudText>
+<MudStack Spacing="3">
+    <div>
+        <MudText Typo="Typo.h4" GutterBottom="true">Form Builder</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            form-js Builder fuer User-Task-Formulare mit Runtime Viewer fuer Vorschau und Ausfuehrung.
+        </MudText>
+    </div>
 
-<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveFormJson">Save JSON</MudButton>
-<MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="LoadFormJson">Load JSON</MudButton>
+    <MudPaper Class="pa-4">
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveFormJson" StartIcon="@Icons.Material.Filled.Save">Save JSON</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="ExportFormJson" StartIcon="@Icons.Material.Filled.Download">Export JSON</MudButton>
+            <MudButton Variant="Variant.Outlined" OnClick="@(() => LoadFormJson())" StartIcon="@Icons.Material.Filled.Refresh">Load JSON</MudButton>
+            <MudChip T="string" Color="Color.Info" Variant="Variant.Outlined">Draft saved locally in Studio state</MudChip>
+        </MudStack>
+    </MudPaper>
 
-<div id="@_containerId" style="height:500px; border:1px solid #ccc;"></div>
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h6" GutterBottom="true">Builder</MudText>
+        <FormBuilderSurface @ref="_builder" Json="_formJson" />
+    </MudPaper>
+
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h6" GutterBottom="true">Runtime Viewer</MudText>
+        <FormViewerSurface Json="_savedFormJson" />
+    </MudPaper>
+</MudStack>
 
 @code {
-    private string _formJson = string.Empty;
-    private HttpClient _httpClient;
+    private string _formJson = FallbackFormJson;
+    private string _savedFormJson = FallbackFormJson;
+    private HttpClient _httpClient = default!;
+    private FormBuilderSurface? _builder;
 
-    private string _containerId = $"form-builder-{Guid.NewGuid():N}";
-    private IJSObjectReference? _module;
-    private IJSObjectReference? _formInstance;
-    private bool _initialized;
+    private const string FallbackFormJson = """
+{
+  "type": "default",
+  "components": [
+    {
+      "key": "invoiceNumber",
+      "label": "Invoice number",
+      "type": "textfield"
+    }
+  ]
+}
+""";
 
     protected override async Task OnInitializedAsync()
     {
         _httpClient = HttpClientFactory.CreateClient("Default");
-        await LoadFormJson();
-    }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender)
-        {
-            _module = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/form-builder.js");
-            _formInstance = await _module.InvokeAsync<IJSObjectReference>("FormBuilderInterop.createForm", _containerId, _formJson);
-            _initialized = true;
-        }
+        await LoadFormJson(showNotification: false);
     }
 
     private async Task SaveFormJson()
     {
-        if (_module == null || _formInstance == null)
-        {
-            Snackbar.Add("Form builder not initialized yet", Severity.Warning);
-            return;
-        }
-        var json = await _module.InvokeAsync<string>("FormBuilderInterop.getJson", _formInstance);
-        Snackbar.Add("Form persistence is not supported by the API yet.", Severity.Warning);
+        _formJson = await CaptureFormJson();
+        _savedFormJson = _formJson;
+        Snackbar.Add("Form JSON saved in the Studio draft and refreshed in the Runtime Viewer.", Severity.Success);
     }
 
-    private async Task LoadFormJson()
+    private async Task ExportFormJson()
     {
-        _formJson = await _httpClient.GetStringAsync("data/invoiceApprovalForm.json");
-        Snackbar.Add("Form JSON loaded!", Severity.Info);
-        if (_initialized && _module != null && _formInstance != null)
-        {
-            await _module.InvokeVoidAsync("FormBuilderInterop.loadJson", _formInstance, _formJson);
-        }
+        _formJson = await CaptureFormJson();
+        await DownloadTextAsync("studio-form.form.json", _formJson, "application/json");
+        Snackbar.Add("Form JSON exported.", Severity.Success);
     }
 
-    public async ValueTask DisposeAsync()
+    private async Task LoadFormJson(bool showNotification = true)
     {
         try
         {
-            if (_formInstance is not null)
-            {
-                await _formInstance.DisposeAsync();
-            }
-            if (_module is not null)
-            {
-                await _module.DisposeAsync();
-            }
+            _formJson = await _httpClient.GetStringAsync("data/invoiceApprovalForm.json");
+            _savedFormJson = _formJson;
+            if (showNotification)
+                Snackbar.Add("Form JSON loaded.", Severity.Info);
         }
-        catch { }
+        catch (Exception ex)
+        {
+            _formJson = FallbackFormJson;
+            _savedFormJson = _formJson;
+            if (showNotification)
+                Snackbar.Add($"Form template not found. Using fallback. ({ex.Message})", Severity.Warning);
+        }
+    }
+
+    private async Task<string> CaptureFormJson()
+    {
+        if (_builder is not null)
+            _formJson = await _builder.GetJsonAsync();
+        return _formJson;
+    }
+
+    private async Task DownloadTextAsync(string fileName, string content, string contentType)
+    {
+        var dataUri = $"data:{contentType};base64,{Convert.ToBase64String(Encoding.UTF8.GetBytes(content))}";
+        await JSRuntime.InvokeVoidAsync("downloadFile", fileName, dataUri);
     }
 }

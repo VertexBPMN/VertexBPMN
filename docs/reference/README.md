@@ -1,9 +1,15 @@
 # Reference
 
-Hier liegen die stabilen Referenzdokumente.
+Stabile technische Referenzen fuer API, SDK, Modell und Integrationen.
 
+- [REST API](rest-api.md)
 - [OpenAPI Reference](openapi.md)
 - [.NET SDK Reference](sdk-dotnet.md)
-
-Diese Seiten sollen kurz, aktuell und wenig prozesslastig bleiben.
-Wenn sich ein Inhalt laufend aendert, gehoert er in `../working/` statt hierher.
+- [BPMN Standard Support](bpmn-standard-support.md)
+- [VertexBPMN Model](vertexbpmn-model.md)
+- [Camunda API Mapping](api-mapping-camunda.md)
+- [Camunda API Parity](api-parity-camunda.md)
+- [Debugger Trace API](debugger-trace-api.md)
+- [MCP Server](mcp-server.md)
+- [Predictive Analytics API](predictive-analytics-api.md)
+- [Process Mining Hooks](process-mining-hooks.md)

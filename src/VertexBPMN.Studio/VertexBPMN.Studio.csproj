@@ -41,4 +41,14 @@
     </Content>
   </ItemGroup>
 
+  <Target Name="BuildBpmnIoAssets" BeforeTargets="Build" Inputs="package-lock.json;package.json;tools/bpmn-io/build-bpmn-io-assets.mjs;@(BpmnIoAssetSource)" Outputs="wwwroot/lib/bpmn-js/bpmn-modeler.js;wwwroot/lib/dmn-js/dmn-modeler.js;wwwroot/lib/form-js/form-editor.js;wwwroot/lib/cmmn-js/cmmn-modeler.js">
+    <Message Importance="high" Text="Building pinned bpmn.io Studio assets from npm packages..." />
+    <Exec Command="npm ci" />
+    <Exec Command="npm run build:bpmnio" />
+  </Target>
+
+  <ItemGroup>
+    <BpmnIoAssetSource Include="tools/bpmn-io/src/**/*.js" />
+  </ItemGroup>
+
 </Project>

@@ -13,9 +13,30 @@ The Studio uses a thin, stable shell around the bpmn.io family of toolkits. Razo
 | Forms | `FormBuilderSurface` | `FormViewerSurface` | `form-js` Editor / Viewer |
 | CMMN | `CmmnModelerSurface` | `CmmnViewerSurface` | `cmmn-js` Modeler / Viewer |
 
-## Asset convention
+## Asset pipeline
 
 Runtime assets stay local under `src/VertexBPMN.Studio/wwwroot/lib/<toolkit>/` and are loaded by `Components/App.razor`. The Studio-specific wrapper modules live under `src/VertexBPMN.Studio/wwwroot/js/`.
+
+The local browser bundles are generated from pinned npm packages in `src/VertexBPMN.Studio/package.json` and `package-lock.json`:
+
+| Package | Version |
+| --- | --- |
+| `bpmn-js` | `18.24.0` |
+| `bpmn-js-properties-panel` | `5.63.0` |
+| `@bpmn-io/properties-panel` | `3.48.0` |
+| `dmn-js` | `17.10.1` |
+| `@bpmn-io/form-js` | `1.24.1` |
+| `cmmn-js` | `0.20.0` |
+| `esbuild` | `0.28.2` |
+
+Build manually from `src/VertexBPMN.Studio`:
+
+```bash
+npm ci
+npm run build:bpmnio
+```
+
+The Studio project also runs the asset build through the `BuildBpmnIoAssets` MSBuild target when inputs are newer than the generated files. CI sets up Node.js 22 before the .NET build so this remains reproducible on GitHub Actions.
 
 The wrapper modules intentionally check for toolkit constructors at runtime:
 
@@ -40,4 +61,4 @@ If a bundle is missing or still a placeholder, the wrapper renders a non-editing
 
 ## Follow-up
 
-The next hardening step is replacing placeholder vendored bundles with real pinned bpmn.io distribution files or introducing an npm copy step that writes the same local asset paths. The Razor shell and JS wrappers should not need to change for that swap.
+The next hardening step is adding UI-level smoke coverage that verifies the real constructors are present in the browser, not just that the Studio shell renders. The current wrappers still keep fallback rendering so the shell degrades gracefully if an asset build is missing.

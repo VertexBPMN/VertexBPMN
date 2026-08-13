@@ -118,7 +118,7 @@ Akzeptanzkriterien:
 ## Phase 1: bpmn.io Modeler Shell modernisieren
 
 Prioritaet: P0/P1  
-Status: Baseline implementiert; Asset-Bundles koennen als naechster Hardening-Schritt gepinnt/ersetzt werden.  
+Status: Baseline implementiert; npm-basierte, gepinnte bpmn.io Asset-Pipeline umgesetzt.  
 Ziel: Eine stabile gemeinsame Shell fuer BPMN, DMN, Formulare und CMMN.
 
 Implementierungsnotiz: siehe `../reference/bpmn-io-studio-shell.md`.

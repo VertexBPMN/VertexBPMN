@@ -69,7 +69,7 @@ public sealed class StudioUiTestHost : IAsyncLifetime
         _ = _studioProcess.StandardError.ReadToEndAsync();
 
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
-        for (var attempt = 0; attempt < 80; attempt++)
+        for (var attempt = 0; attempt < 480; attempt++)
         {
             if (_studioProcess.HasExited)
                 throw new InvalidOperationException("The Studio test host exited before becoming ready.");
@@ -86,7 +86,7 @@ public sealed class StudioUiTestHost : IAsyncLifetime
             }
 
             await Task.Delay(TimeSpan.FromMilliseconds(250));
-            if (attempt == 79)
+            if (attempt == 479)
                 throw new TimeoutException("The Studio test host did not become ready.");
         }
 

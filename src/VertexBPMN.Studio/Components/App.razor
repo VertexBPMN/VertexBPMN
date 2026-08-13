@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="@Assets["VertexBPMN.Studio.styles.css"]" />
     <link rel="stylesheet" href="@Assets["lib/bpmn-js/diagram-js.css"]" />
     <link rel="stylesheet" href="@Assets["lib/bpmn-js/bpmn.css"]" />
+    <link rel="stylesheet" href="@Assets["lib/bpmn-js-properties-panel/properties-panel.css"]" />
     <link rel="stylesheet" href="@Assets["lib/dmn-js/diagram-js.css"]" />
     <link rel="stylesheet" href="@Assets["lib/dmn-js/dmn-js-decision-table.css"]" />
     <link rel="stylesheet" href="@Assets["lib/dmn-js/dmn-js-drd.css"]" />
@@ -28,12 +29,17 @@
 
 <body>
     <Routes />
-    <script src="@Assets["lib/bpmn-js/bpmn-modeler.js"]" ></script>
+    <script src="@Assets["lib/bpmn-js/bpmn-modeler.js"]"></script>
+    <script src="@Assets["lib/bpmn-js/bpmn-viewer.js"]"></script>
+    <script src="@Assets["lib/bpmn-js-properties-panel/properties-panel.js"]"></script>
     <script src="_framework/blazor.web.js"></script>
     <script src="_content/MudBlazor/MudBlazor.min.js"></script>
-    <script src="@Assets["lib/dmn-js/dmn-modeler.js"]" ></script>
-    <script src="@Assets["lib/cmmn-js/cmmn-modeler.js"]" ></script>
-    <script src="@Assets["lib/form-js/form-editor.js"]" ></script>
+    <script src="@Assets["lib/dmn-js/dmn-modeler.js"]"></script>
+    <script src="@Assets["lib/dmn-js/dmn-viewer.js"]"></script>
+    <script src="@Assets["lib/cmmn-js/cmmn-modeler.js"]"></script>
+    <script src="@Assets["lib/cmmn-js/cmmn-viewer.js"]"></script>
+    <script src="@Assets["lib/form-js/form-editor.js"]"></script>
+    <script src="@Assets["lib/form-js/form-viewer.js"]"></script>
     <script src="@Assets["js/file-helpers.js"]"></script>
 </body>
 

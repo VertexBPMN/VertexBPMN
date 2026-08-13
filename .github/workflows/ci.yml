@@ -18,6 +18,12 @@ jobs:
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '10.0.x'
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22.x'
+        cache: 'npm'
+        cache-dependency-path: src/VertexBPMN.Studio/package-lock.json
     - name: Restore dependencies
       run: dotnet restore VertexBPMN.sln
     - name: Build
@@ -58,6 +64,12 @@ jobs:
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '10.0.x'
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22.x'
+        cache: 'npm'
+        cache-dependency-path: src/VertexBPMN.Studio/package-lock.json
     - name: Restore SDK
       run: dotnet restore src/VertexBPMN.Sdk/VertexBPMN.Sdk.csproj
     - name: Pack release version

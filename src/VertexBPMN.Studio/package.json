@@ -1,0 +1,20 @@
+{
+  "name": "vertexbpmn-studio-assets",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pinned bpmn.io asset pipeline for VertexBPMN Studio.",
+  "scripts": {
+    "build:bpmnio": "node tools/bpmn-io/build-bpmn-io-assets.mjs"
+  },
+  "dependencies": {
+    "@bpmn-io/form-js": "1.24.1",
+    "bpmn-js": "18.24.0",
+    "bpmn-js-properties-panel": "5.63.0",
+    "cmmn-js": "0.20.0",
+    "dmn-js": "17.10.1",
+    "@bpmn-io/properties-panel": "3.48.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

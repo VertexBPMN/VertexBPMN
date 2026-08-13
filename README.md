@@ -231,6 +231,8 @@ Weitere Verwaltungsendpunkte:
 
 Die Verwaltung ist authentifiziert und tenantisoliert. Einzelheiten stehen in [docs/runbooks/workflow-triggers.md](docs/runbooks/workflow-triggers.md).
 
+Credentials für Connectoren werden über `api/credentials` verwaltet. Die API gibt ausschließlich Metadaten und Secret-Key-Namen zurück; Klartext-Secrets bleiben serverseitig geschützt und werden auch bei Rotation nicht in Responses, Logs oder Audit-Details ausgegeben.
+
 #### CLI
 
 Für persistente BPMN-Deployments und Trigger stehen folgende Befehle zur Verfügung:

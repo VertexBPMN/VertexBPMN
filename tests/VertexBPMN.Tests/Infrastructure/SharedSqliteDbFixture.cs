@@ -8,8 +8,8 @@ namespace VertexBPMN.Tests.Infrastructure;
 
 public sealed class SharedSqliteDbFixture : IAsyncLifetime
 {
-    private static bool _initialized;
-    private static readonly object _lock = new();
+    private bool _initialized;
+    private readonly object _lock = new();
 
     public SqliteConnection Connection { get; } =
         new("Data Source=:memory:;Mode=Memory;Cache=Shared");
@@ -62,7 +62,7 @@ public sealed class SharedSqliteDbFixture : IAsyncLifetime
 
         var raw = File.ReadAllText(scriptPath);
 
-        // Simple splitter (SQLite doesn’t support GO). We remove comments and execute batches separated by ';'.
+        // Simple splitter (SQLite doesnâ€™t support GO). We remove comments and execute batches separated by ';'.
         var batches = SplitSqlBatches(raw);
 
         using var cmd = Connection.CreateCommand();

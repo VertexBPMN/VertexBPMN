@@ -112,11 +112,11 @@ internal sealed class CliApplication
                     await PrintTraceAsync(_engine.ExecuteProcessAsync(args[1], cancellationToken));
                     return 0;
                 case "deploy-bpmn":
-                    RequireArguments(args, 3);
+                    RequireArguments(args, 2);
                     var deployed = await _repositoryService.DeployAsync(
-                        await ReadFileAsync(args[2]),
-                        Path.GetFileName(args[2]),
-                        args.Length > 3 ? args[3] : null,
+                        await ReadFileAsync(args[1]),
+                        Path.GetFileName(args[1]),
+                        args.Length > 2 ? args[2] : null,
                         cancellationToken);
                     await _output.WriteLineAsync($"BPMN deployed: {deployed.Key} ({deployed.Id})");
                     return 0;

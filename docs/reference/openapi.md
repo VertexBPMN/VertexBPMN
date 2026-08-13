@@ -25,6 +25,8 @@ Die Datei `openapi.json` beschreibt die gesamte REST-API der VertexBPMN-Engine i
   - `GET/PUT /camunda/decision-definition/{key}/xml`
 - **User-Task-Formulare:**
   - `GET/PUT /camunda/task/{id}/form-schema`
+- **Credential-Verwaltung:**
+  - `GET/POST /api/credentials`, `GET/PUT/DELETE /api/credentials/{id}`, `PUT /api/credentials/{id}/secret`
 
 ## Hinweise
 - Die API ist Camunda-kompatibel und für moderne Cloud-Workflows optimiert.
@@ -32,4 +34,4 @@ Die Datei `openapi.json` beschreibt die gesamte REST-API der VertexBPMN-Engine i
 
 ---
 
-*Letztes Update: 2025-08-12*
+*Letztes Update: 2026-08-13*

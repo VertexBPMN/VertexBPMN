@@ -1672,19 +1672,19 @@
               "text/plain": {
                 "schema": {
                   "type": "object",
-                  "additionalProperties": { }
+                  "additionalProperties": {}
                 }
               },
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "additionalProperties": { }
+                  "additionalProperties": {}
                 }
               },
               "text/json": {
                 "schema": {
                   "type": "object",
-                  "additionalProperties": { }
+                  "additionalProperties": {}
                 }
               }
             }
@@ -2226,6 +2226,285 @@
           }
         }
       }
+    },
+    "/api/credentials": {
+      "get": {
+        "tags": [
+          "Credentials"
+        ],
+        "summary": "Lists credential metadata for a tenant.",
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "nullable": true
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Credential metadata list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CredentialMetadata"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Tenant access denied."
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Credentials"
+        ],
+        "summary": "Creates a credential with protected secret values.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCredentialRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Credential created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialMetadata"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin role required."
+          },
+          "409": {
+            "description": "Credential name already exists.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/credentials/{id}": {
+      "get": {
+        "tags": [
+          "Credentials"
+        ],
+        "summary": "Gets credential metadata by id.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tenantId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "nullable": true
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Credential metadata.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialMetadata"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Tenant access denied."
+          },
+          "404": {
+            "description": "Credential not found."
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Credentials"
+        ],
+        "summary": "Updates credential metadata without returning or changing secret values.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCredentialRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Credential metadata updated."
+          },
+          "400": {
+            "description": "Invalid credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin role required."
+          },
+          "404": {
+            "description": "Credential not found."
+          },
+          "409": {
+            "description": "Credential name already exists.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Credentials"
+        ],
+        "summary": "Deletes a credential.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tenantId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "nullable": true
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Credential deleted."
+          },
+          "403": {
+            "description": "Admin role required."
+          },
+          "404": {
+            "description": "Credential not found."
+          }
+        }
+      }
+    },
+    "/api/credentials/{id}/secret": {
+      "put": {
+        "tags": [
+          "Credentials"
+        ],
+        "summary": "Rotates one protected secret value for a credential.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RotateCredentialSecretRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Secret rotated."
+          },
+          "400": {
+            "description": "Invalid secret rotation request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin role required."
+          },
+          "404": {
+            "description": "Credential not found."
+          },
+          "422": {
+            "description": "Stored protected payload cannot be decrypted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2265,7 +2544,7 @@
           },
           "variables": {
             "type": "object",
-            "additionalProperties": { },
+            "additionalProperties": {},
             "nullable": true
           }
         },
@@ -2286,7 +2565,7 @@
         "properties": {
           "variables": {
             "type": "object",
-            "additionalProperties": { },
+            "additionalProperties": {},
             "nullable": true
           }
         },
@@ -2305,7 +2584,7 @@
           },
           "variables": {
             "type": "object",
-            "additionalProperties": { },
+            "additionalProperties": {},
             "nullable": true
           }
         },
@@ -2381,7 +2660,7 @@
         "properties": {
           "outputs": {
             "type": "object",
-            "additionalProperties": { },
+            "additionalProperties": {},
             "nullable": true
           }
         },
@@ -2450,7 +2729,7 @@
           },
           "inputs": {
             "type": "object",
-            "additionalProperties": { },
+            "additionalProperties": {},
             "nullable": true
           }
         },
@@ -2827,7 +3106,7 @@
           },
           "variables": {
             "type": "object",
-            "additionalProperties": { },
+            "additionalProperties": {},
             "nullable": true
           }
         },
@@ -2860,7 +3139,7 @@
           },
           "variables": {
             "type": "object",
-            "additionalProperties": { },
+            "additionalProperties": {},
             "nullable": true
           },
           "businessKey": {
@@ -2977,7 +3256,7 @@
           },
           "variables": {
             "type": "object",
-            "additionalProperties": { },
+            "additionalProperties": {},
             "nullable": true
           },
           "formKey": {
@@ -3014,7 +3293,7 @@
           },
           "variables": {
             "type": "object",
-            "additionalProperties": { },
+            "additionalProperties": {},
             "nullable": true
           }
         },
@@ -3102,7 +3381,122 @@
           },
           "valueInfo": {
             "type": "object",
-            "additionalProperties": { },
+            "additionalProperties": {},
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CredentialMetadata": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "tenantId": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "secretKeys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastModified": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastUsedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateCredentialRequest": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "secrets": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "UpdateCredentialRequest": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "RotateCredentialSecretRequest": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "nullable": true
+          },
+          "key": {
+            "type": "string",
+            "nullable": true
+          },
+          "value": {
+            "type": "string",
             "nullable": true
           }
         },

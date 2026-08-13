@@ -57,6 +57,7 @@ public sealed class StudioUiTestHost : IAsyncLifetime
         startInfo.ArgumentList.Add("--urls");
         startInfo.ArgumentList.Add(BaseAddress.ToString());
         startInfo.Environment["ASPNETCORE_ENVIRONMENT"] = "UiTest";
+        startInfo.Environment["DOTNET_ENVIRONMENT"] = "UiTest";
         startInfo.Environment["ApiBaseUrl"] = apiAddress.ToString();
         startInfo.Environment["StudioAuthentication__Authority"] = "https://ui-test.invalid";
         startInfo.Environment["StudioAuthentication__ClientId"] = "ui-test";

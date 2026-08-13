@@ -1,9 +1,14 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using VertexBPMN.Infrastructure.Persistence;
 
 #nullable disable
 
 namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn;
 
+[DbContext(typeof(BpmnDbContext))]
+[Migration("20260812110000_AddConnectorDefinitions")]
 public partial class AddConnectorDefinitions : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)

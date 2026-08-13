@@ -238,6 +238,73 @@ CREATE TABLE IF NOT EXISTS SimulationScenarios (
 CREATE INDEX IF NOT EXISTS IX_SimScenarios_Tenant ON SimulationScenarios(TenantId);
 CREATE INDEX IF NOT EXISTS IX_SimScenarios_Name ON SimulationScenarios(Name);
 
+
+CREATE TABLE IF NOT EXISTS Credentials (
+    Id TEXT PRIMARY KEY,
+    TenantId TEXT NOT NULL,
+    Name TEXT NOT NULL,
+    Type TEXT NOT NULL,
+    Description TEXT,
+    SecretKeysJson TEXT NOT NULL,
+    ProtectedValues TEXT NOT NULL,
+    CreatedAt TEXT NOT NULL,
+    LastModified TEXT NOT NULL,
+    LastUsedAt TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS IX_Credentials_TenantId_Name ON Credentials(TenantId, Name);
+CREATE INDEX IF NOT EXISTS IX_Credentials_TenantId ON Credentials(TenantId);
+CREATE INDEX IF NOT EXISTS IX_Credentials_LastModified ON Credentials(LastModified);
+
+CREATE TABLE IF NOT EXISTS Connectors (
+    Id TEXT PRIMARY KEY,
+    TenantId TEXT NOT NULL,
+    Name TEXT NOT NULL,
+    Type TEXT NOT NULL,
+    Description TEXT,
+    Endpoint TEXT,
+    CredentialId TEXT,
+    Enabled INTEGER NOT NULL,
+    CreatedAt TEXT NOT NULL,
+    LastModified TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS IX_Connectors_TenantId_Name ON Connectors(TenantId, Name);
+CREATE INDEX IF NOT EXISTS IX_Connectors_TenantId ON Connectors(TenantId);
+CREATE INDEX IF NOT EXISTS IX_Connectors_CredentialId ON Connectors(CredentialId);
+CREATE INDEX IF NOT EXISTS IX_Connectors_LastModified ON Connectors(LastModified);
+
+CREATE TABLE IF NOT EXISTS WorkflowTriggers (
+    Id TEXT PRIMARY KEY,
+    Name TEXT NOT NULL,
+    ProcessDefinitionKey TEXT NOT NULL,
+    TenantId TEXT,
+    SecretHash TEXT NOT NULL,
+    Enabled INTEGER NOT NULL,
+    CreatedAt TEXT NOT NULL,
+    LastModified TEXT NOT NULL,
+    LastTriggeredAt TEXT,
+    InvocationCount INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS IX_WorkflowTriggers_ProcessDefinitionKey ON WorkflowTriggers(ProcessDefinitionKey);
+CREATE INDEX IF NOT EXISTS IX_WorkflowTriggers_TenantId ON WorkflowTriggers(TenantId);
+CREATE INDEX IF NOT EXISTS IX_WorkflowTriggers_LastModified ON WorkflowTriggers(LastModified);
+CREATE UNIQUE INDEX IF NOT EXISTS IX_WorkflowTriggers_TenantId_Name ON WorkflowTriggers(TenantId, Name);
+
+CREATE TABLE IF NOT EXISTS AuditLogs (
+    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+    Timestamp TEXT NOT NULL,
+    Action TEXT NOT NULL,
+    Resource TEXT,
+    ResourceId TEXT,
+    UserId TEXT,
+    TenantId TEXT,
+    CorrelationId TEXT,
+    StatusCode INTEGER,
+    DetailsJson TEXT
+);
+CREATE INDEX IF NOT EXISTS IX_AuditLogs_Timestamp ON AuditLogs(Timestamp);
+CREATE INDEX IF NOT EXISTS IX_AuditLogs_TenantId_Timestamp ON AuditLogs(TenantId, Timestamp);
+CREATE INDEX IF NOT EXISTS IX_AuditLogs_Action ON AuditLogs(Action);
+
 CREATE TABLE IF NOT EXISTS ProcessMiningEvents (
     Id INTEGER PRIMARY KEY AUTOINCREMENT,
     EventType TEXT NOT NULL,
@@ -301,8 +368,7 @@ INSERT OR IGNORE INTO ProcessMiningEvents(Id,EventType,ProcessInstanceId,TaskId,
 INSERT OR IGNORE INTO SimulationScenarios(Id,Name,Description,ProcessDefinitionId,BpmnXml,MaxSteps,TenantId) VALUES
  ('sim-sample-1','Throughput Test','Ein einfacher Simulationstest','22222222-2222-2222-2222-222222222222',NULL,100,'tenant-default');
 
-DROP TABLE IF EXISTS WorkflowTriggers;
 
 -- Downgrade (drop all) ------------------------------------------------------
 -- To rollback execute:
--- DROP TABLE ProcessMiningEvents; DROP TABLE SimulationScenarios; DROP TABLE DecisionInstances; DROP TABLE DmnDecisionTables; DROP TABLE DecisionDefinitions; DROP TABLE Users; DROP TABLE MultiInstanceExecution; DROP TABLE Incident; DROP TABLE HistoryEvent; DROP TABLE Tasks; DROP TABLE Job; DROP TABLE Variable; DROP TABLE ExecutionToken; DROP TABLE ProcessInstance; DROP TABLE ProcessDefinition; DROP TABLE EngineDeployment; DROP TABLE Tenants;
+-- DROP TABLE AuditLogs; DROP TABLE WorkflowTriggers; DROP TABLE Connectors; DROP TABLE Credentials; DROP TABLE ProcessMiningEvents; DROP TABLE SimulationScenarios; DROP TABLE DecisionInstances; DROP TABLE DmnDecisionTables; DROP TABLE DecisionDefinitions; DROP TABLE Users; DROP TABLE MultiInstanceExecution; DROP TABLE Incident; DROP TABLE HistoryEvent; DROP TABLE Tasks; DROP TABLE Job; DROP TABLE Variable; DROP TABLE ExecutionToken; DROP TABLE ProcessInstance; DROP TABLE ProcessDefinition; DROP TABLE EngineDeployment; DROP TABLE Tenants;

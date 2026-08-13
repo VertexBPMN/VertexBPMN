@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 <PropertyGroup>
 	<TargetFramework>net10.0</TargetFramework>
 	<EnableMicrosoftTestingPlatform>true</EnableMicrosoftTestingPlatform>
@@ -41,13 +41,13 @@
   </Content>
 </ItemGroup>
 <ItemGroup>
-<None Update="TestData\agents.js">    
+<None Update="TestData\agents.js">
     <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
   </None>
 <None Update="TestData\dinnerDecisions.dmn">
   <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 </None>
-<None Update="TestData\ExampleProcess.bpmn">  
+<None Update="TestData\ExampleProcess.bpmn">
     <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
   </None>
 <None Update="TestData\ExternalTask1.bpmn">
@@ -134,6 +134,7 @@
   <Folder Include="Parsing\" />
 </ItemGroup>
 <ItemGroup>
+  <ProjectReference Include="..\..\src\VertexBPMN.Cli\VertexBPMN.Cli.csproj" />
   <ProjectReference Include="..\..\src\VertexBPMN.Api\VertexBPMN.Api.csproj" Aliases="global,api" />
   <ProjectReference Include="..\..\src\VertexBPMN.Application\VertexBPMN.Application.csproj" />
   <ProjectReference Include="..\..\src\VertexBPMN.Domain\VertexBPMN.Domain.csproj" />

@@ -1,5 +1,7 @@
 # VertexBPMN Studio API/CLI Parity Plan
 
+> Arbeitsdokument. Hier werden die naechsten Paritaets-Schritte gepflegt, nicht die finalen Nutzeranleitungen.
+
 ## Ziel
 
 Das Studio wird zur visuellen Control-Plane fuer VertexBPMN:

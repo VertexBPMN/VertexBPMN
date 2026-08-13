@@ -340,7 +340,7 @@ VertexBPMN™ bietet eine vollständige OpenAPI/Swagger-Spezifikation (`openapi.
 - `GET/PUT /api/task/{id}/form-schema` (User-Task-Formulare)
 
 **Dokumentation & Nutzung:**
-- Siehe [`docs/openapi.md`](docs/openapi.md) für Details und Beispiele.
+- Siehe [`docs/reference/openapi.md`](docs/reference/openapi.md) für Details und Beispiele.
 - Die OpenAPI-Datei wird bei jedem Build automatisch generiert und kann direkt in Postman, Swagger UI oder bpmn.io-Tools importiert werden.
 
 ## ☁️ Cloud-Native Exzellenz
@@ -378,7 +378,7 @@ Siehe [`docs/process-mining-hooks.md`](docs/process-mining-hooks.md)
 
 ## 🛣️ Roadmap & Vision
 
-Die nächsten Schritte und die langfristige Vision für VertexBPMN™ findest du in [`docs/roadmap.md`](docs/roadmap.md).
+Die nächsten Schritte und die langfristige Vision für VertexBPMN™ findest du in [`docs/working/roadmap.md`](docs/working/roadmap.md).
 
 ## 🤝 Wie man beitragen kann (How to Contribute)
 

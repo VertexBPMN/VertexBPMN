@@ -299,6 +299,11 @@ public class BpmnSerializer
                     extRoot.Add(el);
                 }
                 if (attrName == "__present") continue;
+                if (attrName == "__text")
+                {
+                    el.Value = kv.Value;
+                    continue;
+                }
                 el.SetAttributeValue(string.IsNullOrEmpty(attrNsUri) ? XName.Get(attrName) : XName.Get(attrName, attrNsUri), kv.Value);
             }
             if (elementMap.Count > 0) parent.Add(extRoot);

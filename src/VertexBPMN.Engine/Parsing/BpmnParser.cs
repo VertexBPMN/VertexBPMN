@@ -1103,35 +1103,45 @@ public partial class BpmnParser : IBpmnParser
             }
         }
 
+        string FormatQualifiedName(XElement node, string? prefix)
+        {
+            if (!string.IsNullOrEmpty(prefix)) return $"{prefix}:{node.Name.LocalName}";
+            var namespaceUri = node.Name.Namespace.NamespaceName;
+            return string.IsNullOrEmpty(namespaceUri)
+                ? node.Name.LocalName
+                : $"{{{namespaceUri}}}{node.Name.LocalName}";
+        }
+
+        string FormatQualifiedAttributeName(XAttribute attribute, string? prefix)
+        {
+            if (!string.IsNullOrEmpty(prefix)) return $"{prefix}:{attribute.Name.LocalName}";
+            var namespaceUri = attribute.Name.Namespace.NamespaceName;
+            return string.IsNullOrEmpty(namespaceUri)
+                ? attribute.Name.LocalName
+                : $"{{{namespaceUri}}}{attribute.Name.LocalName}";
+        }
+
         void Harvest(XElement node)
         {
             var elemPrefix = node.GetPrefixOfNamespace(node.Name.Namespace);
-            foreach (var attr in node.Attributes())
+            var elemQName = FormatQualifiedName(node, elemPrefix);
+            var nonNamespaceAttributes = node.Attributes().Where(attr => !attr.IsNamespaceDeclaration).ToList();
+
+            foreach (var attr in nonNamespaceAttributes)
             {
-                // Element qualified name (with prefix if present)           
-                var elemQName = string.IsNullOrEmpty(elemPrefix)
-                    ? node.Name.LocalName
-                    : $"{elemPrefix}:{node.Name.LocalName}";
-
-                // Attribute qualified name (attributes can also be namespaced)
-                string? attrPrefix = null;
-                if (attr.Name.Namespace != XNamespace.None)
-                    attrPrefix = node.GetPrefixOfNamespace(attr.Name.Namespace);
-
-                var attrQName = string.IsNullOrEmpty(attrPrefix)
-                    ? attr.Name.LocalName
-                    : $"{attrPrefix}:{attr.Name.LocalName}";
-
-                var key = $"{elemQName}.{attrQName}";
-                dict[key] = attr.Value;
+                // Attribute qualified name (attributes can also be namespaced).
+                string? attrPrefix = attr.Name.Namespace == XNamespace.None
+                    ? null
+                    : node.GetPrefixOfNamespace(attr.Name.Namespace);
+                var attrQName = FormatQualifiedAttributeName(attr, attrPrefix);
+                dict[$"{elemQName}.{attrQName}"] = attr.Value;
             }
 
-            if (!node.HasAttributes && node != extParent)
+            if (nonNamespaceAttributes.Count == 0 && node != extParent)
             {
-                var key = string.IsNullOrEmpty(elemPrefix)
-                    ? node.Name.LocalName
-                    : $"{elemPrefix}:{node.Name.LocalName}";
-                dict[key] = "true";
+                dict[$"{elemQName}.__present"] = "true";
+                if (!node.HasElements && !string.IsNullOrEmpty(node.Value))
+                    dict[$"{elemQName}.__text"] = node.Value;
             }
 
             foreach (var child in node.Elements()) Harvest(child);

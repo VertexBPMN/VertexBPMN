@@ -41,5 +41,22 @@ namespace VertexBPMN.Test.Parsing.Conformance
                     Console.WriteLine($"Result item: {item}");
                 }
         }
+
+        [Fact]
+        public void Test_C_8_1_Bpmn_Roundtrip_Preserves_Boc_Extensions()
+        {
+            var bpmnFile = Path.Combine(Directory.GetCurrentDirectory(), "TestData", "Reference", "C.8.1.bpmn");
+            var xml = File.ReadAllText(bpmnFile);
+            var parser = new BpmnParser();
+            var model = parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
+
+            var exported = parser.Serialize(model);
+
+            Assert.False(string.IsNullOrWhiteSpace(exported));
+            const string bocNamespace = "http://www.boc-group.com";
+            Assert.Contains(bocNamespace, exported);
+            var document = System.Xml.Linq.XDocument.Parse(exported);
+            Assert.NotEmpty(document.Descendants(System.Xml.Linq.XName.Get("Description", bocNamespace)));
+        }
     }
 }

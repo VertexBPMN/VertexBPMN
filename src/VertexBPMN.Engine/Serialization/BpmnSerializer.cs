@@ -11,8 +11,8 @@ public class BpmnSerializer
     {
         {"http://camunda.org/schema/1.0/bpmn","camunda"},
         {"http://zeebe.io/schema/zeebe/1.0","zeebe"},
-        {"http://vertexbpmn.io/schema/1.0","vertex"},
-        {"http://vertexbpmn.io/schema/1.0/bpmn","vertex"},
+        //{"http://vertexbpmn.io/schema/1.0","vertex"},
+        //{"http://vertexbpmn.io/schema/1.0/bpmn","vertex"},
         {"https://vertexbpmn.io/schema/bpmn/1.0","vertex"}
     };
 

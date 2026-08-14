@@ -68,7 +68,7 @@ public sealed class StudioUiTestHost : IAsyncLifetime
         _ = _studioProcess.StandardOutput.ReadToEndAsync();
         _ = _studioProcess.StandardError.ReadToEndAsync();
 
-        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
         for (var attempt = 0; attempt < 480; attempt++)
         {
             if (_studioProcess.HasExited)

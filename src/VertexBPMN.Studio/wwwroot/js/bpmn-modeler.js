@@ -98,9 +98,22 @@ export const BpmnModelerInterop = {
         }
 
         const options = { container: `#${containerId}` };
+        if (window.VertexBpmnModdle) {
+            options.moddleExtensions = { vertex: window.VertexBpmnModdle };
+        }
+        const additionalModules = [];
         if (propertiesPanelId && window.BpmnJSPropertiesPanelModule && window.BpmnJSPropertiesProviderModule) {
             options.propertiesPanel = { parent: `#${propertiesPanelId}` };
-            options.additionalModules = [window.BpmnJSPropertiesPanelModule, window.BpmnJSPropertiesProviderModule];
+            additionalModules.push(window.BpmnJSPropertiesPanelModule, window.BpmnJSPropertiesProviderModule);
+        }
+        if (window.VertexPropertiesProviderModule) {
+            additionalModules.push(window.VertexPropertiesProviderModule);
+        }
+        if (window.VertexValidationModule) {
+            additionalModules.push(window.VertexValidationModule);
+        }
+        if (additionalModules.length) {
+            options.additionalModules = additionalModules;
         }
 
         const modeler = new ctor(options);

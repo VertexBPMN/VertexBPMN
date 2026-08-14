@@ -15,7 +15,7 @@ const xml = `<?xml version="1.0" encoding="UTF-8"?>
       <bpmn:extensionElements>
         <vertex:connector type="http" operationId="http.request" credentialRef="cred-orders-api" timeoutMs="30000" />
         <vertex:ioMapping>
-          <vertex:input name="url" expression="${orderApiUrl}" />
+          <vertex:input name="url" expression="\${orderApiUrl}" />
           <vertex:output name="response" target="httpResponse" />
         </vertex:ioMapping>
       </bpmn:extensionElements>

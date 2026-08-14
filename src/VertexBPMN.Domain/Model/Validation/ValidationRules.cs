@@ -39,6 +39,13 @@ public static class ValidationRules
         new ValidationRuleDescriptor("SEM-EVENTSUBPROCESS-START-TYPE", "Semantic", ValidationSeverity.Error, "Invalid event subprocess start type", "Event subprocess start event uses a disallowed event definition."),
         // Vendor/Extension
         new ValidationRuleDescriptor("VEN-UNKNOWN-EVENT-DEFINITION", "Vendor", ValidationSeverity.Info, "Unknown event definition", "Event contains a vendor-specific or unknown event definition that will be preserved in raw form."),
+        new ValidationRuleDescriptor("VEN-VERTEX-CONNECTOR-TYPE", "Vertex", ValidationSeverity.Error, "Connector type required", "vertex:connector is missing the required type attribute."),
+        new ValidationRuleDescriptor("VEN-VERTEX-CONNECTOR-OPERATION", "Vertex", ValidationSeverity.Error, "Connector operation required", "vertex:connector is missing the required operationId attribute."),
+        new ValidationRuleDescriptor("VEN-VERTEX-WEBHOOK-PATH", "Vertex", ValidationSeverity.Error, "Webhook path required", "vertex:webhook is missing the required path attribute."),
+        new ValidationRuleDescriptor("VEN-VERTEX-TRIGGER-TYPE", "Vertex", ValidationSeverity.Error, "Trigger type required", "vertex:trigger is missing the required type attribute."),
+        new ValidationRuleDescriptor("VEN-VERTEX-TRIGGER-PROCESS-KEY", "Vertex", ValidationSeverity.Error, "Trigger process definition key required", "vertex:trigger is missing the required processDefinitionKey attribute."),
+        new ValidationRuleDescriptor("VEN-VERTEX-CREDENTIAL-ID", "Vertex", ValidationSeverity.Error, "Credential id required", "vertex:credential is missing the required id attribute."),
+        new ValidationRuleDescriptor("VEN-VERTEX-CREDENTIAL-KIND", "Vertex", ValidationSeverity.Error, "Credential kind required", "vertex:credential is missing the required kind attribute."),
         // Advisory
         new ValidationRuleDescriptor("ADV-UNREACHABLE-NODE", "Advisory", ValidationSeverity.Info, "Unreachable node", "Flow node not reachable from any root start event."),
         new ValidationRuleDescriptor("ADV-ORPHANED-END", "Advisory", ValidationSeverity.Info, "Orphaned end event", "End event not reachable from any root start event."),

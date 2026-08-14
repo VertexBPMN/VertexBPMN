@@ -59,6 +59,8 @@ If a bundle is missing or still a placeholder, the wrapper renders a non-editing
 
 `tests/VertexBPMN.Studio.UiTests/StudioUiContractTests.cs` contains Playwright smoke coverage for all four shells. The test verifies headings, primary save/deploy buttons, export buttons, editor surfaces and viewer surfaces.
 
+Phase 2 Vertex extensions: `vertex.json` is bundled into the properties-panel asset and copied to `wwwroot/lib/vertex-bpmn-moddle/vertex.json`. See [vertex-bpmn-moddle.md](vertex-bpmn-moddle.md).
+
 ## Follow-up
 
 The next hardening step is adding UI-level smoke coverage that verifies the real constructors are present in the browser, not just that the Studio shell renders. The current wrappers still keep fallback rendering so the shell degrades gracefully if an asset build is missing.

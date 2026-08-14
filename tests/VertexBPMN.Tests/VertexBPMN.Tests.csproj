@@ -131,7 +131,6 @@
 </ItemGroup>
 <ItemGroup>
   <Folder Include="Integration\Services\" />
-  <Folder Include="Parsing\" />
 </ItemGroup>
 <ItemGroup>
   <ProjectReference Include="..\..\src\VertexBPMN.Cli\VertexBPMN.Cli.csproj" />

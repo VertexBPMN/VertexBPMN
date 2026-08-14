@@ -77,4 +77,8 @@ const cmmnCss = join(outRoot, 'cmmn-js/cmmn.css');
 const cmmnCssContent = await readFile(cmmnCss, 'utf8');
 await writeFile(cmmnCss, cmmnCssContent.replaceAll('../font/', 'cmmn-font/font/'));
 
-console.log(`Built ${bundles.length} bpmn.io bundles and copied ${assets.length} stylesheet assets and CMMN font assets.`);
+const vertexModdleDir = join(outRoot, 'vertex-bpmn-moddle');
+await mkdir(vertexModdleDir, { recursive: true });
+await copyFile(join(srcRoot, 'vertex.json'), join(vertexModdleDir, 'vertex.json'));
+
+console.log(`Built ${bundles.length} bpmn.io bundles and copied ${assets.length} stylesheet assets, CMMN font assets, and vertex-bpmn-moddle.`);

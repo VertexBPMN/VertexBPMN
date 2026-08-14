@@ -11,7 +11,9 @@ public class BpmnSerializer
     {
         {"http://camunda.org/schema/1.0/bpmn","camunda"},
         {"http://zeebe.io/schema/zeebe/1.0","zeebe"},
-        {"http://vertexbpmn.io/schema/1.0","vertex"}
+        //{"http://vertexbpmn.io/schema/1.0","vertex"},
+        //{"http://vertexbpmn.io/schema/1.0/bpmn","vertex"},
+        {"https://vertexbpmn.io/schema/bpmn/1.0","vertex"}
     };
 
     public BpmnRoundtripMode RoundtripMode { get; init; } = BpmnRoundtripMode.Normalized;
@@ -52,9 +54,6 @@ public class BpmnSerializer
                 {
                     diagList.Add("RT-Fallback:extensions (RawExtensionElements missing)");
                 }
-                // Additional hooks for future categories (commented for now)
-                // if (raw.RawMultiInstance == null) diagList.Add("RT-Fallback:multiInstance");
-                // if (raw.RawEventDefinitions == null) diagList.Add("RT-Fallback:eventDefinitions");
             }
         }
 
@@ -104,7 +103,6 @@ public class BpmnSerializer
             }
         }
 
-        // Build definitions root (namespace prefix replay for strict)
         var definitions = new XElement(Bpmn + "definitions");
         List<NamespacePrefix>? originalOrder = null;
         if (strict && raw?.NamespacePrefixes is { Count: >0 })
@@ -117,7 +115,6 @@ public class BpmnSerializer
             }
             var hasBpmnPrefix = originalOrder.Any(p => p.Uri == Bpmn.NamespaceName && p.Prefix == "bpmn");
             var hasDefaultBpmn = originalOrder.Any(p => p.Uri == Bpmn.NamespaceName && string.IsNullOrEmpty(p.Prefix));
-            // Only append synthetic bpmn prefix if neither a bpmn prefix nor a default binding to BPMN exists.
             if (!hasBpmnPrefix && !hasDefaultBpmn)
                 definitions.SetAttributeValue(XNamespace.Xmlns + "bpmn", Bpmn.NamespaceName);
         }
@@ -126,7 +123,6 @@ public class BpmnSerializer
             definitions.SetAttributeValue(XNamespace.Xmlns + "bpmn", Bpmn.NamespaceName);
         }
 
-        // collect new prefixes introduced only inside raw extension elements (strict)
         if (strict && raw?.RawExtensionElements != null)
         {
             var known = new HashSet<string>(definitions.Attributes().Where(a => a.IsNamespaceDeclaration).Select(a => a.Value));
@@ -141,7 +137,6 @@ public class BpmnSerializer
                         var prefix = attr.Name.LocalName == "xmlns" ? string.Empty : attr.Name.LocalName;
                         if (string.IsNullOrEmpty(prefix))
                         {
-                            // avoid overriding default namespace, assign synthetic
                             prefix = "ns_ext" + known.Count;
                         }
                         definitions.SetAttributeValue(XNamespace.Xmlns + prefix, uri);
@@ -176,14 +171,12 @@ public class BpmnSerializer
             }
         }
 
-        // Strict: output raw global elements before process to preserve availability (ordering fidelity enhancement could be added later)
         if (strict && raw?.RawGlobalElements is { Count: > 0 })
         {
             foreach (var ge in raw.RawGlobalElements) definitions.Add(new XElement(ge));
         }
         else if (strict)
         {
-            // Strict fallback: raw global elements not captured, emit minimal set from model if available
             if (model.Messages is { Count: >0 })
             {
                 foreach (var m in model.Messages)
@@ -207,7 +200,6 @@ public class BpmnSerializer
         }
         else if (!strict)
         {
-            // Fallback / normalized: emit minimal global elements from model (lossy attributes already normalized)
             if (model.Messages is { Count: >0 })
             {
                 foreach (var m in model.Messages)
@@ -274,14 +266,12 @@ public class BpmnSerializer
         }
         definitions.Add(proc);
 
-        // Helper: add raw documentation for an element id (strict roundtrip)
         void AddRawDocumentation(string id, XElement node)
         {
             if (!strict) return;
             if (raw?.RawDocumentation != null && raw.RawDocumentation.TryGetValue(id, out var docs)) foreach (var d in docs) node.Add(new XElement(d));
         }
 
-        // Helpers
         void AddExtensionsNormalized(XElement parent, Dictionary<string,string>? ext)
         {
             if (ext == null || ext.Count == 0) return;
@@ -314,7 +304,6 @@ public class BpmnSerializer
             if (!strict || raw?.RawExtensionElements == null) return target;
             if (raw.RawExtensionElements.TryGetValue(id, out var rawExt))
             {
-                // Deep clone immutable snapshot: work on a copy of the stored extensionElements to avoid external mutation influencing output
                 target.Add(new XElement(rawExt));
             }
             return target;
@@ -341,14 +330,13 @@ public class BpmnSerializer
             {
                 var local = ParseLocalName(kv.Key);
                 if (local == "id") continue;
-                if (local == "name" && isPartialDirty) continue; // skip original to allow mutated attribute injection later
+                if (local == "name" && isPartialDirty) continue;
                 if (local == "name" && string.IsNullOrEmpty(kv.Value)) continue;
                 if (string.IsNullOrEmpty(local) || local.IndexOf('/') >= 0 || local.Any(ch => char.IsWhiteSpace(ch))) continue;
                 var nsUri = ParseNamespace(kv.Key);
                 XName xname = nsUri == null ? local : XName.Get(local, nsUri);
                 if (el.Attribute(xname) == null) el.Add(new XAttribute(xname, kv.Value));
             }
-            // inject mutated name for partial dirty (task lookup only)
             if (isPartialDirty)
             {
                 var task = model.Tasks.FirstOrDefault(t => t.Id == id);
@@ -356,7 +344,6 @@ public class BpmnSerializer
             }
         }
 
-        // order list
         var orderedElements = strict && raw?.ElementsMetadata != null ? raw.ElementsMetadata.OrderBy(k => k.Value.OrderIndex).Select(k => k.Key).ToList() : null;
         var elementLookup = new Dictionary<string,XElement>();
 
@@ -392,45 +379,36 @@ public class BpmnSerializer
         foreach (var f in model.SequenceFlows)
         { var fEl = new XElement(Bpmn + "sequenceFlow", new XAttribute("id", f.Id), new XAttribute("sourceRef", f.SourceRef), new XAttribute("targetRef", f.TargetRef)); if (f.Priority.HasValue){ if (strict && raw?.PriorityAttributeNamespace != null && raw.PriorityAttributeNamespace.TryGetValue(f.Id, out var pns)){ if (string.IsNullOrEmpty(pns)) fEl.SetAttributeValue("priority", f.Priority.Value); else fEl.SetAttributeValue(XName.Get("priority", pns), f.Priority.Value);} else fEl.SetAttributeValue(XName.Get("priority", "http://vertexbpmn.io/schema/1.0"), f.Priority.Value);} if (strict && raw?.SequenceFlowConditions != null && raw.SequenceFlowConditions.TryGetValue(f.Id, out var rcond)){ if (!string.IsNullOrEmpty(rcond.Raw)){ var condEl = new XElement(Bpmn + "conditionExpression"); if (rcond.WasCData) condEl.Add(new XCData(rcond.Raw)); else condEl.Value = rcond.Raw; fEl.Add(condEl);} } else if (!string.IsNullOrWhiteSpace(f.ConditionExpression)) fEl.Add(new XElement(Bpmn + "conditionExpression", new XCData(f.ConditionExpression))); if (strict) AttachRawExtensions(f.Id, fEl); else AddExtensionsNormalized(fEl, f.ExtensionAttributes); ApplyOriginalAttributes(f.Id, fEl); AddRawDocumentation(f.Id, fEl); Register(f.Id, fEl); }
         if (orderedElements != null){ foreach (var id in orderedElements){ if (elementLookup.TryGetValue(id, out var el)) proc.Add(el); } }
-        // Strict re-emit artifacts (textAnnotation, group, association) & lanes if captured
         if (strict && raw?.RawArtifacts is { Count: >0 }) foreach (var art in raw.RawArtifacts) proc.Add(new XElement(art));
         if (strict && raw?.RawLanes is { Count: >0 })
         {
-            // RawLanes currently contains laneSet elements (with nested lanes) PLUS individual lane elements captured during walk.
-            // We only need to add the laneSet elements to preserve original hierarchy. Standalone lane duplicates would break structure.
             var laneSets = raw.RawLanes.Where(x => x.Name.LocalName == "laneSet").ToList();
             if (laneSets.Count > 0)
             {
                 foreach (var ls in laneSets)
                 {
-                    proc.Add(new XElement(ls)); // deep clone preserves internal lane + flowNodeRef order
+                    proc.Add(new XElement(ls));
                 }
-                // Skip adding individual lanes that belong to any emitted laneSet (they are already inside).
-                // If there are lane elements without a parent laneSet (edge case), add those separately.
                 var laneIdsInSets = new HashSet<string>(laneSets.SelectMany(ls => ls.Elements().Where(e => e.Name.LocalName == "lane").Select(e => (string?)e.Attribute("id")).Where(id => !string.IsNullOrEmpty(id))!).OfType<string>());
                 foreach (var ln in raw.RawLanes.Where(x => x.Name.LocalName == "lane"))
                 {
                     var id = (string?)ln.Attribute("id");
-                    if (!string.IsNullOrEmpty(id) && laneIdsInSets.Contains(id)) continue; // already present in laneSet
+                    if (!string.IsNullOrEmpty(id) && laneIdsInSets.Contains(id)) continue;
                     proc.Add(new XElement(ln));
                 }
             }
             else
             {
-                // Fallback: no laneSet captured, emit lanes as previously
                 foreach (var ln in raw.RawLanes) proc.Add(new XElement(ln));
             }
         }
 
-        // Post-pass: ensure generated incoming/outgoing if requested and still absent
         if (strict && PreserveGeneratedIfMissing && fallbackIncoming != null && fallbackOutgoing != null)
         {
-            // Build quick lookup for process child elements by id
             var nodeById = proc.Elements().Where(e => e.Attribute("id") != null).ToDictionary(e => (string)e.Attribute("id")!, e => e);
             foreach (var kv in fallbackIncoming)
             {
                 if (!nodeById.TryGetValue(kv.Key, out var el)) continue;
-                // if element already has incoming we skip
                 if (!el.Elements(Bpmn + "incoming").Any())
                 {
                     foreach (var fid in kv.Value) el.Add(new XElement(Bpmn + "incoming", fid));
@@ -487,9 +465,7 @@ public class BpmnSerializer
         }
         else if (strict && raw?.RawDiRoot != null)
         {
-            // Strict Raw DI replay: extract original BPMNDiagram elements
             var bpmndi = (XNamespace)"http://www.omg.org/spec/BPMN/20100524/DI";
-            // ensure namespace declarations if missing
             if (definitions.Attribute(XNamespace.Xmlns + "bpmndi") == null)
                 definitions.SetAttributeValue(XNamespace.Xmlns + "bpmndi", bpmndi.NamespaceName);
             foreach (var diag in raw.RawDiRoot.Elements(bpmndi + "BPMNDiagram"))
@@ -500,7 +476,6 @@ public class BpmnSerializer
 
         var doc = new XDocument(definitions);
 
-        // Final safeguard: if strict (or strict requested fallback) and generation requested ensure incoming/outgoing present
         if ((strict || (strictRequested && PreserveGeneratedIfMissing)) && PreserveGeneratedIfMissing)
         {
             var procEl = definitions.Elements(Bpmn + "process").FirstOrDefault(e => (string?)e.Attribute("id") == model.ProcessId);
@@ -545,9 +520,6 @@ public class BpmnSerializer
         nsUri = localName = attrName = attrNsUri = string.Empty;
         if (string.IsNullOrWhiteSpace(key)) return false;
 
-        // Engine keys use "elementQName.attributeQName". Older snapshots use
-        // "{namespace}element:attribute". Do not split every colon: URIs and
-        // qualified names both legitimately contain colons.
         string elementQName;
         var closeBrace = key.IndexOf('}');
         var dot = key.IndexOf('.', closeBrace >= 0 ? closeBrace + 1 : 0);
@@ -570,7 +542,6 @@ public class BpmnSerializer
             return IsValidXmlLocalName(attrName);
         }
 
-        // A presence-only legacy key has no attribute separator.
         if (!TryParseQualifiedName(key, out nsUri, out localName)) return false;
         attrName = "__present";
         return true;
@@ -611,7 +582,7 @@ public class BpmnSerializer
     {
         ["camunda"] = "http://camunda.org/schema/1.0/bpmn",
         ["zeebe"] = "http://zeebe.io/schema/zeebe/1.0",
-        ["vertex"] = "http://vertexbpmn.io/schema/1.0",
+        ["vertex"] = "https://vertexbpmn.io/schema/bpmn/1.0",
         ["xsi"] = "http://www.w3.org/2001/XMLSchema-instance",
         ["w4graph"] = "http://www.w4.eu/spec/BPMN/20110930/GRAPH"
     };

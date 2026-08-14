@@ -4,7 +4,8 @@
   "private": true,
   "description": "Pinned bpmn.io asset pipeline for VertexBPMN Studio.",
   "scripts": {
-    "build:bpmnio": "node tools/bpmn-io/build-bpmn-io-assets.mjs"
+    "build:bpmnio": "node tools/bpmn-io/build-bpmn-io-assets.mjs",
+    "test:vertex-moddle": "node tools/bpmn-io/test/vertex-moddle.roundtrip.mjs"
   },
   "dependencies": {
     "@bpmn-io/form-js": "1.24.1",

@@ -7,6 +7,8 @@ Stabile technische Referenzen fuer API, SDK, Modell und Integrationen.
 - [.NET SDK Reference](sdk-dotnet.md)
 - [BPMN Standard Support](bpmn-standard-support.md)
 - [VertexBPMN Model](vertexbpmn-model.md)
+- [Vertex BPMN Moddle Extension](vertex-bpmn-moddle.md)
+- [bpmn.io Studio Shell](bpmn-io-studio-shell.md)
 - [Camunda API Mapping](api-mapping-camunda.md)
 - [Camunda API Parity](api-parity-camunda.md)
 - [Debugger Trace API](debugger-trace-api.md)

@@ -1,0 +1,80 @@
+{
+  "name": "Vertex",
+  "uri": "https://vertexbpmn.io/schema/bpmn/1.0",
+  "prefix": "vertex",
+  "xml": {
+    "tagAlias": "lowerCase"
+  },
+  "types": [
+    {
+      "name": "Connector",
+      "superClass": ["Element"],
+      "properties": [
+        { "name": "type", "isAttr": true, "type": "String" },
+        { "name": "operationId", "isAttr": true, "type": "String" },
+        { "name": "credentialRef", "isAttr": true, "type": "String" },
+        { "name": "timeoutMs", "isAttr": true, "type": "Integer" }
+      ]
+    },
+    {
+      "name": "RetryPolicy",
+      "superClass": ["Element"],
+      "properties": [
+        { "name": "maxAttempts", "isAttr": true, "type": "Integer" },
+        { "name": "strategy", "isAttr": true, "type": "String" },
+        { "name": "baseDelayMs", "isAttr": true, "type": "Integer" },
+        { "name": "retryOn", "isAttr": true, "type": "String" }
+      ]
+    },
+    {
+      "name": "IoMapping",
+      "superClass": ["Element"],
+      "properties": [
+        { "name": "inputs", "type": "Input", "isMany": true },
+        { "name": "outputs", "type": "Output", "isMany": true }
+      ]
+    },
+    {
+      "name": "Input",
+      "superClass": ["Element"],
+      "properties": [
+        { "name": "name", "isAttr": true, "type": "String" },
+        { "name": "expression", "isAttr": true, "type": "String" }
+      ]
+    },
+    {
+      "name": "Output",
+      "superClass": ["Element"],
+      "properties": [
+        { "name": "name", "isAttr": true, "type": "String" },
+        { "name": "target", "isAttr": true, "type": "String" }
+      ]
+    },
+    {
+      "name": "Webhook",
+      "superClass": ["Element"],
+      "properties": [
+        { "name": "path", "isAttr": true, "type": "String" },
+        { "name": "method", "isAttr": true, "type": "String" },
+        { "name": "secretRef", "isAttr": true, "type": "String" }
+      ]
+    },
+    {
+      "name": "Trigger",
+      "superClass": ["Element"],
+      "properties": [
+        { "name": "type", "isAttr": true, "type": "String" },
+        { "name": "name", "isAttr": true, "type": "String" },
+        { "name": "processDefinitionKey", "isAttr": true, "type": "String" }
+      ]
+    },
+    {
+      "name": "Credential",
+      "superClass": ["Element"],
+      "properties": [
+        { "name": "id", "isAttr": true, "type": "String" },
+        { "name": "kind", "isAttr": true, "type": "String" }
+      ]
+    }
+  ]
+}

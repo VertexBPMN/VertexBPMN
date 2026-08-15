@@ -11,6 +11,96 @@ public sealed class BpmnExecutionComponent
     public IReadOnlyList<BpmnSequenceFlow> GetOutgoingFlows(BpmnModel model, string sourceId)
         => model.SequenceFlows.Where(flow => flow.SourceRef == sourceId).ToList();
 
+    public GatewayDecision SelectExclusiveFlow( IEnumerable<BpmnSequenceFlow> flows,
+        IDictionary<string, object> variables,
+        Func<BpmnSequenceFlow, IDictionary<string, object>, bool> conditionEvaluator)
+    {
+        var ordered = flows.ToList();
+
+        var defaultFlows = ordered
+            .Where(flow => flow.IsDefault)
+            .ToList();
+
+        if (defaultFlows.Count > 1)
+        {
+            throw new InvalidOperationException(
+                "An Exclusive Gateway may have at most one default SequenceFlow.");
+        }
+
+        var defaultFlow = defaultFlows.SingleOrDefault();
+
+        // Default-Flows werden nicht als normale Conditions ausgewertet.
+        foreach (var flow in ordered.Where(flow => !flow.IsDefault))
+        {
+            if (MatchesCondition(flow, variables, conditionEvaluator))
+            {
+                return new GatewayDecision(
+                    GatewayDecisionKind.Selected,
+                    flow);
+            }
+        }
+
+        if (defaultFlow != null)
+        {
+            return new GatewayDecision(
+                GatewayDecisionKind.DefaultSelected,
+                defaultFlow);
+        }
+
+        // Niemals auf den ersten beliebigen Flow zurückfallen.
+        return new GatewayDecision(
+            GatewayDecisionKind.NoOutgoingFlow,
+            null);
+    }
+
+    public IReadOnlyList<BpmnSequenceFlow> SelectInclusiveFlows(
+        IEnumerable<BpmnSequenceFlow> flows,
+        IDictionary<string, object> variables,
+        Func<BpmnSequenceFlow, IDictionary<string, object>, bool> conditionEvaluator)
+    {
+        var ordered = flows.ToList();
+
+        var defaultFlows = ordered
+            .Where(flow => flow.IsDefault)
+            .ToList();
+
+        if (defaultFlows.Count > 1)
+        {
+            throw new InvalidOperationException(
+                "An Inclusive Gateway may have at most one default SequenceFlow.");
+        }
+
+        var matchingFlows = ordered
+            .Where(flow => !flow.IsDefault)
+            .Where(flow => MatchesCondition(flow, variables, conditionEvaluator))
+            .ToList();
+
+        // Reguläre Treffer haben Vorrang vor dem Default-Flow.
+        if (matchingFlows.Count > 0)
+        {
+            return matchingFlows;
+        }
+
+        var defaultFlow = defaultFlows.SingleOrDefault();
+
+        return defaultFlow == null
+            ? Array.Empty<BpmnSequenceFlow>()
+            : new[] { defaultFlow };
+    }
+
+    private static bool MatchesCondition(
+        BpmnSequenceFlow flow,
+        IDictionary<string, object> variables,
+        Func<BpmnSequenceFlow, IDictionary<string, object>, bool> conditionEvaluator)
+    {
+        // Kein conditionExpression bedeutet: Flow ist zulässig.
+        if (string.IsNullOrWhiteSpace(flow.ConditionExpression))
+        {
+            return true;
+        }
+
+        return conditionEvaluator(flow, variables);
+    }
     public BpmnSequenceFlow? SelectExclusiveFlow(
         IEnumerable<BpmnSequenceFlow> flows,
         IDictionary<string, object> variables,

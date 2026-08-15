@@ -1122,48 +1122,69 @@ namespace VertexBPMN.Engine.Execution
                     break;
 
                 case "exclusiveGateway":
-                    foreach (var flow in _executionComponent.SelectFirstMatchingFlow(
+
+                    var decision = _executionComponent.SelectExclusiveFlow(
                         outgoingFlows,
                         token.Variables,
-                        (condition, variables) => EvaluateConditionAsync(condition, variables).GetAwaiter().GetResult()))
+                        (flow, variables) =>
+                            EvaluateConditionAsync(
+                                    flow.ConditionExpression!,
+                                    variables)
+                                .GetAwaiter()
+                                .GetResult());
+
+                    if (decision.Kind == GatewayDecisionKind.NoOutgoingFlow)
                     {
-                            var newToken = new ExecutionToken
-                            {
-                                Id = token.Id,
-                                ProcessInstanceId = token.ProcessInstanceId,
-                                CurrentNodeId = flow.TargetRef,
-                                NodeType = GetNodeType(model, flow.TargetRef),
-                                Variables = new Dictionary<string, object>(token.Variables),
-                                CreatedAt = token.CreatedAt,
-                                AssignedAt = DateTime.UtcNow,
-                                RetryCount = token.RetryCount,
-                                State = token.State
-                            };
-                            await DistributeTokenAsync(newToken, cancellationToken);
-                            trace.Add($"ExclusiveBranch: {flow.TargetRef}");
+                        throw new DistributedTokenException(
+                            $"No valid outgoing SequenceFlow for exclusiveGateway '{gateway.Id}'.");
                     }
+
+                    var selectedFlow = decision.Flow!;
+
+                    var executionToken = new ExecutionToken
+                    {
+                        Id = token.Id,
+                        ProcessInstanceId = token.ProcessInstanceId,
+                        CurrentNodeId = selectedFlow.TargetRef,
+                        NodeType = GetNodeType(model, selectedFlow.TargetRef),
+                        Variables = new Dictionary<string, object>(token.Variables),
+                        CreatedAt = token.CreatedAt,
+                        AssignedAt = DateTime.UtcNow,
+                        RetryCount = token.RetryCount,
+                        State = token.State
+                    };
+
+                    await DistributeTokenAsync(executionToken, cancellationToken);
+
+                    trace.Add(
+                        $"{decision.Kind}: {selectedFlow.TargetRef}");
                     break;
 
                 case "inclusiveGateway":
-                    var matchingFlows = _executionComponent.SelectMatchingFlows(
-                        outgoingFlows,
-                        token.Variables,
-                        (condition, variables) => EvaluateConditionAsync(condition, variables).GetAwaiter().GetResult());
+                    var matchingFlows = _executionComponent.SelectInclusiveFlows(outgoingFlows,token.Variables,(flow, variables) =>
+                            EvaluateConditionAsync(flow.ConditionExpression!,variables).GetAwaiter().GetResult());
+
+                    if (matchingFlows.Count == 0)
+                    {
+                        throw new DistributedTokenException(
+                            $"No valid outgoing SequenceFlow for inclusiveGateway '{gateway.Id}'.");
+                    }
+
                     foreach (var flow in matchingFlows)
                     {
-                            var newToken = new ExecutionToken(
-                                Guid.NewGuid(),
-                                token.ProcessInstanceId,
-                                flow.TargetRef,
-                                GetNodeType(model, flow.TargetRef),
-                                new Dictionary<string, object>(token.Variables),
-                                DateTime.UtcNow
-                            );
-                            await DistributeTokenAsync(newToken, cancellationToken);
-                            trace.Add($"InclusiveBranch: {flow.TargetRef}");
+                        var newToken = new ExecutionToken(
+                            Guid.NewGuid(),
+                            token.ProcessInstanceId,
+                            flow.TargetRef,
+                            GetNodeType(model, flow.TargetRef),
+                            new Dictionary<string, object>(token.Variables),
+                            DateTime.UtcNow);
+
+                        await DistributeTokenAsync(newToken, cancellationToken);
+
+                        trace.Add($"InclusiveBranch: {flow.TargetRef}");
                     }
-                    if (matchingFlows.Count == 0)
-                        throw new DistributedTokenException($"No valid branch for inclusiveGateway {gateway.Id}");
+
                     break;
 
                 case "eventBasedGateway":
@@ -1209,19 +1230,32 @@ namespace VertexBPMN.Engine.Execution
             }
         }
 
-        private async Task<bool> EvaluateConditionAsync(string condition, IDictionary<string, object> variables)
+        private Task<bool> EvaluateConditionAsync(
+            string condition,
+            IDictionary<string, object> variables)
         {
             try
             {
+                var expression = condition.Trim();
+                if (expression.StartsWith("${", StringComparison.Ordinal) && expression.EndsWith("}", StringComparison.Ordinal))
+                {
+                    expression = expression[2..^1].Trim();
+                }
+
                 var engine = new Jint.Engine();
-                foreach (var kvp in variables)
-                    engine.SetValue(kvp.Key, kvp.Value);
-                return engine.Evaluate(condition).AsBoolean();
+
+                foreach (var variable in variables)
+                {
+                    engine.SetValue(variable.Key, variable.Value);
+                }
+
+                return Task.FromResult( engine.Evaluate(expression).AsBoolean());
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to evaluate condition: {Condition}", condition);
-                return false;
+                _logger.LogError( ex, $"Failed to evaluate BPMN condition: {condition}");
+
+                throw new InvalidOperationException( $"BPMN condition could not be evaluated: '{condition}'.", ex);
             }
         }
 

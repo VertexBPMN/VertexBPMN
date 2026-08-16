@@ -18,9 +18,9 @@
     <None Remove="Entities\bin\**" />
   </ItemGroup>
  <ItemGroup>
-    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.4" />
-    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.4" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.11" />
     <PackageReference Include="Microsoft.ML" Version="5.0.0" />
-    <PackageReference Include="Microsoft.SemanticKernel.Abstractions" Version="1.73.0" />
+    <PackageReference Include="Microsoft.SemanticKernel.Abstractions" Version="1.79.0" />
   </ItemGroup>
 </Project>

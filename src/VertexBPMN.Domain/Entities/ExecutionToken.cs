@@ -1,7 +1,10 @@
 namespace VertexBPMN.Domain.Entities;
-
+#nullable enable
 public class ExecutionToken
-{ 
+{
+    public const string PendingState = "Pending";
+    public const string CompletedState = "Completed";
+    public const string FailedState = "Failed";
     public ExecutionToken(Guid id, Guid processInstanceId, string currentNodeId, string nodeType, Dictionary<string, object> variables, DateTime createdAt, string? assignedWorker = null, DateTime? assignedAt = null, int retryCount = 0)
     {
         Id = id;
@@ -43,7 +46,7 @@ public class ExecutionToken
     public string? AssignedWorker { get;  set; }
     public DateTime? AssignedAt { get;  set; }
     public int RetryCount { get;  set; }
-    public string? State { get;  set; }
+    public string? State { get;  set; } = PendingState;
 
     public void AssignWorker(string worker)
     {
@@ -53,5 +56,10 @@ public class ExecutionToken
 
     public void IncrementRetry() => RetryCount++;
 
-    public void SetState(string state) => State = state;
+    public void SetState(string state)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(state);
+
+        State = state;
+    }
 }

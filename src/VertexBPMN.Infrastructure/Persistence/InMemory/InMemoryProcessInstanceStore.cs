@@ -66,8 +66,16 @@ public sealed class InMemoryProcessInstanceStore : IProcessInstanceStore
     public Task SaveTokenAsync(ExecutionToken token)
     {
         ArgumentNullException.ThrowIfNull(token);
-        var id = GetTokenId(token);
-        _executionTokens[id] = token;
+        if (token.Id == Guid.Empty)
+        {
+            throw new ArgumentException("Execution token must have a non-empty Id.", nameof(token));
+        }
+        if (string.IsNullOrWhiteSpace(token.State))
+        {
+            token.SetState(ExecutionToken.PendingState);
+        }
+
+        _executionTokens[token.Id] = token;
         return Task.CompletedTask;
     }
 
@@ -331,25 +339,13 @@ public sealed class InMemoryProcessInstanceStore : IProcessInstanceStore
         return new XDocument(caseElement).ToString(SaveOptions.DisableFormatting);
     }
 
-    private static Guid GetTokenId(ExecutionToken token)
-    {
-        var prop = token.GetType().GetProperty("Id");
-        if (prop?.PropertyType == typeof(Guid) && prop.GetValue(token) is Guid g && g != Guid.Empty)
-            return g;
-        // Fallback: create deterministic Guid from hash code (not ideal, but avoids exceptions in partial models)
-        return Guid.NewGuid();
-    }
 
     private static bool IsTokenPending(ExecutionToken token)
     {
-        // Heuristic: if property AssignedWorker exists and is null -> pending
-        var prop = token.GetType().GetProperty("AssignedWorker");
-        if (prop != null)
-        {
-            var val = prop.GetValue(token);
-            return val is null;
-        }
-        return true; // fallback treat as pending
+        return string.Equals(
+            token.State,
+            ExecutionToken.PendingState,
+            StringComparison.Ordinal);
     }
 
     private static string GetInstanceId(ProcessInstance instance)

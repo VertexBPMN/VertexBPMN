@@ -5,6 +5,7 @@ using SendGrid;
 using VertexBPMN.Application.Fakes;
 using VertexBPMN.Application.Configuration;
 using VertexBPMN.Application.Handlers;
+using VertexBPMN.Application.Connectors;
 using VertexBPMN.Domain.Interfaces;
 using OpenTelemetry;
 using OpenTelemetry.Trace;
@@ -15,6 +16,7 @@ public static class ServiceTaskRegistryExtensions
 {
     public static IServiceCollection AddServiceTaskHandlers(this IServiceCollection services, IConfiguration? configuration = null)
     {
+        services.TryAddSingleton<IConfiguration>(configuration ?? new ConfigurationBuilder().Build());
         // Registriere alle Handler und Abhängigkeiten
         RegisterCoreDependencies(services);
         RegisterHandlers(services);
@@ -35,6 +37,7 @@ public static class ServiceTaskRegistryExtensions
             registry.Register("reportFraud", provider.GetRequiredService<ReportFraudHandler>());
             registry.Register("informOperationsSuccessfulCancelation", provider.GetRequiredService<InformOperationsSuccessfulCancelationHandler>());
             registry.Register("mcpServiceTask", provider.GetRequiredService<McpServiceTaskHandler>());
+            registry.Register("vertex:connector", provider.GetRequiredService<VertexConnectorServiceTaskHandler>());
 
             // ✅ NEW: Universal AI Service Task Handler
             registry.Register("aiServiceTask", provider.GetRequiredService<AIServiceTaskHandler>());
@@ -119,6 +122,22 @@ public static class ServiceTaskRegistryExtensions
         
         // ✅ NEW: AI-specific dependencies
         services.AddSingleton<HttpClient>();
+        services.AddSingleton<IConnectorExecutor, HttpConnectorExecutor>();
+        services.AddSingleton<IConnectorExecutor, DelayConnectorExecutor>();
+        services.AddSingleton<IConnectorExecutor, EmailConnectorExecutor>();
+        services.AddSingleton<IConnectorExecutor>(_ => new NamedEmailConnectorExecutor("smtp"));
+        services.AddSingleton<IConnectorExecutor, DatabaseConnectorExecutor>();
+        services.AddSingleton<IConnectorExecutor>(_ => new NamedDatabaseConnectorExecutor("db"));
+        services.AddSingleton<IConnectorExecutor>(_ => new NamedDatabaseConnectorExecutor("postgresql"));
+        services.AddSingleton<IConnectorExecutor>(_ => new NamedDatabaseConnectorExecutor("sqlserver"));
+        services.AddSingleton<IConnectorExecutor>(_ => new NamedDatabaseConnectorExecutor("sqlite"));
+        services.AddSingleton<IConnectorExecutor>(provider => new NamedHttpConnectorExecutor(provider.GetRequiredService<HttpClient>(), "webhook"));
+        services.AddSingleton<IConnectorExecutor>(provider => new NamedHttpConnectorExecutor(provider.GetRequiredService<HttpClient>(), "slack"));
+        services.AddSingleton<IConnectorExecutor>(provider => new NamedHttpConnectorExecutor(provider.GetRequiredService<HttpClient>(), "ai"));
+        services.AddSingleton<ConnectorRateLimitPolicy>();
+        services.AddSingleton<ConnectorRedactionPolicy>();
+        services.AddSingleton<IConnectorRegistry, ConnectorRegistry>();
+        services.AddSingleton<IConnectorRuntime, ConnectorRuntime>();
         
         // Simple TracerProvider registration (if not already present)
         services.TryAddSingleton<TracerProvider>(provider => 
@@ -140,6 +159,7 @@ public static class ServiceTaskRegistryExtensions
         services.AddSingleton<InformCustomerSuccessfulCancelationHandler>();
         services.AddSingleton<InformOperationsSuccessfulCancelationHandler>();
         services.AddSingleton<McpServiceTaskHandler>();
+        services.AddSingleton<VertexConnectorServiceTaskHandler>();
 
         // ✅ NEW: Universal AI Service Task Handler (Primary)
         services.AddSingleton<AIServiceTaskHandler>();

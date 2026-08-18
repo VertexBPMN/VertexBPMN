@@ -455,6 +455,8 @@ public partial class BpmnParser : IBpmnParser
                         }
                         var taskAttributes = BuildTaskAttributes(el, ns, ext);
                         var implementation = el.Attribute("implementation")?.Value;
+                        if (local == "serviceTask" && taskAttributes?.ContainsKey("vertex:connector.type") == true)
+                            implementation = "vertex:connector";
                         var task = new BpmnTask(id, local, currentSub, taskAttributes, implementation)
                         {
                             Name = el.Attribute("name")?.Value ?? string.Empty
@@ -1870,6 +1872,7 @@ public partial class BpmnParser : IBpmnParser
                 }
             }
         }
+        VertexBpmnExtensions.Validate(model, list);
         return list;
     }
 

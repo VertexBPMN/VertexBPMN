@@ -8,7 +8,6 @@ namespace VertexBPMN.Infrastructure.Persistence.Services;
 public sealed class PersistentConnectorService(
     BpmnDbContext db,
     ICredentialService credentialService,
-    IConnectorTemplateService connectorTemplateService,
     IAuditLogService auditLogService) : IConnectorService
 {
     public async Task<IReadOnlyList<ConnectorMetadata>> ListAsync(string tenantId, CancellationToken cancellationToken = default)
@@ -128,7 +127,7 @@ public sealed class PersistentConnectorService(
             throw new ConnectorCredentialException("The credential reference does not exist in this tenant.");
 
         var templateId = Optional(request.TemplateId, "TemplateId", 128);
-        if (templateId is not null && await connectorTemplateService.GetAsync(tenantId, templateId, cancellationToken) is null)
+        if (templateId is not null && !await db.ConnectorTemplates.AnyAsync(template => template.TenantId == tenantId && template.Id == templateId, cancellationToken))
             throw new ConnectorTemplateReferenceException("The connector template reference does not exist in this tenant.");
         return new ConnectorWriteRequest(name, type, description, endpoint, credentialId, templateId, request.Enabled);
     }

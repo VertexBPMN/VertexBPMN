@@ -12,6 +12,6 @@ public interface IConnectorService
 }
 
 public sealed record ConnectorMetadata(string Id, string TenantId, string Name, string Type, string? Description, string? Endpoint, string? CredentialId, string? TemplateId, bool Enabled, DateTime CreatedAt, DateTime LastModified);
-public sealed record ConnectorWriteRequest(string Name, string Type, string? Description, string? Endpoint, string? CredentialId, string? TemplateId, bool Enabled = true);
+public sealed record ConnectorWriteRequest(string Name, string Type, string? Description, string? Endpoint, string? CredentialId, string? TemplateId = null, bool Enabled = true);
 /// <summary>Redacted readiness result. It never contains credential material, request bodies or response bodies.</summary>
 public sealed record ConnectorTestResult(bool Success, string Message, string? EndpointHost, bool CredentialConfigured);

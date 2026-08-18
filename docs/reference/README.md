@@ -15,3 +15,5 @@ Stabile technische Referenzen fuer API, SDK, Modell und Integrationen.
 - [MCP Server](mcp-server.md)
 - [Predictive Analytics API](predictive-analytics-api.md)
 - [Process Mining Hooks](process-mining-hooks.md)
+
+- [Connector runtime](connector-runtime.md) — `vertex:connector` execution, built-ins, reliability, credentials and redaction.

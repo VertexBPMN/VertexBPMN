@@ -136,6 +136,28 @@ public sealed class DistributedProcessEngineTokenLifecycleTests
     }
 
     [Fact]
+    public async Task DeterministicModelFailure_IsNotRetried()
+    {
+        var token = new ExecutionToken(
+            id: Guid.NewGuid(),
+            processInstanceId: Guid.NewGuid(),
+            currentNodeId: "missing-node",
+            nodeType: "task",
+            variables: new Dictionary<string, object>(),
+            createdAt: DateTime.UtcNow);
+
+        token.SetState("Pending");
+        await _store.SaveTokenAsync(token);
+
+        var trace = new List<string>();
+        await InvokeProcessTokenAsync(_engine, token, CreateEmptyModel(), trace);
+
+        token.State.ShouldBe("Failed");
+        token.RetryCount.ShouldBe(1);
+        trace.ShouldContain(entry => entry.Contains("TokenFailed", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task PendingToken_IsReturnedByInMemoryStore_WhenUnassigned()
     {
         var token = new ExecutionToken(

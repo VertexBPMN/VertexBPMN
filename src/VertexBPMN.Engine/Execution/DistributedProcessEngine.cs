@@ -892,7 +892,9 @@ namespace VertexBPMN.Engine.Execution
                     {
                         token.IncrementRetry();
 
-                        if (token.RetryCount >= maxRetries)
+                        var isTransient = IsTransientTokenFailure(ex);
+
+                        if (!isTransient || token.RetryCount >= maxRetries)
                         {
                             token.SetState(ExecutionToken.FailedState);
 
@@ -900,7 +902,9 @@ namespace VertexBPMN.Engine.Execution
 
                             _logger.LogError(
                                 ex,
-                                "Max retries reached for token {TokenId}",
+                                isTransient
+                                    ? "Max retries reached for token {TokenId}"
+                                    : "Non-transient failure for token {TokenId}",
                                 token.Id);
 
                             await _store.SaveToDeadLetterQueueAsync(
@@ -938,6 +942,21 @@ namespace VertexBPMN.Engine.Execution
                     token.Id,
                     out _);
             }
+        }
+
+        private static bool IsTransientTokenFailure(Exception exception)
+        {
+            return exception switch
+            {
+                TimeoutException => true,
+                IOException => true,
+                HttpRequestException => true,
+                DistributedTokenException => false,
+                ArgumentException => false,
+                InvalidOperationException => false,
+                NotSupportedException => false,
+                _ => true
+            };
         }
 
         private async Task ProcessCaseTokenAsync(CaseToken token, CaseModel model, List<string> trace,

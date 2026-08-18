@@ -44,6 +44,7 @@ public sealed class ConnectorController(IConnectorService connectorService) : Co
         }
         catch (ConnectorConflictException exception) { return Conflict(new ProblemDetails { Title = "Connector already exists.", Detail = exception.Message }); }
         catch (ConnectorCredentialException exception) { return UnprocessableEntity(new ProblemDetails { Title = "Invalid credential reference.", Detail = exception.Message }); }
+        catch (ConnectorTemplateReferenceException exception) { return UnprocessableEntity(new ProblemDetails { Title = "Invalid connector template reference.", Detail = exception.Message }); }
         catch (ArgumentException exception) { return BadRequest(new ProblemDetails { Title = "Invalid connector.", Detail = exception.Message }); }
     }
 
@@ -60,6 +61,7 @@ public sealed class ConnectorController(IConnectorService connectorService) : Co
         }
         catch (ConnectorConflictException exception) { return Conflict(new ProblemDetails { Title = "Connector already exists.", Detail = exception.Message }); }
         catch (ConnectorCredentialException exception) { return UnprocessableEntity(new ProblemDetails { Title = "Invalid credential reference.", Detail = exception.Message }); }
+        catch (ConnectorTemplateReferenceException exception) { return UnprocessableEntity(new ProblemDetails { Title = "Invalid connector template reference.", Detail = exception.Message }); }
         catch (ArgumentException exception) { return BadRequest(new ProblemDetails { Title = "Invalid connector.", Detail = exception.Message }); }
     }
 
@@ -71,6 +73,17 @@ public sealed class ConnectorController(IConnectorService connectorService) : Co
         if (forbidden) return Forbid();
         if (tenant is null) return BadRequest(new ProblemDetails { Title = "TenantId is required." });
         return await connectorService.SetEnabledAsync(tenant, id, request.Enabled, cancellationToken) ? NoContent() : NotFound();
+    }
+
+    [HttpPost("{id}/test")]
+    [Authorize(Policy = "AdminOnly")]
+    public async Task<ActionResult<ConnectorTestResult>> Test(string id, [FromBody] ConnectorTestRequest request, CancellationToken cancellationToken)
+    {
+        var tenant = ResolveTenant(request.TenantId, out var forbidden);
+        if (forbidden) return Forbid();
+        if (tenant is null) return BadRequest(new ProblemDetails { Title = "TenantId is required." });
+        var result = await connectorService.TestAsync(tenant, id, cancellationToken);
+        return result is null ? NotFound() : Ok(result);
     }
 
     [HttpDelete("{id}")]
@@ -98,10 +111,12 @@ public sealed class ConnectorController(IConnectorService connectorService) : Co
         string? Description,
         string? Endpoint,
         string? CredentialId,
+        string? TemplateId,
         bool Enabled = true)
     {
-        public ConnectorWriteRequest ToWriteRequest() => new(Name, Type, Description, Endpoint, CredentialId, Enabled);
+        public ConnectorWriteRequest ToWriteRequest() => new(Name, Type, Description, Endpoint, CredentialId, TemplateId, Enabled);
     }
 
     public sealed record SetConnectorEnabledRequest(string? TenantId, bool Enabled);
+    public sealed record ConnectorTestRequest(string? TenantId);
 }

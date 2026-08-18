@@ -185,6 +185,15 @@ public sealed class StudioUiTestHost : IAsyncLifetime
         {
             new { id = "tenant-a", name = "Tenant A", description = "UI test tenant" }
         }));
+        app.MapGet("/api/connector-templates", () => Results.Json(new[]
+        {
+            new
+            {
+                id = "http-request", tenantId = "tenant-a", name = "HTTP request", category = "Communication",
+                appliesTo = new[] { "bpmn:ServiceTask" }, runtime = "http", icon = "http",
+                properties = Array.Empty<object>(), createdAt = "2026-08-12T10:00:00Z", lastModified = "2026-08-12T10:00:00Z"
+            }
+        }));
         app.MapGet("/api/engine/connections", () => Results.Json(Array.Empty<object>()));
         app.MapGet("/api/history", () => Results.Json(Array.Empty<object>()));
         app.MapMethods("/api/{**path}", ["GET", "POST", "PUT", "DELETE", "PATCH"], () => Results.Json(Array.Empty<object>()));

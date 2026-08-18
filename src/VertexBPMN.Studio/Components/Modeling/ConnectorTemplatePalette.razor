@@ -1,0 +1,76 @@
+@using MudBlazor
+@using VertexBPMN.Studio.Services
+
+@if (Templates.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">No connector templates are registered for this tenant yet.</MudAlert>
+}
+else
+{
+    @foreach (var category in Templates.GroupBy(template => template.Category).OrderBy(group => group.Key))
+    {
+        <MudText Typo="Typo.subtitle2" Class="mt-3">@category.Key</MudText>
+        <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2">
+            @foreach (var template in category)
+            {
+                <MudButton Variant="@(_selected?.Id == template.Id ? Variant.Filled : Variant.Outlined)" Color="Color.Primary" OnClick="@(() => Select(template))">@template.Name</MudButton>
+            }
+        </MudStack>
+    }
+
+    @if (_selected is not null)
+    {
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.subtitle2">Template properties: @_selected.Name</MudText>
+        <MudGrid Class="mt-1">
+            @foreach (var property in _selected.Properties)
+            {
+                <MudItem xs="12" sm="6">
+                    @if (string.Equals(property.Type, "select", StringComparison.OrdinalIgnoreCase))
+                    {
+                        <MudSelect T="string" Label="@Label(property)" Required="@property.Required" Value="@ValueFor(property)" ValueChanged="@(value => SetValue(property.Key, value))">
+                            @foreach (var option in property.Options ?? [])
+                            {
+                                <MudSelectItem T="string" Value="@option">@option</MudSelectItem>
+                            }
+                        </MudSelect>
+                    }
+                    else if (string.Equals(property.Type, "credential", StringComparison.OrdinalIgnoreCase))
+                    {
+                        <MudSelect T="string" Label="@Label(property)" Required="@property.Required" Value="@ValueFor(property)" ValueChanged="@(value => SetValue(property.Key, value))">
+                            <MudSelectItem T="string" Value="@string.Empty">No credential</MudSelectItem>
+                            @foreach (var credential in Credentials) { <MudSelectItem T="string" Value="@credential.Id">@credential.Name (@credential.Type)</MudSelectItem> }
+                        </MudSelect>
+                    }
+                    else
+                    {
+                        <MudTextField T="string" Label="@Label(property)" Required="@property.Required" InputType="@(string.Equals(property.Type, "number", StringComparison.OrdinalIgnoreCase) ? InputType.Number : InputType.Text)" Value="@ValueFor(property)" ValueChanged="@(value => SetValue(property.Key, value))" />
+                    }
+                </MudItem>
+            }
+        </MudGrid>
+        <MudButton Class="mt-3" Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanInsert)" OnClick="InsertAsync">Insert node</MudButton>
+    }
+}
+
+@code {
+    [Parameter] public IReadOnlyList<StudioConnectorTemplate> Templates { get; set; } = [];
+    [Parameter] public EventCallback<ConfiguredConnectorTemplate> OnInsert { get; set; }
+    [Parameter] public IReadOnlyList<StudioCredential> Credentials { get; set; } = [];
+
+    private StudioConnectorTemplate? _selected;
+    private Dictionary<string, string> _values = new(StringComparer.Ordinal);
+
+    private void Select(StudioConnectorTemplate template)
+    {
+        _selected = template;
+        _values = template.Properties.ToDictionary(property => property.Key, property => property.DefaultValue ?? string.Empty, StringComparer.Ordinal);
+    }
+
+    private string ValueFor(StudioConnectorTemplateProperty property) => _values.TryGetValue(property.Key, out var value) ? value : string.Empty;
+    private void SetValue(string key, string? value) => _values[key] = value?.Trim() ?? string.Empty;
+    private bool CanInsert => _selected is not null && _selected.Properties.Where(property => property.Required).All(property => !string.IsNullOrWhiteSpace(ValueFor(property)));
+    private Task InsertAsync() => _selected is null ? Task.CompletedTask : OnInsert.InvokeAsync(new ConfiguredConnectorTemplate(_selected, new Dictionary<string, string>(_values, StringComparer.Ordinal)));
+    private static string Label(StudioConnectorTemplateProperty property) => property.Required ? $"{property.Key} *" : property.Key;
+}
+

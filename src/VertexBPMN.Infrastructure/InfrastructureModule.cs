@@ -40,6 +40,7 @@ public static class InfrastructureModule
         services.AddDataProtection().SetApplicationName("VertexBPMN");
         services.AddScoped<ICredentialService, PersistentCredentialService>();
         services.AddScoped<IConnectorService, PersistentConnectorService>();
+        services.AddScoped<IConnectorTemplateService, PersistentConnectorTemplateService>();
         return services;
     }
 

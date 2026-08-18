@@ -23,6 +23,7 @@ public static class SecurityConfiguration
         var secretKey = configuration["Jwt:SecretKey"];
         var isDevelopment = string.Equals(configuration["OperationalMode"], "Development", StringComparison.OrdinalIgnoreCase)
             || string.Equals(configuration["ASPNETCORE_ENVIRONMENT"], "Development", StringComparison.OrdinalIgnoreCase);
+        var useDevelopmentApiKey = isDevelopment && configuration.GetValue<bool>("Jwt:UseDevelopmentApiKey");
 
         if (string.IsNullOrWhiteSpace(audience))
             throw new InvalidOperationException("Jwt:Audience must be configured.");
@@ -38,7 +39,11 @@ public static class SecurityConfiguration
         if (string.IsNullOrWhiteSpace(authority) && Encoding.UTF8.GetByteCount(secretKey!) < 32)
             throw new InvalidOperationException("Jwt:SecretKey must contain at least 32 bytes.");
 
-        services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        services.AddAuthentication(options =>
+            {
+                options.DefaultAuthenticateScheme = useDevelopmentApiKey ? "ApiKey" : JwtBearerDefaults.AuthenticationScheme;
+                options.DefaultChallengeScheme = options.DefaultAuthenticateScheme;
+            })
             .AddJwtBearer(options =>
             {
                 options.RequireHttpsMetadata = !isDevelopment;
@@ -93,7 +98,6 @@ public static class SecurityConfiguration
         });
 
         // Security Headers
-        services.AddScoped<SecurityHeadersMiddleware>();
 
         return services;
     }

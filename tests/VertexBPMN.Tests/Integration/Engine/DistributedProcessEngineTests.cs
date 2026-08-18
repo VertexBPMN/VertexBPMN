@@ -1,12 +1,15 @@
-﻿using System.Reflection;
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
 using OpenTelemetry.Trace;
+using Shouldly;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using Microsoft.Extensions.Logging.Abstractions;
 using VertexBPMN.Application;
 using VertexBPMN.Application.Messaging;
 using VertexBPMN.Domain.Entities;
-
+using VertexBPMN.Domain.Exceptions;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Domain.Model.Bpmn;
 using VertexBPMN.Domain.Model.Cmn;
@@ -272,6 +275,347 @@ public class DistributedProcessEngineTests
         _testOutputHelper.WriteLine($"Prozessinstanz mit der ID '{processInstance}' wurde gestartet!");
 
 
+    }
+    [Fact]
+    public async Task NoneEndEvent_IsCompletedWithoutFollowingSequenceFlow()
+    {
+        var store =
+            new InMemoryProcessInstanceStore();
+
+        var engine =
+            CreateTestEngine(store);
+
+        var token = CreateToken();
+
+        var evt = new BpmnEvent(
+            Id: "end",
+            Type: "endEvent",
+            Definitions: Array.Empty<EventDefinition>());
+
+        var model = CreateModel();
+        var trace = new List<string>();
+
+        await InvokeProcessEventAsync(
+            engine,
+            evt,
+            token,
+            model,
+            trace);
+
+        token.State.ShouldBe(
+            ExecutionToken.CompletedState);
+
+        var persistedToken =
+            await store.GetTokenAsync(token.Id);
+
+        persistedToken.State.ShouldBe(
+            ExecutionToken.CompletedState);
+
+        trace.ShouldContain(
+            entry => entry.Contains("EndEvent"));
+    }
+
+    [Fact]
+    public async Task NoneStartEvent_UsesNormalSequenceFlowContinuation()
+    {
+        SetExecutionComponent(_engine);
+
+        var startEvent = new BpmnEvent(
+            Id: "start",
+            Type: "startEvent",
+            Definitions: Array.Empty<EventDefinition>());
+
+        var model = new BpmnModel(
+            ProcessId: "process",
+            Name: "process",
+            Events: new[] { startEvent },
+            Gateways: Array.Empty<BpmnGateway>(),
+            Subprocesses: Array.Empty<BpmnSubprocess>(),
+            SequenceFlows: Array.Empty<BpmnSequenceFlow>(),
+            Tasks: Array.Empty<BpmnTask>());
+
+        var trace = new List<string>();
+
+        await InvokeProcessEventAsync(
+            _engine,
+            startEvent,
+            token: null!,
+            model,
+            trace);
+
+        trace.ShouldHaveSingleItem().ShouldBe("StartEvent: start");
+    }
+
+    [Fact]
+    public async Task EventWithMoreThanOneDefinition_IsRejected()
+    {
+
+        var evt = new BpmnEvent(
+            Id: "event",
+            Type: "intermediateCatchEvent",
+            Definitions: new EventDefinition[]
+            {
+                new TimerEventDefinition(
+                    TimeDate: null,
+                    TimeDuration: "PT10S",
+                    TimeCycle: null),
+
+                new MessageEventDefinition(
+                    MessageRef: "message",
+                    CorrelationKey: null)
+            });
+
+        var act = () => InvokeProcessEventAsync(
+            _engine,
+            evt,
+            token: null!,
+            model: null!,
+            trace: new List<string>());
+
+        await act.ShouldThrowAsync<DistributedTokenException>("*contains 2 event definitions*");
+    }
+
+    [Fact]
+    public async Task TimerEvent_IsRejectedInsteadOfUsingFakeDelay()
+    {
+        var evt = new BpmnEvent(
+            Id: "timer-catch",
+            Type: "intermediateCatchEvent",
+            Definitions: new EventDefinition[]
+            {
+                new TimerEventDefinition(
+                    TimeDate: null,
+                    TimeDuration: "PT10S",
+                    TimeCycle: null)
+            });
+
+        var act = () => InvokeProcessEventAsync(
+            _engine,
+            evt,
+            token: null!,
+            model: null!,
+            trace: new List<string>());
+
+        await act.ShouldThrowAsync<DistributedTokenException>("*Persistent timer waiting is not implemented*");
+    }
+
+    [Fact]
+    public async Task MessageEvent_PersistsWaitingToken_AndRegistersSubscription()
+    {
+        var evt = new BpmnEvent(
+            Id: "message-catch",
+            Type: "intermediateCatchEvent",
+            Definitions: new EventDefinition[]
+            {
+                new MessageEventDefinition(
+                    MessageRef: "order-approved",
+                    CorrelationKey: "orderId")
+            });
+        var token = CreateToken();
+        _storeMock.Setup(store => store.SaveTokenAsync(token)).Returns(Task.CompletedTask);
+        _dispatcherMock.Setup(dispatcher => dispatcher.SubscribeToMessageAsync(
+            "order-approved", It.IsAny<Func<Message, Task>>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        var trace = new List<string>();
+
+        await InvokeProcessEventAsync(_engine, evt, token, CreateModel(), trace);
+
+        token.State.ShouldBe(ExecutionToken.WaitingState);
+        trace.ShouldContain("MessageEventWaiting: message-catch for message order-approved");
+        _storeMock.Verify(store => store.SaveTokenAsync(token), Times.Once);
+        _dispatcherMock.Verify(dispatcher => dispatcher.SubscribeToMessageAsync(
+            "order-approved", It.IsAny<Func<Message, Task>>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SignalEvent_IsRejectedExplicitly()
+    {
+
+        var evt = new BpmnEvent(
+            Id: "signal-catch",
+            Type: "intermediateCatchEvent",
+            Definitions: new EventDefinition[]
+            {
+                new SignalEventDefinition(
+                    SignalRef: "order-approved")
+            });
+
+        var act = () => InvokeProcessEventAsync(
+            _engine,
+            evt,
+            token: null!,
+            model: null!,
+            trace: new List<string>());
+
+        await act.ShouldThrowAsync<DistributedTokenException>("*Signal subscription handling is not implemented*");
+    }
+
+    [Fact]
+    public async Task BoundaryEventWithoutDefinition_IsRejected()
+    {
+        var evt = new BpmnEvent(
+            Id: "boundary",
+            Type: "boundaryEvent",
+            Definitions: Array.Empty<EventDefinition>());
+
+        var act = () => InvokeProcessEventAsync(
+            _engine,
+            evt,
+            token: null!,
+            model: null!,
+            trace: new List<string>());
+
+        await act.ShouldThrowAsync<DistributedTokenException>("*has no event definition*");
+    }
+
+    [Fact]
+    public async Task UnknownEventType_IsRejectedWithoutContinuation()
+    {
+        var trace = new List<string>();
+
+        var evt = new BpmnEvent(
+            Id: "unknown",
+            Type: "unknownEvent",
+            Definitions: Array.Empty<EventDefinition>());
+
+        var act = () => InvokeProcessEventAsync(
+            _engine,
+            evt,
+            token: null!,
+            model: null!,
+            trace);
+
+        await act.ShouldThrowAsync<DistributedTokenException>("*Unsupported BPMN event type*");
+
+        trace.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task EventDefinitionOnStartEvent_IsNotTreatedAsNoneStartEvent()
+    {
+        var trace = new List<string>();
+
+        var evt = new BpmnEvent(
+            Id: "timer-start",
+            Type: "startEvent",
+            Definitions: new EventDefinition[]
+            {
+                new TimerEventDefinition(
+                    TimeDate: null,
+                    TimeDuration: "PT10S",
+                    TimeCycle: null)
+            });
+
+        var act = () => InvokeProcessEventAsync(
+            _engine,
+            evt,
+            token: null!,
+            model: null!,
+            trace);
+
+        await act.ShouldThrowAsync<DistributedTokenException>();
+
+        trace.ShouldNotContain("StartEvent: timer-start");
+    }
+
+    private static void SetExecutionComponent(
+        DistributedProcessEngine engine)
+    {
+        var field = typeof(DistributedProcessEngine)
+            .GetField(
+                "_executionComponent",
+                BindingFlags.Instance |
+                BindingFlags.NonPublic);
+
+        field.ShouldNotBeNull();
+
+        field!.SetValue(
+            engine,
+            new BpmnExecutionComponent());
+    }
+
+    private static async Task InvokeProcessEventAsync(
+        DistributedProcessEngine engine,
+        BpmnEvent evt,
+        ExecutionToken token,
+        BpmnModel model,
+        List<string> trace)
+    {
+        var method = typeof(DistributedProcessEngine)
+            .GetMethod(
+                "ProcessEventAsync",
+                BindingFlags.Instance |
+                BindingFlags.NonPublic);
+
+        method.ShouldNotBeNull();
+
+        var result = method!.Invoke(
+            engine,
+            new object[]
+            {
+                evt,
+                token,
+                model,
+                trace,
+                CancellationToken.None
+            });
+
+        result.ShouldBeAssignableTo<Task>();
+
+        await (Task)result!;
+    }
+    private static BpmnModel CreateModel()
+    {
+        return new BpmnModel(
+            ProcessId: "process",
+            Name: "process");
+    }
+
+    private static DistributedProcessEngine CreateTestEngine(
+        IProcessInstanceStore store)
+    {
+        var engine =
+            (DistributedProcessEngine)
+            RuntimeHelpers.GetUninitializedObject(
+                typeof(DistributedProcessEngine));
+
+        SetPrivateField(
+            engine,
+            "_store",
+            store);
+
+        SetPrivateField(
+            engine,
+            "_logger",
+            NullLogger<DistributedProcessEngine>.Instance);
+
+        return engine;
+    }
+
+    private static void SetPrivateField(
+        DistributedProcessEngine engine,
+        string fieldName,
+        object value)
+    {
+        var field = typeof(DistributedProcessEngine)
+            .GetField(
+                fieldName,
+                BindingFlags.Instance |
+                BindingFlags.NonPublic);
+
+        field.ShouldNotBeNull();
+
+        field!.SetValue(
+            engine,
+            value);
+    }
+
+    private static ExecutionToken CreateToken()
+    {
+        return new ExecutionToken(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "node",
+            "event");
     }
 }
 

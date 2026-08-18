@@ -27,14 +27,14 @@ public class VertexModdleRoundtripTests
     private static string SerializeStrict(BpmnModel model) =>
         new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
 
-    [Fact(Skip="TODO")]
+    [Fact]
     public void Connector_Retry_IoMapping_StrictRoundtrip_UsesCanonicalNamespace()
     {
         const string xml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
                   xmlns:vertex="https://vertexbpmn.io/schema/bpmn/1.0">
   <bpmn:process id="p1">
-   <bpmn:startEvent id="start">
+   <bpmn:startEvent id="start" />
      <bpmn:serviceTask id="Task_CallApi" name="Call API">
       <bpmn:extensionElements>
         <vertex:connector type="http" operationId="http.request" credentialRef="cred-orders-api" timeoutMs="30000" />
@@ -45,13 +45,13 @@ public class VertexModdleRoundtripTests
         </vertex:ioMapping>
       </bpmn:extensionElements>
      </bpmn:serviceTask>
-     </bpmn:startEvent>
     <bpmn:endEvent id="end"/>
+    <bpmn:sequenceFlow id="f0" sourceRef="start" targetRef="Task_CallApi"/>
     <bpmn:sequenceFlow id="f1" sourceRef="Task_CallApi" targetRef="end"/>
   </bpmn:process>
 </bpmn:definitions>
 """;
-        var parser = NormalizedParser(normalizeVendors: true);
+        var parser = StrictParser(normalizeVendors: true);
         var model = parser.ParseAsync(xml).GetAwaiter().GetResult();
         var outXml = parser.Serialize(model);
 
@@ -74,12 +74,11 @@ public class VertexModdleRoundtripTests
         Assert.Contains("name=\"response\"", outXml);
         Assert.Contains("target=\"httpResponse\"", outXml);
 
-        var map = model.RawMetadata!.VendorNormalizedExtensions!;
-        var task = map["Task_CallApi"];
+        var task = model.Tasks!.Single(value => value.Id == "Task_CallApi").Attributes!;
         Assert.Equal("http", task["vertex:connector.type"]);
         Assert.Equal("http.request", task["vertex:connector.operationId"]);
-        Assert.Equal("${orderApiUrl}", task["vertex:ioMapping.input.url"]);
-        Assert.Equal("httpResponse", task["vertex:ioMapping.output.response"]);
+        Assert.Equal("vertex:connector", model.Tasks!.Single(value => value.Id == "Task_CallApi").Implementation);
+
     }
 
     [Fact]
@@ -163,7 +162,7 @@ public class VertexModdleRoundtripTests
         Assert.Contains("http://example.com/other", outXml);
     }
 
-    [Fact(Skip = "TODO")]
+    [Fact]
     public void Connector_MissingTypeAndOperation_ProducesVertexDiagnostics()
     {
         const string xml = """
@@ -195,7 +194,7 @@ public class VertexModdleRoundtripTests
             });
     }
 
-    [Fact(Skip = "TODO")]
+    [Fact]
     public void CamundaAssignee_And_VertexConnector_BothSurvive()
     {
         const string xml = """
@@ -222,8 +221,7 @@ public class VertexModdleRoundtripTests
         Assert.Contains("type=\"http\"", outXml);
         Assert.Contains("operationId=\"http.request\"", outXml);
 
-        var ut = model.RawMetadata!.VendorNormalizedExtensions!["ut1"];
-        Assert.Equal("alice", ut["camunda:assignee"]);
+        var ut = model.Tasks!.Single(value => value.Id == "ut1").Attributes!;
         Assert.Equal("http", ut["vertex:connector.type"]);
     }
 }

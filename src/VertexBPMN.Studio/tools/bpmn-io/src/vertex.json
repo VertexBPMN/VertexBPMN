@@ -69,6 +69,30 @@
       ]
     },
     {
+      "name": "Decision",
+      "superClass": ["Element"],
+      "properties": [
+        { "name": "decisionRef", "isAttr": true, "type": "String" },
+        { "name": "binding", "isAttr": true, "type": "String" },
+        { "name": "version", "isAttr": true, "type": "String" }
+      ]
+    },
+    {
+      "name": "Form",
+      "superClass": ["Element"],
+      "properties": [
+        { "name": "formRef", "isAttr": true, "type": "String" },
+        { "name": "formVersion", "isAttr": true, "type": "String" }
+      ]
+    },
+    {
+      "name": "Case",
+      "superClass": ["Element"],
+      "properties": [
+        { "name": "caseRef", "isAttr": true, "type": "String" }
+      ]
+    },
+    {
       "name": "Credential",
       "superClass": ["Element"],
       "properties": [

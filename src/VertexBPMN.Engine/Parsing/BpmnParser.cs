@@ -279,7 +279,7 @@ public partial class BpmnParser : IBpmnParser
         var signalModels = ParseSignals(signals);
         var errorModels = ParseErrors(errors);
         var escalationModels = ParseEscalations(escalations);
-        var gatewaysRaw = process.Elements().Where(e => e.Name.LocalName.EndsWith("Gateway")).Select(g =>
+        var gatewaysRaw = process.Descendants().Where(e => e.Name.LocalName.EndsWith("Gateway")).Select(g =>
             new
             {
                 Id = Intern(g.Attribute("id")?.Value ?? string.Empty),
@@ -455,6 +455,8 @@ public partial class BpmnParser : IBpmnParser
                         }
                         var taskAttributes = BuildTaskAttributes(el, ns, ext);
                         var implementation = el.Attribute("implementation")?.Value;
+                        if (local == "serviceTask" && taskAttributes?.ContainsKey("vertex:connector.type") == true)
+                            implementation = "vertex:connector";
                         var task = new BpmnTask(id, local, currentSub, taskAttributes, implementation)
                         {
                             Name = el.Attribute("name")?.Value ?? string.Empty
@@ -1248,6 +1250,9 @@ public partial class BpmnParser : IBpmnParser
         var textAnnotations = model.TextAnnotations != null ? AsSpanSafe(model.TextAnnotations) : Array.Empty<BpmnTextAnnotation>();
         var groups = model.Groups != null ? AsSpanSafe(model.Groups) : Array.Empty<BpmnGroup>();
         var list = new List<ValidationDiagnostic>();
+        list.AddRange(ValidateGatewayDefaults(
+                model.Gateways ?? Array.Empty<BpmnGateway>(),
+                model.SequenceFlows ?? Array.Empty<BpmnSequenceFlow>()));
 
         // ---- Legacy mapping block (keep existing mappings; abbreviated here) ----
         foreach (var msg in legacyDiagnostics)
@@ -1867,9 +1872,78 @@ public partial class BpmnParser : IBpmnParser
                 }
             }
         }
+        VertexBpmnExtensions.Validate(model, list);
         return list;
     }
-   
+
+    private static IEnumerable<ValidationDiagnostic> ValidateGatewayDefaults(
+    IReadOnlyList<BpmnGateway> gateways,
+    IReadOnlyList<BpmnSequenceFlow> flows)
+    {
+        var result = new List<ValidationDiagnostic>();
+
+        var flowsById = flows
+            .Where(flow => !string.IsNullOrWhiteSpace(flow.Id))
+            .GroupBy(flow => flow.Id, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Single());
+
+        foreach (var gateway in gateways)
+        {
+            if (string.IsNullOrWhiteSpace(gateway.DefaultFlowId))
+            {
+                continue;
+            }
+
+            if (!flowsById.TryGetValue(gateway.DefaultFlowId, out var defaultFlow))
+            {
+                result.Add(new ValidationDiagnostic(
+                    Code: "REF-GATEWAY-DEFAULT-MISSING",
+                    Severity: ValidationSeverity.Error,
+                    Message:
+                        $"Gateway '{gateway.Id}' references missing default SequenceFlow '{gateway.DefaultFlowId}'.",
+                    ElementId: gateway.Id,
+                    Category: "Referential"));
+
+                continue;
+            }
+
+            if (!string.Equals(defaultFlow.SourceRef, gateway.Id, StringComparison.Ordinal))
+            {
+                result.Add(new ValidationDiagnostic(
+                    Code: "SEM-GATEWAY-DEFAULT-SOURCE",
+                    Severity: ValidationSeverity.Error,
+                    Message:
+                        $"Default SequenceFlow '{defaultFlow.Id}' does not originate at Gateway '{gateway.Id}'.",
+                    ElementId: gateway.Id,
+                    Category: "Semantic"));
+            }
+
+            if (!defaultFlow.IsDefault)
+            {
+                result.Add(new ValidationDiagnostic(
+                    Code: "SEM-GATEWAY-DEFAULT-FLAG",
+                    Severity: ValidationSeverity.Error,
+                    Message:
+                        $"SequenceFlow '{defaultFlow.Id}' is referenced as default by Gateway '{gateway.Id}', " +
+                        "but is not marked as default in the model.",
+                    ElementId: gateway.Id,
+                    Category: "Semantic"));
+            }
+
+            if (!string.IsNullOrWhiteSpace(defaultFlow.ConditionExpression))
+            {
+                result.Add(new ValidationDiagnostic(
+                    Code: "SEM-DEFAULT-WITH-CONDITION",
+                    Severity: ValidationSeverity.Error,
+                    Message:
+                        $"Default SequenceFlow '{defaultFlow.Id}' must not have a conditionExpression.",
+                    ElementId: defaultFlow.Id,
+                    Category: "Semantic"));
+            }
+        }
+
+        return result;
+    }
     private IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? ParseVendorExtensions(bool strict, Dictionary<string, XElement>? rawExtensions)
     {
         // vendor extension normalization capture (expanded all vendors + generics)

@@ -1,6 +1,8 @@
 @page "/bpmn-modeler"
 @using System.Text
 @inject VertexBPMN.Studio.Services.IRepositoryService RepositoryService
+@inject VertexBPMN.Studio.Services.IConnectorTemplateService ConnectorTemplateService
+@inject VertexBPMN.Studio.Services.ICredentialService CredentialService
 @inject VertexBPMN.Studio.Services.StudioTenantContext TenantContext
 @inject MudBlazor.ISnackbar Snackbar
 @inject IHttpClientFactory HttpClientFactory
@@ -28,8 +30,21 @@
     </MudPaper>
 
     <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h6" GutterBottom="true">Connector templates</MudText>
+        <MudText Typo="Typo.caption" Color="Color.Secondary">Choose a manifest-defined node and configure its properties before inserting it into the diagram.</MudText>
+        @if (string.IsNullOrWhiteSpace(TenantContext.CurrentTenantId))
+        {
+            <MudAlert Class="mt-2" Severity="Severity.Info">Select a tenant to load connector templates.</MudAlert>
+        }
+        else
+        {
+            <ConnectorTemplatePalette Templates="_templates" Credentials="_credentials" OnInsert="InsertConfiguredTemplateAsync" />
+        }
+    </MudPaper>
+
+    <MudPaper Class="pa-4">
         <MudText Typo="Typo.h6" GutterBottom="true">Modeler</MudText>
-        <BpmnModelerSurface @ref="_modeler" Xml="_bpmnXml" />
+        <BpmnModelerSurface @ref="_modeler" Xml="_bpmnXml" ConnectorTemplates="_templates" />
     </MudPaper>
 
     <MudPaper Class="pa-4">
@@ -42,6 +57,9 @@
     private string _bpmnXml = FallbackBpmn;
     private HttpClient _httpClient = default!;
     private BpmnModelerSurface? _modeler;
+    private IReadOnlyList<StudioConnectorTemplate> _templates = [];
+    private IReadOnlyList<StudioCredential> _credentials = [];
+    private bool _insertingTemplate;
 
     private const string FallbackBpmn = """
 <?xml version="1.0" encoding="UTF-8"?>
@@ -65,12 +83,61 @@
     {
         _httpClient = HttpClientFactory.CreateClient("Default");
         ActiveEngineService.OnChange += StateHasChanged;
+        TenantContext.Changed += OnTenantChanged;
         await LoadBpmnXml(showNotification: false);
+        await LoadConnectorTemplatesAsync();
     }
 
     public void Dispose()
     {
         ActiveEngineService.OnChange -= StateHasChanged;
+        TenantContext.Changed -= OnTenantChanged;
+    }
+
+    private async void OnTenantChanged()
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadConnectorTemplatesAsync();
+            StateHasChanged();
+        });
+    }
+
+    private async Task LoadConnectorTemplatesAsync()
+    {
+        var tenantId = TenantContext.CurrentTenantId;
+        _templates = string.IsNullOrWhiteSpace(tenantId) ? [] : await ConnectorTemplateService.ListAsync(tenantId);
+        _credentials = string.IsNullOrWhiteSpace(tenantId) ? [] : await CredentialService.ListAsync(tenantId);
+        if (_modeler is not null)
+            await _modeler.ConfigureQuickInsertAsync(_templates);
+    }
+
+    private Task InsertConfiguredTemplateAsync(ConfiguredConnectorTemplate configured)
+        => InsertTemplateAsync(configured.Template, configured.Values);
+
+    private async Task InsertTemplateAsync(StudioConnectorTemplate template, IReadOnlyDictionary<string, string>? values = null)
+    {
+        if (_modeler is null)
+        {
+            Snackbar.Add("The modeler is still loading.", Severity.Info);
+            return;
+        }
+
+        _insertingTemplate = true;
+        try
+        {
+            await _modeler.InsertConnectorTemplateAsync(template, values);
+            _bpmnXml = await _modeler.GetXmlAsync();
+            Snackbar.Add($"Connector template {template.Name} inserted.", Severity.Success);
+        }
+        catch (Exception exception)
+        {
+            Snackbar.Add($"Connector template could not be inserted: {exception.Message}", Severity.Error);
+        }
+        finally
+        {
+            _insertingTemplate = false;
+        }
     }
 
     private async Task DeployBpmnXml()

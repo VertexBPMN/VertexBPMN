@@ -12,15 +12,15 @@ public sealed class HttpConnectorServiceTests
     {
         var requests = new List<HttpRequestMessage>();
         var connector = new StudioConnector("connector-1", "tenant-a", "Payments", "http", null,
-            "https://payments.example.test", "credential-1", true, DateTime.UtcNow, DateTime.UtcNow);
+            "https://payments.example.test", "credential-1", null, true, DateTime.UtcNow, DateTime.UtcNow);
         var client = new HttpClient(new RecordingHandler(requests, connector)) { BaseAddress = new Uri("http://api.test/") };
         var factory = new Mock<IHttpClientFactory>();
         factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
         var service = new HttpConnectorService(factory.Object);
 
         await service.ListAsync("tenant-a");
-        await service.CreateAsync("tenant-a", "Payments", "http", null, "https://payments.example.test", "credential-1");
-        await service.UpdateAsync("tenant-a", "connector-1", "Payments", "http", "updated", null, null, false);
+        await service.CreateAsync("tenant-a", "Payments", "http", null, "https://payments.example.test", "credential-1", null);
+        await service.UpdateAsync("tenant-a", "connector-1", "Payments", "http", "updated", null, null, null, false);
         await service.SetEnabledAsync("tenant-a", "connector-1", false);
         await service.DeleteAsync("tenant-a", "connector-1");
 

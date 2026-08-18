@@ -31,6 +31,7 @@ public class BpmnDbContext : DbContext
     public DbSet<IdentityAuthorizationRecord> IdentityAuthorizations => Set<IdentityAuthorizationRecord>();
     public DbSet<CredentialRecord> Credentials => Set<CredentialRecord>();
     public DbSet<ConnectorRecord> Connectors => Set<ConnectorRecord>();
+    public DbSet<ConnectorTemplateRecord> ConnectorTemplates => Set<ConnectorTemplateRecord>();
     public DbSet<WorkflowTrigger> WorkflowTriggers => Set<WorkflowTrigger>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -52,6 +53,7 @@ public class BpmnDbContext : DbContext
         ConfigureIdentity(modelBuilder);
         ConfigureCredentials(modelBuilder);
         ConfigureConnectors(modelBuilder);
+        ConfigureConnectorTemplates(modelBuilder);
         ConfigureWorkflowTriggers(modelBuilder);
 
         // Seed sample data (deterministic IDs & timestamps)
@@ -219,13 +221,30 @@ public class BpmnDbContext : DbContext
         entity.Property(e => e.Description).HasMaxLength(2000);
         entity.Property(e => e.Endpoint).HasMaxLength(2048);
         entity.Property(e => e.CredentialId).HasMaxLength(128);
+        entity.Property(e => e.TemplateId).HasMaxLength(128);
         entity.Property(e => e.Enabled).IsRequired();
         entity.HasIndex(e => new { e.TenantId, e.Name }).IsUnique();
         entity.HasIndex(e => e.TenantId);
         entity.HasIndex(e => e.CredentialId);
+        entity.HasIndex(e => e.TemplateId);
         entity.HasIndex(e => e.LastModified);
     }
 
+
+    private static void ConfigureConnectorTemplates(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<ConnectorTemplateRecord>();
+        entity.HasKey(e => e.Id);
+        entity.Property(e => e.TenantId).IsRequired().HasMaxLength(64);
+        entity.Property(e => e.Name).IsRequired().HasMaxLength(256);
+        entity.Property(e => e.Category).IsRequired().HasMaxLength(128);
+        entity.Property(e => e.Runtime).IsRequired().HasMaxLength(128);
+        entity.Property(e => e.Icon).HasMaxLength(256);
+        entity.Property(e => e.AppliesToJson).IsRequired();
+        entity.Property(e => e.PropertiesJson).IsRequired();
+        entity.HasIndex(e => new { e.TenantId, e.Name }).IsUnique();
+        entity.HasIndex(e => e.TenantId);
+    }
 
     private static void ConfigureWorkflowTriggers(ModelBuilder modelBuilder)
     {

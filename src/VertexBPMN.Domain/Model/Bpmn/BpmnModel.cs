@@ -64,21 +64,15 @@ public record BpmnMessageFlow(string Id,string SourceRef,string TargetRef,string
 public record BpmnTextAnnotation(string Id,string? Text);
 public record BpmnAssociation(string Id,string SourceRef,string TargetRef,string? Direction);
 public record BpmnGroup(string Id,string? CategoryValueRef);
-public abstract record EventDefinition(string Kind);
+public abstract record EventDefinition(string Kind, string? Id = null);
 public sealed record TimerEventDefinition(string? TimeDate, string? TimeDuration, string? TimeCycle) : EventDefinition("timer");
 public sealed record MessageEventDefinition(string MessageRef, string? CorrelationKey) : EventDefinition("message");
 public sealed record SignalEventDefinition(string SignalRef) : EventDefinition("signal");
 public sealed record ErrorEventDefinition(string ErrorRef, string? ErrorCode = null) : EventDefinition("error");
 public sealed record EscalationEventDefinition(string EscalationRef) : EventDefinition("escalation");
-public sealed record LinkEventDefinition(string Name, string? Target = null) : EventDefinition("link")
-{
-    public IEnumerable<object?> Sources { get; set; } = new List<object?>();
-}
+public sealed record LinkEventDefinition(string Name, string? Target = null,IReadOnlyList<string>? Sources = null) : EventDefinition("link");
 public sealed record ConditionalEventDefinition(string Condition) : EventDefinition("conditional");
-public sealed record CompensationEventDefinition(string? ActivityRef) : EventDefinition("compensation")
-{
-    public IEnumerable<object?> WaitForCompletion { get; set; }
-}
+public sealed record CompensationEventDefinition(string? ActivityRef, bool WaitForCompletion = true) : EventDefinition("compensation");
 public sealed record CancelEventDefinition() : EventDefinition("cancel");
 public sealed record TerminateEventDefinition() : EventDefinition("terminate");
 public abstract record LoopCharacteristics(string Kind);
@@ -193,6 +187,16 @@ public static class BpmnRoundtripUtil
     }
 }
 
+public enum GatewayDecisionKind
+{
+    Selected,
+    DefaultSelected,
+    NoOutgoingFlow
+}
+
+public sealed record GatewayDecision(
+    GatewayDecisionKind Kind,
+    BpmnSequenceFlow? Flow);
 public record BpmnModel(
     string ProcessId,
     string Name,

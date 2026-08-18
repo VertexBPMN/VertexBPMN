@@ -2,6 +2,7 @@
 @implements IDisposable
 @inject IConnectorService ConnectorService
 @inject ICredentialService CredentialService
+@inject IConnectorTemplateService ConnectorTemplateService
 @inject StudioTenantContext TenantContext
 
 <PageTitle>Connectors</PageTitle>
@@ -29,6 +30,7 @@ else
                     }
                 </MudSelect>
             </MudItem>
+            <MudItem xs="12" sm="6"><MudSelect T="string" @bind-Value="_templateId" Label="Connector template" Variant="Variant.Outlined"><MudSelectItem T="string" Value="@string.Empty">No template</MudSelectItem>@foreach (var template in _templates) { <MudSelectItem T="string" Value="@template.Id">@template.Name</MudSelectItem> }</MudSelect></MudItem>
             <MudItem xs="12"><MudTextField @bind-Value="_description" Label="Description (optional)" Variant="Variant.Outlined" /></MudItem>
         </MudGrid>
         <MudButton Class="mt-3" Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateAsync" Disabled="@_busy">Create</MudButton>
@@ -47,6 +49,7 @@ else
                 <MudTh>Type</MudTh>
                 <MudTh>Endpoint</MudTh>
                 <MudTh>Credential</MudTh>
+                <MudTh>Template</MudTh>
                 <MudTh>Status</MudTh>
                 <MudTh>Actions</MudTh>
             </HeaderContent>
@@ -55,11 +58,13 @@ else
                 <MudTd DataLabel="Type">@context.Type</MudTd>
                 <MudTd DataLabel="Endpoint">@context.Endpoint</MudTd>
                 <MudTd DataLabel="Credential">@CredentialName(context.CredentialId)</MudTd>
+                <MudTd DataLabel="Template">@TemplateName(context.TemplateId)</MudTd>
                 <MudTd DataLabel="Status">@(context.Enabled ? "Enabled" : "Disabled")</MudTd>
                 <MudTd DataLabel="Actions">
                     <MudButton Size="Size.Small" Color="@(context.Enabled ? Color.Warning : Color.Success)" OnClick="@(() => SetEnabledAsync(context))">
                         @(context.Enabled ? "Disable" : "Enable")
                     </MudButton>
+                    <MudButton Size="Size.Small" OnClick="@(() => TestAsync(context))">Test</MudButton>
                     <MudButton Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteAsync(context))">Delete</MudButton>
                 </MudTd>
             </RowTemplate>
@@ -70,11 +75,13 @@ else
 @code {
     private IReadOnlyList<StudioConnector> _connectors = [];
     private IReadOnlyList<StudioCredential> _credentials = [];
+    private IReadOnlyList<StudioConnectorTemplate> _templates = [];
     private string _name = string.Empty;
     private string _type = string.Empty;
     private string _description = string.Empty;
     private string _endpoint = string.Empty;
     private string _credentialId = string.Empty;
+    private string _templateId = string.Empty;
     private string? _error;
     private bool _busy;
 
@@ -101,6 +108,7 @@ else
         {
             _connectors = [];
             _credentials = [];
+            _templates = [];
             return;
         }
 
@@ -109,6 +117,7 @@ else
         {
             _connectors = await ConnectorService.ListAsync(tenantId);
             _credentials = await CredentialService.ListAsync(tenantId);
+            _templates = await ConnectorTemplateService.ListAsync(tenantId);
         }
         catch (Exception exception)
         {
@@ -129,10 +138,29 @@ else
         try
         {
             await ConnectorService.CreateAsync(tenantId, _name, _type, _description, _endpoint,
-                string.IsNullOrWhiteSpace(_credentialId) ? null : _credentialId);
+                string.IsNullOrWhiteSpace(_credentialId) ? null : _credentialId, string.IsNullOrWhiteSpace(_templateId) ? null : _templateId);
             _name = _type = _description = _endpoint = string.Empty;
-            _credentialId = string.Empty;
+            _credentialId = _templateId = string.Empty;
             await LoadAsync();
+        }
+        catch (Exception exception)
+        {
+            _error = exception.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task TestAsync(StudioConnector connector)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var result = await ConnectorService.TestAsync(connector.TenantId, connector.Id);
+            _error = result.Success ? $"Test passed for {result.EndpointHost}. {result.Message}" : result.Message;
         }
         catch (Exception exception)
         {
@@ -178,6 +206,8 @@ else
         string.IsNullOrWhiteSpace(credentialId)
             ? "-"
             : _credentials.FirstOrDefault(credential => credential.Id == credentialId)?.Name ?? credentialId;
+
+    private string TemplateName(string? templateId) => string.IsNullOrWhiteSpace(templateId) ? "-" : _templates.FirstOrDefault(template => template.Id == templateId)?.Name ?? templateId;
 
     public void Dispose() => TenantContext.Changed -= OnTenantChanged;
 }

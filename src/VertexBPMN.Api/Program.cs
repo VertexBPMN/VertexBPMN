@@ -102,6 +102,7 @@ builder.Services.AddWhen(moduleOptions.SignalR, s => s.AddSignalR());
 
 // Add services to the container.
 builder.Services.AddControllers();
+builder.Services.AddHttpContextAccessor();
 
 // Authentication is disabled only in the dedicated test host, where tests install
 // an explicit test scheme. All other modes use the single production security setup.
@@ -325,6 +326,7 @@ app.Use(async (context, next) =>
 });
 
 app.UseAuthorization();
+app.UseMiddleware<SecurityHeadersMiddleware>();
 app.UseMiddleware<AuditLoggingMiddleware>();
 
 //Enterprise Scalability: SignalR Hub mapping,Only map hubs when enabled

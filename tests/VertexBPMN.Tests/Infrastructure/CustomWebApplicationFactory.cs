@@ -20,6 +20,7 @@ public class CustomWebApplicationFactory : WebApplicationFactory<VertexBPMN.Api.
     private bool _initialized;
     private string _engineType = "Simple";
     private readonly List<SqliteConnection> _ownedConnections = new();
+    private readonly string _databaseId = Guid.NewGuid().ToString("N");
     private SharedSqliteDbFixture? _sharedFixture;
 
     // Allow chaining in test constructors
@@ -143,7 +144,7 @@ public class CustomWebApplicationFactory : WebApplicationFactory<VertexBPMN.Api.
     {
         // Separate In-Memory-DB: Data Source=:memory:
         // Wenn du mehrere offene Verbindungen brauchst, aber dieselbe DB teilen willst: Data Source=file:vertex_{label}?mode=memory&cache=shared
-        var connString = $"Data Source=file:vertex_{label}?mode=memory&cache=shared";
+        var connString = $"Data Source=file:vertex_{_databaseId}_{label}?mode=memory&cache=shared";
         var conn = new SqliteConnection(connString);
         conn.Open();
         _ownedConnections.Add(conn);

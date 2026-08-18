@@ -74,13 +74,29 @@ public sealed class ProductionProcessInstanceStore : IProcessInstanceStore
     // Tokens
     public async Task SaveTokenAsync(ExecutionToken token)
     {
+        ArgumentNullException.ThrowIfNull(token);
+
+        if (token.Id == Guid.Empty)
+        {
+            throw new ArgumentException(
+                "Execution token must have a non-empty Id.",
+                nameof(token));
+        }
+
+        if (string.IsNullOrWhiteSpace(token.State))
+        {
+            token.SetState(ExecutionToken.PendingState);
+        }
         var existing = await _db.ExecutionTokens.FindAsync(token.Id);
         if (existing == null)
+        {
             _db.ExecutionTokens.Add(token);
+        }
         else
         {
             existing.State = token.State;
             existing.AssignedWorker = token.AssignedWorker;
+            existing.AssignedAt = token.AssignedAt;
             existing.RetryCount = token.RetryCount;
         }
         await _db.SaveChangesAsync();
@@ -93,7 +109,7 @@ public sealed class ProductionProcessInstanceStore : IProcessInstanceStore
 
     public async Task<List<ExecutionToken>> GetPendingTokensAsync()
         => await _db.ExecutionTokens.AsNoTracking()
-            .Where(t => t.State == "Pending")
+            .Where(t => t.State == ExecutionToken.PendingState)
             .OrderBy(t => t.CreatedAt)
             .Take(500)
             .ToListAsync();

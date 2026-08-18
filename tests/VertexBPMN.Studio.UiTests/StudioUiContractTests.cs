@@ -63,6 +63,7 @@ public sealed class StudioUiContractTests(StudioUiTestHost host) : IClassFixture
         await page.GetByTestId(modelerTestId).WaitForAsync();
         await page.GetByText(viewerTab, new() { Exact = true }).WaitForAsync();
         await page.GetByTestId(viewerTestId).WaitForAsync();
+        if (route == "bpmn-modeler")
+            await page.GetByRole(AriaRole.Heading, new() { Name = "Connector templates", Exact = true }).WaitForAsync();
     }
-
 }

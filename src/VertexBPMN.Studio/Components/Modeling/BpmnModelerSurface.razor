@@ -11,6 +11,7 @@
 
 @code {
     [Parameter] public string Xml { get; set; } = string.Empty;
+    [Parameter] public IReadOnlyList<StudioConnectorTemplate> ConnectorTemplates { get; set; } = [];
 
     private readonly string _canvasId = $"bpmn-modeler-{Guid.NewGuid():N}";
     private readonly string _propertiesPanelId = $"bpmn-properties-{Guid.NewGuid():N}";
@@ -28,6 +29,7 @@
         _modeler = await _module.InvokeAsync<IJSObjectReference>("BpmnModelerInterop.createModeler", _canvasId, Xml, _propertiesPanelId);
         _loadedXml = Xml;
         _initialized = true;
+        await ConfigureQuickInsertAsync(ConnectorTemplates);
     }
 
     protected override async Task OnParametersSetAsync()
@@ -37,6 +39,26 @@
             await _module.InvokeVoidAsync("BpmnModelerInterop.loadXml", _modeler, Xml);
             _loadedXml = Xml;
         }
+
+        if (_initialized)
+            await ConfigureQuickInsertAsync(ConnectorTemplates);
+    }
+
+    public async Task InsertConnectorTemplateAsync(StudioConnectorTemplate template, IReadOnlyDictionary<string, string>? values = null)
+    {
+        if (_module is null || _modeler is null)
+            return;
+
+        await _module.InvokeVoidAsync("BpmnModelerInterop.insertConnectorTemplate", _modeler, template, values);
+        _loadedXml = await GetXmlAsync();
+    }
+
+    public async Task ConfigureQuickInsertAsync(IReadOnlyList<StudioConnectorTemplate> templates)
+    {
+        if (_module is null || _modeler is null)
+            return;
+
+        await _module.InvokeVoidAsync("BpmnModelerInterop.configureQuickInsert", _modeler, templates);
     }
 
     public async Task<string> GetXmlAsync()

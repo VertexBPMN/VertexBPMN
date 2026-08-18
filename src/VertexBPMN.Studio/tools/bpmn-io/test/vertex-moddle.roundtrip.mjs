@@ -18,6 +18,9 @@ const xml = `<?xml version="1.0" encoding="UTF-8"?>
           <vertex:input name="url" expression="\${orderApiUrl}" />
           <vertex:output name="response" target="httpResponse" />
         </vertex:ioMapping>
+              <vertex:decision decisionRef="shipping.decision" binding="latest" />
+        <vertex:form formRef="approval-form" formVersion="2" />
+        <vertex:case caseRef="claims-case" />
       </bpmn:extensionElements>
     </bpmn:serviceTask>
   </bpmn:process>
@@ -34,7 +37,7 @@ if (!connector) {
 }
 connector.set('timeoutMs', 15000);
 const { xml: out } = await moddle.toXML(rootElement, { format: true });
-for (const token of ['vertex:connector', 'operationId="http.request"', 'timeoutMs="15000"', 'vertex:input', 'name="url"', 'https://vertexbpmn.io/schema/bpmn/1.0']) {
+for (const token of ['vertex:connector', 'vertex:decision', 'vertex:form', 'vertex:case', 'operationId="http.request"', 'timeoutMs="15000"', 'vertex:input', 'name="url"', 'https://vertexbpmn.io/schema/bpmn/1.0']) {
   if (!out.includes(token)) {
     throw new Error(`roundtrip XML missing ${token}\n${out}`);
   }

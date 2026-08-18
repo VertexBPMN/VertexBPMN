@@ -5,6 +5,7 @@ using OpenTelemetry.Trace;
 using Shouldly;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using Microsoft.Extensions.Logging.Abstractions;
 using VertexBPMN.Application;
 using VertexBPMN.Application.Messaging;
 using VertexBPMN.Domain.Entities;
@@ -278,22 +279,40 @@ public class DistributedProcessEngineTests
     [Fact]
     public async Task NoneEndEvent_IsCompletedWithoutFollowingSequenceFlow()
     {
- 
-        var endEvent = new BpmnEvent(
+        var store =
+            new InMemoryProcessInstanceStore();
+
+        var engine =
+            CreateTestEngine(store);
+
+        var token = CreateToken();
+
+        var evt = new BpmnEvent(
             Id: "end",
             Type: "endEvent",
             Definitions: Array.Empty<EventDefinition>());
 
+        var model = CreateModel();
         var trace = new List<string>();
 
         await InvokeProcessEventAsync(
-            _engine,
-            endEvent,
-            token: null!,
-            model: null!,
+            engine,
+            evt,
+            token,
+            model,
             trace);
 
-        trace.ShouldHaveSingleItem().ShouldBe("EndEvent: end");
+        token.State.ShouldBe(
+            ExecutionToken.CompletedState);
+
+        var persistedToken =
+            await store.GetTokenAsync(token.Id);
+
+        persistedToken.State.ShouldBe(
+            ExecutionToken.CompletedState);
+
+        trace.ShouldContain(
+            entry => entry.Contains("EndEvent"));
     }
 
     [Fact]
@@ -381,7 +400,7 @@ public class DistributedProcessEngineTests
     }
 
     [Fact]
-    public async Task MessageEvent_IsRejectedInsteadOfUsingNonPersistentCallback()
+    public async Task MessageEvent_PersistsWaitingToken_AndRegistersSubscription()
     {
         var evt = new BpmnEvent(
             Id: "message-catch",
@@ -392,15 +411,19 @@ public class DistributedProcessEngineTests
                     MessageRef: "order-approved",
                     CorrelationKey: "orderId")
             });
+        var token = CreateToken();
+        _storeMock.Setup(store => store.SaveTokenAsync(token)).Returns(Task.CompletedTask);
+        _dispatcherMock.Setup(dispatcher => dispatcher.SubscribeToMessageAsync(
+            "order-approved", It.IsAny<Func<Message, Task>>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        var trace = new List<string>();
 
-        var act = () => InvokeProcessEventAsync(
-            _engine,
-            evt,
-            token: null!,
-            model: null!,
-            trace: new List<string>());
+        await InvokeProcessEventAsync(_engine, evt, token, CreateModel(), trace);
 
-        await act.ShouldThrowAsync<DistributedTokenException>("*Persistent message waiting and correlation are not implemented*");
+        token.State.ShouldBe(ExecutionToken.WaitingState);
+        trace.ShouldContain("MessageEventWaiting: message-catch for message order-approved");
+        _storeMock.Verify(store => store.SaveTokenAsync(token), Times.Once);
+        _dispatcherMock.Verify(dispatcher => dispatcher.SubscribeToMessageAsync(
+            "order-approved", It.IsAny<Func<Message, Task>>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -539,6 +562,60 @@ public class DistributedProcessEngineTests
         result.ShouldBeAssignableTo<Task>();
 
         await (Task)result!;
+    }
+    private static BpmnModel CreateModel()
+    {
+        return new BpmnModel(
+            ProcessId: "process",
+            Name: "process");
+    }
+
+    private static DistributedProcessEngine CreateTestEngine(
+        IProcessInstanceStore store)
+    {
+        var engine =
+            (DistributedProcessEngine)
+            RuntimeHelpers.GetUninitializedObject(
+                typeof(DistributedProcessEngine));
+
+        SetPrivateField(
+            engine,
+            "_store",
+            store);
+
+        SetPrivateField(
+            engine,
+            "_logger",
+            NullLogger<DistributedProcessEngine>.Instance);
+
+        return engine;
+    }
+
+    private static void SetPrivateField(
+        DistributedProcessEngine engine,
+        string fieldName,
+        object value)
+    {
+        var field = typeof(DistributedProcessEngine)
+            .GetField(
+                fieldName,
+                BindingFlags.Instance |
+                BindingFlags.NonPublic);
+
+        field.ShouldNotBeNull();
+
+        field!.SetValue(
+            engine,
+            value);
+    }
+
+    private static ExecutionToken CreateToken()
+    {
+        return new ExecutionToken(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "node",
+            "event");
     }
 }
 

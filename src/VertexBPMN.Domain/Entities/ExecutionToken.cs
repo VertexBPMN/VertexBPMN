@@ -3,8 +3,10 @@ namespace VertexBPMN.Domain.Entities;
 public class ExecutionToken
 {
     public const string PendingState = "Pending";
+    public const string WaitingState = "Waiting";
     public const string CompletedState = "Completed";
     public const string FailedState = "Failed";
+
     public ExecutionToken(Guid id, Guid processInstanceId, string currentNodeId, string nodeType, Dictionary<string, object> variables, DateTime createdAt, string? assignedWorker = null, DateTime? assignedAt = null, int retryCount = 0)
     {
         Id = id;

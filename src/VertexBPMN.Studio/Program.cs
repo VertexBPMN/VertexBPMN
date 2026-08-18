@@ -15,6 +15,8 @@ var isUiTest = builder.Environment.IsEnvironment("UiTest")
         builder.Configuration["StudioAuthentication:UiTestEnabled"],
         "true",
         StringComparison.OrdinalIgnoreCase);
+var isLocalDevelopment = builder.Environment.IsDevelopment()
+    && builder.Configuration.GetValue<bool>("StudioAuthentication:LocalDevelopmentEnabled");
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
@@ -28,13 +30,13 @@ var oidcAuthority = builder.Configuration["StudioAuthentication:Authority"];
 var oidcClientId = builder.Configuration["StudioAuthentication:ClientId"];
 var oidcClientSecret = builder.Configuration["StudioAuthentication:ClientSecret"];
 var oidcApiScope = builder.Configuration["StudioAuthentication:ApiScope"];
-if (!isUiTest && (string.IsNullOrWhiteSpace(oidcAuthority) || string.IsNullOrWhiteSpace(oidcClientId)))
+if (!isUiTest && !isLocalDevelopment && (string.IsNullOrWhiteSpace(oidcAuthority) || string.IsNullOrWhiteSpace(oidcClientId)))
 {
     throw new InvalidOperationException(
         "StudioAuthentication:Authority and StudioAuthentication:ClientId must be configured before starting VertexBPMN Studio.");
 }
 
-if (isUiTest)
+if (isUiTest || isLocalDevelopment)
 {
     builder.Services.AddAuthentication(options =>
     {
@@ -138,6 +140,7 @@ builder.Services.AddScoped<IPluginService, HttpPluginService>();
 builder.Services.AddScoped<IWorkflowTriggerService, HttpWorkflowTriggerService>();
 
 builder.Services.AddScoped<IConnectorService, HttpConnectorService>();
+builder.Services.AddScoped<IConnectorTemplateService, HttpConnectorTemplateService>();
 builder.Services.AddScoped<IDebuggingService, HttpDebuggingService>();
 builder.Services.AddScoped<ICaseManagementService, GrpcCaseManagementService>();
 builder.Services.AddScoped<NotificationClient>();

@@ -109,7 +109,7 @@ public sealed class ProductionProcessInstanceStore : IProcessInstanceStore
 
     public async Task<List<ExecutionToken>> GetPendingTokensAsync()
         => await _db.ExecutionTokens.AsNoTracking()
-            .Where(t => t.State == "Pending")
+            .Where(t => t.State == ExecutionToken.PendingState)
             .OrderBy(t => t.CreatedAt)
             .Take(500)
             .ToListAsync();

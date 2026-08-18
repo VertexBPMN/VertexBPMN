@@ -749,14 +749,8 @@ namespace VertexBPMN.Engine.Execution
         {
             const int maxRetries = 3;
 
-            if (string.Equals(
-                    token.State,
-                    ExecutionToken.CompletedState,
-                    StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(
-                    token.State,
-                    ExecutionToken.FailedState,
-                    StringComparison.OrdinalIgnoreCase))
+            if (string.Equals( token.State,ExecutionToken.CompletedState,StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(token.State,ExecutionToken.FailedState,StringComparison.OrdinalIgnoreCase))
             {
                 trace.Add(
                     $"TokenSkipped: {token.Id} has terminal state '{token.State}'");
@@ -770,14 +764,18 @@ namespace VertexBPMN.Engine.Execution
                 await _store.SaveTokenAsync(token);
             }
 
-            if (!string.Equals(
-                    token.State,
-                    ExecutionToken.PendingState,
-                    StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(token.State,ExecutionToken.PendingState,StringComparison.OrdinalIgnoreCase))
             {
                 trace.Add(
                     $"TokenSkipped: {token.Id} has non-executable state " +
                     $"'{token.State}'");
+
+                return;
+            }
+
+            if (string.Equals( token.State,ExecutionToken.WaitingState,StringComparison.OrdinalIgnoreCase))
+            {
+                trace.Add($"TokenSkipped: {token.Id} is waiting");
 
                 return;
             }
@@ -941,88 +939,6 @@ namespace VertexBPMN.Engine.Execution
                     out _);
             }
         }
-        //private async Task ProcessTokenAsync(ExecutionToken token, BpmnModel model, List<string> trace, CancellationToken cancellationToken)
-        //{
-        //    const int maxRetries = 3;
-        //    var retryCount = 0;
-
-        //    while (retryCount < maxRetries)
-        //    {
-        //        try
-        //        {
-        //            if (string.Equals(
-        //                    token.State,
-        //                    CompletedTokenState,
-        //                    StringComparison.OrdinalIgnoreCase) ||
-        //                string.Equals(
-        //                    token.State,
-        //                    FailedTokenState,
-        //                    StringComparison.OrdinalIgnoreCase))
-        //            {
-        //                trace.Add(
-        //                    $"TokenSkipped: {token.Id} has terminal state '{token.State}'");
-
-        //                return;
-        //            }
-        //            _processingTokens[token.Id] = token;
-        //            var currentNode = FindNode(model, token.CurrentNodeId);
-        //            if (currentNode == null)
-        //            {
-        //                trace.Add($"NodeNotFound: {token.CurrentNodeId}");
-        //                return;
-        //            }
-
-        //            switch (currentNode)
-        //            {
-        //                case BpmnEvent evt:
-        //                    await ProcessEventAsync(evt, token, model, trace, cancellationToken);
-        //                    break;
-        //                case BpmnTask task:
-        //                    await ProcessTaskAsync(task, token, model, trace, cancellationToken);
-        //                    break;
-        //                case BpmnGateway gateway:
-        //                    await ProcessGatewayAsync(gateway, token, model, trace, cancellationToken);
-        //                    break;
-        //                case BpmnSubprocess subprocess:
-        //                    await ProcessSubprocessAsync(subprocess, token, model, trace, cancellationToken);
-        //                    break;
-        //            }
-
-        //            if (token.AssignedWorker != null)
-        //            {
-        //                var worker = await _store.GetWorkerAsync(token.AssignedWorker);
-        //                if (worker != null)
-        //                {
-        //                    await _store.SaveWorkerAsync(worker with { CurrentLoad = Math.Max(0, worker.CurrentLoad - 1) });
-        //                }
-        //            }
-        //            return;
-        //        }
-        //        catch (Exception ex)
-        //        {
-        //            retryCount++;
-        //            if (retryCount >= maxRetries)
-        //            {
-        //                token.RetryCount = retryCount;
-        //                token.SetState(FailedTokenState);
-
-        //                _logger.LogError( ex,"Max retries reached for token {TokenId}",token.Id);
-
-        //                await _store.SaveTokenAsync(token);
-        //                await _store.SaveToDeadLetterQueueAsync(token, ex.Message);
-        //                trace.Add( $"TokenFailed: {token.Id} - {ex.Message}");
-
-        //                return;
-        //            }
-        //            await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, retryCount)), cancellationToken);
-        //            _logger.LogWarning(ex, "Retry {RetryCount}/{MaxRetries} for token {TokenId}", retryCount, maxRetries, token.Id);
-        //        }
-        //        finally
-        //        {
-        //            _processingTokens.TryRemove(token.Id, out _);
-        //        }
-        //    }
-        //}
 
         private async Task ProcessCaseTokenAsync(CaseToken token, CaseModel model, List<string> trace,
             CancellationToken cancellationToken)
@@ -1213,63 +1129,208 @@ namespace VertexBPMN.Engine.Execution
         private async Task ProcessDefinedEventAsync(BpmnEvent evt, EventDefinition definition, ExecutionToken token,
             BpmnModel model, List<string> trace, CancellationToken cancellationToken)
         {
+            if (definition is MessageEventDefinition messageDefinition)
+            {
+                if (string.IsNullOrWhiteSpace(
+                        messageDefinition.MessageRef))
+                {
+                    throw new DistributedTokenException(
+                        $"Message event '{evt.Id}' has no message reference.");
+                }
+
+                token.SetState(
+                    ExecutionToken.WaitingState);
+
+                await _store.SaveTokenAsync(token);
+
+                trace.Add(
+                    $"MessageEventWaiting: {evt.Id} " +
+                    $"for message {messageDefinition.MessageRef}");
+
+                var resumed = 0;
+
+                await _messageDispatcher.SubscribeToMessageAsync(
+                    messageDefinition.MessageRef,
+                    async message =>
+                    {
+                        try
+                        {
+                            /*
+                             * Verhindert doppelte Zustellung innerhalb
+                             * dieser Engine-Instanz.
+                             */
+                            if (Interlocked.CompareExchange(
+                                    ref resumed,
+                                    0,
+                                    0) != 0)
+                            {
+                                return;
+                            }
+
+                            var waitingToken =
+                                await _store.GetTokenAsync(token.Id);
+
+                            if (!string.Equals(
+                                    waitingToken.State,
+                                    ExecutionToken.WaitingState,
+                                    StringComparison.OrdinalIgnoreCase))
+                            {
+                                return;
+                            }
+
+                            if (!string.Equals(
+                                    waitingToken.CurrentNodeId,
+                                    evt.Id,
+                                    StringComparison.Ordinal))
+                            {
+                                return;
+                            }
+
+                            if (!MatchesCorrelation(
+                                    messageDefinition.CorrelationKey,
+                                    waitingToken,
+                                    message))
+                            {
+                                return;
+                            }
+
+                            /*
+                             * Erst nach allen Prüfungen atomar lokal claimen.
+                             */
+                            if (Interlocked.CompareExchange(
+                                    ref resumed,
+                                    1,
+                                    0) != 0)
+                            {
+                                return;
+                            }
+
+                            var messageVariables =
+                                message.Variables
+                                ?? new Dictionary<string, object>();
+
+                            foreach (var variable in messageVariables)
+                            {
+                                waitingToken.Variables[variable.Key] =
+                                    variable.Value;
+                            }
+
+                            waitingToken.SetState(
+                                ExecutionToken.PendingState);
+
+                            await _store.SaveTokenAsync(
+                                waitingToken);
+
+                            lock (trace)
+                            {
+                                trace.Add(
+                                    $"MessageReceived: {evt.Id} " +
+                                    $"with message {message.Name}");
+                            }
+
+                            await ContinueToNextNodeAsync(
+                                evt.Id,
+                                waitingToken,
+                                model,
+                                trace,
+                                cancellationToken);
+                        }
+                        catch (OperationCanceledException)
+                            when (cancellationToken.IsCancellationRequested)
+                        {
+                            // Die Subscription wird durch den Aufrufer beendet.
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(
+                                ex,
+                                "Failed to resume token {TokenId} " +
+                                "after message {MessageName}",
+                                token.Id,
+                                message.Name);
+                        }
+                    },
+                    cancellationToken);
+
+                return;
+            }
+
+            /*
+             * Andere definierte Events werden noch nicht ausgeführt.
+             * Insbesondere kein stiller Fallback auf ContinueToNextNodeAsync.
+             */
             switch (definition)
             {
                 case TimerEventDefinition:
                     throw new DistributedTokenException(
                         $"Timer event '{evt.Id}' is not yet implemented " +
                         "with a persistent waiting state.");
-
-                case MessageEventDefinition:
-                    throw new DistributedTokenException(
-                        $"Message event '{evt.Id}' is not yet implemented " +
-                        "with a persistent waiting state.");
-
                 case SignalEventDefinition:
                     throw new DistributedTokenException(
-                        $"Signal event '{evt.Id}' is not yet implemented " +
-                        "with a persistent waiting state.");
-
-                case ErrorEventDefinition:
-                    throw new DistributedTokenException(
-                        $"Error event '{evt.Id}' requires scope propagation, " +
-                        "which is not implemented yet.");
-
-                case EscalationEventDefinition:
-                    throw new DistributedTokenException(
-                        $"Escalation event '{evt.Id}' requires scope propagation, " +
-                        "which is not implemented yet.");
-
-                case ConditionalEventDefinition:
-                    throw new DistributedTokenException(
-                        $"Conditional event '{evt.Id}' requires a variable watcher, " +
-                        "which is not implemented yet.");
-
-                case LinkEventDefinition:
-                    throw new DistributedTokenException(
-                        $"Link event '{evt.Id}' requires scope-local link handling, " +
-                        "which is not implemented yet.");
-
-                case CompensationEventDefinition:
-                    throw new DistributedTokenException(
-                        $"Compensation event '{evt.Id}' requires compensation state, " +
-                        "which is not implemented yet.");
-
-                case CancelEventDefinition:
-                    throw new DistributedTokenException(
-                        $"Cancel event '{evt.Id}' requires transaction scope handling, " +
-                        "which is not implemented yet.");
-
-                case TerminateEventDefinition:
-                    throw new DistributedTokenException(
-                        $"Terminate event '{evt.Id}' requires scope termination, " +
-                        "which is not implemented yet.");
-
+                        "Signal subscription handling is not implemented.");
                 default:
                     throw new DistributedTokenException(
-                        $"Unsupported event definition '{definition.Kind}' " +
-                        $"for event '{evt.Id}'.");
+                        $"Event definition '{definition.Kind}' " +
+                        $"for event '{evt.Id}' is not implemented.");
             }
+        
+            //switch (definition)
+            //{
+            //    case TimerEventDefinition:
+            //        throw new DistributedTokenException(
+            //            $"Timer event '{evt.Id}' is not yet implemented " +
+            //            "with a persistent waiting state.");
+
+            //    case MessageEventDefinition:
+            //        throw new DistributedTokenException(
+            //            $"Message event '{evt.Id}' is not yet implemented " +
+            //            "with a persistent waiting state.");
+
+            //    case SignalEventDefinition:
+            //        throw new DistributedTokenException(
+            //            $"Signal event '{evt.Id}' is not yet implemented " +
+            //            "with a persistent waiting state.");
+
+            //    case ErrorEventDefinition:
+            //        throw new DistributedTokenException(
+            //            $"Error event '{evt.Id}' requires scope propagation, " +
+            //            "which is not implemented yet.");
+
+            //    case EscalationEventDefinition:
+            //        throw new DistributedTokenException(
+            //            $"Escalation event '{evt.Id}' requires scope propagation, " +
+            //            "which is not implemented yet.");
+
+            //    case ConditionalEventDefinition:
+            //        throw new DistributedTokenException(
+            //            $"Conditional event '{evt.Id}' requires a variable watcher, " +
+            //            "which is not implemented yet.");
+
+            //    case LinkEventDefinition:
+            //        throw new DistributedTokenException(
+            //            $"Link event '{evt.Id}' requires scope-local link handling, " +
+            //            "which is not implemented yet.");
+
+            //    case CompensationEventDefinition:
+            //        throw new DistributedTokenException(
+            //            $"Compensation event '{evt.Id}' requires compensation state, " +
+            //            "which is not implemented yet.");
+
+            //    case CancelEventDefinition:
+            //        throw new DistributedTokenException(
+            //            $"Cancel event '{evt.Id}' requires transaction scope handling, " +
+            //            "which is not implemented yet.");
+
+            //    case TerminateEventDefinition:
+            //        throw new DistributedTokenException(
+            //            $"Terminate event '{evt.Id}' requires scope termination, " +
+            //            "which is not implemented yet.");
+
+            //    default:
+            //        throw new DistributedTokenException(
+            //            $"Unsupported event definition '{definition.Kind}' " +
+            //            $"for event '{evt.Id}'.");
+            //}
         }
 
         private async Task ProcessNoneEventInlineAsync(BpmnEvent evt, ExecutionToken token, BpmnModel model,
@@ -1289,18 +1350,118 @@ namespace VertexBPMN.Engine.Execution
 
                     return;
 
-                case "intermediateCatchEvent":
-                    trace.Add(
-                        $"IntermediateCatchEvent: {evt.Id}");
+                case "intermediateCatchEvent"
+    when evt.Definitions?.Count == 1 &&
+         evt.Definitions[0] is MessageEventDefinition messageDefinition:
+                    {
+                        if (string.IsNullOrWhiteSpace(messageDefinition.MessageRef))
+                        {
+                            throw new DistributedTokenException(
+                                $"Message event '{evt.Id}' has no message reference.");
+                        }
 
-                    await ContinueToNextNodeAsync(
-                        evt.Id,
-                        token,
-                        model,
-                        trace,
-                        cancellationToken);
+                        token.SetState(ExecutionToken.WaitingState);
 
-                    return;
+                        await _store.SaveTokenAsync(token);
+
+                        trace.Add(
+                            $"MessageEventWaiting: {evt.Id} " +
+                            $"for message {messageDefinition.MessageRef}");
+
+                        /*
+                         * Schutz gegen doppelte Zustellung innerhalb dieser Engine-Instanz.
+                         * Ein verteilter atomarer Claim ist damit noch nicht gelöst.
+                         */
+                        var resumed = 0;
+
+                        await _messageDispatcher.SubscribeToMessageAsync(
+                            messageDefinition.MessageRef,
+                            async message =>
+                            {
+                                try
+                                {
+                                    if (Interlocked.CompareExchange(
+                                            ref resumed,
+                                            0,
+                                            0) != 0)
+                                    {
+                                        return;
+                                    }
+
+                                    var waitingToken = await _store.GetTokenAsync(
+                                        token.Id);
+
+                                    if (!string.Equals(
+                                            waitingToken.State,
+                                            ExecutionToken.WaitingState,
+                                            StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        return;
+                                    }
+
+                                    if (!string.Equals(
+                                            waitingToken.CurrentNodeId,
+                                            evt.Id,
+                                            StringComparison.Ordinal))
+                                    {
+                                        return;
+                                    }
+
+                                    if (!MatchesCorrelation(
+                                            messageDefinition.CorrelationKey,
+                                            waitingToken,
+                                            message))
+                                    {
+                                        return;
+                                    }
+
+                                    if (Interlocked.CompareExchange(
+                                            ref resumed,
+                                            1,
+                                            0) != 0)
+                                    {
+                                        return;
+                                    }
+
+                                    foreach (var variable in message.Variables)
+                                    {
+                                        waitingToken.Variables[variable.Key] =
+                                            variable.Value;
+                                    }
+
+                                    waitingToken.SetState(
+                                        ExecutionToken.PendingState);
+
+                                    await _store.SaveTokenAsync(waitingToken);
+
+                                    lock (trace)
+                                    {
+                                        trace.Add(
+                                            $"MessageReceived: {evt.Id} " +
+                                            $"with message {message.Name}");
+                                    }
+
+                                    await ContinueToNextNodeAsync(
+                                        evt.Id,
+                                        waitingToken,
+                                        model,
+                                        trace,
+                                        cancellationToken);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogError(
+                                        ex,
+                                        "Failed to resume token {TokenId} " +
+                                        "after message {MessageName}",
+                                        token.Id,
+                                        message.Name);
+                                }
+                            },
+                            cancellationToken);
+
+                        break;
+                    }
 
                 case "intermediateThrowEvent":
                     trace.Add(
@@ -1885,6 +2046,34 @@ namespace VertexBPMN.Engine.Execution
             }
 
             return TimeSpan.FromMinutes(1);
+        }
+        private static bool MatchesCorrelation(
+            string? correlationKey,
+            ExecutionToken token,
+            Message message)
+        {
+            if (string.IsNullOrWhiteSpace(correlationKey))
+            {
+                return true;
+            }
+
+            if (!token.Variables.TryGetValue(
+                    correlationKey,
+                    out var expectedValue))
+            {
+                return false;
+            }
+
+            if (!message.Variables.TryGetValue(
+                    correlationKey,
+                    out var receivedValue))
+            {
+                return false;
+            }
+
+            return Equals(
+                expectedValue,
+                receivedValue);
         }
 
         public void Dispose()

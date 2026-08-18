@@ -35,7 +35,6 @@ public static class ApiModule
         services.AddScoped<IVisualDebugStepService, PersistentVisualDebugStepService>();
         services.AddScoped<IProcessVisualizationService, PersistentProcessVisualizationService>();
         services.AddSingleton<IPluginManager, PluginManager>();
-        services.AddTransient<AuditLoggingMiddleware>();
 
         return services;
     }

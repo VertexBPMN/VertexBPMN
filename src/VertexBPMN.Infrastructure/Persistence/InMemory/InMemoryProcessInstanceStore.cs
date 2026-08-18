@@ -66,10 +66,12 @@ public sealed class InMemoryProcessInstanceStore : IProcessInstanceStore
     public Task SaveTokenAsync(ExecutionToken token)
     {
         ArgumentNullException.ThrowIfNull(token);
+
         if (token.Id == Guid.Empty)
         {
             throw new ArgumentException("Execution token must have a non-empty Id.", nameof(token));
         }
+
         if (string.IsNullOrWhiteSpace(token.State))
         {
             token.SetState(ExecutionToken.PendingState);

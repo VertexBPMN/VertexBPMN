@@ -8,6 +8,7 @@ namespace VertexBPMN.Infrastructure.Persistence.Services;
 public sealed class PersistentConnectorService(
     BpmnDbContext db,
     ICredentialService credentialService,
+    IConnectorTemplateService connectorTemplateService,
     IAuditLogService auditLogService) : IConnectorService
 {
     public async Task<IReadOnlyList<ConnectorMetadata>> ListAsync(string tenantId, CancellationToken cancellationToken = default)
@@ -43,6 +44,7 @@ public sealed class PersistentConnectorService(
             Description = normalized.Description,
             Endpoint = normalized.Endpoint,
             CredentialId = normalized.CredentialId,
+            TemplateId = normalized.TemplateId,
             Enabled = normalized.Enabled,
             CreatedAt = now,
             LastModified = now
@@ -67,6 +69,7 @@ public sealed class PersistentConnectorService(
         record.Description = normalized.Description;
         record.Endpoint = normalized.Endpoint;
         record.CredentialId = normalized.CredentialId;
+        record.TemplateId = normalized.TemplateId;
         record.Enabled = normalized.Enabled;
         record.LastModified = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
@@ -97,6 +100,19 @@ public sealed class PersistentConnectorService(
         return true;
     }
 
+    public async Task<ConnectorTestResult?> TestAsync(string tenantId, string id, CancellationToken cancellationToken = default)
+    {
+        ValidateTenant(tenantId);
+        var record = await FindAsync(tenantId, id, cancellationToken);
+        if (record is null) return null;
+        var endpointHost = Uri.TryCreate(record.Endpoint, UriKind.Absolute, out var endpoint) ? endpoint.Host : null;
+        var result = record.Enabled && endpointHost is not null
+            ? new ConnectorTestResult(true, "Connector configuration is ready. Credentials remain server-side and are not transmitted by this safe test.", endpointHost, record.CredentialId is not null)
+            : new ConnectorTestResult(false, record.Enabled ? "An absolute HTTP(S) endpoint is required before testing." : "Enable the connector before testing.", endpointHost, record.CredentialId is not null);
+        await AuditAsync("connector.tested", record, cancellationToken, new { result.Success, result.CredentialConfigured, endpointHost });
+        return result;
+    }
+
     private async Task<ConnectorWriteRequest> NormalizeAsync(string tenantId, ConnectorWriteRequest request, CancellationToken cancellationToken)
     {
         var name = Required(request.Name, "Name", 256);
@@ -111,7 +127,10 @@ public sealed class PersistentConnectorService(
         if (credentialId is not null && await credentialService.GetAsync(tenantId, credentialId, cancellationToken) is null)
             throw new ConnectorCredentialException("The credential reference does not exist in this tenant.");
 
-        return new ConnectorWriteRequest(name, type, description, endpoint, credentialId, request.Enabled);
+        var templateId = Optional(request.TemplateId, "TemplateId", 128);
+        if (templateId is not null && await connectorTemplateService.GetAsync(tenantId, templateId, cancellationToken) is null)
+            throw new ConnectorTemplateReferenceException("The connector template reference does not exist in this tenant.");
+        return new ConnectorWriteRequest(name, type, description, endpoint, credentialId, templateId, request.Enabled);
     }
 
     private Task<ConnectorRecord?> FindAsync(string tenantId, string id, CancellationToken cancellationToken) =>
@@ -131,7 +150,7 @@ public sealed class PersistentConnectorService(
 
     private static ConnectorMetadata ToMetadata(ConnectorRecord record) =>
         new(record.Id, record.TenantId, record.Name, record.Type, record.Description, record.Endpoint,
-            record.CredentialId, record.Enabled, record.CreatedAt, record.LastModified);
+            record.CredentialId, record.TemplateId, record.Enabled, record.CreatedAt, record.LastModified);
 
     private static string Required(string? value, string field, int maxLength)
     {
@@ -154,3 +173,4 @@ public sealed class PersistentConnectorService(
 
 public sealed class ConnectorConflictException(string message) : Exception(message);
 public sealed class ConnectorCredentialException(string message) : Exception(message);
+public sealed class ConnectorTemplateReferenceException(string message) : Exception(message);

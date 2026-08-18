@@ -13,6 +13,7 @@ public sealed class ConnectorRecord
     public string? Description { get; set; }
     public string? Endpoint { get; set; }
     public string? CredentialId { get; set; }
+    public string? TemplateId { get; set; }
     public bool Enabled { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime LastModified { get; set; } = DateTime.UtcNow;

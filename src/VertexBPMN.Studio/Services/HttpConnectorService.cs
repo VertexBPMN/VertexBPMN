@@ -10,22 +10,30 @@ public sealed class HttpConnectorService(IHttpClientFactory httpClientFactory) :
         return await client.GetFromJsonAsync<List<StudioConnector>>($"/api/connectors?tenantId={Uri.EscapeDataString(tenantId)}", cancellationToken) ?? [];
     }
 
-    public async Task<StudioConnector> CreateAsync(string tenantId, string name, string type, string? description, string? endpoint, string? credentialId, bool enabled = true, CancellationToken cancellationToken = default)
+    public async Task<StudioConnector> CreateAsync(string tenantId, string name, string type, string? description, string? endpoint, string? credentialId, string? templateId, bool enabled = true, CancellationToken cancellationToken = default)
     {
         var client = httpClientFactory.CreateClient("VertexBPMN.Api");
         using var response = await client.PostAsJsonAsync("/api/connectors",
-            new { tenantId, name, type, description, endpoint, credentialId, enabled }, cancellationToken);
+            new { tenantId, name, type, description, endpoint, credentialId, templateId, enabled }, cancellationToken);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<StudioConnector>(cancellationToken)
             ?? throw new InvalidOperationException("The API returned no connector metadata.");
     }
 
-    public async Task UpdateAsync(string tenantId, string id, string name, string type, string? description, string? endpoint, string? credentialId, bool enabled, CancellationToken cancellationToken = default)
+    public async Task UpdateAsync(string tenantId, string id, string name, string type, string? description, string? endpoint, string? credentialId, string? templateId, bool enabled, CancellationToken cancellationToken = default)
     {
         var client = httpClientFactory.CreateClient("VertexBPMN.Api");
         using var response = await client.PutAsJsonAsync($"/api/connectors/{Uri.EscapeDataString(id)}",
-            new { tenantId, name, type, description, endpoint, credentialId, enabled }, cancellationToken);
+            new { tenantId, name, type, description, endpoint, credentialId, templateId, enabled }, cancellationToken);
         response.EnsureSuccessStatusCode();
+    }
+
+    public async Task<StudioConnectorTestResult> TestAsync(string tenantId, string id, CancellationToken cancellationToken = default)
+    {
+        var client = httpClientFactory.CreateClient("VertexBPMN.Api");
+        using var response = await client.PostAsJsonAsync($"/api/connectors/{Uri.EscapeDataString(id)}/test", new { tenantId }, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<StudioConnectorTestResult>(cancellationToken) ?? throw new InvalidOperationException("The API returned no connector test result.");
     }
 
     public async Task SetEnabledAsync(string tenantId, string id, bool enabled, CancellationToken cancellationToken = default)

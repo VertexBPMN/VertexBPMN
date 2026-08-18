@@ -221,10 +221,12 @@ public class BpmnDbContext : DbContext
         entity.Property(e => e.Description).HasMaxLength(2000);
         entity.Property(e => e.Endpoint).HasMaxLength(2048);
         entity.Property(e => e.CredentialId).HasMaxLength(128);
+        entity.Property(e => e.TemplateId).HasMaxLength(128);
         entity.Property(e => e.Enabled).IsRequired();
         entity.HasIndex(e => new { e.TenantId, e.Name }).IsUnique();
         entity.HasIndex(e => e.TenantId);
         entity.HasIndex(e => e.CredentialId);
+        entity.HasIndex(e => e.TemplateId);
         entity.HasIndex(e => e.LastModified);
     }
 

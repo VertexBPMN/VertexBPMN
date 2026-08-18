@@ -2,6 +2,7 @@
 @using System.Text
 @inject VertexBPMN.Studio.Services.IRepositoryService RepositoryService
 @inject VertexBPMN.Studio.Services.IConnectorTemplateService ConnectorTemplateService
+@inject VertexBPMN.Studio.Services.ICredentialService CredentialService
 @inject VertexBPMN.Studio.Services.StudioTenantContext TenantContext
 @inject MudBlazor.ISnackbar Snackbar
 @inject IHttpClientFactory HttpClientFactory
@@ -37,7 +38,7 @@
         }
         else
         {
-            <ConnectorTemplatePalette Templates="_templates" OnInsert="InsertConfiguredTemplateAsync" />
+            <ConnectorTemplatePalette Templates="_templates" Credentials="_credentials" OnInsert="InsertConfiguredTemplateAsync" />
         }
     </MudPaper>
 
@@ -57,6 +58,7 @@
     private HttpClient _httpClient = default!;
     private BpmnModelerSurface? _modeler;
     private IReadOnlyList<StudioConnectorTemplate> _templates = [];
+    private IReadOnlyList<StudioCredential> _credentials = [];
     private bool _insertingTemplate;
 
     private const string FallbackBpmn = """
@@ -104,9 +106,8 @@
     private async Task LoadConnectorTemplatesAsync()
     {
         var tenantId = TenantContext.CurrentTenantId;
-        _templates = string.IsNullOrWhiteSpace(tenantId)
-            ? []
-            : await ConnectorTemplateService.ListAsync(tenantId);
+        _templates = string.IsNullOrWhiteSpace(tenantId) ? [] : await ConnectorTemplateService.ListAsync(tenantId);
+        _credentials = string.IsNullOrWhiteSpace(tenantId) ? [] : await CredentialService.ListAsync(tenantId);
         if (_modeler is not null)
             await _modeler.ConfigureQuickInsertAsync(_templates);
     }

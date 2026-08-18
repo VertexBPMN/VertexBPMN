@@ -35,6 +35,13 @@ else
                             }
                         </MudSelect>
                     }
+                    else if (string.Equals(property.Type, "credential", StringComparison.OrdinalIgnoreCase))
+                    {
+                        <MudSelect T="string" Label="@Label(property)" Required="@property.Required" Value="@ValueFor(property)" ValueChanged="@(value => SetValue(property.Key, value))">
+                            <MudSelectItem T="string" Value="@string.Empty">No credential</MudSelectItem>
+                            @foreach (var credential in Credentials) { <MudSelectItem T="string" Value="@credential.Id">@credential.Name (@credential.Type)</MudSelectItem> }
+                        </MudSelect>
+                    }
                     else
                     {
                         <MudTextField T="string" Label="@Label(property)" Required="@property.Required" InputType="@(string.Equals(property.Type, "number", StringComparison.OrdinalIgnoreCase) ? InputType.Number : InputType.Text)" Value="@ValueFor(property)" ValueChanged="@(value => SetValue(property.Key, value))" />
@@ -49,6 +56,7 @@ else
 @code {
     [Parameter] public IReadOnlyList<StudioConnectorTemplate> Templates { get; set; } = [];
     [Parameter] public EventCallback<ConfiguredConnectorTemplate> OnInsert { get; set; }
+    [Parameter] public IReadOnlyList<StudioCredential> Credentials { get; set; } = [];
 
     private StudioConnectorTemplate? _selected;
     private Dictionary<string, string> _values = new(StringComparer.Ordinal);

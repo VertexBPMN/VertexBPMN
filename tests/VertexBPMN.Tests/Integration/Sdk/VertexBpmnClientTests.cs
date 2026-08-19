@@ -67,4 +67,22 @@ public sealed class VertexBpmnClientTests
         Assert.NotNull(instance);
     }
 
+    [Fact]
+    public async Task ValidateBpmnAsync_AndStartTestRunAsync_AreAvailableThroughSdk()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        using var httpClient = factory.CreateClient();
+        var client = new VertexBpmnClient(httpClient);
+        var key = $"sdk-test-run-{Guid.NewGuid():N}";
+        var bpmnXml = $"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='{key}'><startEvent id='start'/><endEvent id='end'/></process></definitions>";
+
+        var validation = await client.ValidateBpmnAsync(bpmnXml);
+        var testRun = await client.StartTestRunAsync(bpmnXml, $"{key}.bpmn", new Dictionary<string, object?> { ["source"] = "sdk" });
+
+        Assert.NotNull(validation);
+        Assert.True(validation!.IsValid);
+        Assert.Equal(key, testRun.Definition.Key);
+        Assert.Equal(key, testRun.Instance.ProcessDefinitionKey);
+    }
+
 }

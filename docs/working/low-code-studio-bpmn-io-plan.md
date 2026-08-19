@@ -541,6 +541,13 @@ Akzeptanzkriterien:
 - SDK NuGet enthaelt die neuen Clients und Models.
 - CLI-Help ist durch Tests gegen Implementierung abgesichert.
 
+Umsetzungsstand (2026-08-20): abgeschlossen.
+
+- API: Credentials, Connectoren/Templates, Forms, DMN, BPMN-Validierung und Runtime-Trace sind als Verträge verfügbar. `POST /api/test-runs` führt Deployment und Prozessstart als einen Testlauf aus.
+- CMMN: `api/case-definitions` speichert validierte Case-Modelle tenant-spezifisch in der BPMN-Datenbank und bietet Deploy, Read und Start. Migration `20260820003000_AddCaseDefinitions` gehört zum Rollout.
+- SDK: `VertexBpmnClient` enthält die Phase-12-Clients und typisierten Modelle, einschließlich `DeployCmmnAsync`, `StartCaseAsync` und `StartTestRunAsync`.
+- CLI: Credentials, Connectors, Templates, Validierung, DMN-/Form-Deployment und Test-Runs sind verfügbar; der optionale Tenant fällt lokal auf `default` zurück.
+
 ## Phase 13: n8n Importer
 
 Prioritaet: P3  

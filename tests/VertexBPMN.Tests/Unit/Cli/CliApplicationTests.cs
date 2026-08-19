@@ -57,7 +57,7 @@ public sealed class CliApplicationTests
     }
 
     [Fact]
-    public async Task Help_AdvertisesDeployBpmnFileAndOptionalTenant()
+    public async Task Help_AdvertisesPhaseTwelveCommands()
     {
         using var output = new StringWriter();
         using var error = new StringWriter();
@@ -67,6 +67,11 @@ public sealed class CliApplicationTests
 
         Assert.Equal(0, exitCode);
         Assert.Contains("deploy-bpmn <bpmn-file> [tenant]", output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("deploy-dmn <dmn-file> [tenant]", output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("deploy-form <form-json> [tenant]", output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("test-run <bpmn-file> <variables-json> [tenant]", output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("credential create|list|rotate", output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("connector create|list|test", output.ToString(), StringComparison.Ordinal);
         Assert.Equal(string.Empty, error.ToString());
     }
 
@@ -79,6 +84,13 @@ public sealed class CliApplicationTests
         services.AddSingleton(Mock.Of<IWorkerNodeManager>());
         services.AddSingleton(Mock.Of<IDependencyRegistry>());
         services.AddSingleton(Mock.Of<IWorkflowTriggerService>());
+        services.AddSingleton(Mock.Of<IRuntimeService>());
+        services.AddSingleton(Mock.Of<ICredentialService>());
+        services.AddSingleton(Mock.Of<IConnectorService>());
+        services.AddSingleton(Mock.Of<IConnectorTemplateService>());
+        services.AddSingleton(Mock.Of<IFormDefinitionService>());
+        services.AddSingleton(Mock.Of<IDecisionService>());
+        services.AddSingleton(Mock.Of<ISemanticValidationService>());
         services.AddSingleton(repositoryService);
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
         services.AddSingleton(DashboardLauncherFactory);

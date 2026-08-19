@@ -157,6 +157,63 @@ public sealed class VertexBpmnClient
     public Task<FormSchema?> GetTaskFormSchemaAsync(Guid taskId, CancellationToken cancellationToken = default)
         => SendForNullableAsync<FormSchema>(HttpMethod.Get, $"api/vertex/task/{taskId}/form-schema", cancellationToken);
 
+    public async Task<IReadOnlyList<CredentialMetadata>> ListCredentialsAsync(string? tenantId = null, CancellationToken cancellationToken = default)
+        => await SendAsync<List<CredentialMetadata>>(HttpMethod.Get, BuildUri("api/credentials", ("tenantId", tenantId ?? options.TenantId)), cancellationToken) ?? [];
+
+    public Task<CredentialMetadata?> CreateCredentialAsync(string name, string type, IReadOnlyDictionary<string, string> secrets, string? description = null, string? tenantId = null, CancellationToken cancellationToken = default)
+        => SendForNullableAsync<CredentialMetadata>(HttpMethod.Post, "api/credentials", new CredentialWriteRequest(tenantId ?? options.TenantId, name, type, description, secrets), cancellationToken);
+
+    public Task RotateCredentialSecretAsync(string credentialId, string key, string value, string? tenantId = null, CancellationToken cancellationToken = default)
+        => SendWithoutContentAsync(HttpMethod.Post, $"api/credentials/{Uri.EscapeDataString(credentialId)}/rotate", new CredentialSecretRotationRequest(tenantId ?? options.TenantId, key, value), cancellationToken);
+
+    public async Task<IReadOnlyList<ConnectorMetadata>> ListConnectorsAsync(string? tenantId = null, CancellationToken cancellationToken = default)
+        => await SendAsync<List<ConnectorMetadata>>(HttpMethod.Get, BuildUri("api/connectors", ("tenantId", tenantId ?? options.TenantId)), cancellationToken) ?? [];
+
+    public Task<ConnectorMetadata?> CreateConnectorAsync(ConnectorWriteRequest request, string? tenantId = null, CancellationToken cancellationToken = default)
+        => SendForNullableAsync<ConnectorMetadata>(HttpMethod.Post, "api/connectors", new ConnectorRequest(tenantId ?? options.TenantId, request.Name, request.Type, request.Description, request.Endpoint, request.CredentialId, request.TemplateId, request.Enabled), cancellationToken);
+
+    public Task<ConnectorTestResult?> TestConnectorAsync(string connectorId, string? tenantId = null, CancellationToken cancellationToken = default)
+        => SendForNullableAsync<ConnectorTestResult>(HttpMethod.Post, $"api/connectors/{Uri.EscapeDataString(connectorId)}/test", new TenantRequest(tenantId ?? options.TenantId), cancellationToken);
+
+    public async Task<IReadOnlyList<ConnectorTemplateMetadata>> ListConnectorTemplatesAsync(string? tenantId = null, CancellationToken cancellationToken = default)
+        => await SendAsync<List<ConnectorTemplateMetadata>>(HttpMethod.Get, BuildUri("api/connector-templates", ("tenantId", tenantId ?? options.TenantId)), cancellationToken) ?? [];
+
+    public Task<SemanticValidationResult?> ValidateBpmnAsync(string bpmnXml, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(bpmnXml);
+        return SendForNullableAsync<SemanticValidationResult>(HttpMethod.Post, "api/diagnostics/bpmn", bpmnXml, cancellationToken);
+    }
+
+    public Task DeployDmnAsync(string decisionKey, string name, string dmnXml, string? tenantId = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(decisionKey);
+        ArgumentException.ThrowIfNullOrWhiteSpace(dmnXml);
+        return SendWithoutContentAsync(HttpMethod.Post, "api/decision/deploy", new DeployDecisionRequest(decisionKey, name, dmnXml, tenantId ?? options.TenantId), cancellationToken);
+    }
+
+    public Task<DecisionResult?> EvaluateDecisionAsync(string decisionKey, IDictionary<string, object?> inputs, string? tenantId = null, CancellationToken cancellationToken = default)
+        => SendForNullableAsync<DecisionResult>(HttpMethod.Post, "api/decision/evaluate", new EvaluateDecisionRequest(decisionKey, inputs, tenantId ?? options.TenantId), cancellationToken);
+
+    public Task<FormDefinitionMetadata?> CreateFormAsync(string key, string name, string schema, string? tenantId = null, CancellationToken cancellationToken = default)
+        => SendForNullableAsync<FormDefinitionMetadata>(HttpMethod.Post, "api/forms", new FormWriteRequest(tenantId ?? options.TenantId, key, name, schema), cancellationToken);
+
+    public async Task<TestRunResult> StartTestRunAsync(string bpmnXml, string name, IDictionary<string, object?>? variables = null, string? tenantId = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(bpmnXml);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        return await SendForNullableAsync<TestRunResult>(HttpMethod.Post, "api/test-runs", new StartTestRunRequest(bpmnXml, name, variables, $"sdk-test-{Guid.NewGuid():N}", tenantId ?? options.TenantId), cancellationToken)
+            ?? throw new InvalidOperationException("The API returned no test-run result.");
+    }
+
+    public Task<RuntimeExecutionTrace?> GetRuntimeTraceAsync(Guid processInstanceId, CancellationToken cancellationToken = default)
+        => SendForNullableAsync<RuntimeExecutionTrace>(HttpMethod.Get, $"api/visual-debug/trace/{processInstanceId}", cancellationToken);
+
+    public Task<CaseDefinition?> DeployCmmnAsync(string key, string name, string cmmnXml, string? tenantId = null, CancellationToken cancellationToken = default)
+        => SendForNullableAsync<CaseDefinition>(HttpMethod.Post, "api/case-definitions/deploy", new DeployCaseRequest(key, name, cmmnXml, tenantId ?? options.TenantId), cancellationToken);
+
+    public Task<CaseRunResult?> StartCaseAsync(string key, string? tenantId = null, CancellationToken cancellationToken = default)
+        => SendForNullableAsync<CaseRunResult>(HttpMethod.Post, $"api/case-definitions/{Uri.EscapeDataString(key)}/start", new TenantRequest(tenantId ?? options.TenantId), cancellationToken);
+
     private async Task<T?> SendForNullableAsync<T>(HttpMethod method, string uri, CancellationToken cancellationToken)
         => await SendForNullableAsync<T>(method, uri, null, cancellationToken);
 
@@ -227,4 +284,13 @@ public sealed class VertexBpmnClient
     private sealed record InvokeWorkflowTriggerRequest(IDictionary<string, object?>? Variables, string? BusinessKey);
     private sealed record UserRequest(string UserId);
     private sealed record VariablesRequest(IDictionary<string, object?>? Variables);
+    private sealed record CredentialWriteRequest(string? TenantId, string Name, string Type, string? Description, IReadOnlyDictionary<string, string> Secrets);
+    private sealed record CredentialSecretRotationRequest(string? TenantId, string Key, string Value);
+    private sealed record ConnectorRequest(string? TenantId, string Name, string Type, string? Description, string? Endpoint, string? CredentialId, string? TemplateId, bool Enabled);
+    private sealed record TenantRequest(string? TenantId);
+    private sealed record DeployDecisionRequest(string DecisionKey, string Name, string DmnXml, string? TenantId);
+    private sealed record EvaluateDecisionRequest(string DecisionKey, IDictionary<string, object?> Inputs, string? TenantId);
+    private sealed record FormWriteRequest(string? TenantId, string Key, string Name, string Schema);
+    private sealed record StartTestRunRequest(string BpmnXml, string Name, IDictionary<string, object?>? Variables, string BusinessKey, string? TenantId);
+    private sealed record DeployCaseRequest(string Key, string Name, string CmmnXml, string? TenantId);
 }

@@ -34,6 +34,7 @@ public class BpmnDbContext : DbContext
     public DbSet<ConnectorTemplateRecord> ConnectorTemplates => Set<ConnectorTemplateRecord>();
     public DbSet<WorkflowTrigger> WorkflowTriggers => Set<WorkflowTrigger>();
     public DbSet<FormDefinitionRecord> FormDefinitions => Set<FormDefinitionRecord>();
+    public DbSet<CaseDefinitionRecord> CaseDefinitions => Set<CaseDefinitionRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -57,6 +58,7 @@ public class BpmnDbContext : DbContext
         ConfigureConnectorTemplates(modelBuilder);
         ConfigureWorkflowTriggers(modelBuilder);
         ConfigureFormDefinitions(modelBuilder);
+        ConfigureCaseDefinitions(modelBuilder);
 
         // Seed sample data (deterministic IDs & timestamps)
         var deploymentId = Guid.Parse("11111111-1111-1111-1111-111111111111");
@@ -545,6 +547,12 @@ public class BpmnDbContext : DbContext
     {
         var entity = modelBuilder.Entity<FormDefinitionRecord>();
         entity.HasKey(x => x.Id); entity.Property(x => x.TenantId).HasMaxLength(64).IsRequired(); entity.Property(x => x.Key).HasMaxLength(128).IsRequired(); entity.Property(x => x.Name).HasMaxLength(256).IsRequired(); entity.Property(x => x.Schema).IsRequired(); entity.HasIndex(x => new { x.TenantId, x.Key }).IsUnique();
+    }
+
+    private static void ConfigureCaseDefinitions(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<CaseDefinitionRecord>();
+        entity.HasKey(x => x.Id); entity.Property(x => x.TenantId).HasMaxLength(64).IsRequired(); entity.Property(x => x.Key).HasMaxLength(128).IsRequired(); entity.Property(x => x.Name).HasMaxLength(256).IsRequired(); entity.Property(x => x.CmmnXml).IsRequired(); entity.HasIndex(x => new { x.TenantId, x.Key }).IsUnique();
     }
 
     private static void ConfigureHistoryEvent(ModelBuilder modelBuilder)

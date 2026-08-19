@@ -19,6 +19,13 @@ internal sealed class CliApplication
     private readonly IDependencyRegistry _dependencyRegistry;
     private readonly IWorkflowTriggerService _triggerService;
     private readonly IRepositoryService _repositoryService;
+    private readonly IRuntimeService _runtimeService;
+    private readonly ICredentialService _credentialService;
+    private readonly IConnectorService _connectorService;
+    private readonly IConnectorTemplateService _connectorTemplateService;
+    private readonly IFormDefinitionService _formDefinitionService;
+    private readonly IDecisionService _decisionService;
+    private readonly ISemanticValidationService _validationService;
     private readonly DashboardLauncher _dashboardLauncher;
 
     public CliApplication(IServiceProvider services, TextWriter output, TextWriter error)
@@ -32,6 +39,13 @@ internal sealed class CliApplication
         _dependencyRegistry = services.GetRequiredService<IDependencyRegistry>();
         _triggerService = services.GetRequiredService<IWorkflowTriggerService>();
         _repositoryService = services.GetRequiredService<IRepositoryService>();
+        _runtimeService = services.GetRequiredService<IRuntimeService>();
+        _credentialService = services.GetRequiredService<ICredentialService>();
+        _connectorService = services.GetRequiredService<IConnectorService>();
+        _connectorTemplateService = services.GetRequiredService<IConnectorTemplateService>();
+        _formDefinitionService = services.GetRequiredService<IFormDefinitionService>();
+        _decisionService = services.GetRequiredService<IDecisionService>();
+        _validationService = services.GetRequiredService<ISemanticValidationService>();
         _dashboardLauncher = services.GetRequiredService<DashboardLauncher>();
     }
 
@@ -102,6 +116,19 @@ internal sealed class CliApplication
                 case "trigger":
                     await ExecuteTriggerCommandAsync(args, cancellationToken);
                     return 0;
+                case "credential":
+                    await ExecuteCredentialCommandAsync(args, cancellationToken);
+                    return 0;
+                case "connector":
+                    await ExecuteConnectorCommandAsync(args, cancellationToken);
+                    return 0;
+                case "template":
+                    await ExecuteTemplateCommandAsync(args, cancellationToken);
+                    return 0;
+                case "validate":
+                    RequireArguments(args, 2);
+                    await PrintValidationAsync(await ReadFileAsync(args[1]));
+                    return 0;
                 case "execute":
                     RequireArguments(args, 2);
                     var model = await _bpmnParser.ParseAsync(await ReadFileAsync(args[1]), cancellationToken);
@@ -119,6 +146,28 @@ internal sealed class CliApplication
                         args.Length > 2 ? args[2] : null,
                         cancellationToken);
                     await _output.WriteLineAsync($"BPMN deployed: {deployed.Key} ({deployed.Id})");
+                    return 0;
+                case "deploy-dmn":
+                    RequireArguments(args, 2);
+                    var dmnPath = args[1];
+                    var decisionKey = Path.GetFileNameWithoutExtension(dmnPath);
+                    await _decisionService.DeployAsync(decisionKey, decisionKey, await ReadFileAsync(dmnPath), args.Length > 2 ? args[2] : null);
+                    await _output.WriteLineAsync($"DMN deployed: {decisionKey}");
+                    return 0;
+                case "deploy-form":
+                    RequireArguments(args, 2);
+                    var formPath = args[1];
+                    var formKey = Path.GetFileNameWithoutExtension(formPath);
+                    var form = await _formDefinitionService.CreateAsync(TenantAt(args, 2), new(formKey, formKey, await ReadFileAsync(formPath)), cancellationToken);
+                    await _output.WriteLineAsync($"Form deployed: {form.Key} ({form.Id})");
+                    return 0;
+                case "test-run":
+                    RequireArguments(args, 3);
+                    var testPath = args[1];
+                    var testDefinition = await _repositoryService.DeployAsync(await ReadFileAsync(testPath), Path.GetFileName(testPath), args.Length > 3 ? args[3] : null, cancellationToken);
+                    var variables = JsonSerializer.Deserialize<Dictionary<string, object>>(await ReadFileAsync(args[2])) ?? throw new CliUsageException("Variables must be a JSON object.");
+                    var instance = await _runtimeService.StartProcessByKeyAsync(testDefinition.Key, variables, $"cli-test-{Guid.NewGuid():N}", args.Length > 3 ? args[3] : null, cancellationToken);
+                    await _output.WriteLineAsync($"Test run started: {instance.Id} ({testDefinition.Key})");
                     return 0;
                 case "register-bpmn":
                     RequireArguments(args, 3);
@@ -264,8 +313,74 @@ internal sealed class CliApplication
         }
     }
 
+    private async Task ExecuteCredentialCommandAsync(string[] args, CancellationToken cancellationToken)
+    {
+        RequireArguments(args, 2);
+        switch (args[1].ToLowerInvariant())
+        {
+            case "create":
+                RequireArguments(args, 5);
+                var secrets = JsonSerializer.Deserialize<Dictionary<string, string>>(args[4]) ?? throw new CliUsageException("Secrets must be a JSON object.");
+                var credential = await _credentialService.CreateAsync(TenantAt(args, 6), new(args[2], args[3], args.Length > 5 ? args[5] : null, secrets), cancellationToken);
+                await _output.WriteLineAsync($"Credential created: {credential.Id}");
+                break;
+            case "list":
+                foreach (var item in await _credentialService.ListAsync(TenantAt(args, 2), cancellationToken))
+                    await _output.WriteLineAsync($"{item.Id}  {item.Name}  {item.Type}");
+                break;
+            case "rotate":
+                RequireArguments(args, 5);
+                if (!await _credentialService.RotateSecretAsync(TenantAt(args, 5), args[2], new(args[3], args[4]), cancellationToken))
+                    throw new CliUsageException("Credential not found.");
+                await _output.WriteLineAsync($"Credential secret rotated: {args[2]}");
+                break;
+            default: throw new CliUsageException("Usage: credential create <name> <type> <secrets-json> [description] [tenant] | list [tenant] | rotate <id> <key> <value> [tenant]");
+        }
+    }
+
+    private async Task ExecuteConnectorCommandAsync(string[] args, CancellationToken cancellationToken)
+    {
+        RequireArguments(args, 2);
+        switch (args[1].ToLowerInvariant())
+        {
+            case "list":
+                foreach (var item in await _connectorService.ListAsync(TenantAt(args, 2), cancellationToken))
+                    await _output.WriteLineAsync($"{item.Id}  {item.Name}  {item.Type}  {(item.Enabled ? "enabled" : "disabled")}");
+                break;
+            case "create":
+                RequireArguments(args, 4);
+                var connector = await _connectorService.CreateAsync(TenantAt(args, 7), new(args[2], args[3], null, args.Length > 4 ? args[4] : null, args.Length > 5 ? args[5] : null, args.Length > 6 ? args[6] : null), cancellationToken);
+                await _output.WriteLineAsync($"Connector created: {connector.Id}");
+                break;
+            case "test":
+                RequireArguments(args, 3);
+                var result = await _connectorService.TestAsync(TenantAt(args, 3), args[2], cancellationToken) ?? throw new CliUsageException("Connector not found.");
+                await _output.WriteLineAsync($"Connector test: {(result.Success ? "success" : "failed")} - {result.Message}");
+                break;
+            default: throw new CliUsageException("Usage: connector list [tenant] | create <name> <type> [endpoint] [credential-id] [template-id] [tenant] | test <id> [tenant]");
+        }
+    }
+
+    private async Task ExecuteTemplateCommandAsync(string[] args, CancellationToken cancellationToken)
+    {
+        if (args.Length is > 1 && !args[1].Equals("list", StringComparison.OrdinalIgnoreCase))
+            throw new CliUsageException("Usage: template list [tenant]");
+        foreach (var template in await _connectorTemplateService.ListAsync(TenantAt(args, 2), cancellationToken))
+            await _output.WriteLineAsync($"{template.Id}  {template.Name}  {template.Category}");
+    }
+
+    private async Task PrintValidationAsync(string bpmnXml)
+    {
+        var validation = _validationService.ValidateBpmn(bpmnXml);
+        await _output.WriteLineAsync(validation.IsValid ? "BPMN is valid." : "BPMN is invalid.");
+        foreach (var error in validation.Errors ?? []) await _output.WriteLineAsync($"Error: {error}");
+        foreach (var warning in validation.Warnings ?? []) await _output.WriteLineAsync($"Warning: {warning}");
+    }
+
     private static Guid ParseGuid(string value)
         => Guid.TryParse(value, out var id) ? id : throw new CliUsageException($"Invalid trigger id: {value}");
+
+    private static string TenantAt(string[] args, int index) => args.Length > index && !string.IsNullOrWhiteSpace(args[index]) ? args[index] : "default";
 
     private async Task ExecuteConfigCommandAsync(string[] args, CancellationToken cancellationToken)
     {
@@ -327,6 +442,10 @@ internal sealed class CliApplication
         _output.WriteLine("  execute <bpmn-file>                         Execute a BPMN file");
         _output.WriteLine("  execute-id <process-id>                     Execute a registered BPMN process");
         _output.WriteLine("  deploy-bpmn <bpmn-file> [tenant]            Persist BPMN for later execution or triggers");
+        _output.WriteLine("  deploy-dmn <dmn-file> [tenant]              Deploy a DMN decision table");
+        _output.WriteLine("  deploy-form <form-json> [tenant]            Deploy a form schema");
+        _output.WriteLine("  test-run <bpmn-file> <variables-json> [tenant] Deploy and start a test process");
+        _output.WriteLine("  validate <bpmn-file>                         Validate BPMN semantics");
         _output.WriteLine("  register-bpmn <id> <bpmn-file>              Register BPMN");
         _output.WriteLine("  register-cmmn <id> <cmmn-file>              Register CMMN");
         _output.WriteLine("  register-dmn <id> <dmn-file>                Register DMN");
@@ -342,6 +461,9 @@ internal sealed class CliApplication
         _output.WriteLine("  trigger invoke <id> <secret> [json] [key]  Start a workflow through a trigger");
         _output.WriteLine("  trigger enable|disable <id> [tenant]");
         _output.WriteLine("  trigger delete <id> [tenant]");
+        _output.WriteLine("  credential create|list|rotate ...           Manage credential metadata and secrets");
+        _output.WriteLine("  connector create|list|test ...              Manage and test connectors");
+        _output.WriteLine("  template list [tenant]                      List connector templates");
         _output.WriteLine("  clear | help | exit                         REPL commands");
     }
 

@@ -228,6 +228,11 @@ export const BpmnModelerInterop = {
     configureQuickInsert: function (modeler, templates) {
         configureQuickInsert(modeler, templates);
     },
+    configureDecisionPicker: function (decisions) {
+        window.VertexBpmnDecisionOptions = (decisions || [])
+            .filter(decision => decision && decision.key)
+            .map(decision => ({ key: decision.key, name: decision.name || decision.key }));
+    },
     destroy: function (modeler) {
         destroyInstance(modeler);
     }

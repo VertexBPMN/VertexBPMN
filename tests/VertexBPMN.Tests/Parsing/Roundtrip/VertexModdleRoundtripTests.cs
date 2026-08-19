@@ -115,6 +115,40 @@ public class VertexModdleRoundtripTests
     }
 
     [Fact]
+    public void Decision_AndIoMapping_OnBusinessRuleTask_StrictRoundtrip()
+    {
+        const string xml = """
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:vertex="https://vertexbpmn.io/schema/bpmn/1.0">
+  <bpmn:process id="p1">
+    <bpmn:businessRuleTask id="decisionTask">
+      <bpmn:extensionElements>
+        <vertex:decision decisionRef="risk-assessment" binding="latest" version="3" />
+        <vertex:ioMapping>
+          <vertex:input name="amount" expression="${orderAmount}" />
+          <vertex:output name="risk" target="riskLevel" />
+        </vertex:ioMapping>
+      </bpmn:extensionElements>
+    </bpmn:businessRuleTask>
+    <bpmn:endEvent id="end" />
+    <bpmn:sequenceFlow id="f1" sourceRef="decisionTask" targetRef="end" />
+  </bpmn:process>
+</bpmn:definitions>
+""";
+        var model = StrictParser(normalizeVendors: true).ParseAsync(xml).GetAwaiter().GetResult();
+        var outXml = SerializeStrict(model);
+
+        Assert.Contains("vertex:decision", outXml);
+        Assert.Contains("decisionRef=\"risk-assessment\"", outXml);
+        Assert.Contains("binding=\"latest\"", outXml);
+        Assert.Contains("version=\"3\"", outXml);
+        var attributes = model.Tasks!.Single(task => task.Id == "decisionTask").Attributes!;
+        Assert.Equal("risk-assessment", attributes["vertex:decision.decisionRef"]);
+        Assert.Equal("${orderAmount}", attributes["vertex:ioMapping.input.amount"]);
+        Assert.Equal("riskLevel", attributes["vertex:ioMapping.output.risk"]);
+    }
+
+    [Fact]
     public void Credential_Extension_StrictRoundtrip()
     {
         const string xml = """

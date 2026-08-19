@@ -12,6 +12,7 @@
 @code {
     [Parameter] public string Xml { get; set; } = string.Empty;
     [Parameter] public IReadOnlyList<StudioConnectorTemplate> ConnectorTemplates { get; set; } = [];
+    [Parameter] public IReadOnlyList<StudioDecisionOption> DecisionOptions { get; set; } = [];
 
     private readonly string _canvasId = $"bpmn-modeler-{Guid.NewGuid():N}";
     private readonly string _propertiesPanelId = $"bpmn-properties-{Guid.NewGuid():N}";
@@ -30,6 +31,7 @@
         _loadedXml = Xml;
         _initialized = true;
         await ConfigureQuickInsertAsync(ConnectorTemplates);
+        await ConfigureDecisionPickerAsync(DecisionOptions);
     }
 
     protected override async Task OnParametersSetAsync()
@@ -41,7 +43,10 @@
         }
 
         if (_initialized)
+        {
             await ConfigureQuickInsertAsync(ConnectorTemplates);
+            await ConfigureDecisionPickerAsync(DecisionOptions);
+        }
     }
 
     public async Task InsertConnectorTemplateAsync(StudioConnectorTemplate template, IReadOnlyDictionary<string, string>? values = null)
@@ -59,6 +64,14 @@
             return;
 
         await _module.InvokeVoidAsync("BpmnModelerInterop.configureQuickInsert", _modeler, templates);
+    }
+
+    public async Task ConfigureDecisionPickerAsync(IReadOnlyList<StudioDecisionOption> decisions)
+    {
+        if (_module is null)
+            return;
+
+        await _module.InvokeVoidAsync("BpmnModelerInterop.configureDecisionPicker", decisions);
     }
 
     public async Task<string> GetXmlAsync()

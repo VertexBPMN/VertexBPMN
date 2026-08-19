@@ -3,6 +3,7 @@
 @inject VertexBPMN.Studio.Services.IRepositoryService RepositoryService
 @inject VertexBPMN.Studio.Services.IConnectorTemplateService ConnectorTemplateService
 @inject VertexBPMN.Studio.Services.ICredentialService CredentialService
+@inject VertexBPMN.Studio.Services.IDmnService DmnService
 @inject VertexBPMN.Studio.Services.StudioTenantContext TenantContext
 @inject MudBlazor.ISnackbar Snackbar
 @inject IHttpClientFactory HttpClientFactory
@@ -44,7 +45,7 @@
 
     <MudPaper Class="pa-4">
         <MudText Typo="Typo.h6" GutterBottom="true">Modeler</MudText>
-        <BpmnModelerSurface @ref="_modeler" Xml="_bpmnXml" ConnectorTemplates="_templates" />
+        <BpmnModelerSurface @ref="_modeler" Xml="_bpmnXml" ConnectorTemplates="_templates" DecisionOptions="_decisions" />
     </MudPaper>
 
     <MudPaper Class="pa-4">
@@ -59,6 +60,7 @@
     private BpmnModelerSurface? _modeler;
     private IReadOnlyList<StudioConnectorTemplate> _templates = [];
     private IReadOnlyList<StudioCredential> _credentials = [];
+    private IReadOnlyList<StudioDecisionOption> _decisions = [];
     private bool _insertingTemplate;
 
     private const string FallbackBpmn = """
@@ -86,6 +88,7 @@
         TenantContext.Changed += OnTenantChanged;
         await LoadBpmnXml(showNotification: false);
         await LoadConnectorTemplatesAsync();
+        await LoadDecisionOptionsAsync();
     }
 
     public void Dispose()
@@ -99,6 +102,7 @@
         await InvokeAsync(async () =>
         {
             await LoadConnectorTemplatesAsync();
+            await LoadDecisionOptionsAsync();
             StateHasChanged();
         });
     }
@@ -110,6 +114,30 @@
         _credentials = string.IsNullOrWhiteSpace(tenantId) ? [] : await CredentialService.ListAsync(tenantId);
         if (_modeler is not null)
             await _modeler.ConfigureQuickInsertAsync(_templates);
+    }
+
+    private async Task LoadDecisionOptionsAsync()
+    {
+        try
+        {
+            var definitions = await DmnService.ListDefinitionsAsync(tenantId: TenantContext.CurrentTenantId);
+            _decisions = definitions.ValueKind == System.Text.Json.JsonValueKind.Array
+                ? definitions.EnumerateArray()
+                    .Select(definition => new StudioDecisionOption(
+                        definition.GetProperty("key").GetString() ?? string.Empty,
+                        definition.GetProperty("name").GetString() ?? string.Empty))
+                    .Where(decision => !string.IsNullOrWhiteSpace(decision.Key))
+                    .OrderBy(decision => decision.Name, StringComparer.OrdinalIgnoreCase)
+                    .ToArray()
+                : [];
+        }
+        catch
+        {
+            _decisions = [];
+        }
+
+        if (_modeler is not null)
+            await _modeler.ConfigureDecisionPickerAsync(_decisions);
     }
 
     private Task InsertConfiguredTemplateAsync(ConfiguredConnectorTemplate configured)

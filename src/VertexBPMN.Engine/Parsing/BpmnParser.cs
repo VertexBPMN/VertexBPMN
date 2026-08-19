@@ -1051,6 +1051,15 @@ public partial class BpmnParser : IBpmnParser
 
         if (extensionElements != null)
         {
+            // Vertex extensions are kept verbatim for strict roundtrips. In addition,
+            // project their semantic fields into task attributes so the runtime does not
+            // need to re-parse XML to evaluate connectors, decisions and IO mappings.
+            foreach (var vertexExtension in extensionElements.Elements()
+                         .Where(extension => VertexBpmnExtensions.IsVertexNamespace(extension.Name.NamespaceName)))
+            {
+                VertexBpmnExtensions.Flatten(vertexExtension, attributes);
+            }
+
             foreach (var property in extensionElements.Descendants().Where(e => e.Name.LocalName == "property"))
             {
                 var name = property.Attribute("name")?.Value;

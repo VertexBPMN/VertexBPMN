@@ -50,6 +50,9 @@ public static class VertexBpmnExtensions
             case "trigger":
                 CopyAttributes(child, bucket, "vertex:trigger");
                 break;
+            case "decision":
+                CopyAttributes(child, bucket, "vertex:decision");
+                break;
             case "credential":
                 CopyAttributes(child, bucket, "vertex:credential");
                 break;
@@ -102,6 +105,8 @@ public static class VertexBpmnExtensions
                 $"vertex:trigger on '{id}' is missing required type", list, seen, "trigger");
             ValidateAttributeGroup(id, attributes, "vertex:trigger", "processDefinitionKey", "VEN-VERTEX-TRIGGER-PROCESS-KEY",
                 $"vertex:trigger on '{id}' is missing required processDefinitionKey", list, seen, "trigger");
+            ValidateAttributeGroup(id, attributes, "vertex:decision", "decisionRef", "VEN-VERTEX-DECISION-REF",
+                $"vertex:decision on '{id}' is missing required decisionRef", list, seen, "decision");
             ValidateAttributeGroup(id, attributes, "vertex:credential", "id", "VEN-VERTEX-CREDENTIAL-ID",
                 $"vertex:credential on '{id}' is missing required id", list, seen, "credential");
             ValidateAttributeGroup(id, attributes, "vertex:credential", "kind", "VEN-VERTEX-CREDENTIAL-KIND",
@@ -158,6 +163,10 @@ public static class VertexBpmnExtensions
                     $"vertex:trigger on '{ownerId}' is missing required type", list);
                 Require(child, "processDefinitionKey", ownerId, "VEN-VERTEX-TRIGGER-PROCESS-KEY",
                     $"vertex:trigger on '{ownerId}' is missing required processDefinitionKey", list);
+                break;
+            case "decision":
+                Require(child, "decisionRef", ownerId, "VEN-VERTEX-DECISION-REF",
+                    $"vertex:decision on '{ownerId}' is missing required decisionRef", list);
                 break;
             case "credential":
                 Require(child, "id", ownerId, "VEN-VERTEX-CREDENTIAL-ID",

@@ -1,5 +1,5 @@
 import { is, getBusinessObject } from 'bpmn-js/lib/util/ModelUtil';
-import { isTextFieldEntryEdited, TextFieldEntry } from '@bpmn-io/properties-panel';
+import { isSelectEntryEdited, isTextFieldEntryEdited, SelectEntry, TextFieldEntry } from '@bpmn-io/properties-panel';
 import { useService } from 'bpmn-js-properties-panel';
 
 const CONNECTOR_HOSTS = [
@@ -15,6 +15,10 @@ function isConnectorHost(element) {
 
 function isStartEvent(element) {
   return is(element, 'bpmn:StartEvent');
+}
+
+function isBusinessRuleTask(element) {
+  return is(element, 'bpmn:BusinessRuleTask');
 }
 
 function createModdleElement(type, properties, parent, factory) {
@@ -218,6 +222,57 @@ function startEventEntries() {
   ];
 }
 
+function decisionReferenceEntry() {
+  return {
+    id: 'vertex-decision-ref',
+    component: function VertexDecisionReferenceEntry(props) {
+      const { element } = props;
+      const bpmnFactory = useService('bpmnFactory');
+      const commandStack = useService('commandStack');
+
+      const getValue = () => {
+        const decision = getExtension(element, 'vertex:Decision');
+        return decision && decision.get('decisionRef') || '';
+      };
+
+      const getOptions = () => {
+        const currentValue = getValue();
+        const options = [{ value: '', label: 'Select a deployed decision' }]
+          .concat((window.VertexBpmnDecisionOptions || []).map(option => ({
+            value: option.key,
+            label: option.name ? `${option.name} (${option.key})` : option.key
+          })));
+
+        if (currentValue && !options.some(option => option.value === currentValue)) {
+          options.push({ value: currentValue, label: `${currentValue} (not currently available)` });
+        }
+        return options;
+      };
+
+      return SelectEntry({
+        element,
+        id: props.id,
+        label: 'Decision reference',
+        description: 'Select a deployed DMN decision for this Business Rule Task.',
+        getValue,
+        setValue: value => setExtensionProperty(element, 'vertex:Decision', 'decisionRef', value, bpmnFactory, commandStack),
+        getOptions
+      });
+    },
+    isEdited: isSelectEntryEdited
+  };
+}
+
+function businessRuleTaskEntries() {
+  return [
+    decisionReferenceEntry(),
+    textEntry('vertex-decision-binding', 'Decision binding', 'vertex:Decision', 'binding'),
+    textEntry('vertex-decision-version', 'Decision version', 'vertex:Decision', 'version'),
+    ioMappingEntry('vertex-decision-inputs', 'Decision inputs', 'inputs', 'vertex:Input', 'name', 'expression'),
+    ioMappingEntry('vertex-decision-outputs', 'Decision outputs', 'outputs', 'vertex:Output', 'name', 'target')
+  ];
+}
+
 function createVertexGroup(element) {
   const entries = [];
   if (isConnectorHost(element)) {
@@ -225,6 +280,9 @@ function createVertexGroup(element) {
   }
   if (isStartEvent(element)) {
     entries.push(...startEventEntries());
+  }
+  if (isBusinessRuleTask(element)) {
+    entries.push(...businessRuleTaskEntries());
   }
   if (!entries.length) {
     return null;

@@ -1610,13 +1610,15 @@ namespace VertexBPMN.Engine.Execution
                     attributes = task.Attributes ?? new Dictionary<string, string>();
                     string? decisionRef = null;
                     string? resultVariable = null;
-                    if (attributes?.TryGetValue("camunda:decisionRef", out decisionRef) == true ||
+                    if (attributes?.TryGetValue("vertex:decision.decisionRef", out decisionRef) == true ||
+                        attributes?.TryGetValue("camunda:decisionRef", out decisionRef) == true ||
                         attributes?.TryGetValue("flowable:decisionRef", out decisionRef) == true)
                     {
                         attributes.TryGetValue("camunda:resultVariable", out resultVariable);
                         resultVariable ??= attributes.TryGetValue("flowable:resultVariable", out var flowableResult)
                             ? flowableResult
                             : "decisionResult";
+                        var decisionInputs = BuildDecisionInputs(attributes, token.Variables);
 
                         trace.Add($"BusinessRuleTask: {task.Id} evaluating decision {decisionRef}");
                         try
@@ -1627,11 +1629,12 @@ namespace VertexBPMN.Engine.Execution
                             {
                                 trace.Add($"BusinessRuleTask: dispatching to DMN-capable worker {targetWorker}");
                                 var decisionResult = await _messageDispatcher.DispatchDmnTaskAsync(targetWorker,
-                                    decisionRef, token.Variables, cancellationToken);
+                                    decisionRef, decisionInputs, cancellationToken);
                                 token.Variables[resultVariable] = decisionResult;
                                 if (model.ProcessVariables == null)
                                     model = model with {ProcessVariables = new Dictionary<string, object>()};
                                 model.ProcessVariables[resultVariable] = decisionResult;
+                                ApplyDecisionOutputMappings(attributes, decisionResult, token.Variables, model.ProcessVariables);
                                 trace.Add($"BusinessRuleTaskCompleted: {task.Id} result stored in {resultVariable}");
                             }
                             else
@@ -1640,11 +1643,12 @@ namespace VertexBPMN.Engine.Execution
                                              ?? throw new DistributedTokenException(
                                                  $"DMN model {decisionRef} not found");
                                 var decision = await _dmnParser.ParseAsync(dmnXml, cancellationToken);
-                                var decisionResult = await _dmnEngine.EvaluateDecisionAsync(decision, token.Variables);
+                                var decisionResult = await _dmnEngine.EvaluateDecisionAsync(decision, decisionInputs, cancellationToken);
                                 token.Variables[resultVariable] = decisionResult;
                                 if (model.ProcessVariables == null)
                                     model = model with {ProcessVariables = new Dictionary<string, object>()};
                                 model.ProcessVariables[resultVariable] = decisionResult;
+                                ApplyDecisionOutputMappings(attributes, decisionResult, token.Variables, model.ProcessVariables);
                                 trace.Add($"BusinessRuleTaskCompleted: {task.Id} result stored in {resultVariable}");
                             }
                         }
@@ -1674,6 +1678,51 @@ namespace VertexBPMN.Engine.Execution
                 default:
                     await ContinueToNextNodeAsync(task.Id, token, model, trace, cancellationToken);
                     break;
+            }
+        }
+
+        private static Dictionary<string, object> BuildDecisionInputs(
+            IReadOnlyDictionary<string, string> attributes,
+            IReadOnlyDictionary<string, object> variables)
+        {
+            const string prefix = "vertex:ioMapping.input.";
+            var mappings = attributes.Where(attribute => attribute.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (mappings.Count == 0)
+                return new Dictionary<string, object>(variables);
+
+            return mappings.ToDictionary(
+                attribute => attribute.Key[prefix.Length..],
+                attribute => ResolveDecisionInput(attribute.Value, variables),
+                StringComparer.Ordinal);
+        }
+
+        private static object ResolveDecisionInput(string expression, IReadOnlyDictionary<string, object> variables)
+        {
+            var key = expression.Trim();
+            if (key.StartsWith("${", StringComparison.Ordinal) && key.EndsWith('}'))
+                key = key[2..^1].Trim();
+            if (variables.TryGetValue(key, out var value))
+                return value;
+            if (bool.TryParse(key, out var boolean)) return boolean;
+            if (long.TryParse(key, out var integer)) return integer;
+            if (decimal.TryParse(key, System.Globalization.CultureInfo.InvariantCulture, out var number)) return number;
+            return key;
+        }
+
+        private static void ApplyDecisionOutputMappings(
+            IReadOnlyDictionary<string, string> attributes,
+            IReadOnlyDictionary<string, object> decisionResult,
+            IDictionary<string, object> tokenVariables,
+            IDictionary<string, object> processVariables)
+        {
+            const string prefix = "vertex:ioMapping.output.";
+            foreach (var mapping in attributes.Where(attribute => attribute.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+            {
+                var outputName = mapping.Key[prefix.Length..];
+                if (!decisionResult.TryGetValue(outputName, out var value) || string.IsNullOrWhiteSpace(mapping.Value))
+                    continue;
+                tokenVariables[mapping.Value] = value;
+                processVariables[mapping.Value] = value;
             }
         }
 

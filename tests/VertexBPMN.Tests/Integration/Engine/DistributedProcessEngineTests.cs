@@ -167,6 +167,48 @@ public class DistributedProcessEngineTests
     }
 
     [Fact]
+    public async Task ProcessTaskAsync_BusinessRuleTask_UsesVertexDecisionAndIoMappings()
+    {
+        var logger = new LoggerFactory().CreateLogger<DistributedProcessEngine>();
+        var dispatcher = new Mock<IMessageDispatcher>();
+        var store = new Mock<IProcessInstanceStore>();
+        var dmnParser = new Mock<IDmnParser>();
+        var dmnEngine = new Mock<IDmnEngine>();
+        store.Setup(s => s.GetActiveWorkersAsync()).ReturnsAsync(new List<WorkerNode>());
+        store.Setup(s => s.GetDmnModelAsync("risk-assessment", CancellationToken.None)).ReturnsAsync("<definitions />");
+
+        var decision = new DmnDecision("risk-assessment", "Risk", [], [], [], "UNIQUE");
+        dmnParser.Setup(parser => parser.ParseAsync("<definitions />", CancellationToken.None)).ReturnsAsync(decision);
+        dmnEngine.Setup(engine => engine.EvaluateDecisionAsync(
+                decision,
+                It.Is<Dictionary<string, object>>(input => input.Count == 1 && Equals(input["amount"], 250)),
+                CancellationToken.None))
+            .ReturnsAsync(new Dictionary<string, object> { ["risk"] = "low" });
+
+        var engine = new DistributedProcessEngine(logger, new ServiceTaskRegistry(), dispatcher.Object, store.Object,
+            dmnEngine.Object, dmnParser.Object, new Mock<ICmmnParser>().Object, new Mock<IBpmnParser>().Object,
+            new Mock<IAiDecisionService>().Object, TracerProvider.Default);
+        var task = new BpmnTask("decisionTask", "businessRuleTask", null, new Dictionary<string, string>
+        {
+            ["vertex:decision.decisionRef"] = "risk-assessment",
+            ["vertex:ioMapping.input.amount"] = "${orderAmount}",
+            ["vertex:ioMapping.output.risk"] = "riskLevel"
+        });
+        var model = new BpmnModel("p1", "p1", [], [task], [], [new BpmnSequenceFlow("f1", "decisionTask", "end")], []);
+        var token = new ExecutionToken(Guid.NewGuid(), Guid.NewGuid(), "decisionTask", "businessRuleTask",
+            new Dictionary<string, object> { ["orderAmount"] = 250 }, DateTime.UtcNow);
+        var trace = new List<string>();
+
+        var method = engine.GetType().GetMethod("ProcessTaskAsync", BindingFlags.NonPublic | BindingFlags.Instance);
+        var execution = (Task?)method!.Invoke(engine, [task, token, model, trace, CancellationToken.None]);
+        await execution!;
+
+        dmnEngine.VerifyAll();
+        Assert.Equal("low", token.Variables["riskLevel"]);
+        Assert.Equal("low", ((Dictionary<string, object>)token.Variables["decisionResult"])["risk"]);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_SimpleProcess_DistributesToken()
     {
         var simpleXml = @"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>

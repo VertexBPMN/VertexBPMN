@@ -223,8 +223,14 @@ public class ApiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     [Fact]
     public async Task History_ListByProcessInstance_Works()
     {
+        var processKey = $"HistoryTestProcess_{Guid.NewGuid():N}";
+        var bpmn = $"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='{processKey}'><startEvent id='start'/><endEvent id='end'/><sequenceFlow id='flow' sourceRef='start' targetRef='end'/></process></definitions>";
+        var deploy = new { BpmnXml = bpmn, Name = processKey, TenantId = (string?)null };
+        var deployResponse = await _client.PostAsJsonAsync("/api/repository", deploy);
+        deployResponse.EnsureSuccessStatusCode();
+
         // Start a process instance (no history events will exist in-memory, but endpoint should return 200 and an empty list)
-        var start = new { ProcessDefinitionKey = "TestProcess", Variables = new Dictionary<string, object>(), BusinessKey = (string?)null, TenantId = (string?)null };
+        var start = new { ProcessDefinitionKey = processKey, Variables = new Dictionary<string, object>(), BusinessKey = (string?)null, TenantId = (string?)null };
         var post = await _client.PostAsJsonAsync("/api/runtime/start", start);
         post.EnsureSuccessStatusCode();
         var instance = await post.Content.ReadFromJsonAsync<ProcessInstance>();

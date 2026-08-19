@@ -72,6 +72,12 @@ export const FormViewerInterop = {
             await form.importSchema(schema);
         }
     },
+    getData: async function (form) {
+        if (!form || form.__vertexFallback) {
+            return '{}';
+        }
+        return JSON.stringify(typeof form.getData === 'function' ? form.getData() : {});
+    },
     destroy: function (form) {
         destroyForm(form);
     }

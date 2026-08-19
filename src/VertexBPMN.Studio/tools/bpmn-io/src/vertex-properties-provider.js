@@ -21,6 +21,10 @@ function isBusinessRuleTask(element) {
   return is(element, 'bpmn:BusinessRuleTask');
 }
 
+function isUserTask(element) {
+  return is(element, 'bpmn:UserTask');
+}
+
 function createModdleElement(type, properties, parent, factory) {
   const element = factory.create(type, properties);
   if (parent) {
@@ -273,6 +277,15 @@ function businessRuleTaskEntries() {
   ];
 }
 
+function userTaskEntries() {
+  return [
+    textEntry('vertex-form-ref', 'Form reference', 'vertex:Form', 'formRef'),
+    textEntry('vertex-form-version', 'Form version', 'vertex:Form', 'formVersion'),
+    textEntry('vertex-task-assignee', 'Assignee', 'vertex:Assignment', 'assignee'),
+    textEntry('vertex-task-candidate-groups', 'Candidate groups', 'vertex:Assignment', 'candidateGroups')
+  ];
+}
+
 function createVertexGroup(element) {
   const entries = [];
   if (isConnectorHost(element)) {
@@ -283,6 +296,9 @@ function createVertexGroup(element) {
   }
   if (isBusinessRuleTask(element)) {
     entries.push(...businessRuleTaskEntries());
+  }
+  if (isUserTask(element)) {
+    entries.push(...userTaskEntries());
   }
   if (!entries.length) {
     return null;

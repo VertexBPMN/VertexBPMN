@@ -41,6 +41,7 @@ public static class InfrastructureModule
         services.AddScoped<ICredentialService, PersistentCredentialService>();
         services.AddScoped<IConnectorService, PersistentConnectorService>();
         services.AddScoped<IConnectorTemplateService, PersistentConnectorTemplateService>();
+        services.AddScoped<IFormDefinitionService, PersistentFormDefinitionService>();
         return services;
     }
 

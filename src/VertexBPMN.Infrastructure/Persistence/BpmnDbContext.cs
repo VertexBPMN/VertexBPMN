@@ -33,6 +33,7 @@ public class BpmnDbContext : DbContext
     public DbSet<ConnectorRecord> Connectors => Set<ConnectorRecord>();
     public DbSet<ConnectorTemplateRecord> ConnectorTemplates => Set<ConnectorTemplateRecord>();
     public DbSet<WorkflowTrigger> WorkflowTriggers => Set<WorkflowTrigger>();
+    public DbSet<FormDefinitionRecord> FormDefinitions => Set<FormDefinitionRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -55,6 +56,7 @@ public class BpmnDbContext : DbContext
         ConfigureConnectors(modelBuilder);
         ConfigureConnectorTemplates(modelBuilder);
         ConfigureWorkflowTriggers(modelBuilder);
+        ConfigureFormDefinitions(modelBuilder);
 
         // Seed sample data (deterministic IDs & timestamps)
         var deploymentId = Guid.Parse("11111111-1111-1111-1111-111111111111");
@@ -537,6 +539,12 @@ public class BpmnDbContext : DbContext
         entity.HasIndex(e => e.Type);
         entity.HasIndex(e => e.TenantId);
         entity.HasIndex(e => e.Assignee);
+    }
+
+    private static void ConfigureFormDefinitions(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<FormDefinitionRecord>();
+        entity.HasKey(x => x.Id); entity.Property(x => x.TenantId).HasMaxLength(64).IsRequired(); entity.Property(x => x.Key).HasMaxLength(128).IsRequired(); entity.Property(x => x.Name).HasMaxLength(256).IsRequired(); entity.Property(x => x.Schema).IsRequired(); entity.HasIndex(x => new { x.TenantId, x.Key }).IsUnique();
     }
 
     private static void ConfigureHistoryEvent(ModelBuilder modelBuilder)

@@ -3,6 +3,8 @@
 @inject MudBlazor.ISnackbar Snackbar
 @inject IHttpClientFactory HttpClientFactory
 @inject IJSRuntime JSRuntime
+@inject IFormDefinitionService FormService
+@inject StudioTenantContext TenantContext
 
 <PageTitle>Form Builder</PageTitle>
 
@@ -16,10 +18,12 @@
 
     <MudPaper Class="pa-4">
         <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveFormJson" StartIcon="@Icons.Material.Filled.Save">Save JSON</MudButton>
+            <MudTextField Label="Form key" @bind-Value="_formKey" Required="true" />
+            <MudTextField Label="Form name" @bind-Value="_formName" Required="true" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveFormJson" StartIcon="@Icons.Material.Filled.Save">Save form</MudButton>
             <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="ExportFormJson" StartIcon="@Icons.Material.Filled.Download">Export JSON</MudButton>
             <MudButton Variant="Variant.Outlined" OnClick="@(() => LoadFormJson())" StartIcon="@Icons.Material.Filled.Refresh">Load JSON</MudButton>
-            <MudChip T="string" Color="Color.Info" Variant="Variant.Outlined">Draft saved locally in Studio state</MudChip>
+            <MudChip T="string" Color="Color.Info" Variant="Variant.Outlined">Tenant: @(TenantContext.CurrentTenantId ?? "select tenant")</MudChip>
         </MudStack>
     </MudPaper>
 
@@ -39,6 +43,9 @@
     private string _savedFormJson = FallbackFormJson;
     private HttpClient _httpClient = default!;
     private FormBuilderSurface? _builder;
+    private string _formKey = "invoice-approval";
+    private string _formName = "Invoice approval";
+    private string? _formId;
 
     private const string FallbackFormJson = """
 {
@@ -63,7 +70,10 @@
     {
         _formJson = await CaptureFormJson();
         _savedFormJson = _formJson;
-        Snackbar.Add("Form JSON saved in the Studio draft and refreshed in the Runtime Viewer.", Severity.Success);
+        if (string.IsNullOrWhiteSpace(TenantContext.CurrentTenantId)) { Snackbar.Add("Select a tenant before saving the form.", Severity.Warning); return; }
+        var request = new StudioFormWriteRequest(TenantContext.CurrentTenantId, _formKey, _formName, _formJson);
+        if (_formId is null) _formId = (await FormService.CreateAsync(request)).Id; else await FormService.UpdateAsync(_formId, request);
+        Snackbar.Add("Form saved in the registry and refreshed in the Runtime Viewer.", Severity.Success);
     }
 
     private async Task ExportFormJson()

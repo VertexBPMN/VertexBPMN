@@ -123,6 +123,7 @@ builder.Services.AddScoped<IEngineEventService, EngineEventService>();
 builder.Services.AddScoped<IHistoryService, HttpHistoryService>();
 builder.Services.AddScoped<IEngineCapabilitiesService, HttpEngineCapabilitiesService>();
 builder.Services.AddScoped<IDmnService, HttpDmnService>();
+builder.Services.AddScoped<IFormDefinitionService, HttpFormDefinitionService>();
 builder.Services.AddScoped<IHealthService, HttpHealthService>();
 builder.Services.AddScoped<IAnalyticsService, HttpAnalyticsService>();
 builder.Services.AddScoped<IMlAnalyticsService, HttpMlAnalyticsService>();

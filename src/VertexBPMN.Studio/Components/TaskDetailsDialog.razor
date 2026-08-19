@@ -79,8 +79,8 @@
         {
             try
             {
-                _module = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/form-builder.js");
-                _formInstance = await _module.InvokeAsync<IJSObjectReference>("FormBuilderInterop.createForm", _formContainerId, _formJson);
+                _module = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/form-viewer.js");
+                _formInstance = await _module.InvokeAsync<IJSObjectReference>("FormViewerInterop.createViewer", _formContainerId, _formJson);
                 _formInitialized = true;
             }
             catch (Exception ex)
@@ -97,11 +97,12 @@
             string? submittedJson = null;
             if (_formInitialized && _module is not null && _formInstance is not null)
             {
-                submittedJson = await _module.InvokeAsync<string>("FormBuilderInterop.getJson", _formInstance);
+                submittedJson = await _module.InvokeAsync<string>("FormViewerInterop.getData", _formInstance);
             }
             IDictionary<string, object?>? variables = submittedJson is null
                 ? null
-                : new Dictionary<string, object?> { ["formData"] = submittedJson };
+                : System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object?>>(submittedJson)
+                  ?? new Dictionary<string, object?>();
             await TaskService.CompleteTaskAsync(Task.Id, variables, TenantContext.CurrentTenantId);
             Snackbar.Add($"Task {Task.Name} completed!", Severity.Success);
             Dialog.Close(DialogResult.Ok(submittedJson));

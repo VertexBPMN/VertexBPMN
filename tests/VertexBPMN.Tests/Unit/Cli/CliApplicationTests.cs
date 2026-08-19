@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using VertexBPMN.Application.Configuration;
+using VertexBPMN.Application.Import;
 using VertexBPMN.Cli;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
@@ -72,6 +73,7 @@ public sealed class CliApplicationTests
         Assert.Contains("test-run <bpmn-file> <variables-json> [tenant]", output.ToString(), StringComparison.Ordinal);
         Assert.Contains("credential create|list|rotate", output.ToString(), StringComparison.Ordinal);
         Assert.Contains("connector create|list|test", output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("import-n8n <workflow-json> [output-bpmn]", output.ToString(), StringComparison.Ordinal);
         Assert.Equal(string.Empty, error.ToString());
     }
 
@@ -91,6 +93,7 @@ public sealed class CliApplicationTests
         services.AddSingleton(Mock.Of<IFormDefinitionService>());
         services.AddSingleton(Mock.Of<IDecisionService>());
         services.AddSingleton(Mock.Of<ISemanticValidationService>());
+        services.AddSingleton<IN8nWorkflowImporter, N8nWorkflowImporter>();
         services.AddSingleton(repositoryService);
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
         services.AddSingleton(DashboardLauncherFactory);

@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using VertexBPMN.Application.Extensions;
 using VertexBPMN.Application.Configuration;
+using VertexBPMN.Application.Import;
 using VertexBPMN.Domain.Interfaces;
 namespace VertexBPMN.Application;
 
@@ -46,6 +47,7 @@ public static class ApplicationModule
         services.AddScoped<ISimulationService, SimulationService>();
         services.AddScoped<ITaskService, TaskService>();
         services.AddScoped<IProcessMigrationService, ProcessMigrationService>();
+        services.AddSingleton<IN8nWorkflowImporter, N8nWorkflowImporter>();
         //services.AddHttpClient<IAiDecisionService, XAiDecisionService>();
         if (dependencies.Mcp.Enabled && dependencies.Interfaces.McpAgentService)
             services.AddHttpClient<IMcpAgentService, McpAgentService>();

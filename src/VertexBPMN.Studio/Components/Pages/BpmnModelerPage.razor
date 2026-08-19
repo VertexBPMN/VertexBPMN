@@ -1,6 +1,7 @@
 @page "/bpmn-modeler"
 @using System.Text
 @using System.Text.Json
+@using System.Net.Http.Json
 @using Microsoft.AspNetCore.Components.Forms
 @using VertexBPMN.Studio.Components.Modeling
 @using VertexBPMN.Domain.Entities
@@ -14,6 +15,7 @@
 @inject VertexBPMN.Studio.Services.ActiveEngineService ActiveEngineService
 @inject IJSRuntime JSRuntime
 @inject IWebHostEnvironment HostEnvironment
+@inject IHttpClientFactory HttpClientFactory
 @implements IDisposable
 
 <PageTitle>BPMN Modeler</PageTitle>
@@ -36,11 +38,29 @@
                 Import BPMN
             </label>
             <InputFile id="bpmn-import-file" data-testid="bpmn-import-file" OnChange="ImportBpmnAsync" accept=".bpmn,.xml,application/xml,text/xml" style="display:none" />
+            <label class="mud-button-root mud-button mud-button-outlined mud-button-outlined-secondary mud-button-outlined-size-medium mud-ripple" for="n8n-import-file">
+                <MudIcon Icon="@Icons.Material.Filled.AccountTree" Size="Size.Small" Class="me-2" />
+                Import n8n
+            </label>
+            <InputFile id="n8n-import-file" data-testid="n8n-import-file" OnChange="ImportN8nAsync" accept=".json,application/json" style="display:none" />
             <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="ExportBpmnXml" StartIcon="@Icons.Material.Filled.Download">Export XML</MudButton>
             <MudButton Variant="Variant.Outlined" OnClick="@(() => LoadBpmnXml())" StartIcon="@Icons.Material.Filled.Refresh">Load template</MudButton>
             <MudChip T="string" Color="Color.Info" Variant="Variant.Outlined">Tenant: @(TenantContext.CurrentTenantId ?? "default")</MudChip>
         </MudStack>
     </MudPaper>
+
+    @if (_n8nImportReport.Count > 0)
+    {
+        <MudPaper Class="pa-4" data-testid="n8n-import-report">
+            <MudText Typo="Typo.h6">n8n import report</MudText>
+            @foreach (var item in _n8nImportReport)
+            {
+                <MudAlert Dense="true" Severity="@(item.Disposition == "Migrated" ? Severity.Success : item.Disposition == "NeedsReview" ? Severity.Warning : Severity.Error)" Class="mt-2">
+                    <strong>@item.NodeName</strong> (@item.NodeType): @item.Message
+                </MudAlert>
+            }
+        </MudPaper>
+    }
 
     <MudPaper Class="pa-4" data-testid="bpmn-local-simulation">
         <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2" AlignItems="AlignItems.Center">
@@ -187,6 +207,7 @@
     private string _nodeSearch = string.Empty;
     private string _xmlPreview = FallbackBpmn;
     private List<StudioValidationIssue> _validationIssues = [];
+    private IReadOnlyList<N8nImportReportItem> _n8nImportReport = [];
     private IReadOnlyList<ProcessDefinition> _deployedDefinitions = [];
     private string? _selectedVersionId;
     private string? _versionDiff;
@@ -464,6 +485,25 @@
         Snackbar.Add($"Imported {file.Name}.", Severity.Success);
     }
 
+    private async Task ImportN8nAsync(InputFileChangeEventArgs args)
+    {
+        var file = args.File;
+        if (file.Size > 10 * 1024 * 1024) { Snackbar.Add("n8n files must not exceed 10 MB.", Severity.Warning); return; }
+        await using var stream = file.OpenReadStream(10 * 1024 * 1024);
+        using var reader = new StreamReader(stream);
+        var workflowJson = await reader.ReadToEndAsync();
+        try
+        {
+            var response = await HttpClientFactory.CreateClient("VertexBPMN.Api").PostAsJsonAsync("api/import/n8n", new { workflowJson });
+            response.EnsureSuccessStatusCode();
+            var result = await response.Content.ReadFromJsonAsync<N8nImportResponse>();
+            if (result is null) throw new InvalidOperationException("The importer returned no result.");
+            _bpmnXml = result.BpmnXml; _xmlPreview = result.BpmnXml; _n8nImportReport = result.Report ?? []; _validationIssues = [];
+            Snackbar.Add($"Imported n8n workflow {file.Name}.", Severity.Success);
+        }
+        catch (Exception exception) { Snackbar.Add($"n8n import failed: {exception.Message}", Severity.Error); }
+    }
+
     private async Task LoadDeployedDefinitionsAsync()
     {
         try
@@ -550,4 +590,6 @@
 
     private sealed record LowCodeNode(string Kind, string Name, string Category, string Icon);
     private sealed record LowCodePattern(string Id, string Name);
+    private sealed record N8nImportResponse(string BpmnXml, IReadOnlyList<N8nImportReportItem>? Report);
+    private sealed record N8nImportReportItem(string NodeName, string NodeType, string Disposition, string Message);
 }

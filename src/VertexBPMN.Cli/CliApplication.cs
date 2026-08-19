@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using VertexBPMN.Application.Configuration;
+using VertexBPMN.Application.Import;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Engine.Configuration;
 using VertexBPMN.Engine.Parsing;
@@ -26,6 +27,7 @@ internal sealed class CliApplication
     private readonly IFormDefinitionService _formDefinitionService;
     private readonly IDecisionService _decisionService;
     private readonly ISemanticValidationService _validationService;
+    private readonly IN8nWorkflowImporter _n8nImporter;
     private readonly DashboardLauncher _dashboardLauncher;
 
     public CliApplication(IServiceProvider services, TextWriter output, TextWriter error)
@@ -46,6 +48,7 @@ internal sealed class CliApplication
         _formDefinitionService = services.GetRequiredService<IFormDefinitionService>();
         _decisionService = services.GetRequiredService<IDecisionService>();
         _validationService = services.GetRequiredService<ISemanticValidationService>();
+        _n8nImporter = services.GetRequiredService<IN8nWorkflowImporter>();
         _dashboardLauncher = services.GetRequiredService<DashboardLauncher>();
     }
 
@@ -128,6 +131,14 @@ internal sealed class CliApplication
                 case "validate":
                     RequireArguments(args, 2);
                     await PrintValidationAsync(await ReadFileAsync(args[1]));
+                    return 0;
+                case "import-n8n":
+                    RequireArguments(args, 2);
+                    var imported = _n8nImporter.Import(await ReadFileAsync(args[1]));
+                    var outputPath = args.Length > 2 ? args[2] : Path.ChangeExtension(args[1], ".bpmn");
+                    await File.WriteAllTextAsync(outputPath, imported.BpmnXml, cancellationToken);
+                    await _output.WriteLineAsync($"n8n workflow imported: {outputPath}");
+                    foreach (var item in imported.Report) await _output.WriteLineAsync($"{item.Disposition}: {item.NodeName} - {item.Message}");
                     return 0;
                 case "execute":
                     RequireArguments(args, 2);
@@ -446,6 +457,7 @@ internal sealed class CliApplication
         _output.WriteLine("  deploy-form <form-json> [tenant]            Deploy a form schema");
         _output.WriteLine("  test-run <bpmn-file> <variables-json> [tenant] Deploy and start a test process");
         _output.WriteLine("  validate <bpmn-file>                         Validate BPMN semantics");
+        _output.WriteLine("  import-n8n <workflow-json> [output-bpmn]    Convert an n8n workflow and print its import report");
         _output.WriteLine("  register-bpmn <id> <bpmn-file>              Register BPMN");
         _output.WriteLine("  register-cmmn <id> <cmmn-file>              Register CMMN");
         _output.WriteLine("  register-dmn <id> <dmn-file>                Register DMN");

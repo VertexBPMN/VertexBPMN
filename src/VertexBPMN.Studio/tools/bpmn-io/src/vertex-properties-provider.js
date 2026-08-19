@@ -207,6 +207,11 @@ function startEventEntries() {
     textEntry('vertex-webhook-path', 'Webhook path', 'vertex:Webhook', 'path'),
     textEntry('vertex-webhook-method', 'Webhook method', 'vertex:Webhook', 'method'),
     textEntry('vertex-webhook-secret', 'Webhook secret ref', 'vertex:Webhook', 'secretRef'),
+    textEntry('vertex-webhook-credential', 'HMAC credential ref', 'vertex:Webhook', 'credentialRef'),
+    textEntry('vertex-webhook-secret-key', 'Credential secret key', 'vertex:Webhook', 'secretKey'),
+    textEntry('vertex-webhook-auth-mode', 'Auth mode', 'vertex:Webhook', 'authMode'),
+    textEntry('vertex-webhook-payload-schema', 'Payload schema', 'vertex:Webhook', 'payloadSchema'),
+    textEntry('vertex-webhook-correlation-key', 'Correlation key', 'vertex:Webhook', 'correlationKey'),
     textEntry('vertex-trigger-type', 'Trigger type', 'vertex:Trigger', 'type'),
     textEntry('vertex-trigger-name', 'Trigger name', 'vertex:Trigger', 'name'),
     textEntry('vertex-trigger-process-key', 'Process definition key', 'vertex:Trigger', 'processDefinitionKey')

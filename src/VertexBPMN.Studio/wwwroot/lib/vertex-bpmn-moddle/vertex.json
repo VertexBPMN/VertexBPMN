@@ -56,7 +56,12 @@
       "properties": [
         { "name": "path", "isAttr": true, "type": "String" },
         { "name": "method", "isAttr": true, "type": "String" },
-        { "name": "secretRef", "isAttr": true, "type": "String" }
+        { "name": "secretRef", "isAttr": true, "type": "String" },
+        { "name": "credentialRef", "isAttr": true, "type": "String" },
+        { "name": "secretKey", "isAttr": true, "type": "String" },
+        { "name": "authMode", "isAttr": true, "type": "String" },
+        { "name": "payloadSchema", "isAttr": true, "type": "String" },
+        { "name": "correlationKey", "isAttr": true, "type": "String" }
       ]
     },
     {

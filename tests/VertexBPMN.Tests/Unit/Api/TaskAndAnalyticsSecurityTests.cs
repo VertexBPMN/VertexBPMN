@@ -112,7 +112,7 @@ public sealed class TaskAndAnalyticsSecurityTests
                 Id = definitionId,
                 TenantId = "tenant-b"
             }));
-        var controller = new RepositoryController(service.Object)
+        var controller = new RepositoryController(service.Object, Mock.Of<IWorkflowTriggerService>())
         {
             ControllerContext = ContextFor("tenant-a")
         };

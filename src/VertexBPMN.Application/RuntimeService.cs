@@ -23,8 +23,31 @@ public class RuntimeService : IRuntimeService
     public ValueTask<IDictionary<string, object>?> GetVariablesAsync(Guid processInstanceId, CancellationToken cancellationToken = default)
         => new((IDictionary<string, object>?)null);
 
-    public ValueTask<MessageCorrelationResult> CorrelateMessageAsync(string messageName, string? processInstanceId, IDictionary<string, object>? variables = null, CancellationToken cancellationToken = default)
-        => new(new MessageCorrelationResult("correlated", "", processInstanceId ?? string.Empty, ""));
+    public async ValueTask<MessageCorrelationResult> CorrelateMessageAsync(string messageName, string? processInstanceId, IDictionary<string, object>? variables = null, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(messageName)) throw new ArgumentException("messageName is required.", nameof(messageName));
+        if (!Guid.TryParse(processInstanceId, out var instanceId))
+            return new MessageCorrelationResult("not_found", "", processInstanceId ?? string.Empty, "");
+
+        var instance = await _repo.GetByIdAsync(instanceId, cancellationToken);
+        if (instance is null)
+            return new MessageCorrelationResult("not_found", "", processInstanceId!, "");
+        if (instance.Status is ProcessInstanceStatus.Completed or ProcessInstanceStatus.Terminated)
+            return new MessageCorrelationResult("not_active", "", instance.Id.ToString(), instance.ProcessDefinitionId.ToString());
+
+        foreach (var variable in variables ?? new Dictionary<string, object>()) instance.Variables[variable.Key] = variable.Value;
+        instance.LastModified = DateTime.UtcNow;
+        await _repo.UpdateAsync(instance, cancellationToken);
+        await _eventSink.EmitAsync(new ProcessMiningEvent
+        {
+            EventType = "MessageCorrelated",
+            ProcessInstanceId = instance.Id.ToString(),
+            TenantId = instance.TenantId,
+            Timestamp = DateTimeOffset.UtcNow,
+            PayloadJson = System.Text.Json.JsonSerializer.Serialize(new { messageName, variables = variables ?? new Dictionary<string, object>() })
+        }, cancellationToken);
+        return new MessageCorrelationResult("correlated", instance.Id.ToString(), instance.Id.ToString(), instance.ProcessDefinitionId.ToString());
+    }
 
     public ValueTask BroadcastSignalAsync(string signalName, IDictionary<string, object>? variables = null, CancellationToken cancellationToken = default)
         => ValueTask.CompletedTask;
@@ -41,7 +64,8 @@ public class RuntimeService : IRuntimeService
             ProcessId = processDefinitionKey,
             BusinessKey = businessKey,
             TenantId = tenantId,
-            StartedAt = DateTime.UtcNow
+            StartedAt = DateTime.UtcNow,
+            Variables = variables is null ? [] : new Dictionary<string, object>(variables)
         };
         await _repo.AddAsync(instance, cancellationToken);
         // Emit process mining event

@@ -2,6 +2,7 @@
 @implements IDisposable
 @inject IWorkflowTriggerService TriggerService
 @inject StudioTenantContext TenantContext
+@inject NavigationManager Navigation
 
 <PageTitle>Workflow Triggers</PageTitle>
 
@@ -43,6 +44,7 @@ else
             <HeaderContent>
                 <MudTh>Name</MudTh>
                 <MudTh>Process key</MudTh>
+                <MudTh>Webhook endpoint</MudTh>
                 <MudTh>Status</MudTh>
                 <MudTh>Invocations</MudTh>
                 <MudTh>Actions</MudTh>
@@ -50,6 +52,17 @@ else
             <RowTemplate>
                 <MudTd DataLabel="Name">@context.Name</MudTd>
                 <MudTd DataLabel="Process key">@context.ProcessDefinitionKey</MudTd>
+                <MudTd DataLabel="Webhook endpoint">
+                    @if (!string.IsNullOrWhiteSpace(context.Path))
+                    {
+                        <MudText Typo="Typo.caption">@context.Method @BuildWebhookUrl(context)</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@BuildCurlExample(context)</MudText>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.caption">Legacy trigger API</MudText>
+                    }
+                </MudTd>
                 <MudTd DataLabel="Status">@(context.Enabled ? "Enabled" : "Disabled")</MudTd>
                 <MudTd DataLabel="Invocations">@context.InvocationCount</MudTd>
                 <MudTd DataLabel="Actions">
@@ -173,6 +186,17 @@ else
         {
             _busy = false;
         }
+    }
+
+    private string BuildWebhookUrl(StudioWorkflowTrigger trigger) =>
+        $"{Navigation.BaseUri.TrimEnd('/')}/api/webhooks{trigger.Path}";
+
+    private string BuildCurlExample(StudioWorkflowTrigger trigger)
+    {
+        var auth = string.Equals(trigger.AuthenticationMode, "hmac-sha256", StringComparison.OrdinalIgnoreCase)
+            ? "-H 'X-VertexBPMN-Signature: sha256=<hmac>'"
+            : "-H 'X-VertexBPMN-Trigger-Secret: <secret>'";
+        return $"curl -X {trigger.Method ?? "POST"} '{BuildWebhookUrl(trigger)}' {auth} -H 'Content-Type: application/json' -d '{{}}'";
     }
 
     public void Dispose() => TenantContext.Changed -= OnTenantChanged;

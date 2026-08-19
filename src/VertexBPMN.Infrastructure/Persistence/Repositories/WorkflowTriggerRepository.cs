@@ -18,6 +18,15 @@ public sealed class WorkflowTriggerRepository(BpmnDbContext db) : IWorkflowTrigg
             trigger => trigger.Id == id && (tenantId == null || trigger.TenantId == tenantId),
             cancellationToken);
 
+    public Task<WorkflowTrigger?> GetByEndpointAsync(string path, string method, string? tenantId = null, CancellationToken cancellationToken = default)
+        => db.WorkflowTriggers.SingleOrDefaultAsync(trigger =>
+            trigger.Path == path && trigger.Method == method && (tenantId == null || trigger.TenantId == tenantId), cancellationToken);
+
+    public Task<WorkflowTrigger?> GetBySourceElementAsync(string processDefinitionKey, string sourceElementId, string? tenantId = null, CancellationToken cancellationToken = default)
+        => db.WorkflowTriggers.SingleOrDefaultAsync(trigger =>
+            trigger.ProcessDefinitionKey == processDefinitionKey && trigger.SourceElementId == sourceElementId &&
+            (tenantId == null || trigger.TenantId == tenantId), cancellationToken);
+
     public async Task AddAsync(WorkflowTrigger trigger, CancellationToken cancellationToken = default)
     {
         db.WorkflowTriggers.Add(trigger);

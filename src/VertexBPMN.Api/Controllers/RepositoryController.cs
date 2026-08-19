@@ -12,10 +12,12 @@ namespace VertexBPMN.Api.Controllers;
 public class RepositoryController : ControllerBase
 {
     private readonly IRepositoryService _repositoryService;
+    private readonly IWorkflowTriggerService _workflowTriggerService;
 
-    public RepositoryController(IRepositoryService repositoryService)
+    public RepositoryController(IRepositoryService repositoryService, IWorkflowTriggerService workflowTriggerService)
     {
         _repositoryService = repositoryService;
+        _workflowTriggerService = workflowTriggerService;
     }
 
     [HttpGet]
@@ -66,6 +68,7 @@ public class RepositoryController : ControllerBase
         if (effectiveTenantId is null && !User.IsInRole("Admin")) return Forbid();
 
         var def = await _repositoryService.DeployAsync(request.BpmnXml, request.Name, effectiveTenantId);
+        await _workflowTriggerService.SynchronizeBpmnWebhooksAsync(request.BpmnXml, def.Key, effectiveTenantId);
         return CreatedAtAction(nameof(GetById), new { id = def.Id }, def);
     }
 

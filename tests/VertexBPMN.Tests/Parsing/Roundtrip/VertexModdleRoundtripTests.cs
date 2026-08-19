@@ -90,7 +90,7 @@ public class VertexModdleRoundtripTests
   <bpmn:process id="p1">
     <bpmn:startEvent id="start">
       <bpmn:extensionElements>
-        <vertex:webhook path="/hooks/orders" method="POST" secretRef="cred-webhook" />
+        <vertex:webhook path="/hooks/orders" method="POST" secretRef="cred-webhook" credentialRef="cred-webhook-hmac" secretKey="signing" authMode="hmac-sha256" payloadSchema="{&quot;type&quot;:&quot;object&quot;}" correlationKey="orderId" />
         <vertex:trigger type="webhook" name="orders" processDefinitionKey="order-process" />
       </bpmn:extensionElements>
     </bpmn:startEvent>
@@ -105,6 +105,10 @@ public class VertexModdleRoundtripTests
         Assert.Contains("path=\"/hooks/orders\"", outXml);
         Assert.Contains("method=\"POST\"", outXml);
         Assert.Contains("secretRef=\"cred-webhook\"", outXml);
+        Assert.Contains("credentialRef=\"cred-webhook-hmac\"", outXml);
+        Assert.Contains("secretKey=\"signing\"", outXml);
+        Assert.Contains("authMode=\"hmac-sha256\"", outXml);
+        Assert.Contains("correlationKey=\"orderId\"", outXml);
         Assert.Contains("vertex:trigger", outXml);
         Assert.Contains("processDefinitionKey=\"order-process\"", outXml);
         Assert.Contains(VertexNs, outXml);

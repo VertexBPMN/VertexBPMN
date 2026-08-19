@@ -91,10 +91,17 @@ public sealed class StudioUiTestHost : IAsyncLifetime
         }
 
         _playwright = await Playwright.CreateAsync();
-        Browser = await _playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
-        {
-            Headless = true
-        });
+        var chromiumExecutable = global::Chromium.Path
+                                 ?? throw new InvalidOperationException(
+                                     $"No Chromium executable found for runtime " +
+                                     $"{System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier}.");
+
+        Browser = await _playwright.Chromium.LaunchAsync(
+            new BrowserTypeLaunchOptions
+            {
+                Headless = true,
+                ExecutablePath = chromiumExecutable
+            }); ;
     }
 
     public async ValueTask DisposeAsync()

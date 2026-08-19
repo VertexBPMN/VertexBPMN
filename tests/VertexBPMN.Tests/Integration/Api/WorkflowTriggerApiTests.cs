@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Text;
 using VertexBPMN.Tests.Infrastructure;
 
 namespace VertexBPMN.Tests.Integration.Api;
@@ -71,7 +73,101 @@ public sealed class WorkflowTriggerApiTests
         Assert.Equal(HttpStatusCode.NotFound, disabled.StatusCode);
     }
 
+    [Fact]
+    public async Task BpmnWebhook_IsSynchronized_AndStartsProcessWithValidHmac()
+    {
+        var tenantId = $"webhook-{Guid.NewGuid():N}";
+        var processKey = $"webhook-process-{Guid.NewGuid():N}";
+        var endpoint = $"/orders/{Guid.NewGuid():N}";
+        const string signingSecret = "integration-webhook-secret";
+        var credential = await _client.PostAsJsonAsync("/api/credentials", new
+        {
+            tenantId,
+            name = "Webhook HMAC",
+            type = "hmac",
+            description = "test credential",
+            secrets = new Dictionary<string, string> { ["secret"] = signingSecret }
+        });
+        Assert.Equal(HttpStatusCode.Created, credential.StatusCode);
+        var credentialJson = await credential.Content.ReadFromJsonAsync<CredentialCreated>();
+        Assert.NotNull(credentialJson);
+
+        var xml = $"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL' xmlns:vertex='https://vertexbpmn.io/schema/bpmn/1.0'><process id='{processKey}'><startEvent id='webhookStart'><extensionElements><vertex:webhook path='{endpoint}' method='POST' authMode='hmac-sha256' credentialRef='{credentialJson!.Id}' correlationKey='orderId' payloadSchema='{{&quot;type&quot;:&quot;object&quot;,&quot;required&quot;:[&quot;orderId&quot;],&quot;properties&quot;:{{&quot;amount&quot;:{{&quot;type&quot;:&quot;integer&quot;}}}}}}'/><vertex:trigger type='webhook' name='Order ingress' processDefinitionKey='{processKey}'/></extensionElements></startEvent><endEvent id='end'/><sequenceFlow id='f' sourceRef='webhookStart' targetRef='end'/></process></definitions>";
+        var deploy = await _client.PostAsJsonAsync("/api/repository", new { bpmnXml = xml, name = "webhook.bpmn", tenantId });
+        deploy.EnsureSuccessStatusCode();
+
+        var triggers = await _client.GetFromJsonAsync<List<TriggerInfo>>($"/api/triggers?tenantId={tenantId}");
+        var registered = Assert.Single(triggers!);
+        Assert.Equal(endpoint, registered.Path);
+        Assert.Equal("POST", registered.Method);
+        Assert.Equal("hmac-sha256", registered.AuthenticationMode);
+        Assert.Equal(credentialJson.Id, registered.CredentialId);
+
+        var body = "{\"orderId\":\"ORDER-42\",\"amount\":42}";
+        var signature = Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(signingSecret), Encoding.UTF8.GetBytes(body))).ToLowerInvariant();
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/webhooks{endpoint}") { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+        request.Headers.Add("X-VertexBPMN-Signature", $"sha256={signature}");
+        var invoked = await _client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.Created, invoked.StatusCode);
+
+        using var invalidRequest = new HttpRequestMessage(HttpMethod.Post, $"/api/webhooks{endpoint}") { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+        invalidRequest.Headers.Add("X-VertexBPMN-Signature", "sha256=00");
+        var invalid = await _client.SendAsync(invalidRequest);
+        Assert.Equal(HttpStatusCode.Unauthorized, invalid.StatusCode);
+
+        const string malformedBody = "{\"amount\":\"not-an-integer\"}";
+        var malformedSignature = Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(signingSecret), Encoding.UTF8.GetBytes(malformedBody))).ToLowerInvariant();
+        using var malformedRequest = new HttpRequestMessage(HttpMethod.Post, $"/api/webhooks{endpoint}") { Content = new StringContent(malformedBody, Encoding.UTF8, "application/json") };
+        malformedRequest.Headers.Add("X-VertexBPMN-Signature", $"sha256={malformedSignature}");
+        var malformed = await _client.SendAsync(malformedRequest);
+        Assert.Equal(HttpStatusCode.BadRequest, malformed.StatusCode);
+    }
+
+    [Fact]
+    public async Task MessageCorrelation_UpdatesAnActiveProcessInstance()
+    {
+        var key = $"message-process-{Guid.NewGuid():N}";
+        var deployed = await _client.PostAsJsonAsync("/api/repository", new
+        {
+            bpmnXml = $"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='{key}'><startEvent id='start'/><endEvent id='end'/></process></definitions>",
+            name = $"{key}.bpmn",
+            tenantId = (string?)null
+        });
+        deployed.EnsureSuccessStatusCode();
+
+        var start = await _client.PostAsJsonAsync("/api/runtime/start", new
+        {
+            processDefinitionKey = key,
+            variables = new Dictionary<string, object> { ["origin"] = "test" },
+            businessKey = "ORDER-99",
+            tenantId = (string?)null
+        });
+        Assert.Equal(HttpStatusCode.Created, start.StatusCode);
+        var instance = await start.Content.ReadFromJsonAsync<ProcessInstance>();
+        Assert.NotNull(instance);
+
+        var correlate = await _client.PostAsJsonAsync("/api/vertex/message", new
+        {
+            messageName = "order-received",
+            processInstanceId = instance!.Id,
+            variables = new Dictionary<string, object> { ["status"] = "received" }
+        });
+        correlate.EnsureSuccessStatusCode();
+        var result = await correlate.Content.ReadFromJsonAsync<MessageCorrelationResult>();
+        Assert.NotNull(result);
+        Assert.Equal("correlated", result!.ResultType);
+        Assert.Equal(instance.Id.ToString(), result.ProcessInstanceId);
+
+        var persisted = await _client.GetFromJsonAsync<ProcessInstanceDetails>($"/api/runtime/{instance.Id}");
+        Assert.NotNull(persisted);
+        Assert.Equal("test", persisted!.Variables["origin"].ToString());
+        Assert.Equal("received", persisted.Variables["status"].ToString());
+    }
+
     private sealed record TriggerCreated(TriggerInfo Trigger, string Secret, string InvokePath);
-    private sealed record TriggerInfo(Guid Id, string Name, string ProcessDefinitionKey);
+    private sealed record TriggerInfo(Guid Id, string Name, string ProcessDefinitionKey, string? Path, string? Method, string AuthenticationMode, string? CredentialId);
     private sealed record ProcessInstance(Guid Id, string ProcessId);
+    private sealed record ProcessInstanceDetails(Guid Id, Dictionary<string, object> Variables);
+    private sealed record MessageCorrelationResult(string ResultType, string ProcessInstanceId);
+    private sealed record CredentialCreated(string Id);
 }

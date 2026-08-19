@@ -33,6 +33,11 @@ public sealed class StudioWorkflowTrigger
     public DateTime LastModified { get; set; }
     public DateTime? LastTriggeredAt { get; set; }
     public long InvocationCount { get; set; }
+    public string? Path { get; set; }
+    public string? Method { get; set; }
+    public string AuthenticationMode { get; set; } = string.Empty;
+    public string? CredentialId { get; set; }
+    public string? CorrelationKey { get; set; }
 }
 
 public sealed class StudioWorkflowTriggerCreated

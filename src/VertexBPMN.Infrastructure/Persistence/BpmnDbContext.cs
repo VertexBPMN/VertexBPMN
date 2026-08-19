@@ -254,12 +254,22 @@ public class BpmnDbContext : DbContext
         entity.Property(trigger => trigger.ProcessDefinitionKey).IsRequired().HasMaxLength(255);
         entity.Property(trigger => trigger.TenantId).HasMaxLength(64);
         entity.Property(trigger => trigger.SecretHash).IsRequired().HasMaxLength(128);
+        entity.Property(trigger => trigger.Path).HasMaxLength(512);
+        entity.Property(trigger => trigger.Method).HasMaxLength(16);
+        entity.Property(trigger => trigger.AuthenticationMode).IsRequired().HasMaxLength(32);
+        entity.Property(trigger => trigger.CredentialId).HasMaxLength(128);
+        entity.Property(trigger => trigger.CredentialSecretKey).HasMaxLength(128);
+        entity.Property(trigger => trigger.CorrelationKey).HasMaxLength(256);
         entity.Property(trigger => trigger.Enabled).IsRequired();
         entity.Property(trigger => trigger.InvocationCount).IsRequired();
         entity.HasIndex(trigger => new { trigger.TenantId, trigger.Name }).IsUnique();
         entity.HasIndex(trigger => trigger.ProcessDefinitionKey);
         entity.HasIndex(trigger => trigger.TenantId);
         entity.HasIndex(trigger => trigger.LastModified);
+        // The ingress route does not contain a tenant segment, so endpoint ownership must
+        // be global; otherwise an unauthenticated request could be ambiguous.
+        entity.HasIndex(trigger => new { trigger.Path, trigger.Method }).IsUnique();
+        entity.HasIndex(trigger => new { trigger.TenantId, trigger.ProcessDefinitionKey, trigger.SourceElementId }).IsUnique();
     }
 
     private static void ConfigureMigrationRecords(ModelBuilder modelBuilder)

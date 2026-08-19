@@ -18,6 +18,9 @@ var isUiTest = builder.Environment.IsEnvironment("UiTest")
 var isLocalDevelopment = builder.Environment.IsDevelopment()
     && builder.Configuration.GetValue<bool>("StudioAuthentication:LocalDevelopmentEnabled");
 
+if (isUiTest)
+    builder.WebHost.UseStaticWebAssets();
+
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();

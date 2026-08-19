@@ -1,15 +1,17 @@
 @page "/bpmn-modeler"
 @using System.Text
+@using Microsoft.AspNetCore.Components.Forms
 @using VertexBPMN.Studio.Components.Modeling
+@using VertexBPMN.Domain.Entities
 @inject VertexBPMN.Studio.Services.IRepositoryService RepositoryService
 @inject VertexBPMN.Studio.Services.IConnectorTemplateService ConnectorTemplateService
 @inject VertexBPMN.Studio.Services.ICredentialService CredentialService
 @inject VertexBPMN.Studio.Services.IDmnService DmnService
 @inject VertexBPMN.Studio.Services.StudioTenantContext TenantContext
 @inject MudBlazor.ISnackbar Snackbar
-@inject IHttpClientFactory HttpClientFactory
 @inject VertexBPMN.Studio.Services.ActiveEngineService ActiveEngineService
 @inject IJSRuntime JSRuntime
+@inject IWebHostEnvironment HostEnvironment
 @implements IDisposable
 
 <PageTitle>BPMN Modeler</PageTitle>
@@ -27,6 +29,11 @@
             <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="DeployBpmnXml" StartIcon="@Icons.Material.Filled.CloudUpload">Deploy BPMN</MudButton>
             <MudButton Variant="Variant.Filled" Color="Color.Tertiary" OnClick="@(() => _showNodeCatalog = true)" StartIcon="@Icons.Material.Filled.AddCircle">Add node</MudButton>
             <MudButton Variant="Variant.Outlined" OnClick="ValidateAsync" StartIcon="@Icons.Material.Filled.FactCheck">Validate</MudButton>
+            <label class="mud-button-root mud-button mud-button-outlined mud-button-outlined-primary mud-button-outlined-size-medium mud-ripple" for="bpmn-import-file">
+                <MudIcon Icon="@Icons.Material.Filled.UploadFile" Size="Size.Small" Class="me-2" />
+                Import BPMN
+            </label>
+            <InputFile id="bpmn-import-file" data-testid="bpmn-import-file" OnChange="ImportBpmnAsync" accept=".bpmn,.xml,application/xml,text/xml" style="display:none" />
             <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="ExportBpmnXml" StartIcon="@Icons.Material.Filled.Download">Export XML</MudButton>
             <MudButton Variant="Variant.Outlined" OnClick="@(() => LoadBpmnXml())" StartIcon="@Icons.Material.Filled.Refresh">Load template</MudButton>
             <MudChip T="string" Color="Color.Info" Variant="Variant.Outlined">Tenant: @(TenantContext.CurrentTenantId ?? "default")</MudChip>
@@ -35,7 +42,7 @@
 
     @if (_showNodeCatalog)
     {
-        <MudPaper Class="pa-4" data-testid="low-code-node-catalog">
+        <MudPaper Class="pa-4" data-testid="low-code-node-catalog" role="dialog" aria-modal="true" aria-label="Add node">
             <MudStack Spacing="2">
                 <MudStack Row="true" AlignItems="AlignItems.Center">
                     <MudText Typo="Typo.h6">Add node</MudText>
@@ -50,7 +57,7 @@
                     <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2">
                         @foreach (var node in category)
                         {
-                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="@(() => InsertLowCodeNodeAsync(node))">@node.Name</MudButton>
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@node.Icon" OnClick="@(() => InsertLowCodeNodeAsync(node))">@node.Name</MudButton>
                         }
                     </MudStack>
                 }
@@ -81,7 +88,7 @@
 
     <MudPaper Class="pa-4">
         <MudText Typo="Typo.h6" GutterBottom="true">Modeler</MudText>
-        <BpmnModelerSurface @ref="_modeler" Xml="_bpmnXml" ConnectorTemplates="_templates" DecisionOptions="_decisions" />
+        <BpmnModelerSurface @ref="_modeler" Xml="@_bpmnXml" ConnectorTemplates="_templates" DecisionOptions="_decisions" />
     </MudPaper>
 
     <MudGrid>
@@ -119,15 +126,32 @@
         </MudItem>
     </MudGrid>
 
+    <MudPaper Class="pa-4" data-testid="bpmn-version-compare">
+        <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h6">Version compare</MudText>
+            <MudSelect T="string" Label="Deployed process version" @bind-Value="_selectedVersionId" Dense="true" Style="min-width: 280px" data-testid="bpmn-version-select">
+                @foreach (var definition in _deployedDefinitions.OrderByDescending(definition => definition.CreatedAt))
+                {
+                    <MudSelectItem T="string" Value="@definition.Id.ToString()">@definition.Name (v@definition.Version, @definition.Key)</MudSelectItem>
+                }
+            </MudSelect>
+            <MudButton Variant="Variant.Outlined" Disabled="@string.IsNullOrWhiteSpace(_selectedVersionId)" OnClick="CompareSelectedVersionAsync" data-testid="bpmn-version-compare-action">Compare</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="LoadDeployedDefinitionsAsync">Refresh versions</MudButton>
+        </MudStack>
+        @if (!string.IsNullOrWhiteSpace(_versionDiff))
+        {
+            <MudAlert Class="mt-2" Severity="Severity.Info">@_versionDiff</MudAlert>
+        }
+    </MudPaper>
+
     <MudPaper Class="pa-4">
         <MudText Typo="Typo.h6" GutterBottom="true">Viewer</MudText>
-        <BpmnViewerSurface Xml="_bpmnXml" />
+        <BpmnViewerSurface Xml="@_bpmnXml" />
     </MudPaper>
 </MudStack>
 
 @code {
     private string _bpmnXml = FallbackBpmn;
-    private HttpClient _httpClient = default!;
     private BpmnModelerSurface? _modeler;
     private IReadOnlyList<StudioConnectorTemplate> _templates = [];
     private IReadOnlyList<StudioCredential> _credentials = [];
@@ -137,20 +161,23 @@
     private string _nodeSearch = string.Empty;
     private string _xmlPreview = FallbackBpmn;
     private List<StudioValidationIssue> _validationIssues = [];
+    private IReadOnlyList<ProcessDefinition> _deployedDefinitions = [];
+    private string? _selectedVersionId;
+    private string? _versionDiff;
 
     private static readonly LowCodeNode[] LowCodeNodes =
     [
-        new("webhook", "Webhook trigger", "Triggers"),
-        new("timer", "Cron / timer trigger", "Triggers"),
-        new("http", "HTTP request", "Actions"),
-        new("if", "IF condition", "Control flow"),
-        new("wait", "Wait", "Control flow"),
-        new("form", "User approval form", "Human tasks"),
-        new("decision", "Decision table", "Decisions"),
-        new("subworkflow", "Subworkflow", "Composition"),
-        new("case", "Start case model", "Composition"),
-        new("batch", "Batch task", "Actions"),
-        new("error", "Error handler", "Control flow")
+        new("webhook", "Webhook trigger", "Triggers", Icons.Material.Filled.Webhook),
+        new("timer", "Cron / timer trigger", "Triggers", Icons.Material.Filled.Schedule),
+        new("http", "HTTP request", "Actions", Icons.Material.Filled.Http),
+        new("if", "IF condition", "Control flow", Icons.Material.Filled.CallSplit),
+        new("wait", "Wait", "Control flow", Icons.Material.Filled.HourglassBottom),
+        new("form", "User approval form", "Human tasks", Icons.Material.Filled.Approval),
+        new("decision", "Decision table", "Decisions", Icons.Material.Filled.AccountTree),
+        new("subworkflow", "Subworkflow", "Composition", Icons.Material.Filled.SubdirectoryArrowRight),
+        new("case", "Start case model", "Composition", Icons.Material.Filled.Workspaces),
+        new("batch", "Batch task", "Actions", Icons.Material.Filled.ViewList),
+        new("error", "Error handler", "Control flow", Icons.Material.Filled.ErrorOutline)
     ];
 
     private static readonly LowCodePattern[] LowCodePatterns =
@@ -188,12 +215,12 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _httpClient = HttpClientFactory.CreateClient("Default");
         ActiveEngineService.OnChange += StateHasChanged;
         TenantContext.Changed += OnTenantChanged;
         await LoadBpmnXml(showNotification: false);
         await LoadConnectorTemplatesAsync();
         await LoadDecisionOptionsAsync();
+        await LoadDeployedDefinitionsAsync();
     }
 
     public void Dispose()
@@ -208,6 +235,7 @@
         {
             await LoadConnectorTemplatesAsync();
             await LoadDecisionOptionsAsync();
+            await LoadDeployedDefinitionsAsync();
             StateHasChanged();
         });
     }
@@ -332,6 +360,56 @@
         _xmlPreview = await CaptureBpmnXml();
     }
 
+    private async Task ImportBpmnAsync(InputFileChangeEventArgs args)
+    {
+        var file = args.File;
+        if (file.Size > 10 * 1024 * 1024)
+        {
+            Snackbar.Add("BPMN files must not exceed 10 MB.", Severity.Warning);
+            return;
+        }
+
+        await using var stream = file.OpenReadStream(10 * 1024 * 1024);
+        using var reader = new StreamReader(stream);
+        _bpmnXml = await reader.ReadToEndAsync();
+        _xmlPreview = _bpmnXml;
+        _validationIssues = [];
+        Snackbar.Add($"Imported {file.Name}.", Severity.Success);
+    }
+
+    private async Task LoadDeployedDefinitionsAsync()
+    {
+        try
+        {
+            _deployedDefinitions = (await RepositoryService.GetProcessDefinitionsAsync(TenantContext.CurrentTenantId)).ToArray();
+        }
+        catch (Exception exception)
+        {
+            _deployedDefinitions = [];
+            Snackbar.Add($"Process versions could not be loaded: {exception.Message}", Severity.Warning);
+        }
+    }
+
+    private async Task CompareSelectedVersionAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_selectedVersionId))
+            return;
+
+        var deployedXml = await RepositoryService.GetProcessDefinitionXmlAsync(_selectedVersionId, TenantContext.CurrentTenantId);
+        var currentXml = await CaptureBpmnXml();
+        var currentLines = NormalizeLines(currentXml);
+        var deployedLines = NormalizeLines(deployedXml);
+        var added = currentLines.Except(deployedLines, StringComparer.Ordinal).Count();
+        var removed = deployedLines.Except(currentLines, StringComparer.Ordinal).Count();
+        _versionDiff = added == 0 && removed == 0
+            ? "The editor and deployed version are equivalent after whitespace normalization."
+            : $"Compared with deployed version: {added} changed/added line(s), {removed} removed line(s).";
+    }
+
+    private static string[] NormalizeLines(string xml) => xml
+        .Replace("\r\n", "\n", StringComparison.Ordinal)
+        .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
     private async Task DeployBpmnXml()
     {
         var xml = await CaptureBpmnXml();
@@ -357,7 +435,8 @@
     {
         try
         {
-            _bpmnXml = await _httpClient.GetStringAsync("/data/DefaultBpmn.xml");
+            var templatePath = Path.Combine(HostEnvironment.WebRootPath, "data", "DefaultBpmn.xml");
+            _bpmnXml = await File.ReadAllTextAsync(templatePath);
             if (showNotification)
                 Snackbar.Add("BPMN template loaded.", Severity.Info);
         }
@@ -382,6 +461,6 @@
         await JSRuntime.InvokeVoidAsync("downloadFile", fileName, dataUri);
     }
 
-    private sealed record LowCodeNode(string Kind, string Name, string Category);
+    private sealed record LowCodeNode(string Kind, string Name, string Category, string Icon);
     private sealed record LowCodePattern(string Id, string Name);
 }

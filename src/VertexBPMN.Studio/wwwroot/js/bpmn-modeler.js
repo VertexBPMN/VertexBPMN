@@ -350,7 +350,7 @@ function configureQuickInsert(modeler, templates) {
 }
 
 export const BpmnModelerInterop = {
-    createModeler: function (containerId, bpmnXml, propertiesPanelId) {
+    createModeler: async function (containerId, bpmnXml, propertiesPanelId) {
         const ctor = getConstructor(['BpmnJS', 'BpmnModeler']);
         if (!ctor) {
             return fallbackInstance('BPMN Modeler', containerId, bpmnXml);
@@ -376,7 +376,8 @@ export const BpmnModelerInterop = {
         }
 
         const modeler = new ctor(options);
-        importArtifact(modeler, bpmnXml, 'bpmn.io BPMN Modeler fallback').catch(err => console.error('BPMN modeler import failed', err));
+        await importArtifact(modeler, bpmnXml, 'bpmn.io BPMN Modeler fallback');
+        getElement(containerId)?.setAttribute("data-modeler-ready", "true");
         return modeler;
     },
     getXml: async function (modeler) {

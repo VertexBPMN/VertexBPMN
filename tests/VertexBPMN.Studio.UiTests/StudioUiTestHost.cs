@@ -12,7 +12,17 @@ namespace VertexBPMN.Studio.UiTests;
 
 public sealed class StudioUiTestHost : IAsyncLifetime
 {
+    public const string DeployedBpmn = """
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_Deployed" targetNamespace="https://vertexbpmn.io/ui-tests">
+  <bpmn:process id="InvoiceProcess" name="Deployed invoice process" isExecutable="true">
+    <bpmn:startEvent id="Start_Deployed" />
+  </bpmn:process>
+</bpmn:definitions>
+""";
+
     private readonly ConcurrentQueue<string> _apiRequests = new();
+    private readonly ConcurrentQueue<string> _studioLogs = new();
     private WebApplication? _api;
     private Process? _studioProcess;
     private IPlaywright? _playwright;
@@ -20,6 +30,7 @@ public sealed class StudioUiTestHost : IAsyncLifetime
     public Uri BaseAddress { get; private set; } = null!;
     public IBrowser Browser { get; private set; } = null!;
     public IReadOnlyList<string> ApiRequests => _apiRequests.ToArray();
+    public IReadOnlyList<string> StudioLogs => _studioLogs.ToArray();
 
     public async ValueTask InitializeAsync()
     {
@@ -41,6 +52,7 @@ public sealed class StudioUiTestHost : IAsyncLifetime
 
         var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../.."));
         var studioProject = Path.Combine(repoRoot, "src", "VertexBPMN.Studio", "VertexBPMN.Studio.csproj");
+        var buildConfiguration = new DirectoryInfo(AppContext.BaseDirectory).Parent?.Name ?? "Release";
         var startInfo = new ProcessStartInfo("dotnet")
         {
             WorkingDirectory = repoRoot,
@@ -52,6 +64,9 @@ public sealed class StudioUiTestHost : IAsyncLifetime
         startInfo.ArgumentList.Add("run");
         startInfo.ArgumentList.Add("--project");
         startInfo.ArgumentList.Add(studioProject);
+        startInfo.ArgumentList.Add("--configuration");
+        startInfo.ArgumentList.Add(buildConfiguration);
+        startInfo.ArgumentList.Add("--no-build");
         startInfo.ArgumentList.Add("--no-restore");
         startInfo.ArgumentList.Add("--no-launch-profile");
         startInfo.ArgumentList.Add("--urls");
@@ -65,14 +80,26 @@ public sealed class StudioUiTestHost : IAsyncLifetime
 
         _studioProcess = Process.Start(startInfo)
             ?? throw new InvalidOperationException("Could not start the Studio test host.");
-        _ = _studioProcess.StandardOutput.ReadToEndAsync();
-        _ = _studioProcess.StandardError.ReadToEndAsync();
+        _studioProcess.OutputDataReceived += (_, args) =>
+        {
+            if (args.Data is not null)
+                _studioLogs.Enqueue(args.Data);
+        };
+        _studioProcess.ErrorDataReceived += (_, args) =>
+        {
+            if (args.Data is not null)
+                _studioLogs.Enqueue(args.Data);
+        };
+        _studioProcess.BeginOutputReadLine();
+        _studioProcess.BeginErrorReadLine();
 
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
         for (var attempt = 0; attempt < 480; attempt++)
         {
             if (_studioProcess.HasExited)
-                throw new InvalidOperationException("The Studio test host exited before becoming ready.");
+                throw new InvalidOperationException(
+                    $"The Studio test host exited with code {_studioProcess.ExitCode} before becoming ready.{Environment.NewLine}" +
+                    string.Join(Environment.NewLine, _studioLogs));
 
             try
             {
@@ -145,6 +172,17 @@ public sealed class StudioUiTestHost : IAsyncLifetime
                 createdAt = "2026-08-12T10:00:00Z",
                 deploymentId = "22222222-2222-2222-2222-222222222222"
             }
+        }));
+        app.MapGet("/api/repository/{id}", (string id) => Results.Json(new
+        {
+            id,
+            key = "InvoiceProcess",
+            name = "Invoice approval",
+            version = 1,
+            bpmnXml = DeployedBpmn,
+            tenantId = "tenant-a",
+            createdAt = "2026-08-12T10:00:00Z",
+            deploymentId = "22222222-2222-2222-2222-222222222222"
         }));
         app.MapGet("/api/runtime", () => Results.Json(new[]
         {

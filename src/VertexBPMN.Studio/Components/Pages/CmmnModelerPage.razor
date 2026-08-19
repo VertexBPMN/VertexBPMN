@@ -41,7 +41,20 @@
     @if (_trace.Count > 0)
     {
         <MudPaper Class="pa-4">
-            <MudText Typo="Typo.h6">Execution trace</MudText>
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudText Typo="Typo.h6">Case runtime status</MudText>
+                <MudChip T="string" Color="Color.Success" Variant="Variant.Outlined">Completed: @_completedPlanItems.Count</MudChip>
+                <MudChip T="string" Color="Color.Info" Variant="Variant.Outlined">User events: @_userEvents.Count</MudChip>
+                <MudChip T="string" Color="Color.Secondary" Variant="Variant.Outlined">Milestones: @_milestones.Count</MudChip>
+            </MudStack>
+            @if (_completedPlanItems.Count > 0 || _userEvents.Count > 0 || _milestones.Count > 0)
+            {
+                <MudGrid Class="mt-2">
+                    <MudItem xs="12" md="4"><MudText Typo="Typo.subtitle2">Completed plan items</MudText><MudText>@(_completedPlanItems.Count == 0 ? "None" : string.Join(", ", _completedPlanItems))</MudText></MudItem>
+                    <MudItem xs="12" md="4"><MudText Typo="Typo.subtitle2">User events</MudText><MudText>@(_userEvents.Count == 0 ? "None" : string.Join(", ", _userEvents))</MudText></MudItem>
+                    <MudItem xs="12" md="4"><MudText Typo="Typo.subtitle2">Milestones</MudText><MudText>@(_milestones.Count == 0 ? "None" : string.Join(", ", _milestones))</MudText></MudItem>
+                </MudGrid>
+            }
             <MudList T="string">
                 @foreach (var line in _trace)
                 {
@@ -54,12 +67,14 @@
     @if (_history.Count > 0)
     {
         <MudPaper Class="pa-4">
-            <MudText Typo="Typo.h6">Historical context</MudText>
+            <MudText Typo="Typo.h6">Case history timeline</MudText>
             @foreach (var snapshot in _history)
             {
-                <MudText Typo="Typo.subtitle2">@snapshot.Timestamp.ToUniversalTime().ToString("O")</MudText>
-                <MudText>Completed plan items: @string.Join(", ", snapshot.CompletedPlanItems)</MudText>
-                <MudText>Case-file values: @snapshot.CaseFile.Count</MudText>
+                <MudPaper Class="pa-2 mt-2" Outlined="true">
+                    <MudText Typo="Typo.subtitle2">@snapshot.Timestamp.ToUniversalTime().ToString("O")</MudText>
+                    <MudText>Completed plan items: @(snapshot.CompletedPlanItems.Count == 0 ? "None" : string.Join(", ", snapshot.CompletedPlanItems))</MudText>
+                    <MudText>Case-file values: @(snapshot.CaseFile.Count == 0 ? "None" : string.Join(", ", snapshot.CaseFile.Select(value => $"{value.Key}={value.Value}")))</MudText>
+                </MudPaper>
             }
         </MudPaper>
     }
@@ -82,6 +97,9 @@
     private string _caseId = "studio-case";
     private List<string> _trace = new();
     private List<HistoricalCaseSnapshot> _history = new();
+    private IReadOnlyList<string> _completedPlanItems = [];
+    private IReadOnlyList<string> _userEvents = [];
+    private IReadOnlyList<string> _milestones = [];
     private string _eventId = string.Empty;
     private string _caseFileItemId = string.Empty;
     private string _caseFileValue = string.Empty;
@@ -127,6 +145,7 @@
         try
         {
             _trace = (await CaseManagementService.ExecuteCaseAsync(_caseId)).ToList();
+            UpdateRuntimeStatus();
             Snackbar.Add($"Case '{_caseId}' executed.", Severity.Success);
         }
         catch (Exception ex)
@@ -146,6 +165,16 @@
         {
             Snackbar.Add($"History load failed: {ex.Message}", Severity.Error);
         }
+    }
+
+    private void UpdateRuntimeStatus()
+    {
+        _completedPlanItems = _trace.Where(line => line.StartsWith("PlanItemCompleted:", StringComparison.Ordinal))
+            .Select(line => line["PlanItemCompleted:".Length..].Trim()).Distinct().ToArray();
+        _userEvents = _trace.Where(line => line.Contains("UserEvent", StringComparison.OrdinalIgnoreCase) || line.Contains("eventListener", StringComparison.OrdinalIgnoreCase))
+            .Distinct().ToArray();
+        _milestones = _trace.Where(line => line.Contains("Milestone", StringComparison.OrdinalIgnoreCase))
+            .Distinct().ToArray();
     }
 
     private async Task TriggerUserEvent()

@@ -1,9 +1,12 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using VertexBPMN.Infrastructure.Persistence;
 
 #nullable disable
 
 namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn;
 
+[DbContext(typeof(BpmnDbContext))]
 [Migration("20260819130000_AddWebhookTriggerMetadata")]
 public partial class AddWebhookTriggerMetadata : Migration
 {

@@ -43,7 +43,7 @@ public sealed class StudioUiContractTests(StudioUiTestHost host) : IClassFixture
     [Theory]
     [InlineData("bpmn-modeler", "BPMN Modeler", "Deploy BPMN", "Export XML", "bpmn-modeler-shell", "Viewer", "bpmn-viewer-shell")]
     [InlineData("dmn-modeler", "DMN Modeler", "Deploy DMN", "Export DMN", "dmn-modeler-shell", "Viewer", "dmn-viewer-shell")]
-    [InlineData("form-builder", "Form Builder", "Save JSON", "Export JSON", "form-builder-shell", "Runtime Viewer", "form-viewer-shell")]
+    [InlineData("form-builder", "Form Builder", "Save form", "Export JSON", "form-builder-shell", "Runtime Viewer", "form-viewer-shell")]
     [InlineData("cmmn-modeler", "CMMN Modeler", "Register case model", "Export CMMN", "cmmn-modeler-shell", "Viewer", "cmmn-viewer-shell")]
     public async Task BpmnIoModelerShells_Render_EditorViewer_And_ActionButtons(
         string route,

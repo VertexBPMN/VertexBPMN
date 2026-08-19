@@ -59,6 +59,9 @@ public static class VertexBpmnExtensions
             case "assignment":
                 CopyAttributes(child, bucket, "vertex:assignment");
                 break;
+            case "case":
+                CopyAttributes(child, bucket, "vertex:case");
+                break;
             case "credential":
                 CopyAttributes(child, bucket, "vertex:credential");
                 break;

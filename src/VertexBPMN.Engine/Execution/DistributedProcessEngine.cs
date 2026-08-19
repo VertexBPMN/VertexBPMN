@@ -1768,7 +1768,8 @@ namespace VertexBPMN.Engine.Execution
         {
             var attributes = planItem.Attributes ?? new Dictionary<string, string>();
             string caseRef;
-            if (attributes.TryGetValue("camunda:caseRef", out caseRef) ||
+            if (attributes.TryGetValue("vertex:case.caseRef", out caseRef) ||
+                attributes.TryGetValue("camunda:caseRef", out caseRef) ||
                 attributes.TryGetValue("flowable:caseRef", out caseRef))
             {
                 trace.Add($"CaseTask: {planItem.Id} starting case {caseRef}");

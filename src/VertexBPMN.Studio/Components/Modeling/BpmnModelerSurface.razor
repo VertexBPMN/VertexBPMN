@@ -110,6 +110,18 @@
         return await _module.InvokeAsync<StudioValidationIssue[]>("BpmnModelerInterop.getValidationIssues", _modeler);
     }
 
+    public Task StartSimulationAsync() => InvokeSimulationActionAsync("BpmnModelerInterop.startSimulation");
+
+    public Task PauseSimulationAsync() => InvokeSimulationActionAsync("BpmnModelerInterop.pauseSimulation");
+
+    public Task ResetSimulationAsync() => InvokeSimulationActionAsync("BpmnModelerInterop.resetSimulation");
+
+    private async Task InvokeSimulationActionAsync(string identifier)
+    {
+        if (_module is not null && _modeler is not null)
+            await _module.InvokeVoidAsync(identifier, _modeler);
+    }
+
     public async ValueTask DisposeAsync()
     {
         try

@@ -371,6 +371,9 @@ export const BpmnModelerInterop = {
         if (window.VertexValidationModule) {
             additionalModules.push(window.VertexValidationModule);
         }
+        if (window.BpmnTokenSimulationModule) {
+            additionalModules.push(window.BpmnTokenSimulationModule);
+        }
         if (additionalModules.length) {
             options.additionalModules = additionalModules;
         }
@@ -411,6 +414,22 @@ export const BpmnModelerInterop = {
         window.VertexBpmnDecisionOptions = (decisions || [])
             .filter(decision => decision && decision.key)
             .map(decision => ({ key: decision.key, name: decision.name || decision.key }));
+    },
+    startSimulation: function (modeler) {
+        if (!modeler || modeler.__vertexFallback) {
+            throw new Error("Local simulation requires the bpmn.io modeler bundle.");
+        }
+        modeler.get("editorActions").trigger("toggleTokenSimulation");
+    },
+    pauseSimulation: function (modeler) {
+        if (modeler && !modeler.__vertexFallback) {
+            modeler.get("editorActions").trigger("togglePauseTokenSimulation");
+        }
+    },
+    resetSimulation: function (modeler) {
+        if (modeler && !modeler.__vertexFallback) {
+            modeler.get("editorActions").trigger("resetTokenSimulation");
+        }
     },
     destroy: function (modeler) {
         destroyInstance(modeler);

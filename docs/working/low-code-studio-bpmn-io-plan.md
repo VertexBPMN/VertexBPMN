@@ -484,6 +484,13 @@ Akzeptanzkriterien:
 - Runtime Overlay nutzt persistente Execution Tokens und History Events.
 - Fehler sind direkt am Diagrammelement sichtbar.
 
+Umsetzungsstand (2026-08-19): abgeschlossen.
+
+- Der BPMN-Modeler bindet das gepinnte Paket `bpmn-js-token-simulation` lokal ein; Start, Pause und Reset sind direkt im Modeler verfügbar.
+- Ein Engine-Testlauf deployt die aktuelle BPMN-Version, akzeptiert JSON-Testvariablen und startet eine isolierte Prozessinstanz.
+- Die Debug-Ansicht legt aktive, abgeschlossene, fehlgeschlagene, wartende und Retry-Zustände als Diagramm-Markierungen über das persistierte Laufzeitbild. Ereignisse aus dem Execution Trace ergänzen Fehler-, Warte- und Retry-Zustände.
+- Die Timeline zeigt die persistierten Ablaufereignisse; ein Klick hebt das zugehörige BPMN-Element als Replay-Schritt hervor. Damit werden Token-, Task-, Connector-, Decision-, Form- und Case-Ereignisse einheitlich dargestellt, sofern sie im Trace vorliegen.
+
 ## Phase 12: API, SDK und CLI komplettieren
 
 Prioritaet: P2  

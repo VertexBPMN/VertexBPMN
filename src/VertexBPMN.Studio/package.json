@@ -9,11 +9,12 @@
   },
   "dependencies": {
     "@bpmn-io/form-js": "1.24.1",
+    "@bpmn-io/properties-panel": "3.48.0",
     "bpmn-js": "18.24.0",
     "bpmn-js-properties-panel": "5.63.0",
+    "bpmn-js-token-simulation": "0.40.0",
     "cmmn-js": "0.20.0",
-    "dmn-js": "17.10.1",
-    "@bpmn-io/properties-panel": "3.48.0"
+    "dmn-js": "17.10.1"
   },
   "devDependencies": {
     "esbuild": "0.28.2"

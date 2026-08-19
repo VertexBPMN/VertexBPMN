@@ -184,6 +184,17 @@ public sealed class StudioUiTestHost : IAsyncLifetime
             createdAt = "2026-08-12T10:00:00Z",
             deploymentId = "22222222-2222-2222-2222-222222222222"
         }));
+        app.MapPost("/api/repository", () => Results.Json(new
+        {
+            id = "55555555-5555-5555-5555-555555555555",
+            key = "Process_Fallback",
+            name = "studio-test-run.bpmn",
+            version = 2,
+            bpmnXml = DeployedBpmn,
+            tenantId = "tenant-a",
+            createdAt = "2026-08-12T10:00:00Z",
+            deploymentId = "66666666-6666-6666-6666-666666666666"
+        }));
         app.MapGet("/api/runtime", () => Results.Json(new[]
         {
             new
@@ -202,6 +213,20 @@ public sealed class StudioUiTestHost : IAsyncLifetime
                 createdAt = "2026-08-12T10:05:00Z",
                 lastModified = "2026-08-12T10:05:00Z"
             }
+        }));
+        app.MapPost("/api/runtime/start", () => Results.Json(new
+        {
+            id = "77777777-7777-7777-7777-777777777777",
+            processDefinitionId = "55555555-5555-5555-5555-555555555555",
+            businessKey = "studio-test",
+            tenantId = "tenant-a",
+            startedAt = "2026-08-12T10:05:00Z",
+            state = "Active",
+            instanceId = "studio-test-instance",
+            processId = "Process_Fallback",
+            activeTasks = Array.Empty<string>(),
+            activeTokens = Array.Empty<string>(),
+            variables = new Dictionary<string, object>()
         }));
         app.MapGet("/api/task", () => Results.Json(new[]
         {
@@ -241,6 +266,24 @@ public sealed class StudioUiTestHost : IAsyncLifetime
         }));
         app.MapGet("/api/engine/connections", () => Results.Json(Array.Empty<object>()));
         app.MapGet("/api/history", () => Results.Json(Array.Empty<object>()));
+        app.MapGet("/api/visual-debug/visualize/{id}", (string id) => Results.Json(new
+        {
+            processInstanceId = id,
+            processDefinitionKey = "InvoiceProcess",
+            bpmnXml = DeployedBpmn,
+            activeTokens = new[] { new { id = "token-1", activityId = "Start_Deployed", position = "start", status = "waiting" } },
+            completedActivities = new[] { new { activityId = "Start_Deployed", status = "completed", completedAt = "2026-08-12T10:05:01Z" } },
+            metrics = new { totalActivities = 1, completedActivities = 1, activeActivities = 1 }
+        }));
+        app.MapGet("/api/visual-debug/trace/{id}", (string id) => Results.Json(new
+        {
+            processInstanceId = id,
+            events = new[]
+            {
+                new { type = "StartEvent", activityId = "Start_Deployed", timestamp = "2026-08-12T10:05:00Z", details = "Process started" },
+                new { type = "TaskWaiting", activityId = "Start_Deployed", timestamp = "2026-08-12T10:05:01Z", details = "Waiting for next activity" }
+            }
+        }));
         app.MapMethods("/api/{**path}", ["GET", "POST", "PUT", "DELETE", "PATCH"], () => Results.Json(Array.Empty<object>()));
     }
 

@@ -90,6 +90,48 @@ function destroyInstance(instance) {
     }
 }
 
+const runtimeMarkerClasses = [
+    "vertex-runtime-active",
+    "vertex-runtime-completed",
+    "vertex-runtime-failed",
+    "vertex-runtime-waiting",
+    "vertex-runtime-retry",
+    "vertex-runtime-replay"
+];
+
+function applyMarkers(viewer, ids, marker) {
+    if (!viewer || viewer.__vertexFallback || !Array.isArray(ids)) {
+        return;
+    }
+
+    const canvas = viewer.get("canvas");
+    const elementRegistry = viewer.get("elementRegistry");
+    ids.filter(Boolean).forEach(id => {
+        if (elementRegistry.get(id)) {
+            canvas.addMarker(id, marker);
+        }
+    });
+}
+
+function setRuntimeState(viewer, state) {
+    if (!viewer || viewer.__vertexFallback) {
+        return;
+    }
+
+    const canvas = viewer.get("canvas");
+    const elementRegistry = viewer.get("elementRegistry");
+    elementRegistry.getAll().forEach(element => {
+        runtimeMarkerClasses.forEach(marker => canvas.removeMarker(element, marker));
+    });
+
+    applyMarkers(viewer, state?.active, "vertex-runtime-active");
+    applyMarkers(viewer, state?.completed, "vertex-runtime-completed");
+    applyMarkers(viewer, state?.failed, "vertex-runtime-failed");
+    applyMarkers(viewer, state?.waiting, "vertex-runtime-waiting");
+    applyMarkers(viewer, state?.retry, "vertex-runtime-retry");
+    applyMarkers(viewer, state?.replay, "vertex-runtime-replay");
+}
+
 export const BpmnViewerInterop = {
     createViewer: function (containerId, bpmnXml) {
         const ctor = getConstructor(['BpmnNavigatedViewer', 'BpmnViewer', 'BpmnJS']);
@@ -103,6 +145,9 @@ export const BpmnViewerInterop = {
     },
     loadXml: async function (viewer, bpmnXml) {
         await importArtifact(viewer, bpmnXml, 'bpmn.io BPMN Viewer fallback');
+    },
+    setRuntimeState: function (viewer, state) {
+        setRuntimeState(viewer, state);
     },
     destroy: function (viewer) {
         destroyInstance(viewer);

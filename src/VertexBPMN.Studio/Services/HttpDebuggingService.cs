@@ -43,6 +43,9 @@ public sealed class HttpDebuggingService(IHttpClientFactory httpClientFactory) :
     public Task<JsonElement> GetProcessVisualizationAsync(Guid processInstanceId, CancellationToken cancellationToken = default) =>
         GetAsync($"/api/visual-debug/visualize/{processInstanceId}", cancellationToken);
 
+    public Task<JsonElement> GetExecutionTraceAsync(Guid processInstanceId, CancellationToken cancellationToken = default) =>
+        GetAsync($"/api/visual-debug/trace/{processInstanceId}", cancellationToken);
+
     public Task<JsonElement> InspectVariablesAsync(Guid sessionId, CancellationToken cancellationToken = default) =>
         GetAsync($"/api/visual-debug/variables/{sessionId}", cancellationToken);
 

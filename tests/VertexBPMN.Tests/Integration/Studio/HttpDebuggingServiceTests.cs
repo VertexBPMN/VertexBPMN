@@ -51,6 +51,27 @@ public sealed class HttpDebuggingServiceTests
     }
 
     [Fact]
+    public async Task GetExecutionTraceAsync_UsesPersistentTraceEndpoint()
+    {
+        var requests = new List<HttpRequestMessage>();
+        var response = new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = JsonContent.Create(new { events = Array.Empty<object>() })
+        };
+        var client = new HttpClient(new RecordingHandler(requests, response)) { BaseAddress = new Uri("http://api.test/") };
+        var factory = new Mock<IHttpClientFactory>();
+        factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
+        var service = new HttpDebuggingService(factory.Object);
+        var processInstanceId = Guid.Parse("33333333-3333-3333-3333-333333333333");
+
+        await service.GetExecutionTraceAsync(processInstanceId);
+
+        var request = Assert.Single(requests);
+        Assert.Equal(HttpMethod.Get, request.Method);
+        Assert.Equal($"http://api.test/api/visual-debug/trace/{processInstanceId}", request.RequestUri!.ToString());
+    }
+
+    [Fact]
     public async Task InspectVariablesAsync_UsesSessionVariablesEndpoint()
     {
         var requests = new List<HttpRequestMessage>();

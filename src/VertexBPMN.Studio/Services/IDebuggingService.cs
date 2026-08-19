@@ -17,5 +17,6 @@ public interface IDebuggingService
     Task<JsonElement> StepOverAsync(Guid sessionId, CancellationToken cancellationToken = default);
     Task<JsonElement> ContinueAsync(Guid sessionId, CancellationToken cancellationToken = default);
     Task<JsonElement> GetProcessVisualizationAsync(Guid processInstanceId, CancellationToken cancellationToken = default);
+    Task<JsonElement> GetExecutionTraceAsync(Guid processInstanceId, CancellationToken cancellationToken = default);
     Task<JsonElement> InspectVariablesAsync(Guid sessionId, CancellationToken cancellationToken = default);
 }

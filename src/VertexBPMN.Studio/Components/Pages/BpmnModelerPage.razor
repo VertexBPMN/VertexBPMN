@@ -1,9 +1,11 @@
 @page "/bpmn-modeler"
 @using System.Text
+@using System.Text.Json
 @using Microsoft.AspNetCore.Components.Forms
 @using VertexBPMN.Studio.Components.Modeling
 @using VertexBPMN.Domain.Entities
 @inject VertexBPMN.Studio.Services.IRepositoryService RepositoryService
+@inject VertexBPMN.Studio.Services.IWorkflowService WorkflowService
 @inject VertexBPMN.Studio.Services.IConnectorTemplateService ConnectorTemplateService
 @inject VertexBPMN.Studio.Services.ICredentialService CredentialService
 @inject VertexBPMN.Studio.Services.IDmnService DmnService
@@ -38,6 +40,30 @@
             <MudButton Variant="Variant.Outlined" OnClick="@(() => LoadBpmnXml())" StartIcon="@Icons.Material.Filled.Refresh">Load template</MudButton>
             <MudChip T="string" Color="Color.Info" Variant="Variant.Outlined">Tenant: @(TenantContext.CurrentTenantId ?? "default")</MudChip>
         </MudStack>
+    </MudPaper>
+
+    <MudPaper Class="pa-4" data-testid="bpmn-local-simulation">
+        <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2" AlignItems="AlignItems.Center">
+            <div>
+                <MudText Typo="Typo.h6">Local simulation</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Run the current BPMN artifact locally with bpmn-js-token-simulation. This does not deploy or modify a process instance.</MudText>
+            </div>
+            <MudSpacer />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="StartLocalSimulationAsync" StartIcon="@Icons.Material.Filled.PlayArrow">Start simulation</MudButton>
+            <MudButton Variant="Variant.Outlined" OnClick="PauseLocalSimulationAsync" StartIcon="@Icons.Material.Filled.Pause">Pause simulation</MudButton>
+            <MudButton Variant="Variant.Outlined" OnClick="ResetLocalSimulationAsync" StartIcon="@Icons.Material.Filled.RestartAlt">Reset simulation</MudButton>
+        </MudStack>
+    </MudPaper>
+
+    <MudPaper Class="pa-4" data-testid="bpmn-engine-test-run">
+        <MudText Typo="Typo.h6">Engine test run</MudText>
+        <MudText Typo="Typo.caption" Color="Color.Secondary">Deploys a new test version of the current diagram and starts it with the supplied JSON variables. The created instance remains available for visual debugging and history replay.</MudText>
+        <MudTextField @bind-Value="_testVariablesJson" Label="Test variables (JSON object)" Lines="4" Variant="Variant.Outlined" Class="mt-3" />
+        <MudButton Variant="Variant.Filled" Color="Color.Tertiary" OnClick="RunEngineTestAsync" Disabled="_isRunningEngineTest" StartIcon="@Icons.Material.Filled.PlayCircle" Class="mt-2">Deploy and run test</MudButton>
+        @if (_testRunInstanceId is not null)
+        {
+            <MudAlert Class="mt-3" Severity="Severity.Success">Test version deployed and process instance <code>@_testRunInstanceId</code> started. Open Debugging and use this instance id to inspect runtime state.</MudAlert>
+        }
     </MudPaper>
 
     @if (_showNodeCatalog)
@@ -164,6 +190,67 @@
     private IReadOnlyList<ProcessDefinition> _deployedDefinitions = [];
     private string? _selectedVersionId;
     private string? _versionDiff;
+    private string _testVariablesJson = "{}";
+    private bool _isRunningEngineTest;
+    private Guid? _testRunInstanceId;
+
+    private async Task RunEngineTestAsync()
+    {
+        _isRunningEngineTest = true;
+        _testRunInstanceId = null;
+        try
+        {
+            var variables = ParseTestVariables(_testVariablesJson);
+            var xml = await CaptureBpmnXml();
+            var deployed = await RepositoryService.DeployXmlAsync(xml, "studio-test-run.bpmn", TenantContext.CurrentTenantId);
+            var instance = await WorkflowService.StartProcessAsync(deployed.Key, variables, $"studio-test-{Guid.NewGuid():N}", TenantContext.CurrentTenantId);
+            _testRunInstanceId = instance.Id;
+            await LoadDeployedDefinitionsAsync();
+            Snackbar.Add("Engine test run started.", Severity.Success);
+        }
+        catch (Exception exception)
+        {
+            Snackbar.Add($"Engine test run failed: {exception.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isRunningEngineTest = false;
+        }
+    }
+
+    private static IDictionary<string, object?> ParseTestVariables(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        if (document.RootElement.ValueKind != JsonValueKind.Object)
+            throw new InvalidOperationException("Test variables must be a JSON object.");
+
+        return document.RootElement.EnumerateObject()
+            .ToDictionary(property => property.Name, property => (object?)property.Value.Clone(), StringComparer.Ordinal);
+    }
+
+    private async Task StartLocalSimulationAsync()
+    {
+        if (_modeler is null)
+        {
+            Snackbar.Add("The modeler is still loading.", Severity.Info);
+            return;
+        }
+
+        await _modeler.StartSimulationAsync();
+        Snackbar.Add("Local token simulation started.", Severity.Success);
+    }
+
+    private async Task PauseLocalSimulationAsync()
+    {
+        if (_modeler is not null)
+            await _modeler.PauseSimulationAsync();
+    }
+
+    private async Task ResetLocalSimulationAsync()
+    {
+        if (_modeler is not null)
+            await _modeler.ResetSimulationAsync();
+    }
 
     private static readonly LowCodeNode[] LowCodeNodes =
     [

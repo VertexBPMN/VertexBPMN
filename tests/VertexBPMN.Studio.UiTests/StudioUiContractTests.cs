@@ -239,6 +239,47 @@ public sealed class StudioUiContractTests(StudioUiTestHost host) : IClassFixture
         }
     }
 
+    [Fact]
+    public async Task BpmnModeler_LocalSimulation_IsAvailable_ThroughThePinnedTokenSimulationBundle()
+    {
+        var (page, browserErrors) = await OpenBpmnModelerAsync();
+        try
+        {
+            await page.GetByTestId("bpmn-local-simulation").WaitForAsync();
+            await page.GetByRole(AriaRole.Button, new() { Name = "Start simulation", Exact = true }).ClickAsync();
+            await page.GetByText("Local token simulation started.", new() { Exact = true }).WaitForAsync();
+            await page.GetByRole(AriaRole.Button, new() { Name = "Pause simulation", Exact = true }).ClickAsync();
+            await page.GetByRole(AriaRole.Button, new() { Name = "Reset simulation", Exact = true }).ClickAsync();
+            Assert.Empty(browserErrors);
+        }
+        finally
+        {
+            await page.CloseAsync();
+        }
+    }
+
+    [Fact]
+    public async Task BpmnModeler_EngineTestRun_DeploysAndStartsTheCurrentArtifact()
+    {
+        var (page, browserErrors) = await OpenBpmnModelerAsync();
+        try
+        {
+            var testRun = page.GetByTestId("bpmn-engine-test-run");
+            await testRun.GetByLabel("Test variables (JSON object)").FillAsync("{\"approved\":true}");
+            await testRun.GetByRole(AriaRole.Button, new() { Name = "Deploy and run test", Exact = true }).ClickAsync();
+            await page.GetByText("Engine test run started.", new() { Exact = true }).WaitForAsync();
+            await testRun.GetByText("77777777-7777-7777-7777-777777777777", new() { Exact = false }).WaitForAsync();
+
+            Assert.Contains(host.ApiRequests, request => request.StartsWith("POST /api/repository", StringComparison.Ordinal));
+            Assert.Contains(host.ApiRequests, request => request.StartsWith("POST /api/runtime/start", StringComparison.Ordinal));
+            Assert.Empty(browserErrors);
+        }
+        finally
+        {
+            await page.CloseAsync();
+        }
+    }
+
     private async Task<(IPage Page, ConcurrentQueue<string> BrowserErrors)> OpenBpmnModelerAsync()
     {
         var page = await host.Browser.NewPageAsync();

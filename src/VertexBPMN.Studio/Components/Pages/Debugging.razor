@@ -16,9 +16,9 @@
 
 <MudDivider Class="my-4" />
 <MudText Typo="Typo.h6">Visual debug session</MudText>
-<MudTextField @bind-Value="_processInstanceIdText" Label="Process instance id" Variant="Variant.Outlined" Class="mb-3" />
-<MudTextField @bind-Value="_sessionIdText" Label="Session id" Variant="Variant.Outlined" Class="mb-3" />
-<MudTextField @bind-Value="_activityId" Label="Breakpoint activity id" Variant="Variant.Outlined" Class="mb-3" />
+<MudTextField @bind-Value="_processInstanceIdText" Label="Process instance id" Variant="Variant.Outlined" Immediate="true" Class="mb-3" />
+<MudTextField @bind-Value="_sessionIdText" Label="Session id" Variant="Variant.Outlined" Immediate="true" Class="mb-3" />
+<MudTextField @bind-Value="_activityId" Label="Breakpoint activity id" Variant="Variant.Outlined" Immediate="true" Class="mb-3" />
 <MudButton Variant="Variant.Outlined" OnClick="StartSessionAsync" Disabled="_isRunning">Start session</MudButton>
 <MudButton Variant="Variant.Outlined" OnClick="StepOverAsync" Disabled="_isRunning" Class="ml-2">Step over</MudButton>
 <MudButton Variant="Variant.Outlined" OnClick="ContinueAsync" Disabled="_isRunning" Class="ml-2">Continue</MudButton>
@@ -34,11 +34,50 @@
 @if (_visualizationBpmnXml is not null)
 {
     <MudPaper Class="pa-4 mb-4" Elevation="1">
-        <MudText Typo="Typo.h6">Process visualization</MudText>
+        <MudStack Row="true" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h6">Process visualization</MudText>
+            <MudSpacer />
+            <MudChip T="string" Color="Color.Primary" Variant="Variant.Outlined">Active: @_activeElementIds.Count</MudChip>
+            <MudChip T="string" Color="Color.Success" Variant="Variant.Outlined">Completed: @_completedElementIds.Count</MudChip>
+            <MudChip T="string" Color="Color.Error" Variant="Variant.Outlined">Failed: @_failedElementIds.Count</MudChip>
+        </MudStack>
         <MudText Typo="Typo.body2" Color="Color.Tertiary" Class="mb-2">
             Active tokens: @_visualizationActiveTokenCount · Completed activities: @_visualizationCompletedActivityCount
         </MudText>
-        <BpmnViewerComponent BpmnXml="_visualizationBpmnXml" />
+        <BpmnViewerComponent BpmnXml="_visualizationBpmnXml"
+                             ActiveElementIds="_activeElementIds"
+                             CompletedElementIds="_completedElementIds"
+                             FailedElementIds="_failedElementIds"
+                             WaitingElementIds="_waitingElementIds"
+                             RetryElementIds="_retryElementIds"
+                             ReplayElementId="_replayElementId" />
+    </MudPaper>
+}
+
+@if (_timeline.Count > 0)
+{
+    <MudPaper Class="pa-4 mb-4" Elevation="1" data-testid="runtime-timeline">
+        <MudText Typo="Typo.h6">Runtime timeline and replay</MudText>
+        <MudText Typo="Typo.caption" Color="Color.Secondary">Select an event to replay its diagram position. Runtime colors remain derived from persisted execution tokens and history.</MudText>
+        <MudTimeline Class="mt-3">
+            @foreach (var timelineEvent in _timeline)
+            {
+                <MudTimelineItem Color="@GetTimelineColor(timelineEvent.Type)" TimelineAlign="TimelineAlign.Start">
+                    <MudStack Row="true" AlignItems="AlignItems.Center">
+                        <div>
+                            <MudText Typo="Typo.subtitle2">@timelineEvent.Type</MudText>
+                            <MudText Typo="Typo.caption">@timelineEvent.Timestamp.ToLocalTime().ToString("u") · @timelineEvent.ActivityId</MudText>
+                            @if (!string.IsNullOrWhiteSpace(timelineEvent.Details))
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@timelineEvent.Details</MudText>
+                            }
+                        </div>
+                        <MudSpacer />
+                        <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="@(() => Replay(timelineEvent.ActivityId))">Replay</MudButton>
+                    </MudStack>
+                </MudTimelineItem>
+            }
+        </MudTimeline>
     </MudPaper>
 }
 
@@ -60,6 +99,13 @@
     private string? _visualizationBpmnXml;
     private int _visualizationActiveTokenCount;
     private int _visualizationCompletedActivityCount;
+    private IReadOnlyList<string> _activeElementIds = [];
+    private IReadOnlyList<string> _completedElementIds = [];
+    private IReadOnlyList<string> _failedElementIds = [];
+    private IReadOnlyList<string> _waitingElementIds = [];
+    private IReadOnlyList<string> _retryElementIds = [];
+    private IReadOnlyList<RuntimeTimelineEvent> _timeline = [];
+    private string? _replayElementId;
 
     private async Task TraceAsync()
     {
@@ -114,6 +160,17 @@
             _visualizationCompletedActivityCount = result.TryGetProperty("completedActivities", out var completedActivities)
                 ? completedActivities.GetArrayLength()
                 : 0;
+            _activeElementIds = ReadActivityIds(result, "activeTokens", "activityId");
+            _completedElementIds = ReadActivityIds(result, "completedActivities", "activityId", "completed");
+            _failedElementIds = ReadActivityIds(result, "completedActivities", "activityId", "failed");
+            _waitingElementIds = ReadActivityIds(result, "activeTokens", "activityId", "waiting");
+            _retryElementIds = ReadActivityIds(result, "activeTokens", "activityId", "retry");
+            _replayElementId = null;
+            var trace = await DebuggingService.GetExecutionTraceAsync(ParseProcessInstanceId());
+            _timeline = ReadTimeline(trace);
+            _failedElementIds = MergeActivityIds(_failedElementIds, _timeline, "fail", "error");
+            _waitingElementIds = MergeActivityIds(_waitingElementIds, _timeline, "wait", "suspend");
+            _retryElementIds = MergeActivityIds(_retryElementIds, _timeline, "retry");
             return result;
         });
     }
@@ -140,4 +197,57 @@
 
     private static string Format(JsonElement value) =>
         JsonSerializer.Serialize(value, new JsonSerializerOptions { WriteIndented = true });
+
+    private void Replay(string activityId) => _replayElementId = activityId;
+
+    private static IReadOnlyList<string> ReadActivityIds(JsonElement source, string collectionName, string idProperty, string? expectedStatus = null)
+    {
+        if (!source.TryGetProperty(collectionName, out var collection) || collection.ValueKind != JsonValueKind.Array)
+            return [];
+
+        return collection.EnumerateArray()
+            .Where(item => expectedStatus is null || (item.TryGetProperty("status", out var status) && string.Equals(status.GetString(), expectedStatus, StringComparison.OrdinalIgnoreCase)))
+            .Select(item => item.TryGetProperty(idProperty, out var id) ? id.GetString() : null)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Cast<string>()
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static IReadOnlyList<RuntimeTimelineEvent> ReadTimeline(JsonElement trace)
+    {
+        if (trace.ValueKind != JsonValueKind.Object || !trace.TryGetProperty("events", out var events) || events.ValueKind != JsonValueKind.Array)
+            return [];
+
+        return events.EnumerateArray()
+            .Select(item => new RuntimeTimelineEvent(
+                item.TryGetProperty("type", out var type) ? type.GetString() ?? "Runtime event" : "Runtime event",
+                item.TryGetProperty("activityId", out var activityId) ? activityId.GetString() ?? string.Empty : string.Empty,
+                item.TryGetProperty("timestamp", out var timestamp) && timestamp.TryGetDateTime(out var value) ? value : DateTime.UtcNow,
+                item.TryGetProperty("details", out var details) ? details.GetString() : null))
+            .Where(item => !string.IsNullOrWhiteSpace(item.ActivityId))
+            .OrderBy(item => item.Timestamp)
+            .ToArray();
+    }
+
+    private static IReadOnlyList<string> MergeActivityIds(
+        IReadOnlyList<string> existing,
+        IReadOnlyList<RuntimeTimelineEvent> timeline,
+        params string[] eventTypeFragments) =>
+        existing.Concat(timeline
+                .Where(item => eventTypeFragments.Any(fragment => item.Type.Contains(fragment, StringComparison.OrdinalIgnoreCase)))
+                .Select(item => item.ActivityId))
+            .Where(activityId => !string.IsNullOrWhiteSpace(activityId))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+    private static Color GetTimelineColor(string eventType) => eventType.Contains("fail", StringComparison.OrdinalIgnoreCase)
+        ? Color.Error
+        : eventType.Contains("wait", StringComparison.OrdinalIgnoreCase) || eventType.Contains("retry", StringComparison.OrdinalIgnoreCase)
+            ? Color.Warning
+            : eventType.Contains("complete", StringComparison.OrdinalIgnoreCase) || eventType.Contains("end", StringComparison.OrdinalIgnoreCase)
+                ? Color.Success
+                : Color.Primary;
+
+    private sealed record RuntimeTimelineEvent(string Type, string ActivityId, DateTime Timestamp, string? Details);
 }

@@ -117,3 +117,46 @@ h1:focus {
     background: repeating-linear-gradient(45deg, #ffffff, #ffffff 12px, #f8fafc 12px, #f8fafc 24px);
 }
 
+.bpmn-runtime-viewer {
+    height: 500px;
+    border: 1px solid var(--mud-palette-lines-default);
+    border-radius: 4px;
+    background: #fff;
+}
+
+.djs-element.vertex-runtime-active .djs-visual > :first-child {
+    stroke: #1976d2 !important;
+    stroke-width: 4px !important;
+    fill: #e3f2fd !important;
+}
+
+.djs-element.vertex-runtime-completed .djs-visual > :first-child {
+    stroke: #2e7d32 !important;
+    stroke-width: 3px !important;
+    fill: #e8f5e9 !important;
+}
+
+.djs-element.vertex-runtime-failed .djs-visual > :first-child {
+    stroke: #d32f2f !important;
+    stroke-width: 4px !important;
+    fill: #ffebee !important;
+}
+
+.djs-element.vertex-runtime-waiting .djs-visual > :first-child {
+    stroke: #ed6c02 !important;
+    stroke-width: 3px !important;
+    stroke-dasharray: 6 3 !important;
+}
+
+.djs-element.vertex-runtime-retry .djs-visual > :first-child {
+    stroke: #7b1fa2 !important;
+    stroke-width: 3px !important;
+    stroke-dasharray: 3 2 !important;
+}
+
+.djs-element.vertex-runtime-replay .djs-visual > :first-child {
+    filter: drop-shadow(0 0 5px #0288d1);
+    stroke: #0288d1 !important;
+    stroke-width: 5px !important;
+}
+

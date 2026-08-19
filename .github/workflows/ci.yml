@@ -37,10 +37,6 @@ jobs:
         path: artifacts/nuget/*
         if-no-files-found: error
         retention-days: 14
-    - name: Install Playwright Browsers
-      run: |
-        dotnet tool install --global Microsoft.Playwright.CLI
-        playwright install --with-deps
     - name: Test
       run: dotnet test VertexBPMN.sln --configuration Release --no-build --verbosity normal
     - name: Publish Docker image

@@ -58,6 +58,24 @@
         _loadedXml = await GetXmlAsync();
     }
 
+    public async Task InsertLowCodeNodeAsync(string nodeKind)
+    {
+        if (_module is null || _modeler is null)
+            return;
+
+        await _module.InvokeVoidAsync("BpmnModelerInterop.insertLowCodeNode", _modeler, nodeKind);
+        _loadedXml = await GetXmlAsync();
+    }
+
+    public async Task InsertLowCodePatternAsync(string patternId)
+    {
+        if (_module is null || _modeler is null)
+            return;
+
+        await _module.InvokeVoidAsync("BpmnModelerInterop.insertLowCodePattern", _modeler, patternId);
+        _loadedXml = await GetXmlAsync();
+    }
+
     public async Task ConfigureQuickInsertAsync(IReadOnlyList<StudioConnectorTemplate> templates)
     {
         if (_module is null || _modeler is null)
@@ -82,6 +100,14 @@
         var xml = await _module.InvokeAsync<string>("BpmnModelerInterop.getXml", _modeler);
         _loadedXml = xml;
         return xml;
+    }
+
+    public async Task<IReadOnlyList<StudioValidationIssue>> GetValidationIssuesAsync()
+    {
+        if (_module is null || _modeler is null)
+            return [];
+
+        return await _module.InvokeAsync<StudioValidationIssue[]>("BpmnModelerInterop.getValidationIssues", _modeler);
     }
 
     public async ValueTask DisposeAsync()

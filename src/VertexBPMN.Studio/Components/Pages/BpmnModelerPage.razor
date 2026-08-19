@@ -1,5 +1,6 @@
 @page "/bpmn-modeler"
 @using System.Text
+@using VertexBPMN.Studio.Components.Modeling
 @inject VertexBPMN.Studio.Services.IRepositoryService RepositoryService
 @inject VertexBPMN.Studio.Services.IConnectorTemplateService ConnectorTemplateService
 @inject VertexBPMN.Studio.Services.ICredentialService CredentialService
@@ -24,11 +25,46 @@
     <MudPaper Class="pa-4">
         <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
             <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="DeployBpmnXml" StartIcon="@Icons.Material.Filled.CloudUpload">Deploy BPMN</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Tertiary" OnClick="@(() => _showNodeCatalog = true)" StartIcon="@Icons.Material.Filled.AddCircle">Add node</MudButton>
+            <MudButton Variant="Variant.Outlined" OnClick="ValidateAsync" StartIcon="@Icons.Material.Filled.FactCheck">Validate</MudButton>
             <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="ExportBpmnXml" StartIcon="@Icons.Material.Filled.Download">Export XML</MudButton>
             <MudButton Variant="Variant.Outlined" OnClick="@(() => LoadBpmnXml())" StartIcon="@Icons.Material.Filled.Refresh">Load template</MudButton>
             <MudChip T="string" Color="Color.Info" Variant="Variant.Outlined">Tenant: @(TenantContext.CurrentTenantId ?? "default")</MudChip>
         </MudStack>
     </MudPaper>
+
+    @if (_showNodeCatalog)
+    {
+        <MudPaper Class="pa-4" data-testid="low-code-node-catalog">
+            <MudStack Spacing="2">
+                <MudStack Row="true" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.h6">Add node</MudText>
+                    <MudSpacer />
+                    <MudIconButton Icon="@Icons.Material.Filled.Close" Title="Close node catalog" OnClick="@(() => _showNodeCatalog = false)" />
+                </MudStack>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Choose a low-code building block. The generated artifact remains valid BPMN with Vertex extensions where configuration is required.</MudText>
+                <MudTextField @bind-Value="_nodeSearch" Label="Search nodes" Immediate="true" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
+                @foreach (var category in FilteredNodes.GroupBy(node => node.Category).OrderBy(group => group.Key))
+                {
+                    <MudText Typo="Typo.subtitle2" Class="mt-2">@category.Key</MudText>
+                    <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2">
+                        @foreach (var node in category)
+                        {
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="@(() => InsertLowCodeNodeAsync(node))">@node.Name</MudButton>
+                        }
+                    </MudStack>
+                }
+                <MudText Typo="Typo.subtitle2" Class="mt-2">Patterns</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Patterns are inserted beside the current diagram and do not replace existing work.</MudText>
+                <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2">
+                    @foreach (var pattern in LowCodePatterns)
+                    {
+                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="@(() => InsertLowCodePatternAsync(pattern))">@pattern.Name</MudButton>
+                    }
+                </MudStack>
+            </MudStack>
+        </MudPaper>
+    }
 
     <MudPaper Class="pa-4">
         <MudText Typo="Typo.h6" GutterBottom="true">Connector templates</MudText>
@@ -48,6 +84,41 @@
         <BpmnModelerSurface @ref="_modeler" Xml="_bpmnXml" ConnectorTemplates="_templates" DecisionOptions="_decisions" />
     </MudPaper>
 
+    <MudGrid>
+        <MudItem xs="12" md="5">
+            <MudPaper Class="pa-4" data-testid="bpmn-validation-sidebar">
+                <MudStack Row="true" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.h6">Validation</MudText>
+                    <MudSpacer />
+                    <MudChip T="string" Color="@(_validationIssues.Count == 0 ? Color.Success : Color.Error)" Variant="Variant.Outlined">@(_validationIssues.Count == 0 ? "No issues" : $"{_validationIssues.Count} issue(s)")</MudChip>
+                </MudStack>
+                @if (_validationIssues.Count == 0)
+                {
+                    <MudText Typo="Typo.body2" Class="mt-2" Color="Color.Secondary">Run validation to check Vertex connector and trigger configuration.</MudText>
+                }
+                else
+                {
+                    <MudList T="string" Dense="true" Class="mt-2">
+                        @foreach (var issue in _validationIssues)
+                        {
+                            <MudListItem T="string" Icon="@Icons.Material.Filled.ErrorOutline">@issue.Code: @issue.Message @(issue.ElementId is null ? string.Empty : $"({issue.ElementId})")</MudListItem>
+                        }
+                    </MudList>
+                }
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="7">
+            <MudPaper Class="pa-4" data-testid="bpmn-xml-preview">
+                <MudStack Row="true" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.h6">XML Preview</MudText>
+                    <MudSpacer />
+                    <MudButton Variant="Variant.Text" OnClick="RefreshXmlPreviewAsync">Refresh</MudButton>
+                </MudStack>
+                <MudTextField T="string" Value="_xmlPreview" ReadOnly="true" Lines="14" AutoGrow="true" Variant="Variant.Outlined" Class="mt-2" />
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
     <MudPaper Class="pa-4">
         <MudText Typo="Typo.h6" GutterBottom="true">Viewer</MudText>
         <BpmnViewerSurface Xml="_bpmnXml" />
@@ -62,6 +133,40 @@
     private IReadOnlyList<StudioCredential> _credentials = [];
     private IReadOnlyList<StudioDecisionOption> _decisions = [];
     private bool _insertingTemplate;
+    private bool _showNodeCatalog;
+    private string _nodeSearch = string.Empty;
+    private string _xmlPreview = FallbackBpmn;
+    private List<StudioValidationIssue> _validationIssues = [];
+
+    private static readonly LowCodeNode[] LowCodeNodes =
+    [
+        new("webhook", "Webhook trigger", "Triggers"),
+        new("timer", "Cron / timer trigger", "Triggers"),
+        new("http", "HTTP request", "Actions"),
+        new("if", "IF condition", "Control flow"),
+        new("wait", "Wait", "Control flow"),
+        new("form", "User approval form", "Human tasks"),
+        new("decision", "Decision table", "Decisions"),
+        new("subworkflow", "Subworkflow", "Composition"),
+        new("case", "Start case model", "Composition"),
+        new("batch", "Batch task", "Actions"),
+        new("error", "Error handler", "Control flow")
+    ];
+
+    private static readonly LowCodePattern[] LowCodePatterns =
+    [
+        new("http-retry", "HTTP with retry"),
+        new("webhook-if-http", "Webhook → IF → HTTP"),
+        new("cron-batch-db", "Cron → Batch → DB"),
+        new("user-approval", "User approval with form"),
+        new("decision-routing", "Decision table routing"),
+        new("case-start", "Case start from BPMN")
+    ];
+
+    private IEnumerable<LowCodeNode> FilteredNodes => LowCodeNodes.Where(node =>
+        string.IsNullOrWhiteSpace(_nodeSearch) ||
+        node.Name.Contains(_nodeSearch, StringComparison.OrdinalIgnoreCase) ||
+        node.Category.Contains(_nodeSearch, StringComparison.OrdinalIgnoreCase));
 
     private const string FallbackBpmn = """
 <?xml version="1.0" encoding="UTF-8"?>
@@ -168,6 +273,65 @@
         }
     }
 
+    private async Task InsertLowCodeNodeAsync(LowCodeNode node)
+    {
+        if (_modeler is null)
+        {
+            Snackbar.Add("The modeler is still loading.", Severity.Info);
+            return;
+        }
+
+        try
+        {
+            await _modeler.InsertLowCodeNodeAsync(node.Kind);
+            _bpmnXml = await _modeler.GetXmlAsync();
+            _xmlPreview = _bpmnXml;
+            _showNodeCatalog = false;
+            Snackbar.Add($"{node.Name} inserted. Configure the selected element in the properties panel.", Severity.Success);
+        }
+        catch (Exception exception)
+        {
+            Snackbar.Add($"{node.Name} could not be inserted: {exception.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ValidateAsync()
+    {
+        if (_modeler is null)
+            return;
+
+        _validationIssues = (await _modeler.GetValidationIssuesAsync()).ToList();
+        _xmlPreview = await _modeler.GetXmlAsync();
+        Snackbar.Add(_validationIssues.Count == 0 ? "BPMN validation completed without issues." : $"BPMN validation found {_validationIssues.Count} issue(s).", _validationIssues.Count == 0 ? Severity.Success : Severity.Warning);
+    }
+
+    private async Task InsertLowCodePatternAsync(LowCodePattern pattern)
+    {
+        if (_modeler is null)
+        {
+            Snackbar.Add("The modeler is still loading.", Severity.Info);
+            return;
+        }
+
+        try
+        {
+            await _modeler.InsertLowCodePatternAsync(pattern.Id);
+            _bpmnXml = await _modeler.GetXmlAsync();
+            _xmlPreview = _bpmnXml;
+            _showNodeCatalog = false;
+            Snackbar.Add($"Pattern {pattern.Name} inserted.", Severity.Success);
+        }
+        catch (Exception exception)
+        {
+            Snackbar.Add($"Pattern {pattern.Name} could not be inserted: {exception.Message}", Severity.Error);
+        }
+    }
+
+    private async Task RefreshXmlPreviewAsync()
+    {
+        _xmlPreview = await CaptureBpmnXml();
+    }
+
     private async Task DeployBpmnXml()
     {
         var xml = await CaptureBpmnXml();
@@ -217,4 +381,7 @@
         var dataUri = $"data:{contentType};base64,{Convert.ToBase64String(Encoding.UTF8.GetBytes(content))}";
         await JSRuntime.InvokeVoidAsync("downloadFile", fileName, dataUri);
     }
+
+    private sealed record LowCodeNode(string Kind, string Name, string Category);
+    private sealed record LowCodePattern(string Id, string Name);
 }

@@ -133,8 +133,164 @@ function createTemplateShape(modeler, template, values, position, parent) {
 
 function insertQuickTemplate(modeler, template, target) {
     const canvas = modeler.get("canvas");
-    const created = createTemplateShape(modeler, template, null, { x: target.x + target.width + 110, y: target.y + target.height / 2 }, target.parent || canvas.getRootElement());
+    const position = target.type === "bpmn:SequenceFlow"
+        ? { x: (target.waypoints[0].x + target.waypoints[target.waypoints.length - 1].x) / 2, y: (target.waypoints[0].y + target.waypoints[target.waypoints.length - 1].y) / 2 }
+        : { x: target.x + target.width + 110, y: target.y + target.height / 2 };
+    const created = createTemplateShape(modeler, template, null, position, target.parent || canvas.getRootElement());
+    connectQuickInsert(modeler, target, created);
     canvas.scrollToElement(created);
+}
+
+function connectQuickInsert(modeler, target, created) {
+    if (!target || target.type !== "bpmn:SequenceFlow" || !target.source || !target.target) return;
+
+    const modeling = modeler.get("modeling");
+    const source = target.source;
+    const destination = target.target;
+    modeling.removeConnection(target);
+    modeling.connect(source, created, { type: "bpmn:SequenceFlow" });
+    modeling.connect(created, destination, { type: "bpmn:SequenceFlow" });
+}
+
+function rootProcessKey(modeler) {
+    const root = modeler.get("canvas").getRootElement();
+    return root && root.businessObject && root.businessObject.id ? root.businessObject.id : "Process_1";
+}
+
+function extensionElements(bpmnFactory, values) {
+    return bpmnFactory.create("bpmn:ExtensionElements", { values });
+}
+
+function lowCodeDefinition(modeler, kind) {
+    const bpmnFactory = modeler.get("bpmnFactory");
+    const processKey = rootProcessKey(modeler);
+    switch (kind) {
+        case "webhook":
+            return {
+                type: "bpmn:StartEvent", name: "Webhook received",
+                extensions: [
+                    bpmnFactory.create("vertex:Trigger", { type: "webhook", name: "Webhook received", processDefinitionKey: processKey }),
+                    bpmnFactory.create("vertex:Webhook", { path: "/webhooks/new", method: "POST", authMode: "trigger-secret" })
+                ]
+            };
+        case "timer":
+            return {
+                type: "bpmn:StartEvent", name: "Scheduled start",
+                eventDefinitions: [bpmnFactory.create("bpmn:TimerEventDefinition", { timeDuration: bpmnFactory.create("bpmn:FormalExpression", { body: "PT5M" }) })],
+                extensions: [bpmnFactory.create("vertex:Trigger", { type: "timer", name: "Scheduled start", processDefinitionKey: processKey })]
+            };
+        case "http":
+            return { type: "bpmn:ServiceTask", name: "HTTP request", extensions: [bpmnFactory.create("vertex:Connector", { type: "http", operationId: "http-request" })] };
+        case "database":
+            return { type: "bpmn:ServiceTask", name: "Database write", extensions: [bpmnFactory.create("vertex:Connector", { type: "database", operationId: "db-upsert" })] };
+        case "start":
+            return { type: "bpmn:StartEvent", name: "Start" };
+        case "end":
+            return { type: "bpmn:EndEvent", name: "Done" };
+        case "if":
+            return { type: "bpmn:ExclusiveGateway", name: "Condition" };
+        case "wait":
+            return { type: "bpmn:IntermediateCatchEvent", name: "Wait", eventDefinitions: [bpmnFactory.create("bpmn:TimerEventDefinition", { timeDuration: bpmnFactory.create("bpmn:FormalExpression", { body: "PT5M" }) })] };
+        case "form":
+            return { type: "bpmn:UserTask", name: "User approval", extensions: [bpmnFactory.create("vertex:Form", { formRef: "approval-form" })] };
+        case "decision":
+            return { type: "bpmn:BusinessRuleTask", name: "Decision", extensions: [bpmnFactory.create("vertex:Decision", { decisionRef: "decision-table" })] };
+        case "subworkflow":
+            return { type: "bpmn:CallActivity", name: "Call workflow", calledElement: "subworkflow" };
+        case "case":
+            return { type: "bpmn:CallActivity", name: "Start case", calledElement: "case-model", extensions: [bpmnFactory.create("vertex:Case", { caseRef: "case-model" })] };
+        case "batch":
+            return { type: "bpmn:ServiceTask", name: "Batch task", loopCharacteristics: bpmnFactory.create("bpmn:MultiInstanceLoopCharacteristics", { isSequential: false }) };
+        case "error":
+            return { type: "bpmn:SubProcess", name: "Error handler", triggeredByEvent: true };
+        default:
+            throw new Error(`Unsupported low-code node '${kind}'.`);
+    }
+}
+
+function insertLowCodeNode(modeler, kind, target, positionOverride) {
+    if (!modeler || modeler.__vertexFallback) {
+        throw new Error("Low-code nodes require the bpmn.io modeler bundle.");
+    }
+
+    const elementFactory = modeler.get("elementFactory");
+    const modeling = modeler.get("modeling");
+    const canvas = modeler.get("canvas");
+    const bpmnFactory = modeler.get("bpmnFactory");
+    const definition = lowCodeDefinition(modeler, kind);
+    const businessObject = bpmnFactory.create(definition.type, {
+        name: definition.name,
+        calledElement: definition.calledElement,
+        eventDefinitions: definition.eventDefinitions || [],
+        loopCharacteristics: definition.loopCharacteristics,
+        triggeredByEvent: definition.triggeredByEvent || false
+    });
+    if (definition.extensions && definition.extensions.length) {
+        businessObject.extensionElements = extensionElements(bpmnFactory, definition.extensions);
+    }
+
+    const viewbox = canvas.viewbox();
+    const position = positionOverride || (target && target.type === "bpmn:SequenceFlow"
+        ? { x: (target.waypoints[0].x + target.waypoints[target.waypoints.length - 1].x) / 2, y: (target.waypoints[0].y + target.waypoints[target.waypoints.length - 1].y) / 2 }
+        : { x: viewbox.x + viewbox.width / 2, y: viewbox.y + viewbox.height / 2 });
+    const shape = elementFactory.createShape({ type: definition.type, businessObject });
+    const created = modeling.createShape(shape, position, target && target.parent ? target.parent : canvas.getRootElement());
+    connectQuickInsert(modeler, target, created);
+    canvas.scrollToElement(created);
+
+    if (kind === "error") {
+        const errorStart = elementFactory.createShape({
+            type: "bpmn:StartEvent",
+            businessObject: bpmnFactory.create("bpmn:StartEvent", { name: "Error", eventDefinitions: [bpmnFactory.create("bpmn:ErrorEventDefinition")] })
+        });
+        const handled = elementFactory.createShape({ type: "bpmn:EndEvent", businessObject: bpmnFactory.create("bpmn:EndEvent", { name: "Handled" }) });
+        const start = modeling.createShape(errorStart, { x: 40, y: 60 }, created);
+        const end = modeling.createShape(handled, { x: 170, y: 60 }, created);
+        modeling.connect(start, end, { type: "bpmn:SequenceFlow" });
+    }
+
+    return created;
+}
+
+function addRetryPolicy(modeler, element) {
+    const bpmnFactory = modeler.get("bpmnFactory");
+    const modeling = modeler.get("modeling");
+    const commandStack = modeler.get("commandStack");
+    const businessObject = element.businessObject;
+    const extension = businessObject.extensionElements || extensionElements(bpmnFactory, []);
+    const values = (extension.values || []).concat([
+        bpmnFactory.create("vertex:RetryPolicy", { maxAttempts: 3, strategy: "exponential", baseDelayMs: 1000, retryOn: "5xx,timeout" })
+    ]);
+    modeling.updateProperties(element, { extensionElements: extension });
+    commandStack.execute("element.updateModdleProperties", { element, moddleElement: extension, properties: { values } });
+}
+
+function insertLowCodePattern(modeler, patternId) {
+    const patterns = {
+        "http-retry": ["start", "http", "end"],
+        "webhook-if-http": ["webhook", "if", "http", "end"],
+        "cron-batch-db": ["timer", "batch", "database", "end"],
+        "user-approval": ["start", "form", "end"],
+        "decision-routing": ["start", "decision", "if", "end"],
+        "case-start": ["start", "case", "end"]
+    };
+    const kinds = patterns[patternId];
+    if (!kinds) throw new Error(`Unsupported low-code pattern '${patternId}'.`);
+
+    const canvas = modeler.get("canvas");
+    const modeling = modeler.get("modeling");
+    const viewbox = canvas.viewbox();
+    const y = viewbox.y + viewbox.height * 0.72;
+    let previous = null;
+    let retryTarget = null;
+    kinds.forEach((kind, index) => {
+        const created = insertLowCodeNode(modeler, kind, null, { x: viewbox.x + 90 + index * 180, y });
+        if (previous) modeling.connect(previous, created, { type: "bpmn:SequenceFlow" });
+        previous = created;
+        if (kind === "http" && patternId === "http-retry") retryTarget = created;
+    });
+    if (retryTarget) addRetryPolicy(modeler, retryTarget);
+    if (previous) canvas.scrollToElement(previous);
 }
 
 function configureQuickInsert(modeler, templates) {
@@ -149,16 +305,16 @@ function configureQuickInsert(modeler, templates) {
 
     const render = element => {
         overlays.remove({ type: "vertex-quick-insert" });
-        if (!element || !state.templates.length || !element.businessObject || element.businessObject.$type === "bpmn:Process") {
+        if (!element || !element.businessObject || element.businessObject.$type === "bpmn:Process") {
             return;
         }
 
         const container = document.createElement("div");
         container.className = "vertex-quick-insert";
         const label = document.createElement("span");
-        label.textContent = "+ Connector";
+        label.textContent = element.type === "bpmn:SequenceFlow" ? "+ Insert" : "+ Connector";
         container.appendChild(label);
-        state.templates.forEach(template => {
+        state.templates.filter(template => element.type !== "bpmn:SequenceFlow" || templateElementType(template) !== "bpmn:StartEvent").forEach(template => {
             const button = document.createElement("button");
             button.type = "button";
             button.textContent = template.name;
@@ -167,6 +323,19 @@ function configureQuickInsert(modeler, templates) {
                 event.preventDefault();
                 event.stopPropagation();
                 insertQuickTemplate(modeler, template, element);
+                render(null);
+            };
+            container.appendChild(button);
+        });
+        [["http", "HTTP"], ["if", "IF"], ["wait", "Wait"], ["form", "Form"], ["decision", "Decision"], ["subworkflow", "Subworkflow"], ["case", "Case"], ["batch", "Batch"]].forEach(([kind, name]) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.textContent = name;
+            button.title = "Insert " + name;
+            button.onclick = event => {
+                event.preventDefault();
+                event.stopPropagation();
+                insertLowCodeNode(modeler, kind, element);
                 render(null);
             };
             container.appendChild(button);
@@ -213,6 +382,9 @@ export const BpmnModelerInterop = {
     getXml: async function (modeler) {
         return await exportXml(modeler);
     },
+    getValidationIssues: function (modeler) {
+        return typeof window.VertexValidateBpmn === "function" ? window.VertexValidateBpmn(modeler) || [] : [];
+    },
     loadXml: async function (modeler, bpmnXml) {
         await importArtifact(modeler, bpmnXml, 'bpmn.io BPMN Modeler fallback');
     },
@@ -224,6 +396,12 @@ export const BpmnModelerInterop = {
         const viewbox = canvas.viewbox();
         const created = createTemplateShape(modeler, template, values, { x: viewbox.x + viewbox.width / 2, y: viewbox.y + viewbox.height / 2 }, canvas.getRootElement());
         canvas.scrollToElement(created);
+    },
+    insertLowCodeNode: function (modeler, nodeKind) {
+        insertLowCodeNode(modeler, nodeKind);
+    },
+    insertLowCodePattern: function (modeler, patternId) {
+        insertLowCodePattern(modeler, patternId);
     },
     configureQuickInsert: function (modeler, templates) {
         configureQuickInsert(modeler, templates);

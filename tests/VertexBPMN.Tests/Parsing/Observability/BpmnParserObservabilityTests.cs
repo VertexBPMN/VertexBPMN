@@ -76,7 +76,7 @@ public class BpmnParserObservabilityTests
         using var activitySource = new ActivitySource("TestSource");
         using var activityListener = new ActivityListener
         {
-            ShouldListenTo = _ => true,
+            ShouldListenTo = source => source.Name == "TestSource",
             Sample = (ref ActivityCreationOptions<ActivityContext> options) => ActivitySamplingResult.AllData
         };
         ActivitySource.AddActivityListener(activityListener);
@@ -222,7 +222,7 @@ public class BpmnParserObservabilityTests
         using var activitySource = new ActivitySource("TestSource");
         using var activityListener = new ActivityListener
         {
-            ShouldListenTo = _ => true,
+            ShouldListenTo = source => source.Name == "TestSource",
             Sample = (ref ActivityCreationOptions<ActivityContext> options) => ActivitySamplingResult.AllData
         };
         ActivitySource.AddActivityListener(activityListener);

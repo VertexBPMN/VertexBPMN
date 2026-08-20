@@ -29,7 +29,22 @@ public sealed class TestRunsController(IRepositoryService repository, IRuntimeSe
             tenantId,
             cancellationToken);
 
-        return Created($"api/test-runs/{instance.Id}", new TestRunResponse(definition, instance));
+        return Created($"api/test-runs/{instance.Id}", new TestRunResponse(
+            new TestRunDefinitionResponse(
+                definition.Id.ToString(),
+                definition.Key,
+                definition.Name,
+                definition.Version,
+                definition.TenantId,
+                Suspended: false),
+            new TestRunInstanceResponse(
+                instance.Id,
+                instance.BusinessKey,
+                instance.ProcessDefinitionId.ToString(),
+                definition.Key,
+                instance.TenantId,
+                instance.State,
+                instance.Variables)));
     }
 
     private string? ResolveTenantId(string? requestedTenantId) =>
@@ -38,5 +53,10 @@ public sealed class TestRunsController(IRepositoryService repository, IRuntimeSe
             : User.FindFirstValue("tenant_id");
 
     public sealed record TestRunRequest(string BpmnXml, string Name, IDictionary<string, object>? Variables, string? BusinessKey, string? TenantId);
-    public sealed record TestRunResponse(ProcessDefinition Definition, ProcessInstance Instance);
+    /// <summary>
+    /// Stable transport contract for SDK consumers. Domain entities deliberately do not cross the API boundary.
+    /// </summary>
+    public sealed record TestRunResponse(TestRunDefinitionResponse Definition, TestRunInstanceResponse Instance);
+    public sealed record TestRunDefinitionResponse(string Id, string Key, string Name, int Version, string? TenantId, bool Suspended);
+    public sealed record TestRunInstanceResponse(Guid Id, string? BusinessKey, string ProcessDefinitionId, string ProcessDefinitionKey, string? TenantId, string State, IDictionary<string, object> Variables);
 }

@@ -89,12 +89,21 @@ jobs:
         fi
         dotnet pack src/VertexBPMN.Sdk/VertexBPMN.Sdk.csproj --configuration Release --no-restore --output artifacts/nuget -p:PackageVersion="$version"
         ls -la artifacts/nuget
+    - name: Restore CLI
+      run: dotnet restore src/VertexBPMN.Cli/VertexBPMN.Cli.csproj
+    - name: Pack CLI tool
+      shell: bash
+      run: |
+        version="${GITHUB_REF_NAME#v}"
+        dotnet pack src/VertexBPMN.Cli/VertexBPMN.Cli.csproj --configuration Release --output artifacts/nuget -p:PackageVersion="$version"
+        ls -la artifacts/nuget
     - name: NuGet login (OIDC)
       uses: NuGet/login@v1
       id: nuget-login
       with:
         user: ${{ secrets.NUGET_USER }}
-    - name: Publish package to NuGet.org
+    - name: Publish packages to NuGet.org
       run: |
-        version="${GITHUB_REF_NAME#v}"
-        dotnet nuget push "artifacts/nuget/VertexBPMN.Sdk.$version.nupkg" --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
+        for package in artifacts/nuget/*.nupkg; do
+          dotnet nuget push "$package" --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
+        done

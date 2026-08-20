@@ -130,6 +130,11 @@ if (moduleOptions.Swagger || opMode is OperationalMode.Development or Operationa
 {
 	builder.Services.AddSwaggerGen(options =>
 	{
+		// Nested request records in different controllers may share a short name
+		// (for example DeployRequest). Full names keep the generated OpenAPI
+		// component identifiers unique and therefore make snapshot generation stable.
+		options.CustomSchemaIds(type => type.FullName!.Replace('+', '.'));
+
 		// Add JWT Bearer security definition
 		var securityScheme = new Microsoft.OpenApi.OpenApiSecurityScheme
 		{

@@ -600,8 +600,8 @@ CI-Gates:
 
 - `dotnet test VertexBPMN.sln`
 - Studio UI Tests
-- npm build/test fuer gebuendelte bpmn.io Assets, falls npm Pipeline eingefuehrt wird
-- OpenAPI Snapshot/Diff fuer neue APIs
+- `npm ci`, Build und Vertex-Moddle-Roundtrip fuer die gepinnten bpmn.io Assets; der Job bricht bei nicht eingecheckten Asset-Aenderungen ab.
+- OpenAPI-Snapshot gegen die gestartete Release-API: `bash scripts/verify-openapi-snapshot.sh`. Nach absichtlichen Vertragsänderungen aktualisiert `bash scripts/verify-openapi-snapshot.sh update` den Snapshot.
 
 ## Empfohlene Implementierungsreihenfolge
 

@@ -334,3 +334,7 @@ ASALocalRun/
 .mfractor/
 /plugins
 /docs/Praxisbuch-Bpmn.pdf
+
+
+# APM dependencies
+apm_modules/

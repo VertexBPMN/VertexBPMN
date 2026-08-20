@@ -1,0 +1,312 @@
+lockfile_version: '1'
+generated_at: '2026-08-19T12:05:57.361039+00:00'
+apm_version: 0.28.0
+dependencies:
+- repo_url: matthiasnissen/arc42agentic-packages
+  name: arc42agenticwrite
+  host: github.com
+  resolved_commit: 54c062aa02872c6dfb49c52bda51cf9af92d3e2e
+  version: 1.0.2
+  virtual_path: arc42agenticwrite
+  is_virtual: true
+  package_type: apm_package
+  deployed_files:
+  - .agents/skills/arc42-write-doc-layout
+  - .agents/skills/arc42-write-doc-layout/SKILL.md
+  - .agents/skills/arc42-write-s01-introduction
+  - .agents/skills/arc42-write-s01-introduction/SKILL.md
+  - .agents/skills/arc42-write-s02-constraints
+  - .agents/skills/arc42-write-s02-constraints/SKILL.md
+  - .agents/skills/arc42-write-s03-context
+  - .agents/skills/arc42-write-s03-context/SKILL.md
+  - .agents/skills/arc42-write-s04-solution-strategy
+  - .agents/skills/arc42-write-s04-solution-strategy/SKILL.md
+  - .agents/skills/arc42-write-s05-building-blocks
+  - .agents/skills/arc42-write-s05-building-blocks/SKILL.md
+  - .agents/skills/arc42-write-s06-runtime
+  - .agents/skills/arc42-write-s06-runtime/SKILL.md
+  - .agents/skills/arc42-write-s07-deployment
+  - .agents/skills/arc42-write-s07-deployment/SKILL.md
+  - .agents/skills/arc42-write-s08-concepts
+  - .agents/skills/arc42-write-s08-concepts/SKILL.md
+  - .agents/skills/arc42-write-s09-decisions
+  - .agents/skills/arc42-write-s09-decisions/SKILL.md
+  - .agents/skills/arc42-write-s10-quality
+  - .agents/skills/arc42-write-s10-quality/SKILL.md
+  - .agents/skills/arc42-write-s11-risks
+  - .agents/skills/arc42-write-s11-risks/SKILL.md
+  - .agents/skills/arc42-write-s12-glossary
+  - .agents/skills/arc42-write-s12-glossary/SKILL.md
+  - .codex/agents/arc42-write-from-code.toml
+  - .codex/agents/arc42-write.toml
+  deployed_file_hashes:
+    .agents/skills/arc42-write-doc-layout/SKILL.md: sha256:9ed021ada8aab859bb830f9b1079cd94a9967a52b49b72fd7d5513a52937b802
+    .agents/skills/arc42-write-s01-introduction/SKILL.md: sha256:2048766c97b6f00f27435302bfc3bcda35c75a0de3fb7a051fb3cd81c5681e7f
+    .agents/skills/arc42-write-s02-constraints/SKILL.md: sha256:1a6604ac83849c2537a0d4982c9f55de06c3a2c8fe9bf1d87e1f487d25843c8a
+    .agents/skills/arc42-write-s03-context/SKILL.md: sha256:5024810741d87608fe86e39d2832d9b4c9ba57615eb6e17cb039e1262b358e3a
+    .agents/skills/arc42-write-s04-solution-strategy/SKILL.md: sha256:397855e2f8e48f8b0b08cd5ce0692b39a6c5f544bc82164ce99779a90c79e4eb
+    .agents/skills/arc42-write-s05-building-blocks/SKILL.md: sha256:c465e5550fe7963713594f9aec7301cb15895a2e5b8ff755cdfab2e9f1115dab
+    .agents/skills/arc42-write-s06-runtime/SKILL.md: sha256:fe4d3c60c02afa49cf5eaf9930a60590e091ff36a905d58117323b27de8ce7d5
+    .agents/skills/arc42-write-s07-deployment/SKILL.md: sha256:bb249b7b4ae1bb12933425d9453d6842d7b481ea75dfda674390a02f36f92fab
+    .agents/skills/arc42-write-s08-concepts/SKILL.md: sha256:54174ce691e88aa634999a490758d4bd1f2021bf793057253f587ced1ca78fed
+    .agents/skills/arc42-write-s09-decisions/SKILL.md: sha256:153249033216a9802cdbbbb9f90220919fcf948dc493bec1d850024f28197aaf
+    .agents/skills/arc42-write-s10-quality/SKILL.md: sha256:0e563b23399da3d019257797a6dec54f3ad866aa07078c0930787ca6e50e49cb
+    .agents/skills/arc42-write-s11-risks/SKILL.md: sha256:06ff7542b65c606afad70a99717d281a2af6f27d4586e0582eb2a652112796bd
+    .agents/skills/arc42-write-s12-glossary/SKILL.md: sha256:8230d34c7f00a0896bedc961cd1fb58736d3fc3fa02f9a75dd4f40a288ca5d84
+    .codex/agents/arc42-write-from-code.toml: sha256:a7c4f376aff9404fe46b3b81c701e304b00cf5b6455531384f0c8ad3a527d51e
+    .codex/agents/arc42-write.toml: sha256:6b33112e27c5fa1edbe63ad4696c5260c0814dc4000f91946b4ffaaacbaae9d7
+  content_hash: sha256:74ecc15e8cdabb1d2c2d6d1ac344e04130d106824eb352774cb6271cbdc7fc4a
+  declared_license: CC-BY-SA-4.0
+deployments:
+- kind: project-relative
+  target: codex
+  value: .agents/skills/arc42-write-doc-layout
+  runtime: null
+  scope: project
+  owners:
+  - matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  active_owner: matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  content_hash: null
+- kind: project-relative
+  target: codex
+  value: .agents/skills/arc42-write-doc-layout/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  active_owner: matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  content_hash: sha256:9ed021ada8aab859bb830f9b1079cd94a9967a52b49b72fd7d5513a52937b802
+- kind: project-relative
+  target: codex
+  value: .agents/skills/arc42-write-s01-introduction
+  runtime: null
+  scope: project
+  owners:
+  - matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  active_owner: matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  content_hash: null
+- kind: project-relative
+  target: codex
+  value: .agents/skills/arc42-write-s01-introduction/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  active_owner: matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  content_hash: sha256:2048766c97b6f00f27435302bfc3bcda35c75a0de3fb7a051fb3cd81c5681e7f
+- kind: project-relative
+  target: codex
+  value: .agents/skills/arc42-write-s02-constraints
+  runtime: null
+  scope: project
+  owners:
+  - matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  active_owner: matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  content_hash: null
+- kind: project-relative
+  target: codex
+  value: .agents/skills/arc42-write-s02-constraints/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  active_owner: matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  content_hash: sha256:1a6604ac83849c2537a0d4982c9f55de06c3a2c8fe9bf1d87e1f487d25843c8a
+- kind: project-relative
+  target: codex
+  value: .agents/skills/arc42-write-s03-context
+  runtime: null
+  scope: project
+  owners:
+  - matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  active_owner: matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  content_hash: null
+- kind: project-relative
+  target: codex
+  value: .agents/skills/arc42-write-s03-context/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  active_owner: matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  content_hash: sha256:5024810741d87608fe86e39d2832d9b4c9ba57615eb6e17cb039e1262b358e3a
+- kind: project-relative
+  target: codex
+  value: .agents/skills/arc42-write-s04-solution-strategy
+  runtime: null
+  scope: project
+  owners:
+  - matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  active_owner: matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  content_hash: null
+- kind: project-relative
+  target: codex
+  value: .agents/skills/arc42-write-s04-solution-strategy/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  active_owner: matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  content_hash: sha256:397855e2f8e48f8b0b08cd5ce0692b39a6c5f544bc82164ce99779a90c79e4eb
+- kind: project-relative
+  target: codex
+  value: .agents/skills/arc42-write-s05-building-blocks
+  runtime: null
+  scope: project
+  owners:
+  - matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  active_owner: matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  content_hash: null
+- kind: project-relative
+  target: codex
+  value: .agents/skills/arc42-write-s05-building-blocks/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  active_owner: matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  content_hash: sha256:c465e5550fe7963713594f9aec7301cb15895a2e5b8ff755cdfab2e9f1115dab
+- kind: project-relative
+  target: codex
+  value: .agents/skills/arc42-write-s06-runtime
+  runtime: null
+  scope: project
+  owners:
+  - matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  active_owner: matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  content_hash: null
+- kind: project-relative
+  target: codex
+  value: .agents/skills/arc42-write-s06-runtime/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  active_owner: matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  content_hash: sha256:fe4d3c60c02afa49cf5eaf9930a60590e091ff36a905d58117323b27de8ce7d5
+- kind: project-relative
+  target: codex
+  value: .agents/skills/arc42-write-s07-deployment
+  runtime: null
+  scope: project
+  owners:
+  - matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  active_owner: matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  content_hash: null
+- kind: project-relative
+  target: codex
+  value: .agents/skills/arc42-write-s07-deployment/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  active_owner: matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  content_hash: sha256:bb249b7b4ae1bb12933425d9453d6842d7b481ea75dfda674390a02f36f92fab
+- kind: project-relative
+  target: codex
+  value: .agents/skills/arc42-write-s08-concepts
+  runtime: null
+  scope: project
+  owners:
+  - matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  active_owner: matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  content_hash: null
+- kind: project-relative
+  target: codex
+  value: .agents/skills/arc42-write-s08-concepts/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  active_owner: matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  content_hash: sha256:54174ce691e88aa634999a490758d4bd1f2021bf793057253f587ced1ca78fed
+- kind: project-relative
+  target: codex
+  value: .agents/skills/arc42-write-s09-decisions
+  runtime: null
+  scope: project
+  owners:
+  - matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  active_owner: matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  content_hash: null
+- kind: project-relative
+  target: codex
+  value: .agents/skills/arc42-write-s09-decisions/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  active_owner: matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  content_hash: sha256:153249033216a9802cdbbbb9f90220919fcf948dc493bec1d850024f28197aaf
+- kind: project-relative
+  target: codex
+  value: .agents/skills/arc42-write-s10-quality
+  runtime: null
+  scope: project
+  owners:
+  - matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  active_owner: matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  content_hash: null
+- kind: project-relative
+  target: codex
+  value: .agents/skills/arc42-write-s10-quality/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  active_owner: matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  content_hash: sha256:0e563b23399da3d019257797a6dec54f3ad866aa07078c0930787ca6e50e49cb
+- kind: project-relative
+  target: codex
+  value: .agents/skills/arc42-write-s11-risks
+  runtime: null
+  scope: project
+  owners:
+  - matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  active_owner: matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  content_hash: null
+- kind: project-relative
+  target: codex
+  value: .agents/skills/arc42-write-s11-risks/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  active_owner: matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  content_hash: sha256:06ff7542b65c606afad70a99717d281a2af6f27d4586e0582eb2a652112796bd
+- kind: project-relative
+  target: codex
+  value: .agents/skills/arc42-write-s12-glossary
+  runtime: null
+  scope: project
+  owners:
+  - matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  active_owner: matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  content_hash: null
+- kind: project-relative
+  target: codex
+  value: .agents/skills/arc42-write-s12-glossary/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  active_owner: matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  content_hash: sha256:8230d34c7f00a0896bedc961cd1fb58736d3fc3fa02f9a75dd4f40a288ca5d84
+- kind: project-relative
+  target: codex
+  value: .codex/agents/arc42-write-from-code.toml
+  runtime: null
+  scope: project
+  owners:
+  - matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  active_owner: matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  content_hash: sha256:a7c4f376aff9404fe46b3b81c701e304b00cf5b6455531384f0c8ad3a527d51e
+- kind: project-relative
+  target: codex
+  value: .codex/agents/arc42-write.toml
+  runtime: null
+  scope: project
+  owners:
+  - matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  active_owner: matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  content_hash: sha256:6b33112e27c5fa1edbe63ad4696c5260c0814dc4000f91946b4ffaaacbaae9d7

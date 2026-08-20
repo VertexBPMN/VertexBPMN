@@ -24,6 +24,15 @@ jobs:
         node-version: '22.x'
         cache: 'npm'
         cache-dependency-path: src/VertexBPMN.Studio/package-lock.json
+    - name: Install Studio asset dependencies
+      working-directory: src/VertexBPMN.Studio
+      run: npm ci
+    - name: Build and verify pinned bpmn.io assets
+      working-directory: src/VertexBPMN.Studio
+      run: |
+        npm run build:bpmnio
+        npm run test:vertex-moddle
+        git diff --exit-code -- wwwroot/lib
     - name: Restore dependencies
       run: dotnet restore VertexBPMN.sln
     - name: Build
@@ -39,6 +48,8 @@ jobs:
         retention-days: 14
     - name: Test
       run: dotnet test VertexBPMN.sln --configuration Release --no-build --verbosity normal
+    - name: Verify OpenAPI snapshot
+      run: bash scripts/verify-openapi-snapshot.sh
     - name: Publish Docker image
       uses: docker/build-push-action@v5
       with:

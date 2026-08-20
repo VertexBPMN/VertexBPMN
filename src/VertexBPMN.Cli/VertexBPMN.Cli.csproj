@@ -5,6 +5,16 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <IsPackable>true</IsPackable>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>vertexbpmn</ToolCommandName>
+    <PackageId>VertexBPMN.Cli</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>VertexBPMN</Authors>
+    <Description>Command-line interface for the VertexBPMN process engine.</Description>
+    <PackageTags>bpmn;workflow;process-automation;cli;vertexbpmn</PackageTags>
+    <RepositoryUrl>https://github.com/VertexBPMN/VertexBPMN</RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
 
   <ItemGroup>

@@ -215,9 +215,12 @@ public sealed class VertexBpmnClient
         => SendForNullableAsync<CaseRunResult>(HttpMethod.Post, $"api/case-definitions/{Uri.EscapeDataString(key)}/start", new TenantRequest(tenantId ?? options.TenantId), cancellationToken);
 
     public Task<N8nImportResult?> ImportN8nWorkflowAsync(string workflowJson, CancellationToken cancellationToken = default)
+        => ImportN8nWorkflowAsync(workflowJson, options.TenantId, cancellationToken);
+
+    public Task<N8nImportResult?> ImportN8nWorkflowAsync(string workflowJson, string? tenantId, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(workflowJson);
-        return SendForNullableAsync<N8nImportResult>(HttpMethod.Post, "api/import/n8n", new N8nImportRequest(workflowJson), cancellationToken);
+        return SendForNullableAsync<N8nImportResult>(HttpMethod.Post, "api/import/n8n", new N8nImportRequest(workflowJson, tenantId), cancellationToken);
     }
 
     private async Task<T?> SendForNullableAsync<T>(HttpMethod method, string uri, CancellationToken cancellationToken)
@@ -299,5 +302,5 @@ public sealed class VertexBpmnClient
     private sealed record FormWriteRequest(string? TenantId, string Key, string Name, string Schema);
     private sealed record StartTestRunRequest(string BpmnXml, string Name, IDictionary<string, object?>? Variables, string BusinessKey, string? TenantId);
     private sealed record DeployCaseRequest(string Key, string Name, string CmmnXml, string? TenantId);
-    private sealed record N8nImportRequest(string WorkflowJson);
+    private sealed record N8nImportRequest(string WorkflowJson, string? TenantId);
 }

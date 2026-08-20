@@ -1,6 +1,6 @@
 # VertexBPMN Low-Code Studio mit bpmn.io Toolkits
 
-Status: In Umsetzung
+Status: Abgeschlossen; Release-Haertung und produktionsreifer Importausbau laufen fort.
 Letzte Aktualisierung: 2026-08-20
 Ausgangspunkt: `docs/archive/n8n-bpmn-camunda-parity.md`, `docs/archive/n8n-like-gui-for-vertex.md`
 
@@ -576,7 +576,7 @@ Akzeptanzkriterien:
 Umsetzungsstand (2026-08-20): abgeschlossen.
 
 - Der MVP importiert n8n-JSON über `POST /api/import/n8n`, das SDK und `vertexbpmn import-n8n`.
-- Webhook, HTTP Request und IF werden nach BPMN abgebildet. Credentials und IF-Ausdrücke erhalten sichere Review-Platzhalter, statt Secrets oder unübersetzte Ausdrücke zu übernehmen.
+- Webhook, HTTP Request und IF werden nach BPMN abgebildet. HTTP-Credentials werden ausschließlich dann auf die ID eines vorhandenen, tenant-isolierten Vertex-Credentials abgebildet, wenn n8n-ID oder -Name eindeutig passen; Secrets werden nie importiert. Gängige n8n-IF-Vergleiche werden als BPMN-Sequence-Flow-Bedingung plus Default-Flow übersetzt; nicht übersetzbare Bedingungen bleiben sichtbar im Review-Bericht.
 - Nicht unterstützte Nodes bleiben als markierte BPMN-Service-Tasks erhalten und erscheinen im strukturierten Importbericht.
 - Der BPMN-Modeler bietet einen n8n-Dateiimport und zeigt den Bericht direkt nach dem Laden an.
 - Die Implementierung ist für Application, API, SDK, CLI und Studio erfolgreich kompiliert. Der vollständige lokale Test-Host benötigt eine Bereinigung vorhandener, ungetrackter `bin\\Debug`-Artefakte; diese werden nicht durch die Produktimplementierung verändert oder entfernt.

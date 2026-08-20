@@ -396,6 +396,10 @@
       "VertexBPMN.Api.Controllers.N8nImportController.N8nImportRequest": {
         "additionalProperties": false,
         "properties": {
+          "tenantId": {
+            "nullable": true,
+            "type": "string"
+          },
           "workflowJson": {
             "nullable": true,
             "type": "string"

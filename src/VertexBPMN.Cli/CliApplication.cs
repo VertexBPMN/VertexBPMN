@@ -134,7 +134,10 @@ internal sealed class CliApplication
                     return 0;
                 case "import-n8n":
                     RequireArguments(args, 2);
-                    var imported = _n8nImporter.Import(await ReadFileAsync(args[1]));
+                    var importTenant = args.Length > 3 ? args[3] : "default";
+                    var imported = _n8nImporter.Import(
+                        await ReadFileAsync(args[1]),
+                        await _credentialService.ListAsync(importTenant, cancellationToken));
                     var outputPath = args.Length > 2 ? args[2] : Path.ChangeExtension(args[1], ".bpmn");
                     await File.WriteAllTextAsync(outputPath, imported.BpmnXml, cancellationToken);
                     await _output.WriteLineAsync($"n8n workflow imported: {outputPath}");
@@ -457,7 +460,7 @@ internal sealed class CliApplication
         _output.WriteLine("  deploy-form <form-json> [tenant]            Deploy a form schema");
         _output.WriteLine("  test-run <bpmn-file> <variables-json> [tenant] Deploy and start a test process");
         _output.WriteLine("  validate <bpmn-file>                         Validate BPMN semantics");
-        _output.WriteLine("  import-n8n <workflow-json> [output-bpmn]    Convert an n8n workflow and print its import report");
+        _output.WriteLine("  import-n8n <workflow-json> [output-bpmn] [tenant] Convert an n8n workflow and print its import report");
         _output.WriteLine("  register-bpmn <id> <bpmn-file>              Register BPMN");
         _output.WriteLine("  register-cmmn <id> <cmmn-file>              Register CMMN");
         _output.WriteLine("  register-dmn <id> <dmn-file>                Register DMN");

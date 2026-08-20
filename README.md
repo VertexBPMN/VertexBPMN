@@ -293,7 +293,7 @@ Einmalige Einrichtung:
    - Repository Owner: `VertexBPMN`
    - Repository: `VertexBPMN`
    - Workflow File: `ci.yml` (nur der Dateiname, nicht der Pfad)
-2. Im GitHub-Repository das Actions-Secret `NUGET_USER` mit dem NuGet-Profilnamen hinterlegen. Nicht die E-Mail-Adresse verwenden.
+2. Im GitHub-Repository das Actions-Secret `NUGET_USER` mit dem NuGet-Profilnamen hinterlegen. Für dieses Repository ist das `yrodriguez`; nicht die E-Mail-Adresse verwenden.
 3. Einen SemVer-Tag erstellen und pushen, zum Beispiel:
 
    ```bash
@@ -302,6 +302,8 @@ Einmalige Einrichtung:
    ```
 
 Der Workflow baut und testet die Solution, packt `VertexBPMN.Sdk`, tauscht das GitHub-OIDC-Token gegen einen kurzlebigen NuGet-Veröffentlichungsschlüssel und veröffentlicht anschließend `VertexBPMN.Sdk.1.0.1.nupkg` auf NuGet.org. Jeder normale CI-Lauf erzeugt zusätzlich ein herunterladbares SDK-NuGet-Artefakt, veröffentlicht es aber nicht.
+
+Verifikation: Nach dem einmaligen Einrichten der NuGet-Policy einen neuen, noch nicht verwendeten SemVer-Tag pushen. Der Job **Publish VertexBPMN.Sdk to NuGet** muss erfolgreich sein und das Paket anschließend unter `https://www.nuget.org/packages/VertexBPMN.Sdk/<version>` erreichbar sein. Ein fehlgeschlagener OIDC-Login weist auf eine abweichende Repository-, Workflow-Datei- oder NuGet-Benutzerkonfiguration hin; dafür wird kein API-Key benötigt.
 
 ### Architektur
 

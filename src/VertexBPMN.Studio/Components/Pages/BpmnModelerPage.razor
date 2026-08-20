@@ -494,7 +494,7 @@
         var workflowJson = await reader.ReadToEndAsync();
         try
         {
-            var response = await HttpClientFactory.CreateClient("VertexBPMN.Api").PostAsJsonAsync("api/import/n8n", new { workflowJson });
+            var response = await HttpClientFactory.CreateClient("VertexBPMN.Api").PostAsJsonAsync("api/import/n8n", new { workflowJson, tenantId = TenantContext.CurrentTenantId });
             response.EnsureSuccessStatusCode();
             var result = await response.Content.ReadFromJsonAsync<N8nImportResponse>();
             if (result is null) throw new InvalidOperationException("The importer returned no result.");

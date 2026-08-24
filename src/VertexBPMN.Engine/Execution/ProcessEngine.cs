@@ -442,18 +442,37 @@ public partial class ProcessEngine : IProcessEngine
             if (gateway != null)
             {
                 bool joinHold = false;
+                // FIX: isJoin markiert, ob dieses Gateway überhaupt ein Join ist (>1 eingehender
+                // Flow). excessJoinToken markiert einen überzähligen Token NACH bereits erfolgtem
+                // Join – der darf das Gateway NICHT nochmal aufspalten lassen (siehe
+                // Register*JoinArrivalCompliant). Reine Split-Gateways (kein Join) spalten wie
+                // bisher bei jedem Token normal auf.
+                var isJoin = false;
+                var justFired = true;
                 if (IsParallelJoin(gateway))
                 {
-                    joinHold = !RegisterParallelJoinArrivalCompliant(gateway.Id, fromFlow, trace);
+                    isJoin = true;
+                    joinHold = !RegisterParallelJoinArrivalCompliant(gateway.Id, fromFlow, trace, out justFired);
                 }
                 else if (IsInclusiveJoin(gateway))
                 {
-                    joinHold = !RegisterInclusiveJoinArrivalCompliant(gateway.Id, fromFlow, trace);
+                    isJoin = true;
+                    joinHold = !RegisterInclusiveJoinArrivalCompliant(gateway.Id, fromFlow, trace, out justFired);
                 }
                 if (joinHold)
                 {
                     LogHistory(tokenId, currentId, "join-wait");
                     continue; // wait for other tokens
+                }
+                var excessJoinToken = isJoin && !justFired;
+                if (excessJoinToken)
+                {
+                    // Join bereits früher erfüllt – dieser Token wird still konsumiert,
+                    // OHNE das Gateway erneut aufzuspalten (verhindert Token-Explosion).
+                    if (_tokens.TryGetValue(tokenId, out var excessTk))
+                        _tokens[tokenId] = excessTk with { Active = false };
+                    LogHistory(tokenId, currentId, "join-excess-consumed");
+                    continue;
                 }
                 var interrupt = ProcessBoundaryEvents(currentId, model, trace, _tokenQueue, parentTxn);
                 if (!interrupt) HandleGatewayForToken(gateway, model, trace, tokenId, parentTxn);
@@ -897,8 +916,16 @@ public partial class ProcessEngine : IProcessEngine
         return s;
     }
     // MIWG-compliant join approximation using JoinContext
-    private bool RegisterParallelJoinArrivalCompliant(string gatewayId, string? incomingFlowId, List<string> trace)
+    // FIX: Gibt jetzt zusätzlich zurück, ob der Join GERADE JETZT (mit diesem Token) zum
+    // ersten Mal erfüllt wurde ("justFired"), statt nur ob er (irgendwann, auch schon
+    // früher) erfüllt ist. Vorher führte JEDE weitere Ankunft nach dem ersten Feuern
+    // dazu, dass der Aufrufer das Gateway erneut komplett aufspalten ließ
+    // (HandleGatewayForToken -> neue Tokens auf allen ausgehenden Flows) – bei
+    // rückläufigen Strukturen (z. B. Retry-/Konsultations-Schleifen) führte das zu
+    // exponentieller Token-Vervielfachung bis zum VisitLimitReached-Abbruch.
+    private bool RegisterParallelJoinArrivalCompliant(string gatewayId, string? incomingFlowId, List<string> trace, out bool justFired)
     {
+        justFired = false;
         if (!_incomingByTarget.TryGetValue(gatewayId, out var incomings)) return true; // nothing to wait for
         if (!_joinContexts.TryGetValue(gatewayId, out var ctx))
         {
@@ -909,12 +936,25 @@ public partial class ProcessEngine : IProcessEngine
         }
         if (!string.IsNullOrEmpty(incomingFlowId)) ctx.ArrivedFlows.Add(incomingFlowId);
         trace.Add($"JoinProgress: {gatewayId} {ctx.ArrivedFlows.Count}/{ctx.RequiredFlows.Count}");
-        if (!ctx.Fired && ctx.ArrivedFlows.IsSupersetOf(ctx.RequiredFlows)) { ctx.Fired = true; trace.Add($"JoinSatisfied: {gatewayId}"); return true; }
-        return ctx.Fired; // if already fired allow subsequent tokens to pass (token merging semantics)
+        if (!ctx.Fired && ctx.ArrivedFlows.IsSupersetOf(ctx.RequiredFlows))
+        {
+            ctx.Fired = true;
+            justFired = true;
+            trace.Add($"JoinSatisfied: {gatewayId}");
+            return true;
+        }
+        if (ctx.Fired)
+        {
+            // Überzähliger/verspäteter Token nach bereits erfolgtem Join: still konsumieren,
+            // NICHT erneut aufspalten lassen.
+            trace.Add($"JoinExcessTokenConsumed: {gatewayId} Token-Flow {incomingFlowId}");
+        }
+        return ctx.Fired;
     }
 
-    private bool RegisterInclusiveJoinArrivalCompliant(string gatewayId, string? incomingFlowId, List<string> trace)
+    private bool RegisterInclusiveJoinArrivalCompliant(string gatewayId, string? incomingFlowId, List<string> trace, out bool justFired)
     {
+        justFired = false;
         if (!_incomingByTarget.TryGetValue(gatewayId, out var incomings)) return true;
         if (!_joinContexts.TryGetValue(gatewayId, out var ctx))
         {
@@ -930,7 +970,17 @@ public partial class ProcessEngine : IProcessEngine
         if (!string.IsNullOrEmpty(incomingFlowId)) ctx.ArrivedFlows.Add(incomingFlowId);
         trace.Add($"JoinProgress: {gatewayId} {ctx.ArrivedFlows.Count}/{ctx.RequiredFlows.Count}");
         // inclusive: if all required arrived OR all remaining required flows are disabled/unreachable
-        if (!ctx.Fired && ctx.ArrivedFlows.IsSupersetOf(ctx.RequiredFlows)) { ctx.Fired = true; trace.Add($"JoinSatisfied: {gatewayId}"); return true; }
+        if (!ctx.Fired && ctx.ArrivedFlows.IsSupersetOf(ctx.RequiredFlows))
+        {
+            ctx.Fired = true;
+            justFired = true;
+            trace.Add($"JoinSatisfied: {gatewayId}");
+            return true;
+        }
+        if (ctx.Fired)
+        {
+            trace.Add($"JoinExcessTokenConsumed: {gatewayId} Token-Flow {incomingFlowId}");
+        }
         return ctx.Fired;
     }
 

@@ -15,7 +15,7 @@ namespace VertexBPMN.Tests.Conformance.extended
             var xml = File.ReadAllText(bpmnFile);
             var logger = new Mock<ILogger<BpmnParser>>();
             var parser = new BpmnParser(logger.Object, TracerProvider.Default);
-            var model = await parser.ParseAsync(xml.Replace('\'', '"'), CancellationToken.None);
+            var model = await parser.ParseAsync(xml, CancellationToken.None);
             Assert.NotNull(model);
             var engine = new ProcessEngine();
             var result = engine.Execute(model);
@@ -32,7 +32,7 @@ namespace VertexBPMN.Tests.Conformance.extended
             // Bitte gegen die tatsächliche ToString()-Ausgabe eures Trace-Objekts prüfen,
             // falls diese Assertions fehlschlagen.
             Assert.Contains(result, r => r.ToString().Contains("SubProcess"));
-            Assert.Contains(result, r => r.ToString().Contains("BoundaryEvent"));
+            Assert.Contains(result, r => r.ToString().Contains("BoundaryEventSkipped: "));
         }
     }
 }

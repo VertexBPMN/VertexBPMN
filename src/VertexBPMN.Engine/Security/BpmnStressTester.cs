@@ -20,15 +20,23 @@ public sealed class BpmnStressTester
         int totalOperations, 
         TimeSpan timeout)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(xml);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(concurrentOperations);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(totalOperations);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(timeout.Ticks);
+
         var result = new StressTestResult { TotalAttempted = totalOperations };
         var completionTimes = new ConcurrentBag<TimeSpan>();
         var errors = new ConcurrentBag<string>();
-        var cancellation = new CancellationTokenSource(timeout);
+        var completedSuccessfully = 0;
+        using var cancellation = new CancellationTokenSource(timeout);
         
         var parser = new BpmnParser(new BpmnParserOptions
         {
             RoundtripMode = BpmnRoundtripMode.Normalized,
-            CacheSize = 100, // Enable caching for stress testing
+            // The stress test measures parse concurrency, not cache retention. Keeping cached
+            // models would intentionally retain memory and turn the leak detector into a false positive.
+            CacheSize = 0,
             InternIds = true,
             EnableAdvancedValidation = true
         });
@@ -53,18 +61,12 @@ public sealed class BpmnStressTester
                         if (model == null || string.IsNullOrEmpty(model.ProcessId))
                         {
                             errors.Add($"Operation {i}: Invalid model returned");
-                            // Replace this line:
-                            // Interlocked.Increment(ref result.CompletedSuccessfully);
-
-                            // With this thread-safe increment:
-                            result.CompletedSuccessfully++;
+                            Interlocked.Increment(ref completedSuccessfully);
                         }
                         else
                         {
                             completionTimes.Add(operationStopwatch.Elapsed);
-                            //Interlocked.Increment(ref result.CompletedSuccessfully);
-
-                            result.CompletedSuccessfully++;
+                            Interlocked.Increment(ref completedSuccessfully);
                         }
                     }
                     catch (OperationCanceledException)
@@ -92,6 +94,7 @@ public sealed class BpmnStressTester
         }
         
         overallStopwatch.Stop();
+        result.CompletedSuccessfully = completedSuccessfully;
         var finalMemory = GC.GetTotalMemory(true); // Force GC
         
         // Calculate results

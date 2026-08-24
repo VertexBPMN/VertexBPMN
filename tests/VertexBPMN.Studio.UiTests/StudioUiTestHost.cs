@@ -34,6 +34,18 @@ public sealed class StudioUiTestHost : IAsyncLifetime
 
     public async ValueTask InitializeAsync()
     {
+        try
+        {
+            await InitializeCoreAsync();
+        }
+        catch
+        {
+            await DisposeAsync();
+            throw;
+        }
+    }
+    private async ValueTask InitializeCoreAsync()
+    {
         var apiPort = GetFreePort();
         var studioPort = GetFreePort();
         var apiAddress = new Uri($"http://127.0.0.1:{apiPort}/");
@@ -133,28 +145,41 @@ public sealed class StudioUiTestHost : IAsyncLifetime
 
     public async ValueTask DisposeAsync()
     {
-        if (Browser is not null)
-            await Browser.CloseAsync();
-        _playwright?.Dispose();
-
-        if (_studioProcess is { HasExited: false })
+        try
         {
-            try
+            if (Browser is not null)
+                await Browser.CloseAsync();
+        }
+        finally
+        {
+            _playwright?.Dispose();
+
+            if (_studioProcess is not null)
             {
-                _studioProcess.Kill(entireProcessTree: true);
-                await _studioProcess.WaitForExitAsync();
+                try
+                {
+                    if (!_studioProcess.HasExited)
+                    {
+                        _studioProcess.Kill(entireProcessTree: true);
+                        await _studioProcess.WaitForExitAsync();
+                    }
+                }
+                catch (InvalidOperationException)
+                {
+                    // Process already exited.
+                }
+                finally
+                {
+                    _studioProcess.Dispose();
+                }
             }
-            catch (InvalidOperationException)
+
+            if (_api is not null)
             {
-                // The process exited between the check and Kill.
+                await _api.StopAsync();
+                await _api.DisposeAsync();
             }
         }
-        _studioProcess?.Dispose();
-
-        if (_api is not null)
-            await _api.StopAsync();
-        if (_api is not null)
-            await _api.DisposeAsync();
     }
 
     private static void MapApiContracts(WebApplication app)

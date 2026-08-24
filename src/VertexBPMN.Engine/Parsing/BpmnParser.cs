@@ -24,7 +24,7 @@ public partial class BpmnParser : IBpmnParser
     private readonly Dictionary<string, LinkedListNode<(string Key, BpmnModel Model)>> _cacheIndex = new();
     private readonly LinkedList<(string Key, BpmnModel Model)> _lru = new();
     private readonly object _cacheLock = new();
-    
+
     //Observability Infrastructure
     private readonly ActivitySource? _activitySource;
     private readonly ILogger<BpmnParser> _logger;
@@ -34,20 +34,20 @@ public partial class BpmnParser : IBpmnParser
     private readonly Dictionary<string, XDocument> _documentCache = new();
 
     public BpmnParser() : this(new BpmnParserOptions(), Microsoft.Extensions.Logging.Abstractions.NullLogger<BpmnParser>.Instance, TracerProvider.Default) { }
-    
+
     public BpmnParser(BpmnParserOptions options) : this(options, Microsoft.Extensions.Logging.Abstractions.NullLogger<BpmnParser>.Instance, TracerProvider.Default) { }
 
-    public BpmnParser(BpmnParserOptions options, ILogger<BpmnParser> logger):this(options, logger, TracerProvider.Default)
+    public BpmnParser(BpmnParserOptions options, ILogger<BpmnParser> logger) : this(options, logger, TracerProvider.Default)
     {
     }
     public BpmnParser(ILogger<BpmnParser> logger, TracerProvider tracerProvider) : this(new BpmnParserOptions(), logger, tracerProvider)
     { }
-    public BpmnParser(BpmnParserOptions options, ILogger<BpmnParser> logger, TracerProvider tracerProvider) 
-    { 
-        _options = options; 
-        
+    public BpmnParser(BpmnParserOptions options, ILogger<BpmnParser> logger, TracerProvider tracerProvider)
+    {
+        _options = options;
+
         //Initialize observability components (zero allocation when disabled)
-        _activitySource = _options.EnableTracing ? (_options.TracingActivitySource ?? DefaultActivitySource) : null;    
+        _activitySource = _options.EnableTracing ? (_options.TracingActivitySource ?? DefaultActivitySource) : null;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _tracer = tracerProvider.GetTracer("VertexBPMN");
     }
@@ -184,19 +184,29 @@ public partial class BpmnParser : IBpmnParser
         using var secureReader = new BpmnResourceLimiter(_options.SecurityOptions)
             .CreateSecureXmlReader(xml, cancellationToken);
         var doc = XDocument.Load(secureReader, LoadOptions.PreserveWhitespace);
-        var root = doc.Root!; 
+        var root = doc.Root!;
         var ns = root.Name.Namespace;
         if (strict)
         {
             foreach (var attr in root.Attributes()) if (attr.IsNamespaceDeclaration)
             {
-                    var prefix = (attr.Name.Namespace == XNamespace.None && attr.Name.LocalName == "xmlns") ? string.Empty : attr.Name.LocalName;
-                    namespacePrefixes!.Add(new NamespacePrefix(prefix, attr.Value, true));
+                var prefix = (attr.Name.Namespace == XNamespace.None && attr.Name.LocalName == "xmlns") ? string.Empty : attr.Name.LocalName;
+                namespacePrefixes!.Add(new NamespacePrefix(prefix, attr.Value, true));
             }
             foreach (var a in root.Attributes()) if (!a.IsNamespaceDeclaration) rawDefinitionsAttr![a.Name.ToString()] = a.Value;
         }
 
-        var process = doc.Descendants(ns + "process").FirstOrDefault();
+        // FIX: Vorher wurde per .FirstOrDefault() IMMER nur das erste <process>-Element
+        // im Dokument geparst. Bei Collaborations mit mehreren Pools (mehrere <process>-
+        // Elemente, z. B. A.4.0.bpmn mit WFP-6-1 + WFP-6-2) gingen dadurch sämtliche
+        // Flow-Elemente (Tasks, Events, Gateways, Subprocesses, SequenceFlows) aller
+        // Pools außer dem ersten komplett verloren. allProcesses sammelt jetzt alle
+        // <process>-Elemente; "process" bleibt der primäre (erste) Prozess für
+        // Metadaten wie Id/Name/Attribute – die eigentlichen Flow-Elemente aller
+        // weiteren Prozesse werden weiter unten zusätzlich gewalkt und in dieselben
+        // (gemeinsamen) Ergebnislisten gemerged.
+        var allProcesses = doc.Descendants(ns + "process").ToList();
+        var process = allProcesses.FirstOrDefault();
         if (process == null)
         {
             if (_options.StrictValidation)
@@ -279,7 +289,11 @@ public partial class BpmnParser : IBpmnParser
         var signalModels = ParseSignals(signals);
         var errorModels = ParseErrors(errors);
         var escalationModels = ParseEscalations(escalations);
-        var gatewaysRaw = process.Descendants().Where(e => e.Name.LocalName.EndsWith("Gateway")).Select(g =>
+        // FIX: gatewaysRaw wurde bisher nur aus "process" (dem ersten Prozess) berechnet.
+        // Damit Default-Flows von Gateways in weiteren Prozessen (anderen Pools) korrekt
+        // erkannt werden, jetzt über alle Prozesse hinweg sammeln.
+        var gatewaysRaw = allProcesses.SelectMany(p => p.Descendants())
+            .Where(e => e.Name.LocalName.EndsWith("Gateway")).Select(g =>
             new
             {
                 Id = Intern(g.Attribute("id")?.Value ?? string.Empty),
@@ -314,7 +328,7 @@ public partial class BpmnParser : IBpmnParser
         var linkThrowCounts = new Dictionary<string, int>(StringComparer.Ordinal);
         var linkCatchNames = new HashSet<string>(StringComparer.Ordinal);
         var orderCounter = 0;
-  
+
         var unknownEventDefinitionDiagnostics = new List<ValidationDiagnostic>();
         void Walk(XElement parent)
         {
@@ -327,7 +341,7 @@ public partial class BpmnParser : IBpmnParser
                 var currentSub = subprocessStack.Count > 0 ? subprocessStack.Peek() : null;
                 if (!string.IsNullOrEmpty(id))
                     if (!idIndex.Add(id) && _options.StrictValidation)
-                        diagnostics.Add($"Duplicate ID: {id}");   
+                        diagnostics.Add($"Duplicate ID: {id}");
                 var ext = ExtractExtensions(el, ns, strict, rawExtensions);
                 switch (local)
                 {
@@ -359,7 +373,7 @@ public partial class BpmnParser : IBpmnParser
                         subprocessStack.Push(id);
                         Walk(el);
                         subprocessStack.Pop();
-                        break;                   
+                        break;
                     case "startEvent":
                     case "endEvent":
                     case "intermediateCatchEvent":
@@ -428,7 +442,7 @@ public partial class BpmnParser : IBpmnParser
                             var resVar = el.Attribute("resultVariable")?.Value;
                             scriptTaskRaw[id] = (fmt, body, resVar);
                         }
-        
+
                         if (local == "userTask" && !string.IsNullOrEmpty(id))
                         {
 
@@ -448,7 +462,7 @@ public partial class BpmnParser : IBpmnParser
                                 var text = expr?.Value?.Trim();
                                 if (!string.IsNullOrWhiteSpace(text))
                                 {
-        
+
                                     potentialOwnerExtras[id] = text!;
                                 }
                             }
@@ -461,13 +475,13 @@ public partial class BpmnParser : IBpmnParser
                         {
                             Name = el.Attribute("name")?.Value ?? string.Empty
                         };
-                        
-                        if(tasks.All(x => x.Id != id)) tasks.Add(task); 
+
+                        if (tasks.All(x => x.Id != id)) tasks.Add(task);
                         flowNodeIds.Add(id);
                         // IO spec & associations
                         {
-                            var ioSpec = el.Element(ns + "ioSpecification") ?? el.Element("ioSpecification"); 
-                            if (ioSpec != null) 
+                            var ioSpec = el.Element(ns + "ioSpecification") ?? el.Element("ioSpecification");
+                            if (ioSpec != null)
                             {
                                 var dataInputs = ioSpec.Elements(ns + "dataInput").Concat(ioSpec.Elements("dataInput"))
                                     .Select(di =>
@@ -516,25 +530,31 @@ public partial class BpmnParser : IBpmnParser
                         Walk(el); // recurse into lanes
                         continue; // prevent double attribute handling
                     case "sequenceFlow":
-                        int? priority = null; var prAttr = el.Attribute(XName.Get("priority", "http://vertexbpmn.io/schema/1.0")) ?? el.Attribute(XName.Get("priority", "http://camunda.org/schema/1.0/bpmn")) ?? el.Attribute("priority"); if (prAttr != null && int.TryParse(prAttr.Value, out var pVal)) priority = pVal; if (strict && prAttr != null && !string.IsNullOrEmpty(id)) priorityAttrNs![id] = prAttr.Name.NamespaceName; var condNode = el.Element(ns + "conditionExpression") ?? el.Element("conditionExpression"); var condText = condNode?.Value?.Trim(); if (!string.IsNullOrWhiteSpace(condText)) { ext ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase); ext["conditionExpression"] = condText; } flows.Add(new BpmnSequenceFlow(id, Intern(el.Attribute("sourceRef")?.Value ?? string.Empty), Intern(el.Attribute("targetRef")?.Value ?? string.Empty), defaultIds.Contains(id), condText, currentSub, ext, priority)); if (strict && condNode != null) { bool wasCData = condNode.Nodes().OfType<XCData>().Any(); rawCond![id] = (condNode.Value, wasCData); }
+                        int? priority = null; var prAttr = el.Attribute(XName.Get("priority", "http://vertexbpmn.io/schema/1.0")) ?? el.Attribute(XName.Get("priority", "http://camunda.org/schema/1.0/bpmn")) ?? el.Attribute("priority"); if (prAttr != null && int.TryParse(prAttr.Value, out var pVal)) priority = pVal; if (strict && prAttr != null && !string.IsNullOrEmpty(id)) priorityAttrNs![id] = prAttr.Name.NamespaceName; var condNode = el.Element(ns + "conditionExpression") ?? el.Element("conditionExpression"); var condText = condNode?.Value?.Trim(); if (!string.IsNullOrWhiteSpace(condText)) { ext ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase); ext["conditionExpression"] = condText; }
+                        flows.Add(new BpmnSequenceFlow(id, Intern(el.Attribute("sourceRef")?.Value ?? string.Empty), Intern(el.Attribute("targetRef")?.Value ?? string.Empty), defaultIds.Contains(id), condText, currentSub, ext, priority)); if (strict && condNode != null) { bool wasCData = condNode.Nodes().OfType<XCData>().Any(); rawCond![id] = (condNode.Value, wasCData); }
                         CaptureElementMeta(strict, flowNodeAttributes, rawDocumentation, elementsMetadata, orderCounter, ns, el, id); break;
-                    case "dataObject": dataObjects.Add(new BpmnDataObject(id, el.Attribute("name")?.Value));
+                    case "dataObject":
+                        dataObjects.Add(new BpmnDataObject(id, el.Attribute("name")?.Value));
                         CaptureElementMeta(strict, flowNodeAttributes, rawDocumentation, elementsMetadata, orderCounter, ns, el, id); break;
-                    case "dataObjectReference": dataObjectRefs.Add(new BpmnDataObjectReference(id, Intern(el.Attribute("dataObjectRef")?.Value ?? string.Empty))); 
+                    case "dataObjectReference":
+                        dataObjectRefs.Add(new BpmnDataObjectReference(id, Intern(el.Attribute("dataObjectRef")?.Value ?? string.Empty)));
                         CaptureElementMeta(strict, flowNodeAttributes, rawDocumentation, elementsMetadata, orderCounter, ns, el, id); break;
-                    case "dataStore": dataStores.Add(new BpmnDataStore(id, el.Attribute("name")?.Value)); 
+                    case "dataStore":
+                        dataStores.Add(new BpmnDataStore(id, el.Attribute("name")?.Value));
                         CaptureElementMeta(strict, flowNodeAttributes, rawDocumentation, elementsMetadata, orderCounter, ns, el, id); break;
-                    case "dataStoreReference": dataStoreRefs.Add(new BpmnDataStoreReference(id, Intern(el.Attribute("dataStoreRef")?.Value ?? string.Empty)));
+                    case "dataStoreReference":
+                        dataStoreRefs.Add(new BpmnDataStoreReference(id, Intern(el.Attribute("dataStoreRef")?.Value ?? string.Empty)));
                         CaptureElementMeta(strict, flowNodeAttributes, rawDocumentation, elementsMetadata, orderCounter, ns, el, id); break;
-                    case "property": properties.Add(new BpmnProperty(id, el.Attribute("name")?.Value)); 
+                    case "property":
+                        properties.Add(new BpmnProperty(id, el.Attribute("name")?.Value));
                         CaptureElementMeta(strict, flowNodeAttributes, rawDocumentation, elementsMetadata, orderCounter, ns, el, id); break;
                     case "textAnnotation":
                         if (!_options.CaptureArtifacts && strict) { CaptureElementMeta(strict, flowNodeAttributes, rawDocumentation, elementsMetadata, orderCounter, ns, el, id); break; }
-                        textAnnotations.Add(new BpmnTextAnnotation(id, el.Element(ns + "text")?.Value ?? el.Element("text")?.Value)); if (strict) rawArtifacts!.Add(new XElement(el)); 
+                        textAnnotations.Add(new BpmnTextAnnotation(id, el.Element(ns + "text")?.Value ?? el.Element("text")?.Value)); if (strict) rawArtifacts!.Add(new XElement(el));
                         CaptureElementMeta(strict, flowNodeAttributes, rawDocumentation, elementsMetadata, orderCounter, ns, el, id); break;
                     case "group":
                         if (!_options.CaptureArtifacts && strict) { CaptureElementMeta(strict, flowNodeAttributes, rawDocumentation, elementsMetadata, orderCounter, ns, el, id); break; }
-                        groups.Add(new BpmnGroup(id, el.Attribute("categoryValueRef")?.Value)); if (strict) rawArtifacts!.Add(new XElement(el)); 
+                        groups.Add(new BpmnGroup(id, el.Attribute("categoryValueRef")?.Value)); if (strict) rawArtifacts!.Add(new XElement(el));
                         CaptureElementMeta(strict, flowNodeAttributes, rawDocumentation, elementsMetadata, orderCounter, ns, el, id); break;
                     case "association":
                         if (!_options.CaptureArtifacts && strict) { CaptureElementMeta(strict, flowNodeAttributes, rawDocumentation, elementsMetadata, orderCounter, ns, el, id); break; }
@@ -555,10 +575,27 @@ public partial class BpmnParser : IBpmnParser
                     }
                 }
             }
-        
+
         }
 
         Walk(process);
+
+        // FIX: Alle weiteren <process>-Elemente (zusätzliche Pools einer Collaboration)
+        // ebenfalls walken. Walk() ist eine lokale Funktion, die über dieselben
+        // (oben deklarierten) Ergebnislisten schließt – die Elemente landen also
+        // automatisch in denselben events/gateways/subprocesses/flows/tasks/... Listen
+        // wie die des ersten Prozesses. subprocessStack ist nach jedem abgeschlossenen
+        // Walk(process)-Aufruf wieder leer (Push/Pop sind symmetrisch), ein erneuter
+        // Aufruf für ein weiteres Top-Level-<process>-Element ist daher unproblematisch.
+        if (allProcesses.Count > 1)
+        {
+            if (_options.StrictValidation)
+                diagnostics.Add($"Collaboration mit {allProcesses.Count} <process>-Elementen erkannt – alle wurden gemerged.");
+            foreach (var otherProcess in allProcesses.Skip(1))
+            {
+                Walk(otherProcess);
+            }
+        }
 
         // Reference resolution diagnostics
         if (events.Count > 0)
@@ -666,7 +703,7 @@ public partial class BpmnParser : IBpmnParser
 
         }
         foreach (var bev in events.Where(e =>
-                     e.Type == "boundaryEvent" &&  e.Definitions.OfType<EscalationEventDefinition>().Any()))
+                     e.Type == "boundaryEvent" && e.Definitions.OfType<EscalationEventDefinition>().Any()))
         {
             if (elementsMetadata != null && elementsMetadata.TryGetValue(bev.Id, out var meta))
             {
@@ -695,22 +732,22 @@ public partial class BpmnParser : IBpmnParser
                 rawCond.TryGetValue(f.Id, out var rc) && !string.IsNullOrEmpty(rc.Raw));
             if (hasCond) diagnostics.Add($"Default flow {f.Id} has condition");
         }
-        
+
         if (_options.StrictValidation)
         {
-            foreach (var f in flows) 
-                if (!flowNodeIds.Contains(f.SourceRef) || !flowNodeIds.Contains(f.TargetRef)) 
+            foreach (var f in flows)
+                if (!flowNodeIds.Contains(f.SourceRef) || !flowNodeIds.Contains(f.TargetRef))
                     diagnostics.Add($"SequenceFlow {f.Id} has invalid endpoints {f.SourceRef}->{f.TargetRef}");
             if (!events.Any(e => e.Type == "startEvent")) diagnostics.Add("No startEvent found in process");
         }
 
-        List<BpmnShape>? shapes = null; 
-        List<BpmnEdge>? edges = null; 
+        List<BpmnShape>? shapes = null;
+        List<BpmnEdge>? edges = null;
         if (_options.ParseDiagramInterchange)
         {
-            var bpmndi = (XNamespace) "http://www.omg.org/spec/BPMN/20100524/DI";
-            var omgdc = (XNamespace) "http://www.omg.org/spec/DD/20100524/DC";
-            var omgdi = (XNamespace) "http://www.omg.org/spec/DD/20100524/DI";
+            var bpmndi = (XNamespace)"http://www.omg.org/spec/BPMN/20100524/DI";
+            var omgdc = (XNamespace)"http://www.omg.org/spec/DD/20100524/DC";
+            var omgdi = (XNamespace)"http://www.omg.org/spec/DD/20100524/DI";
             shapes = new List<BpmnShape>();
             edges = new List<BpmnEdge>();
             foreach (var shape in doc.Descendants(bpmndi + "BPMNShape"))
@@ -913,7 +950,7 @@ public partial class BpmnParser : IBpmnParser
             );
         }
 
-        var model = new BpmnModel(pid, pname,events, gateways, subprocesses, flows, tasks, dataObjects, dataObjectRefs,
+        var model = new BpmnModel(pid, pname, events, gateways, subprocesses, flows, tasks, dataObjects, dataObjectRefs,
             dataStores, dataStoreRefs, properties, activityIo, messageModels, signalModels, errorModels,
             escalationModels, diagnostics, shapes, edges, participants, lanes, messageFlows, textAnnotations,
             associationArtifacts, groups, Activities: activities, RawMetadata: rawMeta);
@@ -992,8 +1029,8 @@ public partial class BpmnParser : IBpmnParser
     }
 
     private static void CaptureElementMeta(bool strict, Dictionary<string, IReadOnlyDictionary<string, string>>? flowNodeAttributes,
-        Dictionary<string, List<XElement>>? rawDocumentation,  Dictionary<string, ElementMetadata>? elementsMetadata, int orderCounter, XNamespace ns, XElement el
-       , string id, bool hadCamundaCollection = false,bool hadZeebeInputCollection = false, bool hadLoopCardinality = false, bool hadCamundaElementVar = false,
+        Dictionary<string, List<XElement>>? rawDocumentation, Dictionary<string, ElementMetadata>? elementsMetadata, int orderCounter, XNamespace ns, XElement el
+       , string id, bool hadCamundaCollection = false, bool hadZeebeInputCollection = false, bool hadLoopCardinality = false, bool hadCamundaElementVar = false,
         bool hadZeebeInputElement = false, bool hadZeebeOutputElement = false)
     {
         if (!strict || string.IsNullOrEmpty(id)) return;
@@ -1211,7 +1248,8 @@ public partial class BpmnParser : IBpmnParser
     /// Extrahiert <properties>/<property>-Strukturen aus beliebigen Namespaces (z.B. camunda:properties).
     /// </summary>
     private static void ExtractPropertiesFromAnyNamespace(XElement extensionElements, IDictionary<string, string> attributes)
-    {   foreach (var propElem in extensionElements.Descendants().Where(e => e.Name.LocalName == "properties"))
+    {
+        foreach (var propElem in extensionElements.Descendants().Where(e => e.Name.LocalName == "properties"))
         {
             foreach (var p in propElem.Elements().Where(e => e.Name.LocalName == "property"))
             {
@@ -1227,24 +1265,24 @@ public partial class BpmnParser : IBpmnParser
     }
     private bool IsLargeModel(XElement? processElement, BpmnParserOptions options)
     {
-        if (!options.OptimizeLargeModels || options.LargeModelThreshold <= 0) 
+        if (!options.OptimizeLargeModels || options.LargeModelThreshold <= 0)
             return false;
-            
+
         var elementCount = processElement?.Elements().Count() ?? 0;
-        
+
         if (elementCount > options.LargeModelThreshold && options.EnableLogging)
         {
-            _logger.LogDebug("Large model detected: ElementCount={ElementCount}, applying optimizations", 
+            _logger.LogDebug("Large model detected: ElementCount={ElementCount}, applying optimizations",
                 elementCount);
         }
-        
+
         return elementCount > options.LargeModelThreshold;
     }
 
     private static IReadOnlyList<ValidationDiagnostic> ValidateModel(BpmnModel model, BpmnParserOptions options)
     {
 
-        var events = model.Events != null ? AsSpanSafe(model.Events): Array.Empty<BpmnEvent>();
+        var events = model.Events != null ? AsSpanSafe(model.Events) : Array.Empty<BpmnEvent>();
         var gateways = model.Gateways != null ? AsSpanSafe(model.Gateways) : Array.Empty<BpmnGateway>();
         var subprocesses = model.Subprocesses != null ? AsSpanSafe(model.Subprocesses) : Array.Empty<BpmnSubprocess>();
         var flows = AsSpanSafe(model.SequenceFlows);
@@ -1483,7 +1521,7 @@ public partial class BpmnParser : IBpmnParser
         // NEW: Direct missing ID validation (not just legacy conversion)
         // Check for missing IDs on elements that require them
         var elementsRequiringIds = new List<(string? Id, string Type)>();
-        
+
         // Collect all elements that should have IDs
         foreach (var ev in events)
             elementsRequiringIds.Add((ev.Id, ev.Type));
@@ -2024,7 +2062,7 @@ public partial class BpmnParser : IBpmnParser
                                 }
                             case "formData":
                                 {
-         
+
                                     bucket["camunda:formData"] = child.Name.LocalName;
 
                                     child.Elements().ToList().ForEach(ff =>
@@ -2342,7 +2380,7 @@ public partial class BpmnParser : IBpmnParser
                                     bucket[$"mcp:mcpServiceTask.{attr.Name.LocalName}"] = attr.Value;
                             }
                         }
-                    }                     
+                    }
                     // GENERICS (nur wenn aktiviert)
                     else if (_options.NormalizeUnknownVendorExtensions && nsUri.Length > 0)
                     {

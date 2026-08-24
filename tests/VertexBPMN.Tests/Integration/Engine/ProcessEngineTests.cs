@@ -205,7 +205,7 @@ public class ProcessEngineTests
         );
         var engine = new ProcessEngine();
         var trace = engine.Execute(model);
-        Assert.Contains(trace, x => x.Contains("Subprocess: sub1"));
+        Assert.Contains(trace, x => x.Contains("SubProcess: sub1"));
         //Assert.Contains(trace, x => x.Contains("MultiInstance: sub1"));
        // Assert.Contains(trace, x => x.Contains("SubprocessStart: sub1_start"));
        // Assert.Contains(trace, x => x.Contains("SubprocessEnd: sub1_end"));

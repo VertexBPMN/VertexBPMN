@@ -29,8 +29,8 @@ namespace VertexBPMN.Tests.Integration.Bpmn
             );
             var engine = new ProcessEngine();
             var trace = engine.Execute(model);
-            Assert.Contains("Subprocess: sub1", trace);
-            Assert.Contains("Subprocess: sub2", trace);
+            Assert.Contains("SubProcess: sub1", trace);
+            Assert.Contains("SubProcess: sub2", trace);
             Assert.Contains(
                 trace,
                 t => t.Contains("EndEvent: end1", StringComparison.Ordinal));

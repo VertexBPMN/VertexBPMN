@@ -16,7 +16,7 @@ public sealed class VertexBpmnClientTests
             ExpectedEngineType = VertexBpmnEngineType.Simple
         });
 
-        var capabilities = await client.GetEngineCapabilitiesAsync();
+        var capabilities = await client.GetEngineCapabilitiesAsync(CancellationToken.None);
 
         Assert.Equal(VertexBpmnEngineType.Simple, capabilities.EngineType);
         Assert.True(capabilities.SupportsCmmn);
@@ -34,7 +34,7 @@ public sealed class VertexBpmnClientTests
             ExpectedEngineType = VertexBpmnEngineType.Distributed
         });
 
-        var capabilities = await client.GetEngineCapabilitiesAsync();
+        var capabilities = await client.GetEngineCapabilitiesAsync(CancellationToken.None);
 
         Assert.Equal(VertexBpmnEngineType.Distributed, capabilities.EngineType);
         Assert.True(capabilities.SupportsCmmn);
@@ -53,17 +53,17 @@ public sealed class VertexBpmnClientTests
             bpmnXml = $"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='{key}'><startEvent id='start'/><endEvent id='end'/></process></definitions>",
             name = $"{key}.bpmn",
             tenantId = (string?)null
-        });
+        }, CancellationToken.None);
         deploy.EnsureSuccessStatusCode();
 
         var client = new VertexBpmnClient(httpClient);
-        var created = await client.CreateWorkflowTriggerAsync("SDK trigger", key);
+        var created = await client.CreateWorkflowTriggerAsync("SDK trigger", key, null,CancellationToken.None);
         Assert.NotNull(created);
 
-        var triggers = await client.ListWorkflowTriggersAsync();
+        var triggers = await client.ListWorkflowTriggersAsync(null, CancellationToken.None);
         Assert.Contains(triggers, trigger => trigger.Id == created!.Trigger.Id);
 
-        var instance = await client.InvokeWorkflowTriggerAsync(created!.Trigger.Id, created.Secret);
+        var instance = await client.InvokeWorkflowTriggerAsync(created!.Trigger.Id, created.Secret,null, null, CancellationToken.None);
         Assert.NotNull(instance);
     }
 
@@ -76,8 +76,8 @@ public sealed class VertexBpmnClientTests
         var key = $"sdk-test-run-{Guid.NewGuid():N}";
         var bpmnXml = $"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='{key}'><startEvent id='start'/><endEvent id='end'/></process></definitions>";
 
-        var validation = await client.ValidateBpmnAsync(bpmnXml);
-        var testRun = await client.StartTestRunAsync(bpmnXml, $"{key}.bpmn", new Dictionary<string, object?> { ["source"] = "sdk" });
+        var validation = await client.ValidateBpmnAsync(bpmnXml, CancellationToken.None);
+        var testRun = await client.StartTestRunAsync(bpmnXml, $"{key}.bpmn", new Dictionary<string, object?> { ["source"] = "sdk" }, null, CancellationToken.None);
 
         Assert.NotNull(validation);
         Assert.True(validation!.IsValid);

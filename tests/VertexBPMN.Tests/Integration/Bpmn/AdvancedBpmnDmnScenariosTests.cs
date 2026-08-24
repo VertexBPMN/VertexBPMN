@@ -32,22 +32,18 @@ public class AdvancedBpmnDmnScenariosTests
         );
         var engine = new ProcessEngine();
         var trace = engine.Execute(model);
-        Assert.Contains("Subprocess: sub1", trace);
-        Assert.Contains("Subprocess: sub2", trace);
-        /*Assert.Contains("SubprocessStart: sub1_start", trace);
-        Assert.Contains("SubprocessStart: sub2_start", trace);
-        Assert.Contains("SubprocessEnd: sub1_end", trace);
-        Assert.Contains("SubprocessEnd: sub2_end", trace);*/
+        Assert.Contains("SubProcess: sub1", trace);
+        Assert.Contains("SubProcess: sub2", trace);
     }
 
-    /*
+    
     [Fact]
     public void Executes_Boundary_Event_On_UserTask()
     {
         var model = new BpmnModel(
             "P12",
             "BoundaryEvent",
-            new List<BpmnEvent> { new("start1", "startEvent"), new("b1", "boundaryEvent",  "t1"), new("end1", "endEvent") },
+            new List<BpmnEvent> { new("start1", "startEvent"), new("b1", "boundaryEvent", null,  "t1"), new("end1", "endEvent") },
              new List<BpmnTask> { new("t1", "userTask") },
              new List<BpmnGateway>(),
              new List<BpmnSequenceFlow> {
@@ -58,11 +54,13 @@ public class AdvancedBpmnDmnScenariosTests
              new List<BpmnSubprocess>()
         );
         var engine = new ProcessEngine();
-        var trace = engine.Execute(model);
-        Assert.Contains("UserTask: t1", trace);
-        // Note: TokenEngine does not yet simulate boundary event token flow, but this test ensures model acceptance
+        var result = engine.Execute(model);
+        Assert.Contains(result, r => r.ToString().Contains("StartEvent"));
+        Assert.Contains(result, r => r.ToString().Contains("EndEvent"));
+        Assert.Contains(result, r => r.ToString().Contains("UserTask: t1"));
+        //Note: TokenEngine does not yet simulate boundary event token flow, but this test ensures model acceptance
     }
-    */
+    
 
     [Fact]
     public async Task DecisionService_Handles_Complex_Inputs()

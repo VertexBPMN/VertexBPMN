@@ -46,6 +46,12 @@ public partial class ProcessEngine : IProcessEngine
     private readonly List<HistoryEvent> _history = new();
     private readonly HashSet<string> _pendingNodes = new(); // nodes currently enqueued (for join reachability heuristics)
     private string? _lastErrorCode;
+    // NEU: Analog zu _lastErrorCode – merkt sich, ob/welches Message-, Escalation- oder
+    // Signal-Throw-Event zuletzt aufgetreten ist. Ohne das feuert jedes an eine Aktivität
+    // angehängte non-error Boundary Event bedingungslos beim bloßen Erreichen des Knotens.
+    private string? _lastMessageRef;
+    private string? _lastEscalationCode;
+    private string? _lastSignalRef;
     private class JoinContext
     {
         public HashSet<string> RequiredFlows { get; } = new();
@@ -334,6 +340,10 @@ public partial class ProcessEngine : IProcessEngine
         var trace = new List<string>();
         _tokens.Clear(); _history.Clear(); _tokenQueue.Clear(); _pendingNodes.Clear(); _joinContexts.Clear();
         _parallelJoinArrivals.Clear(); _inclusiveJoinArrivals.Clear(); _transactionContexts.Clear(); _eventSubprocessStartEvents.Clear(); _disabledFlows.Clear();
+        // FIX: _lastErrorCode wurde bisher hier NICHT zurückgesetzt – bei Wiederverwendung
+        // derselben ProcessEngine-Instanz für mehrere Execute()-Aufrufe konnte ein Error-Code
+        // aus einer vorherigen Ausführung fälschlich in die neue Ausführung durchsickern.
+        _lastErrorCode = null; _lastMessageRef = null; _lastEscalationCode = null; _lastSignalRef = null;
 
         PrecomputeIncoming(model);
         IndexEventSubprocessStartEvents(model, trace);
@@ -545,43 +555,43 @@ public partial class ProcessEngine : IProcessEngine
         switch (g.Type)
         {
             case "exclusiveGateway":
-            {
-                // Step 1: evaluate conditions using shared variable dictionary
-                var vars = GetOrCreateWorkingVariables(model);
-                var selected = _executionComponent.SelectExclusiveFlow(
-                    outs,
-                    vars,
-                    (condition, variables) => _executionComponent.EvaluateSimpleCondition(condition, variables),
-                    flowId => trace.Add($"ExclusiveConditionMatched: {flowId}"),
-                    flowId => trace.Add($"ExclusiveDefaultTaken: {flowId}"),
-                    flowId => trace.Add($"ExclusiveFallbackFirst: {flowId}"));
+                {
+                    // Step 1: evaluate conditions using shared variable dictionary
+                    var vars = GetOrCreateWorkingVariables(model);
+                    var selected = _executionComponent.SelectExclusiveFlow(
+                        outs,
+                        vars,
+                        (condition, variables) => _executionComponent.EvaluateSimpleCondition(condition, variables),
+                        flowId => trace.Add($"ExclusiveConditionMatched: {flowId}"),
+                        flowId => trace.Add($"ExclusiveDefaultTaken: {flowId}"),
+                        flowId => trace.Add($"ExclusiveFallbackFirst: {flowId}"));
 
-                if (selected != null)
-                {
-                    EmitNewToken(trace, tokenId, parentTxn, selected);
-                    foreach (var dead in outs.Where(f => f != selected))
+                    if (selected != null)
                     {
-                        _disabledFlows.Add(dead.Id);
-                        trace.Add($"DeadPathEliminated: {dead.Id}");
-                    }
-                }
-                else
-                {
-                    // Fallback safety (should not happen if any flow exists)
-                    var first = outs.FirstOrDefault();
-                    if (first != null)
-                    {
-                        trace.Add($"ExclusiveFallbackFirst: {first.Id}");
-                        EmitNewToken(trace, tokenId, parentTxn, first);
-                        foreach (var dead in outs.Skip(1))
+                        EmitNewToken(trace, tokenId, parentTxn, selected);
+                        foreach (var dead in outs.Where(f => f != selected))
                         {
                             _disabledFlows.Add(dead.Id);
                             trace.Add($"DeadPathEliminated: {dead.Id}");
                         }
                     }
+                    else
+                    {
+                        // Fallback safety (should not happen if any flow exists)
+                        var first = outs.FirstOrDefault();
+                        if (first != null)
+                        {
+                            trace.Add($"ExclusiveFallbackFirst: {first.Id}");
+                            EmitNewToken(trace, tokenId, parentTxn, first);
+                            foreach (var dead in outs.Skip(1))
+                            {
+                                _disabledFlows.Add(dead.Id);
+                                trace.Add($"DeadPathEliminated: {dead.Id}");
+                            }
+                        }
+                    }
+                    break;
                 }
-                break;
-            }
 
             case "parallelGateway":
                 foreach (var f in outs)
@@ -988,7 +998,7 @@ partial class ProcessEngine
     private void HandleSubprocess(BpmnSubprocess sp, BpmnModel model, List<string> trace,
         Queue<(string TokenId, string NodeId, string? FromFlow, string? ParentTxn)> queue, string? parentTxn)
     {
-        trace.Add($"Subprocess: {sp.Id}");
+        trace.Add($"SubProcess: {sp.Id}");
         var flow = model.SequenceFlows.FirstOrDefault(f => f.SourceRef == sp.Id);
         if (flow != null)
         {
@@ -1002,11 +1012,13 @@ partial class ProcessEngine
     {
         trace.Add($"{evt.Type}: {evt.Id}");
         var evtDefType = GetEventDefinitionType(evt);
+        var isThrow = evt.Type.Contains("Throw", StringComparison.OrdinalIgnoreCase);
+
         var hasLink = evtDefType == "link" || HasDefinition(evt, "link");
         if (hasLink)
         {
             var linkName = GetLinkName(evt);
-            if (!string.IsNullOrEmpty(linkName) && evt.Type.Contains("Throw", StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrEmpty(linkName) && isThrow)
             {
                 if (linkCatchMap.TryGetValue(linkName!, out var target))
                 {
@@ -1018,6 +1030,30 @@ partial class ProcessEngine
                 else trace.Add($"LinkThrowUnresolved: {evt.Id} ({linkName})");
             }
         }
+
+        // NEU: Bei Message-/Escalation-/Signal-Throw-Events den jeweiligen "last thrown"-
+        // Tracker setzen, damit ProcessBoundaryEvents weiter unten tatsächlich weiß, dass
+        // (und ggf. mit welcher Referenz) der Trigger aufgetreten ist – statt Boundary
+        // Events bedingungslos beim Erreichen der Aktivität feuern zu lassen.
+        if (isThrow)
+        {
+            switch (evtDefType)
+            {
+                case "message":
+                    _lastMessageRef = GetDefinitionRefValue(evt, "message") ?? "__message";
+                    trace.Add($"MessageThrown: {_lastMessageRef} at {evt.Id}");
+                    break;
+                case "escalation":
+                    _lastEscalationCode = GetDefinitionRefValue(evt, "escalation") ?? "__escalation";
+                    trace.Add($"EscalationThrown: {_lastEscalationCode} at {evt.Id}");
+                    break;
+                case "signal":
+                    _lastSignalRef = GetDefinitionRefValue(evt, "signal") ?? "__signal";
+                    trace.Add($"SignalThrown: {_lastSignalRef} at {evt.Id}");
+                    break;
+            }
+        }
+
         foreach (var f in model.SequenceFlows.Where(f => f.SourceRef == evt.Id))
         {
             EmitNewToken(trace, "EVT", parentTxn, f);
@@ -1040,10 +1076,14 @@ partial class ProcessEngine
         {
             var defType = GetEventDefinitionType(b) ?? string.Empty;
 
-            // Step 5: Only trigger error boundary if an error was "thrown" (simple heuristic)
+            // FIX: Bisher hatte nur "error" eine echte Trigger-Bedingung. Alle anderen Typen
+            // (message, escalation, signal) feuerten bedingungslos beim bloßen Erreichen der
+            // Aktivität – dadurch war z. B. der "Happy Path" eines Subprocess mit
+            // angehängtem message-/escalation-Boundary-Event de facto unerreichbar.
+            // "timer" und "conditional" bleiben bewusst unangetastet (siehe Hinweis unten) –
+            // dafür fehlt der Engine aktuell ein echtes Zeit-/Bedingungsmodell.
             if (defType.Equals("error", StringComparison.OrdinalIgnoreCase))
             {
-                // If we have neither last error nor a matching code, skip firing
                 var errorCodeProp = b.GetType().GetProperty("ErrorCode")?.GetValue(b)?.ToString();
                 if (string.IsNullOrWhiteSpace(_lastErrorCode) ||
                     (!string.IsNullOrWhiteSpace(errorCodeProp) &&
@@ -1053,6 +1093,41 @@ partial class ProcessEngine
                     continue;
                 }
             }
+            else if (defType.Equals("message", StringComparison.OrdinalIgnoreCase))
+            {
+                var msgRefProp = GetDefinitionRefValue(b, "message");
+                if (string.IsNullOrWhiteSpace(_lastMessageRef) ||
+                    (!string.IsNullOrWhiteSpace(msgRefProp) &&
+                     !string.Equals(msgRefProp, _lastMessageRef, StringComparison.OrdinalIgnoreCase)))
+                {
+                    trace.Add($"BoundaryEventSkipped: {b.Id} message(no-match) on {activityId}");
+                    continue;
+                }
+            }
+            else if (defType.Equals("escalation", StringComparison.OrdinalIgnoreCase))
+            {
+                var escCodeProp = GetDefinitionRefValue(b, "escalation");
+                if (string.IsNullOrWhiteSpace(_lastEscalationCode) ||
+                    (!string.IsNullOrWhiteSpace(escCodeProp) &&
+                     !string.Equals(escCodeProp, _lastEscalationCode, StringComparison.OrdinalIgnoreCase)))
+                {
+                    trace.Add($"BoundaryEventSkipped: {b.Id} escalation(no-match) on {activityId}");
+                    continue;
+                }
+            }
+            else if (defType.Equals("signal", StringComparison.OrdinalIgnoreCase))
+            {
+                var sigRefProp = GetDefinitionRefValue(b, "signal");
+                if (string.IsNullOrWhiteSpace(_lastSignalRef) ||
+                    (!string.IsNullOrWhiteSpace(sigRefProp) &&
+                     !string.Equals(sigRefProp, _lastSignalRef, StringComparison.OrdinalIgnoreCase)))
+                {
+                    trace.Add($"BoundaryEventSkipped: {b.Id} signal(no-match) on {activityId}");
+                    continue;
+                }
+            }
+            // "timer" / "conditional" (und alles sonst Unbekannte): bewusst weiterhin
+            // unbedingt feuernd – siehe Erläuterung unten im Antworttext.
 
             var isInterrupting = IsInterruptingBoundary(b);
             trace.Add($"BoundaryEvent: {b.Id} {(isInterrupting ? "interrupting" : "nonInterrupting")} {defType} on {activityId}");
@@ -1092,6 +1167,35 @@ partial class ProcessEngine
                     var kind = d.GetType().GetProperty("Kind")?.GetValue(d)?.ToString();
                     if (kind == "link")
                         return d.GetType().GetProperty("Name")?.GetValue(d)?.ToString();
+                }
+        }
+        catch { }
+        return null;
+    }
+
+    // NEU: Generischer Helper, um die Referenz/Namen einer Message-/Signal-/Escalation-
+    // Definition eines Events auszulesen. Sucht in den "Definitions" nach dem passenden
+    // "Kind" und liest dann "Name" oder alternativ "Ref"/"Code" (je nachdem, was am
+    // konkreten Definitions-DTO vorhanden ist).
+    // ACHTUNG: Die genauen Property-Namen ("Name" vs. "Ref" vs. "Code") sind hier nur
+    // best-effort geraten und müssen gegen eure tatsächlichen Definitions-DTOs
+    // (z. B. MessageEventDefinitionDto, SignalEventDefinitionDto, EscalationEventDefinitionDto)
+    // verifiziert werden.
+    private static string? GetDefinitionRefValue(BpmnEvent evt, string kind)
+    {
+        try
+        {
+            var prop = evt.GetType().GetProperty("Definitions");
+            if (prop?.GetValue(evt) is IEnumerable defs)
+                foreach (var d in defs)
+                {
+                    var k = d.GetType().GetProperty("Kind")?.GetValue(d)?.ToString();
+                    if (k != kind) continue;
+                    var dType = d.GetType();
+                    var value = dType.GetProperty("Name")?.GetValue(d)?.ToString()
+                                ?? dType.GetProperty("Ref")?.GetValue(d)?.ToString()
+                                ?? dType.GetProperty("Code")?.GetValue(d)?.ToString();
+                    return value;
                 }
         }
         catch { }

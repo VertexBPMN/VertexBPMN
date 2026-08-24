@@ -1,0 +1,33 @@
+using Microsoft.Extensions.Logging;
+using Moq;
+using OpenTelemetry.Trace;
+using VertexBPMN.Engine.Execution;
+using VertexBPMN.Engine.Parsing;
+
+namespace VertexBPMN.Tests.Conformance.extended
+{
+    public class C_4_0_Test
+    {
+        [Fact]
+        public void Test_C_4_0_Bpmn()
+        {
+            var bpmnFile = Path.Combine(Directory.GetCurrentDirectory(), "TestData", "Reference", "C.4.0.bpmn");
+            var xml = File.ReadAllText(bpmnFile);
+            var logger = new Mock<ILogger<BpmnParser>>();
+            var parser = new BpmnParser(logger.Object, TracerProvider.Default);
+            var model = parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
+            Assert.NotNull(model);
+            var engine = new ProcessEngine();
+            var result = engine.Execute(model);
+            Assert.NotNull(result);
+            Assert.True(result.Count > 0, "No trace produced for C.4.0.bpmn");
+            Assert.Contains(result, r => r.ToString().Contains("StartEvent"));
+            // Ergänzt: EndEvent fehlte bisher, obwohl das Referenzmodell 4 endEvent-Elemente enthält.
+            Assert.Contains(result, r => r.ToString().Contains("EndEvent"));
+            Assert.Contains(result, r => r.ToString().Contains("UserTask"));
+            Assert.Contains(result, r => r.ToString().Contains("ExclusiveGateway"));
+            Assert.Contains(result, r => r.ToString().Contains("ParallelGateway"));
+            Assert.Contains(result, r => r.ToString().Contains("ParallelBranch"));
+        }
+    }
+}

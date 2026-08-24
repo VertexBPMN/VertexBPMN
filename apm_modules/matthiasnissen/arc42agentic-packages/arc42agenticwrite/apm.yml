@@ -1,0 +1,10 @@
+name: arc42agenticwrite
+version: 1.0.2
+description: "Arc42 Write Agents - Agentic workflow for writing and updating arc42 architecture documentation"
+files: "."
+license: "CC-BY-SA-4.0"
+metadata:
+  author: "Matthias Nissen"
+  repository: "arc42agentic-packages"
+  synced_from: "arc42agentic"
+  purpose: "Generate and update arc42 architecture documentation"

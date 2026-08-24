@@ -81,7 +81,7 @@ public class AdvancedBpmn20FeaturesTests
         var trace = engine.Execute(model);
 
         Assert.Contains(trace, entry => entry.Contains("StartEvent: start1"));
-        Assert.Contains(trace, entry => entry.Contains("Subprocess: subprocess1"));
+        Assert.Contains(trace, entry => entry.Contains("SubProcess: subprocess1"));
         Assert.Contains(trace, entry => entry.Contains("EndEvent: end1"));
     }
 
@@ -115,7 +115,7 @@ public class AdvancedBpmn20FeaturesTests
         var trace = engine.Execute(model);
 
         Assert.Contains(trace, entry => entry.Contains("StartEvent: start1"));
-        Assert.Contains(trace, entry => entry.Contains("Subprocess: subprocess1"));
+        Assert.Contains(trace, entry => entry.Contains("SubProcess: subprocess1"));
         Assert.Contains(trace, entry => entry.Contains("EndEvent: end1"));
     }
 
@@ -158,7 +158,7 @@ public class AdvancedBpmn20FeaturesTests
 
         Assert.Contains(trace, entry => entry.Contains("StartEvent: start1"));
         Assert.Contains(trace, entry => entry.Contains("BoundaryEvent: comp_boundary"));
-        Assert.Contains(trace, entry => entry.Contains("Subprocess: tx_subprocess"));
+        Assert.Contains(trace, entry => entry.Contains("SubProcess: tx_subprocess"));
         Assert.Contains(trace, entry => entry.Contains("EndEvent: end1"));
     }
 
@@ -198,7 +198,7 @@ public class AdvancedBpmn20FeaturesTests
         var trace = engine.Execute(model);
 
         Assert.Contains(trace, entry => entry.Contains("StartEvent: start1"));
-        Assert.Contains(trace, entry => entry.Contains("BoundaryEvent: msg_boundary"));
+        Assert.Contains(trace, entry => entry.Contains("BoundaryEventSkipped: msg_boundary message(no-match) on task1"));
         Assert.Contains(trace, entry => entry.Contains("UserTask: task1"));
         Assert.Contains(trace, entry => entry.Contains("EndEvent: normal_end"));
     }
@@ -244,7 +244,7 @@ public class AdvancedBpmn20FeaturesTests
 
         Assert.Contains(trace, entry => entry.Contains("StartEvent: start1"));
         Assert.Contains(trace, entry => entry.Contains("BoundaryEventSkipped: error_boundary"));
-        Assert.Contains(trace, entry => entry.Contains("Subprocess: mi_subprocess"));
+        Assert.Contains(trace, entry => entry.Contains("SubProcess: mi_subprocess"));
         Assert.Contains(trace, entry => entry.Contains("EndEvent: normal_end"));
     }
 

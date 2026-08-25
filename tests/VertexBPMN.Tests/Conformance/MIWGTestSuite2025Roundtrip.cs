@@ -35,7 +35,7 @@ namespace VertexBPMN.Tests.Conformance
         {
             var xml = File.ReadAllText(bpmnFile);
             var parser = new BpmnParser();
-            var model = parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
+            var model = parser.ParseAsync(xml).GetAwaiter().GetResult();
             var engine = new ProcessEngine();
             var result = engine.Execute(model);
             Assert.NotNull(result);
@@ -46,7 +46,7 @@ namespace VertexBPMN.Tests.Conformance
             Assert.False(string.IsNullOrWhiteSpace(xmlExported), $"Exported BPMN XML is empty for {Path.GetFileName(bpmnFile)}");
 
             // Roundtrip: Parse exported XML and compare structure
-            var modelRoundtrip = parser.ParseAsync(xmlExported.Replace('\'', '"')).GetAwaiter().GetResult();
+            var modelRoundtrip = parser.ParseAsync(xmlExported).GetAwaiter().GetResult();
             Assert.NotNull(modelRoundtrip);
             // Optionally: Compare key model properties for equality
             Assert.Equal(model.ProcessId, modelRoundtrip.ProcessId);

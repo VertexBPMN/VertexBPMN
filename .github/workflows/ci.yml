@@ -11,23 +11,32 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    name: Build and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
     - uses: actions/checkout@v4
-    - name: Setup .NET
+    - name: Setup pinned .NET SDK
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: '10.0.x'
+        global-json-file: global.json
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
         node-version: '22.x'
         cache: 'npm'
         cache-dependency-path: src/VertexBPMN.Studio/package-lock.json
+    - name: Reject tracked build artifacts
+      shell: bash
+      run: bash scripts/verify-no-tracked-build-artifacts.sh
     - name: Install Studio asset dependencies
       working-directory: src/VertexBPMN.Studio
       run: npm ci
     - name: Build and verify pinned bpmn.io assets
+      shell: bash
       working-directory: src/VertexBPMN.Studio
       run: |
         npm run build:bpmnio
@@ -37,20 +46,28 @@ jobs:
       run: dotnet restore VertexBPMN.sln
     - name: Build
       run: dotnet build VertexBPMN.sln --configuration Release --no-restore
+    - name: Test green suite
+      run: dotnet test VertexBPMN.sln --configuration Release --no-build --no-restore --verbosity normal --filter-not-trait "Category=Phase1Acceptance" --max-parallel-test-modules 1
+    - name: Verify explicit Phase 1 BPMN red baseline
+      shell: bash
+      run: bash scripts/verify-phase1-acceptance-baseline.sh
+    - name: Verify OpenAPI snapshot
+      if: runner.os == 'Linux'
+      shell: bash
+      run: bash scripts/verify-openapi-snapshot.sh
     - name: Pack SDK
+      if: runner.os == 'Linux'
       run: dotnet pack src/VertexBPMN.Sdk/VertexBPMN.Sdk.csproj --configuration Release --no-build --output artifacts/nuget
     - name: Upload SDK package artifact
+      if: runner.os == 'Linux'
       uses: actions/upload-artifact@v4
       with:
         name: vertexbpmn-sdk-nuget
         path: artifacts/nuget/*
         if-no-files-found: error
         retention-days: 14
-    - name: Test
-      run: dotnet test VertexBPMN.sln --configuration Release --no-build --verbosity normal
-    - name: Verify OpenAPI snapshot
-      run: bash scripts/verify-openapi-snapshot.sh
     - name: Publish Docker image
+      if: runner.os == 'Linux'
       uses: docker/build-push-action@v5
       with:
         context: .
@@ -58,7 +75,7 @@ jobs:
         tags: vertexbpmn:ci
 
   publish-sdk:
-    name: Publish VertexBPMN.Sdk to NuGet
+    name: Publish VertexBPMN.Sdk and CLI to NuGet
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-latest
@@ -67,16 +84,10 @@ jobs:
       id-token: write
     steps:
     - uses: actions/checkout@v4
-    - name: Setup .NET
+    - name: Setup pinned .NET SDK
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: '10.0.x'
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '22.x'
-        cache: 'npm'
-        cache-dependency-path: src/VertexBPMN.Studio/package-lock.json
+        global-json-file: global.json
     - name: Restore SDK
       run: dotnet restore src/VertexBPMN.Sdk/VertexBPMN.Sdk.csproj
     - name: Pack release version
@@ -95,7 +106,7 @@ jobs:
       shell: bash
       run: |
         version="${GITHUB_REF_NAME#v}"
-        dotnet pack src/VertexBPMN.Cli/VertexBPMN.Cli.csproj --configuration Release --output artifacts/nuget -p:PackageVersion="$version"
+        dotnet pack src/VertexBPMN.Cli/VertexBPMN.Cli.csproj --configuration Release --no-restore --output artifacts/nuget -p:PackageVersion="$version"
         ls -la artifacts/nuget
     - name: NuGet login (OIDC)
       uses: NuGet/login@v1

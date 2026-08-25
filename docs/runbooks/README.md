@@ -3,6 +3,7 @@
 Betriebs-, Release- und Troubleshooting-Dokumentation.
 
 - [Cloud Native](cloud-native.md)
+- [Reproduzierbarer Build und Test](build-and-test.md)
 - [Dependency Configuration](dependency-configuration.md)
 - [Monitoring](monitoring.md)
 - [Observability and Performance](observability-performance.md)

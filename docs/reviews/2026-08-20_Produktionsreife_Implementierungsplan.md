@@ -37,6 +37,25 @@ Der erste produktive Meilenstein konzentriert sich auf einen ausdrücklich defin
 - Sauberer Restore, Build und Testlauf unter Linux und Windows.
 - Verbindlicher, zunächst roter End-to-End-Test für den BPMN-Kernpfad.
 
+#### Umsetzungsstand 25.08.2026
+
+| Punkt | Status | Nachweis / nächster Schritt |
+| --- | --- | --- |
+| 1. Produktumfang und Acceptance Matrix | abgeschlossen | `docs/reference/product-support-matrix.md` ist die verbindliche Matrix; README-Produktionsreifeaussagen wurden auf den belegten Umfang reduziert. |
+| 2. Reproduzierbarer Build und Test-Runner | abgeschlossen | .NET SDK `10.0.302` ist exakt gepinnt, Microsoft Testing Platform ist der Runner und CI baut/testet Linux plus Windows mit sequenziellen Testmodulen. Versionierte `bin\\Debug`-Artefakte sind entfernt und werden durch ein Gate verhindert. Frische lokale Linux- und Windows-Kopien wurden vollständig restauriert, gebaut und getestet. |
+| 3. Rote End-to-End-Vertragstests | abgeschlossen | Sieben echte API-/SQLite-Verträge decken `P1-AC-01` bis `P1-AC-05` ab: Kernpfad, Timer Catch/Boundary, Message, Signal, Host-Restart und Parallel-Join mit zwei Instanzen. Das CI-Skript akzeptiert jeden Vertrag nur mit seinem dokumentierten fachlichen Runtime-Fehler. |
+
+Phase 1 ist damit **abgeschlossen**. Das bedeutet Lieferfähigkeit und eine verbindliche rote Vertragsbaseline, nicht Produktionsreife der Engine. Der nächste technische Schritt ist die Implementierung des einheitlichen persistenten Runtime-Pfads in Phase 2; die roten Verträge werden dabei ohne Abschwächung schrittweise zu blockierenden Green-Gates.
+
+#### Verifikation vom 25.08.2026
+
+| Plattform | Restore / Build | Grüne Suite | Rote Vertragsbaseline |
+| --- | --- | --- | --- |
+| Linux, SDK `10.0.302` | sauberer Restore; Release-Build mit 0 Fehlern | 666 gesamt: 665 erfolgreich, 1 bewusst übersprungen, 0 fehlgeschlagen | 7/7 Verträge mit dem jeweils erwarteten Runtime-Diagnosetext bestätigt |
+| Windows, SDK `10.0.302` | sauberer Restore; Release-Build mit 0 Fehlern | 666 gesamt: 665 erfolgreich, 1 bewusst übersprungen, 0 fehlgeschlagen | 7/7 Verträge mit dem jeweils erwarteten Runtime-Diagnosetext bestätigt |
+
+Der erste externe GitHub-Actions-Matrixlauf folgt nach Commit/Push. Die lokale Prüfung verwendete getrennte, artefaktfreie Kopien; auf Windows wurde das exakt gepinnte SDK portabel eingebunden.
+
 ### Phase 2: Produktionsfähigen BPMN-Kern bauen
 
 - Punkte 4–9 umsetzen.

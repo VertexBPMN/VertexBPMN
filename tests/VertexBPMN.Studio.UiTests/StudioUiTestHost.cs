@@ -65,7 +65,11 @@ public sealed class StudioUiTestHost : IAsyncLifetime
         var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../.."));
         var studioProject = Path.Combine(repoRoot, "src", "VertexBPMN.Studio", "VertexBPMN.Studio.csproj");
         var buildConfiguration = new DirectoryInfo(AppContext.BaseDirectory).Parent?.Name ?? "Release";
-        var startInfo = new ProcessStartInfo("dotnet")
+        var dotnetHost = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
+        if (string.IsNullOrWhiteSpace(dotnetHost))
+            dotnetHost = "dotnet";
+
+        var startInfo = new ProcessStartInfo(dotnetHost)
         {
             WorkingDirectory = repoRoot,
             UseShellExecute = false,

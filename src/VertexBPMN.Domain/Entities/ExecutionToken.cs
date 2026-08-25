@@ -49,6 +49,7 @@ public class ExecutionToken
     public DateTime? AssignedAt { get;  set; }
     public int RetryCount { get;  set; }
     public string? State { get;  set; } = PendingState;
+    public long Revision { get; set; }
 
     public void AssignWorker(string worker)
     {

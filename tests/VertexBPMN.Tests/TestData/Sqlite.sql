@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS ProcessInstance (
     ActiveTasks TEXT NOT NULL DEFAULT '[]',
     ActiveTokens TEXT NOT NULL DEFAULT '[]',
     Variables TEXT NOT NULL DEFAULT '{}',
+    Revision INTEGER NOT NULL DEFAULT 1,
     CreatedAt TEXT NOT NULL,
     LastModified TEXT NOT NULL
 );
@@ -238,6 +239,17 @@ CREATE TABLE IF NOT EXISTS SimulationScenarios (
 CREATE INDEX IF NOT EXISTS IX_SimScenarios_Tenant ON SimulationScenarios(TenantId);
 CREATE INDEX IF NOT EXISTS IX_SimScenarios_Name ON SimulationScenarios(Name);
 
+CREATE TABLE IF NOT EXISTS CaseDefinitions (
+    Id TEXT PRIMARY KEY,
+    TenantId TEXT NOT NULL,
+    [Key] TEXT NOT NULL,
+    Name TEXT NOT NULL,
+    CmmnXml TEXT NOT NULL,
+    CreatedAt TEXT NOT NULL,
+    LastModified TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS IX_CaseDefinitions_TenantId_Key ON CaseDefinitions(TenantId, [Key]);
+
 
 CREATE TABLE IF NOT EXISTS Credentials (
     Id TEXT PRIMARY KEY,
@@ -332,8 +344,8 @@ INSERT OR IGNORE INTO EngineDeployment(Id,Name,CreatedAt,TenantId) VALUES
 INSERT OR IGNORE INTO ProcessDefinition(Id,Key,Name,Version,BpmnXml,CreatedAt,DeploymentId,TenantId) VALUES
  ('22222222-2222-2222-2222-222222222222','SampleProcess','Sample Process',1,'<definitions id="SampleProcess"></definitions>','2025-01-01T00:00:00Z','11111111-1111-1111-1111-111111111111',NULL);
 
-INSERT OR IGNORE INTO ProcessInstance(Id,ProcessDefinitionId,BusinessKey,TenantId,StartedAt,EndedAt,State,InstanceId,ProcessId,Status,ActiveTasks,ActiveTokens,Variables,CreatedAt,LastModified) VALUES
- ('33333333-3333-3333-3333-333333333333','22222222-2222-2222-2222-222222222222','BK-001',NULL,'2025-01-01T00:00:00Z',NULL,'Running','sample-instance-1','SampleProcess',0,'[]','[]','{}','2025-01-01T00:00:00Z','2025-01-01T00:00:00Z');
+INSERT OR IGNORE INTO ProcessInstance(Id,ProcessDefinitionId,BusinessKey,TenantId,StartedAt,EndedAt,State,InstanceId,ProcessId,Status,ActiveTasks,ActiveTokens,Variables,Revision,CreatedAt,LastModified) VALUES
+ ('33333333-3333-3333-3333-333333333333','22222222-2222-2222-2222-222222222222','BK-001',NULL,'2025-01-01T00:00:00Z',NULL,'Running','sample-instance-1','SampleProcess',0,'[]','[]','{}',1,'2025-01-01T00:00:00Z','2025-01-01T00:00:00Z');
 
 INSERT OR IGNORE INTO Job(Id,ProcessInstanceId,Type,DueDate,Retries,ErrorMessage,TenantId,State,Payload) VALUES
  ('44444444-4444-4444-4444-444444444444','33333333-3333-3333-3333-333333333333','timer','2025-01-01T01:00:00Z',3,NULL,NULL,'Scheduled',NULL);

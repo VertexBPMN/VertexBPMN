@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using System.Text.Json;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Domain.Interfaces.Repositories;
 
 namespace VertexBPMN.Application;
 
@@ -79,6 +80,24 @@ public class JobExecutorService : BackgroundService
                 try
                 {
                     _logger.LogInformation("Executing job {JobId} of type {JobType}", job.Id, job.Type);
+                    if (job.Type.Equals("timer", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var executionRuntime = scope.ServiceProvider.GetRequiredService<IProcessExecutionRuntime>();
+                        await executionRuntime.ExecuteJobAsync(
+                            job.Id,
+                            $"{Environment.MachineName}:{Environment.ProcessId}",
+                            stoppingToken);
+                        continue;
+                    }
+                    if (!await jobRepo.TryLeaseAsync(
+                            job,
+                            $"{Environment.MachineName}:{Environment.ProcessId}",
+                            DateTime.UtcNow.AddSeconds(30),
+                            stoppingToken))
+                    {
+                        _logger.LogDebug("Job {JobId} was leased by another worker", job.Id);
+                        continue;
+                    }
                     if (!_serviceTaskRegistry.TryResolve(job.Type, out var handler) || handler is null)
                         throw new InvalidOperationException($"No service task handler registered for job type '{job.Type}'.");
 
@@ -131,7 +150,26 @@ public class JobExecutorService : BackgroundService
                     if (currentAttempt >= maxRetries)
                     {
                         _logger.LogWarning("Job {JobId} reached max retries ({MaxRetries}) and is now permanently failed", job.Id, maxRetries);
-                        await jobRepo.DeleteAsync(job.Id, stoppingToken);
+                        job.Retries = currentAttempt;
+                        job.State = "DeadLetter";
+                        job.CompletedAt = DateTime.UtcNow;
+                        job.LockOwner = null;
+                        job.LockedUntil = null;
+                        job.ErrorMessage = ex.ToString();
+                        await jobRepo.UpdateAsync(job, stoppingToken);
+                        var incidentRepository = scope.ServiceProvider.GetRequiredService<IIncidentRepository>();
+                        await incidentRepository.AddAsync(new Incident
+                        {
+                            Id = Guid.NewGuid(),
+                            ProcessInstanceId = job.ProcessInstanceId,
+                            ActivityId = job.ActivityId,
+                            Type = "JobDeadLetter",
+                            Message = ex.Message,
+                            CreatedAt = DateTime.UtcNow,
+                            TenantId = job.TenantId,
+                            State = "DeadLetter",
+                            RetryCount = currentAttempt
+                        }, stoppingToken);
 
                         if (eventSink != null)
                         {
@@ -157,6 +195,9 @@ public class JobExecutorService : BackgroundService
                         var delay = ComputeBackoffDelay(currentAttempt);
                         var nextDue = DateTime.UtcNow + delay;
                         job.Retries = currentAttempt;
+                        job.State = "Scheduled";
+                        job.LockOwner = null;
+                        job.LockedUntil = null;
                         SetNextDue(job, nextDue);
                         SetErrorMessage(job, ex.Message);
                         await jobRepo.UpdateAsync(job, stoppingToken);

@@ -40,7 +40,12 @@ public class RuntimeController : ControllerBase
     {
         var tenantId = ResolveTenantId(request.TenantId);
         if (tenantId is null && !User.IsInRole("Admin")) return Forbid();
-        var instance = await _runtimeService.StartProcessByKeyAsync(request.ProcessDefinitionKey, request.Variables, request.BusinessKey, tenantId);
+        var instance = await _runtimeService.StartProcessByKeyAsync(
+            request.ProcessDefinitionKey,
+            request.Variables,
+            request.BusinessKey,
+            tenantId,
+            idempotencyKey: Request.Headers["Idempotency-Key"].FirstOrDefault());
         return CreatedAtAction(nameof(GetById), new { id = instance.Id }, instance);
     }
 

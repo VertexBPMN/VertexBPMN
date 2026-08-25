@@ -15,7 +15,9 @@ public class TaskRepository : ITaskRepository
 
     public async ValueTask AddAsync(UserTask userTask, CancellationToken cancellationToken = default)
     {
-        await _db.Tasks.AddAsync(userTask, cancellationToken);
+        if (_db.Entry(userTask).State == EntityState.Detached)
+            _db.Tasks.Update(userTask);
+        await _db.SaveChangesAsync(cancellationToken);
     }
 
     public async ValueTask<UserTask?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
@@ -26,6 +28,7 @@ public class TaskRepository : ITaskRepository
     public async IAsyncEnumerable<UserTask> ListAsync(Guid? processInstanceId = null, string? assignee = null, string? tenantId = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var query = _db.Tasks.AsQueryable();
+        query = query.Where(t => t.Status == UserTaskStatus.Pending || t.Status == UserTaskStatus.Delegated);
         if (processInstanceId != null) query = query.Where(t => t.ProcessInstanceId == processInstanceId);
         if (assignee != null) query = query.Where(t => t.Assignee == assignee);
         if (tenantId != null) query = query.Where(t => t.TenantId == tenantId);

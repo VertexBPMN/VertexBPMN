@@ -43,7 +43,7 @@ public class ProcessDefinitionRepository : IProcessDefinitionRepository
     public async ValueTask<ProcessDefinition?> GetLatestByKeyAsync(string key, string? tenantId = null, CancellationToken cancellationToken = default)
     {
         return await _db.ProcessDefinitions
-            .Where(d => d.Key == key && (tenantId == null || d.TenantId == tenantId))
+            .Where(d => d.Key == key && d.TenantId == tenantId)
             .OrderByDescending(d => d.Version)
             .FirstOrDefaultAsync(cancellationToken);
     }

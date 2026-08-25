@@ -22,6 +22,8 @@ using VertexBPMN.Infrastructure.Notifications;
 using VertexBPMN.Infrastructure.Persistence;
 using VertexBPMN.Infrastructure.Persistence.Repositories;
 using VertexBPMN.Infrastructure.Persistence.Services;
+using System.Security.Cryptography;
+using SendGrid;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -62,6 +64,11 @@ if (moduleOptions.Engine)
 {
 	builder.Services.AddBpmnPersistenceServices(builder.Configuration);
 	builder.Services.AddApplicationServices(builder.Configuration);
+	builder.Services.AddScoped<IProcessMiningEventSink>(sp => new VertexBPMN.Application.Messaging.WebhookEventSink(
+		sp.GetRequiredService<PersistentProcessMiningEventSink>(),
+		sp.GetRequiredService<IHttpClientFactory>(),
+		builder.Configuration,
+		sp.GetRequiredService<ILogger<VertexBPMN.Application.Messaging.WebhookEventSink>>()));
 	builder.Services.AddScoped<VertexBPMN.Domain.Interfaces.IIdentityService, VertexBPMN.Infrastructure.Persistence.Services.PersistentIdentityService>();
 	builder.Services.AddEngineServices(builder.Configuration);
 }
@@ -172,6 +179,36 @@ if (opMode == OperationalMode.Production && moduleOptions.Emails)
 
 var app = builder.Build();
 
+if (opMode is OperationalMode.Production or OperationalMode.Stage)
+{
+	if (builder.Configuration.GetValue<bool>("Runtime:Scripts:Enabled"))
+		throw new InvalidOperationException("In-process BPMN scripts are forbidden in Production and Stage.");
+
+	using var validationScope = app.Services.CreateScope();
+	var dispatcher = validationScope.ServiceProvider.GetRequiredService<IMessageDispatcher>();
+	var workerManager = validationScope.ServiceProvider.GetRequiredService<IWorkerNodeManager>();
+	var miningSink = validationScope.ServiceProvider.GetRequiredService<IProcessMiningEventSink>();
+	var productionDependencies = new object?[]
+	{
+		dispatcher,
+		workerManager,
+		miningSink,
+		validationScope.ServiceProvider.GetService<IAiDecisionService>(),
+		validationScope.ServiceProvider.GetService<ISendGridClient>()
+	};
+	var forbiddenImplementations = productionDependencies
+		.Where(dependency => dependency is not null)
+		.Select(dependency => dependency!.GetType())
+		.Where(type => type.Name.Contains("Fake", StringComparison.OrdinalIgnoreCase)
+	                || type.Name.Contains("InMemory", StringComparison.OrdinalIgnoreCase)
+	                || type.Name.Contains("NoOp", StringComparison.OrdinalIgnoreCase))
+	 .Select(type => type.FullName)
+	 .ToArray();
+	if (forbiddenImplementations.Length > 0)
+		throw new InvalidOperationException(
+			$"Production dependency validation rejected: {string.Join(", ", forbiddenImplementations)}.");
+}
+
 // Apply versioned schemas for relational providers. InMemory remains available
 // for test and local scenarios where relational migrations do not apply.
 using (var scope = app.Services.CreateScope())
@@ -213,6 +250,8 @@ using (var scope = app.Services.CreateScope())
 	{
 		var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("DatabaseInitialization");
 		logger.LogError(ex, "An error occurred while creating the database");
+		if (opMode is OperationalMode.Production or OperationalMode.Stage)
+			throw;
 	}
 }
 
@@ -220,6 +259,10 @@ using (var scope = app.Services.CreateScope())
 var enablePlugins = moduleOptions.Plugins && dependencyOptions.Plugins.Enabled && opMode != OperationalMode.Test;
 if (enablePlugins)
 {
+	if (opMode is OperationalMode.Production or OperationalMode.Stage
+	    && dependencyOptions.Plugins.Files.Count == 0)
+		throw new InvalidOperationException("Production plug-ins require an explicit Dependencies:Plugins:Files allowlist.");
+
 	var pluginsDir = Path.IsPathRooted(dependencyOptions.Plugins.Directory)
 		? dependencyOptions.Plugins.Directory
 		: Path.Combine(AppContext.BaseDirectory, dependencyOptions.Plugins.Directory);
@@ -237,6 +280,18 @@ if (enablePlugins)
 			: dependencyOptions.Plugins.Files.Select(file => Path.IsPathRooted(file) ? file : Path.Combine(pluginsDir, file));
 		foreach (var pluginPath in pluginFiles)
 		{
+			if (opMode is OperationalMode.Production or OperationalMode.Stage)
+			{
+				var fileName = Path.GetFileName(pluginPath);
+				if (!dependencyOptions.Plugins.Sha256.TryGetValue(fileName, out var expectedHash)
+				    || string.IsNullOrWhiteSpace(expectedHash))
+					throw new InvalidOperationException($"No SHA-256 allowlist entry exists for plug-in '{fileName}'.");
+				await using var pluginStream = File.OpenRead(pluginPath);
+				var actualHash = Convert.ToHexString(await SHA256.HashDataAsync(pluginStream)).ToLowerInvariant();
+				if (!CryptographicOperations.FixedTimeEquals(
+						Convert.FromHexString(expectedHash), Convert.FromHexString(actualHash)))
+					throw new InvalidOperationException($"SHA-256 verification failed for plug-in '{fileName}'.");
+			}
 			var result = await pluginManager.LoadPluginAsync(pluginPath);
 			if (!result.Success)
 			{

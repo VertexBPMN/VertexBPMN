@@ -23,6 +23,10 @@ public static class ApplicationModule
     {
         var dependencies = new DependencyOptions();
         configuration.GetSection("Dependencies").Bind(dependencies);
+        var productionMode = string.Equals(configuration["OperationalMode"], "Production", StringComparison.OrdinalIgnoreCase)
+                             || string.Equals(configuration["ASPNETCORE_ENVIRONMENT"], "Production", StringComparison.OrdinalIgnoreCase)
+                             || string.Equals(configuration["OperationalMode"], "Stage", StringComparison.OrdinalIgnoreCase)
+                             || string.Equals(configuration["ASPNETCORE_ENVIRONMENT"], "Staging", StringComparison.OrdinalIgnoreCase);
         services.AddSingleton(dependencies);
         services.AddSingleton<ISecretProvider, ConfigurationSecretProvider>();
         services.AddScoped<ProcessMiningEventSink>();
@@ -56,7 +60,12 @@ public static class ApplicationModule
 
 
         if (dependencies.Interfaces.AiDecisionService)
-            services.AddSingleton<IAiDecisionService, FakeAiDecisionService>();
+        {
+            if (productionMode)
+                services.AddHttpClient<IAiDecisionService, XAiDecisionService>();
+            else
+                services.AddSingleton<IAiDecisionService, FakeAiDecisionService>();
+        }
         services.AddSingleton<ISemanticValidationService, SemanticValidationService>();
         services.AddSingleton<IIdentityService, IdentityService>();
         services.AddSingleton<IHostedService, JobExecutorService>();

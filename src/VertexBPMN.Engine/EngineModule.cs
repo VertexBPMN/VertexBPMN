@@ -26,10 +26,11 @@ public static class EngineModule
         services.AddScoped<IDmnParser, DmnParser>();
         services.AddScoped<ICmmnParser, CmmnParser>();
         services.AddScoped<IBpmnParser, BpmnParser>();
-        services.AddScoped<IWorkerNodeManager, WorkerNodeManager>();
+        services.AddScoped<IWorkerNodeManager, PersistentWorkerNodeManager>();
         services.AddScoped<ProcessEngine>();
         services.AddScoped<DistributedProcessEngine>();
         services.AddScoped<IDistributedProcessEngine, DistributedProcessEngine>();
+        services.AddScoped<IProcessExecutionRuntime, PersistentProcessExecutionRuntime>();
         services.AddSingleton<IProcessEngine>(provider =>
             ProcessEngineFactory.CreateFromConfiguration(provider));
         return services;

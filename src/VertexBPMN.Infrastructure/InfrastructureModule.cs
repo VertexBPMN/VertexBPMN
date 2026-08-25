@@ -10,6 +10,7 @@ using VertexBPMN.Domain.Interfaces.Repositories;
 using VertexBPMN.Infrastructure.Persistence;
 using VertexBPMN.Infrastructure.Persistence.Repositories;
 using VertexBPMN.Infrastructure.Persistence.Services;
+using VertexBPMN.Infrastructure.Messaging;
 using VertexBPMN.Infrastructure.Stores;
 
 namespace VertexBPMN.Infrastructure;
@@ -18,13 +19,22 @@ public static class InfrastructureModule
 {
     public static IServiceCollection AddBpmnPersistenceServices(this IServiceCollection services, IConfiguration configuration)
     {
+        var mode = NormalizeMode(configuration["OperationalMode"]
+                                 ?? configuration["ASPNETCORE_ENVIRONMENT"]
+                                 ?? "Development");
+        var configuredDependencyRegistry = configuration.GetConnectionString("DependencyRegistry")
+                                           ?? configuration["DependencyRegistry:ConnectionString"];
+        if (mode is "Production" or "Stage" && string.IsNullOrWhiteSpace(configuredDependencyRegistry))
+            throw new InvalidOperationException(
+                "ConnectionStrings:DependencyRegistry is required in Production and Stage; the local file fallback is forbidden.");
         services.AddDbContext<DependencyRegistryDbContext>(options =>
             options.UseSqlite(DependencyConfigurationLoader.ResolveConnectionString(configuration)));
         services.AddScoped<IDependencyRegistry, DependencyRegistryService>();
         services.AddScoped<IDesignTimeDbContextFactory<ProcessMiningEventDbContext>, ProcessMiningEventDbContextFactory>();
         services.AddScoped<IProcessInstanceStore, ProductionProcessInstanceStore>();
         services.AddScoped<ISimulationScenarioService, SimulationScenarioService>();
-        services.AddScoped<IMessageDispatcher, InMemoryMessageDispatcher>();
+        services.AddScoped<IMessageDispatcher, PersistentMessageDispatcher>();
+        services.AddScoped<PersistentProcessMiningEventSink>();
         services.AddScoped<IProcessDefinitionRepository, ProcessDefinitionRepository>();
         services.AddScoped<IWorkflowTriggerRepository, WorkflowTriggerRepository>();
         services.AddScoped<IProcessInstanceRepository, ProcessInstanceRepository>();
@@ -37,7 +47,16 @@ public static class InfrastructureModule
         services.AddScoped<IIncidentRepository, IncidentRepository>();
         services.AddScoped<IDecisionRepository, DecisionRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
-        services.AddDataProtection().SetApplicationName("VertexBPMN");
+        var dataProtection = services.AddDataProtection().SetApplicationName("VertexBPMN");
+        if (mode is "Production" or "Stage")
+        {
+            var keyRingPath = configuration["DataProtection:KeyRingPath"];
+            if (string.IsNullOrWhiteSpace(keyRingPath))
+                throw new InvalidOperationException(
+                    "DataProtection:KeyRingPath is required in Production and Stage so replicas share durable keys.");
+            var directory = Directory.CreateDirectory(Path.GetFullPath(keyRingPath));
+            dataProtection.PersistKeysToFileSystem(directory);
+        }
         services.AddScoped<ICredentialService, PersistentCredentialService>();
         services.AddScoped<IConnectorService, PersistentConnectorService>();
         services.AddScoped<IConnectorTemplateService, PersistentConnectorTemplateService>();
@@ -74,6 +93,15 @@ public static class InfrastructureModule
         {
             var cs = ResolveConnectionString(configuration, ctx, normalizedMode);
             var provider = InferProvider(cs);
+
+            if (normalizedMode is "Production" or "Stage"
+                && (string.IsNullOrWhiteSpace(cs) || provider == "inmemory"
+                    || cs.Contains(":memory:", StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new InvalidOperationException(
+                    $"A durable connection string for '{ctx.LogicalName}' is required in {normalizedMode}. " +
+                    "InMemory and SQLite :memory: providers are forbidden.");
+            }
 
             Register(services, ctx, provider, cs);
         }

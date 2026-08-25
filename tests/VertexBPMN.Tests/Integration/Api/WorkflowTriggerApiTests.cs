@@ -129,7 +129,7 @@ public sealed class WorkflowTriggerApiTests
         var key = $"message-process-{Guid.NewGuid():N}";
         var deployed = await _client.PostAsJsonAsync("/api/repository", new
         {
-            bpmnXml = $"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='{key}'><startEvent id='start'/><endEvent id='end'/></process></definitions>",
+            bpmnXml = $"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><message id='order-received-message' name='order-received'/><process id='{key}'><startEvent id='start'/><intermediateCatchEvent id='wait-for-order'><messageEventDefinition messageRef='order-received-message'/></intermediateCatchEvent><endEvent id='end'/><sequenceFlow id='to-wait' sourceRef='start' targetRef='wait-for-order'/><sequenceFlow id='to-end' sourceRef='wait-for-order' targetRef='end'/></process></definitions>",
             name = $"{key}.bpmn",
             tenantId = (string?)null
         });

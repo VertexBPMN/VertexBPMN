@@ -23,6 +23,10 @@ public interface IIncidentRepository
     /// </summary>
     IAsyncEnumerable<Incident> ListByProcessInstanceAsync(Guid processInstanceId, CancellationToken cancellationToken = default);
 
+    IAsyncEnumerable<Incident> ListAsync(string? tenantId = null, CancellationToken cancellationToken = default);
+
+    ValueTask UpdateAsync(Incident incident, CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Deletes an incident by ID.
     /// </summary>

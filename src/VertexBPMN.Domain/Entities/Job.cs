@@ -7,6 +7,7 @@ public class Job
 {
     public Guid Id { get; set; }
     public Guid ProcessInstanceId { get; set; }
+    public string ActivityId { get; set; } = string.Empty;
     public string Type { get; set; } = string.Empty;
     public DateTime DueDate { get; set; }
     public int Retries { get; set; }
@@ -15,5 +16,9 @@ public class Job
     public ProcessInstance ProcessInstance { get; set; } = null!;
     public string State { get; set; } = string.Empty;
     public string? Payload { get; set; }
-    // TODO: Add job handler, status, etc.
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? CompletedAt { get; set; }
+    public string? LockOwner { get; set; }
+    public DateTime? LockedUntil { get; set; }
+    public long Revision { get; set; }
 }

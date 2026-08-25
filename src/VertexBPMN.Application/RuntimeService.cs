@@ -12,62 +12,49 @@ public class RuntimeService : IRuntimeService
     private readonly IProcessInstanceRepository _repo;
     private readonly IProcessDefinitionRepository _defRepo;
     private readonly IProcessMiningEventSink _eventSink;
-    public RuntimeService(IProcessInstanceRepository repo, IProcessDefinitionRepository defRepo, IProcessMiningEventSink eventSink)
+    private readonly IProcessExecutionRuntime _executionRuntime;
+    public RuntimeService(
+        IProcessInstanceRepository repo,
+        IProcessDefinitionRepository defRepo,
+        IProcessMiningEventSink eventSink,
+        IProcessExecutionRuntime executionRuntime)
     {
         _repo = repo;
         _defRepo = defRepo;
         _eventSink = eventSink;
+        _executionRuntime = executionRuntime;
     }
 
     // Vertex-kompatible Methoden
     public ValueTask<IDictionary<string, object>?> GetVariablesAsync(Guid processInstanceId, CancellationToken cancellationToken = default)
-        => new((IDictionary<string, object>?)null);
+        => GetVariablesCoreAsync(processInstanceId, cancellationToken);
 
-    public async ValueTask<MessageCorrelationResult> CorrelateMessageAsync(string messageName, string? processInstanceId, IDictionary<string, object>? variables = null, CancellationToken cancellationToken = default)
+    private async ValueTask<IDictionary<string, object>?> GetVariablesCoreAsync(Guid processInstanceId, CancellationToken cancellationToken)
+        => (await _repo.GetByIdAsync(processInstanceId, cancellationToken))?.Variables;
+
+    public async ValueTask<MessageCorrelationResult> CorrelateMessageAsync(string messageName, string? processInstanceId, IDictionary<string, object>? variables = null, CancellationToken cancellationToken = default, string? tenantId = null, string? idempotencyKey = null)
     {
-        if (string.IsNullOrWhiteSpace(messageName)) throw new ArgumentException("messageName is required.", nameof(messageName));
-        if (!Guid.TryParse(processInstanceId, out var instanceId))
-            return new MessageCorrelationResult("not_found", "", processInstanceId ?? string.Empty, "");
-
-        var instance = await _repo.GetByIdAsync(instanceId, cancellationToken);
-        if (instance is null)
-            return new MessageCorrelationResult("not_found", "", processInstanceId!, "");
-        if (instance.Status is ProcessInstanceStatus.Completed or ProcessInstanceStatus.Terminated)
-            return new MessageCorrelationResult("not_active", "", instance.Id.ToString(), instance.ProcessDefinitionId.ToString());
-
-        foreach (var variable in variables ?? new Dictionary<string, object>()) instance.Variables[variable.Key] = variable.Value;
-        instance.LastModified = DateTime.UtcNow;
-        await _repo.UpdateAsync(instance, cancellationToken);
-        await _eventSink.EmitAsync(new ProcessMiningEvent
+        Guid? instanceId = Guid.TryParse(processInstanceId, out var parsed) ? parsed : null;
+        if (instanceId.HasValue)
         {
-            EventType = "MessageCorrelated",
-            ProcessInstanceId = instance.Id.ToString(),
-            TenantId = instance.TenantId,
-            Timestamp = DateTimeOffset.UtcNow,
-            PayloadJson = System.Text.Json.JsonSerializer.Serialize(new { messageName, variables = variables ?? new Dictionary<string, object>() })
-        }, cancellationToken);
-        return new MessageCorrelationResult("correlated", instance.Id.ToString(), instance.Id.ToString(), instance.ProcessDefinitionId.ToString());
+            var instance = await _repo.GetByIdAsync(instanceId.Value, cancellationToken);
+            if (instance is null || !string.Equals(instance.TenantId, tenantId, StringComparison.Ordinal))
+                return new MessageCorrelationResult("not_found", "", processInstanceId ?? "", "");
+        }
+        return await _executionRuntime.CorrelateMessageAsync(
+            messageName, instanceId, variables, tenantId, idempotencyKey, cancellationToken);
     }
 
-    public ValueTask BroadcastSignalAsync(string signalName, IDictionary<string, object>? variables = null, CancellationToken cancellationToken = default)
-        => ValueTask.CompletedTask;
+    public ValueTask BroadcastSignalAsync(string signalName, IDictionary<string, object>? variables = null, CancellationToken cancellationToken = default, string? tenantId = null, string? idempotencyKey = null)
+        => _executionRuntime.BroadcastSignalAsync(signalName, variables, tenantId, idempotencyKey, cancellationToken);
 
-    public async ValueTask<ProcessInstance> StartProcessByKeyAsync(string processDefinitionKey, IDictionary<string, object>? variables = null, string? businessKey = null, string? tenantId = null, CancellationToken cancellationToken = default)
+    public async ValueTask<ProcessInstance> StartProcessByKeyAsync(string processDefinitionKey, IDictionary<string, object>? variables = null, string? businessKey = null, string? tenantId = null, CancellationToken cancellationToken = default, string? idempotencyKey = null)
     {
         // Lookup process definition by key
         var def = await _defRepo.GetLatestByKeyAsync(processDefinitionKey, tenantId, cancellationToken);
         if (def == null) throw new InvalidOperationException($"Process definition with key '{processDefinitionKey}' not found.");
-        var instance = new ProcessInstance
-        {
-            Id = Guid.NewGuid(),
-            ProcessDefinitionId = def.Id,
-            ProcessId = processDefinitionKey,
-            BusinessKey = businessKey,
-            TenantId = tenantId,
-            StartedAt = DateTime.UtcNow,
-            Variables = variables is null ? [] : new Dictionary<string, object>(variables)
-        };
-        await _repo.AddAsync(instance, cancellationToken);
+        var instance = await _executionRuntime.StartAsync(
+            def, variables, businessKey, tenantId, idempotencyKey, cancellationToken);
         // Emit process mining event
         await _eventSink.EmitAsync(new ProcessMiningEvent
         {
@@ -95,6 +82,11 @@ public class RuntimeService : IRuntimeService
         var inst = await _repo.GetByIdAsync(processInstanceId, cancellationToken);
         if (inst != null)
         {
+            await _executionRuntime.BroadcastSignalAsync(
+                signalName,
+                payload as IDictionary<string, object>,
+                inst.TenantId,
+                cancellationToken: cancellationToken);
             await _eventSink.EmitAsync(new ProcessMiningEvent
             {
                 EventType = "ProcessSignaled",
@@ -111,6 +103,13 @@ public class RuntimeService : IRuntimeService
         var inst = await _repo.GetByIdAsync(processInstanceId, cancellationToken);
         if (inst != null)
         {
+            if (inst.Status != ProcessInstanceStatus.Running)
+                throw new InvalidOperationException($"Process instance is in {inst.Status} state.");
+            inst.Status = ProcessInstanceStatus.Suspended;
+            inst.State = "Suspended";
+            inst.LastModified = DateTime.UtcNow;
+            inst.Revision++;
+            await _repo.UpdateAsync(inst, cancellationToken);
             await _eventSink.EmitAsync(new ProcessMiningEvent
             {
                 EventType = "ProcessSuspended",
@@ -126,6 +125,13 @@ public class RuntimeService : IRuntimeService
         var inst = await _repo.GetByIdAsync(processInstanceId, cancellationToken);
         if (inst != null)
         {
+            if (inst.Status != ProcessInstanceStatus.Suspended)
+                throw new InvalidOperationException($"Process instance is in {inst.Status} state.");
+            inst.Status = ProcessInstanceStatus.Running;
+            inst.State = "Waiting";
+            inst.LastModified = DateTime.UtcNow;
+            inst.Revision++;
+            await _repo.UpdateAsync(inst, cancellationToken);
             await _eventSink.EmitAsync(new ProcessMiningEvent
             {
                 EventType = "ProcessResumed",

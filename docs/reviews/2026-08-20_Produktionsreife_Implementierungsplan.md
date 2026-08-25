@@ -43,16 +43,16 @@ Der erste produktive Meilenstein konzentriert sich auf einen ausdrücklich defin
 | --- | --- | --- |
 | 1. Produktumfang und Acceptance Matrix | abgeschlossen | `docs/reference/product-support-matrix.md` ist die verbindliche Matrix; README-Produktionsreifeaussagen wurden auf den belegten Umfang reduziert. |
 | 2. Reproduzierbarer Build und Test-Runner | abgeschlossen | .NET SDK `10.0.302` ist exakt gepinnt, Microsoft Testing Platform ist der Runner und CI baut/testet Linux plus Windows mit sequenziellen Testmodulen. Versionierte `bin\\Debug`-Artefakte sind entfernt und werden durch ein Gate verhindert. Frische lokale Linux- und Windows-Kopien wurden vollständig restauriert, gebaut und getestet. |
-| 3. Rote End-to-End-Vertragstests | abgeschlossen | Sieben echte API-/SQLite-Verträge decken `P1-AC-01` bis `P1-AC-05` ab: Kernpfad, Timer Catch/Boundary, Message, Signal, Host-Restart und Parallel-Join mit zwei Instanzen. Das CI-Skript akzeptiert jeden Vertrag nur mit seinem dokumentierten fachlichen Runtime-Fehler. |
+| 3. End-to-End-Vertragstests | abgeschlossen | Sieben echte API-/SQLite-Verträge decken `P1-AC-01` bis `P1-AC-05` ab: Kernpfad, Timer Catch/Boundary, Message, Signal, Host-Restart und Parallel-Join mit zwei Instanzen. Die in Phase 1 zunächst rote Baseline ist durch Phase 2 vollständig grün; das CI-Skript akzeptiert ausschließlich erfolgreiche fachliche Endzustände und persistente Wait-States. |
 
-Phase 1 ist damit **abgeschlossen**. Das bedeutet Lieferfähigkeit und eine verbindliche rote Vertragsbaseline, nicht Produktionsreife der Engine. Der nächste technische Schritt ist die Implementierung des einheitlichen persistenten Runtime-Pfads in Phase 2; die roten Verträge werden dabei ohne Abschwächung schrittweise zu blockierenden Green-Gates.
+Phase 1 ist damit **abgeschlossen**. Die damals bewusst rote Vertragsbaseline wurde in Phase 2 ohne Abschwächung in ein blockierendes Green-Gate überführt.
 
 #### Verifikation vom 25.08.2026
 
-| Plattform | Restore / Build | Grüne Suite | Rote Vertragsbaseline |
+| Plattform | Restore / Build | Grüne Suite | Phase-1-Vertragsgate |
 | --- | --- | --- | --- |
-| Linux, SDK `10.0.302` | sauberer Restore; Release-Build mit 0 Fehlern | 666 gesamt: 665 erfolgreich, 1 bewusst übersprungen, 0 fehlgeschlagen | 7/7 Verträge mit dem jeweils erwarteten Runtime-Diagnosetext bestätigt |
-| Windows, SDK `10.0.302` | sauberer Restore; Release-Build mit 0 Fehlern | 666 gesamt: 665 erfolgreich, 1 bewusst übersprungen, 0 fehlgeschlagen | 7/7 Verträge mit dem jeweils erwarteten Runtime-Diagnosetext bestätigt |
+| Linux, SDK `10.0.302` | sauberer Restore; Release-Build mit 0 Fehlern | siehe aktuelle Phase-2-Verifikation | 7/7 fachlich erfolgreich |
+| Windows, SDK `10.0.303` per `latestPatch` | sauberer Restore; Release-Build mit 0 Fehlern | siehe aktuelle Phase-2-Verifikation | 7/7 fachlich erfolgreich |
 
 Der erste externe GitHub-Actions-Matrixlauf folgt nach Commit/Push. Die lokale Prüfung verwendete getrennte, artefaktfreie Kopien; auf Windows wurde das exakt gepinnte SDK portabel eingebunden.
 
@@ -61,6 +61,32 @@ Der erste externe GitHub-Actions-Matrixlauf folgt nach Commit/Push. Die lokale P
 - Punkte 4–9 umsetzen.
 - Deploy, Start, Wait, Resume, Complete und Restart dauerhaft ausführbar machen.
 - Sämtliche Fake-, No-op- und In-Memory-Abhängigkeiten aus dem Produktionsprofil entfernen.
+
+#### Umsetzungsstand 25.08.2026
+
+| Punkt | Status | Nachweis / Grenze |
+| --- | --- | --- |
+| 4. Einheitlicher ausführbarer Runtime-Pfad | abgeschlossen | `IProcessExecutionRuntime` kapselt Deployment, Start, Resume, Korrelation, Jobs und Recovery; öffentliche Runtime-/Task-/Incident-APIs verwenden die persistente Implementierung. |
+| 5. Dauerhafte Zustandsmaschine | abgeschlossen | EF-Modelle und Migrationen umfassen Tokens, Variablen, Subscriptions, Tasks, Jobs, Worker, Incidents, Inbox und Outbox; Revisionen, eindeutige Idempotency-Claims und Job-Leases sichern Konkurrenzzugriffe. |
+| 6. Produktions-DI bereinigen | abgeschlossen für den Phase-2-Kern | Production/Stage verwerfen Fake-, InMemory- und NoOp-Abhängigkeiten. Persistenter Mining Sink, Worker Store und durable Outbox-Dispatcher sind registriert. Externe Brokerzustellung und Broker-Readiness gehören zu Phase 3. |
+| 7. Script-, Connector- und Plug-in-Isolation | abgeschlossen | In-Process-Scripts sind in Production/Stage verboten; Connector-Ziele besitzen getrennte Allowlisten und Private-/Link-Local-Schutz; Plug-ins benötigen Datei-Allowlist und SHA-256-Prüfsumme. |
+| 8. Persistenz, Versionierung und Mandantenschutz | abgeschlossen | Connection Strings und Data-Protection-Keyring sind in Production/Stage verpflichtend; Definitionen sind tenantbezogen versioniert; positive und negative Tenant-Verträge sind grün. |
+| 9. BPMN-Wait-States vervollständigen | abgeschlossen für den deklarierten Subset | User Tasks, Timer Catch/interrupting Boundary, Message, Signal, Parallel Join, begrenzte Kompensation, Host-Restart und Incident-Recovery sind persistent und end-to-end getestet. Nicht unterstützte Standardsemantik bleibt in der Supportmatrix ausdrücklich begrenzt. |
+
+Phase 2 ist damit für den in `docs/reference/product-support-matrix.md` definierten BPMN-Subset **abgeschlossen**. Dies ist keine Behauptung vollständiger BPMN-2.0-Konformität und keine Freigabe der gesamten Plattform; externe Outbox-Zustellung, Readiness/Failover und Deploymenthärtung folgen in Phase 3.
+
+#### Verifikation vom 25.08.2026
+
+| Prüfung | Linux | Windows |
+| --- | --- | --- |
+| Sauberer Restore und Release-Build | erfolgreich, 0 Fehler | erfolgreich, 0 Fehler |
+| Reguläre Suite ohne separat ausgeführtes Phase-1-Gate | 677 gesamt: 676 erfolgreich, 1 bewusst übersprungen, 0 fehlgeschlagen | 677 gesamt: 676 erfolgreich, 1 bewusst übersprungen, 0 fehlgeschlagen |
+| Phase-1-Regressionsgate | 7/7 erfolgreich | 7/7 erfolgreich |
+| Phase-2-Acceptance-Verträge | 6/6 gezielt erfolgreich; zusätzlich Bestandteil der regulären Suite | Bestandteil der vollständig erfolgreichen regulären Suite |
+| Produktionskonfiguration | 5/5 gezielt erfolgreich; zusätzlich Bestandteil der regulären Suite | Bestandteil der vollständig erfolgreichen regulären Suite |
+| EF-Core-Migrationen | Keine ausstehenden Modelländerungen; alle 15 Migrationen auf einer frischen SQLite-Datenbank erfolgreich angewendet | nicht separat angewendet; Windows-Build und -Tests verwenden dasselbe EF-Modell und sind grün |
+
+Der einzige übersprungene Test ist der bereits bestehende echte OpenAI-Integrationstest, der ohne `OPENAI_API_KEY` absichtlich nicht ausgeführt wird. Build-Warnungen aus dem Bestand bleiben sichtbar; Phase 2 fügt keine Fehlerunterdrückung hinzu.
 
 ### Phase 3: Betriebssicherheit herstellen
 

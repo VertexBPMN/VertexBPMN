@@ -5,6 +5,7 @@ using VertexBPMN.Domain.Interfaces;
 namespace VertexBPMN.Api.Controllers;
 
 using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 [ApiController]
 [Route("api/vertex/message")]
 [Authorize(Policy = "ProcessManager")]
@@ -20,7 +21,14 @@ public class VertexMessageController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<MessageCorrelationResultDto>> Correlate([FromBody] CorrelateMessageRequest request)
     {
-        var result = await _runtimeService.CorrelateMessageAsync(request.MessageName, request.ProcessInstanceId, request.Variables);
+        var tenantId = ResolveTenantId(request.TenantId);
+        if (tenantId is null && !User.IsInRole("Admin")) return Forbid();
+        var result = await _runtimeService.CorrelateMessageAsync(
+            request.MessageName,
+            request.ProcessInstanceId,
+            request.Variables,
+            tenantId: tenantId,
+            idempotencyKey: Request.Headers["Idempotency-Key"].FirstOrDefault());
         return Ok(new MessageCorrelationResultDto
         {
             ResultType = result.ResultType,
@@ -30,5 +38,10 @@ public class VertexMessageController : ControllerBase
         });
     }
 
-    public record CorrelateMessageRequest(string MessageName, string? ProcessInstanceId, IDictionary<string, object>? Variables);
+    private string? ResolveTenantId(string? requestedTenantId) =>
+        User.IsInRole("Admin")
+            ? (string.IsNullOrWhiteSpace(requestedTenantId) ? null : requestedTenantId.Trim())
+            : User.FindFirstValue("tenant_id");
+
+    public record CorrelateMessageRequest(string MessageName, string? ProcessInstanceId, IDictionary<string, object>? Variables, string? TenantId = null);
 }

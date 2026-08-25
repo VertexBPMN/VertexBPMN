@@ -48,7 +48,7 @@ jobs:
       run: dotnet build VertexBPMN.sln --configuration Release --no-restore
     - name: Test green suite
       run: dotnet test VertexBPMN.sln --configuration Release --no-build --no-restore --verbosity normal --filter-not-trait "Category=Phase1Acceptance" --max-parallel-test-modules 1
-    - name: Verify explicit Phase 1 BPMN red baseline
+    - name: Verify persistent BPMN runtime contracts
       shell: bash
       run: bash scripts/verify-phase1-acceptance-baseline.sh
     - name: Verify OpenAPI snapshot

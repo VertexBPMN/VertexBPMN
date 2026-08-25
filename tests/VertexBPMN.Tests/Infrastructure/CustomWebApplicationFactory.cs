@@ -9,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using VertexBPMN.Application;
 using VertexBPMN.Infrastructure.Persistence;
 using VertexBPMN.Infrastructure.Persistence.Services;
 using VertexBPMN.Tests.Infrastructure.Seeding;
@@ -19,9 +20,11 @@ public class CustomWebApplicationFactory : WebApplicationFactory<VertexBPMN.Api.
 {
     private bool _initialized;
     private string _engineType = "Simple";
+    private bool _backgroundJobsEnabled;
     private readonly List<SqliteConnection> _ownedConnections = new();
     private readonly string _databaseId = Guid.NewGuid().ToString("N");
     private SharedSqliteDbFixture? _sharedFixture;
+    private SqliteConnection? _persistentBpmnConnection;
 
     // Allow chaining in test constructors
     public CustomWebApplicationFactory WithSharedFixture(SharedSqliteDbFixture fixture)
@@ -33,6 +36,18 @@ public class CustomWebApplicationFactory : WebApplicationFactory<VertexBPMN.Api.
     public CustomWebApplicationFactory WithEngineType(string engineType)
     {
         _engineType = engineType;
+        return this;
+    }
+
+    public CustomWebApplicationFactory WithBackgroundJobsEnabled()
+    {
+        _backgroundJobsEnabled = true;
+        return this;
+    }
+
+    public CustomWebApplicationFactory WithPersistentBpmnDatabase(SqliteConnection connection)
+    {
+        _persistentBpmnConnection = connection;
         return this;
     }
 
@@ -76,7 +91,25 @@ public class CustomWebApplicationFactory : WebApplicationFactory<VertexBPMN.Api.
             services.RemoveAll<DbContextOptions<DecisionDbContext>>();
 
             // Decide which connection to use:
-            if (_sharedFixture is not null)
+            if (_persistentBpmnConnection is not null)
+            {
+                services.AddDbContext<BpmnDbContext>(o => o.UseSqlite(_persistentBpmnConnection)
+                    .EnableSensitiveDataLogging()
+                    .EnableDetailedErrors());
+                services.AddDbContext<TenantDbContext>(o => o.UseSqlite(CreateAndTrack(":memory:", "tenants"))
+                    .EnableSensitiveDataLogging()
+                    .EnableDetailedErrors());
+                services.AddDbContext<SimulationScenarioDbContext>(o => o.UseSqlite(CreateAndTrack(":memory:", "simulation"))
+                    .EnableSensitiveDataLogging()
+                    .EnableDetailedErrors());
+                services.AddDbContext<ProcessMiningEventDbContext>(o => o.UseSqlite(CreateAndTrack(":memory:", "procmining"))
+                    .EnableSensitiveDataLogging()
+                    .EnableDetailedErrors());
+                services.AddDbContext<DecisionDbContext>(o => o.UseSqlite(CreateAndTrack(":memory:", "decision"))
+                    .EnableSensitiveDataLogging()
+                    .EnableDetailedErrors());
+            }
+            else if (_sharedFixture is not null)
             {
                 services.AddDbContext<BpmnDbContext>(o => o.UseSqlite(_sharedFixture.Connection)
                     .EnableSensitiveDataLogging()
@@ -137,6 +170,11 @@ public class CustomWebApplicationFactory : WebApplicationFactory<VertexBPMN.Api.
             services.AddSingleton<ITestDataSeeder, TenantAndUserSeeder>();
             services.AddSingleton<ITestDataSeeder, ProcessDefinitionSeeder>();
             services.AddSingleton<ITestDataSeeder, DecisionSeeder>();
+
+            if (_backgroundJobsEnabled)
+            {
+                services.TryAddEnumerable(ServiceDescriptor.Singleton<Microsoft.Extensions.Hosting.IHostedService, JobExecutorService>());
+            }
         });
     }
 

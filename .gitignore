@@ -23,7 +23,11 @@ bld/
 [Bb]in/
 [Oo]bj/
 [Ll]og/
-**/bin\Debug/
+# Also ignore directories accidentally created with a literal Windows separator
+# when a Windows-style MSBuild path is evaluated on Linux/WSL (for example
+# "bin\Debug"). Two backslashes are required to match one literal backslash.
+**/[Bb]in\\*/
+**/[Oo]bj\\*/
 
 # Visual Studio 2015/2017 cache/options directory
 .vs/

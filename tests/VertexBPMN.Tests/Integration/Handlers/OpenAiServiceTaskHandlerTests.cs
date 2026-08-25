@@ -102,7 +102,8 @@ public class OpenAiServiceTaskHandlerTests : IDisposable
         {
             { "ai:model", "gpt-4" },
             { "ai:prompt", "Analyze customer sentiment" },
-            { "ai:resultVariable", "openAiResult" }
+            { "ai:resultVariable", "openAiResult" },
+            { "ai:apiKey", "test-api-key" }
         };
 
         var variables = new Dictionary<string, object>
@@ -110,33 +111,22 @@ public class OpenAiServiceTaskHandlerTests : IDisposable
             { "customerId", "customer123" }
         };
 
-        // Set environment variable for test
-        Environment.SetEnvironmentVariable("OPENAI_API_KEY", "test-api-key");
+        // Act
+        await _handler.ExecuteAsync(attributes, variables);
 
-        try
-        {
-            // Act
-            await _handler.ExecuteAsync(attributes, variables);
+        // Assert
+        variables.ShouldContainKey("openAiResult");
+        variables["openAiResult"].ToString().ShouldContain("Mocked OpenAI response");
+        variables["openAiResult"].ToString().ShouldContain("positive");
 
-            // Assert
-            variables.ShouldContainKey("openAiResult");
-            variables["openAiResult"].ToString().ShouldContain("Mocked OpenAI response");
-            variables["openAiResult"].ToString().ShouldContain("positive");
-
-            // Verify HTTP request was made correctly
-            _httpMessageHandlerMock.Protected().Verify(
-                "SendAsync",
-                Times.Once(),
-                ItExpr.Is<HttpRequestMessage>(req =>
-                    req.Method == HttpMethod.Post &&
-                    req.RequestUri!.ToString().Contains("openai.com")),
-                ItExpr.IsAny<CancellationToken>());
-        }
-        finally
-        {
-            // Clean up
-            Environment.SetEnvironmentVariable("OPENAI_API_KEY", null);
-        }
+        // Verify HTTP request was made correctly
+        _httpMessageHandlerMock.Protected().Verify(
+            "SendAsync",
+            Times.Once(),
+            ItExpr.Is<HttpRequestMessage>(req =>
+                req.Method == HttpMethod.Post &&
+                req.RequestUri!.ToString().Contains("openai.com")),
+            ItExpr.IsAny<CancellationToken>());
     }
 
     [Fact(Skip = "Integration test that requires a valid OpenAI API key. Set the OPENAI_API_KEY environment variable to run this test.")]
@@ -231,31 +221,23 @@ public class OpenAiServiceTaskHandlerTests : IDisposable
         {
             { "ai:model", model },
             { "ai:prompt", prompt },
-            { "ai:resultVariable", $"result_{model.Replace(".", "_").Replace("-", "_")}" }
+            { "ai:resultVariable", $"result_{model.Replace(".", "_").Replace("-", "_")}" },
+            { "ai:apiKey", "test-key" }
         };
 
         var variables = new Dictionary<string, object>();
 
-        Environment.SetEnvironmentVariable("OPENAI_API_KEY", "test-key");
+        // Act
+        await _handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken);
 
-        try
-        {
-            // Act
-            await _handler.ExecuteAsync(attributes, variables, CancellationToken.None);
+        // Assert
+        var resultKey = $"result_{model.Replace(".", "_").Replace("-", "_")}";
+        variables.ShouldContainKey(resultKey);
 
-            // Assert
-            var resultKey = $"result_{model.Replace(".", "_").Replace("-", "_")}";
-            variables.ShouldContainKey(resultKey);
-            
-            // Verify the request body contains the correct model
-            capturedRequestBody.ShouldNotBeNull();
-            capturedRequestBody.ShouldContain($"\"model\":\"{model}\"");
-            capturedRequestBody.ShouldContain(prompt);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("OPENAI_API_KEY", null);
-        }
+        // Verify the request body contains the correct model
+        capturedRequestBody.ShouldNotBeNull();
+        capturedRequestBody.ShouldContain($"\"model\":\"{model}\"");
+        capturedRequestBody.ShouldContain(prompt);
     }
 
     public void Dispose()

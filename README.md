@@ -1,8 +1,8 @@
 # VertexBPMN™
 
-**Eine moderne, hochperformante BPMN 2.0, CMMN 1.1 & DMN 1.4 Engine für .NET**
+**Eine moderne Prozessautomatisierungsplattform für .NET mit einem BPMN-Kern und experimentellen DMN-/CMMN-Modulen**
 
-![Build Status](https://img.shields.io/github/actions/workflow/status/VertexBPMN/VertexBPMN/build.yml?branch=main&style=for-the-badge)
+![Build Status](https://img.shields.io/github/actions/workflow/status/VertexBPMN/VertexBPMN/ci.yml?branch=master&style=for-the-badge)
 ![NuGet Version](https://img.shields.io/nuget/v/VertexBPMN.Sdk?style=for-the-badge)
 ![NuGet Downloads](https://img.shields.io/nuget/dt/VertexBPMN.Sdk?style=for-the-badge)
 ![License](https://img.shields.io/github/license/VertexBPMN/VertexBPMN?style=for-the-badge)
@@ -15,35 +15,32 @@
 ## ✨ Key Features
 
 ### BPMN 2.0 - Business Process Model and Notation
-* **Umfassende BPMN 2.0-Konformität:** Start-, End-, Intermediate-, Boundary-Events, Tasks, Gateways, (Multi-)Subprozesse, Event-Subprozesse, Sequence Flows und mehr.
-* **Verschachtelte Subprozesse & Boundary Events:** Unterstützung für fortgeschrittene BPMN-Modelle und Token-Flows.
-* **Edge-Case-Handling:** Robuste Fehlerbehandlung für ungültige Modelle, fehlende Events, unbekannte Tasks und komplexe Inputs.
+* **Parser und Roundtrip:** Breite Modellabdeckung mit automatisierten Parser-, Serialisierungs- und MIWG-Referenztests.
+* **Direkte Engine-Ausführung:** Grundlegende Events, Tasks, Gateways und Subprozesse sind implementiert, aber noch nicht vollständig über den persistenten API-Runtime-Pfad integriert.
+* **Produktionskern in Arbeit:** Dauerhafte Wait-States, Recovery und vollständige BPMN-Konformität sind noch nicht nachgewiesen.
 
 ### CMMN 1.1 - Case Management Model and Notation
-* **Case Management Unterstützung:** Human Tasks, Process Tasks, Case Tasks, Milestones und Stages.
-* **Sentries & Entry/Exit Criteria:** Dynamische Case-Ausführung basierend auf Bedingungen und Events.
-* **Discretionary Items:** Unterstützung für Wissensarbeiter, um Ad-hoc-Tasks hinzuzufügen.
-* **Case File Items:** Datengetriebene Case-Ausführung mit automatischer Zustandspropagierung.
+* **Experimentell:** Parser, Modelle und einzelne API-Verträge sind vorhanden.
+* **Nicht als produktionsreif freigegeben:** Vollständige Sentry-, Discretionary-Item- und Case-Lifecycle-Semantik ist nicht durch eine Conformance-Suite belegt.
 
-### DMN 1.4 - Decision Model and Notation
-* **Integrierte DMN 1.4-Engine:** Geschäftsentscheidungen mit DMN-Tabellen und FEEL, nahtlos in BusinessRuleTasks integriert.
-* **Decision Requirements Diagrams:** Unterstützung für komplexe Entscheidungsabhängigkeiten.
-* **FEEL Expression Language:** Vollständige Unterstützung der Friendly Enough Expression Language.
+### DMN - Decision Model and Notation
+* **Teilweise unterstützt:** Decision Tables und mehrere Hit Policies besitzen automatisierte Tests.
+* **Nicht vollständig:** FEEL, DRD und die DMN-Konformität sind nicht vollständig implementiert oder durch die offizielle TCK nachgewiesen.
 
 ### Plattform & Integration
 * **Gebaut für modernes .NET:** Modernste C#-Features, hohe Performance, geringe Allokationen, echte Asynchronität.
-* **Nahtlose bpmn.io-Integration:** Volle Kompatibilität mit den `bpmn-js`, `dmn-js`, `cmmn-js` und `form-js` Toolkits.
+* **bpmn.io-Integration:** Gepinnte Web-Assets und eigene Moddle-Verifikation; vollständige Interoperabilität wird noch nicht behauptet.
 * **Flexible APIs:** REST-API und gRPC-Schnittstelle für Microservice-Architekturen.
-* **Skalierbarer Job-Executor:** Asynchrone Timer- und Hintergrundaufgaben.
-* **Pluggable Persistence:** EF Core (PostgreSQL, SQL Server) und Erweiterbarkeit für andere Datenbanken.
-* **Process Mining & Analytics:** Persistente Event-Analytics, REST-API für Reporting, Zeitreihen, Mandantenfilter und Metriken.
+* **Job-Executor (experimentell):** Komponenten für Timer- und Hintergrundaufgaben; persistente Wait-/Retry-Semantik ist noch nicht freigegeben.
+* **Konfigurierbare Persistenz:** EF Core für SQLite, PostgreSQL und SQL Server; der vollständige Runtime-Zustand ist noch nicht dauerhaft abgebildet.
+* **Process Mining & Analytics (teilweise):** Persistente Events und REST-Abfragen sind vorhanden; atomare Runtime-Kopplung und vollständige Betriebsmetriken fehlen.
 * **Security:** Rollenbasierte Authentifizierung für alle Analytics- und Reporting-Endpunkte.
 
 ## 🚀 Projektstatus
 
-**VertexBPMN™ ist jetzt produktionsreif für BPMN 2.0-, CMMN 1.1- und DMN 1.4-Workflows mit robuster Testabdeckung, Edge-Case-Handling und moderner Architektur.**
+**VertexBPMN™ ist derzeit nicht als vollständig produktionsreife BPMN-, DMN- oder CMMN-Engine freigegeben.**
 
-Alle Kernfeatures, inklusive verschachtelter Subprozesse, Boundary Events, Case Management, DMN-Integration und Fehlerbehandlung, sind implementiert und durch umfangreiche Unit- und Integrationstests abgesichert. Die Engine ist bereit für produktive Workflows und kann flexibel erweitert werden.
+Der aktuelle Meilenstein definiert und härtet einen begrenzten BPMN-Produktionskern. Der tatsächliche Supportstatus, bekannte Einschränkungen und verbindliche Akzeptanzfälle stehen in der [Produkt-Support- und Acceptance-Matrix](docs/reference/product-support-matrix.md). Funktionen ohne bestandenen End-to-End-Nachweis gelten als `partial` oder `unsupported`, auch wenn Parser-, Unit- oder Komponenten-Tests existieren.
 
 Wir freuen uns weiterhin über Feedback und Beiträge aus der Community!
 

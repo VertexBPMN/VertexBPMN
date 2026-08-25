@@ -7,6 +7,8 @@ EXPOSE 8081
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
+COPY global.json .
+RUN dotnet --version
 COPY ["VertexBPMN.Studio/VertexBPMN.Studio.csproj", "VertexBPMN.Studio/"]
 RUN dotnet restore "VertexBPMN.Studio/VertexBPMN.Studio.csproj"
 COPY . .

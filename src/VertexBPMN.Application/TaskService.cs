@@ -11,10 +11,15 @@ public class TaskService : ITaskService
 {
     private readonly ITaskRepository _repo;
     private readonly IProcessMiningEventSink _eventSink;
-    public TaskService(ITaskRepository repo, IProcessMiningEventSink eventSink)
+    private readonly IProcessExecutionRuntime _executionRuntime;
+    public TaskService(
+        ITaskRepository repo,
+        IProcessMiningEventSink eventSink,
+        IProcessExecutionRuntime executionRuntime)
     {
         _repo = repo;
         _eventSink = eventSink;
+        _executionRuntime = executionRuntime;
     }
 
     public async ValueTask ClaimAsync(Guid taskId, string userId, CancellationToken cancellationToken = default)
@@ -45,17 +50,32 @@ public class TaskService : ITaskService
         }
     }
 
-    public async ValueTask<ProcessMiningEvent> CompleteAsync(Guid taskId, IDictionary<string, object>? variables = null, CancellationToken cancellationToken = default)
+    public async ValueTask<ProcessMiningEvent> CompleteAsync(Guid taskId, IDictionary<string, object>? variables = null, CancellationToken cancellationToken = default, string? idempotencyKey = null)
     {
         var task = await _repo.GetByIdAsync(taskId, cancellationToken);
         if (task != null)
         {
             if (task.Status != UserTaskStatus.Pending && task.Status != UserTaskStatus.Delegated)
+            {
+                if (task.Status == UserTaskStatus.Completed && !string.IsNullOrWhiteSpace(idempotencyKey))
+                {
+                    await _executionRuntime.CompleteUserTaskAsync(taskId, variables, idempotencyKey, cancellationToken);
+                    return new ProcessMiningEvent
+                    {
+                        EventType = "TaskCompleted",
+                        ProcessInstanceId = task.ProcessInstanceId.ToString(),
+                        TaskId = task.Id.ToString(),
+                        UserId = task.Assignee,
+                        TenantId = task.TenantId,
+                        Timestamp = task.CompletedAt.HasValue
+                            ? new DateTimeOffset(DateTime.SpecifyKind(task.CompletedAt.Value, DateTimeKind.Utc))
+                            : DateTimeOffset.UtcNow
+                    };
+                }
                 throw new InvalidOperationException($"Task is in {task.Status} state");
+            }
 
-            task.Status = UserTaskStatus.Completed;
-            task.CompletedAt = DateTime.UtcNow;
-            await _repo.AddAsync(task, cancellationToken); // Upsert
+            await _executionRuntime.CompleteUserTaskAsync(taskId, variables, idempotencyKey, cancellationToken);
             return await _eventSink.EmitAsync(new ProcessMiningEvent
             {
                 EventType = "TaskCompleted",
@@ -115,7 +135,7 @@ public class TaskService : ITaskService
     /// <returns>The emitted <see cref="ProcessMiningEvent"/> or null if task not found.</returns>
     public async ValueTask<ProcessMiningEvent> RejectAsync(Guid userTaskId, object rejectionReason, CancellationToken cancellationToken = default)
     {
-  
+
         var task = await _repo.GetByIdAsync(userTaskId, cancellationToken);
         if (task == null)
             return null;

@@ -18,7 +18,7 @@ public static class ServiceTaskRegistryExtensions
     {
         services.TryAddSingleton<IConfiguration>(configuration ?? new ConfigurationBuilder().Build());
         // Registriere alle Handler und Abhängigkeiten
-        RegisterCoreDependencies(services);
+        RegisterCoreDependencies(services, configuration);
         RegisterHandlers(services);
 
         // ✅ KORREKTE Registry-Registrierung
@@ -32,7 +32,9 @@ public static class ServiceTaskRegistryExtensions
             registry.Register("cancelApplication", provider.GetRequiredService<CancelApplicationServiceTaskHandler>());
             registry.Register("issuePolicy", provider.GetRequiredService<IssuePolicyServiceTaskHandler>());
             registry.Register("rejectPolicy", provider.GetRequiredService<RejectPolicyServiceTaskHandler>());
-            registry.Register("io.camunda:sendgrid:1", provider.GetRequiredService<SendGridServiceTaskHandler>());
+            var sendGridClient = provider.GetService<ISendGridClient>();
+            if (sendGridClient is not null)
+                registry.Register("io.camunda:sendgrid:1", new SendGridServiceTaskHandler(sendGridClient));
             registry.Register("informCustomerSuccessfulCancelation", provider.GetRequiredService<InformCustomerSuccessfulCancelationHandler>());
             registry.Register("reportFraud", provider.GetRequiredService<ReportFraudHandler>());
             registry.Register("informOperationsSuccessfulCancelation", provider.GetRequiredService<InformOperationsSuccessfulCancelationHandler>());
@@ -114,11 +116,24 @@ public static class ServiceTaskRegistryExtensions
             ["SendGridServiceTaskHandler"] = p => p.GetRequiredService<SendGridServiceTaskHandler>()
         };
 
-    private static void RegisterCoreDependencies(IServiceCollection services)
+    private static void RegisterCoreDependencies(IServiceCollection services, IConfiguration? configuration)
     {
         // Registriere Kernabhängigkeiten
         services.AddSingleton<IKernelFactory, CachingKernelFactory>();
-        services.AddSingleton<ISendGridClient, FakeSendGridClient>();
+        var productionMode = string.Equals(configuration?["OperationalMode"], "Production", StringComparison.OrdinalIgnoreCase)
+                             || string.Equals(configuration?["ASPNETCORE_ENVIRONMENT"], "Production", StringComparison.OrdinalIgnoreCase)
+                             || string.Equals(configuration?["OperationalMode"], "Stage", StringComparison.OrdinalIgnoreCase)
+                             || string.Equals(configuration?["ASPNETCORE_ENVIRONMENT"], "Staging", StringComparison.OrdinalIgnoreCase);
+        var sendGridApiKey = configuration?["SendGrid:ApiKey"] ?? configuration?["SENDGRID_API_KEY"];
+        if (productionMode)
+        {
+            if (!string.IsNullOrWhiteSpace(sendGridApiKey))
+                services.AddSingleton<ISendGridClient>(_ => new SendGridClient(sendGridApiKey));
+        }
+        else
+        {
+            services.AddSingleton<ISendGridClient, FakeSendGridClient>();
+        }
         
         // ✅ NEW: AI-specific dependencies
         services.AddSingleton<HttpClient>();
@@ -136,6 +151,7 @@ public static class ServiceTaskRegistryExtensions
         services.AddSingleton<IConnectorExecutor>(provider => new NamedHttpConnectorExecutor(provider.GetRequiredService<HttpClient>(), "ai"));
         services.AddSingleton<ConnectorRateLimitPolicy>();
         services.AddSingleton<ConnectorRedactionPolicy>();
+        services.AddSingleton<ConnectorDestinationPolicy>();
         services.AddSingleton<IConnectorRegistry, ConnectorRegistry>();
         services.AddSingleton<IConnectorRuntime, ConnectorRuntime>();
         

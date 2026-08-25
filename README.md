@@ -16,8 +16,8 @@
 
 ### BPMN 2.0 - Business Process Model and Notation
 * **Parser und Roundtrip:** Breite Modellabdeckung mit automatisierten Parser-, Serialisierungs- und MIWG-Referenztests.
-* **Direkte Engine-Ausführung:** Grundlegende Events, Tasks, Gateways und Subprozesse sind implementiert, aber noch nicht vollständig über den persistenten API-Runtime-Pfad integriert.
-* **Produktionskern in Arbeit:** Dauerhafte Wait-States, Recovery und vollständige BPMN-Konformität sind noch nicht nachgewiesen.
+* **Persistenter Runtime-Subset:** None Events, Service/User Tasks, Parallel Gateway, Timer Catch/Boundary, Message/Signal und ein begrenzter Kompensationspfad laufen über denselben relationalen API-Runtime-Pfad.
+* **Klare Grenze:** Vollständige BPMN-Konformität, komplexe Gateways, Event-Subprozesse, Call Activities und echte Multi-Instance-Semantik werden noch nicht behauptet.
 
 ### CMMN 1.1 - Case Management Model and Notation
 * **Experimentell:** Parser, Modelle und einzelne API-Verträge sind vorhanden.
@@ -31,8 +31,8 @@
 * **Gebaut für modernes .NET:** Modernste C#-Features, hohe Performance, geringe Allokationen, echte Asynchronität.
 * **bpmn.io-Integration:** Gepinnte Web-Assets und eigene Moddle-Verifikation; vollständige Interoperabilität wird noch nicht behauptet.
 * **Flexible APIs:** REST-API und gRPC-Schnittstelle für Microservice-Architekturen.
-* **Job-Executor (experimentell):** Komponenten für Timer- und Hintergrundaufgaben; persistente Wait-/Retry-Semantik ist noch nicht freigegeben.
-* **Konfigurierbare Persistenz:** EF Core für SQLite, PostgreSQL und SQL Server; der vollständige Runtime-Zustand ist noch nicht dauerhaft abgebildet.
+* **Persistenter Job-Executor:** Timer-Jobs besitzen Lease, Retry/Backoff, Dead Letter und Incident-Anbindung.
+* **Konfigurierbare Persistenz:** EF Core für SQLite, PostgreSQL und SQL Server; der freigegebene BPMN-Runtime-Subset speichert Tokens, Variablen, Tasks, Jobs, Subscriptions, Incidents sowie Inbox/Outbox dauerhaft.
 * **Process Mining & Analytics (teilweise):** Persistente Events und REST-Abfragen sind vorhanden; atomare Runtime-Kopplung und vollständige Betriebsmetriken fehlen.
 * **Security:** Rollenbasierte Authentifizierung für alle Analytics- und Reporting-Endpunkte.
 
@@ -40,7 +40,7 @@
 
 **VertexBPMN™ ist derzeit nicht als vollständig produktionsreife BPMN-, DMN- oder CMMN-Engine freigegeben.**
 
-Der aktuelle Meilenstein definiert und härtet einen begrenzten BPMN-Produktionskern. Der tatsächliche Supportstatus, bekannte Einschränkungen und verbindliche Akzeptanzfälle stehen in der [Produkt-Support- und Acceptance-Matrix](docs/reference/product-support-matrix.md). Funktionen ohne bestandenen End-to-End-Nachweis gelten als `partial` oder `unsupported`, auch wenn Parser-, Unit- oder Komponenten-Tests existieren.
+Phase 2 stellt einen begrenzten, persistenten BPMN-Produktionskern bereit; die Gesamtplattform ist wegen noch offener Betriebs-, Broker-, Deployment-, Security-Gate-, DMN- und CMMN-Arbeiten weiterhin nicht vollständig produktionsreif. Der tatsächliche Supportstatus, bekannte Einschränkungen und verbindliche Akzeptanzfälle stehen in der [Produkt-Support- und Acceptance-Matrix](docs/reference/product-support-matrix.md). Funktionen ohne bestandenen End-to-End-Nachweis gelten als `partial` oder `unsupported`, auch wenn Parser-, Unit- oder Komponenten-Tests existieren.
 
 Wir freuen uns weiterhin über Feedback und Beiträge aus der Community!
 

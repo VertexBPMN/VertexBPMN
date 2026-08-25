@@ -29,4 +29,13 @@ public interface IJobRepository
     ValueTask DeleteAsync(Guid id, CancellationToken cancellationToken = default);
 
     ValueTask UpdateAsync(Job job, CancellationToken cancellationToken = default);
+
+    async ValueTask<bool> TryLeaseAsync(Job job, string workerId, DateTime lockedUntil, CancellationToken cancellationToken = default)
+    {
+        job.State = "Executing";
+        job.LockOwner = workerId;
+        job.LockedUntil = lockedUntil;
+        await UpdateAsync(job, cancellationToken);
+        return true;
+    }
 }

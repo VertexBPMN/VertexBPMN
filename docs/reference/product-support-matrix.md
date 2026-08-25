@@ -1,71 +1,78 @@
 # Produkt-Support- und Acceptance-Matrix
 
 **Stand:** 25.08.2026
-**Geltungsbereich:** aktueller `master`; bewertet wird der öffentlich nutzbare End-to-End-Pfad, nicht nur das Vorhandensein einzelner Klassen oder Unit-Tests.
+**Geltungsbereich:** Phase-2-Branch; bewertet wird der öffentlich nutzbare, persistente End-to-End-Pfad. Parser- oder Unit-Tests allein begründen keinen Produktsupport.
 
 ## Statusdefinitionen
 
 | Status | Verbindliche Bedeutung |
 | --- | --- |
-| `supported` | Über die öffentliche API end-to-end implementiert, dauerhaft gespeichert und durch einen erfolgreichen Vertragstest belegt. |
-| `partial` | Parser-, Modell-, Komponenten- oder API-Teile sind vorhanden, aber mindestens ein erforderlicher End-to-End-Pfad oder Wiederanlaufnachweis fehlt. |
-| `unsupported` | Nicht implementiert, nur Platzhalter/No-op oder ohne belastbaren Ausführungsnachweis. Darf nicht als produktionsfähig beworben werden. |
+| `supported` | Über die öffentliche API end-to-end implementiert, relational gespeichert und durch einen erfolgreichen Vertragstest belegt. |
+| `partial` | Ein klar benanntes Subset funktioniert, weitergehende Standardsemantik oder ein Betriebsnachweis fehlt. |
+| `unsupported` | Nicht implementiert oder ohne belastbaren Ausführungsnachweis; darf nicht als produktionsfähig beworben werden. |
 
 ## BPMN
 
-| Fähigkeit / Elementgruppe | Status | Aktueller Nachweis und Grenze |
+| Fähigkeit / Elementgruppe | Status | Nachweis und Grenze |
 | --- | --- | --- |
-| XML-Parsing und Modellvalidierung | `partial` | Breite Parser- und MIWG-Referenztests existieren. `RepositoryService` verwendet jedoch nicht den sicheren BPMN-Parser und akzeptiert bei XML-Fehlern den Dateinamen als Process-Key. |
-| Serialisierung und Diagramm-Roundtrip | `partial` | Strict-Roundtrip- und Ecosystem-Tests existieren; vollständige verlustfreie Interoperabilität für alle BPMN-DI- und Vendor-Elemente ist nicht nachgewiesen. |
-| Deployment und Definition-Persistenz | `partial` | `POST /api/repository` persistiert XML relational. Validierung und atomare, mandantensichere Versionierung fehlen; `Version` ist fest auf `1` gesetzt. |
-| None Start/End Event und Sequence Flow | `partial` | Direkte Engine-Tests existieren. Der öffentliche Runtime-Start erzeugt nur einen `ProcessInstance`-Datensatz und startet keinen persistenten Token-Flow. |
-| Service Task | `partial` | Handler und direkte Engine-Ausführung existieren. Deploy/Start über die API ruft den Handler nicht als Teil derselben Runtime auf. |
-| User Task: Erzeugen, Claim, Complete, Resume | `partial` | Task-CRUD-Endpunkte und Persistenzservice existieren. Der Runtime-Start erzeugt keine User Task und Task-Completion setzt den Prozessfluss nicht fort. |
-| Exclusive/Parallel/Inclusive/Event-based Gateway | `partial` | Parser und direkte Engine-Logik sind vorhanden. Ein persistenter API-End-to-End-Nachweis einschließlich Join-, Condition- und Restart-Semantik fehlt. |
-| Subprozess, Event-Subprozess, Call Activity, Multi-Instance | `partial` | Modell- und direkte Engine-Tests existieren. Persistente Lebenszyklen und Wiederanlauf sind nicht nachgewiesen. |
-| Timer Start/Catch/Boundary und Job-Ausführung | `unsupported` | Timer-/Job-Komponenten existieren, aber kein bestandener API-Test belegt persistentes Warten, Fälligkeit, Fortsetzung und Neustart. |
-| Message-/Signal-Catch und Correlation | `unsupported` | API-Methoden existieren; Signal ist im Runtime-Service ein No-op und Message-Correlation aktualisiert nur Variablen ohne Subscription-/Token-Fortsetzung. |
-| Error, Escalation, Compensation, Cancel, Terminate | `unsupported` | Parser-/Direktlogik ist teilweise vorhanden; belastbare persistente Scope-, Boundary- und Recovery-Semantik fehlt. |
-| Prozessneustart, parallele Instanzen und Idempotenz | `unsupported` | Kein End-to-End-Nachweis für persistente Tokens, Optimistic Concurrency, Lease/Locking oder deduplizierte Fortsetzung. |
+| Sicheres XML-Parsing, Validierung und Deployment | `supported` | Deployment verwirft ungültiges/gefährliches XML, ermittelt den Process-Key aus dem Modell und persistiert Definition und Deployment. |
+| Tenantbezogene Definition-Versionierung | `supported` | Versionen werden pro `TenantScope` und Process-Key fortgeschrieben; ein eindeutiger DB-Constraint verhindert Doppelversionen. |
+| None Start/End Event und Sequence Flow | `supported` | Der persistente API-Runtime-Pfad führt den Prozess bis zum End- oder Wait-State aus und schreibt History/Outbox. |
+| Service Task | `supported` | Registrierte Handler werden im Runtime-Übergang ausgeführt; Fehler suspendieren die Instanz und erzeugen einen persistenten Incident. |
+| User Task: Erzeugen, Claim, Complete, Resume | `supported` | Task und Wait-Token sind persistent; Completion setzt denselben Prozessfluss fort. |
+| Parallel Gateway Split/Join | `supported` | Persistente Join-Ankünfte und Isolation mehrerer Instanzen sind durch die Phase-1-Verträge belegt. |
+| Exclusive und Inclusive Gateway | `partial` | Knoten werden durchlaufen; vollständige Condition-/Default-Flow-Auswertung im persistenten Runtime-Pfad ist nicht freigegeben. |
+| Event-based und Complex Gateway | `unsupported` | Parser-/Legacy-Engine-Code ist vorhanden, aber keine freigegebene persistente Semantik. |
+| Eingebetteter Subprozess | `partial` | Leere und einfache eingebettete Subprozesse werden als Scope ausgeführt. Event-Subprozesse, Call Activities und echte Multi-Instance-Cardinality/Collection sind nicht freigegeben und werden nicht stillschweigend simuliert. |
+| Timer Catch und interrupting Boundary Timer | `supported` | Fällige Jobs, Wait-Token, Lease und genau eine Fortsetzung sind end-to-end getestet. Timer Start Events, nicht-interrupting Boundary Timer und komplexe Cycles bleiben außerhalb des Subsets. |
+| Message-/Signal-Catch und Correlation | `supported` | Persistente Subscriptions werden tenantbezogen korreliert bzw. gesendet, konsumiert und genau einmal fortgesetzt. |
+| Kompensation | `partial` | Persistente Compensation-Subscriptions und ein getesteter Handler-Pfad sind vorhanden; vollständige BPMN-Scope-/Transaction-Semantik ist nicht behauptet. |
+| Error, Escalation, Cancel und Terminate | `unsupported` | Keine freigegebene persistente Boundary-/Scope-Semantik. |
+| Neustart, mehrere API-Replikate und Idempotenz | `supported` | Gemeinsame relationale Datenbank, Inbox-Constraint, Optimistic Concurrency und Lease/Locking sind durch Host-Neustart- und Zwei-Replika-Verträge belegt. |
+| Incident Recovery und Job Dead Letter | `supported` | Servicefehler erzeugen Incidents; Recovery setzt am betroffenen Knoten fort. Jobs besitzen Retry/Backoff, Lease und Dead-Letter-Zustand. |
 
 ## DMN
 
-| Fähigkeit | Status | Aktueller Nachweis und Grenze |
+| Fähigkeit | Status | Nachweis und Grenze |
 | --- | --- | --- |
-| Decision-Table-Parsing | `partial` | Parser- und API-Tests existieren; keine offizielle DMN-TCK als Release-Gate. |
-| Hit Policies | `partial` | Unit-/Integrationstests decken mehrere Policies ab; vollständige Standardsemantik und Aggregationen sind nicht als End-to-End-Vertrag belegt. |
-| FEEL | `partial` | Ein Ausdrucks-Subset ist implementiert. Vollständige FEEL-Konformität wird nicht behauptet. |
-| DRD, Abhängigkeiten und BusinessRuleTask-Integration | `partial` | Einzelne Modelle und Integrationspfade existieren; ein durchgängiger persistenter BPMN/DMN-Runtime-Nachweis fehlt. |
+| Decision-Table-Parsing und ausgewählte Hit Policies | `partial` | Parser-, Unit- und API-Tests existieren; keine offizielle DMN-TCK als Release-Gate. |
+| FEEL, DRD und BusinessRuleTask-Integration | `partial` | Subsets und Legacy-Pfade existieren; keine vollständige persistente BPMN/DMN-Ausführung oder FEEL-Konformität. |
 
 ## CMMN
 
-| Fähigkeit | Status | Aktueller Nachweis und Grenze |
+| Fähigkeit | Status | Nachweis und Grenze |
 | --- | --- | --- |
-| CMMN-Parsing und Definition-API | `partial` | Parser und API-Verträge können einfache Definitionen annehmen und lesen. |
-| Human/Process/Case Tasks, Stages und Milestones | `partial` | Domänen- und Engine-Komponenten existieren; kein vollständiger öffentlicher Case-Lifecycle ist nachgewiesen. |
-| Sentries, Entry/Exit Criteria und Discretionary Items | `unsupported` | Keine verbindliche Conformance-Suite und kein persistenter End-to-End-Nachweis. |
-| Case File Items und Wiederanlauf | `unsupported` | Dauerhafte Zustandspropagierung und Restart-Verhalten sind nicht belegt. |
+| CMMN-Parsing und Definition-API | `partial` | Einfache Definitionen werden migriert, deployt und gelesen. |
+| Case Lifecycle, Sentries, Discretionary Items und Wiederanlauf | `unsupported` | Kein vollständiger persistenter Case-Lifecycle und keine verbindliche Conformance-Suite. |
 
 ## Plattform- und Betriebsfunktionen
 
-| Fähigkeit | Status | Aktueller Nachweis und Grenze |
+| Fähigkeit | Status | Nachweis und Grenze |
 | --- | --- | --- |
-| REST API und .NET SDK für Deployment/Start | `partial` | Verträge und Integrationstests existieren; Start bedeutet derzeit noch nicht BPMN-Ausführung bis zu einem End- oder Wait-State. |
-| gRPC | `partial` | Vertrags-/Smoke-Tests existieren; keine gleichwertige Abdeckung des produktiven Kernpfads. |
-| EF-Core-Persistenz | `partial` | SQLite, PostgreSQL und SQL Server sind konfigurierbar. Dauerhafte Runtime-Tokens, Subscriptions, Jobs und Incidents fehlen. |
-| Process Mining / Analytics | `partial` | Events und Endpunkte existieren; atomare Kopplung an Runtime-Zustandsänderungen und vollständige Betriebsmetriken fehlen. |
+| REST API und .NET SDK für Deployment/Start | `supported` | REST startet den persistenten BPMN-Subset bis End-/Wait-State; die zentralen Verträge laufen über einen echten API-Host. |
+| gRPC | `partial` | Vertrags-/Smoke-Tests existieren; keine gleichwertige Abdeckung des freigegebenen persistenten Kernpfads. |
+| EF-Core-Runtime-Persistenz | `supported` | Instanzen, Tokens, Variablen, Tasks, Jobs, Subscriptions, Incidents, Inbox, Outbox und Worker-Registrierungen sind relational modelliert und migriert. |
+| Produktionskonfiguration und Mandantenschutz | `supported` | Production/Stage verlangen Connection Strings und persistenten Data-Protection-Keyring; Fake/InMemory/NoOp-Auflösungen und unsichere Script-/Connector-/Plug-in-Konfigurationen brechen den Start ab. |
+| Externe Brokerzustellung der Outbox | `partial` | Runtime- und Dispatcher-Ereignisse werden dauerhaft in die Outbox geschrieben. Ein produktiver Publisher samt Broker-Failover/Readiness ist Aufgabe von Phase 3. |
+| Process Mining / Analytics | `partial` | Ein persistenter Sink ist registriert; vollständige atomare Outbox-Projektion und Betriebsmetriken folgen in Phase 3. |
 | bpmn.io Studio | `partial` | Gepinnte Assets und Moddle-Tests existieren; vollständige Modell-/Runtime-Parität ist nicht nachgewiesen. |
 
 ## Verbindliche Acceptance-Fälle
 
-Alle Fälle müssen einen echten `WebApplicationFactory`-Host und eine relationale SQLite-Testdatenbank verwenden. Parser-only-Tests, gemockte HTTP-Responses und bloße `Count > 0`-Assertions erfüllen diese Verträge nicht.
+Alle Verträge verwenden einen echten `WebApplicationFactory`-Host und relationale SQLite-Persistenz. Die fachlichen Assertions prüfen End-/Wait-State und dauerhafte Runtime-Datensätze.
 
-| ID | Vertrag | Erwarteter Endzustand | Status |
-| --- | --- | --- | --- |
-| `P1-AC-01` | Deploy → Start → Service Task → User Task → Complete → End | Handler wurde ausgeführt; User Task ist persistent; nach Complete ist die Instanz `Completed` und hat keine aktiven Tokens/Tasks. | **rot** – Vertragstest vorhanden, Runtime startet den BPMN-Flow noch nicht. |
-| `P1-AC-02` | Timer Catch/Boundary → Wait → Due → Resume | Timer und Subscription sind persistent; vor Fälligkeit kein Fortschritt, danach genau eine Fortsetzung. | **rot** – Catch- und Boundary-Verträge vorhanden; der öffentliche Runtime-Start persistiert weder Wait-Token noch die angehängte User Task. |
-| `P1-AC-03` | Message und Signal → Wait → Correlate/Broadcast → Resume | Korrelation trifft nur passende aktive Subscription und setzt den Token genau einmal fort. | **rot** – getrennte Message- und Signal-Verträge vorhanden; die Runtime persistiert die erforderlichen Subscription-Wait-Token nicht. |
-| `P1-AC-04` | Prozess-/Host-Neustart während Wait-State | Neue Hostinstanz lädt Zustand und setzt ohne Verlust oder Duplikat fort. | **rot** – Vertrag verwendet zwei echte API-Hosts und dieselbe relationale SQLite-DB; bereits die dauerhafte Wait-State-Vorbedingung fehlt. |
-| `P1-AC-05` | Parallel Gateway und mehrere Instanzen | Join wartet auf alle erforderlichen Tokens; Instanzen beeinflussen einander nicht. | **rot** – Vertrag startet zwei Instanzen und prüft Branch-/Join-Isolation; der Runtime-Start erzeugt die parallelen Task-Zweige nicht. |
+| ID | Vertrag | Status |
+| --- | --- | --- |
+| `P1-AC-01` | Deploy → Start → Service Task → User Task → Complete → End | **grün** |
+| `P1-AC-02` | Timer Catch/Boundary → Wait → Due → Resume | **grün** |
+| `P1-AC-03` | Message und Signal → Wait → Correlate/Broadcast → Resume | **grün** |
+| `P1-AC-04` | Host-Neustart während persistentem Wait-State | **grün** |
+| `P1-AC-05` | Parallel Gateway und mehrere isolierte Instanzen | **grün** |
+| `P2-AC-01` | Konkurrenzfähiger idempotenter Start | **grün** |
+| `P2-AC-02` | Tenantisolierter Signal-Broadcast | **grün** |
+| `P2-AC-03` | Persistente Kompensation über Wait/Complete | **grün** |
+| `P2-AC-04` | Servicefehler → Incident → Recovery, genau einmal | **grün** |
+| `P2-AC-05` | Negativer tenantbezogener Runtime-Lesezugriff | **grün** |
+| `P2-AC-06` | Zwei API-Replikate teilen eine Idempotency-Claim | **grün** |
 
-Alle sieben Testmethoden für `P1-AC-01` bis `P1-AC-05` tragen den Trait `Category=Phase1Acceptance`. `scripts/verify-phase1-acceptance-baseline.sh` führt jeden Vertrag einzeln aus und akzeptiert nur den jeweils dokumentierten fachlichen Fehler. Sobald Phase 2 einen Pfad implementiert, wird der entsprechende Vertrag zum blockierenden Green-Gate; seine Assertions werden dafür nicht abgeschwächt.
+Die sieben Phase-1-Testmethoden tragen `Category=Phase1Acceptance`; sechs zusätzliche Phase-2-Verträge tragen `Category=Phase2Acceptance`. Nicht aufgeführte BPMN-Semantik ist nicht automatisch unterstützt.

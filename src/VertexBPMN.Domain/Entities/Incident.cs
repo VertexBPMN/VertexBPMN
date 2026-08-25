@@ -11,7 +11,9 @@ public class Incident
     public string Message { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public string? TenantId { get; set; }
-    // TODO: Add resolution, status, etc.
+    public string? ActivityId { get; set; }
+    public DateTime? ResolvedAt { get; set; }
+    public int RetryCount { get; set; }
     public ProcessInstance ProcessInstance { get; set; } = null!;
-    public string State { get; set; }
+    public string State { get; set; } = "Open";
 }

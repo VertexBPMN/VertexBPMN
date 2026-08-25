@@ -34,7 +34,7 @@ public class InMemoryTaskService : ITaskService
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask<ProcessMiningEvent> CompleteAsync(Guid taskId, IDictionary<string, object>? variables = null, CancellationToken cancellationToken = default)
+    public ValueTask<ProcessMiningEvent> CompleteAsync(Guid taskId, IDictionary<string, object>? variables = null, CancellationToken cancellationToken = default, string? idempotencyKey = null)
     {
         if (_tasks.TryGetValue(taskId, out var task))
         {

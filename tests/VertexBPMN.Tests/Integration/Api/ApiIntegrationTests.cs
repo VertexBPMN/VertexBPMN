@@ -42,7 +42,9 @@ public class ApiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     [Fact]
     public async Task Repository_Deploy_And_GetById_Works()
     {
-        var deploy = new { BpmnXml = "<bpmn/>", Name = "TestProcess", TenantId = (string?)null };
+        var key = $"RepositoryGet_{Guid.NewGuid():N}";
+        var bpmn = $"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='{key}'><startEvent id='start'/><endEvent id='end'/><sequenceFlow id='flow' sourceRef='start' targetRef='end'/></process></definitions>";
+        var deploy = new { BpmnXml = bpmn, Name = key, TenantId = (string?)null };
         var post = await _client.PostAsJsonAsync("/api/repository", deploy);
         post.EnsureSuccessStatusCode();
         var created = await post.Content.ReadFromJsonAsync<ProcessDefinition>();
@@ -229,7 +231,7 @@ public class ApiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         var deployResponse = await _client.PostAsJsonAsync("/api/repository", deploy);
         deployResponse.EnsureSuccessStatusCode();
 
-        // Start a process instance (no history events will exist in-memory, but endpoint should return 200 and an empty list)
+        // Starting and completing the process must durably record its runtime history.
         var start = new { ProcessDefinitionKey = processKey, Variables = new Dictionary<string, object>(), BusinessKey = (string?)null, TenantId = (string?)null };
         var post = await _client.PostAsJsonAsync("/api/runtime/start", start);
         post.EnsureSuccessStatusCode();
@@ -240,7 +242,10 @@ public class ApiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         response.EnsureSuccessStatusCode();
         var events = await response.Content.ReadFromJsonAsync<List<HistoryEvent>>();
         Assert.NotNull(events);
-        Assert.Empty(events);
+        Assert.Contains(events!, item => item.EventType == "PROCESS_STARTED");
+        Assert.Contains(events!, item => item.EventType == "END_EVENT_REACHED");
+        Assert.Contains(events!, item => item.EventType == "PROCESS_COMPLETED");
+        Assert.All(events!, item => Assert.Equal(instance.Id, item.ProcessInstanceId));
     }
 
     [Fact]
@@ -301,7 +306,9 @@ public class ApiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     [Fact]
     public async Task Repository_Delete_Works()
     {
-        var deploy = new { BpmnXml = "<bpmn/>", Name = "DeleteProcess", TenantId = (string?)null };
+        var key = $"RepositoryDelete_{Guid.NewGuid():N}";
+        var bpmn = $"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='{key}'><startEvent id='start'/><endEvent id='end'/><sequenceFlow id='flow' sourceRef='start' targetRef='end'/></process></definitions>";
+        var deploy = new { BpmnXml = bpmn, Name = key, TenantId = (string?)null };
         var post = await _client.PostAsJsonAsync("/api/repository", deploy);
         post.EnsureSuccessStatusCode();
         var created = await post.Content.ReadFromJsonAsync<ProcessDefinition>();

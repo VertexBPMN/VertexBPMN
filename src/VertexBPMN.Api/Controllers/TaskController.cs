@@ -69,7 +69,10 @@ public class TaskController : ControllerBase
     public async Task<IActionResult> Complete(Guid id, [FromBody] CompleteRequest request)
     {
         if (!await CanMutateTaskAsync(id, request.TenantId)) return Forbid();
-        await _taskService.CompleteAsync(id, request.Variables);
+        await _taskService.CompleteAsync(
+            id,
+            request.Variables,
+            idempotencyKey: Request.Headers["Idempotency-Key"].FirstOrDefault());
         return NoContent();
     }
 

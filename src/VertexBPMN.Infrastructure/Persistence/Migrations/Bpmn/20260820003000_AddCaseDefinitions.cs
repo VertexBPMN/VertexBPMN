@@ -1,10 +1,14 @@
 using System;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using VertexBPMN.Infrastructure.Persistence;
 
 #nullable disable
 
 namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn;
 
+[DbContext(typeof(BpmnDbContext))]
+[Migration("20260820003000_AddCaseDefinitions")]
 public partial class AddCaseDefinitions : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)

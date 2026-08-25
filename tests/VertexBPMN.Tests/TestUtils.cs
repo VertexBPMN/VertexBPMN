@@ -47,10 +47,17 @@ public class XunitLogger : ILogger
     public void Log<TState>(LogLevel logLevel, EventId eventId,
         TState state, Exception? exception, Func<TState, Exception?, string> formatter)
     {
-        if (exception != null)
+        if (exception == null) return;
+
+        try
         {
             _output.WriteLine($"[{logLevel}] {_categoryName}: {formatter(state, exception)}");
             _output.WriteLine($"Exception: {exception.Message}");
+        }
+        catch (InvalidOperationException)
+        {
+            // A shared test host can log after the owning test has completed.
+            // Logging must never turn that expected host lifecycle into a test failure.
         }
     }
 }

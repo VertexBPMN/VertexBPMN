@@ -16,7 +16,7 @@ public interface ITaskService
     /// <summary>
     /// Completes a user task with optional variables.
     /// </summary>
-    ValueTask<ProcessMiningEvent> CompleteAsync(Guid taskId, IDictionary<string, object>? variables = null, CancellationToken cancellationToken = default);
+    ValueTask<ProcessMiningEvent> CompleteAsync(Guid taskId, IDictionary<string, object>? variables = null, CancellationToken cancellationToken = default, string? idempotencyKey = null);
 
     /// <summary>
     /// Delegates a user task to another user.

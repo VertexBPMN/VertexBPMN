@@ -7,6 +7,7 @@ public class UserTask
 {
     public Guid Id { get; set; }
     public Guid ProcessInstanceId { get; set; }
+    public string ActivityId { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string Type { get; set; } = string.Empty;
     public string? Assignee { get; set; }
@@ -17,6 +18,7 @@ public class UserTask
     public DateTime LastModified { get; set; } = DateTime.UtcNow;
     public string ModifiedBy { get; set; } = string.Empty;
     public UserTaskStatus Status { get; set; } = UserTaskStatus.Pending;
+    public long Revision { get; set; }
     public List<string> CandidateUsers { get; set; } = new();
     public string CandidateRole { get; set; } = string.Empty;
     public List<string> RequiredFields { get; set; } = new();

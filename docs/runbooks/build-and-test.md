@@ -14,7 +14,7 @@ Die Befehle sind in Bash und PowerShell identisch:
 
 ```text
 dotnet restore VertexBPMN.sln --force --no-http-cache --disable-parallel
-dotnet build VertexBPMN.sln --configuration Release --no-restore
+dotnet build VertexBPMN.sln --configuration Release --no-restore -m:1
 dotnet test VertexBPMN.sln --configuration Release --no-build --no-restore --filter-not-trait "Category=Phase1Acceptance" --max-parallel-test-modules 1
 ```
 
@@ -37,12 +37,22 @@ Build-Ausgaben dürfen nie committed werden. Das Repository-Gate kann lokal so g
 bash scripts/verify-no-tracked-build-artifacts.sh
 ```
 
-## Phase-1-Acceptance-Verträge
+## Persistente BPMN-Acceptance-Verträge
 
-Die noch roten BPMN-Kernverträge werden bewusst separat und einzeln ausgeführt:
+Die Phase-1-Kernverträge werden als separates, grünes Blocker-Gate ausgeführt (der historische Skriptname bleibt aus Kompatibilitätsgründen bestehen):
 
 ```text
 bash scripts/verify-phase1-acceptance-baseline.sh
 ```
 
-Das Gate führt `P1-AC-01` bis `P1-AC-05` mit sieben konkreten Testmethoden aus und akzeptiert ausschließlich Exitcode `2` zusammen mit dem jeweils dokumentierten Runtime-Diagnosetext. Infrastruktur-, Build- oder Setupfehler sind keine gültige rote Baseline. Sobald ein Runtime-Pfad implementiert ist, muss sein Vertrag aus der roten Baseline in die grüne, blockierende Suite übernommen werden; die fachlichen Assertions bleiben bestehen.
+Das Gate führt `P1-AC-01` bis `P1-AC-05` mit sieben konkreten Testmethoden aus und akzeptiert ausschließlich einen erfolgreichen Lauf. Die zusätzlichen Phase-2-Verträge sind Bestandteil der regulären grünen Suite und können gezielt ausgeführt werden:
+
+```text
+dotnet test tests/VertexBPMN.Tests/VertexBPMN.Tests.csproj --configuration Release --no-build --no-restore --filter-trait "Category=Phase2Acceptance" --max-parallel-test-modules 1
+```
+
+Migration und Modell müssen außerdem synchron sein:
+
+```text
+dotnet ef migrations has-pending-model-changes --project src/VertexBPMN.Infrastructure --startup-project src/VertexBPMN.Api --context BpmnDbContext --no-build
+```

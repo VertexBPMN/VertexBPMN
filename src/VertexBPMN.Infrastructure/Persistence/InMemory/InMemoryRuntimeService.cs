@@ -13,10 +13,10 @@ public class InMemoryRuntimeService : IRuntimeService
     public ValueTask<IDictionary<string, object>?> GetVariablesAsync(Guid processInstanceId, CancellationToken cancellationToken = default)
         => new((IDictionary<string, object>?)null);
 
-    public ValueTask<MessageCorrelationResult> CorrelateMessageAsync(string messageName, string? processInstanceId, IDictionary<string, object>? variables = null, CancellationToken cancellationToken = default)
+    public ValueTask<MessageCorrelationResult> CorrelateMessageAsync(string messageName, string? processInstanceId, IDictionary<string, object>? variables = null, CancellationToken cancellationToken = default, string? tenantId = null, string? idempotencyKey = null)
         => new(new MessageCorrelationResult("correlated", "", processInstanceId ?? string.Empty, ""));
 
-    public ValueTask BroadcastSignalAsync(string signalName, IDictionary<string, object>? variables = null, CancellationToken cancellationToken = default)
+    public ValueTask BroadcastSignalAsync(string signalName, IDictionary<string, object>? variables = null, CancellationToken cancellationToken = default, string? tenantId = null, string? idempotencyKey = null)
         => ValueTask.CompletedTask;
     private readonly ConcurrentDictionary<Guid, ProcessInstance> _instances = new();
 
@@ -29,7 +29,7 @@ public class InMemoryRuntimeService : IRuntimeService
         _eventSink = eventSink;
     }
 
-    public ValueTask<ProcessInstance> StartProcessByKeyAsync(string processDefinitionKey, IDictionary<string, object>? variables = null, string? businessKey = null, string? tenantId = null, CancellationToken cancellationToken = default)
+    public ValueTask<ProcessInstance> StartProcessByKeyAsync(string processDefinitionKey, IDictionary<string, object>? variables = null, string? businessKey = null, string? tenantId = null, CancellationToken cancellationToken = default, string? idempotencyKey = null)
     {
         // Lookup process definition by key
         var defTask = _repositoryService.GetLatestByKeyAsync(processDefinitionKey, tenantId, cancellationToken);

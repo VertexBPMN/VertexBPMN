@@ -27,6 +27,20 @@ public class IncidentRepository : IIncidentRepository
             yield return incident;
     }
 
+    public async IAsyncEnumerable<Incident> ListAsync(string? tenantId = null, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var query = _db.Incidents.AsNoTracking().AsQueryable();
+        if (tenantId is not null) query = query.Where(incident => incident.TenantId == tenantId);
+        await foreach (var incident in query.OrderByDescending(item => item.CreatedAt).AsAsyncEnumerable().WithCancellation(cancellationToken))
+            yield return incident;
+    }
+
+    public async ValueTask UpdateAsync(Incident incident, CancellationToken cancellationToken = default)
+    {
+        _db.Incidents.Update(incident);
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
     public async ValueTask DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var incident = await _db.Incidents.FindAsync(new object[] { id }, cancellationToken);

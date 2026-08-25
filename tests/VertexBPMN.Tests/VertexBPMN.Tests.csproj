@@ -27,12 +27,12 @@
   <!--<ProjectReference Include="..\VertexBPMN.McpAdapter\VertexBPMN.McpAdapter.csproj" />-->
   </ItemGroup>
 <ItemGroup>
-    <None Include="TestData\**\*.*" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="TestData/**/*.*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 <ItemGroup>
-  <Compile Remove="Grpc\**" />
-  <EmbeddedResource Remove="Grpc\**" />
-  <None Remove="Grpc\**" />
+  <Compile Remove="Grpc/**" />
+  <EmbeddedResource Remove="Grpc/**" />
+  <None Remove="Grpc/**" />
 </ItemGroup>
 <ItemGroup>
   <Content Include="appsettings.Test.json">

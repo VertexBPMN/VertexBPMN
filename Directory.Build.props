@@ -1,0 +1,13 @@
+<Project>
+  <PropertyGroup>
+    <!-- The repository contains no .resx resources. Disabling the default glob also
+         prevents MSBuild from treating **/*.resx as a literal file after Roslyn's
+         BuildHost creates Windows-separator output directories on Linux/WSL. -->
+    <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
+    <DefaultItemExcludes>$(DefaultItemExcludes);bin/**;obj/**</DefaultItemExcludes>
+    <!-- Roslyn Workspaces build-host targets concatenate output paths verbatim.
+         Forward-slash bases prevent literal `bin\Debug` directories on Linux/WSL. -->
+    <BaseOutputPath>bin/</BaseOutputPath>
+    <BaseIntermediateOutputPath>obj/</BaseIntermediateOutputPath>
+  </PropertyGroup>
+</Project>

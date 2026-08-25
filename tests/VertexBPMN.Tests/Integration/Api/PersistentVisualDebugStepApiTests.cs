@@ -126,6 +126,13 @@ public sealed class PersistentVisualDebugStepApiTests : IClassFixture<CustomWebA
         await _factory.InitializeAsync();
         await using var scope = _factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<BpmnDbContext>();
+        var deployment = new EngineDeployment
+        {
+            Id = Guid.NewGuid(),
+            Name = $"PersistentStepDeployment-{Guid.NewGuid():N}",
+            CreatedAt = DateTime.UtcNow,
+            TenantId = tenantId
+        };
         var definition = new ProcessDefinition
         {
             Id = Guid.NewGuid(),
@@ -133,7 +140,8 @@ public sealed class PersistentVisualDebugStepApiTests : IClassFixture<CustomWebA
             Name = "Persistent Step Process",
             Version = 1,
             TenantId = tenantId,
-            DeploymentId = Guid.Parse("11111111-1111-1111-1111-111111111111"),
+            DeploymentId = deployment.Id,
+            TenantScope = string.IsNullOrWhiteSpace(tenantId) ? "$global" : tenantId,
             CreatedAt = DateTime.UtcNow,
             BpmnXml = """
                 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
@@ -172,6 +180,7 @@ public sealed class PersistentVisualDebugStepApiTests : IClassFixture<CustomWebA
             Variables = new Dictionary<string, object>()
         };
 
+        db.EngineDeployments.Add(deployment);
         db.ProcessDefinitions.Add(definition);
         db.ProcessInstances.Add(instance);
         db.ExecutionTokens.Add(token);

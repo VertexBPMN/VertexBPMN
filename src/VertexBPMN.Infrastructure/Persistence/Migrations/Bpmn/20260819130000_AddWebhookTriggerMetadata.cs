@@ -12,14 +12,14 @@ public partial class AddWebhookTriggerMetadata : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
     {
-        migrationBuilder.AddColumn<string>("Path", "WorkflowTriggers", type: "TEXT", maxLength: 512, nullable: true);
-        migrationBuilder.AddColumn<string>("Method", "WorkflowTriggers", type: "TEXT", maxLength: 16, nullable: true);
-        migrationBuilder.AddColumn<string>("AuthenticationMode", "WorkflowTriggers", type: "TEXT", maxLength: 32, nullable: false, defaultValue: "trigger-secret");
-        migrationBuilder.AddColumn<string>("CredentialId", "WorkflowTriggers", type: "TEXT", maxLength: 128, nullable: true);
-        migrationBuilder.AddColumn<string>("CredentialSecretKey", "WorkflowTriggers", type: "TEXT", maxLength: 128, nullable: true);
-        migrationBuilder.AddColumn<string>("PayloadSchemaJson", "WorkflowTriggers", type: "TEXT", nullable: true);
-        migrationBuilder.AddColumn<string>("CorrelationKey", "WorkflowTriggers", type: "TEXT", maxLength: 256, nullable: true);
-        migrationBuilder.AddColumn<string>("SourceElementId", "WorkflowTriggers", type: "TEXT", nullable: true);
+        migrationBuilder.AddColumn<string>("Path", "WorkflowTriggers", maxLength: 512, nullable: true);
+        migrationBuilder.AddColumn<string>("Method", "WorkflowTriggers", maxLength: 16, nullable: true);
+        migrationBuilder.AddColumn<string>("AuthenticationMode", "WorkflowTriggers", maxLength: 32, nullable: false, defaultValue: "trigger-secret");
+        migrationBuilder.AddColumn<string>("CredentialId", "WorkflowTriggers", maxLength: 128, nullable: true);
+        migrationBuilder.AddColumn<string>("CredentialSecretKey", "WorkflowTriggers", maxLength: 128, nullable: true);
+        migrationBuilder.AddColumn<string>("PayloadSchemaJson", "WorkflowTriggers", nullable: true);
+        migrationBuilder.AddColumn<string>("CorrelationKey", "WorkflowTriggers", maxLength: 256, nullable: true);
+        migrationBuilder.AddColumn<string>("SourceElementId", "WorkflowTriggers", nullable: true);
         migrationBuilder.CreateIndex("IX_WorkflowTriggers_Path_Method", "WorkflowTriggers", new[] { "Path", "Method" }, unique: true);
         migrationBuilder.CreateIndex("IX_WorkflowTriggers_TenantId_ProcessDefinitionKey_SourceElementId", "WorkflowTriggers", new[] { "TenantId", "ProcessDefinitionKey", "SourceElementId" }, unique: true);
     }

@@ -3,6 +3,7 @@ using System.Diagnostics;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using VertexBPMN.Infrastructure.Operational;
 
 
 namespace VertexBPMN.Api.Config;
@@ -56,6 +57,7 @@ public static class OpenTelemetryConfig
             {
                 builder
                     .AddSource(TelemetryConstants.ActivitySourceName)
+                    .AddSource(RuntimeTelemetry.ActivitySourceName)
                     .AddAspNetCoreInstrumentation(o =>
                     {
                         o.RecordException = true;
@@ -64,17 +66,27 @@ public static class OpenTelemetryConfig
                     .AddHttpClientInstrumentation(o =>
                     {
                         o.RecordException = true;
-                    })
-                    .AddConsoleExporter();
+                    });
+
+                var otlpEndpoint = configuration?["Telemetry:Otlp:Endpoint"];
+                if (Uri.TryCreate(otlpEndpoint, UriKind.Absolute, out var traceEndpoint))
+                    builder.AddOtlpExporter(options => options.Endpoint = traceEndpoint);
+                else if (configuration?.GetValue("Telemetry:ConsoleExporter", false) == true)
+                    builder.AddConsoleExporter();
 
             })
             .WithMetrics(builder =>
             {
                 builder
                     .AddMeter(TelemetryConstants.MeterName)
+                    .AddMeter(RuntimeTelemetry.MeterName)
                     .AddRuntimeInstrumentation()
                     .AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation();
+
+                var otlpEndpoint = configuration?["Telemetry:Otlp:Endpoint"];
+                if (Uri.TryCreate(otlpEndpoint, UriKind.Absolute, out var metricsEndpoint))
+                    builder.AddOtlpExporter(options => options.Endpoint = metricsEndpoint);
             });
 
         return services;

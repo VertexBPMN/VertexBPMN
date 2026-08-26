@@ -15,7 +15,7 @@ Die Befehle sind in Bash und PowerShell identisch:
 ```text
 dotnet restore VertexBPMN.sln --force --no-http-cache --disable-parallel
 dotnet build VertexBPMN.sln --configuration Release --no-restore -m:1
-dotnet test VertexBPMN.sln --configuration Release --no-build --no-restore --filter-not-trait "Category=Phase1Acceptance" --max-parallel-test-modules 1
+dotnet test VertexBPMN.sln --configuration Release --no-build --no-restore --filter-not-trait "Category=Phase1Acceptance" --filter-not-trait "Category=Phase3ExternalAcceptance" --max-parallel-test-modules 1
 ```
 
 Die Studio-Assets werden separat reproduziert:
@@ -49,6 +49,14 @@ Das Gate führt `P1-AC-01` bis `P1-AC-05` mit sieben konkreten Testmethoden aus 
 
 ```text
 dotnet test tests/VertexBPMN.Tests/VertexBPMN.Tests.csproj --configuration Release --no-build --no-restore --filter-trait "Category=Phase2Acceptance" --max-parallel-test-modules 1
+```
+
+Die Phase-3-Akzeptanzverträge für Outbox-Leasing, Retry, Readiness, persistente Metriken und Deployment-Härtung laufen in der regulären Suite. Der separate CI-Job `operational-integration` startet echte RabbitMQ- und PostgreSQL-Dienste und prüft Broker-Roundtrip sowie sämtliche EF-Migrationen. Lokal benötigt er:
+
+```text
+VERTEXBPMN_TEST_RABBITMQ=amqp://...
+VERTEXBPMN_TEST_POSTGRES_ADMIN=Host=...;Database=postgres;Username=...;Password=...
+dotnet test tests/VertexBPMN.Tests/VertexBPMN.Tests.csproj --configuration Release --no-build --no-restore --filter-trait "Category=Phase3ExternalAcceptance" --max-parallel-test-modules 1
 ```
 
 Migration und Modell müssen außerdem synchron sein:

@@ -17,16 +17,16 @@ public partial class AddConnectorDefinitions : Migration
             name: "Connectors",
             columns: table => new
             {
-                Id = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
-                TenantId = table.Column<string>(type: "TEXT", maxLength: 64, nullable: false),
-                Name = table.Column<string>(type: "TEXT", maxLength: 256, nullable: false),
-                Type = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
-                Description = table.Column<string>(type: "TEXT", maxLength: 2000, nullable: true),
-                Endpoint = table.Column<string>(type: "TEXT", maxLength: 2048, nullable: true),
-                CredentialId = table.Column<string>(type: "TEXT", maxLength: 128, nullable: true),
-                Enabled = table.Column<bool>(type: "INTEGER", nullable: false),
-                CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false),
-                LastModified = table.Column<DateTime>(type: "TEXT", nullable: false)
+                Id = table.Column<string>(maxLength: 128, nullable: false),
+                TenantId = table.Column<string>(maxLength: 64, nullable: false),
+                Name = table.Column<string>(maxLength: 256, nullable: false),
+                Type = table.Column<string>(maxLength: 128, nullable: false),
+                Description = table.Column<string>(maxLength: 2000, nullable: true),
+                Endpoint = table.Column<string>(maxLength: 2048, nullable: true),
+                CredentialId = table.Column<string>(maxLength: 128, nullable: true),
+                Enabled = table.Column<bool>(nullable: false),
+                CreatedAt = table.Column<DateTime>(nullable: false),
+                LastModified = table.Column<DateTime>(nullable: false)
             },
             constraints: table => table.PrimaryKey("PK_Connectors", x => x.Id));
 

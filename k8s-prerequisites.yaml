@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vertexbpmn
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vertexbpmn-config
+data:
+  ASPNETCORE_ENVIRONMENT: "Production"
+  ASPNETCORE_URLS: "http://+:8080"
+  ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+  PathBase: ""
+  OperationalMode: "Production"
+  Database__ApplyMigrationsOnStartup: "false"
+  Runtime__Scripts__Enabled: "false"
+  Runtime__Outbox__Enabled: "true"
+  Runtime__Outbox__Provider: "RabbitMq"
+  Runtime__Outbox__Destination: "vertexbpmn-runtime"
+  DataProtection__KeyRingPath: "/var/lib/vertexbpmn/keys"
+  Jwt__Audience: "vertexbpmn-api"
+  Modules__Plugins: "false"
+  Dependencies__Ai__Enabled: "false"
+  Dependencies__Interfaces__AiDecisionService: "false"
+  Dependencies__Mcp__Enabled: "false"
+  Dependencies__Interfaces__McpAgentService: "false"
+  Dependencies__Plugins__Enabled: "false"
+  Telemetry__ConsoleExporter: "false"
+  Telemetry__Otlp__Endpoint: "http://otel-collector:4317"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vertexbpmn-state
+spec:
+  accessModes: ["ReadWriteMany"]
+  resources:
+    requests:
+      storage: 1Gi

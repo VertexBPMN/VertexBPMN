@@ -82,6 +82,7 @@ public class CustomWebApplicationFactory : WebApplicationFactory<VertexBPMN.Api.
                 .AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["OperationalMode"] = "Test",
+                    ["Database:ApplyMigrationsOnStartup"] = "true",
                     ["ProcessEngine:Type"] = _engineType,
                     ["Modules:Swagger"] = "false",
                     ["PathBase"] = "/api"

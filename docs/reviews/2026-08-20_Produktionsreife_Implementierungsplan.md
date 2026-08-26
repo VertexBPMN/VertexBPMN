@@ -94,6 +94,18 @@ Der einzige übersprungene Test ist der bereits bestehende echte OpenAI-Integrat
 - Health, Telemetrie, Datenbankmigrationen, Secrets und Mehr-Pod-Betrieb real testen.
 - Recovery- und Failover-Tests in CI integrieren.
 
+#### Umsetzungsstand Phase 3 (2026-08-26)
+
+Die Implementierung der Punkte 12–13 ist auf dem Phase-3-Branch abgeschlossen:
+
+- Der persistente Runtime-Outbox-Publisher least Nachrichten atomar und replika-sicher, verwendet stabile Message-IDs, Retry-/Dead-Letter-Semantik und RabbitMQ-Publisher-Confirmations beziehungsweise einen idempotenten Kafka-Producer.
+- Readiness prüft Verbindung und Migrationsstand aller fünf Engine-Kontexte, der Dependency-Registry sowie den externen Broker. Normale Produktions-Pods wenden keine Migrationen an; ein separater `--migrate-only`-Job wird vor dem Deployment ausgeführt.
+- Management- und Prometheus-Ausgaben lesen echte persistente Prozess-, Job-, Incident-, Subscription-, Worker- und Outbox-Zähler. Outbox-Traces, Metriken und validierte `X-Correlation-ID`-Weitergabe sind in OpenTelemetry integriert.
+- Die Kubernetes-Ressourcen sind in Voraussetzungen, versionierten Migrations-Job und API-Deployment getrennt. Secrets, gemeinsamer persistenter State/Key-Ring, Port 8080, Startup-/Live-/Ready-Probes, Ressourcenlimits, Non-Root-/Read-Only-Security-Context, PDB und unveränderliche Image-Version sind definiert. Das geordnete Rollout sowie Recovery sind im Produktions-Runbook beschrieben.
+- Der CI-Job `operational-integration` verwendet echte RabbitMQ- und PostgreSQL-Dienste. Er prüft Broker-Roundtrip, die Ablehnung unroutbarer Nachrichten, alle EF-Migrationen und konkurrierendes Outbox-Leasing durch zwei isolierte Service-Provider auf derselben PostgreSQL-Datenbank. Kubernetes-Manifeste werden zusätzlich per Client-Dry-Run validiert.
+
+Lokale Nachweise: Release-Build erfolgreich; Phase-3-Akzeptanztests 9/9 einschließlich providerneutraler PostgreSQL-/SQL-Server-Migrationsskripte; reguläres Haupttestprojekt 666 erfolgreich und ein bestehender OpenAI-Test ohne API-Key übersprungen; separates Phase-1-Gate 7/7; fünf Engine-Modelle plus Dependency-Registry ohne ausstehende Modelländerungen; OpenAPI-Snapshot aktuell. Der externe RabbitMQ-/PostgreSQL- und Kubernetes-Nachweis kann lokal ohne Docker/Kubernetes nicht ausgeführt werden und wird erst mit dem CI-Lauf des gepushten Branches endgültig bestätigt.
+
 ### Phase 4: Erweiterte Features qualifizieren
 
 - Punkte 10–11 und 14 umsetzen.

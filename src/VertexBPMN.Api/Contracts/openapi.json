@@ -713,6 +713,16 @@
         },
         "type": "object"
       },
+      "VertexBPMN.Api.Controllers.VertexIncidentController.ResolveIncidentRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "tenantId": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "VertexBPMN.Api.Controllers.VertexMessageController.CorrelateMessageRequest": {
         "additionalProperties": false,
         "properties": {
@@ -721,6 +731,10 @@
             "type": "string"
           },
           "processInstanceId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "tenantId": {
             "nullable": true,
             "type": "string"
           },
@@ -746,6 +760,10 @@
         "additionalProperties": false,
         "properties": {
           "signalName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "tenantId": {
             "nullable": true,
             "type": "string"
           },
@@ -2713,6 +2731,10 @@
             "nullable": true,
             "type": "string"
           },
+          "revision": {
+            "format": "int64",
+            "type": "integer"
+          },
           "startedAt": {
             "format": "date-time",
             "type": "string"
@@ -2813,6 +2835,10 @@
       "VertexBPMN.Domain.Entities.UserTask": {
         "additionalProperties": false,
         "properties": {
+          "activityId": {
+            "nullable": true,
+            "type": "string"
+          },
           "assignee": {
             "nullable": true,
             "type": "string"
@@ -2876,6 +2902,10 @@
             },
             "nullable": true,
             "type": "array"
+          },
+          "revision": {
+            "format": "int64",
+            "type": "integer"
           },
           "status": {
             "$ref": "#/components/schemas/VertexBPMN.Domain.Entities.UserTaskStatus"
@@ -8675,6 +8705,15 @@
     },
     "/api/vertex/incident": {
       "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tenantId",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -8743,6 +8782,48 @@
                 }
               }
             },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "VertexIncident"
+        ]
+      }
+    },
+    "/api/vertex/incident/{id}/resolve": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/VertexBPMN.Api.Controllers.VertexIncidentController.ResolveIncidentRequest"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VertexBPMN.Api.Controllers.VertexIncidentController.ResolveIncidentRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VertexBPMN.Api.Controllers.VertexIncidentController.ResolveIncidentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
             "description": "OK"
           }
         },

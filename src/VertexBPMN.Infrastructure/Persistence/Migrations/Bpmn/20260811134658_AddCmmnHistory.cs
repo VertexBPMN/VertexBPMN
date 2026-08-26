@@ -15,11 +15,11 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                 name: "CmmnHistory",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    CaseId = table.Column<string>(type: "TEXT", maxLength: 255, nullable: false),
-                    CaseFileJson = table.Column<string>(type: "TEXT", nullable: false),
-                    CompletedPlanItemsJson = table.Column<string>(type: "TEXT", nullable: false),
-                    Timestamp = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    Id = table.Column<Guid>(nullable: false),
+                    CaseId = table.Column<string>(maxLength: 255, nullable: false),
+                    CaseFileJson = table.Column<string>(nullable: false),
+                    CompletedPlanItemsJson = table.Column<string>(nullable: false),
+                    Timestamp = table.Column<DateTime>(nullable: false)
                 },
                 constraints: table =>
                 {

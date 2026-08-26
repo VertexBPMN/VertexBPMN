@@ -8,6 +8,7 @@ using VertexBPMN.Api.Health;
 using VertexBPMN.Api.Hubs;
 using VertexBPMN.Api.Mcp;
 using VertexBPMN.Api.Middleware;
+using VertexBPMN.Api.Operational;
 using VertexBPMN.Api.Plugins;
 using VertexBPMN.Api.Security;
 using VertexBPMN.Api.Services;
@@ -120,8 +121,13 @@ if (opMode != OperationalMode.Test)
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddHealthChecks()
+	.AddCheck("liveness", () => HealthCheckResult.Healthy(), tags: new[] { "live" })
 	.AddCheck<ServiceDependenciesHealthCheck>(
 		"service_dependencies",
+		failureStatus: HealthStatus.Unhealthy,
+		tags: new[] { "ready" })
+	.AddCheck<OperationalReadinessHealthCheck>(
+		"operational_readiness",
 		failureStatus: HealthStatus.Unhealthy,
 		tags: new[] { "ready" });
 
@@ -179,6 +185,14 @@ if (opMode == OperationalMode.Production && moduleOptions.Emails)
 
 var app = builder.Build();
 
+var migrateOnly = args.Any(argument =>
+	string.Equals(argument, "--migrate-only", StringComparison.OrdinalIgnoreCase));
+if (migrateOnly)
+{
+	await DatabaseMigrationCoordinator.ApplyAsync(app.Services);
+	return;
+}
+
 if (opMode is OperationalMode.Production or OperationalMode.Stage)
 {
 	if (builder.Configuration.GetValue<bool>("Runtime:Scripts:Enabled"))
@@ -209,51 +223,14 @@ if (opMode is OperationalMode.Production or OperationalMode.Stage)
 			$"Production dependency validation rejected: {string.Join(", ", forbiddenImplementations)}.");
 }
 
-// Apply versioned schemas for relational providers. InMemory remains available
-// for test and local scenarios where relational migrations do not apply.
-using (var scope = app.Services.CreateScope())
-{
-	var services = scope.ServiceProvider;
-	try
-	{
-		var bpmnContext = services.GetRequiredService<BpmnDbContext>();
-		if (bpmnContext.Database.IsRelational())
-			await bpmnContext.Database.MigrateAsync();
-		else
-			await bpmnContext.Database.EnsureCreatedAsync();
-				
-		var tenantContext = services.GetRequiredService<TenantDbContext>();
-		if (tenantContext.Database.IsRelational())
-			await tenantContext.Database.MigrateAsync();
-		else
-			await tenantContext.Database.EnsureCreatedAsync();
-				
-		var simulationContext = services.GetRequiredService<SimulationScenarioDbContext>();
-		if (simulationContext.Database.IsRelational())
-			await simulationContext.Database.MigrateAsync();
-		else
-			await simulationContext.Database.EnsureCreatedAsync();
-				
-		var processMiningContext = services.GetRequiredService<ProcessMiningEventDbContext>();
-		if (processMiningContext.Database.IsRelational())
-			await processMiningContext.Database.MigrateAsync();
-		else
-			await processMiningContext.Database.EnsureCreatedAsync();
-
-		var decisionContext = services.GetRequiredService<DecisionDbContext>();
-		if (decisionContext.Database.IsRelational())
-			await decisionContext.Database.MigrateAsync();
-		else
-			await decisionContext.Database.EnsureCreatedAsync();
-	}
-	catch (Exception ex)
-	{
-		var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("DatabaseInitialization");
-		logger.LogError(ex, "An error occurred while creating the database");
-		if (opMode is OperationalMode.Production or OperationalMode.Stage)
-			throw;
-	}
-}
+// Production pods never race each other while applying schemas. A dedicated
+// migration job invokes --migrate-only; regular pods only verify schema state.
+var applyMigrationsOnStartup = builder.Configuration.GetValue<bool?>("Database:ApplyMigrationsOnStartup")
+	?? opMode is not (OperationalMode.Production or OperationalMode.Stage);
+if (applyMigrationsOnStartup)
+	await DatabaseMigrationCoordinator.ApplyAsync(app.Services);
+else
+	await DatabaseMigrationCoordinator.EnsureCurrentAsync(app.Services);
 
 // Plugin system gating
 var enablePlugins = moduleOptions.Plugins && dependencyOptions.Plugins.Enabled && opMode != OperationalMode.Test;
@@ -308,7 +285,12 @@ if (enablePlugins)
 // Configure the HTTP request pipeline.
 if (opMode is OperationalMode.Production or OperationalMode.Stage)
 {
-	app.UseHttpsRedirection();
+	// Orchestrator probes originate inside the cluster and use the container's HTTP port.
+	// Application traffic still redirects unless the trusted reverse proxy supplied HTTPS.
+	app.UseWhen(
+		context => !context.Request.Path.StartsWithSegments("/api/health")
+		           && !context.Request.Path.StartsWithSegments("/api/ready"),
+		branch => branch.UseHttpsRedirection());
 }
 
 var pathBase = builder.Configuration["PathBase"]
@@ -341,8 +323,12 @@ if (moduleOptions.Swagger || opMode is OperationalMode.Development or Operationa
 	app.UseSwaggerUI(c => c.RoutePrefix = "swagger");
 }
 
-// Health endpoint
-app.MapHealthChecks("/api/health");
+// Health endpoints remain anonymous so orchestrators can probe a pod before authentication is available.
+app.MapHealthChecks("/api/health").AllowAnonymous();
+app.MapHealthChecks("/api/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+	Predicate = registration => registration.Tags.Contains("live")
+}).AllowAnonymous();
 // Readiness – only include checks tagged "ready"
 app.MapHealthChecks("/api/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
 {
@@ -367,7 +353,7 @@ app.MapHealthChecks("/api/ready", new Microsoft.AspNetCore.Diagnostics.HealthChe
 			payload,
 			new System.Text.Json.JsonSerializerOptions { WriteIndented = false });
 	}
-});
+}).AllowAnonymous();
 
 if (opMode != OperationalMode.Test)
 {
@@ -375,6 +361,8 @@ if (opMode != OperationalMode.Test)
 	app.UseRateLimiter();
 	app.UseAuthentication();
 }
+
+app.UseMiddleware<CorrelationIdMiddleware>();
 
 // Request/Response Logging Middleware
 app.Use(async (context, next) =>

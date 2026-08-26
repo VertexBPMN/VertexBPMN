@@ -17,16 +17,16 @@ public partial class AddCredentialStore : Migration
             name: "Credentials",
             columns: table => new
             {
-                Id = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
-                TenantId = table.Column<string>(type: "TEXT", maxLength: 64, nullable: false),
-                Name = table.Column<string>(type: "TEXT", maxLength: 256, nullable: false),
-                Type = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
-                Description = table.Column<string>(type: "TEXT", maxLength: 2000, nullable: true),
-                SecretKeysJson = table.Column<string>(type: "TEXT", maxLength: 4000, nullable: false),
-                ProtectedValues = table.Column<string>(type: "TEXT", nullable: false),
-                CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false),
-                LastModified = table.Column<DateTime>(type: "TEXT", nullable: false),
-                LastUsedAt = table.Column<DateTime>(type: "TEXT", nullable: true)
+                Id = table.Column<string>(maxLength: 128, nullable: false),
+                TenantId = table.Column<string>(maxLength: 64, nullable: false),
+                Name = table.Column<string>(maxLength: 256, nullable: false),
+                Type = table.Column<string>(maxLength: 128, nullable: false),
+                Description = table.Column<string>(maxLength: 2000, nullable: true),
+                SecretKeysJson = table.Column<string>(maxLength: 4000, nullable: false),
+                ProtectedValues = table.Column<string>(nullable: false),
+                CreatedAt = table.Column<DateTime>(nullable: false),
+                LastModified = table.Column<DateTime>(nullable: false),
+                LastUsedAt = table.Column<DateTime>(nullable: true)
             },
             constraints: table => table.PrimaryKey("PK_Credentials", x => x.Id));
 

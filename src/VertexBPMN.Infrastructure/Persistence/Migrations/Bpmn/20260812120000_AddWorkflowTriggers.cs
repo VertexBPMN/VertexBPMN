@@ -12,16 +12,16 @@ public partial class AddWorkflowTriggers : Migration
             name: "WorkflowTriggers",
             columns: table => new
             {
-                Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                Name = table.Column<string>(type: "TEXT", maxLength: 256, nullable: false),
-                ProcessDefinitionKey = table.Column<string>(type: "TEXT", maxLength: 255, nullable: false),
-                TenantId = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true),
-                SecretHash = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
-                Enabled = table.Column<bool>(type: "INTEGER", nullable: false),
-                CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false),
-                LastModified = table.Column<DateTime>(type: "TEXT", nullable: false),
-                LastTriggeredAt = table.Column<DateTime>(type: "TEXT", nullable: true),
-                InvocationCount = table.Column<long>(type: "INTEGER", nullable: false)
+                Id = table.Column<Guid>(nullable: false),
+                Name = table.Column<string>(maxLength: 256, nullable: false),
+                ProcessDefinitionKey = table.Column<string>(maxLength: 255, nullable: false),
+                TenantId = table.Column<string>(maxLength: 64, nullable: true),
+                SecretHash = table.Column<string>(maxLength: 128, nullable: false),
+                Enabled = table.Column<bool>(nullable: false),
+                CreatedAt = table.Column<DateTime>(nullable: false),
+                LastModified = table.Column<DateTime>(nullable: false),
+                LastTriggeredAt = table.Column<DateTime>(nullable: true),
+                InvocationCount = table.Column<long>(nullable: false)
             },
             constraints: table =>
             {

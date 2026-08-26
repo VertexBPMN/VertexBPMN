@@ -481,6 +481,7 @@ public class BpmnDbContext : DbContext
         outbox.Property(e => e.State).IsRequired().HasMaxLength(32);
         outbox.Property(e => e.TenantId).HasMaxLength(64);
         outbox.Property(e => e.LockOwner).HasMaxLength(255);
+        outbox.Property(e => e.LastError).HasMaxLength(4000);
         outbox.HasIndex(e => new { e.State, e.OccurredAt, e.LockedUntil });
         outbox.HasIndex(e => e.ProcessInstanceId);
 

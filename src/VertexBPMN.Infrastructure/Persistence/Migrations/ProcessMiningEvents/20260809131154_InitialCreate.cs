@@ -17,16 +17,18 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.ProcessMiningEvents
                 name: "Events",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "INTEGER", nullable: false)
-                        .Annotation("Sqlite:Autoincrement", true),
-                    EventType = table.Column<string>(type: "TEXT", maxLength: 200, nullable: false),
-                    ProcessInstanceId = table.Column<string>(type: "TEXT", maxLength: 100, nullable: false),
-                    TaskId = table.Column<string>(type: "TEXT", maxLength: 100, nullable: true),
-                    ActivityId = table.Column<string>(type: "TEXT", maxLength: 100, nullable: true),
-                    UserId = table.Column<string>(type: "TEXT", maxLength: 100, nullable: true),
-                    TenantId = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true),
-                    Timestamp = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
-                    PayloadJson = table.Column<string>(type: "TEXT", maxLength: 4000, nullable: true)
+                    Id = table.Column<int>(nullable: false)
+                        .Annotation("Sqlite:Autoincrement", true)
+                        .Annotation("Npgsql:ValueGenerationStrategy", Npgsql.EntityFrameworkCore.PostgreSQL.Metadata.NpgsqlValueGenerationStrategy.IdentityByDefaultColumn)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    EventType = table.Column<string>(maxLength: 200, nullable: false),
+                    ProcessInstanceId = table.Column<string>(maxLength: 100, nullable: false),
+                    TaskId = table.Column<string>(maxLength: 100, nullable: true),
+                    ActivityId = table.Column<string>(maxLength: 100, nullable: true),
+                    UserId = table.Column<string>(maxLength: 100, nullable: true),
+                    TenantId = table.Column<string>(maxLength: 64, nullable: true),
+                    Timestamp = table.Column<DateTimeOffset>(nullable: false),
+                    PayloadJson = table.Column<string>(maxLength: 4000, nullable: true)
                 },
                 constraints: table =>
                 {

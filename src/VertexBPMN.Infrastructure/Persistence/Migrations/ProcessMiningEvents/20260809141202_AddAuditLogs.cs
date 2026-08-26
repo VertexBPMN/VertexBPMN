@@ -15,17 +15,19 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.ProcessMiningEvents
                 name: "AuditLogs",
                 columns: table => new
                 {
-                    Id = table.Column<long>(type: "INTEGER", nullable: false)
-                        .Annotation("Sqlite:Autoincrement", true),
-                    Timestamp = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
-                    Action = table.Column<string>(type: "TEXT", maxLength: 200, nullable: false),
-                    Resource = table.Column<string>(type: "TEXT", maxLength: 300, nullable: true),
-                    ResourceId = table.Column<string>(type: "TEXT", maxLength: 200, nullable: true),
-                    UserId = table.Column<string>(type: "TEXT", maxLength: 200, nullable: true),
-                    TenantId = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true),
-                    CorrelationId = table.Column<string>(type: "TEXT", maxLength: 128, nullable: true),
-                    StatusCode = table.Column<int>(type: "INTEGER", nullable: false),
-                    DetailsJson = table.Column<string>(type: "TEXT", maxLength: 8000, nullable: true)
+                    Id = table.Column<long>(nullable: false)
+                        .Annotation("Sqlite:Autoincrement", true)
+                        .Annotation("Npgsql:ValueGenerationStrategy", Npgsql.EntityFrameworkCore.PostgreSQL.Metadata.NpgsqlValueGenerationStrategy.IdentityByDefaultColumn)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Timestamp = table.Column<DateTimeOffset>(nullable: false),
+                    Action = table.Column<string>(maxLength: 200, nullable: false),
+                    Resource = table.Column<string>(maxLength: 300, nullable: true),
+                    ResourceId = table.Column<string>(maxLength: 200, nullable: true),
+                    UserId = table.Column<string>(maxLength: 200, nullable: true),
+                    TenantId = table.Column<string>(maxLength: 64, nullable: true),
+                    CorrelationId = table.Column<string>(maxLength: 128, nullable: true),
+                    StatusCode = table.Column<int>(nullable: false),
+                    DetailsJson = table.Column<string>(maxLength: 8000, nullable: true)
                 },
                 constraints: table =>
                 {

@@ -68,7 +68,6 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
             migrationBuilder.AddColumn<string>(
                 name: "ActivityId",
                 table: "Tasks",
-                type: "TEXT",
                 maxLength: 255,
                 nullable: false,
                 defaultValue: "");
@@ -76,21 +75,18 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
             migrationBuilder.AddColumn<long>(
                 name: "Revision",
                 table: "Tasks",
-                type: "INTEGER",
                 nullable: false,
                 defaultValue: 0L);
 
             migrationBuilder.AddColumn<long>(
                 name: "Revision",
                 table: "ProcessInstances",
-                type: "INTEGER",
                 nullable: false,
                 defaultValue: 0L);
 
             migrationBuilder.AddColumn<string>(
                 name: "TenantScope",
                 table: "ProcessDefinitions",
-                type: "TEXT",
                 maxLength: 128,
                 nullable: false,
                 defaultValue: "$global");
@@ -98,7 +94,6 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
             migrationBuilder.AddColumn<string>(
                 name: "ActivityId",
                 table: "Jobs",
-                type: "TEXT",
                 maxLength: 255,
                 nullable: false,
                 defaultValue: "");
@@ -106,60 +101,51 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
             migrationBuilder.AddColumn<DateTime>(
                 name: "CompletedAt",
                 table: "Jobs",
-                type: "TEXT",
                 nullable: true);
 
             migrationBuilder.AddColumn<DateTime>(
                 name: "CreatedAt",
                 table: "Jobs",
-                type: "TEXT",
                 nullable: false,
                 defaultValue: new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified));
 
             migrationBuilder.AddColumn<string>(
                 name: "LockOwner",
                 table: "Jobs",
-                type: "TEXT",
                 maxLength: 255,
                 nullable: true);
 
             migrationBuilder.AddColumn<DateTime>(
                 name: "LockedUntil",
                 table: "Jobs",
-                type: "TEXT",
                 nullable: true);
 
             migrationBuilder.AddColumn<long>(
                 name: "Revision",
                 table: "Jobs",
-                type: "INTEGER",
                 nullable: false,
                 defaultValue: 0L);
 
             migrationBuilder.AddColumn<string>(
                 name: "ActivityId",
                 table: "Incidents",
-                type: "TEXT",
                 maxLength: 255,
                 nullable: true);
 
             migrationBuilder.AddColumn<DateTime>(
                 name: "ResolvedAt",
                 table: "Incidents",
-                type: "TEXT",
                 nullable: true);
 
             migrationBuilder.AddColumn<int>(
                 name: "RetryCount",
                 table: "Incidents",
-                type: "INTEGER",
                 nullable: false,
                 defaultValue: 0);
 
             migrationBuilder.AddColumn<long>(
                 name: "Revision",
                 table: "ExecutionTokens",
-                type: "INTEGER",
                 nullable: false,
                 defaultValue: 0L);
 
@@ -167,17 +153,17 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                 name: "EventSubscriptions",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    ProcessInstanceId = table.Column<Guid>(type: "TEXT", nullable: false),
-                    ExecutionTokenId = table.Column<Guid>(type: "TEXT", nullable: false),
-                    ActivityId = table.Column<string>(type: "TEXT", maxLength: 255, nullable: false),
-                    EventType = table.Column<string>(type: "TEXT", maxLength: 32, nullable: false),
-                    EventName = table.Column<string>(type: "TEXT", maxLength: 255, nullable: false),
-                    State = table.Column<string>(type: "TEXT", maxLength: 32, nullable: false),
-                    TenantId = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true),
-                    CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    ConsumedAt = table.Column<DateTime>(type: "TEXT", nullable: true),
-                    Revision = table.Column<long>(type: "INTEGER", nullable: false)
+                    Id = table.Column<Guid>(nullable: false),
+                    ProcessInstanceId = table.Column<Guid>(nullable: false),
+                    ExecutionTokenId = table.Column<Guid>(nullable: false),
+                    ActivityId = table.Column<string>(maxLength: 255, nullable: false),
+                    EventType = table.Column<string>(maxLength: 32, nullable: false),
+                    EventName = table.Column<string>(maxLength: 255, nullable: false),
+                    State = table.Column<string>(maxLength: 32, nullable: false),
+                    TenantId = table.Column<string>(maxLength: 64, nullable: true),
+                    CreatedAt = table.Column<DateTime>(nullable: false),
+                    ConsumedAt = table.Column<DateTime>(nullable: true),
+                    Revision = table.Column<long>(nullable: false)
                 },
                 constraints: table =>
                 {
@@ -200,14 +186,14 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                 name: "RuntimeInbox",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    IdempotencyKey = table.Column<string>(type: "TEXT", maxLength: 255, nullable: false),
-                    Operation = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
-                    TenantId = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true),
-                    TenantScope = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
-                    Result = table.Column<string>(type: "TEXT", nullable: true),
-                    ReceivedAt = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    CompletedAt = table.Column<DateTime>(type: "TEXT", nullable: true)
+                    Id = table.Column<Guid>(nullable: false),
+                    IdempotencyKey = table.Column<string>(maxLength: 255, nullable: false),
+                    Operation = table.Column<string>(maxLength: 128, nullable: false),
+                    TenantId = table.Column<string>(maxLength: 64, nullable: true),
+                    TenantScope = table.Column<string>(maxLength: 128, nullable: false),
+                    Result = table.Column<string>(nullable: true),
+                    ReceivedAt = table.Column<DateTime>(nullable: false),
+                    CompletedAt = table.Column<DateTime>(nullable: true)
                 },
                 constraints: table =>
                 {
@@ -218,17 +204,17 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                 name: "RuntimeOutbox",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    ProcessInstanceId = table.Column<Guid>(type: "TEXT", nullable: false),
-                    EventType = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
-                    Payload = table.Column<string>(type: "TEXT", nullable: false),
-                    State = table.Column<string>(type: "TEXT", maxLength: 32, nullable: false),
-                    TenantId = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true),
-                    OccurredAt = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    PublishedAt = table.Column<DateTime>(type: "TEXT", nullable: true),
-                    Attempts = table.Column<int>(type: "INTEGER", nullable: false),
-                    LockOwner = table.Column<string>(type: "TEXT", maxLength: 255, nullable: true),
-                    LockedUntil = table.Column<DateTime>(type: "TEXT", nullable: true)
+                    Id = table.Column<Guid>(nullable: false),
+                    ProcessInstanceId = table.Column<Guid>(nullable: false),
+                    EventType = table.Column<string>(maxLength: 128, nullable: false),
+                    Payload = table.Column<string>(nullable: false),
+                    State = table.Column<string>(maxLength: 32, nullable: false),
+                    TenantId = table.Column<string>(maxLength: 64, nullable: true),
+                    OccurredAt = table.Column<DateTime>(nullable: false),
+                    PublishedAt = table.Column<DateTime>(nullable: true),
+                    Attempts = table.Column<int>(nullable: false),
+                    LockOwner = table.Column<string>(maxLength: 255, nullable: true),
+                    LockedUntil = table.Column<DateTime>(nullable: true)
                 },
                 constraints: table =>
                 {
@@ -239,20 +225,20 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                 name: "WorkerRegistrations",
                 columns: table => new
                 {
-                    Id = table.Column<string>(type: "TEXT", maxLength: 255, nullable: false),
-                    HostName = table.Column<string>(type: "TEXT", maxLength: 255, nullable: false),
-                    Port = table.Column<int>(type: "INTEGER", nullable: false),
-                    SupportedNodeTypes = table.Column<string>(type: "TEXT", nullable: false),
-                    CurrentLoad = table.Column<int>(type: "INTEGER", nullable: false),
-                    MaxCapacity = table.Column<int>(type: "INTEGER", nullable: false),
-                    RegisteredAt = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    LastHeartbeat = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    TotalTasksProcessed = table.Column<long>(type: "INTEGER", nullable: false),
-                    TotalProcessingMilliseconds = table.Column<double>(type: "REAL", nullable: false),
-                    CpuUsage = table.Column<double>(type: "REAL", nullable: false),
-                    MemoryUsage = table.Column<double>(type: "REAL", nullable: false),
-                    ActiveTasks = table.Column<int>(type: "INTEGER", nullable: false),
-                    Revision = table.Column<long>(type: "INTEGER", nullable: false)
+                    Id = table.Column<string>(maxLength: 255, nullable: false),
+                    HostName = table.Column<string>(maxLength: 255, nullable: false),
+                    Port = table.Column<int>(nullable: false),
+                    SupportedNodeTypes = table.Column<string>(nullable: false),
+                    CurrentLoad = table.Column<int>(nullable: false),
+                    MaxCapacity = table.Column<int>(nullable: false),
+                    RegisteredAt = table.Column<DateTime>(nullable: false),
+                    LastHeartbeat = table.Column<DateTime>(nullable: false),
+                    TotalTasksProcessed = table.Column<long>(nullable: false),
+                    TotalProcessingMilliseconds = table.Column<double>(nullable: false),
+                    CpuUsage = table.Column<double>(nullable: false),
+                    MemoryUsage = table.Column<double>(nullable: false),
+                    ActiveTasks = table.Column<int>(nullable: false),
+                    Revision = table.Column<long>(nullable: false)
                 },
                 constraints: table =>
                 {

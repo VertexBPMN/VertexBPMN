@@ -14,11 +14,11 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                 name: "IdentityAuthorizations",
                 columns: table => new
                 {
-                    Id = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
-                    UserId = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
-                    GroupId = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
-                    Resource = table.Column<string>(type: "TEXT", maxLength: 512, nullable: false),
-                    Permissions = table.Column<string>(type: "TEXT", maxLength: 512, nullable: false)
+                    Id = table.Column<string>(maxLength: 128, nullable: false),
+                    UserId = table.Column<string>(maxLength: 128, nullable: false),
+                    GroupId = table.Column<string>(maxLength: 128, nullable: false),
+                    Resource = table.Column<string>(maxLength: 512, nullable: false),
+                    Permissions = table.Column<string>(maxLength: 512, nullable: false)
                 },
                 constraints: table =>
                 {
@@ -29,8 +29,8 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                 name: "IdentityGroupMemberships",
                 columns: table => new
                 {
-                    GroupId = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
-                    UserId = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false)
+                    GroupId = table.Column<string>(maxLength: 128, nullable: false),
+                    UserId = table.Column<string>(maxLength: 128, nullable: false)
                 },
                 constraints: table =>
                 {
@@ -41,10 +41,10 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                 name: "IdentityGroups",
                 columns: table => new
                 {
-                    Id = table.Column<string>(type: "TEXT", nullable: false),
-                    Name = table.Column<string>(type: "TEXT", maxLength: 256, nullable: false),
-                    Type = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
-                    TenantId = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true)
+                    Id = table.Column<string>(nullable: false),
+                    Name = table.Column<string>(maxLength: 256, nullable: false),
+                    Type = table.Column<string>(maxLength: 128, nullable: false),
+                    TenantId = table.Column<string>(maxLength: 64, nullable: true)
                 },
                 constraints: table =>
                 {

@@ -11,6 +11,7 @@ using VertexBPMN.Infrastructure.Persistence;
 using VertexBPMN.Infrastructure.Persistence.Repositories;
 using VertexBPMN.Infrastructure.Persistence.Services;
 using VertexBPMN.Infrastructure.Messaging;
+using VertexBPMN.Infrastructure.Operational;
 using VertexBPMN.Infrastructure.Stores;
 
 namespace VertexBPMN.Infrastructure;
@@ -35,6 +36,11 @@ public static class InfrastructureModule
         services.AddScoped<ISimulationScenarioService, SimulationScenarioService>();
         services.AddScoped<IMessageDispatcher, PersistentMessageDispatcher>();
         services.AddScoped<PersistentProcessMiningEventSink>();
+        services.AddScoped<IRuntimeMetricsReader, RuntimeMetricsReader>();
+        services.AddSingleton<RuntimeMetricsState>();
+        if (mode != "Test" && configuration.GetValue("Operational:Metrics:Enabled", true))
+            services.AddHostedService<RuntimeMetricsCollectorService>();
+        ConfigureRuntimeOutbox(services, configuration, mode);
         services.AddScoped<IProcessDefinitionRepository, ProcessDefinitionRepository>();
         services.AddScoped<IWorkflowTriggerRepository, WorkflowTriggerRepository>();
         services.AddScoped<IProcessInstanceRepository, ProcessInstanceRepository>();
@@ -62,6 +68,38 @@ public static class InfrastructureModule
         services.AddScoped<IConnectorTemplateService, PersistentConnectorTemplateService>();
         services.AddScoped<IFormDefinitionService, PersistentFormDefinitionService>();
         return services;
+    }
+
+    private static void ConfigureRuntimeOutbox(
+        IServiceCollection services,
+        IConfiguration configuration,
+        string mode)
+    {
+        var options = new RuntimeOutboxOptions();
+        configuration.GetSection("Runtime:Outbox").Bind(options);
+        var productionMode = mode is "Production" or "Stage";
+        var provider = options.Provider.Trim().ToLowerInvariant();
+
+        if (productionMode && !options.Enabled)
+            throw new InvalidOperationException(
+                "Runtime:Outbox:Enabled must be true in Production and Stage.");
+        if (options.Enabled && string.IsNullOrWhiteSpace(options.ConnectionString))
+            throw new InvalidOperationException(
+                "Runtime:Outbox:ConnectionString is required when the outbox publisher is enabled.");
+        if (productionMode && provider is not ("kafka" or "rabbitmq"))
+            throw new InvalidOperationException(
+                "Runtime:Outbox:Provider must be Kafka or RabbitMq in Production and Stage.");
+
+        services.AddSingleton(options);
+        services.AddSingleton<IRuntimeOutboxTransport>(sp =>
+            provider switch
+            {
+                "kafka" => new KafkaRuntimeOutboxTransport(options),
+                "rabbitmq" => new RabbitMqRuntimeOutboxTransport(options),
+                _ => new DisabledRuntimeOutboxTransport()
+            });
+        if (options.Enabled)
+            services.AddHostedService<RuntimeOutboxPublisherService>();
     }
 
     /// <summary>

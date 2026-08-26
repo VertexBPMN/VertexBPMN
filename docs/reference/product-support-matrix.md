@@ -53,8 +53,8 @@
 | gRPC | `partial` | Vertrags-/Smoke-Tests existieren; keine gleichwertige Abdeckung des freigegebenen persistenten Kernpfads. |
 | EF-Core-Runtime-Persistenz | `supported` | Instanzen, Tokens, Variablen, Tasks, Jobs, Subscriptions, Incidents, Inbox, Outbox und Worker-Registrierungen sind relational modelliert und migriert. |
 | Produktionskonfiguration und Mandantenschutz | `supported` | Production/Stage verlangen Connection Strings und persistenten Data-Protection-Keyring; Fake/InMemory/NoOp-Auflösungen und unsichere Script-/Connector-/Plug-in-Konfigurationen brechen den Start ab. |
-| Externe Brokerzustellung der Outbox | `partial` | Runtime- und Dispatcher-Ereignisse werden dauerhaft in die Outbox geschrieben. Ein produktiver Publisher samt Broker-Failover/Readiness ist Aufgabe von Phase 3. |
-| Process Mining / Analytics | `partial` | Ein persistenter Sink ist registriert; vollständige atomare Outbox-Projektion und Betriebsmetriken folgen in Phase 3. |
+| Externe Brokerzustellung der Outbox | `supported` | Der persistente Publisher least Nachrichten atomar und replika-sicher und liefert mit stabilen Message-IDs, Retry-/Dead-Letter-Semantik und Broker-Readiness an RabbitMQ oder Kafka. Echte RabbitMQ-/PostgreSQL-Akzeptanztests sind ein verpflichtendes separates CI-Gate. |
+| Process Mining / Analytics | `partial` | Ein persistenter Sink und dauerhafte Runtime-Outbox-Projektion sind registriert; Management- und Prometheus-Ausgaben lesen persistente Betriebszähler. Eine vollständige fachliche Analytics- und Process-Mining-Qualifizierung ist nicht nachgewiesen. |
 | bpmn.io Studio | `partial` | Gepinnte Assets und Moddle-Tests existieren; vollständige Modell-/Runtime-Parität ist nicht nachgewiesen. |
 
 ## Verbindliche Acceptance-Fälle

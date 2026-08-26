@@ -13,7 +13,7 @@ public static class DependencyConfigurationLoader
             .Options;
 
         using var dbContext = new DependencyRegistryDbContext(options);
-        dbContext.Database.EnsureCreated();
+        dbContext.Database.Migrate();
         var values = dbContext.Entries
             .AsNoTracking()
             .ToDictionary(entry => entry.Key, entry => (string?)entry.Value, StringComparer.OrdinalIgnoreCase);

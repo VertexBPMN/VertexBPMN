@@ -16,16 +16,16 @@ public partial class AddConnectorTemplates : Migration
             name: "ConnectorTemplates",
             columns: table => new
             {
-                Id = table.Column<string>(type: "TEXT", nullable: false),
-                TenantId = table.Column<string>(type: "TEXT", maxLength: 64, nullable: false),
-                Name = table.Column<string>(type: "TEXT", maxLength: 256, nullable: false),
-                Category = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
-                AppliesToJson = table.Column<string>(type: "TEXT", nullable: false),
-                Runtime = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
-                Icon = table.Column<string>(type: "TEXT", maxLength: 256, nullable: true),
-                PropertiesJson = table.Column<string>(type: "TEXT", nullable: false),
-                CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false),
-                LastModified = table.Column<DateTime>(type: "TEXT", nullable: false)
+                Id = table.Column<string>(nullable: false),
+                TenantId = table.Column<string>(maxLength: 64, nullable: false),
+                Name = table.Column<string>(maxLength: 256, nullable: false),
+                Category = table.Column<string>(maxLength: 128, nullable: false),
+                AppliesToJson = table.Column<string>(nullable: false),
+                Runtime = table.Column<string>(maxLength: 128, nullable: false),
+                Icon = table.Column<string>(maxLength: 256, nullable: true),
+                PropertiesJson = table.Column<string>(nullable: false),
+                CreatedAt = table.Column<DateTime>(nullable: false),
+                LastModified = table.Column<DateTime>(nullable: false)
             },
             constraints: table => table.PrimaryKey("PK_ConnectorTemplates", x => x.Id));
 

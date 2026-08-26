@@ -15,11 +15,11 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Decision
                 name: "DecisionDefinitions",
                 columns: table => new
                 {
-                    Id = table.Column<string>(type: "TEXT", maxLength: 200, nullable: false),
-                    Key = table.Column<string>(type: "TEXT", maxLength: 200, nullable: false),
-                    Name = table.Column<string>(type: "TEXT", maxLength: 500, nullable: false),
-                    DmnXml = table.Column<string>(type: "TEXT", nullable: false),
-                    TenantId = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true)
+                    Id = table.Column<string>(maxLength: 200, nullable: false),
+                    Key = table.Column<string>(maxLength: 200, nullable: false),
+                    Name = table.Column<string>(maxLength: 500, nullable: false),
+                    DmnXml = table.Column<string>(nullable: false),
+                    TenantId = table.Column<string>(maxLength: 64, nullable: true)
                 },
                 constraints: table =>
                 {
@@ -30,14 +30,14 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Decision
                 name: "DecisionInstances",
                 columns: table => new
                 {
-                    Id = table.Column<string>(type: "TEXT", maxLength: 100, nullable: false),
-                    DecisionDefinitionKey = table.Column<string>(type: "TEXT", maxLength: 200, nullable: false),
-                    TenantId = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true),
-                    EvaluationTime = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    InputVariables = table.Column<string>(type: "TEXT", nullable: false),
-                    OutputVariables = table.Column<string>(type: "TEXT", nullable: false),
-                    Failed = table.Column<bool>(type: "INTEGER", nullable: false),
-                    ErrorMessage = table.Column<string>(type: "TEXT", maxLength: 2000, nullable: true)
+                    Id = table.Column<string>(maxLength: 100, nullable: false),
+                    DecisionDefinitionKey = table.Column<string>(maxLength: 200, nullable: false),
+                    TenantId = table.Column<string>(maxLength: 64, nullable: true),
+                    EvaluationTime = table.Column<DateTime>(nullable: false),
+                    InputVariables = table.Column<string>(nullable: false),
+                    OutputVariables = table.Column<string>(nullable: false),
+                    Failed = table.Column<bool>(nullable: false),
+                    ErrorMessage = table.Column<string>(maxLength: 2000, nullable: true)
                 },
                 constraints: table =>
                 {
@@ -48,12 +48,12 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Decision
                 name: "DmnDecisionTables",
                 columns: table => new
                 {
-                    Key = table.Column<string>(type: "TEXT", maxLength: 200, nullable: false),
-                    Name = table.Column<string>(type: "TEXT", maxLength: 500, nullable: true),
-                    Inputs = table.Column<string>(type: "TEXT", nullable: false),
-                    Outputs = table.Column<string>(type: "TEXT", nullable: false),
-                    Rules = table.Column<string>(type: "TEXT", nullable: false),
-                    HitPolicy = table.Column<string>(type: "TEXT", maxLength: 50, nullable: false)
+                    Key = table.Column<string>(maxLength: 200, nullable: false),
+                    Name = table.Column<string>(maxLength: 500, nullable: true),
+                    Inputs = table.Column<string>(nullable: false),
+                    Outputs = table.Column<string>(nullable: false),
+                    Rules = table.Column<string>(nullable: false),
+                    HitPolicy = table.Column<string>(maxLength: 50, nullable: false)
                 },
                 constraints: table =>
                 {

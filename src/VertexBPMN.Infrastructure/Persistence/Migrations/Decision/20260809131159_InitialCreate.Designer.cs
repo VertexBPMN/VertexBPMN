@@ -23,26 +23,21 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Decision
             modelBuilder.Entity("VertexBPMN.Domain.Model.Dmn.DecisionDefinition", b =>
                 {
                     b.Property<string>("Id")
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(200);
 
                     b.Property<string>("DmnXml")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                        .IsRequired();
 
                     b.Property<string>("Key")
                         .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(200);
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(500);
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(64);
 
                     b.HasKey("Id");
 
@@ -57,35 +52,27 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Decision
             modelBuilder.Entity("VertexBPMN.Domain.Model.Dmn.DecisionInstance", b =>
                 {
                     b.Property<string>("Id")
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(100);
 
                     b.Property<string>("DecisionDefinitionKey")
                         .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(200);
 
                     b.Property<string>("ErrorMessage")
-                        .HasMaxLength(2000)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(2000);
 
-                    b.Property<DateTime>("EvaluationTime")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTime>("EvaluationTime");
 
-                    b.Property<bool>("Failed")
-                        .HasColumnType("INTEGER");
+                    b.Property<bool>("Failed");
 
                     b.Property<string>("InputVariables")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                        .IsRequired();
 
                     b.Property<string>("OutputVariables")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                        .IsRequired();
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(64);
 
                     b.HasKey("Id");
 
@@ -103,29 +90,23 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Decision
             modelBuilder.Entity("VertexBPMN.Domain.Model.Dmn.DmnDecisionTable", b =>
                 {
                     b.Property<string>("Key")
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(200);
 
                     b.Property<string>("HitPolicy")
                         .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(50);
 
                     b.Property<string>("Inputs")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                        .IsRequired();
 
                     b.Property<string>("Name")
-                        .HasMaxLength(500)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(500);
 
                     b.Property<string>("Outputs")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                        .IsRequired();
 
                     b.Property<string>("Rules")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                        .IsRequired();
 
                     b.HasKey("Key");
 

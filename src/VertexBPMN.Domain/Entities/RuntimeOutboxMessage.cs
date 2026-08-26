@@ -16,4 +16,5 @@ public sealed class RuntimeOutboxMessage
     public int Attempts { get; set; }
     public string? LockOwner { get; set; }
     public DateTime? LockedUntil { get; set; }
+    public string? LastError { get; set; }
 }

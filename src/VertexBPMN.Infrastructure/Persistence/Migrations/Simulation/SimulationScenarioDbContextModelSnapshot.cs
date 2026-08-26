@@ -18,30 +18,23 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Simulation
 
             modelBuilder.Entity("VertexBPMN.Domain.Entities.SimulationScenario", b =>
                 {
-                    b.Property<string>("Id")
-                        .HasColumnType("TEXT");
+                    b.Property<string>("Id");
 
-                    b.Property<string>("BpmnXml")
-                        .HasColumnType("TEXT");
+                    b.Property<string>("BpmnXml");
 
                     b.Property<string>("Description")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                        .IsRequired();
 
-                    b.Property<int?>("MaxSteps")
-                        .HasColumnType("INTEGER");
+                    b.Property<int?>("MaxSteps");
 
                     b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                        .IsRequired();
 
                     b.Property<string>("ProcessDefinitionId")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                        .IsRequired();
 
                     b.Property<string>("TenantId")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                        .IsRequired();
 
                     b.HasKey("Id");
 

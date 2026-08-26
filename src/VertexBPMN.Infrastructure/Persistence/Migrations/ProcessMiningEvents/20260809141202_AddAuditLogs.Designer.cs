@@ -23,43 +23,33 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.ProcessMiningEvents
             modelBuilder.Entity("VertexBPMN.Domain.Entities.AuditLog", b =>
                 {
                     b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .ValueGeneratedOnAdd();
 
                     b.Property<string>("Action")
                         .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(200);
 
                     b.Property<string>("CorrelationId")
-                        .HasMaxLength(128)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(128);
 
                     b.Property<string>("DetailsJson")
-                        .HasMaxLength(8000)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(8000);
 
                     b.Property<string>("Resource")
-                        .HasMaxLength(300)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(300);
 
                     b.Property<string>("ResourceId")
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(200);
 
-                    b.Property<int>("StatusCode")
-                        .HasColumnType("INTEGER");
+                    b.Property<int>("StatusCode");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(64);
 
-                    b.Property<DateTimeOffset>("Timestamp")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTimeOffset>("Timestamp");
 
                     b.Property<string>("UserId")
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(200);
 
                     b.HasKey("Id");
 
@@ -75,41 +65,32 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.ProcessMiningEvents
             modelBuilder.Entity("VertexBPMN.Domain.Entities.ProcessMiningEvent", b =>
                 {
                     b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .ValueGeneratedOnAdd();
 
                     b.Property<string>("ActivityId")
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(100);
 
                     b.Property<string>("EventType")
                         .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(200);
 
                     b.Property<string>("PayloadJson")
-                        .HasMaxLength(4000)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(4000);
 
                     b.Property<string>("ProcessInstanceId")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(100);
 
                     b.Property<string>("TaskId")
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(100);
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(64);
 
-                    b.Property<DateTimeOffset>("Timestamp")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTimeOffset>("Timestamp");
 
                     b.Property<string>("UserId")
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(100);
 
                     b.HasKey("Id");
 

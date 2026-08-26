@@ -13,14 +13,12 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
             migrationBuilder.AddColumn<string>(
                 name: "TenantId",
                 table: "IdentityGroupMemberships",
-                type: "TEXT",
                 maxLength: 64,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "TenantId",
                 table: "IdentityAuthorizations",
-                type: "TEXT",
                 maxLength: 64,
                 nullable: true);
 

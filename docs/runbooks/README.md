@@ -8,6 +8,7 @@ Betriebs-, Release- und Troubleshooting-Dokumentation.
 - [Monitoring](monitoring.md)
 - [Observability and Performance](observability-performance.md)
 - [Production Notes](production-notes.md)
+- [Production Deployment and Recovery](production-deployment.md)
 - [SDK Release Checklist](sdk-release-checklist.md)
 - [Studio Authentication](studio-authentication.md)
 - [Troubleshooting](troubleshooting.md)

@@ -11,6 +11,7 @@ root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 snapshot="$root_dir/src/VertexBPMN.Api/Contracts/openapi.json"
 generated="$(mktemp)"
 server_log="$(mktemp)"
+database_dir="$(mktemp -d)"
 port="${VERTEXBPMN_OPENAPI_PORT:-5088}"
 configuration="${VERTEXBPMN_OPENAPI_CONFIGURATION:-Release}"
 
@@ -20,12 +21,21 @@ cleanup() {
     wait "$server_pid" 2>/dev/null || true
   fi
   rm -f "$generated" "$server_log"
+  rm -rf "$database_dir"
 }
 trap cleanup EXIT
 
 cd "$root_dir"
 ASPNETCORE_ENVIRONMENT=Test \
 DOTNET_ENVIRONMENT=Test \
+OperationalMode=Test \
+Database__ApplyMigrationsOnStartup=true \
+ConnectionStrings__BpmnDbContext="Data Source=${database_dir}/bpmn.db" \
+ConnectionStrings__TenantDbContext="Data Source=${database_dir}/tenants.db" \
+ConnectionStrings__SimulationScenarioDbContext="Data Source=${database_dir}/simulation.db" \
+ConnectionStrings__ProcessMiningEvents="Data Source=${database_dir}/mining.db" \
+ConnectionStrings__DecisionDbContext="Data Source=${database_dir}/decision.db" \
+ConnectionStrings__DependencyRegistry="Data Source=${database_dir}/dependencies.db" \
 ASPNETCORE_URLS="http://127.0.0.1:${port}" \
 dotnet run --project src/VertexBPMN.Api/VertexBPMN.Api.csproj --configuration "$configuration" --no-build --no-launch-profile >"$server_log" 2>&1 &
 server_pid=$!
@@ -50,7 +60,9 @@ fi
 jq -e '.openapi and .paths and .components.schemas' "$generated" >/dev/null
 
 if [[ "$mode" == "update" ]]; then
-  jq -S . "$generated" >"$snapshot"
+  # The tracked contract uses CRLF; preserve it so updating on Linux does not
+  # turn a small API change into a whole-file line-ending diff.
+  jq -S . "$generated" | sed 's/$/\r/' >"$snapshot"
   echo "Updated OpenAPI snapshot: $snapshot"
   exit 0
 fi

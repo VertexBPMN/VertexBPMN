@@ -2,35 +2,116 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: vertexbpmn
+  labels:
+    app.kubernetes.io/name: vertexbpmn
 spec:
   replicas: 2
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
-      app: vertexbpmn
+      app.kubernetes.io/name: vertexbpmn
+      app.kubernetes.io/component: api
   template:
     metadata:
       labels:
-        app: vertexbpmn
+        app.kubernetes.io/name: vertexbpmn
+        app.kubernetes.io/component: api
     spec:
+      serviceAccountName: vertexbpmn
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
-      - name: vertexbpmn
-        image: vertexbpmn:latest
-        ports:
-        - containerPort: 80
-        env:
-        - name: ASPNETCORE_ENVIRONMENT
-          value: "Production"
-        - name: ConnectionStrings__ProcessMiningEvents
-          value: "Host=postgres;Port=5432;Database=vertexbpmn_events;Username=vertexbpmn;Password=vertexbpmn"
+        - name: vertexbpmn
+          image: ghcr.io/vertexbpmn/vertexbpmn:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: vertexbpmn-config
+            - secretRef:
+                name: vertexbpmn-secrets
+          startupProbe:
+            httpGet:
+              path: /api/health/live
+              port: http
+            failureThreshold: 30
+            periodSeconds: 2
+          livenessProbe:
+            httpGet:
+              path: /api/health/live
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/ready
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          volumeMounts:
+            - name: state
+              mountPath: /var/lib/vertexbpmn
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: state
+          persistentVolumeClaim:
+            claimName: vertexbpmn-state
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: vertexbpmn
+  labels:
+    app.kubernetes.io/name: vertexbpmn
 spec:
   type: ClusterIP
   selector:
-    app: vertexbpmn
+    app.kubernetes.io/name: vertexbpmn
+    app.kubernetes.io/component: api
   ports:
-  - port: 80
-    targetPort: 80
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: vertexbpmn
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vertexbpmn
+      app.kubernetes.io/component: api

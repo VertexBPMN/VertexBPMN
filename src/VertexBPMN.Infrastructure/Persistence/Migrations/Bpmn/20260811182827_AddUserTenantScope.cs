@@ -13,7 +13,6 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
             migrationBuilder.AddColumn<string>(
                 name: "TenantId",
                 table: "Users",
-                type: "TEXT",
                 maxLength: 64,
                 nullable: true);
 

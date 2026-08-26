@@ -16,8 +16,8 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                 name: "FeatureFlags",
                 columns: table => new
                 {
-                    Name = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
-                    Enabled = table.Column<bool>(type: "INTEGER", nullable: false)
+                    Name = table.Column<string>(maxLength: 128, nullable: false),
+                    Enabled = table.Column<bool>(nullable: false)
                 },
                 constraints: table =>
                 {

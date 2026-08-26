@@ -15,14 +15,14 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                 name: "FormDefinitions",
                 columns: table => new
                 {
-                    Id = table.Column<string>(type: "TEXT", nullable: false),
-                    TenantId = table.Column<string>(type: "TEXT", maxLength: 64, nullable: false),
-                    Key = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
-                    Name = table.Column<string>(type: "TEXT", maxLength: 256, nullable: false),
-                    Schema = table.Column<string>(type: "TEXT", nullable: false),
-                    Version = table.Column<int>(type: "INTEGER", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    LastModified = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    Id = table.Column<string>(nullable: false),
+                    TenantId = table.Column<string>(maxLength: 64, nullable: false),
+                    Key = table.Column<string>(maxLength: 128, nullable: false),
+                    Name = table.Column<string>(maxLength: 256, nullable: false),
+                    Schema = table.Column<string>(nullable: false),
+                    Version = table.Column<int>(nullable: false),
+                    CreatedAt = table.Column<DateTime>(nullable: false),
+                    LastModified = table.Column<DateTime>(nullable: false)
                 },
                 constraints: table =>
                 {

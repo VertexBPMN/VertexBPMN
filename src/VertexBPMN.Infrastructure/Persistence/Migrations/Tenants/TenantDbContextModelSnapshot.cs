@@ -19,18 +19,14 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Tenants
 
             modelBuilder.Entity("VertexBPMN.Domain.Entities.Tenant", b =>
                 {
-                    b.Property<string>("Id")
-                        .HasColumnType("TEXT");
+                    b.Property<string>("Id");
 
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTime>("CreatedAt");
 
-                    b.Property<string>("Description")
-                        .HasColumnType("TEXT");
+                    b.Property<string>("Description");
 
                     b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                        .IsRequired();
 
                     b.HasKey("Id");
 

@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
@@ -6,21 +5,21 @@ using VertexBPMN.Domain.Interfaces;
 namespace VertexBPMN.Application;
 
 /// <summary>
-/// In-memory implementation of IManagementService for development and testing.
+/// Management operations backed by the runtime services and durable metrics reader.
 /// </summary>
 public class ManagementService : IManagementService
 {
-    private readonly ConcurrentDictionary<Guid, bool> _suspended = new();
     private readonly IServiceProvider _serviceProvider;
+    private readonly IRuntimeMetricsReader _metricsReader;
 
-    public ManagementService(IServiceProvider serviceProvider)
+    public ManagementService(IServiceProvider serviceProvider, IRuntimeMetricsReader metricsReader)
     {
         _serviceProvider = serviceProvider;
+        _metricsReader = metricsReader;
     }
 
     public ValueTask SuspendProcessInstanceAsync(Guid processInstanceId, string? tenantId = null, CancellationToken cancellationToken = default)
     {
-        _suspended[processInstanceId] = true;
         var eventSink = _serviceProvider.GetRequiredService<IProcessMiningEventSink>();
         eventSink.EmitAsync(new ProcessMiningEvent {
             EventType = "ProcessSuspended",
@@ -32,7 +31,6 @@ public class ManagementService : IManagementService
 
     public ValueTask ResumeProcessInstanceAsync(Guid processInstanceId, string? tenantId = null, CancellationToken cancellationToken = default)
     {
-        _suspended[processInstanceId] = false;
         var eventSink = _serviceProvider.GetRequiredService<IProcessMiningEventSink>();
         eventSink.EmitAsync(new ProcessMiningEvent {
             EventType = "ProcessResumed",
@@ -44,7 +42,6 @@ public class ManagementService : IManagementService
 
     public ValueTask DeleteProcessInstanceAsync(Guid processInstanceId, string? tenantId = null, CancellationToken cancellationToken = default)
     {
-        _suspended.TryRemove(processInstanceId, out _);
         var eventSink = _serviceProvider.GetRequiredService<IProcessMiningEventSink>();
         eventSink.EmitAsync(new ProcessMiningEvent {
             EventType = "ProcessDeleted",
@@ -58,14 +55,11 @@ public class ManagementService : IManagementService
         => ValueTask.CompletedTask;
 
     private static readonly DateTime _startTime = DateTime.UtcNow;
-    private static int _processInstanceCount = 42; // TODO: Query real repo
-    private static int _jobCount = 7; // TODO: Query real repo
-
-    public ValueTask<IDictionary<string, object>> GetMetricsAsync(CancellationToken cancellationToken = default)
-        => ValueTask.FromResult<IDictionary<string, object>>(new Dictionary<string, object>
-        {
-            ["process_instances_total"] = _processInstanceCount,
-            ["jobs_total"] = _jobCount,
-            ["engine_uptime_seconds"] = (int)(DateTime.UtcNow - _startTime).TotalSeconds
-        });
+    public async ValueTask<IDictionary<string, object>> GetMetricsAsync(CancellationToken cancellationToken = default)
+    {
+        var persisted = await _metricsReader.ReadAsync(cancellationToken);
+        var metrics = persisted.ToDictionary(entry => entry.Key, entry => (object)entry.Value);
+        metrics["engine_uptime_seconds"] = (long)(DateTime.UtcNow - _startTime).TotalSeconds;
+        return metrics;
+    }
 }

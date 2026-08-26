@@ -17,13 +17,13 @@ public partial class AddCaseDefinitions : Migration
             name: "CaseDefinitions",
             columns: table => new
             {
-                Id = table.Column<string>(type: "TEXT", nullable: false),
-                TenantId = table.Column<string>(type: "TEXT", maxLength: 64, nullable: false),
-                Key = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
-                Name = table.Column<string>(type: "TEXT", maxLength: 256, nullable: false),
-                CmmnXml = table.Column<string>(type: "TEXT", nullable: false),
-                CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false),
-                LastModified = table.Column<DateTime>(type: "TEXT", nullable: false)
+                Id = table.Column<string>(nullable: false),
+                TenantId = table.Column<string>(maxLength: 64, nullable: false),
+                Key = table.Column<string>(maxLength: 128, nullable: false),
+                Name = table.Column<string>(maxLength: 256, nullable: false),
+                CmmnXml = table.Column<string>(nullable: false),
+                CreatedAt = table.Column<DateTime>(nullable: false),
+                LastModified = table.Column<DateTime>(nullable: false)
             },
             constraints: table => table.PrimaryKey("PK_CaseDefinitions", x => x.Id));
         migrationBuilder.CreateIndex(name: "IX_CaseDefinitions_TenantId_Key", table: "CaseDefinitions", columns: new[] { "TenantId", "Key" }, unique: true);

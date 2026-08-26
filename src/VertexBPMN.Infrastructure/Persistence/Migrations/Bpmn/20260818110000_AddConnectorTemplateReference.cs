@@ -11,7 +11,7 @@ public partial class AddConnectorTemplateReference : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
     {
-        migrationBuilder.AddColumn<string>(name: "TemplateId", table: "Connectors", type: "TEXT", maxLength: 128, nullable: true);
+        migrationBuilder.AddColumn<string>(name: "TemplateId", table: "Connectors", maxLength: 128, nullable: true);
         migrationBuilder.CreateIndex(name: "IX_Connectors_TemplateId", table: "Connectors", column: "TemplateId");
     }
     protected override void Down(MigrationBuilder migrationBuilder)

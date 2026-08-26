@@ -14,13 +14,13 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Simulation
                 name: "Scenarios",
                 columns: table => new
                 {
-                    Id = table.Column<string>(type: "TEXT", nullable: false),
-                    BpmnXml = table.Column<string>(type: "TEXT", nullable: true),
-                    Name = table.Column<string>(type: "TEXT", nullable: false),
-                    Description = table.Column<string>(type: "TEXT", nullable: false),
-                    ProcessDefinitionId = table.Column<string>(type: "TEXT", nullable: false),
-                    MaxSteps = table.Column<int>(type: "INTEGER", nullable: true),
-                    TenantId = table.Column<string>(type: "TEXT", nullable: false)
+                    Id = table.Column<string>(nullable: false),
+                    BpmnXml = table.Column<string>(nullable: true),
+                    Name = table.Column<string>(nullable: false),
+                    Description = table.Column<string>(nullable: false),
+                    ProcessDefinitionId = table.Column<string>(nullable: false),
+                    MaxSteps = table.Column<int>(nullable: true),
+                    TenantId = table.Column<string>(nullable: false)
                 },
                 constraints: table =>
                 {

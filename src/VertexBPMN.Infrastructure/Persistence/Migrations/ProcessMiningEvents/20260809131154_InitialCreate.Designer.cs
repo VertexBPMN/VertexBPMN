@@ -23,41 +23,32 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.ProcessMiningEvents
             modelBuilder.Entity("VertexBPMN.Domain.Entities.ProcessMiningEvent", b =>
                 {
                     b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .ValueGeneratedOnAdd();
 
                     b.Property<string>("ActivityId")
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(100);
 
                     b.Property<string>("EventType")
                         .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(200);
 
                     b.Property<string>("PayloadJson")
-                        .HasMaxLength(4000)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(4000);
 
                     b.Property<string>("ProcessInstanceId")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(100);
 
                     b.Property<string>("TaskId")
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(100);
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(64);
 
-                    b.Property<DateTimeOffset>("Timestamp")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTimeOffset>("Timestamp");
 
                     b.Property<string>("UserId")
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(100);
 
                     b.HasKey("Id");
 

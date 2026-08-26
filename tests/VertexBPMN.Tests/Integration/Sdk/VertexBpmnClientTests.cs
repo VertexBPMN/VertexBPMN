@@ -19,7 +19,7 @@ public sealed class VertexBpmnClientTests
         var capabilities = await client.GetEngineCapabilitiesAsync(CancellationToken.None);
 
         Assert.Equal(VertexBpmnEngineType.Simple, capabilities.EngineType);
-        Assert.True(capabilities.SupportsCmmn);
+        Assert.False(capabilities.SupportsCmmn);
         Assert.False(capabilities.SupportsWorkers);
         Assert.False(capabilities.SupportsDurablePersistence);
     }
@@ -37,7 +37,7 @@ public sealed class VertexBpmnClientTests
         var capabilities = await client.GetEngineCapabilitiesAsync(CancellationToken.None);
 
         Assert.Equal(VertexBpmnEngineType.Distributed, capabilities.EngineType);
-        Assert.True(capabilities.SupportsCmmn);
+        Assert.False(capabilities.SupportsCmmn);
         Assert.True(capabilities.SupportsWorkers);
         Assert.True(capabilities.SupportsDurablePersistence);
     }

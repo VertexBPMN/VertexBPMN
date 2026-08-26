@@ -15,11 +15,11 @@
     </ToolBarContent>
     <HeaderContent>
         <MudTh><MudTableSortLabel SortBy="new Func<UserTask, object>(x => x.Id)">Id</MudTableSortLabel></MudTh>
-        <MudTh><MudTableSortLabel SortBy="new Func<UserTask, object>(x => x.Name)">Name</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<UserTask, object>(x => x.Name ?? string.Empty)">Name</MudTableSortLabel></MudTh>
         <MudTh><MudTableSortLabel SortBy="new Func<UserTask, object>(x => x.ProcessInstanceId)">Process Instance Id</MudTableSortLabel></MudTh>
         <MudTh><MudTableSortLabel SortBy="new Func<UserTask, object>(x => x.CreatedAt)">Created Time</MudTableSortLabel></MudTh>
-        <MudTh><MudTableSortLabel SortBy="new Func<UserTask, object>(x => x.Assignee)">Assignee</MudTableSortLabel></MudTh>
-        <MudTh><MudTableSortLabel SortBy="new Func<UserTask, object>(x => x.DueDate)">Due Date</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<UserTask, object>(x => x.Assignee ?? string.Empty)">Assignee</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<UserTask, object>(x => x.DueDate ?? DateTime.MaxValue)">Due Date</MudTableSortLabel></MudTh>
         <MudTh>Actions</MudTh>
     </HeaderContent>
     <RowTemplate>
@@ -34,13 +34,13 @@
         <MudTd DataLabel="Actions">
             @if (string.IsNullOrEmpty(context.Assignee))
             {
-                <MudIconButton Icon="@Icons.Material.Filled.PersonAdd" Size="Size.Small" OnClick="@(() => ClaimTask(context.Id))" Title="Claim Task" />
+                <MudIconButton Icon="@Icons.Material.Filled.PersonAdd" Size="Size.Small" OnClick="@(() => ClaimTask(context.Id))" aria-label="Claim Task" />
             }
             else if (context.Assignee == "John Doe") // Assuming "John Doe" is the current user
             {
-                <MudIconButton Icon="@Icons.Material.Filled.Check" Size="Size.Small" OnClick="@(() => CompleteTask(context.Id))" Title="Complete Task" />
+                <MudIconButton Icon="@Icons.Material.Filled.Check" Size="Size.Small" OnClick="@(() => CompleteTask(context.Id))" aria-label="Complete Task" />
             }
-            <MudIconButton Icon="@Icons.Material.Filled.Info" Size="Size.Small" OnClick="@(() => ViewTaskDetails(context))" Title="View Details" />
+            <MudIconButton Icon="@Icons.Material.Filled.Info" Size="Size.Small" OnClick="@(() => ViewTaskDetails(context))" aria-label="View Details" />
         </MudTd>
     </RowTemplate>
 </MudTable>
@@ -124,7 +124,7 @@
         var dialog = await DialogService.ShowAsync<VertexBPMN.Studio.Components.TaskDetailsDialog>($"Task Details: {task.Name}", parameters);
         var result = await dialog.Result;
 
-        if (!result.Canceled)
+        if (result is { Canceled: false })
         {
             // Task was completed from the dialog, reload tasks
             await LoadTasks();

@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using VertexBPMN.Domain.Entities;
+using VertexBPMN.Domain.Model.Dmn;
 using VertexBPMN.Tests.Infrastructure;
 
 namespace VertexBPMN.Tests.Integration.Api;

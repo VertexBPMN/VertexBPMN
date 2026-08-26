@@ -82,7 +82,7 @@
         <MudButton Variant="Variant.Filled" Color="Color.Tertiary" OnClick="RunEngineTestAsync" Disabled="_isRunningEngineTest" StartIcon="@Icons.Material.Filled.PlayCircle" Class="mt-2">Deploy and run test</MudButton>
         @if (_testRunInstanceId is not null)
         {
-            <MudAlert Class="mt-3" Severity="Severity.Success">Test version deployed and process instance <code>@_testRunInstanceId</code> started. Open Debugging and use this instance id to inspect runtime state.</MudAlert>
+            <MudAlert Class="mt-3" Severity="Severity.Success">Test version deployed and process instance <code>@_testRunInstanceId</code> reached @_testRunOutcome. Open Debugging and use this instance id to inspect runtime state.</MudAlert>
         }
     </MudPaper>
 
@@ -93,7 +93,7 @@
                 <MudStack Row="true" AlignItems="AlignItems.Center">
                     <MudText Typo="Typo.h6">Add node</MudText>
                     <MudSpacer />
-                    <MudIconButton Icon="@Icons.Material.Filled.Close" Title="Close node catalog" OnClick="@(() => _showNodeCatalog = false)" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Close" aria-label="Close node catalog" OnClick="@(() => _showNodeCatalog = false)" />
                 </MudStack>
                 <MudText Typo="Typo.caption" Color="Color.Secondary">Choose a low-code building block. The generated artifact remains valid BPMN with Vertex extensions where configuration is required.</MudText>
                 <MudTextField @bind-Value="_nodeSearch" Label="Search nodes" Immediate="true" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
@@ -167,7 +167,7 @@
                     <MudSpacer />
                     <MudButton Variant="Variant.Text" OnClick="RefreshXmlPreviewAsync">Refresh</MudButton>
                 </MudStack>
-                <MudTextField T="string" Value="_xmlPreview" ReadOnly="true" Lines="14" AutoGrow="true" Variant="Variant.Outlined" Class="mt-2" />
+                <MudTextField T="string" Value="_xmlPreview" ReadOnly="true" Lines="14" Variant="Variant.Outlined" Class="mt-2" />
             </MudPaper>
         </MudItem>
     </MudGrid>
@@ -202,7 +202,6 @@
     private IReadOnlyList<StudioConnectorTemplate> _templates = [];
     private IReadOnlyList<StudioCredential> _credentials = [];
     private IReadOnlyList<StudioDecisionOption> _decisions = [];
-    private bool _insertingTemplate;
     private bool _showNodeCatalog;
     private string _nodeSearch = string.Empty;
     private string _xmlPreview = FallbackBpmn;
@@ -214,20 +213,32 @@
     private string _testVariablesJson = "{}";
     private bool _isRunningEngineTest;
     private Guid? _testRunInstanceId;
+    private string? _testRunOutcome;
 
     private async Task RunEngineTestAsync()
     {
         _isRunningEngineTest = true;
         _testRunInstanceId = null;
+        _testRunOutcome = null;
         try
         {
             var variables = ParseTestVariables(_testVariablesJson);
             var xml = await CaptureBpmnXml();
             var deployed = await RepositoryService.DeployXmlAsync(xml, "studio-test-run.bpmn", TenantContext.CurrentTenantId);
             var instance = await WorkflowService.StartProcessAsync(deployed.Key, variables, $"studio-test-{Guid.NewGuid():N}", TenantContext.CurrentTenantId);
+            var isCompleted = instance.Status == ProcessInstanceStatus.Completed;
+            var isWaiting = instance.Status == ProcessInstanceStatus.Running
+                && (instance.State.Equals("Waiting", StringComparison.OrdinalIgnoreCase)
+                    || instance.ActiveTasks.Count > 0
+                    || instance.ActiveTokens.Count > 0);
+            if (!isCompleted && !isWaiting)
+                throw new InvalidOperationException(
+                    $"Engine test did not reach a completed or persistent wait state (status={instance.Status}, state={instance.State}).");
+
             _testRunInstanceId = instance.Id;
+            _testRunOutcome = isCompleted ? "the completed state" : "a persistent wait state";
             await LoadDeployedDefinitionsAsync();
-            Snackbar.Add("Engine test run started.", Severity.Success);
+            Snackbar.Add($"Engine test run verified: {_testRunOutcome}.", Severity.Success);
         }
         catch (Exception exception)
         {
@@ -392,7 +403,6 @@
             return;
         }
 
-        _insertingTemplate = true;
         try
         {
             await _modeler.InsertConnectorTemplateAsync(template, values);
@@ -402,10 +412,6 @@
         catch (Exception exception)
         {
             Snackbar.Add($"Connector template could not be inserted: {exception.Message}", Severity.Error);
-        }
-        finally
-        {
-            _insertingTemplate = false;
         }
     }
 

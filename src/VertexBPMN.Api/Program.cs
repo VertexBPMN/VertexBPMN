@@ -4,6 +4,7 @@ using System.Threading.RateLimiting;
 using VertexBPMN.Api;
 using VertexBPMN.Api.Config;
 using VertexBPMN.Api.Debug;
+using VertexBPMN.Api.Features;
 using VertexBPMN.Api.Health;
 using VertexBPMN.Api.Hubs;
 using VertexBPMN.Api.Mcp;
@@ -32,11 +33,22 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.Configure<ModuleOptions>(builder.Configuration.GetSection("Modules"));
 var moduleOptions = new ModuleOptions();
 builder.Configuration.GetSection("Modules").Bind(moduleOptions);
+var advancedFeatureOptions = new AdvancedFeatureOptions();
+builder.Configuration.GetSection(AdvancedFeatureOptions.SectionName).Bind(advancedFeatureOptions);
 var dependencyOptions = new DependencyOptions();
 builder.Configuration.GetSection("Dependencies").Bind(dependencyOptions);
 
 // Resolve operational mode
 var opMode = builder.Environment.ResolveOperationalMode(builder.Configuration);
+
+if (opMode is OperationalMode.Production or OperationalMode.Stage &&
+	(advancedFeatureOptions.SimulationExecution ||
+	 advancedFeatureOptions.LiveProcessMigration ||
+	 advancedFeatureOptions.CmmnExecution))
+{
+	throw new InvalidOperationException(
+		"AdvancedFeatures execution flags cannot be enabled in Production or Stage until the corresponding feature has passed its qualification gate.");
+}
 
 builder.Services.AddScoped<IMultiInstanceExecutionRepository, MultiInstanceExecutionRepository>();
 builder.Services.AddScoped<IProcessMigrationService>(sp =>
@@ -386,7 +398,8 @@ if (moduleOptions.SignalR)
 
 app.MapControllers();
 
-// gRPC when enabled
+// The CMMN-only gRPC contracts remain discoverable when gRPC is enabled, but
+// each operation enforces the advanced-feature gate before invoking the engine.
 if (moduleOptions.Grpc)
 {
 	app.MapGrpcService<VertexBpmnServiceImpl>();

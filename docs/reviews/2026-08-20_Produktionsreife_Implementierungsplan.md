@@ -111,10 +111,38 @@ Lokale Nachweise: Release-Build erfolgreich; Phase-3-Akzeptanztests 9/9 einschli
 - Punkte 10–11 und 14 umsetzen.
 - DMN, CMMN, Simulation und Migration nur nach bestandenen End-to-End- und Conformance-Tests freigeben.
 
+#### Umsetzungsstand Phase 4 (2026-08-26)
+
+- Der öffentliche DMN-Vertrag ist auf genau eine Decision Table, einfache Gleichheitsbedingungen und die nachgewiesenen Hit Policies `UNIQUE`, `FIRST`, `ANY`, `COLLECT` und `RULE ORDER` begrenzt. XML wird mit deaktivierter DTD-/Resolver-Verarbeitung geparst; unvollständige Modelle und nicht unterstützte Hit Policies werden beim Deployment abgelehnt. Nicht verwendete doppelte DMN-Entitätsmodelle wurden entfernt.
+- CMMN bleibt auf persistentes Deployment und Lesen von Definitionen beschränkt. Case-Ausführung antwortet standardmäßig mit HTTP 501, CMMN-gRPC-Operationen mit `Unimplemented`, und die Capability-Antwort bewirbt keine CMMN-Ausführung.
+- Simulation, Simulation Analytics und beide Prozessmigrations-APIs antworten fail-closed mit HTTP 501. Ihre vorhandenen Platzhalter- beziehungsweise nicht transaktional qualifizierten Dienste sind damit im öffentlichen Standardprofil nicht erreichbar. Production und Stage verweigern den Start, falls einer dieser Ausführungs-Flags aktiviert wird.
+- Das Studio zeigt Konfigurationsfehler sichtbar an, enthält keine unbelegten Compliance-Zusicherungen mehr und der Engine-Test-Run akzeptiert nur einen nachgewiesenen Endzustand oder einen persistenten Wait-State. Die identifizierten Nullability- und MudBlazor-Komponentenwarnungen wurden beseitigt.
+- Das CI-Gate `scripts/verify-phase4-acceptance.sh` prüft neun konkrete End-to-End-Fälle: den freigegebenen DMN-Subset, die explizite Ablehnung außerhalb des Subsets sowie die fail-closed Grenzen für CMMN-REST/gRPC, Simulation und Migration. Eine vollständige offizielle DMN-TCK oder CMMN-Semantik wird ausdrücklich nicht behauptet und bleibt außerhalb des freigegebenen Produktumfangs.
+
+Phase 4 ist damit für den in `docs/reference/product-support-matrix.md` definierten Umfang **abgeschlossen**. Die Gesamtplattform bleibt bis zu den Release- und Security-Gates aus Phase 5 nicht vollständig produktionsreif.
+
+Lokale Nachweise: vollständiger Release-Build erfolgreich mit 0 Fehlern; reguläre Solution-Suite 694 erfolgreich, 1 bestehender OpenAI-Test ohne API-Key übersprungen und 0 fehlgeschlagen; separates persistentes BPMN-Gate 7/7; Phase-4-Gate 9/9; Studio-UI-Verträge 21/21; OpenAPI-Snapshot aktuell; keine versionierten `bin`-/`obj`-Artefakte. Die verbleibenden Warnungen des finalen inkrementellen Builds sind 15 `NU1900`-Hinweise, weil der lokale Sandbox-Lauf die NuGet-Vulnerability-Quelle nicht erreichen konnte.
+
 ### Phase 5: Release absichern
 
 - Punkt 15 vollständig abschließen.
 - Reproduzierbares Release aus einem sauberen Checkout erzeugen.
+
+#### Umsetzungsstand Phase 5 (2026-08-26)
+
+Punkt 15 ist für den definierten ersten Produktionsmeilenstein umgesetzt:
+
+- Dependabot überwacht NuGet, Studio-npm und GitHub Actions. Pull Requests erhalten zusätzlich ein blockierendes Dependency-Review-Gate; aufgelöste NuGet- und npm-Abhängigkeiten werden separat auditiert.
+- CodeQL analysiert C# und JavaScript/TypeScript. Trivy blockiert hohe/kritische Dependency-, Secret-, Misconfiguration- und Containerbefunde. Für die tatsächlich gebauten API- und Studio-Images werden getrennte SPDX-JSON-SBOMs erzeugt.
+- Das Coverage-Gate misst über Microsoft Testing Platform mindestens 60% Zeilen- und 45% Branch-Coverage. OpenAPI-Snapshot, persistente BPMN-Verträge und die Phase-4-Qualifikationsverträge bleiben unverändert blockierend.
+- Tag-Releases warten auf Linux-/Windows-Build, Audits, beide CodeQL-Läufe, Supply-Chain-Gates und den echten RabbitMQ-/PostgreSQL-Lauf. Ein separater sauberer Checkout baut und testet API, Engine und Studio erneut und muss danach unverändert sein.
+- SDK und CLI werden zweimal gebaut. Variable NuGet-Container-Metadaten werden kanonisiert; nur byteidentische Pakete mit geprüfter `SHA256SUMS`-Datei werden weitergereicht. GitHub attestiert deren Provenance, bevor NuGet Trusted Publishing per OIDC veröffentlicht.
+- Das Studio-Containerfile verwendet gepinnte .NET-Images, den korrekten Repository-Buildkontext und einen Non-Root-Runtime-User. `.dockerignore`, `SECURITY.md` und das Security-/Release-Runbook dokumentieren Angriffsfläche, Meldeweg und Betreiberpflichten.
+- Ein echter Installations-Smoke-Test des CLI-Pakets deckte einen Datenbankzugriff bei `--help` und eine kollidierende Default-Datei auf. Hilfe wird nun vor Host-/Persistenzinitialisierung ausgegeben; die Dependency-Registry verwendet standardmäßig `vertexbpmn-dependencies.db`.
+
+Phase 5 ist damit im Repository **abgeschlossen**. Die erstmalige externe Ausführung der neuen CodeQL-, Trivy-, SBOM-, Container- und Provenance-Schritte sowie die Konfiguration der erforderlichen Branch-Protection-Checks sind nach Commit/Push in GitHub zu bestätigen; sie können lokal nicht als GitHub-Plattformzustand vorweggenommen werden.
+
+Lokale Nachweise vom 26.08.2026: Release-Build mit 0 Fehlern; reguläre Solution-Suite 698 gesamt, 697 erfolgreich, 1 bestehender OpenAI-Test ohne API-Key übersprungen; Coverage-Suite 672 gesamt mit 60,95% Zeilen- und 45,83% Branch-Coverage; Phase-1-Gate nach Korrektur der SQLite-Mehrverbindungsnutzung zweimal in Folge 7/7; Phase-4-Gate 9/9; OpenAPI-Snapshot aktuell; NuGet-Audit 0 vulnerable Einträge; npm-Audit 0 hohe/kritische Befunde; Studio-Moddle-Roundtrip grün; SDK und CLI aus zwei Läufen byteidentisch und per SHA-256 bestätigt; das erzeugte CLI-Paket erfolgreich als .NET Tool installiert und `--help` ohne Persistenzzugriff ausgeführt; Workflow mit actionlint 1.7.12 ohne Befund validiert; keine versionierten Build-Artefakte. Die lokale WSLC-Runtime 2.9.3.0 baute API (`sha256:a436d803d2ea5a9d6bff181c6ff9708da564593f6cfe11999cc6a24325ba5758`) und Studio (`sha256:fc527fccf145f23d6527e44560ab201c3dd3ab7084b114ba604618b9cf4bae4e`) erfolgreich; kurzlebige Container-Smoke-Tests bestätigten für beide Images die Anwendungs-DLL, .NET-/ASP.NET-Runtime 10.0.11 und tatsächliche Non-Root-UID 1654. Trivy-Scans, SBOM-Erzeugung und GitHub-Provenance bleiben bis zum ersten GitHub-Actions-Lauf extern zu bestätigen.
 
 ## Definition of Done für den ersten Produktionsmeilenstein
 

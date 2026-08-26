@@ -14,6 +14,15 @@ public sealed class CliApplicationTests
 {
     private const string BpmnXml = """<definitions id="OrderProcess"></definitions>""";
 
+    [Theory]
+    [InlineData("--help")]
+    [InlineData("-h")]
+    [InlineData("help")]
+    public void HelpRequest_IsRecognizedBeforeHostInitialization(string argument)
+    {
+        Assert.True(CliApplication.IsHelpRequest([argument]));
+    }
+
     [Fact]
     public async Task DeployBpmn_UsesFileArgumentAndOptionalTenant()
     {

@@ -267,7 +267,7 @@ public sealed class StudioUiContractTests(StudioUiTestHost host) : IClassFixture
             var testRun = page.GetByTestId("bpmn-engine-test-run");
             await testRun.GetByLabel("Test variables (JSON object)").FillAsync("{\"approved\":true}");
             await testRun.GetByRole(AriaRole.Button, new() { Name = "Deploy and run test", Exact = true }).ClickAsync();
-            await page.GetByText("Engine test run started.", new() { Exact = true }).WaitForAsync();
+            await page.GetByText("Engine test run verified: the completed state.", new() { Exact = true }).WaitForAsync();
             await testRun.GetByText("77777777-7777-7777-7777-777777777777", new() { Exact = false }).WaitForAsync();
 
             Assert.Contains(host.ApiRequests, request => request.StartsWith("POST /api/repository", StringComparison.Ordinal));

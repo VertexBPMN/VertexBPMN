@@ -58,7 +58,7 @@ internal sealed class CliApplication
             return await RunInteractiveAsync(cancellationToken);
         if (args is ["--help"] or ["-h"])
         {
-            PrintHelp();
+            WriteHelp(_output);
             return 0;
         }
         return await ExecuteCommandAsync(args, cancellationToken);
@@ -80,7 +80,7 @@ internal sealed class CliApplication
                 break;
             if (command[0] is "help" or "--help")
             {
-                PrintHelp();
+                WriteHelp(_output);
                 continue;
             }
             if (command[0] == "clear")
@@ -205,7 +205,7 @@ internal sealed class CliApplication
                     return 0;
                 case "help":
                 case "--help":
-                    PrintHelp();
+                    WriteHelp(_output);
                     return 0;
                 default:
                     throw new CliUsageException($"Unknown command '{args[0]}'. Use 'help' for available commands.");
@@ -450,36 +450,39 @@ internal sealed class CliApplication
             throw new CliUsageException("Missing arguments. Use 'help' for command syntax.");
     }
 
-    private void PrintHelp()
+    internal static bool IsHelpRequest(string[] args)
+        => args is ["--help"] or ["-h"] or ["help"];
+
+    internal static void WriteHelp(TextWriter output)
     {
-        _output.WriteLine("VertexBPMN CLI");
-        _output.WriteLine("  execute <bpmn-file>                         Execute a BPMN file");
-        _output.WriteLine("  execute-id <process-id>                     Execute a registered BPMN process");
-        _output.WriteLine("  deploy-bpmn <bpmn-file> [tenant]            Persist BPMN for later execution or triggers");
-        _output.WriteLine("  deploy-dmn <dmn-file> [tenant]              Deploy a DMN decision table");
-        _output.WriteLine("  deploy-form <form-json> [tenant]            Deploy a form schema");
-        _output.WriteLine("  test-run <bpmn-file> <variables-json> [tenant] Deploy and start a test process");
-        _output.WriteLine("  validate <bpmn-file>                         Validate BPMN semantics");
-        _output.WriteLine("  import-n8n <workflow-json> [output-bpmn] [tenant] Convert an n8n workflow and print its import report");
-        _output.WriteLine("  register-bpmn <id> <bpmn-file>              Register BPMN");
-        _output.WriteLine("  register-cmmn <id> <cmmn-file>              Register CMMN");
-        _output.WriteLine("  register-dmn <id> <dmn-file>                Register DMN");
-        _output.WriteLine("  execute-case <cmmn-file>                    Execute a CMMN case");
-        _output.WriteLine("  status | pending | workers                  Inspect local runtime");
-        _output.WriteLine("  dashboard | studio                          Start API, Studio and browser");
-        _output.WriteLine("  config list                                List persisted configuration");
-        _output.WriteLine("  config get <key>                           Read persisted configuration");
-        _output.WriteLine("  config set <key> <value>                   Persist configuration value");
-        _output.WriteLine("  config remove <key>                        Remove persisted configuration");
-        _output.WriteLine("  trigger create <name> <process-key> [tenant]");
-        _output.WriteLine("  trigger list [tenant]                      List registered workflow triggers");
-        _output.WriteLine("  trigger invoke <id> <secret> [json] [key]  Start a workflow through a trigger");
-        _output.WriteLine("  trigger enable|disable <id> [tenant]");
-        _output.WriteLine("  trigger delete <id> [tenant]");
-        _output.WriteLine("  credential create|list|rotate ...           Manage credential metadata and secrets");
-        _output.WriteLine("  connector create|list|test ...              Manage and test connectors");
-        _output.WriteLine("  template list [tenant]                      List connector templates");
-        _output.WriteLine("  clear | help | exit                         REPL commands");
+        output.WriteLine("VertexBPMN CLI");
+        output.WriteLine("  execute <bpmn-file>                         Execute a BPMN file");
+        output.WriteLine("  execute-id <process-id>                     Execute a registered BPMN process");
+        output.WriteLine("  deploy-bpmn <bpmn-file> [tenant]            Persist BPMN for later execution or triggers");
+        output.WriteLine("  deploy-dmn <dmn-file> [tenant]              Deploy a DMN decision table");
+        output.WriteLine("  deploy-form <form-json> [tenant]            Deploy a form schema");
+        output.WriteLine("  test-run <bpmn-file> <variables-json> [tenant] Deploy and start a test process");
+        output.WriteLine("  validate <bpmn-file>                         Validate BPMN semantics");
+        output.WriteLine("  import-n8n <workflow-json> [output-bpmn] [tenant] Convert an n8n workflow and print its import report");
+        output.WriteLine("  register-bpmn <id> <bpmn-file>              Register BPMN");
+        output.WriteLine("  register-cmmn <id> <cmmn-file>              Register CMMN");
+        output.WriteLine("  register-dmn <id> <dmn-file>                Register DMN");
+        output.WriteLine("  execute-case <cmmn-file>                    Execute a CMMN case");
+        output.WriteLine("  status | pending | workers                  Inspect local runtime");
+        output.WriteLine("  dashboard | studio                          Start API, Studio and browser");
+        output.WriteLine("  config list                                List persisted configuration");
+        output.WriteLine("  config get <key>                           Read persisted configuration");
+        output.WriteLine("  config set <key> <value>                   Persist configuration value");
+        output.WriteLine("  config remove <key>                        Remove persisted configuration");
+        output.WriteLine("  trigger create <name> <process-key> [tenant]");
+        output.WriteLine("  trigger list [tenant]                      List registered workflow triggers");
+        output.WriteLine("  trigger invoke <id> <secret> [json] [key]  Start a workflow through a trigger");
+        output.WriteLine("  trigger enable|disable <id> [tenant]");
+        output.WriteLine("  trigger delete <id> [tenant]");
+        output.WriteLine("  credential create|list|rotate ...           Manage credential metadata and secrets");
+        output.WriteLine("  connector create|list|test ...              Manage and test connectors");
+        output.WriteLine("  template list [tenant]                      List connector templates");
+        output.WriteLine("  clear | help | exit                         REPL commands");
     }
 
     private static List<string> Tokenize(string input)

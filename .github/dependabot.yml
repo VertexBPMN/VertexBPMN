@@ -1,0 +1,41 @@
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    target-branch: master
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Europe/Berlin
+    groups:
+      nuget-production:
+        dependency-type: production
+      nuget-development:
+        dependency-type: development
+
+  - package-ecosystem: npm
+    directory: /src/VertexBPMN.Studio
+    target-branch: master
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:30"
+      timezone: Europe/Berlin
+    groups:
+      studio-assets:
+        patterns:
+          - "*"
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: master
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    groups:
+      github-actions:
+        patterns:
+          - "*"

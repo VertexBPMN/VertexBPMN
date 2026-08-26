@@ -40,7 +40,7 @@
 
 **VertexBPMN™ ist derzeit nicht als vollständig produktionsreife BPMN-, DMN- oder CMMN-Engine freigegeben.**
 
-Phase 2 stellt einen begrenzten, persistenten BPMN-Produktionskern bereit; die Gesamtplattform ist wegen noch offener Betriebs-, Broker-, Deployment-, Security-Gate-, DMN- und CMMN-Arbeiten weiterhin nicht vollständig produktionsreif. Der tatsächliche Supportstatus, bekannte Einschränkungen und verbindliche Akzeptanzfälle stehen in der [Produkt-Support- und Acceptance-Matrix](docs/reference/product-support-matrix.md). Funktionen ohne bestandenen End-to-End-Nachweis gelten als `partial` oder `unsupported`, auch wenn Parser-, Unit- oder Komponenten-Tests existieren.
+Die Phasen 1 bis 5 stellen einen begrenzten, persistenten BPMN-Produktionskern, einen ausdrücklich eingegrenzten DMN-Decision-Table-Subset und blockierende Release-/Security-Gates bereit. CMMN-Ausführung, Simulation und Prozessmigration bleiben fail-closed gesperrt; VertexBPMN behauptet deshalb weiterhin keine vollständige BPMN-, DMN- oder CMMN-Standardkonformität. Der tatsächliche Supportstatus, bekannte Einschränkungen und verbindliche Akzeptanzfälle stehen in der [Produkt-Support- und Acceptance-Matrix](docs/reference/product-support-matrix.md). Funktionen ohne bestandenen End-to-End-Nachweis gelten als `partial` oder `unsupported`, auch wenn Parser-, Unit- oder Komponenten-Tests existieren.
 
 Wir freuen uns weiterhin über Feedback und Beiträge aus der Community!
 
@@ -298,9 +298,9 @@ Einmalige Einrichtung:
    git push origin v1.0.1
    ```
 
-Der Workflow baut und testet die Solution, packt `VertexBPMN.Sdk`, tauscht das GitHub-OIDC-Token gegen einen kurzlebigen NuGet-Veröffentlichungsschlüssel und veröffentlicht anschließend `VertexBPMN.Sdk.1.0.1.nupkg` auf NuGet.org. Jeder normale CI-Lauf erzeugt zusätzlich ein herunterladbares SDK-NuGet-Artefakt, veröffentlicht es aber nicht.
+Der Workflow baut und testet API, Engine und Studio, durchläuft die Security-/Supply-Chain-Gates, erzeugt `VertexBPMN.Sdk` und das `VertexBPMN.Cli` .NET Tool zweimal byteidentisch und prüft ihre SHA-256-Summen. Erst danach tauscht er GitHub-OIDC gegen einen kurzlebigen NuGet-Veröffentlichungsschlüssel, attestiert die Provenance und veröffentlicht genau diese qualifizierten Pakete. Normale CI-Läufe erzeugen beide NuGet-Artefakte, veröffentlichen sie aber nicht.
 
-Verifikation: Nach dem einmaligen Einrichten der NuGet-Policy einen neuen, noch nicht verwendeten SemVer-Tag pushen. Der Job **Publish VertexBPMN.Sdk to NuGet** muss erfolgreich sein und das Paket anschließend unter `https://www.nuget.org/packages/VertexBPMN.Sdk/<version>` erreichbar sein. Ein fehlgeschlagener OIDC-Login weist auf eine abweichende Repository-, Workflow-Datei- oder NuGet-Benutzerkonfiguration hin; dafür wird kein API-Key benötigt.
+Verifikation: Nach dem einmaligen Einrichten der NuGet-Policy einen neuen, noch nicht verwendeten SemVer-Tag pushen. Der Job **Publish VertexBPMN.Sdk and CLI to NuGet** muss erfolgreich sein; anschließend müssen SDK und CLI auf NuGet.org erreichbar und die GitHub-Provenance-Attestierung vorhanden sein. Ein fehlgeschlagener OIDC-Login weist auf eine abweichende Repository-, Workflow-Datei- oder NuGet-Benutzerkonfiguration hin; dafür wird kein dauerhafter API-Key benötigt.
 
 ### Architektur
 

@@ -19,10 +19,18 @@ public sealed class BpmnCoreLifecycleContractTests : IDisposable
         CustomWebApplicationFactory _,
         ITestOutputHelper output)
     {
-        _bpmnDatabase = new SqliteConnection($"Data Source=file:phase1_{Guid.NewGuid():N}?mode=memory&cache=shared");
+        var connectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = $"phase1_{Guid.NewGuid():N}",
+            Mode = SqliteOpenMode.Memory,
+            Cache = SqliteCacheMode.Shared,
+            DefaultTimeout = 30,
+            Pooling = false
+        }.ToString();
+        _bpmnDatabase = new SqliteConnection(connectionString);
         _bpmnDatabase.Open();
         _factory = new CustomWebApplicationFactory()
-            .WithPersistentBpmnDatabase(_bpmnDatabase)
+            .WithPersistentBpmnDatabase(connectionString)
             .WithBackgroundJobsEnabled();
         _output = output;
         _client = _factory.CreateClient(output);
@@ -321,7 +329,7 @@ public sealed class BpmnCoreLifecycleContractTests : IDisposable
         _client.Dispose();
         _factory.Dispose();
 
-        using var restartedFactory = new CustomWebApplicationFactory().WithPersistentBpmnDatabase(_bpmnDatabase);
+        using var restartedFactory = new CustomWebApplicationFactory().WithPersistentBpmnDatabase(_bpmnDatabase.ConnectionString);
         using var restartedClient = restartedFactory.CreateClient(_output);
         var restored = await restartedClient.GetFromJsonAsync<RuntimeInstance>(
             $"/api/runtime/{started.Id}",

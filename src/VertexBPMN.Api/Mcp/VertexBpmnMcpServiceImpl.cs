@@ -1,5 +1,7 @@
 ﻿using Grpc.Core;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Options;
+using VertexBPMN.Api.Features;
 using VertexBPMN.Api.Grpc.Mcp;
 using VertexBPMN.Domain.Interfaces;
 using HistoricalCaseData = VertexBPMN.Api.Grpc.Mcp.HistoricalCaseData;
@@ -11,17 +13,21 @@ public class VertexBpmnMcpServiceImpl : VertexBPMNMCPService.VertexBPMNMCPServic
 {
     private readonly IProcessEngine _engine;
     private readonly ILogger<VertexBpmnMcpServiceImpl> _logger;
+    private readonly AdvancedFeatureOptions _features;
 
     public VertexBpmnMcpServiceImpl(
         IProcessEngine engine,
-        ILogger<VertexBpmnMcpServiceImpl> logger)
+        ILogger<VertexBpmnMcpServiceImpl> logger,
+        IOptions<AdvancedFeatureOptions> features)
     {
         _engine = engine ?? throw new ArgumentNullException(nameof(engine));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _features = features?.Value ?? throw new ArgumentNullException(nameof(features));
     }
 
     public override async Task<ExecuteCaseResponse> ExecuteCase(ExecuteCaseRequest request, ServerCallContext context)
     {
+        EnsureCmmnExecutionEnabled();
         ValidateNotEmpty(request?.CaseId, nameof(request.CaseId));
         try
         {
@@ -42,6 +48,7 @@ public class VertexBpmnMcpServiceImpl : VertexBPMNMCPService.VertexBPMNMCPServic
 
     public override async Task<CmmnResponse> TriggerUserEvent(TriggerEventRequest request, ServerCallContext context)
     {
+        EnsureCmmnExecutionEnabled();
         ValidateNotEmpty(request?.CaseId, nameof(request.CaseId));
         ValidateNotEmpty(request?.EventId, nameof(request.EventId));
         try
@@ -63,6 +70,7 @@ public class VertexBpmnMcpServiceImpl : VertexBPMNMCPService.VertexBPMNMCPServic
 
     public override async Task<CmmnResponse> UpdateCaseFileItem(CaseFileUpdateRequest request, ServerCallContext context)
     {
+        EnsureCmmnExecutionEnabled();
         ValidateNotEmpty(request?.CaseId, nameof(request.CaseId));
         ValidateNotEmpty(request?.CaseFileItemId, nameof(request.CaseFileItemId));
         try
@@ -80,6 +88,7 @@ public class VertexBpmnMcpServiceImpl : VertexBPMNMCPService.VertexBPMNMCPServic
 
     public override async Task<CmmnResponse> GenerateAdHocSubprocess(GenerateAdHocSubprocessRequest request, ServerCallContext context)
     {
+        EnsureCmmnExecutionEnabled();
         ValidateNotEmpty(request?.CaseId, nameof(request.CaseId));
         try
         {
@@ -96,6 +105,7 @@ public class VertexBpmnMcpServiceImpl : VertexBPMNMCPService.VertexBPMNMCPServic
 
     public override async Task<HistoricalContextResponse> GetHistoricalContext(HistoricalContextRequest request, ServerCallContext context)
     {
+        EnsureCmmnExecutionEnabled();
         ValidateNotEmpty(request?.CaseId, nameof(request.CaseId));
         try
         {
@@ -130,6 +140,14 @@ public class VertexBpmnMcpServiceImpl : VertexBPMNMCPService.VertexBPMNMCPServic
     {
         if (string.IsNullOrWhiteSpace(value))
             throw new RpcException(new Status(StatusCode.InvalidArgument, $"{fieldName} must be provided"));
+    }
+
+    private void EnsureCmmnExecutionEnabled()
+    {
+        if (!_features.CmmnExecution)
+            throw new RpcException(new Status(
+                StatusCode.Unimplemented,
+                "CMMN execution is not qualified and is disabled."));
     }
 
     private RpcException MapToRpcException(Exception ex, string message)

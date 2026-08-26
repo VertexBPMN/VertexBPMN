@@ -2,6 +2,8 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using VertexBPMN.Api.Features;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Infrastructure.Persistence;
@@ -11,7 +13,11 @@ namespace VertexBPMN.Api.Controllers;
 [ApiController]
 [Route("api/case-definitions")]
 [Authorize]
-public sealed class CaseDefinitionController(BpmnDbContext db, ICmmnParser parser, IProcessEngine engine) : ControllerBase
+public sealed class CaseDefinitionController(
+    BpmnDbContext db,
+    ICmmnParser parser,
+    IProcessEngine engine,
+    IOptions<AdvancedFeatureOptions> features) : ControllerBase
 {
     [HttpPost("deploy")]
     [Authorize(Policy = "ProcessManager")]
@@ -39,6 +45,11 @@ public sealed class CaseDefinitionController(BpmnDbContext db, ICmmnParser parse
     [Authorize(Policy = "ProcessManager")]
     public async Task<ActionResult<CaseRunResponse>> Start(string key, [FromBody] StartRequest request, CancellationToken cancellationToken)
     {
+        if (!features.Value.CmmnExecution)
+            return Problem(
+                statusCode: StatusCodes.Status501NotImplemented,
+                title: "CMMN execution is not qualified for production use",
+                detail: "CMMN definition deployment and retrieval are supported, but case lifecycle execution remains disabled until durable lifecycle and conformance gates exist.");
         var tenant = Tenant(request.TenantId); if (tenant is null) return Forbid();
         var definition = await db.CaseDefinitions.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant && x.Key == key, cancellationToken);
         if (definition is null) return NotFound();

@@ -1,6 +1,7 @@
 extern alias api;
 
 using Grpc.Net.Client;
+using Grpc.Core;
 using VertexBPMN.Tests.Infrastructure;
 using ApiExecuteCaseRequest = api::VertexBPMN.Api.Grpc.ExecuteCaseRequest;
 using ApiGenerateAdHocSubprocessRequest = api::VertexBPMN.Api.Grpc.GenerateAdHocSubprocessRequest;
@@ -15,17 +16,47 @@ using McpHistoricalContextRequest = api::VertexBPMN.Api.Grpc.Mcp.HistoricalConte
 
 namespace VertexBPMN.Tests.Integration.Api;
 
-public sealed class GrpcContractTests : IClassFixture<CustomWebApplicationFactory>
+public sealed class GrpcContractTests : IDisposable
 {
+    private readonly CustomWebApplicationFactory _factory;
     private readonly GrpcChannel _channel;
 
-    public GrpcContractTests(CustomWebApplicationFactory factory)
+    public GrpcContractTests()
     {
-        var httpClient = factory.CreateClient();
+        _factory = new CustomWebApplicationFactory().WithCmmnExecutionEnabled();
+        var httpClient = _factory.CreateClient();
         _channel = GrpcChannel.ForAddress("http://localhost", new GrpcChannelOptions
         {
             HttpClient = httpClient
         });
+    }
+
+    public void Dispose()
+    {
+        _channel.Dispose();
+        _factory.Dispose();
+    }
+
+    [Fact]
+    [Trait("Category", "Phase4Acceptance")]
+    public async Task DefaultProfile_CmmnGrpcActionsFailClosed()
+    {
+        using var disabledFactory = new CustomWebApplicationFactory();
+        using var httpClient = disabledFactory.CreateClient();
+        using var channel = GrpcChannel.ForAddress("http://localhost", new GrpcChannelOptions
+        {
+            HttpClient = httpClient
+        });
+        var client = new api::VertexBPMN.Api.Grpc.VertexBPMNService.VertexBPMNServiceClient(channel);
+
+        var exception = await Assert.ThrowsAsync<RpcException>(async () =>
+            await client.RegisterCmmnModelAsync(new ApiRegisterCmmnRequest
+            {
+                CaseId = "disabled-cmmn",
+                CmmnXml = "<definitions />"
+            }));
+
+        Assert.Equal(StatusCode.Unimplemented, exception.StatusCode);
     }
 
     [Fact]

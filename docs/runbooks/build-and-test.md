@@ -51,6 +51,12 @@ Das Gate führt `P1-AC-01` bis `P1-AC-05` mit sieben konkreten Testmethoden aus 
 dotnet test tests/VertexBPMN.Tests/VertexBPMN.Tests.csproj --configuration Release --no-build --no-restore --filter-trait "Category=Phase2Acceptance" --max-parallel-test-modules 1
 ```
 
+Das Phase-4-Gate qualifiziert den öffentlich freigegebenen DMN-Subset und erzwingt mit neun konkreten Testfällen die fail-closed Verträge für CMMN-Lifecycle, Simulation und Prozessmigration:
+
+```text
+bash scripts/verify-phase4-acceptance.sh
+```
+
 Die Phase-3-Akzeptanzverträge für Outbox-Leasing, Retry, Readiness, persistente Metriken und Deployment-Härtung laufen in der regulären Suite. Der separate CI-Job `operational-integration` startet echte RabbitMQ- und PostgreSQL-Dienste und prüft Broker-Roundtrip sowie sämtliche EF-Migrationen. Lokal benötigt er:
 
 ```text
@@ -64,3 +70,15 @@ Migration und Modell müssen außerdem synchron sein:
 ```text
 dotnet ef migrations has-pending-model-changes --project src/VertexBPMN.Infrastructure --startup-project src/VertexBPMN.Api --context BpmnDbContext --no-build
 ```
+
+## Phase-5-Qualitätsgates
+
+Nach Restore, Release-Build und `npm ci` prüfen die folgenden Befehle die aufgelösten NuGet-/npm-Abhängigkeiten, mindestens 60% Zeilen- und 45% Branch-Coverage sowie zwei byteidentische SDK-/CLI-Paketläufe:
+
+```text
+bash scripts/verify-dependency-audit.sh
+bash scripts/verify-coverage.sh
+bash scripts/verify-reproducible-packages.sh 1.0.0-local.1
+```
+
+Die vollständige Security- und Release-Kette einschließlich CodeQL, Secret-/Container-Scan, SBOM, externer Dienste und Provenance-Attestierung ist in [Security and Release Gates](security-and-release-gates.md) beschrieben.

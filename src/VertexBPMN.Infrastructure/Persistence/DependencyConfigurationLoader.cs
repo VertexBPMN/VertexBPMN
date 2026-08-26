@@ -26,6 +26,6 @@ public static class DependencyConfigurationLoader
     {
         return configuration.GetConnectionString("DependencyRegistry")
             ?? configuration["DependencyRegistry:ConnectionString"]
-            ?? "Data Source=vertexbpmn.db";
+            ?? "Data Source=vertexbpmn-dependencies.db";
     }
 }

@@ -9,6 +9,12 @@ using VertexBPMN.Engine;
 using VertexBPMN.Infrastructure;
 using VertexBPMN.Infrastructure.Persistence;
 
+if (CliApplication.IsHelpRequest(args))
+{
+    CliApplication.WriteHelp(Console.Out);
+    return 0;
+}
+
 var builder = Host.CreateApplicationBuilder(args);
 DependencyConfigurationLoader.LoadInto(builder.Configuration);
 builder.Configuration.AddEnvironmentVariables("VERTEXBPMN_");

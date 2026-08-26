@@ -42,10 +42,9 @@
         <MudSelect T="string" 
                   Label="Engine" 
                   @bind-Value="ActiveEngineService.ActiveEngineId" 
-                  Variant="Variant.Outlined" 
-                  Dense="true" 
-                  Class="mr-4"
-                  Loading="_isLoadingEngines">
+                  Variant="Variant.Outlined"
+                  Dense="true"
+                  Class="mr-4">
             @foreach (var engine in _engineConnections)
             {
                 <MudSelectItem Value="@engine.Id">
@@ -81,7 +80,6 @@
     private static readonly MudTheme _theme = new();
 
     private bool _drawerOpen = true;
-    private bool _isLoadingEngines = false;
     private List<VertexBPMN.Studio.Services.EngineConnection> _engineConnections = new();
     private IReadOnlyList<VertexBPMN.Studio.Services.StudioTenant> _tenants = Array.Empty<VertexBPMN.Studio.Services.StudioTenant>();
 
@@ -102,7 +100,6 @@
     {
         try
         {
-            _isLoadingEngines = true;
             StateHasChanged();
 
             var connections = await EngineAdministrationService.GetEngineConnectionsAsync();
@@ -114,7 +111,6 @@
         }
         finally
         {
-            _isLoadingEngines = false;
             StateHasChanged();
         }
     }

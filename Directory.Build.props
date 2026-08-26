@@ -9,5 +9,9 @@
          Forward-slash bases prevent literal `bin\Debug` directories on Linux/WSL. -->
     <BaseOutputPath>bin/</BaseOutputPath>
     <BaseIntermediateOutputPath>obj/</BaseIntermediateOutputPath>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <RepositoryUrl>https://github.com/VertexBPMN/VertexBPMN</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 </Project>

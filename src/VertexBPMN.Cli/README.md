@@ -60,7 +60,7 @@ The dashboard launcher settings are configurable in `appsettings.json`:
 
 The API is the shared runtime gateway for the Studio. This keeps CLI, API, and dashboard state aligned when persistent engine connection strings are configured.
 
-The CLI uses the existing engine, application, and infrastructure registrations. Runtime dependency configuration is persisted in the SQLite database configured by `ConnectionStrings:DependencyRegistry` (by default `vertexbpmn.db`). The database values are loaded at startup and override JSON values. `VERTEXBPMN_` environment variables have the highest priority.
+The CLI uses the existing engine, application, and infrastructure registrations. Runtime dependency configuration is persisted in the SQLite database configured by `ConnectionStrings:DependencyRegistry` (by default `vertexbpmn-dependencies.db`). The database values are loaded at startup and override JSON values. `VERTEXBPMN_` environment variables have the highest priority. Help requests (`--help`, `-h`, or `help`) do not initialize the host or access persistence.
 
 The commands accept flattened .NET configuration keys. For example:
 

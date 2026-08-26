@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
+using VertexBPMN.Api.Features;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 
@@ -11,9 +13,11 @@ namespace VertexBPMN.Api.Controllers
     public class ProcessMigrationController : ControllerBase
     {
         private readonly IProcessMigrationService _migrationService;
-        public ProcessMigrationController(IProcessMigrationService migrationService)
+        private readonly AdvancedFeatureOptions _features;
+        public ProcessMigrationController(IProcessMigrationService migrationService, IOptions<AdvancedFeatureOptions> features)
         {
             _migrationService = migrationService;
+            _features = features.Value;
         }
 
         /// <summary>
@@ -25,6 +29,7 @@ namespace VertexBPMN.Api.Controllers
         [ProducesResponseType(typeof(ProcessMigrationResult), 200)]
         public ActionResult<ProcessMigrationResult> GetMigrationFeedback([FromBody] ProcessMigrationPlan plan)
         {
+            if (!_features.LiveProcessMigration) return MigrationUnavailable();
             // Only preview analytics, do not execute migration
             var result = _migrationService.MigrateInstances(plan);
             result.Success = false; // Indicate feedback only, not executed
@@ -40,6 +45,7 @@ namespace VertexBPMN.Api.Controllers
         [ProducesResponseType(typeof(ProcessMigrationPlan), 200)]
         public ActionResult<ProcessMigrationPlan> PreviewMigration([FromBody] MigrationPreviewRequestDto request)
         {
+            if (!_features.LiveProcessMigration) return MigrationUnavailable();
             if (string.IsNullOrWhiteSpace(request.SourceProcessDefinitionId) || string.IsNullOrWhiteSpace(request.TargetProcessDefinitionId))
             {
                 return BadRequest("Source and target process definition IDs are required.");
@@ -58,9 +64,15 @@ namespace VertexBPMN.Api.Controllers
         [ProducesResponseType(typeof(ProcessMigrationResult), 200)]
         public ActionResult<ProcessMigrationResult> ExecuteMigration([FromBody] ProcessMigrationPlan plan)
         {
+            if (!_features.LiveProcessMigration) return MigrationUnavailable();
             var result = _migrationService.MigrateInstances(plan);
             return Ok(result);
         }
+
+        private ObjectResult MigrationUnavailable() => Problem(
+            statusCode: StatusCodes.Status501NotImplemented,
+            title: "Process migration is not qualified for production use",
+            detail: "Migration remains disabled until preview, token mapping, transactional execution, rollback, and audit are durably implemented and pass the Phase 4 acceptance gate.");
     }
 
     public class MigrationPreviewRequestDto

@@ -1,3 +1,4 @@
+using System.Xml;
 using System.Xml.Linq;
 
 namespace VertexBPMN.Domain.Model.Dmn;
@@ -9,6 +10,9 @@ namespace VertexBPMN.Domain.Model.Dmn;
 /// </summary>
 public class DmnDecisionTable
 {
+    public static readonly IReadOnlySet<string> SupportedApiHitPolicies =
+        new HashSet<string>(["UNIQUE", "FIRST", "ANY", "COLLECT", "RULE ORDER"], StringComparer.Ordinal);
+
     public string Key { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public List<DmnInput> Inputs { get; set; } = new();
@@ -40,17 +44,43 @@ public class DmnDecisionTable
     /// </summary>
     public static DmnDecisionTable Parse(string dmnXml)
     {
-        var doc = XDocument.Parse(dmnXml);
-        XNamespace ns = "http://www.omg.org/spec/DMN/20191111/MODEL/";
-        var decision = doc.Descendants(ns + "decision").First();
-        var key = (string?)decision.Attribute("id") ?? string.Empty;
+        ArgumentException.ThrowIfNullOrWhiteSpace(dmnXml);
+        using var input = new StringReader(dmnXml);
+        using var reader = XmlReader.Create(input, new XmlReaderSettings
+        {
+            DtdProcessing = DtdProcessing.Prohibit,
+            XmlResolver = null,
+            MaxCharactersInDocument = 10_000_000
+        });
+        var doc = XDocument.Load(reader, LoadOptions.None);
+        var root = doc.Root ?? throw new InvalidOperationException("DMN definitions element is missing.");
+        var namespaceName = root.Name.NamespaceName;
+        if (namespaceName is not "http://www.omg.org/spec/DMN/20191111/MODEL/"
+            and not "https://www.omg.org/spec/DMN/20191111/MODEL/")
+            throw new InvalidOperationException($"Unsupported DMN namespace '{namespaceName}'.");
+
+        XNamespace ns = root.Name.Namespace;
+        var decisions = doc.Descendants(ns + "decision").ToList();
+        if (decisions.Count != 1)
+            throw new InvalidOperationException("The supported DMN subset requires exactly one decision per document.");
+        var decision = decisions[0];
+        var key = (string?)decision.Attribute("id");
+        if (string.IsNullOrWhiteSpace(key))
+            throw new InvalidOperationException("DMN decision id is required.");
         var name = (string?)decision.Attribute("name") ?? key;
-        var table = decision.Descendants(ns + "decisionTable").First();
-        var hitPolicy = (string?)table.Attribute("hitPolicy") ?? "UNIQUE";
+        var tables = decision.Elements(ns + "decisionTable").ToList();
+        if (tables.Count != 1)
+            throw new InvalidOperationException("The supported DMN subset requires exactly one decision table.");
+        var table = tables[0];
+        var hitPolicy = ((string?)table.Attribute("hitPolicy") ?? "UNIQUE").Trim().ToUpperInvariant();
+        if (!SupportedApiHitPolicies.Contains(hitPolicy))
+            throw new InvalidOperationException($"DMN hit policy '{hitPolicy}' is outside the supported API subset.");
 
         var inputs = table.Elements(ns + "input").Select(i =>
         {
-            var id = (string?)i.Attribute("id") ?? string.Empty;
+            var id = (string?)i.Attribute("id");
+            if (string.IsNullOrWhiteSpace(id))
+                throw new InvalidOperationException("Every DMN input requires an id.");
             var label = (string?)i.Attribute("label") ?? id;
             var typeRef = (string?)i.Element(ns + "inputExpression")?.Attribute("typeRef") ?? "string";
             return new DmnInput(id, label, typeRef);
@@ -58,7 +88,9 @@ public class DmnDecisionTable
 
         var outputs = table.Elements(ns + "output").Select(o =>
         {
-            var id = (string?)o.Attribute("id") ?? string.Empty;
+            var id = (string?)o.Attribute("id");
+            if (string.IsNullOrWhiteSpace(id))
+                throw new InvalidOperationException("Every DMN output requires an id.");
             var label = (string?)o.Attribute("name") ?? (string?)o.Attribute("label") ?? id;
             var typeRef = (string?)o.Attribute("typeRef") ?? "string";
             return new DmnOutput(id, label, typeRef);
@@ -82,6 +114,11 @@ public class DmnDecisionTable
             }
             return new DmnRule($"rule_{ruleIndex}", inputConds, outputVals);
         }).ToList();
+
+        if (inputs.Count == 0 || outputs.Count == 0 || rules.Count == 0)
+            throw new InvalidOperationException("A DMN decision table requires at least one input, output, and rule.");
+        if (rules.Any(rule => rule.InputConditions.Count != inputs.Count || rule.OutputValues.Count != outputs.Count))
+            throw new InvalidOperationException("Every DMN rule must provide one entry per input and output.");
 
         return new DmnDecisionTable(key, name, inputs, outputs, rules, hitPolicy);
     }

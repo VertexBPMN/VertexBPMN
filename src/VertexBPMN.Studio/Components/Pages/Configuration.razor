@@ -9,6 +9,11 @@
     Runtime configuration is read-only in Studio until the API exposes a configuration management contract.
 </MudAlert>
 
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+}
+
 <MudPaper Class="pa-4">
     <MudText Typo="Typo.h6">Engine capabilities</MudText>
     @if (_capabilities is null)
@@ -28,6 +33,7 @@
 
 @code {
     private VertexBPMN.Studio.Services.EngineCapabilities? _capabilities;
+    private string? _error;
 
     protected override async Task OnInitializedAsync()
     {
@@ -35,6 +41,9 @@
         {
             _capabilities = await CapabilitiesService.GetAsync();
         }
-        catch { }
+        catch (Exception exception)
+        {
+            _error = $"Engine capabilities could not be loaded: {exception.Message}";
+        }
     }
 }

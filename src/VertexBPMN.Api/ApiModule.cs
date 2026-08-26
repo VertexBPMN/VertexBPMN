@@ -1,5 +1,6 @@
 #nullable enable
 using VertexBPMN.Api.Debug;
+using VertexBPMN.Api.Features;
 using VertexBPMN.Api.Migration;
 using VertexBPMN.Api.ML;
 using VertexBPMN.Api.Middleware;
@@ -21,6 +22,8 @@ public static class ApiModule
     /// <param name="configuration"></param>
     public static IServiceCollection AddApiServices(this IServiceCollection services, IConfiguration configuration)
     {
+        services.AddOptions<AdvancedFeatureOptions>()
+            .Bind(configuration.GetSection(AdvancedFeatureOptions.SectionName));
         services.AddScoped<Controllers.VisualDebuggerController>();
 
         //Production-Grade Features: Security, Caching, Resilience, Rate Limiting, Health Monitoring

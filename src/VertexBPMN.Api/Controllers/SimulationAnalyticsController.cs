@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
+using VertexBPMN.Api.Features;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 
@@ -10,9 +12,11 @@ namespace VertexBPMN.Api.Controllers
     public class SimulationAnalyticsController : ControllerBase
     {
         private readonly ISemanticValidationService _validationService;
-        public SimulationAnalyticsController(ISemanticValidationService validationService)
+        private readonly AdvancedFeatureOptions _features;
+        public SimulationAnalyticsController(ISemanticValidationService validationService, IOptions<AdvancedFeatureOptions> features)
         {
             _validationService = validationService;
+            _features = features.Value;
         }
         /// <summary>
         /// Compares two simulation results and returns differences in steps, variables, and outcomes.
@@ -20,6 +24,7 @@ namespace VertexBPMN.Api.Controllers
         [HttpPost("compare")]
         public ActionResult<SimulationComparisonDto> CompareScenarios([FromBody] SimulationComparisonRequestDto request)
         {
+            if (!_features.SimulationExecution) return SimulationUnavailable();
             var resultA = request.ResultA;
             var resultB = request.ResultB;
             var stepDiff = (resultA?.Steps?.Count ?? 0) - (resultB?.Steps?.Count ?? 0);
@@ -50,6 +55,7 @@ namespace VertexBPMN.Api.Controllers
         [HttpPost("variable-trace/{variableName}")]
         public ActionResult<List<VariableTraceDto>> GetVariableTrace([FromBody] SimulationResult result, string variableName)
         {
+            if (!_features.SimulationExecution) return SimulationUnavailable();
             var trace = result.Steps?.Select(s => new VariableTraceDto
             {
                 StepNumber = s.StepNumber,
@@ -65,6 +71,7 @@ namespace VertexBPMN.Api.Controllers
         [HttpPost("steps")]
         public ActionResult<List<SimulationStepAnalyticsDto>> GetStepBreakdown([FromBody] SimulationResult result)
         {
+            if (!_features.SimulationExecution) return SimulationUnavailable();
             var steps = result.Steps?.Select(s => new SimulationStepAnalyticsDto
             {
                 StepNumber = s.StepNumber,
@@ -83,6 +90,7 @@ namespace VertexBPMN.Api.Controllers
         [HttpPost("summary")]
         public ActionResult<SimulationAnalyticsSummaryDto> GetSummary([FromBody] SimulationResult result)
         {
+            if (!_features.SimulationExecution) return SimulationUnavailable();
             var summary = new SimulationAnalyticsSummaryDto
             {
                 ProcessDefinitionId = result.ProcessDefinitionId,
@@ -94,6 +102,11 @@ namespace VertexBPMN.Api.Controllers
             var diagnostics = _validationService.ValidateBpmn(result.BpmnXml ?? "");
             return Ok(new { Summary = summary, Diagnostics = diagnostics });
         }
+
+        private ObjectResult SimulationUnavailable() => Problem(
+            statusCode: StatusCodes.Status501NotImplemented,
+            title: "Simulation analytics are not qualified for production use",
+            detail: "Simulation analytics are disabled because their source simulation is not yet engine-backed and deterministic.");
     }
 
     public class SimulationStepAnalyticsDto

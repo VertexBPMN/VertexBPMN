@@ -123,7 +123,7 @@ The CLI stores runtime dependency overrides in the `DependencyRegistry` SQLite d
 ```json
 {
   "ConnectionStrings": {
-    "DependencyRegistry": "Data Source=vertexbpmn.db"
+    "DependencyRegistry": "Data Source=vertexbpmn-dependencies.db"
   }
 }
 ```

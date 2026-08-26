@@ -1,11 +1,18 @@
 @page "/compliance"
 
-<PageTitle>Compliance</PageTitle>
+<PageTitle>Compliance Evidence</PageTitle>
 
-<MudText Typo="Typo.h4" GutterBottom="true">Compliance Features</MudText>
+<MudText Typo="Typo.h4" GutterBottom="true">Compliance Evidence</MudText>
 
-<MudList T="string">
-    <MudListItem T="string" Icon="@Icons.Material.Filled.CheckCircle">GDPR Compliance</MudListItem>
-    <MudListItem T="string" Icon="@Icons.Material.Filled.CheckCircle">HIPAA Compliance</MudListItem>
-    <MudListItem T="string" Icon="@Icons.Material.Filled.CheckCircle">SOX Compliance</MudListItem>
-</MudList>
+<MudAlert Severity="Severity.Warning" Class="mb-4">
+    VertexBPMN does not claim GDPR, HIPAA, SOX, BPMN, DMN, or CMMN certification. Compliance depends on the deployed system, its configuration, operating controls, and an independent assessment.
+</MudAlert>
+
+<MudPaper Class="pa-4">
+    <MudText Typo="Typo.h6">Available technical evidence</MudText>
+    <MudList T="string">
+        <MudListItem T="string" Icon="@Icons.Material.Filled.FactCheck">Auditable API mutations and correlation identifiers</MudListItem>
+        <MudListItem T="string" Icon="@Icons.Material.Filled.Security">Tenant authorization and production configuration gates</MudListItem>
+        <MudListItem T="string" Icon="@Icons.Material.Filled.Rule">Published product support and acceptance matrix</MudListItem>
+    </MudList>
+</MudPaper>

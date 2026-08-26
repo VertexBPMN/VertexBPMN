@@ -10390,7 +10390,7 @@
       "name": "Metrics"
     },
     {
-      "description": "Live Process Migration Controller\nOlympic-level feature: Innovation Differentiators - Live Migration",
+      "description": "Live Process Migration Controller\nLive process migration API. It fails closed unless the qualified feature is explicitly enabled.",
       "name": "Migration"
     },
     {

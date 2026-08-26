@@ -35,7 +35,7 @@
             }
             else
             {
-                <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-6">
+                <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" Class="pa-6">
                     <!-- Overview Tab -->
                     <MudTabPanel Text="Overview" Icon="@Icons.Material.Filled.Dashboard">
                         <MudGrid>
@@ -204,7 +204,7 @@
                                             <MudIconButton Icon="@Icons.Material.Filled.OpenInNew" 
                                                           Size="Size.Small" 
                                                           OnClick="@(() => OpenTask(taskId))"
-                                                          Title="Open Task" />
+                                                          aria-label="Open Task" />
                                         </div>
                                     </MudListItem>
                                 }
@@ -471,4 +471,4 @@
         public string Name { get; init; } = string.Empty;
         public object? Value { get; init; }
     }
-}   
+}

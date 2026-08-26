@@ -10,6 +10,7 @@ Betriebs-, Release- und Troubleshooting-Dokumentation.
 - [Production Notes](production-notes.md)
 - [Production Deployment and Recovery](production-deployment.md)
 - [SDK Release Checklist](sdk-release-checklist.md)
+- [Security and Release Gates](security-and-release-gates.md)
 - [Studio Authentication](studio-authentication.md)
 - [Troubleshooting](troubleshooting.md)
 - [Workflow Triggers](workflow-triggers.md)

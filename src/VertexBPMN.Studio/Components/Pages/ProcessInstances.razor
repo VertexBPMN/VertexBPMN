@@ -83,30 +83,30 @@ else
                     <MudIconButton Icon="@Icons.Material.Filled.History" 
                                   Size="Size.Small" 
                                   OnClick="@(() => ViewHistory(context))" 
-                                  Title="View History" />
+                                  aria-label="View History" />
                     <MudIconButton Icon="@Icons.Material.Filled.Visibility" 
                                   Size="Size.Small" 
                                   OnClick="@(() => ViewDetails(context))" 
-                                  Title="View Details" />
+                                  aria-label="View Details" />
                     @if (context.State == "Active")
                     {
                         <MudIconButton Icon="@Icons.Material.Filled.Pause" 
                                       Size="Size.Small" 
                                       OnClick="@(() => SuspendInstance(context.Id))" 
-                                      Title="Suspend Instance" />
+                                      aria-label="Suspend Instance" />
                     }
                     else if (context.State == "Suspended")
                     {
                         <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" 
                                       Size="Size.Small" 
                                       OnClick="@(() => ResumeInstance(context.Id))" 
-                                      Title="Resume Instance" />
+                                      aria-label="Resume Instance" />
                     }
                     <MudIconButton Icon="@Icons.Material.Filled.Delete" 
                                   Size="Size.Small" 
                                   Color="Color.Error"
                                   OnClick="@(() => DeleteInstance(context.Id))" 
-                                  Title="Delete Instance" />
+                                  aria-label="Delete Instance" />
                 </MudButtonGroup>
             </MudTd>
         </RowTemplate>

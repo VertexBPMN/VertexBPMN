@@ -24,8 +24,18 @@ namespace VertexBPMN.Api.Controllers
         {
             var tenantId = ResolveTenantId(request.TenantId);
             if (tenantId is null && !User.IsInRole("Admin")) return Forbid();
-            await _decisionService.DeployAsync(request.DecisionKey, request.Name, request.DmnXml, tenantId);
-            return Ok();
+            try
+            {
+                await _decisionService.DeployAsync(request.DecisionKey, request.Name, request.DmnXml, tenantId);
+                return Ok();
+            }
+            catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or System.Xml.XmlException)
+            {
+                return Problem(
+                    statusCode: StatusCodes.Status400BadRequest,
+                    title: "DMN document is outside the supported decision-table subset",
+                    detail: exception.Message);
+            }
         }
 
         public record DeployRequest(string DecisionKey, string Name, string DmnXml, string? TenantId = null);

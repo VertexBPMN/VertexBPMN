@@ -47,12 +47,12 @@
                         <MudIconButton Icon="@Icons.Material.Filled.Visibility" 
                                       Size="Size.Small" 
                                       OnClick="@(() => ViewDefinition(context))" 
-                                      Title="View BPMN" />
+                                      aria-label="View BPMN" />
                         <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" 
                                       Size="Size.Small" 
                                       Color="Color.Success"
                                       OnClick="@(() => StartProcess(context))" 
-                                      Title="Start Process Instance" />
+                                      aria-label="Start Process Instance" />
                     </MudButtonGroup>
                 </MudTd>
             </RowTemplate>

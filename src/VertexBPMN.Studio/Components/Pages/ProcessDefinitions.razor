@@ -19,8 +19,7 @@ else
 {
     <MudDataGrid T="ProcessDefinition" 
                  Items="@_processDefinitions" 
-                 Filterable="true" 
-                 Sortable="true"
+                 Filterable="true"
                  Groupable="true"
                  Hover="true"
                  Dense="true"
@@ -66,21 +65,21 @@ else
                         <MudIconButton Icon="@Icons.Material.Filled.Visibility" 
                                       Size="Size.Small" 
                                       OnClick="@(() => ViewDefinition(context.Item))" 
-                                      Title="View BPMN" />
+                                      aria-label="View BPMN" />
                         <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" 
                                       Size="Size.Small" 
                                       Color="Color.Success"
                                       OnClick="@(() => StartProcess(context.Item))" 
-                                      Title="Start Process Instance" />
+                                      aria-label="Start Process Instance" />
                         <MudIconButton Icon="@Icons.Material.Filled.History" 
                                       Size="Size.Small" 
                                       OnClick="@(() => ViewVersions(context.Item.Key))" 
-                                      Title="View Versions" />
+                                      aria-label="View Versions" />
                         <MudIconButton Icon="@Icons.Material.Filled.Delete"
                                       Size="Size.Small"
                                       Color="Color.Error"
                                       OnClick="@(() => DeleteDefinition(context.Item))"
-                                      Title="Delete Process Definition" />
+                                      aria-label="Delete Process Definition" />
                     </MudButtonGroup>
                 </CellTemplate>
             </TemplateColumn>
@@ -180,7 +179,7 @@ else
             $"Start Process: {definition.Name}", parameters);
         var result = await dialog.Result;
 
-        if (!result.Canceled)
+        if (result is { Canceled: false })
         {
             Snackbar.Add($"Process instance started for {definition.Name}", Severity.Success);
         }

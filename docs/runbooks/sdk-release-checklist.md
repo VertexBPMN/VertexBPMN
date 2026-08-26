@@ -1,31 +1,29 @@
-# SDK and Release Checklist
+# SDK, CLI and release checklist
 
-The repository contains runnable protocol examples under `sdk-examples/` for C#, JavaScript, Java, and Python. Keep these examples aligned with the public REST/gRPC contracts whenever an endpoint changes.
+VertexBPMN publishes `VertexBPMN.Sdk` and the `VertexBPMN.Cli` .NET tool. A release is valid only when GitHub Actions produces the packages from the tagged clean checkout; locally packed files are qualification evidence, not publish inputs.
 
-Before publishing an SDK or NuGet package:
+## Before tagging
 
-1. Restore and build the solution in Release mode.
-2. Run the complete test suite with the repository's Microsoft Testing Platform runner.
-3. Build the API container without pushing it.
-4. Verify that examples contain placeholders rather than credentials.
-5. Generate OpenAPI and gRPC client artifacts from the same version as the server.
-6. Publish packages only from explicitly packable project files and attach symbols and source mapping.
+1. Confirm that the source commit is on `master` and its required CI checks are green.
+2. Confirm that the support matrix, README, OpenAPI snapshot, gRPC contract and protocol examples describe the same public scope.
+3. Run the local restore/build/test, dependency audit, coverage, conformance, OpenAPI and reproducible-package commands from [Reproducible Build and Test](build-and-test.md), then build and inspect the API and Studio images with the WSLC commands in [Security and Release Gates](security-and-release-gates.md).
+4. Install the generated CLI package from an isolated local source and run `vertexbpmn --help`; help must not create or migrate a database.
+5. Confirm that examples and configuration contain placeholders rather than credentials.
+6. Choose a new SemVer version. Never move or reuse a published tag.
 
-For the first .NET client package, use:
+## Trusted Publishing configuration
 
-```powershell
-dotnet pack src/VertexBPMN.Sdk/VertexBPMN.Sdk.csproj --configuration Release --output artifacts/sdk-pack
+The nuget.org policy must use repository owner `VertexBPMN`, repository `VertexBPMN`, workflow file `ci.yml`, and the NuGet profile creator configured as the GitHub secret `NUGET_USER`. No persistent `NUGET_API_KEY` secret is used; `NuGet/login` returns a short-lived key after the OIDC trust exchange.
+
+## Release
+
+```text
+git tag v1.0.1
+git push origin v1.0.1
 ```
 
-The resulting package is `VertexBPMN.Sdk.1.0.0.nupkg`. It contains only the typed REST client and has no server, persistence, or credential-storage dependency.
+The tag first waits for all build, audit, CodeQL, coverage, secret, container and external integration gates. The clean release job then rebuilds and tests API, Engine and Studio, checks OpenAPI/conformance, verifies a clean source tree, creates each package twice and requires byte-identical output. The publish job verifies `SHA256SUMS`, creates a provenance attestation and publishes exactly those qualified SDK and CLI artifacts.
 
-Recommended local verification:
+Afterward, verify both NuGet package pages, install the CLI into an empty tool path and check the GitHub Actions attestation. A failed OIDC login indicates a mismatch in repository, workflow filename, NuGet policy owner/creator or `NUGET_USER`; do not replace Trusted Publishing with a long-lived API key.
 
-```powershell
-dotnet restore VertexBPMN.sln
-dotnet build VertexBPMN.sln --configuration Release --no-restore
-dotnet test VertexBPMN.sln --configuration Release --no-build
-docker build -t vertexbpmn:release-check .
-```
-
-The current solution does not define a packable `VertexBPMN.Core` project. Do not publish a package under that name until the project and its API compatibility policy are added explicitly.
+The solution does not define a packable `VertexBPMN.Core` project. Do not publish a package under that name until the project and its compatibility policy exist explicitly.

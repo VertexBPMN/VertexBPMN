@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
+using VertexBPMN.Api.Features;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 
@@ -15,11 +17,13 @@ namespace VertexBPMN.Api.Controllers
         private readonly ISimulationService _simulationService;
         private readonly ISimulationScenarioService _scenarioService;
         private readonly ISemanticValidationService _validationService;
-        public SimulationController(ISimulationService simulationService, ISimulationScenarioService scenarioService, ISemanticValidationService validationService)
+        private readonly AdvancedFeatureOptions _features;
+        public SimulationController(ISimulationService simulationService, ISimulationScenarioService scenarioService, ISemanticValidationService validationService, IOptions<AdvancedFeatureOptions> features)
         {
             _simulationService = simulationService;
             _scenarioService = scenarioService;
             _validationService = validationService;
+            _features = features.Value;
         }
         /// <summary>
         /// Simulates a BPMN process instance using a saved scenario.
@@ -28,8 +32,10 @@ namespace VertexBPMN.Api.Controllers
         /// <returns>Simulation result with steps and status</returns>
         [HttpPost("scenario/{scenarioId}")]
         [ProducesResponseType(typeof(SimulationResult), 200)]
+        [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status501NotImplemented)]
         public async System.Threading.Tasks.Task<ActionResult<SimulationResult>> SimulateScenario(string scenarioId)
         {
+            if (!_features.SimulationExecution) return SimulationUnavailable();
             var scenario = await _scenarioService.GetByIdAsync(scenarioId);
             if (scenario == null) return NotFound();
             // Validate BPMN before simulation (assume scenario contains BPMN XML)
@@ -51,8 +57,10 @@ namespace VertexBPMN.Api.Controllers
         /// <returns>Simulation result with steps and status</returns>
         [HttpPost]
         [ProducesResponseType(typeof(SimulationResult), 200)]
+        [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status501NotImplemented)]
         public async System.Threading.Tasks.Task<ActionResult<SimulationResult>> Simulate([FromBody] Dto.SimulationRequestDto request)
         {
+            if (!_features.SimulationExecution) return SimulationUnavailable();
             var domainRequest = new SimulationRequest
             {
                 ProcessDefinitionId = request.ProcessDefinitionId,
@@ -65,5 +73,10 @@ namespace VertexBPMN.Api.Controllers
             var result = await _simulationService.SimulateAsync(domainRequest);
             return Ok(new { Simulation = result, Diagnostics = diagnostics });
         }
+
+        private ObjectResult SimulationUnavailable() => Problem(
+            statusCode: StatusCodes.Status501NotImplemented,
+            title: "BPMN simulation is not qualified for production use",
+            detail: "Simulation execution is disabled until a real engine-backed, deterministic simulation passes the Phase 4 acceptance gate.");
     }
 }

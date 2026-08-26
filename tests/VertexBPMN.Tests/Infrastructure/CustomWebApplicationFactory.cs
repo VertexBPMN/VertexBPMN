@@ -9,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using VertexBPMN.Api.Features;
 using VertexBPMN.Application;
 using VertexBPMN.Infrastructure.Persistence;
 using VertexBPMN.Infrastructure.Persistence.Services;
@@ -21,6 +22,7 @@ public class CustomWebApplicationFactory : WebApplicationFactory<VertexBPMN.Api.
     private bool _initialized;
     private string _engineType = "Simple";
     private bool _backgroundJobsEnabled;
+    private bool _cmmnExecutionEnabled;
     private readonly List<SqliteConnection> _ownedConnections = new();
     private readonly string _databaseId = Guid.NewGuid().ToString("N");
     private SharedSqliteDbFixture? _sharedFixture;
@@ -44,6 +46,14 @@ public class CustomWebApplicationFactory : WebApplicationFactory<VertexBPMN.Api.
     public CustomWebApplicationFactory WithBackgroundJobsEnabled()
     {
         _backgroundJobsEnabled = true;
+        return this;
+    }
+
+    public CustomWebApplicationFactory WithCmmnExecutionEnabled()
+    {
+        _cmmnExecutionEnabled = true;
+        _configureTestServices += services =>
+            services.PostConfigure<AdvancedFeatureOptions>(options => options.CmmnExecution = true);
         return this;
     }
 
@@ -85,6 +95,7 @@ public class CustomWebApplicationFactory : WebApplicationFactory<VertexBPMN.Api.
                     ["Database:ApplyMigrationsOnStartup"] = "true",
                     ["ProcessEngine:Type"] = _engineType,
                     ["Modules:Swagger"] = "false",
+                    ["AdvancedFeatures:CmmnExecution"] = _cmmnExecutionEnabled.ToString(),
                     ["PathBase"] = "/api"
                 });
         });

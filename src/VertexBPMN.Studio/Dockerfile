@@ -1,24 +1,19 @@
-#See https://aka.ms/containerfastmode to understand how Visual Studio uses this Dockerfile to build your images for faster debugging.
-
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
+FROM mcr.microsoft.com/dotnet/aspnet:10.0.11 AS base
 WORKDIR /app
+ENV ASPNETCORE_HTTP_PORTS=8080 \
+    DOTNET_EnableDiagnostics=0
 EXPOSE 8080
-EXPOSE 8081
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0.302 AS build
 WORKDIR /src
-COPY global.json .
-RUN dotnet --version
-COPY ["VertexBPMN.Studio/VertexBPMN.Studio.csproj", "VertexBPMN.Studio/"]
-RUN dotnet restore "VertexBPMN.Studio/VertexBPMN.Studio.csproj"
 COPY . .
-WORKDIR "/src/VertexBPMN.Studio"
-RUN dotnet build "VertexBPMN.Studio.csproj" -c Release -o /app/build
-
-FROM build AS publish
-RUN dotnet publish "VertexBPMN.Studio.csproj" -c Release -o /app/publish /p:UseAppHost=false
+RUN dotnet --version
+RUN dotnet restore "src/VertexBPMN.Studio/VertexBPMN.Studio.csproj"
+RUN dotnet publish "src/VertexBPMN.Studio/VertexBPMN.Studio.csproj" -c Release -o /app/publish \
+    --no-restore /p:UseAppHost=false /p:SkipBpmnIoAssetBuild=true
 
 FROM base AS final
 WORKDIR /app
-COPY --from=publish /app/publish .
+COPY --from=build /app/publish .
+USER $APP_UID
 ENTRYPOINT ["dotnet", "VertexBPMN.Studio.dll"]

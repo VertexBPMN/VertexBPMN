@@ -137,9 +137,6 @@ else if (_error != null)
     private bool _isLoading = true;
     private string? _error;
     private Timer? _refreshTimer;
-    private bool disposedValue;
-
-
     protected override async Task OnInitializedAsync()
     {
         ActiveEngineService.OnEngineChanged += OnEngineChanged;

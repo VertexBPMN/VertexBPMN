@@ -44,15 +44,15 @@
 
 | Fähigkeit | Status | Nachweis und Grenze |
 | --- | --- | --- |
-| CMMN-Definition-API | `partial` | Einfache Definitionen werden persistent deployt und gelesen; dies ist ausdrücklich keine CMMN-Ausführungsfreigabe. |
-| Case Lifecycle, Sentries, Discretionary Items und Wiederanlauf | `unsupported` | Die REST-Ausführung antwortet standardmäßig mit HTTP 501; CMMN-gRPC-Operationen antworten mit `Unimplemented`. Es gibt keinen vollständigen persistenten Case-Lifecycle und keine semantische Conformance-Suite. |
+| CMMN-Definition-API | `supported` | CMMN-1.1-Definitionen werden XML-sicher geparst, `definitionRef`-Verweise validiert, tenantbezogen persistent deployt und über REST sowie gRPC verwendet. |
+| Case Lifecycle, Sentries, Discretionary Items und Wiederanlauf | `supported` | Case- und Plan-Item-Zustände, Case File und History sind relational persistent. Entry-/Exit-Sentries, OnParts/IfParts, verschachtelte Stages, Human-/Manual-/Service-Tasks, User Events und Discretionary Items laufen über REST, SDK, gRPC und MCP. Lifecycle- und Host-Neustart-Verträge belegen die Fortsetzung derselben Case-Instanz. |
 
 ## Plattform- und Betriebsfunktionen
 
 | Fähigkeit | Status | Nachweis und Grenze |
 | --- | --- | --- |
 | REST API und .NET SDK für Deployment/Start | `supported` | REST startet den persistenten BPMN-Subset bis End-/Wait-State; die zentralen Verträge laufen über einen echten API-Host. |
-| gRPC | `partial` | Vertrags-/Smoke-Tests existieren; keine gleichwertige Abdeckung des freigegebenen persistenten Kernpfads. |
+| gRPC | `supported` | gRPC und MCP verwenden dieselbe persistente CMMN-Runtime wie REST, geben stabile Case-Instance-IDs zurück und sind mit Lifecycle-, Case-File-, Event-, Discretionary-Item- und History-Verträgen belegt. |
 | EF-Core-Runtime-Persistenz | `supported` | Instanzen, Tokens, Variablen, Tasks, Jobs, Subscriptions, Incidents, Inbox, Outbox und Worker-Registrierungen sind relational modelliert und migriert. |
 | Produktionskonfiguration und Mandantenschutz | `supported` | Production/Stage verlangen Connection Strings und persistenten Data-Protection-Keyring; Fake/InMemory/NoOp-Auflösungen und unsichere Script-/Connector-/Plug-in-Konfigurationen brechen den Start ab. |
 | Externe Brokerzustellung der Outbox | `supported` | Der persistente Publisher least Nachrichten atomar und replika-sicher und liefert mit stabilen Message-IDs, Retry-/Dead-Letter-Semantik und Broker-Readiness an RabbitMQ oder Kafka. Echte RabbitMQ-/PostgreSQL-Akzeptanztests sind ein verpflichtendes separates CI-Gate. |
@@ -82,10 +82,11 @@ Alle Verträge verwenden einen echten `WebApplicationFactory`-Host und relationa
 | `P4-AC-01` | Unterstützte DMN-Tabelle persistent deployen und über API auswerten | **grün** |
 | `P4-AC-02` | PRIORITY-Hit-Policy verwendet deklarierte Output-Reihenfolge | **grün** |
 | `P4-AC-02B` | Persistente DMN-Definition im BusinessRuleTask auswerten und Ergebnis für BPMN-Routing verwenden | **grün** |
-| `P4-AC-03` | CMMN-Definition deployen/lesen, Lifecycle fail-closed sperren | **grün** |
+| `P4-AC-03` | CMMN deployen/lesen, persistente Plan Items und Sentry-Fortsetzung bis Case-Ende | **grün** |
 | `P4-AC-04` | Simulation und beide Migrations-APIs mit HTTP 501 sperren | **grün** |
 | `P4-AC-05` | Simulation Analytics mit HTTP 501 sperren | **grün** |
-| `P4-AC-06` | Engine-Capabilities melden CMMN-Ausführung nicht als unterstützt | **grün** |
-| `P4-AC-07` | CMMN-gRPC-Ausführung antwortet im Standardprofil mit `Unimplemented` | **grün** |
+| `P4-AC-06` | Engine-Capabilities melden die qualifizierte persistente CMMN-Ausführung | **grün** |
+| `P4-AC-07` | CMMN-gRPC und MCP führen Lifecycle, Events, Case File, Discretionary Items und History persistent aus | **grün** |
+| `P4-AC-08` | CMMN-Host-Neustart erhält Case- und Discretionary-Item-Zustände und setzt dieselbe Instanz fort | **grün** |
 
 Die Phase-1-Suite führt aktuell 16 persistente BPMN-Verträge aus; sechs zusätzliche Phase-2-Verträge tragen `Category=Phase2Acceptance`. Das Phase-4-Gate führt zehn konkrete Testfälle aus. Nicht aufgeführte BPMN-, DMN- oder CMMN-Semantik ist nicht automatisch unterstützt.

@@ -39,6 +39,7 @@ public class BpmnDbContext : DbContext
     public DbSet<WorkflowTrigger> WorkflowTriggers => Set<WorkflowTrigger>();
     public DbSet<FormDefinitionRecord> FormDefinitions => Set<FormDefinitionRecord>();
     public DbSet<CaseDefinitionRecord> CaseDefinitions => Set<CaseDefinitionRecord>();
+    public DbSet<CaseInstanceRecord> CaseInstances => Set<CaseInstanceRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -67,6 +68,7 @@ public class BpmnDbContext : DbContext
         ConfigureFormDefinitions(modelBuilder);
         ConfigureCaseDefinitions(modelBuilder);
 
+        ConfigureCaseInstances(modelBuilder);
         // Only identity bootstrap data is seeded. Runtime state must exclusively be
         // created by deployments and process execution; a due sample job would be
         // indistinguishable from real work to every production worker.
@@ -437,6 +439,22 @@ public class BpmnDbContext : DbContext
     {
         var entity = modelBuilder.Entity<CaseDefinitionRecord>();
         entity.HasKey(x => x.Id); entity.Property(x => x.TenantId).HasMaxLength(64).IsRequired(); entity.Property(x => x.Key).HasMaxLength(128).IsRequired(); entity.Property(x => x.Name).HasMaxLength(256).IsRequired(); entity.Property(x => x.CmmnXml).IsRequired(); entity.HasIndex(x => new { x.TenantId, x.Key }).IsUnique();
+    }
+
+    private static void ConfigureCaseInstances(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<CaseInstanceRecord>();
+        entity.HasKey(x => x.Id);
+        entity.Property(x => x.CaseDefinitionId).HasMaxLength(128).IsRequired();
+        entity.Property(x => x.CaseDefinitionKey).HasMaxLength(128).IsRequired();
+        entity.Property(x => x.TenantId).HasMaxLength(64).IsRequired();
+        entity.Property(x => x.State).HasMaxLength(32).IsRequired();
+        entity.Property(x => x.CaseFileJson).IsRequired();
+        entity.Property(x => x.PlanItemStatesJson).IsRequired();
+        entity.Property(x => x.DiscretionaryItemsJson).IsRequired();
+        entity.Property(x => x.Revision).IsConcurrencyToken();
+        entity.HasIndex(x => x.CaseDefinitionId);
+        entity.HasIndex(x => new { x.TenantId, x.CaseDefinitionKey, x.State });
     }
 
     private static void ConfigureHistoryEvent(ModelBuilder modelBuilder)

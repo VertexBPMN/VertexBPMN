@@ -23,7 +23,7 @@ public sealed class GrpcContractTests : IDisposable
 
     public GrpcContractTests()
     {
-        _factory = new CustomWebApplicationFactory().WithCmmnExecutionEnabled();
+        _factory = new CustomWebApplicationFactory();
         var httpClient = _factory.CreateClient();
         _channel = GrpcChannel.ForAddress("http://localhost", new GrpcChannelOptions
         {
@@ -39,7 +39,7 @@ public sealed class GrpcContractTests : IDisposable
 
     [Fact]
     [Trait("Category", "Phase4Acceptance")]
-    public async Task DefaultProfile_CmmnGrpcActionsFailClosed()
+    public async Task DefaultProfile_CmmnGrpcUsesQualifiedPersistentRuntime()
     {
         using var disabledFactory = new CustomWebApplicationFactory();
         using var httpClient = disabledFactory.CreateClient();
@@ -49,14 +49,18 @@ public sealed class GrpcContractTests : IDisposable
         });
         var client = new api::VertexBPMN.Api.Grpc.VertexBPMNService.VertexBPMNServiceClient(channel);
 
-        var exception = await Assert.ThrowsAsync<RpcException>(async () =>
-            await client.RegisterCmmnModelAsync(new ApiRegisterCmmnRequest
-            {
-                CaseId = "disabled-cmmn",
-                CmmnXml = "<definitions />"
-            }));
-
-        Assert.Equal(StatusCode.Unimplemented, exception.StatusCode);
+        const string key = "default-qualified-cmmn";
+        var registration = await client.RegisterCmmnModelAsync(new ApiRegisterCmmnRequest
+        {
+            CaseId = key,
+            CmmnXml = EmptyCase(key)
+        }, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Contains(key, registration.Message);
+        var execution = await client.ExecuteCaseAsync(
+            new ApiExecuteCaseRequest { CaseId = key },
+            cancellationToken: TestContext.Current.CancellationToken);
+        Assert.True(Guid.TryParse(execution.CaseInstanceId, out _));
+        Assert.Contains("CASE_COMPLETED", execution.Trace);
     }
 
     [Fact]
@@ -68,32 +72,32 @@ public sealed class GrpcContractTests : IDisposable
         var registration = await client.RegisterCmmnModelAsync(new ApiRegisterCmmnRequest
         {
             CaseId = caseId,
-            CmmnXml = "<definitions xmlns='http://www.omg.org/spec/CMMN/20151109/MODEL'><case id='grpc-contract-case' name='gRPC contract case'><casePlanModel id='case-plan' /></case></definitions>"
+            CmmnXml = InteractiveCase(caseId)
         });
 
         Assert.Contains(caseId, registration.Message);
 
         var execution = await client.ExecuteCaseAsync(new ApiExecuteCaseRequest { CaseId = caseId });
-        Assert.NotNull(execution);
+        Assert.True(Guid.TryParse(execution.CaseInstanceId, out _));
 
         var eventResult = await client.TriggerUserEventAsync(new ApiTriggerEventRequest
         {
-            CaseId = caseId,
+            CaseId = execution.CaseInstanceId,
             EventId = "user-event"
         });
-        Assert.Contains(caseId, eventResult.Message);
+        Assert.Contains("user-event", eventResult.Message);
 
         var updateResult = await client.UpdateCaseFileItemAsync(new ApiCaseFileUpdateRequest
         {
-            CaseId = caseId,
+            CaseId = execution.CaseInstanceId,
             CaseFileItemId = "item",
             NewValue = "value"
         });
-        Assert.Contains(caseId, updateResult.Message);
+        Assert.Contains("item", updateResult.Message);
 
         var adhocResult = await client.GenerateAdHocSubprocessAsync(
-            new ApiGenerateAdHocSubprocessRequest { CaseId = caseId });
-        Assert.Contains(caseId, adhocResult.Message);
+            new ApiGenerateAdHocSubprocessRequest { CaseId = execution.CaseInstanceId, PlanItemId = "optional-review" });
+        Assert.Contains("optional-review", adhocResult.Message);
     }
 
     [Fact]
@@ -106,33 +110,54 @@ public sealed class GrpcContractTests : IDisposable
         await registrationClient.RegisterCmmnModelAsync(new ApiRegisterCmmnRequest
         {
             CaseId = caseId,
-            CmmnXml = "<definitions xmlns='http://www.omg.org/spec/CMMN/20151109/MODEL'><case id='grpc-mcp-contract-case' name='gRPC MCP contract case'><casePlanModel id='case-plan' /></case></definitions>"
+            CmmnXml = InteractiveCase(caseId)
         });
 
         var execution = await client.ExecuteCaseAsync(new McpExecuteCaseRequest { CaseId = caseId });
-        Assert.NotNull(execution);
+        Assert.True(Guid.TryParse(execution.CaseInstanceId, out _));
 
         var eventResult = await client.TriggerUserEventAsync(new McpTriggerEventRequest
         {
-            CaseId = caseId,
+            CaseId = execution.CaseInstanceId,
             EventId = "user-event"
         });
-        Assert.Contains(caseId, eventResult.Message);
+        Assert.Contains("user-event", eventResult.Message);
 
         var updateResult = await client.UpdateCaseFileItemAsync(new McpCaseFileUpdateRequest
         {
-            CaseId = caseId,
+            CaseId = execution.CaseInstanceId,
             CaseFileItemId = "item",
             NewValue = "value"
         });
-        Assert.Contains(caseId, updateResult.Message);
+        Assert.Contains("item", updateResult.Message);
 
         var adhocResult = await client.GenerateAdHocSubprocessAsync(
-            new McpGenerateAdHocSubprocessRequest { CaseId = caseId });
-        Assert.Contains(caseId, adhocResult.Message);
+            new McpGenerateAdHocSubprocessRequest { CaseId = execution.CaseInstanceId, PlanItemId = "optional-review" });
+        Assert.Contains("optional-review", adhocResult.Message);
 
         var history = await client.GetHistoricalContextAsync(
-            new McpHistoricalContextRequest { CaseId = caseId });
-        Assert.NotNull(history);
+            new McpHistoricalContextRequest { CaseId = execution.CaseInstanceId });
+        Assert.NotEmpty(history.HistoricalData);
     }
+
+    private static string EmptyCase(string id) =>
+        $"<definitions xmlns='https://www.omg.org/spec/CMMN/20151109/MODEL'><case id='{id}'><casePlanModel id='plan'/></case></definitions>";
+
+    private static string InteractiveCase(string id) => $"""
+        <definitions xmlns="https://www.omg.org/spec/CMMN/20151109/MODEL">
+          <case id="{id}" name="Interactive case">
+            <casePlanModel id="plan">
+              <planItem id="hold" definitionRef="holdDefinition" />
+              <planItem id="event-listener" definitionRef="eventDefinition" />
+              <planningTable>
+                <discretionaryItem id="optional-review" definitionRef="optionalDefinition" />
+              </planningTable>
+              <humanTask id="holdDefinition" />
+              <userEventListener id="eventDefinition" name="user-event" />
+              <manualTask id="optionalDefinition" />
+              <caseFileItem id="item" name="Item" />
+            </casePlanModel>
+          </case>
+        </definitions>
+        """;
 }

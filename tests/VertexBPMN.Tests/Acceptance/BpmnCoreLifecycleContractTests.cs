@@ -397,6 +397,76 @@ public sealed class BpmnCoreLifecycleContractTests : IDisposable
     }
 
     [Fact]
+    public async Task P4_AC_08_CMMN_Restart_Preserves_Case_And_Discretionary_Item_Lifecycle()
+    {
+        var key = $"cmmn-restart-{Guid.NewGuid():N}";
+        var cmmn = $$"""
+            <definitions xmlns="https://www.omg.org/spec/CMMN/20151109/MODEL">
+              <case id="{{key}}" name="Restart case">
+                <casePlanModel id="plan">
+                  <planItem id="required-review" definitionRef="requiredDefinition" />
+                  <planningTable>
+                    <discretionaryItem id="optional-review" definitionRef="optionalDefinition" />
+                  </planningTable>
+                  <humanTask id="requiredDefinition" />
+                  <manualTask id="optionalDefinition" />
+                </casePlanModel>
+              </case>
+            </definitions>
+            """;
+        using var deploy = await _client.PostAsJsonAsync("/api/case-definitions/deploy", new
+        {
+            key,
+            name = "Restart case",
+            cmmnXml = cmmn
+        }, TestContext.Current.CancellationToken);
+        deploy.EnsureSuccessStatusCode();
+        using var start = await _client.PostAsJsonAsync(
+            $"/api/case-definitions/{key}/start",
+            new { },
+            TestContext.Current.CancellationToken);
+        start.EnsureSuccessStatusCode();
+        using var startPayload = JsonDocument.Parse(await start.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        var instanceId = startPayload.RootElement.GetProperty("caseInstanceId").GetGuid();
+
+        _client.Dispose();
+        _factory.Dispose();
+
+        using var restartedFactory = new CustomWebApplicationFactory()
+            .WithPersistentBpmnDatabase(_bpmnDatabase.ConnectionString);
+        using var restartedClient = restartedFactory.CreateClient(_output);
+        using var restored = await restartedClient.GetAsync(
+            $"/api/case-definitions/instances/{instanceId}",
+            TestContext.Current.CancellationToken);
+        restored.EnsureSuccessStatusCode();
+        using var restoredPayload = JsonDocument.Parse(await restored.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Equal("Active", restoredPayload.RootElement.GetProperty("state").GetString());
+
+        using var activate = await restartedClient.PostAsJsonAsync(
+            $"/api/case-definitions/instances/{instanceId}/discretionary-items/optional-review/activate",
+            new { },
+            TestContext.Current.CancellationToken);
+        activate.EnsureSuccessStatusCode();
+        using var activatePayload = JsonDocument.Parse(await activate.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Contains("PLAN_ITEM_ACTIVE:optional-review:manualtask",
+            activatePayload.RootElement.GetProperty("trace").EnumerateArray().Select(item => item.GetString()));
+
+        foreach (var planItem in new[] { "optional-review", "required-review" })
+        {
+            using var complete = await restartedClient.PostAsJsonAsync(
+                $"/api/case-definitions/instances/{instanceId}/plan-items/{planItem}/complete",
+                new { },
+                TestContext.Current.CancellationToken);
+            complete.EnsureSuccessStatusCode();
+            if (planItem == "required-review")
+            {
+                using var payload = JsonDocument.Parse(await complete.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+                Assert.Equal("Completed", payload.RootElement.GetProperty("state").GetString());
+            }
+        }
+    }
+
+    [Fact]
     public async Task P1_AC_05_Parallel_Join_Waits_For_Both_Branches_And_Instances_Are_Isolated()
     {
         var processKey = $"phase1-parallel-{Guid.NewGuid():N}";

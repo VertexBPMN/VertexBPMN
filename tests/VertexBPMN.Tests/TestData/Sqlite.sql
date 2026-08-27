@@ -250,6 +250,32 @@ CREATE TABLE IF NOT EXISTS CaseDefinitions (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS IX_CaseDefinitions_TenantId_Key ON CaseDefinitions(TenantId, [Key]);
 
+CREATE TABLE IF NOT EXISTS CaseInstances (
+    Id TEXT PRIMARY KEY,
+    CaseDefinitionId TEXT NOT NULL,
+    CaseDefinitionKey TEXT NOT NULL,
+    TenantId TEXT NOT NULL,
+    State TEXT NOT NULL,
+    CaseFileJson TEXT NOT NULL,
+    PlanItemStatesJson TEXT NOT NULL,
+    DiscretionaryItemsJson TEXT NOT NULL,
+    CreatedAt TEXT NOT NULL,
+    LastModified TEXT NOT NULL,
+    CompletedAt TEXT,
+    Revision INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS IX_CaseInstances_CaseDefinitionId ON CaseInstances(CaseDefinitionId);
+CREATE INDEX IF NOT EXISTS IX_CaseInstances_TenantId_CaseDefinitionKey_State ON CaseInstances(TenantId, CaseDefinitionKey, State);
+
+CREATE TABLE IF NOT EXISTS CmmnHistory (
+    Id TEXT PRIMARY KEY,
+    CaseId TEXT NOT NULL,
+    CaseFileJson TEXT NOT NULL,
+    CompletedPlanItemsJson TEXT NOT NULL,
+    Timestamp TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS IX_CmmnHistory_CaseId_Timestamp ON CmmnHistory(CaseId, Timestamp);
+
 
 CREATE TABLE IF NOT EXISTS Credentials (
     Id TEXT PRIMARY KEY,

@@ -23,6 +23,7 @@ message ExecuteCaseRequest {
 
 message ExecuteCaseResponse {
 	repeated string trace = 1;
+	string case_instance_id = 2;
 }
 
 message TriggerEventRequest {
@@ -39,6 +40,7 @@ message CaseFileUpdateRequest {
 
 message GenerateAdHocSubprocessRequest {
 	string case_id = 1;
+	string plan_item_id = 2;
 }
 
 message CmmnResponse {

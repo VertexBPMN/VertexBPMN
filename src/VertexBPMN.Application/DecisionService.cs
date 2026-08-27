@@ -91,17 +91,12 @@ public class DecisionService : IDecisionService
         {
             _logger.LogDebug("Deploying decision {DecisionKey} for tenant {TenantId}", decisionKey, tenantId ?? "default");
 
-            // Parse and validate DMN XML
-            var decisionTable = DmnDecisionTable.Parse(dmnXml);
-
-            ValidateDecisionTable(decisionTable);
-
-            var definition = new DecisionDefinition(decisionKey, name, dmnXml, tenantId, decisionTable);
+            var graph = DmnDecisionGraph.Parse(dmnXml, decisionKey);
+            var definition = new DecisionDefinition(decisionKey, name, dmnXml, tenantId);
             await _repository.UpsertDefinitionAsync(definition);
             await _repository.SaveChangesAsync();
 
-            _logger.LogInformation("Successfully deployed decision {DecisionKey} with {InputCount} inputs and {RuleCount} rules",
-                decisionKey, decisionTable.Inputs.Count, decisionTable.Rules.Count);
+            _logger.LogInformation("Successfully deployed validated DMN decision graph {DecisionKey}", decisionKey);
         }
         catch (Exception ex)
         {
@@ -124,14 +119,7 @@ public class DecisionService : IDecisionService
 
     private DecisionResult EvaluateDecisionTable(DecisionDefinition definition, IDictionary<string, object> variables)
     {
-        if (definition.DecisionTable == null)
-        {
-            _logger.LogWarning("Decision {DecisionKey} has no decision table", definition.Key);
-            return new DecisionResult(variables);
-        }
-
-        var readonlyVariables = variables.ToDictionary(kv => kv.Key, kv => kv.Value);
-        var result = definition.DecisionTable.Evaluate(readonlyVariables);
+        var result = DmnDecisionGraph.Parse(definition.DmnXml, definition.Key).Evaluate(variables);
         return new DecisionResult(result);
     }
 

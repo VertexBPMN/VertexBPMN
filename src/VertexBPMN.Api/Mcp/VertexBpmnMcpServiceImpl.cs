@@ -1,162 +1,115 @@
-﻿using Grpc.Core;
+using Grpc.Core;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.Extensions.Options;
-using VertexBPMN.Api.Features;
 using VertexBPMN.Api.Grpc.Mcp;
+using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
-using HistoricalCaseData = VertexBPMN.Api.Grpc.Mcp.HistoricalCaseData;
 
 namespace VertexBPMN.Api.Mcp;
 
 [Authorize]
-public class VertexBpmnMcpServiceImpl : VertexBPMNMCPService.VertexBPMNMCPServiceBase
+public sealed class VertexBpmnMcpServiceImpl(
+    ICaseExecutionRuntime cases,
+    ILogger<VertexBpmnMcpServiceImpl> logger) : VertexBPMNMCPService.VertexBPMNMCPServiceBase
 {
-    private readonly IProcessEngine _engine;
-    private readonly ILogger<VertexBpmnMcpServiceImpl> _logger;
-    private readonly AdvancedFeatureOptions _features;
-
-    public VertexBpmnMcpServiceImpl(
-        IProcessEngine engine,
-        ILogger<VertexBpmnMcpServiceImpl> logger,
-        IOptions<AdvancedFeatureOptions> features)
-    {
-        _engine = engine ?? throw new ArgumentNullException(nameof(engine));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _features = features?.Value ?? throw new ArgumentNullException(nameof(features));
-    }
-
     public override async Task<ExecuteCaseResponse> ExecuteCase(ExecuteCaseRequest request, ServerCallContext context)
     {
-        EnsureCmmnExecutionEnabled();
-        ValidateNotEmpty(request?.CaseId, nameof(request.CaseId));
+        VertexBpmnServiceImpl.Validate(request.CaseId, nameof(request.CaseId));
         try
         {
-            _logger.LogInformation("MCP ExecuteCase: {CaseId}", request.CaseId);
-
-            var model = await _engine.GetCmmnModelAsync(request.CaseId);
-            var trace = await _engine.ExecuteCaseAsync(model, context.CancellationToken);
-
-            var response = new ExecuteCaseResponse();
-            response.Trace.AddRange(trace);
+            var result = await cases.StartAsync(request.CaseId, Tenant(context), cancellationToken: context.CancellationToken);
+            var response = new ExecuteCaseResponse { CaseInstanceId = result.Instance.Id.ToString() };
+            response.Trace.AddRange(result.Trace);
             return response;
         }
-        catch (Exception ex)
+        catch (Exception exception)
         {
-            throw MapToRpcException(ex, $"Failed to execute case {request.CaseId}");
+            throw VertexBpmnServiceImpl.Map(exception, logger);
         }
     }
 
     public override async Task<CmmnResponse> TriggerUserEvent(TriggerEventRequest request, ServerCallContext context)
     {
-        EnsureCmmnExecutionEnabled();
-        ValidateNotEmpty(request?.CaseId, nameof(request.CaseId));
-        ValidateNotEmpty(request?.EventId, nameof(request.EventId));
+        VertexBpmnServiceImpl.Validate(request.CaseId, nameof(request.CaseId));
+        VertexBpmnServiceImpl.Validate(request.EventId, nameof(request.EventId));
         try
         {
-            _logger.LogInformation("MCP TriggerUserEvent: Case={CaseId}, Event={EventId}", request.CaseId, request.EventId);
-
-            var payload = new Dictionary<string, object>(request.EventData.Count);
-            foreach (var kv in request.EventData)
-                payload[kv.Key] = kv.Value;
-
-            await _engine.TriggerUserEventAsync(request.CaseId, request.EventId, payload, context.CancellationToken);
-            return new Grpc.Mcp.CmmnResponse { Message = $"Event {request.EventId} triggered for case {request.CaseId}" };
+            var instance = await ResolveActiveAsync(request.CaseId, context);
+            var data = request.EventData.ToDictionary(item => item.Key, item => (object)item.Value);
+            await cases.TriggerUserEventAsync(instance.Id, request.EventId, data, Tenant(context), context.CancellationToken);
+            return new CmmnResponse { Message = $"Event {request.EventId} triggered for case {instance.Id}" };
         }
-        catch (Exception ex)
+        catch (Exception exception)
         {
-            throw MapToRpcException(ex, $"Failed to trigger event {request.EventId} for case {request.CaseId}");
+            throw VertexBpmnServiceImpl.Map(exception, logger);
         }
     }
 
     public override async Task<CmmnResponse> UpdateCaseFileItem(CaseFileUpdateRequest request, ServerCallContext context)
     {
-        EnsureCmmnExecutionEnabled();
-        ValidateNotEmpty(request?.CaseId, nameof(request.CaseId));
-        ValidateNotEmpty(request?.CaseFileItemId, nameof(request.CaseFileItemId));
+        VertexBpmnServiceImpl.Validate(request.CaseId, nameof(request.CaseId));
+        VertexBpmnServiceImpl.Validate(request.CaseFileItemId, nameof(request.CaseFileItemId));
         try
         {
-            _logger.LogInformation("MCP UpdateCaseFileItem: Case={CaseId}, Item={ItemId}", request.CaseId, request.CaseFileItemId);
-
-            await _engine.UpdateCaseFileItemAsync(request.CaseId, request.CaseFileItemId, request.NewValue, context.CancellationToken);
-            return new CmmnResponse { Message = $"CaseFileItem {request.CaseFileItemId} updated for case {request.CaseId}" };
+            var instance = await ResolveActiveAsync(request.CaseId, context);
+            await cases.UpdateCaseFileItemAsync(instance.Id, request.CaseFileItemId, request.NewValue, Tenant(context), context.CancellationToken);
+            return new CmmnResponse { Message = $"CaseFileItem {request.CaseFileItemId} updated for case {instance.Id}" };
         }
-        catch (Exception ex)
+        catch (Exception exception)
         {
-            throw MapToRpcException(ex, $"Failed to update case file item {request.CaseFileItemId} for case {request.CaseId}");
+            throw VertexBpmnServiceImpl.Map(exception, logger);
         }
     }
 
     public override async Task<CmmnResponse> GenerateAdHocSubprocess(GenerateAdHocSubprocessRequest request, ServerCallContext context)
     {
-        EnsureCmmnExecutionEnabled();
-        ValidateNotEmpty(request?.CaseId, nameof(request.CaseId));
+        VertexBpmnServiceImpl.Validate(request.CaseId, nameof(request.CaseId));
         try
         {
-            _logger.LogInformation("MCP GenerateAdHocSubprocess: {CaseId}", request.CaseId);
-
-            await _engine.GenerateAdHocSubprocessAsync(request.CaseId, context.CancellationToken);
-            return new CmmnResponse { Message = $"Ad-hoc subprocess generated for case {request.CaseId}" };
+            var instance = await ResolveActiveAsync(request.CaseId, context);
+            var planItemId = string.IsNullOrWhiteSpace(request.PlanItemId)
+                ? VertexBpmnServiceImpl.FirstDiscretionaryItem(instance)
+                : request.PlanItemId;
+            await cases.ActivateDiscretionaryItemAsync(instance.Id, planItemId, Tenant(context), context.CancellationToken);
+            return new CmmnResponse { Message = $"Discretionary item {planItemId} activated for case {instance.Id}" };
         }
-        catch (Exception ex)
+        catch (Exception exception)
         {
-            throw MapToRpcException(ex, $"Failed to generate ad-hoc subprocess for case {request.CaseId}");
+            throw VertexBpmnServiceImpl.Map(exception, logger);
         }
     }
 
     public override async Task<HistoricalContextResponse> GetHistoricalContext(HistoricalContextRequest request, ServerCallContext context)
     {
-        EnsureCmmnExecutionEnabled();
-        ValidateNotEmpty(request?.CaseId, nameof(request.CaseId));
+        VertexBpmnServiceImpl.Validate(request.CaseId, nameof(request.CaseId));
         try
         {
-            _logger.LogInformation("MCP GetHistoricalContext: {CaseId}", request.CaseId);
-
-            var history = await _engine.GetHistoricalCaseDataAsync(request.CaseId);
+            var instance = await cases.ResolveInstanceAsync(request.CaseId, Tenant(context), context.CancellationToken)
+                ?? throw new KeyNotFoundException($"Case '{request.CaseId}' was not found.");
+            var history = await cases.GetHistoryAsync(instance.Id, Tenant(context), context.CancellationToken);
             var response = new HistoricalContextResponse();
-
-            foreach (var h in history)
+            foreach (var entry in history)
             {
-                var dto = new HistoricalCaseData
+                var item = new HistoricalCaseData
                 {
-                    CaseId = h.CaseId,
-                    Timestamp = h.Timestamp.ToString("o")
+                    CaseId = entry.CaseInstanceId.ToString(),
+                    Timestamp = entry.Timestamp.ToString("O")
                 };
-                foreach (var kv in h.CaseFile)
-                {
-                    dto.CaseFile[kv.Key] = kv.Value?.ToString() ?? string.Empty;
-                }
-                dto.CompletedPlanItems.AddRange(h.CompletedPlanItems);
-                response.HistoricalData.Add(dto);
+                foreach (var value in entry.CaseFile)
+                    item.CaseFile[value.Key] = value.Value?.ToString() ?? string.Empty;
+                item.CompletedPlanItems.AddRange(entry.CompletedPlanItems);
+                response.HistoricalData.Add(item);
             }
             return response;
         }
-        catch (Exception ex)
+        catch (Exception exception)
         {
-            throw MapToRpcException(ex, $"Failed to load historical context for case {request.CaseId}");
+            throw VertexBpmnServiceImpl.Map(exception, logger);
         }
     }
 
-    private static void ValidateNotEmpty(string? value, string fieldName)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            throw new RpcException(new Status(StatusCode.InvalidArgument, $"{fieldName} must be provided"));
-    }
+    private async Task<CaseInstanceRecord> ResolveActiveAsync(string identifier, ServerCallContext context) =>
+        await cases.ResolveInstanceAsync(identifier, Tenant(context), context.CancellationToken)
+        ?? throw new KeyNotFoundException($"Active case '{identifier}' was not found.");
 
-    private void EnsureCmmnExecutionEnabled()
-    {
-        if (!_features.CmmnExecution)
-            throw new RpcException(new Status(
-                StatusCode.Unimplemented,
-                "CMMN execution is not qualified and is disabled."));
-    }
-
-    private RpcException MapToRpcException(Exception ex, string message)
-    {
-        // Domain-spezifische Exception-Mappings (Platzhalter):
-        // if (ex is CaseNotFoundException) return new RpcException(new Status(StatusCode.NotFound, ex.Message));
-        // if (ex is ValidationException)  return new RpcException(new Status(StatusCode.InvalidArgument, ex.Message));
-
-        _logger.LogError(ex, message);
-        return new RpcException(new Status(StatusCode.Internal, message));
-    }
+    private static string Tenant(ServerCallContext context) => VertexBpmnServiceImpl.Tenant(context);
 }

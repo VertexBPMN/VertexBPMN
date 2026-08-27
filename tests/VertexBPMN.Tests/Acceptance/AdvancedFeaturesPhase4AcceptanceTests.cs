@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Model.Dmn;
 using VertexBPMN.Tests.Infrastructure;
 
@@ -56,14 +57,18 @@ public sealed class AdvancedFeaturesPhase4AcceptanceTests
     }
 
     [Fact]
-    public async Task P4_AC_02_Unsupported_DMN_policy_is_rejected_instead_of_silently_falling_back()
+    public async Task P4_AC_02_Priority_DMN_policy_uses_declared_output_order()
     {
         var key = $"phase4-priority-{Guid.NewGuid():N}";
         var dmn = $"""
             <definitions xmlns="http://www.omg.org/spec/DMN/20191111/MODEL/">
               <decision id="{key}"><decisionTable hitPolicy="PRIORITY">
-                <input id="input"><inputExpression /></input><output id="output" name="output" />
-                <rule><inputEntry>-</inputEntry><outputEntry>one</outputEntry></rule>
+                <input id="input"><inputExpression typeRef="number" /></input>
+                <output id="output" name="output">
+                  <outputValues><text>"high", "medium", "low"</text></outputValues>
+                </output>
+                <rule><inputEntry>&gt; 10</inputEntry><outputEntry>"medium"</outputEntry></rule>
+                <rule><inputEntry>[15..20]</inputEntry><outputEntry>"high"</outputEntry></rule>
               </decisionTable></decision>
             </definitions>
             """;
@@ -71,13 +76,92 @@ public sealed class AdvancedFeaturesPhase4AcceptanceTests
         var response = await _client.PostAsJsonAsync("/api/decision/deploy", new
         {
             decisionKey = key,
-            name = "Unsupported priority",
+            name = "Priority decision",
             dmnXml = dmn
         }, TestContext.Current.CancellationToken);
+        response.EnsureSuccessStatusCode();
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Contains("outside the supported", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken),
-            StringComparison.OrdinalIgnoreCase);
+        var evaluation = await _client.PostAsJsonAsync("/api/decision/evaluate", new
+        {
+            decisionKey = key,
+            inputs = new Dictionary<string, object> { ["input"] = 17 }
+        }, TestContext.Current.CancellationToken);
+        evaluation.EnsureSuccessStatusCode();
+        var result = await evaluation.Content.ReadFromJsonAsync<DecisionResult>(TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Equal("high", Assert.IsType<JsonElement>(result.Variables["output"]).GetString());
+    }
+
+    [Fact]
+    public async Task P4_AC_02B_BusinessRuleTask_evaluates_persisted_DMN_and_routes_with_its_output()
+    {
+        var decisionKey = $"phase4-risk-{Guid.NewGuid():N}";
+        var processKey = $"phase4-dmn-process-{Guid.NewGuid():N}";
+        var dmn = $$"""
+            <definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/">
+              <decision id="{{decisionKey}}" name="Risk decision">
+                <decisionTable hitPolicy="UNIQUE">
+                  <input id="score"><inputExpression typeRef="number" /></input>
+                  <output id="risk" name="risk" typeRef="string" />
+                  <rule><inputEntry>&gt;= 700</inputEntry><outputEntry>low</outputEntry></rule>
+                  <rule><inputEntry>&lt; 700</inputEntry><outputEntry>high</outputEntry></rule>
+                </decisionTable>
+              </decision>
+            </definitions>
+            """;
+        var bpmn = $$"""
+            <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                         xmlns:zeebe="http://camunda.org/schema/zeebe/1.0">
+              <process id="{{processKey}}" isExecutable="true">
+                <startEvent id="start" />
+                <sequenceFlow id="to-decision" sourceRef="start" targetRef="decide" />
+                <businessRuleTask id="decide">
+                  <extensionElements>
+                    <zeebe:calledDecision decisionId="{{decisionKey}}" resultVariable="decisionResult" />
+                  </extensionElements>
+                </businessRuleTask>
+                <sequenceFlow id="to-gateway" sourceRef="decide" targetRef="route" />
+                <exclusiveGateway id="route" default="to-reject" />
+                <sequenceFlow id="to-approve" sourceRef="route" targetRef="approved">
+                  <conditionExpression>${risk == 'low'}</conditionExpression>
+                </sequenceFlow>
+                <sequenceFlow id="to-reject" sourceRef="route" targetRef="rejected" />
+                <endEvent id="approved" />
+                <endEvent id="rejected" />
+              </process>
+            </definitions>
+            """;
+
+        using var deployDecision = await _client.PostAsJsonAsync("/api/decision/deploy", new
+        {
+            decisionKey,
+            name = "Risk decision",
+            dmnXml = dmn
+        }, TestContext.Current.CancellationToken);
+        deployDecision.EnsureSuccessStatusCode();
+
+        using var deployProcess = await _client.PostAsJsonAsync("/api/repository", new
+        {
+            bpmnXml = bpmn,
+            name = $"{processKey}.bpmn",
+            tenantId = (string?)null
+        }, TestContext.Current.CancellationToken);
+        deployProcess.EnsureSuccessStatusCode();
+
+        using var start = await _client.PostAsJsonAsync("/api/runtime/start", new
+        {
+            processDefinitionKey = processKey,
+            variables = new Dictionary<string, object> { ["score"] = 720 },
+            tenantId = (string?)null
+        }, TestContext.Current.CancellationToken);
+        start.EnsureSuccessStatusCode();
+        using var payload = JsonDocument.Parse(
+            await start.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+
+        Assert.Equal((int)ProcessInstanceStatus.Completed, payload.RootElement.GetProperty("status").GetInt32());
+        var variables = payload.RootElement.GetProperty("variables");
+        Assert.Equal("low", variables.GetProperty("risk").GetString());
+        Assert.Equal("low", variables.GetProperty("decisionResult").GetString());
     }
 
     [Fact]

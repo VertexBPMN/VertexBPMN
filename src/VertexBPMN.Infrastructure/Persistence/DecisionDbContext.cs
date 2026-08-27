@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using VertexBPMN.Domain.Model.Dmn;
 
 namespace VertexBPMN.Infrastructure.Persistence;
@@ -50,17 +51,19 @@ public class DecisionDbContext : DbContext
         entity.Property(e => e.TenantId).HasMaxLength(64);
         entity.Property(e => e.ErrorMessage).HasMaxLength(2000);
 
-        entity.Property(e => e.InputVariables)
+        var inputVariables = entity.Property(e => e.InputVariables)
             .HasConversion(
                 v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
                 v => JsonSerializer.Deserialize<Dictionary<string, object>>(v, (JsonSerializerOptions?)null) ?? new())
             .HasColumnType("TEXT");
+        inputVariables.Metadata.SetValueComparer(CreateDictionaryComparer());
 
-        entity.Property(e => e.OutputVariables)
+        var outputVariables = entity.Property(e => e.OutputVariables)
             .HasConversion(
                 v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
                 v => JsonSerializer.Deserialize<Dictionary<string, object>>(v, (JsonSerializerOptions?)null) ?? new())
             .HasColumnType("TEXT");
+        outputVariables.Metadata.SetValueComparer(CreateDictionaryComparer());
 
         entity.HasIndex(e => e.DecisionDefinitionKey);
         entity.HasIndex(e => e.TenantId);
@@ -77,26 +80,49 @@ public class DecisionDbContext : DbContext
         entity.Property(t => t.Key).HasMaxLength(200);
         entity.Property(t => t.Name).HasMaxLength(500).IsRequired(false);
         entity.Property(t => t.HitPolicy).HasMaxLength(50);
+        entity.Property(t => t.Aggregation).HasMaxLength(10).IsRequired(false);
 
         // JSON serialize the collections (Inputs, Outputs, Rules)
-        entity.Property(t => t.Inputs)
+        var inputs = entity.Property(t => t.Inputs)
             .HasConversion(
                 v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
                 v => JsonSerializer.Deserialize<List<DmnInput>>(v, (JsonSerializerOptions?)null) ?? new())
             .HasColumnType("TEXT");
+        inputs.Metadata.SetValueComparer(CreateListComparer<DmnInput>());
 
-        entity.Property(t => t.Outputs)
+        var outputs = entity.Property(t => t.Outputs)
             .HasConversion(
                 v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
                 v => JsonSerializer.Deserialize<List<DmnOutput>>(v, (JsonSerializerOptions?)null) ?? new())
             .HasColumnType("TEXT");
+        outputs.Metadata.SetValueComparer(CreateListComparer<DmnOutput>());
 
-        entity.Property(t => t.Rules)
+        var rules = entity.Property(t => t.Rules)
             .HasConversion(
                 v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
                 v => JsonSerializer.Deserialize<List<DmnRule>>(v, (JsonSerializerOptions?)null) ?? new())
             .HasColumnType("TEXT");
+        rules.Metadata.SetValueComparer(CreateListComparer<DmnRule>());
 
         entity.HasIndex(t => t.Name);
     }
+
+    private static ValueComparer<List<T>> CreateListComparer<T>() => new(
+        (left, right) => Serialize(left) == Serialize(right),
+        value => Serialize(value).GetHashCode(StringComparison.Ordinal),
+        value => DeserializeList<T>(Serialize(value)));
+
+    private static ValueComparer<Dictionary<string, object>> CreateDictionaryComparer() => new(
+        (left, right) => Serialize(left) == Serialize(right),
+        value => Serialize(value).GetHashCode(StringComparison.Ordinal),
+        value => DeserializeDictionary(Serialize(value)));
+
+    private static string Serialize<T>(T value) =>
+        JsonSerializer.Serialize(value, (JsonSerializerOptions?)null);
+
+    private static List<T> DeserializeList<T>(string json) =>
+        JsonSerializer.Deserialize<List<T>>(json, (JsonSerializerOptions?)null) ?? new();
+
+    private static Dictionary<string, object> DeserializeDictionary(string json) =>
+        JsonSerializer.Deserialize<Dictionary<string, object>>(json, (JsonSerializerOptions?)null) ?? new();
 }

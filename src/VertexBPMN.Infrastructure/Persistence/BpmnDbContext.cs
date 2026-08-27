@@ -407,6 +407,11 @@ public class BpmnDbContext : DbContext
         entity.Property(e => e.FormKey).HasMaxLength(255);
         entity.Property(e => e.ActivityId).IsRequired().HasMaxLength(255);
         entity.Property(e => e.Revision).IsConcurrencyToken();
+        entity.Property(e => e.LocalVariables)
+            .HasConversion(
+                value => JsonSerializer.Serialize(value, (JsonSerializerOptions)null!),
+                value => JsonSerializer.Deserialize<Dictionary<string, object>>(value, (JsonSerializerOptions)null!)
+                         ?? new Dictionary<string, object>());
 
         // FK -> ProcessInstance
         entity.HasOne<ProcessInstance>()
@@ -418,6 +423,7 @@ public class BpmnDbContext : DbContext
         entity.HasIndex(e => e.Type);
         entity.HasIndex(e => e.TenantId);
         entity.HasIndex(e => e.Assignee);
+        entity.HasIndex(e => e.MultiInstanceExecutionId);
         entity.HasIndex(e => new { e.ProcessInstanceId, e.ActivityId, e.Status });
     }
 
@@ -537,6 +543,12 @@ public class BpmnDbContext : DbContext
 
         entity.HasKey(e => e.Id);
         entity.Property(e => e.ActivityId).IsRequired().HasMaxLength(255);
+        entity.Property(e => e.ItemsJson).IsRequired();
+        entity.Property(e => e.ElementVariable).HasMaxLength(255);
+        entity.Property(e => e.CompletionCondition).HasMaxLength(2000);
+        entity.Property(e => e.OutputCollection).HasMaxLength(255);
+        entity.Property(e => e.State).IsRequired().HasMaxLength(32);
+        entity.Property(e => e.Revision).IsConcurrencyToken();
 
         // FK -> ProcessInstance
         entity.HasOne<ProcessInstance>()
@@ -546,7 +558,7 @@ public class BpmnDbContext : DbContext
 
         entity.HasIndex(e => e.ProcessInstanceId);
         entity.HasIndex(e => e.ActivityId);
-        entity.HasIndex(e => new { e.ProcessInstanceId, e.ActivityId });
+        entity.HasIndex(e => new { e.ProcessInstanceId, e.ActivityId, e.State });
     }
 
     private static void ConfigureUser(ModelBuilder modelBuilder)

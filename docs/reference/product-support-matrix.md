@@ -1,6 +1,6 @@
 # Produkt-Support- und Acceptance-Matrix
 
-**Stand:** 26.08.2026
+**Stand:** 27.08.2026
 **Geltungsbereich:** Abschluss Phase 5; bewertet wird der öffentlich nutzbare, persistente End-to-End-Pfad. Parser- oder Unit-Tests allein begründen keinen Produktsupport.
 
 ## Statusdefinitionen
@@ -21,13 +21,14 @@
 | Service Task | `supported` | Registrierte Handler werden im Runtime-Übergang ausgeführt; Fehler suspendieren die Instanz und erzeugen einen persistenten Incident. |
 | User Task: Erzeugen, Claim, Complete, Resume | `supported` | Task und Wait-Token sind persistent; Completion setzt denselben Prozessfluss fort. |
 | Parallel Gateway Split/Join | `supported` | Persistente Join-Ankünfte und Isolation mehrerer Instanzen sind durch die Phase-1-Verträge belegt. |
-| Exclusive und Inclusive Gateway | `partial` | Knoten werden durchlaufen; vollständige Condition-/Default-Flow-Auswertung im persistenten Runtime-Pfad ist nicht freigegeben. |
-| Event-based und Complex Gateway | `unsupported` | Parser-/Legacy-Engine-Code ist vorhanden, aber keine freigegebene persistente Semantik. |
+| Exclusive und Inclusive Gateway | `supported` | Der persistente Runtime-Pfad wertet bedingte Flows gegen Prozessvariablen aus, verwendet den deklarierten Default-Flow und erzeugt bei fehlender Route einen Incident. API-Verträge belegen Exclusive-, Inclusive- und Mehrfachtreffer-Semantik. |
+| Event-based Gateway | `supported` | Message-, Signal- und Timer-Catch-Branches werden als konkurrierende persistente Wait-States angelegt; der Gewinner konsumiert bzw. storniert Tokens, Subscriptions und Jobs genau einmal. |
+| Complex Gateway | `partial` | Bedingte Mehrfachaktivierung und Default-Flow sind persistent belegt. Vollständige BPMN-Activation-Condition- und Join-Semantik ist noch nicht freigegeben. |
 | Eingebetteter Subprozess | `partial` | Leere und einfache eingebettete Subprozesse werden als Scope ausgeführt. Event-Subprozesse, Call Activities und echte Multi-Instance-Cardinality/Collection sind nicht freigegeben und werden nicht stillschweigend simuliert. |
-| Timer Catch und interrupting Boundary Timer | `supported` | Fällige Jobs, Wait-Token, Lease und genau eine Fortsetzung sind end-to-end getestet. Timer Start Events, nicht-interrupting Boundary Timer und komplexe Cycles bleiben außerhalb des Subsets. |
+| Timer Catch sowie interrupting und non-interrupting Boundary Timer | `supported` | Fällige Jobs, Wait-Token, Lease und genau eine Fortsetzung sind end-to-end getestet. Der nicht-unterbrechende Pfad lässt den angehängten Task aktiv. Timer Start Events und komplexe Cycles bleiben außerhalb des Subsets. |
 | Message-/Signal-Catch und Correlation | `supported` | Persistente Subscriptions werden tenantbezogen korreliert bzw. gesendet, konsumiert und genau einmal fortgesetzt. |
 | Kompensation | `partial` | Persistente Compensation-Subscriptions und ein getesteter Handler-Pfad sind vorhanden; vollständige BPMN-Scope-/Transaction-Semantik ist nicht behauptet. |
-| Error, Escalation, Cancel und Terminate | `unsupported` | Keine freigegebene persistente Boundary-/Scope-Semantik. |
+| Error, Escalation, Cancel und Terminate | `partial` | Interrupting Error Boundary, non-interrupting Escalation Boundary, Transaction Cancel Boundary und Root-Terminate sind persistent über die API belegt. Event-Subprozess-Catches sowie umfassende verschachtelte Scope-/Kompensationskombinationen sind noch nicht freigegeben. |
 | Neustart, mehrere API-Replikate und Idempotenz | `supported` | Gemeinsame relationale Datenbank, Inbox-Constraint, Optimistic Concurrency und Lease/Locking sind durch Host-Neustart- und Zwei-Replika-Verträge belegt. |
 | Incident Recovery und Job Dead Letter | `supported` | Servicefehler erzeugen Incidents; Recovery setzt am betroffenen Knoten fort. Jobs besitzen Retry/Backoff, Lease und Dead-Letter-Zustand. |
 
@@ -35,8 +36,9 @@
 
 | Fähigkeit | Status | Nachweis und Grenze |
 | --- | --- | --- |
-| Einzelne Decision Table mit `UNIQUE`, `FIRST`, `ANY`, `COLLECT` oder `RULE ORDER` | `supported` | Sicheres DMN-XML-Parsing, persistentes Deployment und Auswertung über die öffentliche API sind durch das Phase-4-Gate belegt. Der freigegebene Ausdrucksumfang ist auf leere Eingaben und einfache Gleichheitsvergleiche begrenzt. |
-| Weitere Hit Policies, vollständiges FEEL, DRD und BusinessRuleTask-Integration | `unsupported` | Nicht unterstützte Hit Policies werden beim Deployment abgelehnt. Es gibt keinen Nachweis durch die vollständige offizielle DMN-TCK und keine freigegebene persistente BPMN/DMN-Integration. |
+| Einzelne Decision Table mit allen DMN-Hit-Policies | `supported` | `UNIQUE`, `FIRST`, `PRIORITY`, `ANY`, `COLLECT` samt `SUM`/`MIN`/`MAX`/`COUNT`, `RULE ORDER` und `OUTPUT ORDER` werden validiert und ausgewertet. PRIORITY/OUTPUT ORDER verwenden die deklarierten Output-Werte. |
+| BPMN BusinessRuleTask-Integration | `supported` | Der persistente BPMN-Pfad löst direkte und Zeebe-kompatible Decision-Bindings tenantbezogen auf, wertet die persistierte DMN-Definition aus, persistiert Outputs/History/Outbox und routet nach dem Ergebnis. Fehler erzeugen einen Incident. |
+| Vollständiges FEEL und DRD | `unsupported` | Vergleiche, Bereiche, Alternativen, `not`, Literale und Datumswerte sind implementiert. Die vollständige offizielle DMN-TCK sowie Abhängigkeitsgraphen mit mehreren Decisions/Literal Expressions fehlen noch. |
 
 ## CMMN
 
@@ -78,11 +80,12 @@ Alle Verträge verwenden einen echten `WebApplicationFactory`-Host und relationa
 | `P2-AC-05` | Negativer tenantbezogener Runtime-Lesezugriff | **grün** |
 | `P2-AC-06` | Zwei API-Replikate teilen eine Idempotency-Claim | **grün** |
 | `P4-AC-01` | Unterstützte DMN-Tabelle persistent deployen und über API auswerten | **grün** |
-| `P4-AC-02` | Nicht unterstützte DMN-Hit-Policy explizit ablehnen | **grün** |
+| `P4-AC-02` | PRIORITY-Hit-Policy verwendet deklarierte Output-Reihenfolge | **grün** |
+| `P4-AC-02B` | Persistente DMN-Definition im BusinessRuleTask auswerten und Ergebnis für BPMN-Routing verwenden | **grün** |
 | `P4-AC-03` | CMMN-Definition deployen/lesen, Lifecycle fail-closed sperren | **grün** |
 | `P4-AC-04` | Simulation und beide Migrations-APIs mit HTTP 501 sperren | **grün** |
 | `P4-AC-05` | Simulation Analytics mit HTTP 501 sperren | **grün** |
 | `P4-AC-06` | Engine-Capabilities melden CMMN-Ausführung nicht als unterstützt | **grün** |
 | `P4-AC-07` | CMMN-gRPC-Ausführung antwortet im Standardprofil mit `Unimplemented` | **grün** |
 
-Die sieben Phase-1-Testmethoden tragen `Category=Phase1Acceptance`; sechs zusätzliche Phase-2-Verträge tragen `Category=Phase2Acceptance`. Das Phase-4-Gate führt neun konkrete Testfälle für die sieben oben definierten Verträge aus. Nicht aufgeführte BPMN-, DMN- oder CMMN-Semantik ist nicht automatisch unterstützt.
+Die Phase-1-Suite führt aktuell 16 persistente BPMN-Verträge aus; sechs zusätzliche Phase-2-Verträge tragen `Category=Phase2Acceptance`. Das Phase-4-Gate führt zehn konkrete Testfälle aus. Nicht aufgeführte BPMN-, DMN- oder CMMN-Semantik ist nicht automatisch unterstützt.

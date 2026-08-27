@@ -349,6 +349,11 @@ public partial class BpmnParser : IBpmnParser
                     case "adHocSubProcess":
                         var isEvent = el.Attribute("triggeredByEvent")?.Value == "true";
                         var isTx = el.Attribute("transaction")?.Value == "true" || local == "transaction";
+                        if (el.Attribute("name")?.Value is { } subprocessName)
+                        {
+                            ext ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                            ext["name"] = subprocessName;
+                        }
                         var loopInfo = ParseLoopLocal(el, ns, pendingMiConflicts); // capture raw loop node
                         if (strict && !string.IsNullOrEmpty(id))
                         {
@@ -427,7 +432,9 @@ public partial class BpmnParser : IBpmnParser
 
                         CaptureElementMeta(strict, flowNodeAttributes, rawDocumentation, elementsMetadata, orderCounter, ns, el, id);
                         break;
-                    case var _ when local.EndsWith("Task") || local == "callActivity":
+                    case var _ when local == "task"
+                                         || local.EndsWith("Task", StringComparison.Ordinal)
+                                         || local == "callActivity":
                         if (strict && !string.IsNullOrEmpty(id))
                         {
                             var miNodeT = el.Element(ns + "multiInstanceLoopCharacteristics") ?? el.Element("multiInstanceLoopCharacteristics");
@@ -523,6 +530,18 @@ public partial class BpmnParser : IBpmnParser
                         }
                         CaptureElementMeta(strict, flowNodeAttributes, rawDocumentation, elementsMetadata, orderCounter, ns, el, id); break;
                     case var _ when local.EndsWith("Gateway"):
+                        if (el.Attribute("name")?.Value is { } gatewayName)
+                        {
+                            ext ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                            ext["name"] = gatewayName;
+                        }
+                        var activationCondition = (el.Element(ns + "activationCondition") ?? el.Element("activationCondition"))
+                            ?.Value.Trim();
+                        if (!string.IsNullOrWhiteSpace(activationCondition))
+                        {
+                            ext ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                            ext["activationCondition"] = activationCondition;
+                        }
                         flowNodeIds.Add(id); gateways.Add(new BpmnGateway(id, local, gatewaysRaw.FirstOrDefault(g => g.Id == id)?.DefaultId, currentSub, ext));
                         CaptureElementMeta(strict, flowNodeAttributes, rawDocumentation, elementsMetadata, orderCounter, ns, el, id); break;
                     case "laneSet":

@@ -91,7 +91,7 @@ public class DecisionService : IDecisionService
         {
             _logger.LogDebug("Deploying decision {DecisionKey} for tenant {TenantId}", decisionKey, tenantId ?? "default");
 
-            var graph = DmnDecisionGraph.Parse(dmnXml, decisionKey);
+            _ = DmnDecisionGraph.Parse(dmnXml, decisionKey);
             var definition = new DecisionDefinition(decisionKey, name, dmnXml, tenantId);
             await _repository.UpsertDefinitionAsync(definition);
             await _repository.SaveChangesAsync();

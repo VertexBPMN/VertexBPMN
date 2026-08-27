@@ -488,12 +488,14 @@ public class BpmnDbContext : DbContext
         entity.Property(e => e.EventType).IsRequired().HasMaxLength(32);
         entity.Property(e => e.EventName).IsRequired().HasMaxLength(255);
         entity.Property(e => e.State).IsRequired().HasMaxLength(32);
+        entity.Property(e => e.ActiveKey).HasMaxLength(320);
         entity.Property(e => e.TenantId).HasMaxLength(64);
         entity.Property(e => e.Revision).IsConcurrencyToken();
         entity.HasOne<ProcessInstance>().WithMany().HasForeignKey(e => e.ProcessInstanceId).OnDelete(DeleteBehavior.Cascade);
         entity.HasOne<ExecutionToken>().WithMany().HasForeignKey(e => e.ExecutionTokenId).OnDelete(DeleteBehavior.Cascade);
         entity.HasIndex(e => new { e.EventType, e.EventName, e.State, e.TenantId });
-        entity.HasIndex(e => new { e.ProcessInstanceId, e.ActivityId, e.State }).IsUnique();
+        entity.HasIndex(e => new { e.ProcessInstanceId, e.ActivityId, e.State });
+        entity.HasIndex(e => e.ActiveKey).IsUnique();
     }
 
     private static void ConfigureRuntimeMessaging(ModelBuilder modelBuilder)

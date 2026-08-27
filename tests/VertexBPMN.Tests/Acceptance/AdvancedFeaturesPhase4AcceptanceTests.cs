@@ -300,10 +300,9 @@ public sealed class AdvancedFeaturesPhase4AcceptanceTests
     }
 
     [Theory]
-    [InlineData("/api/simulation")]
     [InlineData("/api/process-migration/plan/preview")]
     [InlineData("/api/migration/plan")]
-    public async Task P4_AC_04_Unqualified_advanced_execution_endpoints_return_501(string endpoint)
+    public async Task P4_AC_04_Unqualified_migration_endpoints_return_501(string endpoint)
     {
         var response = await _client.PostAsJsonAsync(endpoint, new { }, TestContext.Current.CancellationToken);
 
@@ -311,18 +310,89 @@ public sealed class AdvancedFeaturesPhase4AcceptanceTests
     }
 
     [Fact]
-    public async Task P4_AC_05_Simulation_analytics_with_valid_input_returns_501()
+    public async Task P4_AC_05_Simulation_executes_real_gateway_path_deterministically_and_feeds_analytics()
+    {
+        const string bpmn = """
+            <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
+              <process id="phase4-simulation" isExecutable="true">
+                <startEvent id="start" />
+                <exclusiveGateway id="approval" default="toRejected" />
+                <serviceTask id="approved" name="Approved path" />
+                <serviceTask id="rejected" name="Rejected path" />
+                <endEvent id="end" />
+                <sequenceFlow id="toGateway" sourceRef="start" targetRef="approval" />
+                <sequenceFlow id="toApproved" sourceRef="approval" targetRef="approved">
+                  <conditionExpression>approved = true</conditionExpression>
+                </sequenceFlow>
+                <sequenceFlow id="toRejected" sourceRef="approval" targetRef="rejected" />
+                <sequenceFlow id="approvedEnd" sourceRef="approved" targetRef="end" />
+                <sequenceFlow id="rejectedEnd" sourceRef="rejected" targetRef="end" />
+              </process>
+            </definitions>
+            """;
+        var request = new
+        {
+            bpmnXml = bpmn,
+            processDefinitionId = "phase4-simulation",
+            tenantId = "default",
+            variables = new Dictionary<string, object> { ["approved"] = true },
+            maxSteps = 20
+        };
+
+        var firstResponse = await _client.PostAsJsonAsync(
+            "/api/simulation",
+            request,
+            TestContext.Current.CancellationToken);
+        firstResponse.EnsureSuccessStatusCode();
+        using var firstPayload = JsonDocument.Parse(
+            await firstResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        var firstSimulation = firstPayload.RootElement.GetProperty("simulation");
+
+        var secondResponse = await _client.PostAsJsonAsync(
+            "/api/simulation",
+            request,
+            TestContext.Current.CancellationToken);
+        secondResponse.EnsureSuccessStatusCode();
+        using var secondPayload = JsonDocument.Parse(
+            await secondResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        var secondSimulation = secondPayload.RootElement.GetProperty("simulation");
+
+        Assert.True(firstSimulation.GetProperty("completed").GetBoolean());
+        Assert.False(string.IsNullOrWhiteSpace(firstSimulation.GetProperty("definitionHash").GetString()));
+        var firstSteps = firstSimulation.GetProperty("steps").EnumerateArray().ToArray();
+        var secondSteps = secondSimulation.GetProperty("steps").EnumerateArray().ToArray();
+        var firstIds = firstSteps.Select(step => step.GetProperty("activityId").GetString()).ToArray();
+        var secondIds = secondSteps.Select(step => step.GetProperty("activityId").GetString()).ToArray();
+        Assert.Equal(new[] { "start", "approval", "approved", "end" }, firstIds);
+        Assert.Equal(firstIds, secondIds);
+        Assert.Equal(
+            firstSteps.Select(step => step.GetProperty("timestamp").GetDateTime()),
+            secondSteps.Select(step => step.GetProperty("timestamp").GetDateTime()));
+
+        var analyticsResponse = await _client.PostAsJsonAsync(
+            "/api/simulation-analytics/summary",
+            firstSimulation.Clone(),
+            TestContext.Current.CancellationToken);
+        analyticsResponse.EnsureSuccessStatusCode();
+        using var analytics = JsonDocument.Parse(
+            await analyticsResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(4, analytics.RootElement.GetProperty("summary").GetProperty("stepCount").GetInt32());
+        Assert.True(analytics.RootElement.GetProperty("summary").GetProperty("completed").GetBoolean());
+    }
+
+    [Fact]
+    public async Task P4_AC_05b_Simulation_analytics_rejects_untrusted_results()
     {
         var response = await _client.PostAsJsonAsync("/api/simulation-analytics/summary", new
         {
+            bpmnXml = "<definitions />",
+            definitionHash = "forged",
             processDefinitionId = "phase4",
-            tenantId = "default",
             completed = true,
-            message = "untrusted client result",
             steps = Array.Empty<object>()
         }, TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.NotImplemented, response.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]

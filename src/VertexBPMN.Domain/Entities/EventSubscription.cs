@@ -12,6 +12,7 @@ public sealed class EventSubscription
     public string EventType { get; set; } = string.Empty;
     public string EventName { get; set; } = string.Empty;
     public string State { get; set; } = "Active";
+    public string? ActiveKey { get; set; }
     public string? TenantId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? ConsumedAt { get; set; }

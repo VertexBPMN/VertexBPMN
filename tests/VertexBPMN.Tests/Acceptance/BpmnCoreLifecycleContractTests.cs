@@ -602,6 +602,51 @@ public sealed class BpmnCoreLifecycleContractTests : IDisposable
     }
 
     [Fact]
+    public async Task FPS_BPMN_02B_InclusiveJoin_Waits_Only_For_Branches_That_Can_Still_Arrive()
+    {
+        var processKey = $"full-support-inclusive-join-{Guid.NewGuid():N}";
+        var bpmn = $$"""
+            <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
+              <process id="{{processKey}}" isExecutable="true">
+                <startEvent id="start" />
+                <inclusiveGateway id="split" default="to-fallback" />
+                <task id="branch-a" />
+                <task id="branch-b" />
+                <task id="fallback" />
+                <inclusiveGateway id="join" />
+                <userTask id="after-join" name="Inclusive join completed" />
+                <sequenceFlow id="to-split" sourceRef="start" targetRef="split" />
+                <sequenceFlow id="to-a" sourceRef="split" targetRef="branch-a">
+                  <conditionExpression>takeA = true</conditionExpression>
+                </sequenceFlow>
+                <sequenceFlow id="to-b" sourceRef="split" targetRef="branch-b">
+                  <conditionExpression>takeB = true</conditionExpression>
+                </sequenceFlow>
+                <sequenceFlow id="to-fallback" sourceRef="split" targetRef="fallback" />
+                <sequenceFlow id="a-to-join" sourceRef="branch-a" targetRef="join" />
+                <sequenceFlow id="b-to-join" sourceRef="branch-b" targetRef="join" />
+                <sequenceFlow id="fallback-to-join" sourceRef="fallback" targetRef="join" />
+                <sequenceFlow id="join-complete" sourceRef="join" targetRef="after-join" />
+              </process>
+            </definitions>
+            """;
+
+        var (_, oneBranch) = await DeployAndStartAsync(processKey, bpmn, new Dictionary<string, object>
+        {
+            ["takeA"] = true,
+            ["takeB"] = false
+        });
+        Assert.Equal("Inclusive join completed", Assert.Single(await GetTasksAsync(oneBranch.Id)).Name);
+
+        var twoBranches = await StartAsync(processKey, new Dictionary<string, object>
+        {
+            ["takeA"] = true,
+            ["takeB"] = true
+        });
+        Assert.Equal("Inclusive join completed", Assert.Single(await GetTasksAsync(twoBranches.Id)).Name);
+    }
+
+    [Fact]
     public async Task FPS_BPMN_03_EventBasedGateway_Consumes_One_Branch_And_Cancels_Competitors()
     {
         var processKey = $"full-support-event-gateway-{Guid.NewGuid():N}";
@@ -686,6 +731,41 @@ public sealed class BpmnCoreLifecycleContractTests : IDisposable
         Assert.Equal(
             ["Fraud review", "Sanctions review"],
             (await GetTasksAsync(started.Id)).Select(task => task.Name).Order().ToArray());
+    }
+
+    [Fact]
+    public async Task FPS_BPMN_04B_ComplexGateway_Join_Waits_For_ActivationCondition()
+    {
+        var processKey = $"full-support-complex-join-{Guid.NewGuid():N}";
+        var bpmn = $$"""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                         targetNamespace="https://vertexbpmn.dev/acceptance">
+              <process id="{{processKey}}" isExecutable="true">
+                <startEvent id="start" />
+                <parallelGateway id="split" />
+                <task id="branch-a" />
+                <task id="branch-b" />
+                <complexGateway id="join">
+                  <activationCondition>activationCount &gt;= 2</activationCondition>
+                </complexGateway>
+                <userTask id="after-join" name="Complex join completed" />
+                <sequenceFlow id="to-split" sourceRef="start" targetRef="split" />
+                <sequenceFlow id="to-a" sourceRef="split" targetRef="branch-a" />
+                <sequenceFlow id="to-b" sourceRef="split" targetRef="branch-b" />
+                <sequenceFlow id="a-to-join" sourceRef="branch-a" targetRef="join" />
+                <sequenceFlow id="b-to-join" sourceRef="branch-b" targetRef="join" />
+                <sequenceFlow id="join-complete" sourceRef="join" targetRef="after-join" />
+              </process>
+            </definitions>
+            """;
+
+        var (_, started) = await DeployAndStartAsync(processKey, bpmn);
+
+        Assert.Equal(ProcessInstanceStatus.Running, started.Status);
+        var task = Assert.Single(await GetTasksAsync(started.Id));
+        Assert.Equal("Complex join completed", task.Name);
+        Assert.Equal(["after-join"], started.ActiveTokens);
     }
 
     [Fact]
@@ -797,6 +877,95 @@ public sealed class BpmnCoreLifecycleContractTests : IDisposable
     }
 
     [Fact]
+    public async Task FPS_BPMN_12_Parallel_MultiInstance_Subprocess_Preserves_Each_Iteration_Until_Its_End()
+    {
+        var processKey = $"fps-mi-subprocess-parallel-{Guid.NewGuid():N}";
+        var bpmn = $$"""
+            <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                         xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+              <process id="{{processKey}}" isExecutable="true">
+                <startEvent id="start" />
+                <sequenceFlow id="to-scope" sourceRef="start" targetRef="scope" />
+                <subProcess id="scope">
+                  <multiInstanceLoopCharacteristics camunda:collection="items" camunda:elementVariable="item" />
+                  <startEvent id="inner-start" />
+                  <sequenceFlow id="to-review" sourceRef="inner-start" targetRef="review" />
+                  <userTask id="review" name="Review subprocess item" />
+                  <sequenceFlow id="to-inner-end" sourceRef="review" targetRef="inner-end" />
+                  <endEvent id="inner-end" />
+                </subProcess>
+                <sequenceFlow id="to-end" sourceRef="scope" targetRef="end" />
+                <endEvent id="end" />
+              </process>
+            </definitions>
+            """;
+
+        var (_, started) = await DeployAndStartAsync(processKey, bpmn, new Dictionary<string, object>
+        {
+            ["items"] = new[] { "one", "two" }
+        });
+        var tasks = await GetTasksAsync(started.Id);
+        Assert.Equal(2, tasks.Count);
+        Assert.Equal(["one", "two"], tasks.Select(task => task.LocalVariables["item"].GetString()).Order().ToArray());
+        Assert.Single(tasks.Select(task => task.MultiInstanceExecutionId).Distinct());
+
+        await CompleteTaskAsync(tasks[0].Id);
+        Assert.Equal(ProcessInstanceStatus.Running, (await GetInstanceAsync(started.Id)).Status);
+        Assert.Single(await GetTasksAsync(started.Id));
+
+        await CompleteTaskAsync(tasks[1].Id);
+        var completed = await GetInstanceAsync(started.Id);
+        Assert.Equal(ProcessInstanceStatus.Completed, completed.Status);
+        Assert.Empty(completed.ActiveTokens);
+    }
+
+    [Fact]
+    public async Task FPS_BPMN_13_Sequential_MultiInstance_Subprocess_Starts_Next_Iteration_After_Inner_End()
+    {
+        var processKey = $"fps-mi-subprocess-sequential-{Guid.NewGuid():N}";
+        var bpmn = $$"""
+            <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
+              <process id="{{processKey}}" isExecutable="true">
+                <startEvent id="start" />
+                <sequenceFlow id="to-scope" sourceRef="start" targetRef="scope" />
+                <subProcess id="scope">
+                  <multiInstanceLoopCharacteristics isSequential="true">
+                    <loopCardinality>2</loopCardinality>
+                  </multiInstanceLoopCharacteristics>
+                  <startEvent id="inner-start" />
+                  <sequenceFlow id="to-review" sourceRef="inner-start" targetRef="review" />
+                  <userTask id="review" name="Sequential subprocess review" />
+                  <sequenceFlow id="to-inner-end" sourceRef="review" targetRef="inner-end" />
+                  <endEvent id="inner-end" />
+                </subProcess>
+                <sequenceFlow id="to-end" sourceRef="scope" targetRef="end" />
+                <endEvent id="end" />
+              </process>
+            </definitions>
+            """;
+
+        var (_, started) = await DeployAndStartAsync(processKey, bpmn);
+        var first = Assert.Single(await GetTasksAsync(started.Id));
+        Assert.Equal(0, first.MultiInstanceIndex);
+        Assert.Equal("scope", first.LocalVariables["$vertex.multiInstanceActivityId"].GetString());
+
+        await CompleteTaskAsync(first.Id);
+        var state = await _client.GetFromJsonAsync<JsonElement>(
+            $"/api/inspector/process-instance/{started.Id}/state",
+            TestContext.Current.CancellationToken);
+        var execution = Assert.Single(state.GetProperty("multiInstances").EnumerateArray());
+        Assert.Equal(2, execution.GetProperty("instanceCount").GetInt32());
+        Assert.Equal(1, execution.GetProperty("completedCount").GetInt32());
+        Assert.Equal(2, execution.GetProperty("nextIndex").GetInt32());
+        Assert.Equal("Active", execution.GetProperty("state").GetString());
+        var second = Assert.Single(await GetTasksAsync(started.Id));
+        Assert.Equal(1, second.MultiInstanceIndex);
+
+        await CompleteTaskAsync(second.Id);
+        Assert.Equal(ProcessInstanceStatus.Completed, (await GetInstanceAsync(started.Id)).Status);
+    }
+
+    [Fact]
     public async Task FPS_BPMN_08_NonInterrupting_Escalation_Boundary_Preserves_Subprocess_Path()
     {
         var processKey = $"fps-escalation-{Guid.NewGuid():N}";
@@ -868,6 +1037,96 @@ public sealed class BpmnCoreLifecycleContractTests : IDisposable
 
         await CompleteTaskAsync(resolution.Id);
 
+        Assert.Equal(ProcessInstanceStatus.Completed, (await GetInstanceAsync(started.Id)).Status);
+    }
+
+    [Fact]
+    public async Task FPS_BPMN_14_Interrupting_Message_EventSubprocess_Cancels_The_Root_Scope()
+    {
+        var processKey = $"fps-event-subprocess-interrupting-{Guid.NewGuid():N}";
+        var messageName = $"interrupt-{Guid.NewGuid():N}";
+        var bpmn = $$"""
+            <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
+              <message id="interrupt-message" name="{{messageName}}" />
+              <process id="{{processKey}}" isExecutable="true">
+                <startEvent id="start" />
+                <sequenceFlow id="to-normal" sourceRef="start" targetRef="normal" />
+                <userTask id="normal" name="Normal work" />
+                <sequenceFlow id="normal-to-end" sourceRef="normal" targetRef="end" />
+                <endEvent id="end" />
+                <subProcess id="interrupt-handler" triggeredByEvent="true">
+                  <startEvent id="interrupt-start" isInterrupting="true">
+                    <messageEventDefinition messageRef="interrupt-message" />
+                  </startEvent>
+                  <sequenceFlow id="to-recovery" sourceRef="interrupt-start" targetRef="recovery" />
+                  <userTask id="recovery" name="Recovery work" />
+                  <sequenceFlow id="recovery-to-end" sourceRef="recovery" targetRef="interrupt-end" />
+                  <endEvent id="interrupt-end" />
+                </subProcess>
+              </process>
+            </definitions>
+            """;
+
+        var (_, started) = await DeployAndStartAsync(processKey, bpmn);
+        Assert.Equal("Normal work", Assert.Single(await GetTasksAsync(started.Id)).Name);
+
+        using var trigger = await _client.PostAsJsonAsync(
+            "/api/vertex/message",
+            new { messageName, processInstanceId = started.Id.ToString(), variables = new { reason = "test" } },
+            TestContext.Current.CancellationToken);
+        trigger.EnsureSuccessStatusCode();
+
+        var recovery = Assert.Single(await GetTasksAsync(started.Id));
+        Assert.Equal("Recovery work", recovery.Name);
+        await CompleteTaskAsync(recovery.Id);
+        Assert.Equal(ProcessInstanceStatus.Completed, (await GetInstanceAsync(started.Id)).Status);
+    }
+
+    [Fact]
+    public async Task FPS_BPMN_15_NonInterrupting_Message_EventSubprocess_Is_Rearmed_After_Completion()
+    {
+        var processKey = $"fps-event-subprocess-noninterrupting-{Guid.NewGuid():N}";
+        var messageName = $"notify-{Guid.NewGuid():N}";
+        var bpmn = $$"""
+            <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
+              <message id="notification" name="{{messageName}}" />
+              <process id="{{processKey}}" isExecutable="true">
+                <startEvent id="start" />
+                <sequenceFlow id="to-normal" sourceRef="start" targetRef="normal" />
+                <userTask id="normal" name="Normal work" />
+                <sequenceFlow id="normal-to-end" sourceRef="normal" targetRef="end" />
+                <endEvent id="end" />
+                <subProcess id="notification-handler" triggeredByEvent="true">
+                  <startEvent id="notification-start" isInterrupting="false">
+                    <messageEventDefinition messageRef="notification" />
+                  </startEvent>
+                  <sequenceFlow id="to-ack" sourceRef="notification-start" targetRef="ack" />
+                  <userTask id="ack" name="Acknowledge notification" />
+                  <sequenceFlow id="ack-to-end" sourceRef="ack" targetRef="notification-end" />
+                  <endEvent id="notification-end" />
+                </subProcess>
+              </process>
+            </definitions>
+            """;
+
+        var (_, started) = await DeployAndStartAsync(processKey, bpmn);
+        var normal = Assert.Single(await GetTasksAsync(started.Id));
+
+        for (var occurrence = 0; occurrence < 2; occurrence++)
+        {
+            using var trigger = await _client.PostAsJsonAsync(
+                "/api/vertex/message",
+                new { messageName, processInstanceId = started.Id.ToString(), variables = new { occurrence } },
+                TestContext.Current.CancellationToken);
+            trigger.EnsureSuccessStatusCode();
+            var tasks = await GetTasksAsync(started.Id);
+            Assert.Contains(tasks, task => task.Id == normal.Id);
+            var acknowledgement = Assert.Single(tasks.Where(task => task.Name == "Acknowledge notification"));
+            await CompleteTaskAsync(acknowledgement.Id);
+            Assert.Equal("Normal work", Assert.Single(await GetTasksAsync(started.Id)).Name);
+        }
+
+        await CompleteTaskAsync(normal.Id);
         Assert.Equal(ProcessInstanceStatus.Completed, (await GetInstanceAsync(started.Id)).Status);
     }
 

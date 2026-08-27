@@ -67,14 +67,31 @@ public class AdvancedBpmnDmnScenariosTests
     {
         var logger = new LoggerFactory().CreateLogger<DecisionService>();
         var repository = new InMemoryDecisionRepository();
-        await repository.UpsertDefinitionAsync(new DecisionDefinition("complex", "Complex", string.Empty, null));
         var service = new DecisionService(logger, repository);
+        const string dmnXml = """
+            <definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/">
+              <decision id="complex" name="Complex">
+                <decisionTable hitPolicy="UNIQUE">
+                  <input id="foo"><inputExpression typeRef="number"><text>foo</text></inputExpression></input>
+                  <input id="bar"><inputExpression typeRef="string"><text>bar</text></inputExpression></input>
+                  <input id="list"><inputExpression typeRef="Any"><text>list</text></inputExpression></input>
+                  <output id="result" name="result" typeRef="string" />
+                  <rule>
+                    <inputEntry><text>&gt;= 40</text></inputEntry>
+                    <inputEntry><text>"baz"</text></inputEntry>
+                    <inputEntry><text>-</text></inputEntry>
+                    <outputEntry><text>"complex-inputs-accepted"</text></outputEntry>
+                  </rule>
+                </decisionTable>
+              </decision>
+            </definitions>
+            """;
+        await service.DeployAsync("complex", "Complex", dmnXml);
         var inputs = new Dictionary<string, object> { { "foo", 42 }, { "bar", "baz" }, { "list", new List<int> { 1, 2, 3 } } };
+
         var result = await service.EvaluateDecisionByKeyAsync("complex", inputs, null, CancellationToken.None);
+
         Assert.NotNull(result);
-        Assert.Equal(42, (result.Variables["foo"] as int?) ?? ((System.Text.Json.JsonElement)result.Variables["foo"]).GetInt32());
-        Assert.Equal("baz", result.Variables["bar"].ToString());
-        // List may be serialized as JsonElement array
-        Assert.True(result.Variables.ContainsKey("list"));
+        Assert.Equal("complex-inputs-accepted", result.Variables["result"]);
     }
 }

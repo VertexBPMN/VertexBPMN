@@ -32,6 +32,7 @@ public static class EngineModule
         services.AddScoped<IDistributedProcessEngine, DistributedProcessEngine>();
         services.AddScoped<ICaseExecutionRuntime, PersistentCaseExecutionRuntime>();
         services.AddScoped<IProcessExecutionRuntime, PersistentProcessExecutionRuntime>();
+        services.AddScoped<ISimulationService, DeterministicSimulationService>();
         services.AddSingleton<IProcessEngine>(provider =>
             ProcessEngineFactory.CreateFromConfiguration(provider));
         return services;

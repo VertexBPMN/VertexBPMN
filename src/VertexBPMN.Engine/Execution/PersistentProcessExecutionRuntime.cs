@@ -24,6 +24,9 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
     private const string TaskIdVariable = "$vertex.taskId";
     private const string MultiInstanceIdVariable = "$vertex.multiInstanceId";
     private const string MultiInstanceIndexVariable = "$vertex.multiInstanceIndex";
+    private const string MultiInstanceActivityIdVariable = "$vertex.multiInstanceActivityId";
+    private const string EventSubprocessIdVariable = "$vertex.eventSubprocessId";
+    private const string EventSubprocessInterruptingVariable = "$vertex.eventSubprocessInterrupting";
     private const int MaxAutomaticSteps = 10_000;
 
     private readonly BpmnDbContext _db;
@@ -101,6 +104,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
             throw new InvalidOperationException($"Process '{definition.Key}' has no executable start event.");
 
         await AdvanceAsync(instance, model, startNodes, cancellationToken);
+        await ActivateEventSubprocessesAsync(instance, model, null, cancellationToken);
         await FinalizeTransitionAsync(instance, cancellationToken);
         CompleteInbox(inbox, instance.Id.ToString());
         await _db.SaveChangesAsync(cancellationToken);
@@ -246,17 +250,34 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         AddOutbox(instance, "UserTaskCompleted", new { task.Id, task.ActivityId });
         if (task.MultiInstanceExecutionId.HasValue)
         {
-            if (!model.Nodes.TryGetValue(task.ActivityId, out var multiInstanceNode))
-                throw new InvalidOperationException($"Multi-instance activity '{task.ActivityId}' is not defined.");
             var queue = new Queue<PendingNode>();
-            await CompleteMultiInstanceIterationAsync(
-                instance,
-                multiInstanceNode,
-                task.MultiInstanceExecutionId.Value,
-                task.MultiInstanceIndex.GetValueOrDefault(),
-                model,
-                queue,
-                cancellationToken);
+            var ownerActivityId = task.LocalVariables.TryGetValue(MultiInstanceActivityIdVariable, out var ownerValue)
+                ? ownerValue?.ToString()
+                : task.ActivityId;
+            if (string.Equals(ownerActivityId, task.ActivityId, StringComparison.Ordinal))
+            {
+                if (!model.Nodes.TryGetValue(task.ActivityId, out var multiInstanceNode))
+                    throw new InvalidOperationException($"Multi-instance activity '{task.ActivityId}' is not defined.");
+                await CompleteMultiInstanceIterationAsync(
+                    instance,
+                    multiInstanceNode,
+                    task.MultiInstanceExecutionId.Value,
+                    task.MultiInstanceIndex.GetValueOrDefault(),
+                    model,
+                    queue,
+                    cancellationToken);
+            }
+            else
+            {
+                var context = new PendingNode(
+                    task.ActivityId,
+                    null,
+                    MultiInstanceExecutionId: task.MultiInstanceExecutionId,
+                    MultiInstanceIndex: task.MultiInstanceIndex,
+                    LocalVariables: task.LocalVariables,
+                    MultiInstanceActivityId: ownerActivityId);
+                Enqueue(queue, model.Outgoing(task.ActivityId), context);
+            }
             await AdvanceAsync(instance, model, queue, cancellationToken);
         }
         else
@@ -312,7 +333,30 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         else
         {
             await CancelEventGatewayCompetitorsAsync(instance.Id, job.ActivityId, cancellationToken);
+            var waitingToken = await _db.ExecutionTokens
+                .Where(token => token.ProcessInstanceId == instance.Id
+                                && token.CurrentNodeId == job.ActivityId
+                                && token.State == ExecutionToken.WaitingState)
+                .OrderBy(token => token.CreatedAt)
+                .FirstOrDefaultAsync(cancellationToken);
             await CompleteWaitingTokenAsync(instance.Id, job.ActivityId, cancellationToken);
+            var resumed = waitingToken is null
+                ? model.Outgoing(job.ActivityId)
+                : model.Outgoing(job.ActivityId).Select(flow => WithExecutionContext(flow, ExecutionContextFromToken(waitingToken)));
+            if (waitingToken is not null)
+                await PrepareEventSubprocessTriggerAsync(instance, waitingToken, model, cancellationToken);
+
+            job.State = "Completed";
+            job.CompletedAt = now;
+            job.LockedUntil = null;
+            job.Revision++;
+            AddHistory(instance, "TIMER_FIRED", job.ActivityId, new { job.Id, payload.Kind });
+            AddOutbox(instance, "TimerFired", new { job.Id, job.ActivityId, payload.Kind });
+            await AdvanceAsync(instance, model, resumed, cancellationToken);
+            await FinalizeTransitionAsync(instance, cancellationToken);
+            await _db.SaveChangesAsync(cancellationToken);
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+            return true;
         }
 
         job.State = "Completed";
@@ -403,6 +447,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         if (subscription.State != ActiveSubscription) return;
         await CancelEventGatewayCompetitorsAsync(instance.Id, subscription.ActivityId, cancellationToken);
         subscription.State = "Consumed";
+        subscription.ActiveKey = null;
         subscription.ConsumedAt = DateTime.UtcNow;
         subscription.Revision++;
         var token = await _db.ExecutionTokens.SingleAsync(
@@ -410,9 +455,15 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
             cancellationToken);
         token.State = ExecutionToken.CompletedState;
         token.Revision++;
+        await PrepareEventSubprocessTriggerAsync(instance, token, model, cancellationToken);
         AddHistory(instance, $"{subscription.EventType.ToUpperInvariant()}_CORRELATED", subscription.ActivityId,
             new { subscription.EventName });
-        await AdvanceAsync(instance, model, model.Outgoing(subscription.ActivityId), cancellationToken);
+        var context = ExecutionContextFromToken(token);
+        await AdvanceAsync(
+            instance,
+            model,
+            model.Outgoing(subscription.ActivityId).Select(flow => WithExecutionContext(flow, context)),
+            cancellationToken);
     }
 
     private async Task AdvanceAsync(
@@ -435,7 +486,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
 
             if (pending.MultiInstanceExecutionId is null
                 && node.IsMultiInstance
-                && node.Kind is "userTask" or "serviceTask" or "businessRuleTask" or "task" or "manualTask" or "sendTask" or "receiveTask")
+                && node.Kind is "userTask" or "serviceTask" or "businessRuleTask" or "task" or "manualTask" or "sendTask" or "receiveTask" or "subProcess" or "transaction")
             {
                 await StartMultiInstanceAsync(instance, node, model, queue, cancellationToken);
                 continue;
@@ -444,7 +495,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
             switch (node.Kind)
             {
                 case "startEvent":
-                    Enqueue(queue, model.Outgoing(node.Id));
+                    Enqueue(queue, model.Outgoing(node.Id), pending);
                     break;
 
                 case "exclusiveGateway":
@@ -458,11 +509,18 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                             cancellationToken);
                         break;
                     }
-                    queue.Enqueue(exclusiveFlow);
+                    queue.Enqueue(WithExecutionContext(exclusiveFlow, pending));
                     AddHistory(instance, "EXCLUSIVE_GATEWAY_SELECTED", node.Id, new { exclusiveFlow.FlowId });
                     break;
 
                 case "inclusiveGateway":
+                    if (model.IncomingCount(node.Id) > 1 && model.OutgoingCount(node.Id) <= 1)
+                    {
+                        if (await ArriveInclusiveJoinAsync(
+                                instance, node, pending, model, queue, cancellationToken))
+                            Enqueue(queue, model.Outgoing(node.Id));
+                        break;
+                    }
                     var inclusiveFlows = SelectInclusiveFlows(node, model.Outgoing(node.Id), instance.Variables);
                     if (inclusiveFlows.Count == 0)
                     {
@@ -473,7 +531,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                             cancellationToken);
                         break;
                     }
-                    Enqueue(queue, inclusiveFlows);
+                    Enqueue(queue, inclusiveFlows, pending);
                     AddHistory(instance, "INCLUSIVE_GATEWAY_SELECTED", node.Id,
                         new { flowIds = inclusiveFlows.Select(flow => flow.FlowId).ToArray() });
                     break;
@@ -481,12 +539,12 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                 case "parallelGateway":
                     if (model.IncomingCount(node.Id) > 1 && model.OutgoingCount(node.Id) <= 1)
                     {
-                        if (await ArriveParallelJoinAsync(instance, node, pending.SourceNodeId, model, cancellationToken))
-                            Enqueue(queue, model.Outgoing(node.Id));
+                        if (await ArriveGatewayJoinAsync(instance, node, pending, model, cancellationToken))
+                            Enqueue(queue, model.Outgoing(node.Id), pending);
                     }
                     else
                     {
-                        Enqueue(queue, model.Outgoing(node.Id));
+                        Enqueue(queue, model.Outgoing(node.Id), pending);
                     }
                     break;
 
@@ -504,12 +562,18 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                             cancellationToken);
                         break;
                     }
-                    Enqueue(queue, eventBranches);
+                    Enqueue(queue, eventBranches, pending);
                     AddHistory(instance, "EVENT_GATEWAY_ACTIVATED", node.Id,
                         new { branches = eventBranches.Select(branch => branch.NodeId).ToArray() });
                     break;
 
                 case "complexGateway":
+                    if (model.IncomingCount(node.Id) > 1 && model.OutgoingCount(node.Id) <= 1)
+                    {
+                        if (await ArriveGatewayJoinAsync(instance, node, pending, model, cancellationToken))
+                            Enqueue(queue, model.Outgoing(node.Id), pending);
+                        break;
+                    }
                     var complexFlows = SelectInclusiveFlows(node, model.Outgoing(node.Id), instance.Variables);
                     if (complexFlows.Count == 0)
                     {
@@ -520,7 +584,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                             cancellationToken);
                         break;
                     }
-                    Enqueue(queue, complexFlows);
+                    Enqueue(queue, complexFlows, pending);
                     AddHistory(instance, "COMPLEX_GATEWAY_ACTIVATED", node.Id,
                         new { flowIds = complexFlows.Select(flow => flow.FlowId).ToArray() });
                     break;
@@ -540,27 +604,21 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
 
                 case "subProcess":
                 case "transaction":
-                    if (node.Attributes.ContainsKey("multiInstanceCollection")
-                        || node.Attributes.ContainsKey("loopCardinality"))
-                    {
-                        throw new NotSupportedException(
-                            $"Multi-instance subprocess '{node.Id}' requires execution semantics that are not part of the production subset.");
-                    }
-
                     var subprocessStarts = model.SubprocessStartNodes(node.Id).ToArray();
                     if (subprocessStarts.Length == 0)
                     {
                         // An empty embedded subprocess represents one successful execution.
-                        Enqueue(queue, model.Outgoing(node.Id));
+                        await CompleteActivityAsync(instance, node, pending, model, queue, cancellationToken);
                     }
                     else
                     {
-                        Enqueue(queue, subprocessStarts);
+                        Enqueue(queue, subprocessStarts, pending);
+                        await ActivateEventSubprocessesAsync(instance, model, node.Id, cancellationToken);
                     }
                     break;
 
                 case "intermediateCatchEvent":
-                    await CreateEventWaitAsync(instance, node, pending.SourceNodeId, cancellationToken);
+                    _ = await CreateEventWaitAsync(instance, node, pending, cancellationToken);
                     break;
 
                 case "endEvent":
@@ -581,12 +639,39 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                         break;
                     }
                     AddHistory(instance, "END_EVENT_REACHED", node.Id, new { node.EventType });
-                    if (!string.IsNullOrWhiteSpace(node.ParentSubprocessId))
-                        Enqueue(queue, model.Outgoing(node.ParentSubprocessId));
+                    if (!string.IsNullOrWhiteSpace(node.ParentSubprocessId)
+                        && !await HasOtherActiveScopeWorkAsync(instance.Id, node.ParentSubprocessId, pending, model, queue, cancellationToken))
+                    {
+                        var completedScope = model.Nodes[node.ParentSubprocessId];
+                        if (completedScope.IsEventSubprocess)
+                        {
+                            await CompleteEventSubprocessAsync(
+                                instance, completedScope, model, queue, pending, cancellationToken);
+                            break;
+                        }
+
+                        if (pending.MultiInstanceExecutionId.HasValue
+                            && string.Equals(pending.MultiInstanceActivityId, node.ParentSubprocessId, StringComparison.Ordinal))
+                        {
+                            var owner = model.Nodes[node.ParentSubprocessId];
+                            await CompleteMultiInstanceIterationAsync(
+                                instance,
+                                owner,
+                                pending.MultiInstanceExecutionId.Value,
+                                pending.MultiInstanceIndex.GetValueOrDefault(),
+                                model,
+                                queue,
+                                cancellationToken);
+                        }
+                        else
+                        {
+                            Enqueue(queue, model.Outgoing(node.ParentSubprocessId), pending);
+                        }
+                    }
                     break;
 
                 case "boundaryEvent":
-                    Enqueue(queue, model.Outgoing(node.Id));
+                    Enqueue(queue, model.Outgoing(node.Id), pending);
                     break;
 
                 case "intermediateThrowEvent":
@@ -603,7 +688,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                     }
                     else
                         throw new NotSupportedException($"Throw event '{node.Id}' has unsupported definition '{node.EventType}'.");
-                    Enqueue(queue, model.Outgoing(node.Id));
+                    Enqueue(queue, model.Outgoing(node.Id), pending);
                     break;
 
                 case "task":
@@ -625,6 +710,8 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                 default:
                     throw new NotSupportedException($"Flow node type '{node.Kind}' is not supported by the production subset.");
             }
+
+            await ReleaseReadyInclusiveJoinsAsync(instance, model, queue, cancellationToken);
         }
     }
 
@@ -812,9 +899,10 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         Queue<PendingNode> queue,
         CancellationToken cancellationToken)
     {
-        if (!pending.MultiInstanceExecutionId.HasValue)
+        if (!pending.MultiInstanceExecutionId.HasValue
+            || !string.Equals(pending.MultiInstanceActivityId, node.Id, StringComparison.Ordinal))
         {
-            Enqueue(queue, model.Outgoing(node.Id));
+            Enqueue(queue, model.Outgoing(node.Id), pending);
             return;
         }
 
@@ -851,7 +939,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
             ["loopCounter"] = completedIndex
         };
         var conditionReached = !string.IsNullOrWhiteSpace(execution.CompletionCondition)
-                               && EvaluateCondition(execution.CompletionCondition, completionVariables);
+                               && BpmnConditionEvaluator.Evaluate(execution.CompletionCondition, completionVariables);
         var allCompleted = execution.CompletedCount >= execution.InstanceCount;
 
         if (conditionReached || allCompleted)
@@ -919,9 +1007,10 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
             ["nrOfActiveInstances"] = execution.InstanceCount - execution.CompletedCount
         };
         if (!string.IsNullOrWhiteSpace(execution.ElementVariable))
-            localVariables[execution.ElementVariable] = NormalizeJsonValue(item) ?? new object();
+            localVariables[execution.ElementVariable] = BpmnConditionEvaluator.NormalizeJsonValue(item) ?? new object();
         return new PendingNode(node.Id, null, MultiInstanceExecutionId: execution.Id,
-            MultiInstanceIndex: index, LocalVariables: localVariables);
+            MultiInstanceIndex: index, LocalVariables: localVariables,
+            MultiInstanceActivityId: node.Id);
     }
 
     private static IReadOnlyList<object?> ResolveMultiInstanceItems(
@@ -950,7 +1039,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         var rawCardinality = int.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out var literal)
             ? literal
             : variables.TryGetValue(normalized, out var cardinalityValue)
-                ? Convert.ToInt32(NormalizeJsonValue(cardinalityValue), CultureInfo.InvariantCulture)
+                ? Convert.ToInt32(BpmnConditionEvaluator.NormalizeJsonValue(cardinalityValue), CultureInfo.InvariantCulture)
                 : throw new InvalidOperationException(
                     $"Multi-instance loopCardinality '{cardinalityExpression}' for '{node.Id}' cannot be resolved.");
         if (rawCardinality < 0)
@@ -998,6 +1087,8 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         {
             token.Variables[MultiInstanceIdVariable] = pending.MultiInstanceExecutionId.Value.ToString();
             token.Variables[MultiInstanceIndexVariable] = pending.MultiInstanceIndex.GetValueOrDefault();
+            token.Variables[MultiInstanceActivityIdVariable] = pending.MultiInstanceActivityId ?? node.Id;
+            task.LocalVariables[MultiInstanceActivityIdVariable] = pending.MultiInstanceActivityId ?? node.Id;
         }
         _db.Tasks.Add(task);
         AddHistory(instance, "USER_TASK_CREATED", node.Id, new { task.Id });
@@ -1031,15 +1122,24 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         await Task.CompletedTask;
     }
 
-    private Task CreateEventWaitAsync(
+    private Task<ExecutionToken> CreateEventWaitAsync(
         ProcessInstance instance,
         ExecutionNode node,
-        string? sourceNodeId,
+        PendingNode pending,
         CancellationToken cancellationToken)
     {
         var token = CreateWaitingToken(instance, node);
-        if (!string.IsNullOrWhiteSpace(sourceNodeId))
-            token.Variables[EventGatewayVariable] = sourceNodeId;
+        if (!string.IsNullOrWhiteSpace(pending.SourceNodeId))
+            token.Variables[EventGatewayVariable] = pending.SourceNodeId;
+        if (pending.MultiInstanceExecutionId.HasValue)
+        {
+            token.Variables[MultiInstanceIdVariable] = pending.MultiInstanceExecutionId.Value.ToString();
+            token.Variables[MultiInstanceIndexVariable] = pending.MultiInstanceIndex.GetValueOrDefault();
+            token.Variables[MultiInstanceActivityIdVariable] = pending.MultiInstanceActivityId ?? string.Empty;
+            if (pending.LocalVariables is not null)
+                foreach (var pair in pending.LocalVariables)
+                    token.Variables[pair.Key] = pair.Value;
+        }
         switch (node.EventType)
         {
             case "Timer":
@@ -1071,6 +1171,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                                 ?? throw new InvalidOperationException($"{node.EventType} event '{node.Id}' has no name."),
                     TenantId = instance.TenantId,
                     State = ActiveSubscription,
+                    ActiveKey = ActiveSubscriptionKey(instance.Id, node.Id),
                     CreatedAt = DateTime.UtcNow,
                     Revision = 1
                 });
@@ -1079,7 +1180,108 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                 throw new NotSupportedException($"Catch event '{node.Id}' has unsupported definition '{node.EventType}'.");
         }
         AddHistory(instance, "WAIT_STATE_CREATED", node.Id, new { node.EventType, node.EventName });
-        return Task.CompletedTask;
+        return Task.FromResult(token);
+    }
+
+    private async Task ActivateEventSubprocessesAsync(
+        ProcessInstance instance,
+        ExecutionModel model,
+        string? parentScopeId,
+        CancellationToken cancellationToken)
+    {
+        foreach (var eventSubprocess in model.Nodes.Values
+                     .Where(node => node.IsEventSubprocess
+                                    && string.Equals(node.ParentSubprocessId, parentScopeId, StringComparison.Ordinal)))
+        {
+            foreach (var start in model.SubprocessStartNodes(eventSubprocess.Id)
+                         .Select(pending => model.Nodes[pending.NodeId])
+                         .Where(node => node.EventType is "Message" or "Signal" or "Timer"))
+            {
+                var tracked = _db.ExecutionTokens.Local
+                    .Where(token => token.ProcessInstanceId == instance.Id
+                                    && token.CurrentNodeId == start.Id)
+                    .ToArray();
+                var alreadyActive = tracked.Length > 0
+                    ? tracked.Any(token => token.State == ExecutionToken.WaitingState)
+                    : await _db.ExecutionTokens.AnyAsync(token =>
+                            token.ProcessInstanceId == instance.Id
+                            && token.CurrentNodeId == start.Id
+                            && token.State == ExecutionToken.WaitingState,
+                        cancellationToken);
+                if (alreadyActive) continue;
+
+                var token = await CreateEventWaitAsync(
+                    instance,
+                    start,
+                    new PendingNode(start.Id, eventSubprocess.Id),
+                    cancellationToken);
+                token.Variables[EventSubprocessIdVariable] = eventSubprocess.Id;
+                token.Variables[EventSubprocessInterruptingVariable] = start.IsInterrupting;
+                AddHistory(instance, "EVENT_SUBPROCESS_ARMED", start.Id,
+                    new { eventSubprocess.Id, start.EventType, start.EventName, start.IsInterrupting });
+            }
+        }
+    }
+
+    private async Task PrepareEventSubprocessTriggerAsync(
+        ProcessInstance instance,
+        ExecutionToken token,
+        ExecutionModel model,
+        CancellationToken cancellationToken)
+    {
+        if (!token.Variables.TryGetValue(EventSubprocessIdVariable, out var subprocessValue)
+            || string.IsNullOrWhiteSpace(subprocessValue?.ToString()))
+            return;
+
+        var subprocessId = subprocessValue.ToString()!;
+        if (!model.Nodes.TryGetValue(subprocessId, out var eventSubprocess)
+            || !eventSubprocess.IsEventSubprocess)
+            throw new InvalidOperationException($"Event subprocess '{subprocessId}' is not defined.");
+
+        var interrupting = token.Variables.TryGetValue(EventSubprocessInterruptingVariable, out var interruptingValue)
+                           && bool.TryParse(interruptingValue?.ToString(), out var parsed)
+                           && parsed;
+        if (interrupting)
+        {
+            var parentScopeId = eventSubprocess.ParentSubprocessId;
+            await CancelWaitStatesAsync(
+                instance.Id,
+                activityId =>
+                    !model.IsInScope(activityId, subprocessId)
+                    && (parentScopeId is null || model.IsInScope(activityId, parentScopeId)),
+                cancellationToken);
+        }
+
+        AddHistory(instance, "EVENT_SUBPROCESS_TRIGGERED", token.CurrentNodeId,
+            new { subprocessId, interrupting });
+    }
+
+    private async Task CompleteEventSubprocessAsync(
+        ProcessInstance instance,
+        ExecutionNode eventSubprocess,
+        ExecutionModel model,
+        Queue<PendingNode> queue,
+        PendingNode context,
+        CancellationToken cancellationToken)
+    {
+        var start = model.SubprocessStartNodes(eventSubprocess.Id)
+            .Select(pending => model.Nodes[pending.NodeId])
+            .SingleOrDefault(node => node.EventType is "Message" or "Signal" or "Timer")
+            ?? throw new InvalidOperationException(
+                $"Event subprocess '{eventSubprocess.Id}' has no supported start event.");
+        if (start.IsInterrupting)
+        {
+            if (!string.IsNullOrWhiteSpace(eventSubprocess.ParentSubprocessId))
+                Enqueue(queue, model.Outgoing(eventSubprocess.ParentSubprocessId), context);
+        }
+        else
+        {
+            await ActivateEventSubprocessesAsync(
+                instance,
+                model,
+                eventSubprocess.ParentSubprocessId,
+                cancellationToken);
+        }
     }
 
     private async Task CancelEventGatewayCompetitorsAsync(
@@ -1123,6 +1325,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         foreach (var subscription in subscriptions)
         {
             subscription.State = "Cancelled";
+            subscription.ActiveKey = null;
             subscription.ConsumedAt = DateTime.UtcNow;
             subscription.Revision++;
         }
@@ -1162,32 +1365,51 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         return token;
     }
 
-    private async Task<bool> ArriveParallelJoinAsync(
+    private async Task<bool> ArriveGatewayJoinAsync(
         ProcessInstance instance,
         ExecutionNode node,
-        string? sourceNodeId,
+        PendingNode pending,
         ExecutionModel model,
         CancellationToken cancellationToken)
     {
-        var source = sourceNodeId ?? string.Empty;
+        var arrivalKey = pending.FlowId ?? pending.SourceNodeId ?? string.Empty;
         var arrivals = await _db.ExecutionTokens
             .Where(token => token.ProcessInstanceId == instance.Id
                             && token.CurrentNodeId == node.Id
                             && token.State == ExecutionToken.WaitingState)
             .ToListAsync(cancellationToken);
+        foreach (var tracked in _db.ExecutionTokens.Local.Where(token =>
+                     token.ProcessInstanceId == instance.Id
+                     && token.CurrentNodeId == node.Id
+                     && token.State == ExecutionToken.WaitingState))
+        {
+            if (arrivals.All(token => token.Id != tracked.Id)) arrivals.Add(tracked);
+        }
         var arrivedSources = arrivals
-            .Select(token => token.Variables.TryGetValue("joinSource", out var value) ? value?.ToString() : null)
+            .Select(token => token.Variables.TryGetValue("joinFlowId", out var value) ? value?.ToString() : null)
             .Where(value => !string.IsNullOrEmpty(value))
             .ToHashSet(StringComparer.Ordinal);
-        arrivedSources.Add(source);
+        arrivedSources.Add(arrivalKey);
 
-        if (arrivedSources.Count < model.IncomingCount(node.Id))
+        var activationSatisfied = node.Kind switch
         {
-            if (!arrivals.Any(token => token.Variables.TryGetValue("joinSource", out var value)
-                                       && string.Equals(value?.ToString(), source, StringComparison.Ordinal)))
+            "parallelGateway" => arrivedSources.Count >= model.IncomingCount(node.Id),
+            "complexGateway" when node.Attributes.TryGetValue("activationCondition", out var condition) =>
+                BpmnConditionEvaluator.Evaluate(
+                    condition,
+                    instance.Variables.Append(
+                        new KeyValuePair<string, object>("activationCount", arrivedSources.Count))),
+            "complexGateway" => arrivedSources.Count >= model.IncomingCount(node.Id),
+            _ => throw new InvalidOperationException($"Gateway '{node.Id}' is not a supported join type.")
+        };
+
+        if (!activationSatisfied)
+        {
+            if (!arrivals.Any(token => token.Variables.TryGetValue("joinFlowId", out var value)
+                                       && string.Equals(value?.ToString(), arrivalKey, StringComparison.Ordinal)))
             {
                 var token = CreateWaitingToken(instance, node);
-                token.Variables["joinSource"] = source;
+                token.Variables["joinFlowId"] = arrivalKey;
             }
             return false;
         }
@@ -1197,8 +1419,200 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
             arrival.State = ExecutionToken.CompletedState;
             arrival.Revision++;
         }
-        AddHistory(instance, "PARALLEL_JOIN_COMPLETED", node.Id, new { incoming = arrivedSources.Count });
+        AddHistory(
+            instance,
+            node.Kind == "complexGateway" ? "COMPLEX_JOIN_ACTIVATED" : "PARALLEL_JOIN_COMPLETED",
+            node.Id,
+            new { incoming = arrivedSources.Count, flowIds = arrivedSources.OrderBy(id => id).ToArray() });
         return true;
+    }
+
+    private async Task<bool> ArriveInclusiveJoinAsync(
+        ProcessInstance instance,
+        ExecutionNode node,
+        PendingNode pending,
+        ExecutionModel model,
+        Queue<PendingNode> queue,
+        CancellationToken cancellationToken)
+    {
+        var arrivalKey = pending.FlowId ?? pending.SourceNodeId ?? string.Empty;
+        var arrivals = await LoadJoinArrivalsAsync(instance.Id, node.Id, cancellationToken);
+        var arrivedFlowIds = ReadJoinFlowIds(arrivals);
+        arrivedFlowIds.Add(arrivalKey);
+
+        if (await HasPotentialInclusiveArrivalAsync(
+                instance.Id, node.Id, arrivedFlowIds, model, queue, instance.Variables, cancellationToken))
+        {
+            if (!arrivals.Any(token => token.Variables.TryGetValue("joinFlowId", out var value)
+                                       && string.Equals(value?.ToString(), arrivalKey, StringComparison.Ordinal)))
+            {
+                var token = CreateWaitingToken(instance, node);
+                token.Variables["joinFlowId"] = arrivalKey;
+            }
+            return false;
+        }
+
+        CompleteJoinArrivals(arrivals);
+        AddHistory(instance, "INCLUSIVE_JOIN_COMPLETED", node.Id,
+            new { flowIds = arrivedFlowIds.OrderBy(id => id).ToArray() });
+        return true;
+    }
+
+    private async Task ReleaseReadyInclusiveJoinsAsync(
+        ProcessInstance instance,
+        ExecutionModel model,
+        Queue<PendingNode> queue,
+        CancellationToken cancellationToken)
+    {
+        var persisted = await _db.ExecutionTokens
+            .Where(token => token.ProcessInstanceId == instance.Id
+                            && token.NodeType == "inclusiveGateway"
+                            && token.State == ExecutionToken.WaitingState)
+            .ToListAsync(cancellationToken);
+        foreach (var tracked in _db.ExecutionTokens.Local.Where(token =>
+                     token.ProcessInstanceId == instance.Id
+                     && token.NodeType == "inclusiveGateway"
+                     && token.State == ExecutionToken.WaitingState))
+        {
+            if (persisted.All(token => token.Id != tracked.Id)) persisted.Add(tracked);
+        }
+
+        foreach (var group in persisted.GroupBy(token => token.CurrentNodeId, StringComparer.Ordinal).ToArray())
+        {
+            var arrivedFlowIds = ReadJoinFlowIds(group);
+            if (await HasPotentialInclusiveArrivalAsync(
+                    instance.Id,
+                    group.Key,
+                    arrivedFlowIds,
+                    model,
+                    queue,
+                    instance.Variables,
+                    cancellationToken))
+                continue;
+
+            CompleteJoinArrivals(group);
+            AddHistory(instance, "INCLUSIVE_JOIN_COMPLETED", group.Key,
+                new { flowIds = arrivedFlowIds.OrderBy(id => id).ToArray() });
+            Enqueue(queue, model.Outgoing(group.Key));
+        }
+    }
+
+    private async Task<bool> HasPotentialInclusiveArrivalAsync(
+        Guid processInstanceId,
+        string gatewayId,
+        IReadOnlySet<string> arrivedFlowIds,
+        ExecutionModel model,
+        Queue<PendingNode> queue,
+        IDictionary<string, object> variables,
+        CancellationToken cancellationToken)
+    {
+        var missing = model.Incoming(gatewayId)
+            .Where(flow => !string.IsNullOrWhiteSpace(flow.FlowId)
+                           && !arrivedFlowIds.Contains(flow.FlowId))
+            .ToArray();
+        if (missing.Length == 0) return false;
+
+        var activeTokens = await _db.ExecutionTokens
+            .Where(token => token.ProcessInstanceId == processInstanceId
+                            && token.State == ExecutionToken.WaitingState
+                            && token.CurrentNodeId != gatewayId)
+            .ToListAsync(cancellationToken);
+        foreach (var tracked in _db.ExecutionTokens.Local.Where(token =>
+                     token.ProcessInstanceId == processInstanceId
+                     && token.State == ExecutionToken.WaitingState
+                     && token.CurrentNodeId != gatewayId))
+        {
+            if (activeTokens.All(token => token.Id != tracked.Id)) activeTokens.Add(tracked);
+        }
+
+        return missing.Any(incoming =>
+            queue.Any(pending => model.CanReachIncoming(pending, incoming, variables))
+            || activeTokens.Any(token => model.CanReachIncoming(
+                new PendingNode(token.CurrentNodeId, null), incoming, variables)));
+    }
+
+    private async Task<bool> HasOtherActiveScopeWorkAsync(
+        Guid processInstanceId,
+        string scopeId,
+        PendingNode completedPath,
+        ExecutionModel model,
+        Queue<PendingNode> queue,
+        CancellationToken cancellationToken)
+    {
+        bool SameIteration(PendingNode candidate) =>
+            !completedPath.MultiInstanceExecutionId.HasValue
+            || candidate.MultiInstanceExecutionId == completedPath.MultiInstanceExecutionId
+               && candidate.MultiInstanceIndex == completedPath.MultiInstanceIndex;
+
+        if (queue.Any(candidate => model.IsInScope(candidate.NodeId, scopeId) && SameIteration(candidate)))
+            return true;
+
+        var tokens = await _db.ExecutionTokens
+            .Where(token => token.ProcessInstanceId == processInstanceId
+                            && token.State == ExecutionToken.WaitingState)
+            .ToListAsync(cancellationToken);
+        foreach (var tracked in _db.ExecutionTokens.Local.Where(token =>
+                     token.ProcessInstanceId == processInstanceId
+                     && token.State == ExecutionToken.WaitingState))
+        {
+            if (tokens.All(token => token.Id != tracked.Id)) tokens.Add(tracked);
+        }
+
+        return tokens.Any(token =>
+            token.State == ExecutionToken.WaitingState
+            && !token.Variables.ContainsKey(EventSubprocessIdVariable)
+            && model.IsInScope(token.CurrentNodeId, scopeId)
+            && TokenBelongsToIteration(token, completedPath));
+    }
+
+    private static bool TokenBelongsToIteration(ExecutionToken token, PendingNode context)
+    {
+        if (!context.MultiInstanceExecutionId.HasValue) return true;
+        return token.Variables.TryGetValue(MultiInstanceIdVariable, out var executionId)
+               && string.Equals(
+                   executionId?.ToString(),
+                   context.MultiInstanceExecutionId.Value.ToString(),
+                   StringComparison.Ordinal)
+               && token.Variables.TryGetValue(MultiInstanceIndexVariable, out var index)
+               && int.TryParse(index?.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedIndex)
+               && parsedIndex == context.MultiInstanceIndex.GetValueOrDefault();
+    }
+
+    private async Task<List<ExecutionToken>> LoadJoinArrivalsAsync(
+        Guid processInstanceId,
+        string gatewayId,
+        CancellationToken cancellationToken)
+    {
+        var arrivals = await _db.ExecutionTokens
+            .Where(token => token.ProcessInstanceId == processInstanceId
+                            && token.CurrentNodeId == gatewayId
+                            && token.State == ExecutionToken.WaitingState)
+            .ToListAsync(cancellationToken);
+        foreach (var tracked in _db.ExecutionTokens.Local.Where(token =>
+                     token.ProcessInstanceId == processInstanceId
+                     && token.CurrentNodeId == gatewayId
+                     && token.State == ExecutionToken.WaitingState))
+        {
+            if (arrivals.All(token => token.Id != tracked.Id)) arrivals.Add(tracked);
+        }
+        return arrivals;
+    }
+
+    private static HashSet<string> ReadJoinFlowIds(IEnumerable<ExecutionToken> arrivals) =>
+        arrivals.Select(token => token.Variables.TryGetValue("joinFlowId", out var value)
+                ? value?.ToString()
+                : null)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!)
+            .ToHashSet(StringComparer.Ordinal);
+
+    private static void CompleteJoinArrivals(IEnumerable<ExecutionToken> arrivals)
+    {
+        foreach (var arrival in arrivals)
+        {
+            arrival.State = ExecutionToken.CompletedState;
+            arrival.Revision++;
+        }
     }
 
     private async Task RegisterCompensationAsync(
@@ -1238,6 +1652,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                 EventName = completedNode.Id,
                 TenantId = instance.TenantId,
                 State = ActiveSubscription,
+                ActiveKey = ActiveSubscriptionKey(instance.Id, boundary.Id),
                 CreatedAt = DateTime.UtcNow,
                 Revision = 1
             });
@@ -1271,6 +1686,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         foreach (var subscription in subscriptions)
         {
             subscription.State = "Consumed";
+            subscription.ActiveKey = null;
             subscription.ConsumedAt = DateTime.UtcNow;
             subscription.Revision++;
             var token = await _db.ExecutionTokens.SingleAsync(
@@ -1410,6 +1826,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         foreach (var subscription in subscriptions.Where(subscription => belongsToScope(subscription.ActivityId)))
         {
             subscription.State = "Cancelled";
+            subscription.ActiveKey = null;
             subscription.ConsumedAt = DateTime.UtcNow;
             subscription.Revision++;
         }
@@ -1476,12 +1893,23 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
     private async Task FinalizeTransitionAsync(ProcessInstance instance, CancellationToken cancellationToken)
     {
         await _db.SaveChangesAsync(cancellationToken);
-        var activeTokens = await _db.ExecutionTokens.AsNoTracking()
+        var waitingTokens = await _db.ExecutionTokens
             .Where(token => token.ProcessInstanceId == instance.Id && token.State == ExecutionToken.WaitingState)
-            .Select(token => token.CurrentNodeId)
-            .Distinct()
-            .OrderBy(id => id)
             .ToListAsync(cancellationToken);
+        var eventSubprocessTokenIds = waitingTokens
+            .Where(token => token.Variables.ContainsKey(EventSubprocessIdVariable))
+            .Select(token => token.Id)
+            .ToHashSet();
+        var eventSubprocessActivities = waitingTokens
+            .Where(token => eventSubprocessTokenIds.Contains(token.Id))
+            .Select(token => token.CurrentNodeId)
+            .ToHashSet(StringComparer.Ordinal);
+        var activeTokens = waitingTokens
+            .Where(token => !eventSubprocessTokenIds.Contains(token.Id))
+            .Select(token => token.CurrentNodeId)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(id => id, StringComparer.Ordinal)
+            .ToList();
         var activeTasks = await _db.Tasks.AsNoTracking()
             .Where(task => task.ProcessInstanceId == instance.Id
                            && (task.Status == UserTaskStatus.Pending || task.Status == UserTaskStatus.Delegated))
@@ -1489,11 +1917,17 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
             .OrderBy(id => id)
             .ToListAsync(cancellationToken);
         var activeJobs = await _db.Jobs.AsNoTracking()
-            .AnyAsync(job => job.ProcessInstanceId == instance.Id && job.State == ScheduledJob, cancellationToken);
+            .AnyAsync(job => job.ProcessInstanceId == instance.Id
+                             && job.State == ScheduledJob
+                             && !eventSubprocessActivities.Contains(job.ActivityId), cancellationToken);
         var activeSubscriptions = await _db.EventSubscriptions.AsNoTracking()
             .AnyAsync(subscription => subscription.ProcessInstanceId == instance.Id
                                       && subscription.State == ActiveSubscription
-                                      && subscription.EventType != "Compensation", cancellationToken);
+                                      && subscription.EventType != "Compensation"
+                                      && !eventSubprocessTokenIds.Contains(subscription.ExecutionTokenId), cancellationToken);
+        var activeMultiInstanceExecution = await _db.MultiInstanceExecutions.AsNoTracking()
+            .AnyAsync(execution => execution.ProcessInstanceId == instance.Id
+                                   && execution.State == "Active", cancellationToken);
 
         instance.ActiveTokens = activeTokens;
         instance.ActiveTasks = activeTasks;
@@ -1503,8 +1937,36 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
             && activeTokens.Count == 0
             && activeTasks.Count == 0
             && !activeJobs
-            && !activeSubscriptions)
+            && !activeSubscriptions
+            && !activeMultiInstanceExecution)
         {
+            foreach (var triggerToken in waitingTokens.Where(token => eventSubprocessTokenIds.Contains(token.Id)))
+            {
+                triggerToken.State = ExecutionToken.CompletedState;
+                triggerToken.Revision++;
+            }
+            var triggerSubscriptions = await _db.EventSubscriptions
+                .Where(subscription => eventSubprocessTokenIds.Contains(subscription.ExecutionTokenId)
+                                       && subscription.State == ActiveSubscription)
+                .ToListAsync(cancellationToken);
+            foreach (var subscription in triggerSubscriptions)
+            {
+                subscription.State = "Cancelled";
+                subscription.ActiveKey = null;
+                subscription.ConsumedAt = DateTime.UtcNow;
+                subscription.Revision++;
+            }
+            var triggerJobs = await _db.Jobs
+                .Where(job => job.ProcessInstanceId == instance.Id
+                              && job.State == ScheduledJob
+                              && eventSubprocessActivities.Contains(job.ActivityId))
+                .ToListAsync(cancellationToken);
+            foreach (var job in triggerJobs)
+            {
+                job.State = "Cancelled";
+                job.CompletedAt = DateTime.UtcNow;
+                job.Revision++;
+            }
             instance.Status = ProcessInstanceStatus.Completed;
             instance.State = "Completed";
             instance.EndedAt = DateTime.UtcNow;
@@ -1516,6 +1978,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
             foreach (var subscription in compensationSubscriptions)
             {
                 subscription.State = "Cancelled";
+                subscription.ActiveKey = null;
                 subscription.ConsumedAt = DateTime.UtcNow;
                 subscription.Revision++;
                 var token = await _db.ExecutionTokens.SingleAsync(
@@ -1695,6 +2158,9 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
     private static string TenantScope(string? tenantId) =>
         string.IsNullOrWhiteSpace(tenantId) ? "$global" : tenantId.Trim();
 
+    private static string ActiveSubscriptionKey(Guid processInstanceId, string activityId) =>
+        $"{processInstanceId:N}:{activityId}";
+
     private static DateTime ResolveDueDate(ExecutionNode node)
     {
         var now = DateTime.UtcNow;
@@ -1717,9 +2183,49 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         }
     }
 
-    private static void Enqueue(Queue<PendingNode> queue, IEnumerable<PendingNode> nodes)
+    private static void Enqueue(
+        Queue<PendingNode> queue,
+        IEnumerable<PendingNode> nodes,
+        PendingNode? executionContext = null)
     {
-        foreach (var node in nodes) queue.Enqueue(node);
+        foreach (var node in nodes)
+            queue.Enqueue(executionContext is null ? node : WithExecutionContext(node, executionContext));
+    }
+
+    private static PendingNode WithExecutionContext(PendingNode node, PendingNode context) =>
+        context.MultiInstanceExecutionId.HasValue
+            ? node with
+            {
+                MultiInstanceExecutionId = context.MultiInstanceExecutionId,
+                MultiInstanceIndex = context.MultiInstanceIndex,
+                LocalVariables = context.LocalVariables,
+                MultiInstanceActivityId = context.MultiInstanceActivityId
+            }
+            : node;
+
+    private static PendingNode ExecutionContextFromToken(ExecutionToken token)
+    {
+        if (!token.Variables.TryGetValue(MultiInstanceIdVariable, out var executionValue)
+            || !Guid.TryParse(executionValue?.ToString(), out var executionId))
+            return new PendingNode(token.CurrentNodeId, null);
+
+        var index = token.Variables.TryGetValue(MultiInstanceIndexVariable, out var indexValue)
+                    && int.TryParse(indexValue?.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : 0;
+        var owner = token.Variables.TryGetValue(MultiInstanceActivityIdVariable, out var ownerValue)
+            ? ownerValue?.ToString()
+            : null;
+        var locals = token.Variables
+            .Where(pair => pair.Key is not TaskIdVariable and not EventGatewayVariable)
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        return new PendingNode(
+            token.CurrentNodeId,
+            null,
+            MultiInstanceExecutionId: executionId,
+            MultiInstanceIndex: index,
+            LocalVariables: locals,
+            MultiInstanceActivityId: owner);
     }
 
     private static PendingNode? SelectExclusiveFlow(
@@ -1735,7 +2241,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         foreach (var flow in flows.Where(flow => !flow.IsDefault))
         {
             if (string.IsNullOrWhiteSpace(flow.ConditionExpression)
-                || EvaluateCondition(flow.ConditionExpression, variables))
+                || BpmnConditionEvaluator.Evaluate(flow.ConditionExpression, variables))
                 return flow;
         }
 
@@ -1755,60 +2261,9 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         var selected = flows
             .Where(flow => !flow.IsDefault)
             .Where(flow => string.IsNullOrWhiteSpace(flow.ConditionExpression)
-                           || EvaluateCondition(flow.ConditionExpression, variables))
+                           || BpmnConditionEvaluator.Evaluate(flow.ConditionExpression, variables))
             .ToArray();
         return selected.Length > 0 ? selected : defaults;
-    }
-
-    private static bool EvaluateCondition(string rawExpression, IDictionary<string, object> variables)
-    {
-        var expression = rawExpression.Trim();
-        if ((expression.StartsWith("${", StringComparison.Ordinal)
-             || expression.StartsWith("#{", StringComparison.Ordinal))
-            && expression.EndsWith('}'))
-            expression = expression[2..^1].Trim();
-
-        // BPMN formal expressions commonly use FEEL's textual boolean operators and
-        // single equality sign. Translate that small, deterministic common subset to
-        // JavaScript while keeping the evaluator bounded.
-        expression = System.Text.RegularExpressions.Regex.Replace(
-            expression,
-            @"(?<![<>=!])=(?!=)",
-            "==",
-            System.Text.RegularExpressions.RegexOptions.CultureInvariant);
-        expression = System.Text.RegularExpressions.Regex.Replace(
-            expression,
-            @"\band\b",
-            "&&",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
-        expression = System.Text.RegularExpressions.Regex.Replace(
-            expression,
-            @"\bor\b",
-            "||",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
-
-        var engine = new Jint.Engine(options => options
-            .TimeoutInterval(TimeSpan.FromMilliseconds(100))
-            .LimitRecursion(64)
-            .MaxStatements(1_000));
-        foreach (var variable in variables)
-            engine.SetValue(variable.Key, NormalizeJsonValue(variable.Value));
-        return engine.Evaluate(expression).AsBoolean();
-    }
-
-    private static object? NormalizeJsonValue(object? value)
-    {
-        if (value is not JsonElement json) return value;
-        return json.ValueKind switch
-        {
-            JsonValueKind.String => json.GetString(),
-            JsonValueKind.Number when json.TryGetInt64(out var integer) => integer,
-            JsonValueKind.Number => json.GetDouble(),
-            JsonValueKind.True => true,
-            JsonValueKind.False => false,
-            JsonValueKind.Null or JsonValueKind.Undefined => null,
-            _ => JsonSerializer.Deserialize<object>(json.GetRawText())
-        };
     }
 
     private sealed class TimerPayload
@@ -1827,7 +2282,8 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         bool IsDefault = false,
         Guid? MultiInstanceExecutionId = null,
         int? MultiInstanceIndex = null,
-        IReadOnlyDictionary<string, object>? LocalVariables = null);
+        IReadOnlyDictionary<string, object>? LocalVariables = null,
+        string? MultiInstanceActivityId = null);
 
     private sealed record ExecutionNode(
         string Id,
@@ -1844,18 +2300,23 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         Dictionary<string, string> Attributes)
     {
         public bool IsMultiInstance => Attributes.ContainsKey("multiInstanceSequential");
+        public bool IsEventSubprocess => Kind == "subProcess"
+                                         && Attributes.TryGetValue("triggeredByEvent", out var value)
+                                         && string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
+        public bool IsInterrupting => !Attributes.TryGetValue("isInterrupting", out var value)
+                                      || !string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class ExecutionModel
     {
         private readonly Dictionary<string, List<PendingNode>> _outgoing;
-        private readonly Dictionary<string, int> _incoming;
+        private readonly Dictionary<string, List<PendingNode>> _incoming;
         private readonly Dictionary<string, List<ExecutionNode>> _boundaries;
 
         private ExecutionModel(
             Dictionary<string, ExecutionNode> nodes,
             Dictionary<string, List<PendingNode>> outgoing,
-            Dictionary<string, int> incoming,
+            Dictionary<string, List<PendingNode>> incoming,
             Dictionary<string, List<ExecutionNode>> boundaries)
         {
             Nodes = nodes;
@@ -1867,7 +2328,9 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         public IReadOnlyDictionary<string, ExecutionNode> Nodes { get; }
         public IEnumerable<PendingNode> Outgoing(string nodeId)
             => _outgoing.TryGetValue(nodeId, out var nodes) ? nodes : [];
-        public int IncomingCount(string nodeId) => _incoming.GetValueOrDefault(nodeId);
+        public int IncomingCount(string nodeId) => _incoming.GetValueOrDefault(nodeId)?.Count ?? 0;
+        public IEnumerable<PendingNode> Incoming(string nodeId)
+            => _incoming.TryGetValue(nodeId, out var nodes) ? nodes : [];
         public int OutgoingCount(string nodeId) => _outgoing.GetValueOrDefault(nodeId)?.Count ?? 0;
         public IEnumerable<ExecutionNode> BoundaryEvents(string activityId)
             => _boundaries.TryGetValue(activityId, out var nodes) ? nodes : [];
@@ -1882,6 +2345,45 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                 parentId = Nodes.TryGetValue(parentId, out var parent)
                     ? parent.ParentSubprocessId
                     : null;
+            }
+            return false;
+        }
+        public bool CanReachIncoming(
+            PendingNode active,
+            PendingNode incoming,
+            IDictionary<string, object> variables)
+        {
+            if (!string.IsNullOrWhiteSpace(active.FlowId)
+                && string.Equals(active.FlowId, incoming.FlowId, StringComparison.Ordinal))
+                return true;
+            if (string.IsNullOrWhiteSpace(incoming.SourceNodeId)) return false;
+
+            var pending = new Stack<string>();
+            var visited = new HashSet<string>(StringComparer.Ordinal);
+            pending.Push(active.NodeId);
+            while (pending.Count > 0)
+            {
+                var current = pending.Pop();
+                if (!visited.Add(current)) continue;
+                if (string.Equals(current, incoming.SourceNodeId, StringComparison.Ordinal)) return true;
+                if (!Nodes.TryGetValue(current, out var node)) continue;
+
+                IEnumerable<PendingNode> candidates = node.Kind switch
+                {
+                    "exclusiveGateway" => SelectExclusiveFlow(node, Outgoing(current), variables) is { } selected
+                        ? [selected]
+                        : [],
+                    "inclusiveGateway" or "complexGateway" when IncomingCount(current) <= 1
+                        || OutgoingCount(current) > 1 => SelectInclusiveFlows(node, Outgoing(current), variables),
+                    _ => Outgoing(current)
+                };
+                foreach (var candidate in candidates)
+                {
+                    if (string.Equals(candidate.NodeId, incoming.NodeId, StringComparison.Ordinal)
+                        && !string.Equals(candidate.FlowId, incoming.FlowId, StringComparison.Ordinal))
+                        continue;
+                    pending.Push(candidate.NodeId);
+                }
             }
             return false;
         }
@@ -1949,6 +2451,10 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                     attribute => attribute.Name.LocalName,
                     attribute => attribute.Value,
                     StringComparer.OrdinalIgnoreCase);
+                var activationCondition = element.Elements().FirstOrDefault(child =>
+                    child.Name.LocalName == "activationCondition")?.Value.Trim();
+                if (!string.IsNullOrWhiteSpace(activationCondition))
+                    attributes["activationCondition"] = activationCondition;
                 if (element.Name.LocalName == "businessRuleTask")
                     ReadDecisionBinding(element, attributes);
                 var multiInstance = element.Elements().FirstOrDefault(child =>
@@ -1994,7 +2500,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
             }
 
             var outgoing = new Dictionary<string, List<PendingNode>>(StringComparer.Ordinal);
-            var incoming = new Dictionary<string, int>(StringComparer.Ordinal);
+            var incoming = new Dictionary<string, List<PendingNode>>(StringComparer.Ordinal);
             foreach (var flow in process.Descendants().Where(element => element.Name.LocalName == "sequenceFlow"))
             {
                 var source = (string?)flow.Attribute("sourceRef");
@@ -2008,8 +2514,11 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                                 && !string.IsNullOrWhiteSpace(flowId)
                                 && sourceNode.Attributes.TryGetValue("default", out var defaultFlowId)
                                 && string.Equals(flowId, defaultFlowId, StringComparison.Ordinal);
-                targets.Add(new PendingNode(target, source, flowId, condition, isDefault));
-                incoming[target] = incoming.GetValueOrDefault(target) + 1;
+                var pending = new PendingNode(target, source, flowId, condition, isDefault);
+                targets.Add(pending);
+                if (!incoming.TryGetValue(target, out var incomingFlows))
+                    incoming[target] = incomingFlows = [];
+                incomingFlows.Add(pending);
             }
 
             var boundaries = nodes.Values

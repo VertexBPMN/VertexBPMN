@@ -77,6 +77,8 @@ public static class InfrastructureModule
     {
         var options = new RuntimeOutboxOptions();
         configuration.GetSection("Runtime:Outbox").Bind(options);
+        options.ConnectionString ??=
+            configuration.GetConnectionString("messaging");
         var productionMode = mode is "Production" or "Stage";
         var provider = options.Provider.Trim().ToLowerInvariant();
 

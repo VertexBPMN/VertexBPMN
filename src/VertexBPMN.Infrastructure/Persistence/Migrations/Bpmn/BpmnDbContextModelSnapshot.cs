@@ -321,6 +321,10 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ActiveKey")
+                        .HasMaxLength(320)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ActivityId")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -363,10 +367,12 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ActiveKey")
+                        .IsUnique();
+
                     b.HasIndex("ExecutionTokenId");
 
-                    b.HasIndex("ProcessInstanceId", "ActivityId", "State")
-                        .IsUnique();
+                    b.HasIndex("ProcessInstanceId", "ActivityId", "State");
 
                     b.HasIndex("EventType", "EventName", "State", "TenantId");
 

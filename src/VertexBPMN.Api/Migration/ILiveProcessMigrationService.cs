@@ -6,11 +6,12 @@ namespace VertexBPMN.Api.Migration;
 /// </summary>
 public interface ILiveProcessMigrationService
 {
-    Task<MigrationPlan> CreateMigrationPlanAsync(string fromProcessKey, string toProcessKey, MigrationOptions options);
-    Task<MigrationExecution> ExecuteMigrationAsync(Guid migrationPlanId, bool dryRun = false);
-    Task<MigrationStatus> GetMigrationStatusAsync(Guid migrationId);
-    Task<bool> RollbackMigrationAsync(Guid migrationId);
-    Task<List<MigrationCompatibilityIssue>> ValidateCompatibilityAsync(string fromProcessKey, string toProcessKey);
-    Task<LiveMigrationSnapshot> CreateSnapshotAsync(Guid processInstanceId);
-    Task<bool> RestoreFromSnapshotAsync(Guid processInstanceId, Guid snapshotId);
+    Task<MigrationPlan> CreateMigrationPlanAsync(string fromProcessKey, string toProcessKey, MigrationOptions options, string? tenantId = null);
+    Task<MigrationPlan> CreateMigrationPlanByDefinitionIdAsync(Guid fromProcessDefinitionId, Guid toProcessDefinitionId, MigrationOptions options, string? tenantId = null);
+    Task<MigrationExecution> ExecuteMigrationAsync(Guid migrationPlanId, bool dryRun = false, string? tenantId = null);
+    Task<MigrationStatus> GetMigrationStatusAsync(Guid migrationId, string? tenantId = null);
+    Task<bool> RollbackMigrationAsync(Guid migrationId, string? tenantId = null);
+    Task<List<MigrationCompatibilityIssue>> ValidateCompatibilityAsync(string fromProcessKey, string toProcessKey, string? tenantId = null);
+    Task<LiveMigrationSnapshot> CreateSnapshotAsync(Guid processInstanceId, string? tenantId = null);
+    Task<bool> RestoreFromSnapshotAsync(Guid processInstanceId, Guid snapshotId, string? tenantId = null);
 }

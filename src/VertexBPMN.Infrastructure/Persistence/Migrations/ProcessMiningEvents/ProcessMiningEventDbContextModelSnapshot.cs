@@ -78,6 +78,8 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.ProcessMiningEvents
                         .IsRequired()
                         .HasMaxLength(100);
 
+                    b.Property<Guid?>("SourceEventId");
+
                     b.Property<string>("TaskId")
                         .HasMaxLength(100);
 
@@ -94,6 +96,9 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.ProcessMiningEvents
                     b.HasIndex("EventType");
 
                     b.HasIndex("ProcessInstanceId");
+
+                    b.HasIndex("SourceEventId")
+                        .IsUnique();
 
                     b.HasIndex("TenantId");
 

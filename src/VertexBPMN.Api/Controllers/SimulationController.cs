@@ -65,7 +65,8 @@ namespace VertexBPMN.Api.Controllers
                 Variables = request.Variables,
                 MaxSteps = request.MaxSteps,
                 TenantId = request.TenantId,
-                EventSelections = request.EventSelections
+                EventSelections = request.EventSelections,
+                CalledProcessDefinitions = request.CalledProcessDefinitions
             };
             // Validate BPMN before simulation (assume request contains BPMN XML)
             var diagnostics = _validationService.ValidateBpmn(request.BpmnXml ?? "");

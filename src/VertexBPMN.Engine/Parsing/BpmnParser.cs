@@ -1150,6 +1150,8 @@ public partial class BpmnParser : IBpmnParser
             attributes["script"] = script;
         if (element.Attribute("resultVariable")?.Value is { } resultVariable)
             attributes["resultVariable"] = resultVariable;
+        if (element.Attribute("calledElement")?.Value is { } calledElement)
+            attributes["calledElement"] = calledElement;
 
         return attributes.Count == 0 ? null : attributes;
     }

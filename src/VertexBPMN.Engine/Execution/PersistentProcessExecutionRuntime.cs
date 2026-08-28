@@ -27,6 +27,13 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
     private const string MultiInstanceActivityIdVariable = "$vertex.multiInstanceActivityId";
     private const string EventSubprocessIdVariable = "$vertex.eventSubprocessId";
     private const string EventSubprocessInterruptingVariable = "$vertex.eventSubprocessInterrupting";
+    private const string CompensationScopeVariable = "$vertex.compensationScope";
+    private const string CompensationOrderVariable = "$vertex.compensationOrder";
+    private const string CompensationBatchVariable = "$vertex.compensationBatch";
+    private const string CompensationThrowEventVariable = "$vertex.compensationThrowEvent";
+    private const string CompensationSubscriptionVariable = "$vertex.compensationSubscription";
+    private const string CompensationCompletedVariable = "$vertex.compensationCompleted";
+    private const string RootCompensationScope = "$vertex.root";
     private const int MaxAutomaticSteps = 10_000;
 
     private readonly BpmnDbContext _db;
@@ -248,7 +255,13 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
             await RegisterCompensationAsync(instance, completedNode, model, cancellationToken);
         AddHistory(instance, "USER_TASK_COMPLETED", task.ActivityId, new { task.Id });
         AddOutbox(instance, "UserTaskCompleted", new { task.Id, task.ActivityId });
-        if (task.MultiInstanceExecutionId.HasValue)
+        if (task.LocalVariables.ContainsKey(CompensationBatchVariable))
+        {
+            var queue = new Queue<PendingNode>();
+            await ContinueCompensationAsync(instance, task.LocalVariables, model, queue, cancellationToken);
+            await AdvanceAsync(instance, model, queue, cancellationToken);
+        }
+        else if (task.MultiInstanceExecutionId.HasValue)
         {
             var queue = new Queue<PendingNode>();
             var ownerActivityId = task.LocalVariables.TryGetValue(MultiInstanceActivityIdVariable, out var ownerValue)
@@ -608,6 +621,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                     if (subprocessStarts.Length == 0)
                     {
                         // An empty embedded subprocess represents one successful execution.
+                        await RegisterCompensationAsync(instance, node, model, cancellationToken);
                         await CompleteActivityAsync(instance, node, pending, model, queue, cancellationToken);
                     }
                     else
@@ -622,13 +636,20 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                     break;
 
                 case "endEvent":
-                    if (node.EventType == "Compensation")
-                        await TriggerCompensationAsync(instance, node, model, queue, cancellationToken);
+                    var compensationCompleted = pending.LocalVariables?.ContainsKey(CompensationCompletedVariable) == true;
+                    if (node.EventType == "Compensation" && !compensationCompleted)
+                    {
+                        if (await TriggerCompensationAsync(instance, node, model, queue, cancellationToken)) break;
+                    }
                     else if (node.EventType == "Terminate")
                         await TerminateScopeAsync(instance, node, model, queue, cancellationToken);
                     else if (node.EventType is "Error" or "Escalation" or "Cancel")
                     {
-                        if (!await HandleScopedThrowAsync(instance, node, model, queue, cancellationToken))
+                        if (node.EventType == "Cancel" && !compensationCompleted
+                            && await TriggerCompensationAsync(instance, node, model, queue, cancellationToken))
+                            break;
+                        if (await HandleScopedThrowAsync(instance, node, model, queue, cancellationToken)
+                            == ScopedThrowResult.NotCaught)
                         {
                             await SuspendWithIncidentAsync(
                                 instance,
@@ -647,6 +668,15 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                         {
                             await CompleteEventSubprocessAsync(
                                 instance, completedScope, model, queue, pending, cancellationToken);
+                            break;
+                        }
+
+                        await RegisterCompensationAsync(instance, completedScope, model, cancellationToken);
+
+                        if (pending.LocalVariables?.ContainsKey(CompensationBatchVariable) == true)
+                        {
+                            await ContinueCompensationAsync(
+                                instance, pending.LocalVariables, model, queue, cancellationToken);
                             break;
                         }
 
@@ -675,16 +705,30 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                     break;
 
                 case "intermediateThrowEvent":
+                    var intermediateCompensationCompleted =
+                        pending.LocalVariables?.ContainsKey(CompensationCompletedVariable) == true;
                     if (node.EventType == "Compensation")
-                        await TriggerCompensationAsync(instance, node, model, queue, cancellationToken);
+                    {
+                        if (!intermediateCompensationCompleted
+                            && await TriggerCompensationAsync(instance, node, model, queue, cancellationToken))
+                            break;
+                    }
                     else if (node.EventType is "Error" or "Escalation" or "Cancel")
                     {
-                        if (!await HandleScopedThrowAsync(instance, node, model, queue, cancellationToken))
+                        if (node.EventType == "Cancel" && !intermediateCompensationCompleted
+                            && await TriggerCompensationAsync(instance, node, model, queue, cancellationToken))
+                            break;
+                        var catchResult = await HandleScopedThrowAsync(
+                            instance, node, model, queue, cancellationToken);
+                        if (catchResult == ScopedThrowResult.NotCaught)
                             await SuspendWithIncidentAsync(
                                 instance,
                                 node.Id,
                                 $"{node.EventType} throw event '{node.Id}' has no matching boundary handler.",
                                 cancellationToken);
+                        else if (catchResult == ScopedThrowResult.NonInterrupting)
+                            Enqueue(queue, model.Outgoing(node.Id), pending);
+                        break;
                     }
                     else
                         throw new NotSupportedException($"Throw event '{node.Id}' has unsupported definition '{node.EventType}'.");
@@ -695,13 +739,21 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                 case "manualTask":
                 case "sendTask":
                 case "receiveTask":
+                    await RegisterCompensationAsync(instance, node, model, cancellationToken);
                     await CompleteActivityAsync(instance, node, pending, model, queue, cancellationToken);
                     break;
 
                 case "businessRuleTask":
                     await ExecuteBusinessRuleTaskAsync(instance, node, pending.LocalVariables, cancellationToken);
                     if (instance.Status == ProcessInstanceStatus.Running)
+                    {
+                        await RegisterCompensationAsync(instance, node, model, cancellationToken);
                         await CompleteActivityAsync(instance, node, pending, model, queue, cancellationToken);
+                    }
+                    break;
+
+                case "callActivity":
+                    await StartCallActivityAsync(instance, node, pending, model, cancellationToken);
                     break;
 
                 case "scriptTask":
@@ -743,6 +795,148 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         {
             await SuspendWithIncidentAsync(instance, node.Id, exception.Message, cancellationToken);
         }
+    }
+
+    private async Task StartCallActivityAsync(
+        ProcessInstance parent,
+        ExecutionNode callActivity,
+        PendingNode pending,
+        ExecutionModel parentModel,
+        CancellationToken cancellationToken)
+    {
+        if (!callActivity.Attributes.TryGetValue("calledElement", out var calledElement)
+            || string.IsNullOrWhiteSpace(calledElement))
+        {
+            await SuspendWithIncidentAsync(
+                parent,
+                callActivity.Id,
+                $"Call activity '{callActivity.Id}' has no calledElement.",
+                cancellationToken);
+            return;
+        }
+
+        var targetDefinition = await _db.ProcessDefinitions.AsNoTracking()
+            .Where(definition => definition.TenantScope == TenantScope(parent.TenantId)
+                                 && definition.Key == calledElement)
+            .OrderByDescending(definition => definition.Version)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (targetDefinition is null)
+        {
+            await SuspendWithIncidentAsync(
+                parent,
+                callActivity.Id,
+                $"Called process definition '{calledElement}' was not found for the current tenant.",
+                cancellationToken);
+            return;
+        }
+
+        await EnsureCallDepthAsync(parent, cancellationToken);
+        var now = DateTime.UtcNow;
+        var child = new ProcessInstance
+        {
+            Id = Guid.NewGuid(),
+            ProcessDefinitionId = targetDefinition.Id,
+            ProcessId = targetDefinition.Key,
+            BusinessKey = parent.BusinessKey,
+            TenantId = parent.TenantId,
+            ParentProcessInstanceId = parent.Id,
+            CallingActivityId = callActivity.Id,
+            StartedAt = now,
+            CreatedAt = now,
+            LastModified = now,
+            State = "Running",
+            Status = ProcessInstanceStatus.Running,
+            Variables = new Dictionary<string, object>(parent.Variables, StringComparer.Ordinal),
+            Revision = 1
+        };
+        _db.ProcessInstances.Add(child);
+
+        var parentToken = CreateWaitingToken(parent, callActivity);
+        StoreExecutionContext(parentToken, pending);
+        parentToken.Variables["$vertex.calledProcessInstanceId"] = child.Id.ToString();
+
+        AddHistory(parent, "CALL_ACTIVITY_STARTED", callActivity.Id,
+            new { calledElement, childProcessInstanceId = child.Id });
+        AddOutbox(parent, "CallActivityStarted",
+            new { callActivity.Id, calledElement, childProcessInstanceId = child.Id });
+        AddHistory(child, "PROCESS_STARTED", "", new { targetDefinition.Key, targetDefinition.Version, parent.Id });
+        AddOutbox(child, "ProcessStarted",
+            new { targetDefinition.Key, targetDefinition.Version, parentProcessInstanceId = parent.Id });
+
+        var childModel = ExecutionModel.Parse(targetDefinition.BpmnXml, targetDefinition.Key);
+        var starts = childModel.Nodes.Values
+            .Where(node => node.Kind == "startEvent" && string.IsNullOrWhiteSpace(node.ParentSubprocessId))
+            .Select(node => new PendingNode(node.Id, null))
+            .ToArray();
+        if (starts.Length == 0)
+            throw new InvalidOperationException($"Called process '{calledElement}' has no executable start event.");
+
+        await AdvanceAsync(child, childModel, starts, cancellationToken);
+        await ActivateEventSubprocessesAsync(child, childModel, null, cancellationToken);
+        await FinalizeTransitionAsync(child, cancellationToken);
+    }
+
+    private async Task EnsureCallDepthAsync(ProcessInstance parent, CancellationToken cancellationToken)
+    {
+        var depth = 1;
+        var ancestorId = parent.ParentProcessInstanceId;
+        while (ancestorId.HasValue)
+        {
+            if (++depth > 64)
+                throw new InvalidOperationException("Call activity nesting exceeds the maximum depth of 64.");
+            ancestorId = await _db.ProcessInstances.AsNoTracking()
+                .Where(instance => instance.Id == ancestorId.Value)
+                .Select(instance => instance.ParentProcessInstanceId)
+                .SingleOrDefaultAsync(cancellationToken);
+        }
+    }
+
+    private async Task ResumeCallingProcessAsync(ProcessInstance child, CancellationToken cancellationToken)
+    {
+        if (!child.ParentProcessInstanceId.HasValue || string.IsNullOrWhiteSpace(child.CallingActivityId))
+            return;
+
+        var parent = await _db.ProcessInstances
+            .SingleOrDefaultAsync(instance => instance.Id == child.ParentProcessInstanceId.Value, cancellationToken);
+        if (parent is null || parent.Status != ProcessInstanceStatus.Running) return;
+
+        var token = await _db.ExecutionTokens
+            .Where(candidate => candidate.ProcessInstanceId == parent.Id
+                                && candidate.CurrentNodeId == child.CallingActivityId
+                                && candidate.State == ExecutionToken.WaitingState)
+            .OrderBy(candidate => candidate.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (token is null) return;
+
+        token.State = ExecutionToken.CompletedState;
+        token.Revision++;
+        foreach (var variable in child.Variables)
+            parent.Variables[variable.Key] = BpmnConditionEvaluator.NormalizeJsonValue(variable.Value) ?? new object();
+        parent.Variables = new Dictionary<string, object>(parent.Variables, StringComparer.Ordinal);
+
+        var definition = await _db.ProcessDefinitions.AsNoTracking()
+            .SingleAsync(item => item.Id == parent.ProcessDefinitionId, cancellationToken);
+        var model = ExecutionModel.Parse(definition.BpmnXml, definition.Key);
+        if (!model.Nodes.TryGetValue(child.CallingActivityId, out var callActivity))
+            throw new InvalidOperationException(
+                $"Calling activity '{child.CallingActivityId}' is not present in parent definition '{definition.Key}'.");
+
+        AddHistory(parent, "CALL_ACTIVITY_COMPLETED", child.CallingActivityId,
+            new { childProcessInstanceId = child.Id, child.ProcessId });
+        AddOutbox(parent, "CallActivityCompleted",
+            new { activityId = child.CallingActivityId, childProcessInstanceId = child.Id });
+
+        var queue = new Queue<PendingNode>();
+        await RegisterCompensationAsync(parent, callActivity, model, cancellationToken);
+        await CompleteActivityAsync(
+            parent,
+            callActivity,
+            ExecutionContextFromToken(token),
+            model,
+            queue,
+            cancellationToken);
+        await AdvanceAsync(parent, model, queue, cancellationToken);
+        await FinalizeTransitionAsync(parent, cancellationToken);
     }
 
     private async Task ExecuteBusinessRuleTaskAsync(
@@ -899,6 +1093,13 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         Queue<PendingNode> queue,
         CancellationToken cancellationToken)
     {
+        if (pending.LocalVariables?.ContainsKey(CompensationBatchVariable) == true)
+        {
+            await ContinueCompensationAsync(
+                instance, pending.LocalVariables, model, queue, cancellationToken);
+            return;
+        }
+
         if (!pending.MultiInstanceExecutionId.HasValue
             || !string.Equals(pending.MultiInstanceActivityId, node.Id, StringComparison.Ordinal))
         {
@@ -967,10 +1168,16 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         CancellationToken cancellationToken)
     {
         var executionIdText = executionId.ToString();
-        var tokens = await _db.ExecutionTokens
+        var persistedTokens = await _db.ExecutionTokens
             .Where(token => token.ProcessInstanceId == processInstanceId
                             && token.State == ExecutionToken.WaitingState)
             .ToListAsync(cancellationToken);
+        var tokens = _db.ExecutionTokens.Local
+            .Where(token => token.ProcessInstanceId == processInstanceId
+                            && token.State == ExecutionToken.WaitingState)
+            .Concat(persistedTokens)
+            .DistinctBy(token => token.Id)
+            .ToArray();
         foreach (var token in tokens.Where(token => token.Variables.TryGetValue(MultiInstanceIdVariable, out var value)
                                                     && string.Equals(value?.ToString(), executionIdText, StringComparison.Ordinal)))
         {
@@ -1017,6 +1224,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         ExecutionNode node,
         IDictionary<string, object> variables)
     {
+       
         if (node.Attributes.TryGetValue("multiInstanceCollection", out var collectionExpression)
             && !string.IsNullOrWhiteSpace(collectionExpression))
         {
@@ -1031,7 +1239,6 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
             throw new InvalidOperationException(
                 $"Multi-instance collection '{collectionExpression}' for '{node.Id}' is not enumerable.");
         }
-
         if (!node.Attributes.TryGetValue("loopCardinality", out var cardinalityExpression)
             || string.IsNullOrWhiteSpace(cardinalityExpression))
             throw new InvalidOperationException($"Multi-instance activity '{node.Id}' has no collection or loopCardinality.");
@@ -1131,15 +1338,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         var token = CreateWaitingToken(instance, node);
         if (!string.IsNullOrWhiteSpace(pending.SourceNodeId))
             token.Variables[EventGatewayVariable] = pending.SourceNodeId;
-        if (pending.MultiInstanceExecutionId.HasValue)
-        {
-            token.Variables[MultiInstanceIdVariable] = pending.MultiInstanceExecutionId.Value.ToString();
-            token.Variables[MultiInstanceIndexVariable] = pending.MultiInstanceIndex.GetValueOrDefault();
-            token.Variables[MultiInstanceActivityIdVariable] = pending.MultiInstanceActivityId ?? string.Empty;
-            if (pending.LocalVariables is not null)
-                foreach (var pair in pending.LocalVariables)
-                    token.Variables[pair.Key] = pair.Value;
-        }
+        StoreExecutionContext(token, pending);
         switch (node.EventType)
         {
             case "Timer":
@@ -1266,7 +1465,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
     {
         var start = model.SubprocessStartNodes(eventSubprocess.Id)
             .Select(pending => model.Nodes[pending.NodeId])
-            .SingleOrDefault(node => node.EventType is "Message" or "Signal" or "Timer")
+            .SingleOrDefault(node => node.EventType is "Message" or "Signal" or "Timer" or "Error" or "Escalation")
             ?? throw new InvalidOperationException(
                 $"Event subprocess '{eventSubprocess.Id}' has no supported start event.");
         if (start.IsInterrupting)
@@ -1276,11 +1475,12 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         }
         else
         {
-            await ActivateEventSubprocessesAsync(
-                instance,
-                model,
-                eventSubprocess.ParentSubprocessId,
-                cancellationToken);
+            if (start.EventType is "Message" or "Signal" or "Timer")
+                await ActivateEventSubprocessesAsync(
+                    instance,
+                    model,
+                    eventSubprocess.ParentSubprocessId,
+                    cancellationToken);
         }
     }
 
@@ -1621,22 +1821,40 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         ExecutionModel model,
         CancellationToken cancellationToken)
     {
-        foreach (var boundary in model.BoundaryEvents(completedNode.Id).Where(item => item.EventType == "Compensation"))
-        {
-            var exists = await _db.EventSubscriptions.AnyAsync(subscription =>
-                subscription.ProcessInstanceId == instance.Id
-                && subscription.ActivityId == boundary.Id
-                && subscription.State == ActiveSubscription,
-                cancellationToken);
-            if (exists) continue;
+        if (completedNode.Attributes.TryGetValue("isForCompensation", out var isForCompensation)
+            && string.Equals(isForCompensation, "true", StringComparison.OrdinalIgnoreCase))
+            return;
+        var handlers = model.BoundaryEvents(completedNode.Id)
+            .Where(item => item.EventType == "Compensation")
+            .Concat(completedNode.Kind is "subProcess" or "transaction"
+                ? model.CompensationEventSubprocessStarts(completedNode.Id)
+                : [])
+            .ToArray();
+        if (handlers.Length == 0) return;
 
+        var persistedCount = await _db.EventSubscriptions.CountAsync(subscription =>
+            subscription.ProcessInstanceId == instance.Id
+            && subscription.EventType == "Compensation",
+            cancellationToken);
+        var localCount = _db.EventSubscriptions.Local.Count(subscription =>
+            subscription.ProcessInstanceId == instance.Id
+            && subscription.EventType == "Compensation"
+            && subscription.Id != Guid.Empty);
+        var order = persistedCount + localCount;
+        foreach (var handler in handlers)
+        {
+            order++;
             var token = new ExecutionToken
             {
                 Id = Guid.NewGuid(),
                 ProcessInstanceId = instance.Id,
-                CurrentNodeId = boundary.Id,
-                NodeType = "compensationBoundary",
-                Variables = new Dictionary<string, object>(instance.Variables, StringComparer.Ordinal),
+                CurrentNodeId = handler.Id,
+                NodeType = handler.Kind == "startEvent" ? "compensationEventSubprocess" : "compensationBoundary",
+                Variables = new Dictionary<string, object>(instance.Variables, StringComparer.Ordinal)
+                {
+                    [CompensationScopeVariable] = completedNode.ParentSubprocessId ?? RootCompensationScope,
+                    [CompensationOrderVariable] = order
+                },
                 CreatedAt = DateTime.UtcNow,
                 State = "Compensation",
                 Revision = 1
@@ -1647,20 +1865,26 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                 Id = Guid.NewGuid(),
                 ProcessInstanceId = instance.Id,
                 ExecutionTokenId = token.Id,
-                ActivityId = boundary.Id,
+                ActivityId = handler.Id,
                 EventType = "Compensation",
                 EventName = completedNode.Id,
                 TenantId = instance.TenantId,
                 State = ActiveSubscription,
-                ActiveKey = ActiveSubscriptionKey(instance.Id, boundary.Id),
+                ActiveKey = $"{ActiveSubscriptionKey(instance.Id, handler.Id)}:{token.Id:N}",
                 CreatedAt = DateTime.UtcNow,
                 Revision = 1
             });
-            AddHistory(instance, "COMPENSATION_REGISTERED", completedNode.Id, new { boundary.Id });
+            AddHistory(instance, "COMPENSATION_REGISTERED", completedNode.Id,
+                new
+                {
+                    handlerId = handler.Id,
+                    scopeId = completedNode.ParentSubprocessId,
+                    order
+                });
         }
     }
 
-    private async Task TriggerCompensationAsync(
+    private async Task<bool> TriggerCompensationAsync(
         ProcessInstance instance,
         ExecutionNode throwEvent,
         ExecutionModel model,
@@ -1681,27 +1905,137 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         if (!string.IsNullOrWhiteSpace(throwEvent.EventName))
             query = query.Where(subscription => subscription.EventName == throwEvent.EventName);
 
-        var subscriptions = await query.OrderByDescending(subscription => subscription.CreatedAt)
-            .ToListAsync(cancellationToken);
+        var candidates = await query.ToListAsync(cancellationToken);
+        var tokenIds = candidates.Select(subscription => subscription.ExecutionTokenId).ToArray();
+        var tokens = await _db.ExecutionTokens
+            .Where(token => tokenIds.Contains(token.Id))
+            .ToDictionaryAsync(token => token.Id, cancellationToken);
+        var scope = throwEvent.ParentSubprocessId ?? RootCompensationScope;
+        var subscriptions = candidates
+            .Where(subscription => tokens.TryGetValue(subscription.ExecutionTokenId, out var token)
+                                   && token.Variables.TryGetValue(CompensationScopeVariable, out var value)
+                                   && string.Equals(value?.ToString(), scope, StringComparison.Ordinal))
+            .OrderByDescending(subscription => CompensationOrder(tokens[subscription.ExecutionTokenId]))
+            .ThenByDescending(subscription => subscription.CreatedAt)
+            .ToArray();
+        if (subscriptions.Length == 0)
+        {
+            AddHistory(instance, "COMPENSATION_THROWN", throwEvent.Id,
+                new { activityRef = throwEvent.EventName, handlers = 0 });
+            return false;
+        }
+
+        var batchId = Guid.NewGuid().ToString("N");
         foreach (var subscription in subscriptions)
         {
-            subscription.State = "Consumed";
+            subscription.State = "PendingCompensation";
             subscription.ActiveKey = null;
-            subscription.ConsumedAt = DateTime.UtcNow;
             subscription.Revision++;
-            var token = await _db.ExecutionTokens.SingleAsync(
-                item => item.Id == subscription.ExecutionTokenId, cancellationToken);
-            token.State = ExecutionToken.CompletedState;
-            token.Revision++;
-            Enqueue(queue, model.Outgoing(subscription.ActivityId));
+            var token = tokens[subscription.ExecutionTokenId];
+            token.Variables = new Dictionary<string, object>(token.Variables, StringComparer.Ordinal)
+            {
+                [CompensationBatchVariable] = batchId
+            };
         }
+        await ActivateCompensationHandlerAsync(
+            subscriptions[0],
+            tokens[subscriptions[0].ExecutionTokenId],
+            batchId,
+            throwEvent.Id,
+            model,
+            queue);
         AddHistory(instance, "COMPENSATION_THROWN", throwEvent.Id,
-            new { activityRef = throwEvent.EventName, handlers = subscriptions.Count });
+            new { activityRef = throwEvent.EventName, handlers = subscriptions.Length });
         AddOutbox(instance, "CompensationTriggered",
-            new { throwEvent.Id, activityRef = throwEvent.EventName, handlers = subscriptions.Count });
+            new { throwEvent.Id, activityRef = throwEvent.EventName, handlers = subscriptions.Length });
+        return true;
     }
 
-    private async Task<bool> HandleScopedThrowAsync(
+    private static Task ActivateCompensationHandlerAsync(
+        EventSubscription subscription,
+        ExecutionToken token,
+        string batchId,
+        string throwEventId,
+        ExecutionModel model,
+        Queue<PendingNode> queue)
+    {
+        var targets = model.CompensationHandlerTargets(subscription.ActivityId).ToArray();
+        if (targets.Length == 0)
+            throw new InvalidOperationException(
+                $"Compensation event '{subscription.ActivityId}' has no association to a handler.");
+
+        subscription.State = "Consumed";
+        subscription.ConsumedAt = DateTime.UtcNow;
+        subscription.Revision++;
+        token.State = ExecutionToken.CompletedState;
+        token.Revision++;
+        var context = new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            [CompensationBatchVariable] = batchId,
+            [CompensationThrowEventVariable] = throwEventId,
+            [CompensationSubscriptionVariable] = subscription.Id.ToString()
+        };
+        Enqueue(queue, targets.Select(target => target with { LocalVariables = context }));
+        return Task.CompletedTask;
+    }
+
+    private async Task ContinueCompensationAsync(
+        ProcessInstance instance,
+        IReadOnlyDictionary<string, object> context,
+        ExecutionModel model,
+        Queue<PendingNode> queue,
+        CancellationToken cancellationToken)
+    {
+        var batchId = context.GetValueOrDefault(CompensationBatchVariable)?.ToString()
+                      ?? throw new InvalidOperationException("Compensation handler has no batch context.");
+        var throwEventId = context.GetValueOrDefault(CompensationThrowEventVariable)?.ToString()
+                           ?? throw new InvalidOperationException("Compensation handler has no continuation event.");
+        var pendingSubscriptions = await _db.EventSubscriptions
+            .Where(subscription => subscription.ProcessInstanceId == instance.Id
+                                   && subscription.EventType == "Compensation"
+                                   && subscription.State == "PendingCompensation")
+            .ToListAsync(cancellationToken);
+        var tokenIds = pendingSubscriptions.Select(subscription => subscription.ExecutionTokenId).ToArray();
+        var tokens = await _db.ExecutionTokens
+            .Where(token => tokenIds.Contains(token.Id))
+            .ToDictionaryAsync(token => token.Id, cancellationToken);
+        var next = pendingSubscriptions
+            .Where(subscription => tokens.TryGetValue(subscription.ExecutionTokenId, out var token)
+                                   && token.Variables.TryGetValue(CompensationBatchVariable, out var value)
+                                   && string.Equals(value?.ToString(), batchId, StringComparison.Ordinal))
+            .OrderByDescending(subscription => CompensationOrder(tokens[subscription.ExecutionTokenId]))
+            .FirstOrDefault();
+        if (next is not null)
+        {
+            await ActivateCompensationHandlerAsync(
+                next, tokens[next.ExecutionTokenId], batchId, throwEventId, model, queue);
+            return;
+        }
+
+        queue.Enqueue(new PendingNode(
+            throwEventId,
+            null,
+            LocalVariables: new Dictionary<string, object>(StringComparer.Ordinal)
+            {
+                [CompensationCompletedVariable] = true
+            }));
+        AddHistory(instance, "COMPENSATION_COMPLETED", throwEventId, new { batchId });
+    }
+
+    private static long CompensationOrder(ExecutionToken token)
+    {
+        if (!token.Variables.TryGetValue(CompensationOrderVariable, out var value)) return 0;
+        return value switch
+        {
+            long result => result,
+            int result => result,
+            JsonElement { ValueKind: JsonValueKind.Number } element when element.TryGetInt64(out var result) => result,
+            _ when long.TryParse(value?.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var result) => result,
+            _ => 0
+        };
+    }
+
+    private async Task<ScopedThrowResult> HandleScopedThrowAsync(
         ProcessInstance instance,
         ExecutionNode throwEvent,
         ExecutionModel model,
@@ -1709,32 +2043,68 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         CancellationToken cancellationToken)
     {
         var scopeId = throwEvent.ParentSubprocessId;
-        while (!string.IsNullOrWhiteSpace(scopeId))
+        while (true)
         {
-            var boundary = model.BoundaryEvents(scopeId)
-                .FirstOrDefault(candidate => candidate.EventType == throwEvent.EventType
-                                             && (string.IsNullOrWhiteSpace(candidate.EventName)
-                                                 || string.IsNullOrWhiteSpace(throwEvent.EventName)
-                                                 || string.Equals(candidate.EventName, throwEvent.EventName, StringComparison.Ordinal)));
-            if (boundary is not null)
+            var eventSubprocessStart = model.EventSubprocessStartNodes(scopeId)
+                .Where(candidate => EventMatches(candidate, throwEvent))
+                .OrderByDescending(candidate => string.Equals(
+                    candidate.EventName, throwEvent.EventName, StringComparison.Ordinal))
+                .ThenBy(candidate => candidate.Id, StringComparer.Ordinal)
+                .FirstOrDefault();
+            if (eventSubprocessStart is not null)
             {
-                var interrupting = !boundary.Attributes.TryGetValue("cancelActivity", out var cancelActivity)
-                                   || !string.Equals(cancelActivity, "false", StringComparison.OrdinalIgnoreCase);
+                var eventSubprocess = model.Nodes[eventSubprocessStart.ParentSubprocessId!];
+                var interrupting = throwEvent.EventType == "Error" || eventSubprocessStart.IsInterrupting;
                 if (interrupting)
-                    await CancelScopeAsync(instance.Id, scopeId, model, queue, cancellationToken);
-                Enqueue(queue, model.Outgoing(boundary.Id));
-                AddHistory(instance, $"{throwEvent.EventType?.ToUpperInvariant()}_CAUGHT", boundary.Id,
-                    new { throwEvent.Id, scopeId, interrupting });
-                return true;
+                {
+                    if (string.IsNullOrWhiteSpace(scopeId))
+                    {
+                        queue.Clear();
+                        await CancelWaitStatesAsync(instance.Id, _ => true, cancellationToken);
+                    }
+                    else
+                    {
+                        await CancelScopeAsync(instance.Id, scopeId, model, queue, cancellationToken);
+                    }
+                }
+
+                Enqueue(queue, model.Outgoing(eventSubprocessStart.Id));
+                AddHistory(instance, $"{throwEvent.EventType?.ToUpperInvariant()}_CAUGHT", eventSubprocessStart.Id,
+                    new { throwEvent.Id, scopeId, eventSubprocessId = eventSubprocess.Id, interrupting });
+                return interrupting ? ScopedThrowResult.Interrupting : ScopedThrowResult.NonInterrupting;
             }
 
+            if (!string.IsNullOrWhiteSpace(scopeId))
+            {
+                var boundary = model.BoundaryEvents(scopeId)
+                    .FirstOrDefault(candidate => EventMatches(candidate, throwEvent));
+                if (boundary is not null)
+                {
+                    var interrupting = !boundary.Attributes.TryGetValue("cancelActivity", out var cancelActivity)
+                                       || !string.Equals(cancelActivity, "false", StringComparison.OrdinalIgnoreCase);
+                    if (interrupting)
+                        await CancelScopeAsync(instance.Id, scopeId, model, queue, cancellationToken);
+                    Enqueue(queue, model.Outgoing(boundary.Id));
+                    AddHistory(instance, $"{throwEvent.EventType?.ToUpperInvariant()}_CAUGHT", boundary.Id,
+                        new { throwEvent.Id, scopeId, interrupting });
+                    return interrupting ? ScopedThrowResult.Interrupting : ScopedThrowResult.NonInterrupting;
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(scopeId)) break;
             scopeId = model.Nodes.TryGetValue(scopeId, out var scope)
                 ? scope.ParentSubprocessId
                 : null;
         }
 
-        return false;
+        return ScopedThrowResult.NotCaught;
     }
+
+    private static bool EventMatches(ExecutionNode candidate, ExecutionNode throwEvent) =>
+        candidate.EventType == throwEvent.EventType
+        && (string.IsNullOrWhiteSpace(candidate.EventName)
+            || string.IsNullOrWhiteSpace(throwEvent.EventName)
+            || string.Equals(candidate.EventName, throwEvent.EventName, StringComparison.Ordinal));
 
     private async Task TerminateScopeAsync(
         ProcessInstance instance,
@@ -1785,20 +2155,32 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         Func<string, bool> belongsToScope,
         CancellationToken cancellationToken)
     {
-        var tokens = await _db.ExecutionTokens
+        var persistedTokens = await _db.ExecutionTokens
             .Where(token => token.ProcessInstanceId == processInstanceId
                             && token.State == ExecutionToken.WaitingState)
             .ToListAsync(cancellationToken);
+        var tokens = _db.ExecutionTokens.Local
+            .Where(token => token.ProcessInstanceId == processInstanceId
+                            && token.State == ExecutionToken.WaitingState)
+            .Concat(persistedTokens)
+            .DistinctBy(token => token.Id)
+            .ToArray();
         foreach (var token in tokens.Where(token => belongsToScope(token.CurrentNodeId)))
         {
             token.State = ExecutionToken.CompletedState;
             token.Revision++;
         }
 
-        var tasks = await _db.Tasks
+        var persistedTasks = await _db.Tasks
             .Where(task => task.ProcessInstanceId == processInstanceId
                            && (task.Status == UserTaskStatus.Pending || task.Status == UserTaskStatus.Delegated))
             .ToListAsync(cancellationToken);
+        var tasks = _db.Tasks.Local
+            .Where(task => task.ProcessInstanceId == processInstanceId
+                           && (task.Status == UserTaskStatus.Pending || task.Status == UserTaskStatus.Delegated))
+            .Concat(persistedTasks)
+            .DistinctBy(task => task.Id)
+            .ToArray();
         foreach (var task in tasks.Where(task => belongsToScope(task.ActivityId)))
         {
             task.Status = UserTaskStatus.Cancelled;
@@ -1807,9 +2189,14 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
             task.Revision++;
         }
 
-        var jobs = await _db.Jobs
+        var persistedJobs = await _db.Jobs
             .Where(job => job.ProcessInstanceId == processInstanceId && job.State == ScheduledJob)
             .ToListAsync(cancellationToken);
+        var jobs = _db.Jobs.Local
+            .Where(job => job.ProcessInstanceId == processInstanceId && job.State == ScheduledJob)
+            .Concat(persistedJobs)
+            .DistinctBy(job => job.Id)
+            .ToArray();
         foreach (var job in jobs.Where(job => belongsToScope(job.ActivityId)))
         {
             job.State = "Cancelled";
@@ -1819,10 +2206,16 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
             job.Revision++;
         }
 
-        var subscriptions = await _db.EventSubscriptions
+        var persistedSubscriptions = await _db.EventSubscriptions
             .Where(subscription => subscription.ProcessInstanceId == processInstanceId
                                    && subscription.State == ActiveSubscription)
             .ToListAsync(cancellationToken);
+        var subscriptions = _db.EventSubscriptions.Local
+            .Where(subscription => subscription.ProcessInstanceId == processInstanceId
+                                   && subscription.State == ActiveSubscription)
+            .Concat(persistedSubscriptions)
+            .DistinctBy(subscription => subscription.Id)
+            .ToArray();
         foreach (var subscription in subscriptions.Where(subscription => belongsToScope(subscription.ActivityId)))
         {
             subscription.State = "Cancelled";
@@ -1994,6 +2387,8 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
             instance.State = "Waiting";
         }
         await SynchronizeVariablesAsync(instance, cancellationToken);
+        if (instance.Status == ProcessInstanceStatus.Completed && instance.ParentProcessInstanceId.HasValue)
+            await ResumeCallingProcessAsync(instance, cancellationToken);
     }
 
     private async Task SynchronizeVariablesAsync(ProcessInstance instance, CancellationToken cancellationToken)
@@ -2193,21 +2588,22 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
     }
 
     private static PendingNode WithExecutionContext(PendingNode node, PendingNode context) =>
-        context.MultiInstanceExecutionId.HasValue
-            ? node with
-            {
-                MultiInstanceExecutionId = context.MultiInstanceExecutionId,
-                MultiInstanceIndex = context.MultiInstanceIndex,
-                LocalVariables = context.LocalVariables,
-                MultiInstanceActivityId = context.MultiInstanceActivityId
-            }
-            : node;
+        node with
+        {
+            MultiInstanceExecutionId = context.MultiInstanceExecutionId,
+            MultiInstanceIndex = context.MultiInstanceIndex,
+            LocalVariables = context.LocalVariables ?? node.LocalVariables,
+            MultiInstanceActivityId = context.MultiInstanceActivityId
+        };
 
     private static PendingNode ExecutionContextFromToken(ExecutionToken token)
     {
+        var locals = token.Variables
+            .Where(pair => pair.Key is not TaskIdVariable and not EventGatewayVariable)
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
         if (!token.Variables.TryGetValue(MultiInstanceIdVariable, out var executionValue)
             || !Guid.TryParse(executionValue?.ToString(), out var executionId))
-            return new PendingNode(token.CurrentNodeId, null);
+            return new PendingNode(token.CurrentNodeId, null, LocalVariables: locals);
 
         var index = token.Variables.TryGetValue(MultiInstanceIndexVariable, out var indexValue)
                     && int.TryParse(indexValue?.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
@@ -2216,9 +2612,6 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         var owner = token.Variables.TryGetValue(MultiInstanceActivityIdVariable, out var ownerValue)
             ? ownerValue?.ToString()
             : null;
-        var locals = token.Variables
-            .Where(pair => pair.Key is not TaskIdVariable and not EventGatewayVariable)
-            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
         return new PendingNode(
             token.CurrentNodeId,
             null,
@@ -2226,6 +2619,19 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
             MultiInstanceIndex: index,
             LocalVariables: locals,
             MultiInstanceActivityId: owner);
+    }
+
+    private static void StoreExecutionContext(ExecutionToken token, PendingNode context)
+    {
+        if (context.MultiInstanceExecutionId.HasValue)
+        {
+            token.Variables[MultiInstanceIdVariable] = context.MultiInstanceExecutionId.Value.ToString();
+            token.Variables[MultiInstanceIndexVariable] = context.MultiInstanceIndex.GetValueOrDefault();
+            token.Variables[MultiInstanceActivityIdVariable] = context.MultiInstanceActivityId ?? string.Empty;
+        }
+        if (context.LocalVariables is not null)
+            foreach (var pair in context.LocalVariables)
+                token.Variables[pair.Key] = pair.Value;
     }
 
     private static PendingNode? SelectExclusiveFlow(
@@ -2285,6 +2691,13 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         IReadOnlyDictionary<string, object>? LocalVariables = null,
         string? MultiInstanceActivityId = null);
 
+    private enum ScopedThrowResult
+    {
+        NotCaught,
+        Interrupting,
+        NonInterrupting
+    }
+
     private sealed record ExecutionNode(
         string Id,
         string Kind,
@@ -2312,17 +2725,20 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         private readonly Dictionary<string, List<PendingNode>> _outgoing;
         private readonly Dictionary<string, List<PendingNode>> _incoming;
         private readonly Dictionary<string, List<ExecutionNode>> _boundaries;
+        private readonly Dictionary<string, List<string>> _associationTargets;
 
         private ExecutionModel(
             Dictionary<string, ExecutionNode> nodes,
             Dictionary<string, List<PendingNode>> outgoing,
             Dictionary<string, List<PendingNode>> incoming,
-            Dictionary<string, List<ExecutionNode>> boundaries)
+            Dictionary<string, List<ExecutionNode>> boundaries,
+            Dictionary<string, List<string>> associationTargets)
         {
             Nodes = nodes;
             _outgoing = outgoing;
             _incoming = incoming;
             _boundaries = boundaries;
+            _associationTargets = associationTargets;
         }
 
         public IReadOnlyDictionary<string, ExecutionNode> Nodes { get; }
@@ -2334,6 +2750,13 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         public int OutgoingCount(string nodeId) => _outgoing.GetValueOrDefault(nodeId)?.Count ?? 0;
         public IEnumerable<ExecutionNode> BoundaryEvents(string activityId)
             => _boundaries.TryGetValue(activityId, out var nodes) ? nodes : [];
+        public IEnumerable<PendingNode> CompensationHandlerTargets(string compensationEventId)
+            => _associationTargets.TryGetValue(compensationEventId, out var targets)
+                ? targets.Select(target => new PendingNode(target, compensationEventId))
+                : Outgoing(compensationEventId);
+        public IEnumerable<ExecutionNode> CompensationEventSubprocessStarts(string completedSubprocessId)
+            => EventSubprocessStartNodes(completedSubprocessId)
+                .Where(start => start.EventType == "Compensation");
         public bool IsInScope(string activityId, string scopeId)
         {
             if (string.Equals(activityId, scopeId, StringComparison.Ordinal)) return true;
@@ -2392,6 +2815,14 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                 .Where(node => node.Kind == "startEvent"
                                && string.Equals(node.ParentSubprocessId, subprocessId, StringComparison.Ordinal))
                 .Select(node => new PendingNode(node.Id, subprocessId));
+
+        public IEnumerable<ExecutionNode> EventSubprocessStartNodes(string? parentScopeId)
+            => Nodes.Values
+                .Where(node => node.IsEventSubprocess
+                               && string.Equals(node.ParentSubprocessId, parentScopeId, StringComparison.Ordinal))
+                .SelectMany(eventSubprocess => Nodes.Values.Where(node =>
+                    node.Kind == "startEvent"
+                    && string.Equals(node.ParentSubprocessId, eventSubprocess.Id, StringComparison.Ordinal)));
 
         public static ExecutionModel Parse(string xml, string processKey)
         {
@@ -2525,7 +2956,21 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                 .Where(node => node.Kind == "boundaryEvent" && !string.IsNullOrWhiteSpace(node.AttachedToRef))
                 .GroupBy(node => node.AttachedToRef!, StringComparer.Ordinal)
                 .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
-            return new ExecutionModel(nodes, outgoing, incoming, boundaries);
+            var associationTargets = process.Descendants()
+                .Where(element => element.Name.LocalName == "association")
+                .Select(element => new
+                {
+                    Source = (string?)element.Attribute("sourceRef"),
+                    Target = (string?)element.Attribute("targetRef")
+                })
+                .Where(association => !string.IsNullOrWhiteSpace(association.Source)
+                                      && !string.IsNullOrWhiteSpace(association.Target))
+                .GroupBy(association => association.Source!, StringComparer.Ordinal)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.Select(association => association.Target!).ToList(),
+                    StringComparer.Ordinal);
+            return new ExecutionModel(nodes, outgoing, incoming, boundaries, associationTargets);
         }
 
         private static void ReadDecisionBinding(XElement task, IDictionary<string, string> attributes)

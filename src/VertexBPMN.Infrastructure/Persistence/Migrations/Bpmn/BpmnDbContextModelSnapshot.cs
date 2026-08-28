@@ -836,6 +836,10 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                         .HasMaxLength(255)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("CallingActivityId")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
@@ -848,6 +852,9 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("LastModified")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ParentProcessInstanceId")
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("ProcessDefinitionId")
@@ -886,6 +893,8 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                     b.HasIndex("BusinessKey");
 
                     b.HasIndex("ProcessDefinitionId");
+
+                    b.HasIndex("ParentProcessInstanceId");
 
                     b.HasIndex("StartedAt");
 
@@ -946,6 +955,9 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
 
                     b.Property<int>("Attempts")
                         .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("AnalyticsProjectedAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("EventType")
                         .IsRequired()

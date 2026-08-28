@@ -291,6 +291,7 @@ public class BpmnDbContext : DbContext
         entity.Property(e => e.State).IsRequired().HasMaxLength(50);
         entity.Property(e => e.InstanceId).IsRequired().HasMaxLength(255);
         entity.Property(e => e.ProcessId).IsRequired().HasMaxLength(255);
+        entity.Property(e => e.CallingActivityId).HasMaxLength(255);
         entity.Property(e => e.Revision).IsConcurrencyToken();
 
         entity.Property(e => e.Variables)
@@ -318,6 +319,7 @@ public class BpmnDbContext : DbContext
         entity.HasIndex(e => e.TenantId);
         entity.HasIndex(e => e.State);
         entity.HasIndex(e => e.StartedAt);
+        entity.HasIndex(e => e.ParentProcessInstanceId);
     }
 
     private static void ConfigureExecutionToken(ModelBuilder modelBuilder)

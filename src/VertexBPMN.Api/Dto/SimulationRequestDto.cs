@@ -8,5 +8,6 @@ namespace VertexBPMN.Api.Dto
         public int? MaxSteps { get; set; }
         public string TenantId { get; set; } = string.Empty;
         public Dictionary<string, string> EventSelections { get; set; } = new();
+        public Dictionary<string, string> CalledProcessDefinitions { get; set; } = new();
     }
 }

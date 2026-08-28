@@ -1,7 +1,11 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using VertexBPMN.Domain.Entities;
+using VertexBPMN.Infrastructure.Operational;
+using VertexBPMN.Infrastructure.Persistence.Services;
 using VertexBPMN.Tests.Infrastructure;
 
 namespace VertexBPMN.Tests.Acceptance;
@@ -966,6 +970,65 @@ public sealed class BpmnCoreLifecycleContractTests : IDisposable
     }
 
     [Fact]
+    public async Task FPS_BPMN_16_CallActivity_Persists_Child_And_Resumes_Parent_After_Child_Wait()
+    {
+        var childKey = $"fps-called-child-{Guid.NewGuid():N}";
+        var parentKey = $"fps-calling-parent-{Guid.NewGuid():N}";
+        var childBpmn = $$"""
+            <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
+              <process id="{{childKey}}" isExecutable="true">
+                <startEvent id="child-start" />
+                <sequenceFlow id="to-child-review" sourceRef="child-start" targetRef="child-review" />
+                <userTask id="child-review" name="Child review" />
+                <sequenceFlow id="to-child-end" sourceRef="child-review" targetRef="child-end" />
+                <endEvent id="child-end" />
+              </process>
+            </definitions>
+            """;
+        using (var deployChild = await _client.PostAsJsonAsync(
+                   "/api/repository",
+                   new { bpmnXml = childBpmn, name = $"{childKey}.bpmn", tenantId = (string?)null },
+                   TestContext.Current.CancellationToken))
+        {
+            deployChild.EnsureSuccessStatusCode();
+        }
+
+        var parentBpmn = $$"""
+            <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
+              <process id="{{parentKey}}" isExecutable="true">
+                <startEvent id="parent-start" />
+                <sequenceFlow id="to-call" sourceRef="parent-start" targetRef="call-child" />
+                <callActivity id="call-child" name="Call child" calledElement="{{childKey}}" />
+                <sequenceFlow id="to-parent-review" sourceRef="call-child" targetRef="parent-review" />
+                <userTask id="parent-review" name="Parent continuation" />
+                <sequenceFlow id="to-parent-end" sourceRef="parent-review" targetRef="parent-end" />
+                <endEvent id="parent-end" />
+              </process>
+            </definitions>
+            """;
+
+        var (_, parent) = await DeployAndStartAsync(parentKey, parentBpmn);
+        Assert.Equal(ProcessInstanceStatus.Running, parent.Status);
+        Assert.Equal(["call-child"], parent.ActiveTokens);
+        Assert.Empty(await GetTasksAsync(parent.Id));
+
+        var allTasks = await _client.GetFromJsonAsync<List<PersistedUserTask>>(
+            "/api/task",
+            TestContext.Current.CancellationToken) ?? [];
+        var childTask = Assert.Single(allTasks.Where(task => task.Name == "Child review"));
+        Assert.NotEqual(parent.Id, childTask.ProcessInstanceId);
+
+        await CompleteTaskAsync(childTask.Id);
+        var parentContinuation = Assert.Single(await GetTasksAsync(parent.Id));
+        Assert.Equal("Parent continuation", parentContinuation.Name);
+        Assert.Empty((await GetInstanceAsync(parent.Id)).ActiveTokens.Where(id => id == "call-child"));
+
+        await CompleteTaskAsync(parentContinuation.Id);
+        Assert.Equal(ProcessInstanceStatus.Completed, (await GetInstanceAsync(parent.Id)).Status);
+        Assert.Equal(ProcessInstanceStatus.Completed, (await GetInstanceAsync(childTask.ProcessInstanceId)).Status);
+    }
+
+    [Fact]
     public async Task FPS_BPMN_08_NonInterrupting_Escalation_Boundary_Preserves_Subprocess_Path()
     {
         var processKey = $"fps-escalation-{Guid.NewGuid():N}";
@@ -1131,6 +1194,142 @@ public sealed class BpmnCoreLifecycleContractTests : IDisposable
     }
 
     [Fact]
+    public async Task FPS_BPMN_17_Interrupting_Error_EventSubprocess_Cancels_The_Root_Scope()
+    {
+        var processKey = $"fps-error-event-subprocess-{Guid.NewGuid():N}";
+        var bpmn = $$"""
+            <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
+              <error id="validation-error" errorCode="VALIDATION" />
+              <process id="{{processKey}}" isExecutable="true">
+                <startEvent id="start" />
+                <sequenceFlow id="to-split" sourceRef="start" targetRef="split" />
+                <parallelGateway id="split" />
+                <sequenceFlow id="to-normal" sourceRef="split" targetRef="normal" />
+                <userTask id="normal" name="Must be cancelled" />
+                <sequenceFlow id="to-failing-scope" sourceRef="split" targetRef="failing-scope" />
+                <subProcess id="failing-scope">
+                  <startEvent id="scope-start" />
+                  <sequenceFlow id="to-error" sourceRef="scope-start" targetRef="error-end" />
+                  <endEvent id="error-end">
+                    <errorEventDefinition errorRef="validation-error" />
+                  </endEvent>
+                </subProcess>
+                <subProcess id="error-handler" triggeredByEvent="true">
+                  <startEvent id="error-start" isInterrupting="true">
+                    <errorEventDefinition errorRef="validation-error" />
+                  </startEvent>
+                  <sequenceFlow id="to-recovery" sourceRef="error-start" targetRef="recovery" />
+                  <userTask id="recovery" name="Error recovery" />
+                  <sequenceFlow id="recovery-to-end" sourceRef="recovery" targetRef="handler-end" />
+                  <endEvent id="handler-end" />
+                </subProcess>
+              </process>
+            </definitions>
+            """;
+
+        var (_, started) = await DeployAndStartAsync(processKey, bpmn);
+        var recovery = Assert.Single(await GetTasksAsync(started.Id));
+        Assert.Equal("Error recovery", recovery.Name);
+        Assert.DoesNotContain("normal", (await GetInstanceAsync(started.Id)).ActiveTokens);
+
+        await CompleteTaskAsync(recovery.Id);
+        Assert.Equal(ProcessInstanceStatus.Completed, (await GetInstanceAsync(started.Id)).Status);
+    }
+
+    [Fact]
+    public async Task FPS_BPMN_18_NonInterrupting_Escalation_EventSubprocess_Preserves_The_Throwing_Path()
+    {
+        var processKey = $"fps-escalation-event-subprocess-{Guid.NewGuid():N}";
+        var bpmn = $$"""
+            <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
+              <escalation id="urgent" escalationCode="URGENT" />
+              <process id="{{processKey}}" isExecutable="true">
+                <startEvent id="start" />
+                <sequenceFlow id="to-escalation" sourceRef="start" targetRef="escalate" />
+                <intermediateThrowEvent id="escalate">
+                  <escalationEventDefinition escalationRef="urgent" />
+                </intermediateThrowEvent>
+                <sequenceFlow id="to-normal" sourceRef="escalate" targetRef="normal" />
+                <userTask id="normal" name="Normal continuation" />
+                <sequenceFlow id="normal-to-end" sourceRef="normal" targetRef="end" />
+                <endEvent id="end" />
+                <subProcess id="escalation-handler" triggeredByEvent="true">
+                  <startEvent id="escalation-start" isInterrupting="false">
+                    <escalationEventDefinition escalationRef="urgent" />
+                  </startEvent>
+                  <sequenceFlow id="to-review" sourceRef="escalation-start" targetRef="review" />
+                  <userTask id="review" name="Escalation review" />
+                  <sequenceFlow id="review-to-end" sourceRef="review" targetRef="handler-end" />
+                  <endEvent id="handler-end" />
+                </subProcess>
+              </process>
+            </definitions>
+            """;
+
+        var (_, started) = await DeployAndStartAsync(processKey, bpmn);
+        var tasks = await GetTasksAsync(started.Id);
+        Assert.Equal(
+            ["Escalation review", "Normal continuation"],
+            tasks.Select(task => task.Name).Order(StringComparer.Ordinal).ToArray());
+
+        foreach (var task in tasks)
+            await CompleteTaskAsync(task.Id);
+
+        Assert.Equal(ProcessInstanceStatus.Completed, (await GetInstanceAsync(started.Id)).Status);
+    }
+
+    [Fact]
+    public async Task FPS_ANALYTICS_01_Runtime_Outbox_Is_Idempotently_Projected_To_Tenant_Trace_And_Metrics()
+    {
+        var processKey = $"fps-analytics-{Guid.NewGuid():N}";
+        var bpmn = $$"""
+            <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
+              <process id="{{processKey}}" isExecutable="true">
+                <startEvent id="start" />
+                <sequenceFlow id="to-end" sourceRef="start" targetRef="end" />
+                <endEvent id="end" />
+              </process>
+            </definitions>
+            """;
+
+        var (_, completed) = await DeployAndStartAsync(processKey, bpmn, tenantId: "vertexbpmn");
+        Assert.Equal(ProcessInstanceStatus.Completed, completed.Status);
+
+        var projector = _factory.Services.GetRequiredService<RuntimeOutboxAnalyticsProjectionService>();
+        await projector.ProjectBatchAsync(100, TestContext.Current.CancellationToken);
+
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var miningDb = scope.ServiceProvider.GetRequiredService<ProcessMiningEventDbContext>();
+        var projected = (await miningDb.Events.AsNoTracking()
+            .Where(item => item.ProcessInstanceId == completed.Id.ToString())
+            .ToArrayAsync(TestContext.Current.CancellationToken))
+            .OrderBy(item => item.Timestamp)
+            .ToArray();
+        Assert.Contains(projected, item => item.EventType == "ProcessStarted");
+        Assert.Contains(projected, item => item.EventType == "ProcessCompleted");
+        Assert.All(projected, item => Assert.NotNull(item.SourceEventId));
+        Assert.Equal(projected.Length, projected.Select(item => item.SourceEventId).Distinct().Count());
+
+        await projector.ProjectBatchAsync(100, TestContext.Current.CancellationToken);
+        Assert.Equal(
+            projected.Length,
+            await miningDb.Events.CountAsync(
+                item => item.ProcessInstanceId == completed.Id.ToString(),
+                TestContext.Current.CancellationToken));
+
+        var trace = await _client.GetFromJsonAsync<ProcessMiningEvent[]>(
+            $"/api/analytics/trace/{completed.Id}",
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(trace);
+        Assert.Equal(projected.Length, trace.Length);
+
+        var metrics = await _client.GetFromJsonAsync<JsonElement>(
+            "/api/analytics/metrics/process",
+            TestContext.Current.CancellationToken);
+        Assert.True(metrics.GetProperty("count").GetInt32() >= 1);
+    }
+
+    [Fact]
     public async Task FPS_BPMN_06_TerminateEndEvent_Cancels_All_Other_Process_Branches()
     {
         var processKey = $"full-support-terminate-{Guid.NewGuid():N}";
@@ -1160,23 +1359,25 @@ public sealed class BpmnCoreLifecycleContractTests : IDisposable
     private async Task<(DeployedProcess Definition, RuntimeInstance Instance)> DeployAndStartAsync(
         string processKey,
         string bpmn,
-        Dictionary<string, object>? variables = null)
+        Dictionary<string, object>? variables = null,
+        string? tenantId = null)
     {
         using var deployResponse = await _client.PostAsJsonAsync(
             "/api/repository",
-            new { bpmnXml = bpmn, name = $"{processKey}.bpmn", tenantId = (string?)null },
+            new { bpmnXml = bpmn, name = $"{processKey}.bpmn", tenantId },
             TestContext.Current.CancellationToken);
         deployResponse.EnsureSuccessStatusCode();
         var definition = await deployResponse.Content.ReadFromJsonAsync<DeployedProcess>(TestContext.Current.CancellationToken);
         Assert.NotNull(definition);
         Assert.Equal(processKey, definition.Key);
 
-        return (definition, await StartAsync(processKey, variables));
+        return (definition, await StartAsync(processKey, variables, tenantId));
     }
 
     private async Task<RuntimeInstance> StartAsync(
         string processKey,
-        Dictionary<string, object>? variables = null)
+        Dictionary<string, object>? variables = null,
+        string? tenantId = null)
     {
         using var response = await _client.PostAsJsonAsync(
             "/api/runtime/start",
@@ -1185,7 +1386,7 @@ public sealed class BpmnCoreLifecycleContractTests : IDisposable
                 processDefinitionKey = processKey,
                 variables = variables ?? new Dictionary<string, object>(),
                 businessKey = $"acceptance-{Guid.NewGuid():N}",
-                tenantId = (string?)null
+                tenantId
             },
             TestContext.Current.CancellationToken);
         response.EnsureSuccessStatusCode();
@@ -1270,6 +1471,7 @@ public sealed class BpmnCoreLifecycleContractTests : IDisposable
 
     private sealed record PersistedUserTask(
         Guid Id,
+        Guid ProcessInstanceId,
         string Name,
         UserTaskStatus Status,
         Guid? MultiInstanceExecutionId,

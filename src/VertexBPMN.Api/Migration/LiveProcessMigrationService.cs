@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Xml.Linq;
+using Microsoft.EntityFrameworkCore;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Domain.Interfaces.Repositories;
@@ -24,63 +25,73 @@ public class LiveProcessMigrationService : ILiveProcessMigrationService
         _serviceProvider = serviceProvider;
     }
 
-    public async Task<MigrationPlan> CreateMigrationPlanAsync(string fromProcessKey, string toProcessKey, MigrationOptions options)
+    public async Task<MigrationPlan> CreateMigrationPlanAsync(
+        string fromProcessKey,
+        string toProcessKey,
+        MigrationOptions options,
+        string? tenantId = null)
     {
-        try
-        {
-            _logger.LogInformation("Creating migration plan from {FromProcess} to {ToProcess}", fromProcessKey, toProcessKey);
-
-            using var scope = _serviceProvider.CreateScope();
-            
-            // Get process definitions
-            var fromProcess = await GetProcessDefinitionAsync(fromProcessKey, scope);
-            var toProcess = await GetProcessDefinitionAsync(toProcessKey, scope);
-            
-            // Analyze compatibility
-            var compatibilityIssues = await ValidateCompatibilityAsync(fromProcessKey, toProcessKey);
-            
-            // Get active instances
-            var activeInstances = await GetActiveProcessInstancesAsync(fromProcessKey, scope);
-            
-            // Create mapping strategy
-            var mappingStrategy = await CreateActivityMappingAsync(fromProcess, toProcess);
-            
-            // Calculate migration complexity
-            var complexity = CalculateMigrationComplexity(activeInstances.Count, compatibilityIssues.Count, mappingStrategy);
-            
-            var migrationPlan = new MigrationPlan
-            {
-                Id = Guid.NewGuid(),
-                FromProcessKey = fromProcessKey,
-                ToProcessKey = toProcessKey,
-                Options = options,
-                CreatedAt = DateTime.UtcNow,
-                EstimatedDuration = CalculateEstimatedDuration(activeInstances.Count, complexity),
-                Complexity = complexity,
-                CompatibilityIssues = compatibilityIssues,
-                ActivityMappings = mappingStrategy,
-                AffectedInstances = activeInstances.Count,
-                MigrationSteps = GenerateMigrationSteps(fromProcessKey, toProcessKey, mappingStrategy, options),
-                RiskAssessment = AssessMigrationRisk(compatibilityIssues, activeInstances.Count),
-                RollbackPlan = CreateRollbackPlan(fromProcessKey, toProcessKey)
-            };
-
-            // Store migration plan
-            await StoreMigrationPlanAsync(migrationPlan, scope);
-            
-            _logger.LogInformation("Migration plan created: {PlanId}, affecting {InstanceCount} instances", 
-                migrationPlan.Id, migrationPlan.AffectedInstances);
-            
-            return migrationPlan;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error creating migration plan from {FromProcess} to {ToProcess}", fromProcessKey, toProcessKey);
-            throw;
-        }
+        using var scope = _serviceProvider.CreateScope();
+        var fromProcess = await GetProcessDefinitionAsync(fromProcessKey, tenantId, scope);
+        var toProcess = await GetProcessDefinitionAsync(toProcessKey, tenantId, scope);
+        return await CreateMigrationPlanCoreAsync(fromProcess, toProcess, options, scope);
     }
 
-    public async Task<MigrationExecution> ExecuteMigrationAsync(Guid migrationPlanId, bool dryRun = false)
+    public async Task<MigrationPlan> CreateMigrationPlanByDefinitionIdAsync(
+        Guid fromProcessDefinitionId,
+        Guid toProcessDefinitionId,
+        MigrationOptions options,
+        string? tenantId = null)
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var fromProcess = await GetProcessDefinitionByIdAsync(fromProcessDefinitionId, tenantId, scope);
+        var toProcess = await GetProcessDefinitionByIdAsync(toProcessDefinitionId, tenantId, scope);
+        return await CreateMigrationPlanCoreAsync(fromProcess, toProcess, options, scope);
+    }
+
+    private async Task<MigrationPlan> CreateMigrationPlanCoreAsync(
+        ProcessDefinitionInfo fromProcess,
+        ProcessDefinitionInfo toProcess,
+        MigrationOptions options,
+        IServiceScope scope)
+    {
+        if (!string.Equals(fromProcess.TenantId, toProcess.TenantId, StringComparison.Ordinal))
+            throw new InvalidOperationException("Source and target process definitions must belong to the same tenant.");
+
+        var compatibilityIssues = ValidateCompatibility(fromProcess, toProcess);
+        var activeInstances = await GetActiveProcessInstancesAsync(fromProcess.Id, fromProcess.Key, scope);
+        var mappingStrategy = await CreateActivityMappingAsync(fromProcess, toProcess);
+        var complexity = CalculateMigrationComplexity(activeInstances.Count, compatibilityIssues.Count, mappingStrategy);
+        var migrationPlan = new MigrationPlan
+        {
+            Id = Guid.NewGuid(),
+            FromProcessDefinitionId = fromProcess.Id,
+            ToProcessDefinitionId = toProcess.Id,
+            TenantId = fromProcess.TenantId,
+            FromProcessKey = fromProcess.Key,
+            ToProcessKey = toProcess.Key,
+            Options = options,
+            CreatedAt = DateTime.UtcNow,
+            EstimatedDuration = CalculateEstimatedDuration(activeInstances.Count, complexity),
+            Complexity = complexity,
+            CompatibilityIssues = compatibilityIssues,
+            ActivityMappings = mappingStrategy,
+            AffectedInstances = activeInstances.Count,
+            MigrationSteps = GenerateMigrationSteps(fromProcess.Key, toProcess.Key, mappingStrategy, options),
+            RiskAssessment = AssessMigrationRisk(compatibilityIssues, activeInstances.Count),
+            RollbackPlan = CreateRollbackPlan(fromProcess.Key, toProcess.Key)
+        };
+        await StoreMigrationPlanAsync(migrationPlan, scope);
+        _logger.LogInformation(
+            "Migration plan {PlanId} binds definition {SourceDefinitionId} to {TargetDefinitionId} for tenant {TenantId} and affects {InstanceCount} instances",
+            migrationPlan.Id, fromProcess.Id, toProcess.Id, fromProcess.TenantId, activeInstances.Count);
+        return migrationPlan;
+    }
+
+    public async Task<MigrationExecution> ExecuteMigrationAsync(
+        Guid migrationPlanId,
+        bool dryRun = false,
+        string? tenantId = null)
     {
         if (!await _migrationSemaphore.WaitAsync(TimeSpan.FromMinutes(5)))
         {
@@ -93,11 +104,13 @@ public class LiveProcessMigrationService : ILiveProcessMigrationService
 
             using var scope = _serviceProvider.CreateScope();
             var migrationPlan = await GetMigrationPlanAsync(migrationPlanId, scope);
+            EnsureTenantAccess(migrationPlan.TenantId, tenantId);
             
             var execution = new MigrationExecution
             {
                 Id = Guid.NewGuid(),
                 MigrationPlanId = migrationPlanId,
+                TenantId = migrationPlan.TenantId,
                 StartedAt = DateTime.UtcNow,
                 Status = MigrationStatus.InProgress,
                 IsDryRun = dryRun,
@@ -111,8 +124,7 @@ public class LiveProcessMigrationService : ILiveProcessMigrationService
 
             try
             {
-                // Execute migration steps
-                await ExecuteMigrationStepsAsync(execution, migrationPlan, scope);
+                await ExecuteTransactionalMigrationAsync(execution, migrationPlan, scope);
                 
                 execution.Status = MigrationStatus.Completed;
                 execution.CompletedAt = DateTime.UtcNow;
@@ -130,10 +142,8 @@ public class LiveProcessMigrationService : ILiveProcessMigrationService
                 
                 _logger.LogError(ex, "Migration {ExecutionId} failed", execution.Id);
                 
-                if (!dryRun)
-                {
-                    await RollbackMigrationAsync(execution.Id);
-                }
+                // Runtime mutations are enclosed in one relational transaction. A failed
+                // execution is already rolled back before its failure record is stored.
             }
 
             return execution;
@@ -144,20 +154,22 @@ public class LiveProcessMigrationService : ILiveProcessMigrationService
         }
     }
 
-    public async Task<MigrationStatus> GetMigrationStatusAsync(Guid migrationId)
+    public async Task<MigrationStatus> GetMigrationStatusAsync(Guid migrationId, string? tenantId = null)
     {
         if (_activeMigrations.TryGetValue(migrationId, out var execution))
         {
+            EnsureTenantAccess(execution.TenantId, tenantId);
             return execution.Status;
         }
 
         // Check completed migrations in storage
         using var scope = _serviceProvider.CreateScope();
         var storedExecution = await GetStoredMigrationExecutionAsync(migrationId, scope);
+        if (storedExecution is not null) EnsureTenantAccess(storedExecution.TenantId, tenantId);
         return storedExecution?.Status ?? MigrationStatus.NotFound;
     }
 
-    public async Task<bool> RollbackMigrationAsync(Guid migrationId)
+    public async Task<bool> RollbackMigrationAsync(Guid migrationId, string? tenantId = null)
     {
         try
         {
@@ -174,6 +186,7 @@ public class LiveProcessMigrationService : ILiveProcessMigrationService
                 }
             }
 
+            EnsureTenantAccess(execution.TenantId, tenantId);
             execution.Status = MigrationStatus.RollingBack;
 
             // Restore from snapshots in reverse order
@@ -188,7 +201,7 @@ public class LiveProcessMigrationService : ILiveProcessMigrationService
                     snapshot = await GetStoredSnapshotAsync(snapshotId, snapshotScope);
                 }
                 if (snapshot is not null)
-                    await RestoreFromSnapshotAsync(snapshot.ProcessInstanceId, snapshotId);
+                    await RestoreFromSnapshotAsync(snapshot.ProcessInstanceId, snapshotId, tenantId);
             }
 
             execution.Status = MigrationStatus.RolledBack;
@@ -199,6 +212,10 @@ public class LiveProcessMigrationService : ILiveProcessMigrationService
             _logger.LogInformation("Rollback completed for migration {MigrationId}", migrationId);
             return true;
         }
+        catch (UnauthorizedAccessException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error during rollback of migration {MigrationId}", migrationId);
@@ -206,15 +223,29 @@ public class LiveProcessMigrationService : ILiveProcessMigrationService
         }
     }
 
-    public async Task<List<MigrationCompatibilityIssue>> ValidateCompatibilityAsync(string fromProcessKey, string toProcessKey)
+    public async Task<List<MigrationCompatibilityIssue>> ValidateCompatibilityAsync(
+        string fromProcessKey,
+        string toProcessKey,
+        string? tenantId = null)
     {
         try
         {
             using var scope = _serviceProvider.CreateScope();
-            
-            var fromProcess = await GetProcessDefinitionAsync(fromProcessKey, scope);
-            var toProcess = await GetProcessDefinitionAsync(toProcessKey, scope);
-            
+            var fromProcess = await GetProcessDefinitionAsync(fromProcessKey, tenantId, scope);
+            var toProcess = await GetProcessDefinitionAsync(toProcessKey, tenantId, scope);
+            return ValidateCompatibility(fromProcess, toProcess);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error validating compatibility between {FromProcess} and {ToProcess}", fromProcessKey, toProcessKey);
+            throw;
+        }
+    }
+
+    private static List<MigrationCompatibilityIssue> ValidateCompatibility(
+        ProcessDefinitionInfo fromProcess,
+        ProcessDefinitionInfo toProcess)
+    {
             var issues = new List<MigrationCompatibilityIssue>();
 
             // Check activity compatibility
@@ -280,37 +311,20 @@ public class LiveProcessMigrationService : ILiveProcessMigrationService
             }
 
             return issues;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error validating compatibility between {FromProcess} and {ToProcess}", fromProcessKey, toProcessKey);
-            throw;
-        }
     }
 
-    public async Task<LiveMigrationSnapshot> CreateSnapshotAsync(Guid processInstanceId)
+    public async Task<LiveMigrationSnapshot> CreateSnapshotAsync(Guid processInstanceId, string? tenantId = null)
     {
         try
         {
             using var scope = _serviceProvider.CreateScope();
-            
-            var processInstance = await GetProcessInstanceAsync(processInstanceId, scope);
-            var activeTokens = await GetActiveTokensAsync(processInstanceId, scope);
-            var variables = await GetVariablesAsync(processInstanceId, scope);
-            
-            var snapshot = new LiveMigrationSnapshot
-            {
-                Id = Guid.NewGuid(),
-                ProcessInstanceId = processInstanceId,
-                CreatedAt = DateTime.UtcNow,
-                ProcessState = JsonSerializer.Serialize(processInstance),
-                TokenStates = activeTokens.ToDictionary(t => t.Id.ToString(), t => JsonSerializer.Serialize(t)),
-                Variables = variables.ToDictionary(v => v.Key, v => JsonSerializer.Serialize(v.Value)),
-                ActivityStates = await CaptureActivityStatesAsync(processInstanceId, scope)
-            };
-
+            var db = scope.ServiceProvider.GetRequiredService<BpmnDbContext>();
+            var instance = await db.ProcessInstances.SingleOrDefaultAsync(item => item.Id == processInstanceId)
+                           ?? throw new InvalidOperationException($"Process instance '{processInstanceId}' was not found.");
+            EnsureTenantAccess(instance.TenantId, tenantId);
+            var snapshot = await CreateSnapshotFromDbAsync(db, instance);
             _snapshots[snapshot.Id] = snapshot;
-            await StoreSnapshotAsync(snapshot, scope);
+            await db.SaveChangesAsync();
 
             _logger.LogDebug("Created snapshot {SnapshotId} for process instance {ProcessInstanceId}", 
                 snapshot.Id, processInstanceId);
@@ -324,7 +338,92 @@ public class LiveProcessMigrationService : ILiveProcessMigrationService
         }
     }
 
-    public async Task<bool> RestoreFromSnapshotAsync(Guid processInstanceId, Guid snapshotId)
+    private static async Task<LiveMigrationSnapshot> CreateSnapshotFromDbAsync(
+        BpmnDbContext db,
+        ProcessInstance instance)
+    {
+        var tokens = await db.ExecutionTokens.AsNoTracking()
+            .Where(item => item.ProcessInstanceId == instance.Id).ToArrayAsync();
+        var tasks = await db.Tasks.AsNoTracking()
+            .Where(item => item.ProcessInstanceId == instance.Id).ToArrayAsync();
+        var jobs = await db.Jobs.AsNoTracking()
+            .Where(item => item.ProcessInstanceId == instance.Id).ToArrayAsync();
+        var subscriptions = await db.EventSubscriptions.AsNoTracking()
+            .Where(item => item.ProcessInstanceId == instance.Id).ToArrayAsync();
+        var incidents = await db.Incidents.AsNoTracking()
+            .Where(item => item.ProcessInstanceId == instance.Id).ToArrayAsync();
+        var multiInstances = await db.MultiInstanceExecutions.AsNoTracking()
+            .Where(item => item.ProcessInstanceId == instance.Id).ToArrayAsync();
+        var variables = await db.Variables.AsNoTracking()
+            .Where(item => item.ProcessInstanceId == instance.Id).ToArrayAsync();
+
+        var snapshot = new LiveMigrationSnapshot
+        {
+            Id = Guid.NewGuid(),
+            ProcessInstanceId = instance.Id,
+            TenantId = instance.TenantId,
+            CreatedAt = DateTime.UtcNow,
+            ProcessState = JsonSerializer.Serialize(new ProcessInstanceState
+            {
+                Id = instance.Id,
+                Status = instance.Status.ToString(),
+                State = instance.State,
+                ProcessDefinitionId = instance.ProcessDefinitionId,
+                ProcessId = instance.ProcessId,
+                ActiveTokens = [.. instance.ActiveTokens],
+                ActiveTasks = [.. instance.ActiveTasks]
+            }),
+            TokenStates = tokens.ToDictionary(
+                token => token.Id.ToString(),
+                token => JsonSerializer.Serialize(new TokenState
+                {
+                    Id = token.Id,
+                    ProcessInstanceId = token.ProcessInstanceId,
+                    ActivityId = token.CurrentNodeId,
+                    NodeType = token.NodeType,
+                    State = token.State,
+                    Variables = token.Variables,
+                    CreatedAt = token.CreatedAt,
+                    AssignedWorker = token.AssignedWorker,
+                    AssignedAt = token.AssignedAt,
+                    RetryCount = token.RetryCount
+                })),
+            Variables = variables.ToDictionary(
+                variable => variable.Name,
+                variable => JsonSerializer.Serialize(variable.Value)),
+            ActivityStates = tokens.GroupBy(token => token.CurrentNodeId, StringComparer.Ordinal)
+                .ToDictionary(
+                group => group.Key,
+                group => JsonSerializer.Serialize(new ActivityState
+                {
+                    Id = group.Key,
+                    Status = string.Join(",", group.Select(token => token.State).Distinct())
+                }), StringComparer.Ordinal),
+            TaskActivityIds = tasks.ToDictionary(item => item.Id, item => item.ActivityId),
+            JobActivityIds = jobs.ToDictionary(item => item.Id, item => item.ActivityId),
+            SubscriptionActivityIds = subscriptions.ToDictionary(item => item.Id, item => item.ActivityId),
+            SubscriptionActiveKeys = subscriptions.ToDictionary(item => item.Id, item => item.ActiveKey),
+            IncidentActivityIds = incidents.ToDictionary(item => item.Id, item => item.ActivityId),
+            MultiInstanceActivityIds = multiInstances.ToDictionary(item => item.Id, item => item.ActivityId)
+        };
+        db.HistoryEvents.Add(new HistoryEvent
+        {
+            Id = snapshot.Id,
+            ProcessInstanceId = snapshot.ProcessInstanceId,
+            EventType = "LIVE_MIGRATION_SNAPSHOT",
+            Timestamp = snapshot.CreatedAt,
+            Details = "Live process migration snapshot",
+            ElementId = snapshot.ProcessInstanceId.ToString(),
+            Data = JsonSerializer.Serialize(snapshot),
+            TenantId = instance.TenantId
+        });
+        return snapshot;
+    }
+
+    public async Task<bool> RestoreFromSnapshotAsync(
+        Guid processInstanceId,
+        Guid snapshotId,
+        string? tenantId = null)
     {
         try
         {
@@ -339,30 +438,88 @@ public class LiveProcessMigrationService : ILiveProcessMigrationService
                 }
             }
 
+            EnsureTenantAccess(snapshot.TenantId, tenantId);
             using var restoreScope = _serviceProvider.CreateScope();
-            
-            // Restore process state
-            var processInstance = JsonSerializer.Deserialize<ProcessInstanceState>(snapshot.ProcessState);
-            await RestoreProcessInstanceAsync(processInstance!, restoreScope);
-            
-            // Restore tokens
-            foreach (var tokenEntry in snapshot.TokenStates)
+            var db = restoreScope.ServiceProvider.GetRequiredService<BpmnDbContext>();
+            await using var transaction = await db.Database.BeginTransactionAsync();
+            var state = JsonSerializer.Deserialize<ProcessInstanceState>(snapshot.ProcessState)
+                        ?? throw new InvalidOperationException($"Snapshot '{snapshotId}' has invalid process state.");
+            if (state.Id != processInstanceId || snapshot.ProcessInstanceId != processInstanceId)
+                throw new InvalidOperationException("Snapshot does not belong to the requested process instance.");
+            var instance = await db.ProcessInstances.SingleAsync(item => item.Id == processInstanceId);
+            EnsureTenantAccess(instance.TenantId, tenantId);
+            instance.ProcessDefinitionId = state.ProcessDefinitionId;
+            instance.ProcessId = state.ProcessId;
+            instance.State = state.State;
+            if (Enum.TryParse<ProcessInstanceStatus>(state.Status, out var status)) instance.Status = status;
+            instance.ActiveTokens = [.. state.ActiveTokens];
+            instance.ActiveTasks = [.. state.ActiveTasks];
+            instance.LastModified = DateTime.UtcNow;
+            instance.Revision++;
+
+            foreach (var tokenStateJson in snapshot.TokenStates.Values)
             {
-                var token = JsonSerializer.Deserialize<TokenState>(tokenEntry.Value);
-                await RestoreTokenAsync(token!, restoreScope);
+                var tokenState = JsonSerializer.Deserialize<TokenState>(tokenStateJson)
+                                 ?? throw new InvalidOperationException("Snapshot contains an invalid token.");
+                var token = await db.ExecutionTokens.SingleAsync(item => item.Id == tokenState.Id);
+                token.CurrentNodeId = tokenState.ActivityId;
+                token.NodeType = tokenState.NodeType;
+                token.State = tokenState.State;
+                token.Variables = tokenState.Variables;
+                token.AssignedWorker = tokenState.AssignedWorker;
+                token.AssignedAt = tokenState.AssignedAt;
+                token.RetryCount = tokenState.RetryCount;
+                token.Revision++;
             }
-            
-            // Restore variables
-            foreach (var variableEntry in snapshot.Variables)
+            foreach (var (id, activityId) in snapshot.TaskActivityIds)
             {
-                var value = JsonSerializer.Deserialize<object>(variableEntry.Value);
-                await SetVariableAsync(processInstanceId, variableEntry.Key, value!, restoreScope);
+                var task = await db.Tasks.SingleAsync(item => item.Id == id);
+                task.ActivityId = activityId;
+                task.LastModified = DateTime.UtcNow;
+                task.Revision++;
             }
+            foreach (var (id, activityId) in snapshot.JobActivityIds)
+            {
+                var job = await db.Jobs.SingleAsync(item => item.Id == id);
+                job.ActivityId = activityId;
+                job.Revision++;
+            }
+            foreach (var (id, activityId) in snapshot.SubscriptionActivityIds)
+            {
+                var subscription = await db.EventSubscriptions.SingleAsync(item => item.Id == id);
+                subscription.ActivityId = activityId;
+                subscription.ActiveKey = snapshot.SubscriptionActiveKeys.GetValueOrDefault(id);
+                subscription.Revision++;
+            }
+            foreach (var (id, activityId) in snapshot.IncidentActivityIds)
+                (await db.Incidents.SingleAsync(item => item.Id == id)).ActivityId = activityId;
+            foreach (var (id, activityId) in snapshot.MultiInstanceActivityIds)
+            {
+                var multiInstance = await db.MultiInstanceExecutions.SingleAsync(item => item.Id == id);
+                multiInstance.ActivityId = activityId;
+                multiInstance.Revision++;
+            }
+
+            db.RuntimeOutbox.Add(new RuntimeOutboxMessage
+            {
+                Id = Guid.NewGuid(),
+                ProcessInstanceId = instance.Id,
+                EventType = "ProcessMigrationRolledBack",
+                TenantId = instance.TenantId,
+                OccurredAt = DateTime.UtcNow,
+                Payload = JsonSerializer.Serialize(new { snapshotId })
+            });
+            await db.SaveChangesAsync();
+            await transaction.CommitAsync();
             
             _logger.LogInformation("Successfully restored process instance {ProcessInstanceId} from snapshot {SnapshotId}", 
                 processInstanceId, snapshotId);
 
             return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -370,6 +527,212 @@ public class LiveProcessMigrationService : ILiveProcessMigrationService
                 processInstanceId, snapshotId);
             return false;
         }
+    }
+
+    private async Task ExecuteTransactionalMigrationAsync(
+        MigrationExecution execution,
+        MigrationPlan plan,
+        IServiceScope scope)
+    {
+        var db = scope.ServiceProvider.GetRequiredService<BpmnDbContext>();
+        var sourceDefinitions = db.ProcessDefinitions
+            .Where(definition => definition.TenantId == plan.TenantId);
+        var sourceDefinition = plan.FromProcessDefinitionId != Guid.Empty
+            ? await sourceDefinitions.SingleOrDefaultAsync(definition => definition.Id == plan.FromProcessDefinitionId)
+            : await sourceDefinitions.Where(definition => definition.Key == plan.FromProcessKey)
+                .OrderByDescending(definition => definition.Version).FirstOrDefaultAsync();
+        if (sourceDefinition is null)
+            throw new InvalidOperationException(
+                $"Source process definition '{plan.FromProcessDefinitionId}' was not found in tenant '{plan.TenantId}'.");
+        var targetDefinitions = db.ProcessDefinitions
+            .Where(definition => definition.TenantId == plan.TenantId);
+        var targetDefinition = plan.ToProcessDefinitionId != Guid.Empty
+            ? await targetDefinitions.SingleOrDefaultAsync(definition => definition.Id == plan.ToProcessDefinitionId)
+            : await targetDefinitions.Where(definition => definition.Key == plan.ToProcessKey)
+                .OrderByDescending(definition => definition.Version).FirstOrDefaultAsync();
+        if (targetDefinition is null)
+            throw new InvalidOperationException(
+                $"Target process definition '{plan.ToProcessDefinitionId}' was not found in tenant '{plan.TenantId}'.");
+
+        var targetActivities = ExtractActivityElements(targetDefinition.BpmnXml);
+        var mappings = plan.ActivityMappings
+            .Where(mapping => !string.IsNullOrWhiteSpace(mapping.ToActivityId))
+            .ToDictionary(mapping => mapping.FromActivityId, mapping => mapping.ToActivityId,
+                StringComparer.Ordinal);
+        string Map(string activityId)
+        {
+            var targetId = mappings.GetValueOrDefault(activityId)
+                           ?? (targetActivities.ContainsKey(activityId) ? activityId : null);
+            if (string.IsNullOrWhiteSpace(targetId) || !targetActivities.ContainsKey(targetId))
+                throw new InvalidOperationException(
+                    $"Active activity '{activityId}' has no valid mapping in target process '{plan.ToProcessKey}'.");
+            return targetId;
+        }
+
+        var instances = await db.ProcessInstances
+            .Where(instance => instance.ProcessDefinitionId == sourceDefinition.Id
+                               && instance.Status != ProcessInstanceStatus.Completed
+                               && instance.Status != ProcessInstanceStatus.Terminated)
+            .OrderBy(instance => instance.CreatedAt)
+            .ToArrayAsync();
+        if (instances.Length != plan.AffectedInstances)
+            throw new DbUpdateConcurrencyException(
+                $"Migration plan expected {plan.AffectedInstances} active instances but found {instances.Length}.");
+
+        // Validate every current wait-state before entering the write transaction.
+        foreach (var instance in instances)
+        {
+            var activeIds = await ActiveActivityIdsAsync(db, instance.Id);
+            foreach (var activityId in activeIds) _ = Map(activityId);
+        }
+
+        execution.Steps.Add(new MigrationStepResult
+        {
+            StepName = "Validate active runtime mappings",
+            StartedAt = DateTime.UtcNow,
+            CompletedAt = DateTime.UtcNow,
+            Status = "Completed"
+        });
+        execution.Progress = execution.IsDryRun ? 100 : 25;
+        if (execution.IsDryRun) return;
+
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        foreach (var instance in instances)
+        {
+            execution.AffectedProcessInstanceIds.Add(instance.Id);
+            var snapshot = await CreateSnapshotFromDbAsync(db, instance);
+            execution.Snapshots.Add(snapshot.Id);
+            _snapshots[snapshot.Id] = snapshot;
+
+            var tokens = await db.ExecutionTokens
+                .Where(item => item.ProcessInstanceId == instance.Id).ToArrayAsync();
+            var tasks = await db.Tasks
+                .Where(item => item.ProcessInstanceId == instance.Id
+                               && (item.Status == UserTaskStatus.Pending || item.Status == UserTaskStatus.Delegated))
+                .ToArrayAsync();
+            var jobs = await db.Jobs
+                .Where(item => item.ProcessInstanceId == instance.Id && item.State == "Scheduled")
+                .ToArrayAsync();
+            var subscriptions = await db.EventSubscriptions
+                .Where(item => item.ProcessInstanceId == instance.Id && item.State == "Active")
+                .ToArrayAsync();
+            var incidents = await db.Incidents
+                .Where(item => item.ProcessInstanceId == instance.Id && item.State != "Resolved")
+                .ToArrayAsync();
+            var multiInstances = await db.MultiInstanceExecutions
+                .Where(item => item.ProcessInstanceId == instance.Id && item.State == "Active")
+                .ToArrayAsync();
+
+            foreach (var token in tokens)
+            {
+                token.CurrentNodeId = Map(token.CurrentNodeId);
+                token.Revision++;
+            }
+            foreach (var task in tasks)
+            {
+                task.ActivityId = Map(task.ActivityId);
+                task.Name = targetActivities[task.ActivityId].Name;
+                task.LastModified = DateTime.UtcNow;
+                task.Revision++;
+            }
+            foreach (var job in jobs)
+            {
+                job.ActivityId = Map(job.ActivityId);
+                job.Revision++;
+            }
+            foreach (var subscription in subscriptions)
+            {
+                subscription.ActivityId = Map(subscription.ActivityId);
+                subscription.ActiveKey = $"{instance.Id:N}:{subscription.ActivityId}";
+                subscription.Revision++;
+            }
+            foreach (var incident in incidents)
+                if (!string.IsNullOrWhiteSpace(incident.ActivityId))
+                    incident.ActivityId = Map(incident.ActivityId);
+            foreach (var multiInstance in multiInstances)
+            {
+                multiInstance.ActivityId = Map(multiInstance.ActivityId);
+                multiInstance.Revision++;
+            }
+
+            instance.ProcessDefinitionId = targetDefinition.Id;
+            instance.ProcessId = targetDefinition.Key;
+            instance.ActiveTokens = instance.ActiveTokens.Select(Map).Distinct(StringComparer.Ordinal).ToList();
+            instance.ActiveTasks = instance.ActiveTasks.Select(Map).Distinct(StringComparer.Ordinal).ToList();
+            instance.LastModified = DateTime.UtcNow;
+            instance.Revision++;
+            db.RuntimeOutbox.Add(new RuntimeOutboxMessage
+            {
+                Id = Guid.NewGuid(),
+                ProcessInstanceId = instance.Id,
+                EventType = "ProcessMigrated",
+                TenantId = instance.TenantId,
+                OccurredAt = DateTime.UtcNow,
+                Payload = JsonSerializer.Serialize(new
+                {
+                    execution.Id,
+                    fromDefinitionId = sourceDefinition.Id,
+                    toDefinitionId = targetDefinition.Id
+                })
+            });
+        }
+
+        await db.SaveChangesAsync();
+        await transaction.CommitAsync();
+        execution.Steps.Add(new MigrationStepResult
+        {
+            StepName = "Transactionally migrate runtime state",
+            StartedAt = DateTime.UtcNow,
+            CompletedAt = DateTime.UtcNow,
+            Status = "Completed"
+        });
+        execution.Progress = 100;
+    }
+
+    private static async Task<HashSet<string>> ActiveActivityIdsAsync(BpmnDbContext db, Guid processInstanceId)
+    {
+        var activityIds = new HashSet<string>(StringComparer.Ordinal);
+        activityIds.UnionWith(await db.ExecutionTokens
+            .Where(item => item.ProcessInstanceId == processInstanceId && item.State != "Completed")
+            .Select(item => item.CurrentNodeId).ToArrayAsync());
+        activityIds.UnionWith(await db.Tasks
+            .Where(item => item.ProcessInstanceId == processInstanceId
+                           && (item.Status == UserTaskStatus.Pending || item.Status == UserTaskStatus.Delegated))
+            .Select(item => item.ActivityId).ToArrayAsync());
+        activityIds.UnionWith(await db.Jobs
+            .Where(item => item.ProcessInstanceId == processInstanceId && item.State == "Scheduled")
+            .Select(item => item.ActivityId).ToArrayAsync());
+        activityIds.UnionWith(await db.EventSubscriptions
+            .Where(item => item.ProcessInstanceId == processInstanceId && item.State == "Active")
+            .Select(item => item.ActivityId).ToArrayAsync());
+        activityIds.UnionWith(await db.Incidents
+            .Where(item => item.ProcessInstanceId == processInstanceId
+                           && item.State != "Resolved" && item.ActivityId != null)
+            .Select(item => item.ActivityId!).ToArrayAsync());
+        activityIds.UnionWith(await db.MultiInstanceExecutions
+            .Where(item => item.ProcessInstanceId == processInstanceId && item.State == "Active")
+            .Select(item => item.ActivityId).ToArrayAsync());
+        return activityIds;
+    }
+
+    private static Dictionary<string, ActivityInfo> ExtractActivityElements(string bpmnXml)
+    {
+        var document = XDocument.Parse(bpmnXml, LoadOptions.PreserveWhitespace);
+        return document.Descendants()
+            .Where(element => element.Attribute("id") is not null
+                              && (element.Name.LocalName.EndsWith("Event", StringComparison.Ordinal)
+                                  || element.Name.LocalName.EndsWith("Task", StringComparison.Ordinal)
+                                  || element.Name.LocalName.EndsWith("Gateway", StringComparison.Ordinal)
+                                  || element.Name.LocalName is "subProcess" or "transaction" or "callActivity"))
+            .ToDictionary(
+                element => element.Attribute("id")!.Value,
+                element => new ActivityInfo
+                {
+                    Id = element.Attribute("id")!.Value,
+                    Name = element.Attribute("name")?.Value ?? element.Attribute("id")!.Value,
+                    Type = element.Name.LocalName
+                },
+                StringComparer.Ordinal);
     }
 
     // Helper methods
@@ -487,20 +850,51 @@ public class LiveProcessMigrationService : ILiveProcessMigrationService
         }
     }
 
-    private async Task<ProcessDefinitionInfo> GetProcessDefinitionAsync(string processKey, IServiceScope scope)
+    private async Task<ProcessDefinitionInfo> GetProcessDefinitionAsync(
+        string processKey,
+        string? tenantId,
+        IServiceScope scope)
     {
         var repository = scope.ServiceProvider.GetRequiredService<IProcessDefinitionRepository>();
-        var definition = await repository.GetLatestByKeyAsync(processKey);
+        var definition = await repository.GetLatestByKeyAsync(processKey, tenantId);
         if (definition is null)
-            throw new InvalidOperationException($"Process definition '{processKey}' was not found.");
+            throw new InvalidOperationException($"Process definition '{processKey}' was not found in tenant '{tenantId}'.");
 
-        return new ProcessDefinitionInfo
+        return ToProcessDefinitionInfo(definition);
+    }
+
+    private async Task<ProcessDefinitionInfo> GetProcessDefinitionByIdAsync(
+        Guid processDefinitionId,
+        string? tenantId,
+        IServiceScope scope)
+    {
+        var repository = scope.ServiceProvider.GetRequiredService<IProcessDefinitionRepository>();
+        var definition = await repository.GetByIdAsync(processDefinitionId);
+        if (definition is null || !string.Equals(definition.TenantId, tenantId, StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                $"Process definition '{processDefinitionId}' was not found in tenant '{tenantId}'.");
+
+        return ToProcessDefinitionInfo(definition);
+    }
+
+    private static ProcessDefinitionInfo ToProcessDefinitionInfo(ProcessDefinition definition) =>
+        new()
         {
+            Id = definition.Id,
+            TenantId = definition.TenantId,
             Key = definition.Key,
             Name = definition.Name,
             Version = definition.Version,
             BpmnXml = definition.BpmnXml
         };
+
+    private async Task<List<ProcessInstanceInfo>> GetActiveProcessInstancesAsync(
+        Guid processDefinitionId,
+        string processKey,
+        IServiceScope scope)
+    {
+        var runtimeService = scope.ServiceProvider.GetRequiredService<IRuntimeService>();
+        return await CollectActiveInstancesAsync(runtimeService, processDefinitionId, processKey);
     }
 
     private async Task<List<ProcessInstanceInfo>> GetActiveProcessInstancesAsync(string processKey, IServiceScope scope)
@@ -511,8 +905,16 @@ public class LiveProcessMigrationService : ILiveProcessMigrationService
         if (definition is null)
             throw new InvalidOperationException($"Process definition '{processKey}' was not found.");
 
+        return await CollectActiveInstancesAsync(runtimeService, definition.Id, processKey);
+    }
+
+    private static async Task<List<ProcessInstanceInfo>> CollectActiveInstancesAsync(
+        IRuntimeService runtimeService,
+        Guid processDefinitionId,
+        string processKey)
+    {
         var instances = new List<ProcessInstanceInfo>();
-        await foreach (var instance in runtimeService.ListAsync(definition.Id, cancellationToken: CancellationToken.None))
+        await foreach (var instance in runtimeService.ListAsync(processDefinitionId, cancellationToken: CancellationToken.None))
         {
             if (instance.Status is ProcessInstanceStatus.Completed or ProcessInstanceStatus.Terminated)
                 continue;
@@ -672,7 +1074,8 @@ public class LiveProcessMigrationService : ILiveProcessMigrationService
             Timestamp = snapshot.CreatedAt,
             Details = "Live process migration snapshot",
             ElementId = snapshot.ProcessInstanceId.ToString(),
-            Data = JsonSerializer.Serialize(snapshot)
+            Data = JsonSerializer.Serialize(snapshot),
+            TenantId = snapshot.TenantId
         });
     }
 
@@ -686,26 +1089,14 @@ public class LiveProcessMigrationService : ILiveProcessMigrationService
         return JsonSerializer.Deserialize<LiveMigrationSnapshot>(historyEvent.Data);
     }
 
-    private List<ActivityInfo> ExtractActivities(ProcessDefinitionInfo process)
+    private static List<ActivityInfo> ExtractActivities(ProcessDefinitionInfo process)
     {
         if (string.IsNullOrWhiteSpace(process.BpmnXml))
             return new List<ActivityInfo>();
-        var document = XDocument.Parse(process.BpmnXml);
-        return document.Descendants()
-            .Where(element => element.Attribute("id") is not null &&
-                (element.Name.LocalName.EndsWith("Event", StringComparison.Ordinal) ||
-                 element.Name.LocalName.EndsWith("Task", StringComparison.Ordinal) ||
-                 element.Name.LocalName.EndsWith("Gateway", StringComparison.Ordinal)))
-            .Select(element => new ActivityInfo
-            {
-                Id = element.Attribute("id")!.Value,
-                Name = element.Attribute("name")?.Value ?? element.Attribute("id")!.Value,
-                Type = element.Name.LocalName
-            })
-            .ToList();
+        return ExtractActivityElements(process.BpmnXml).Values.ToList();
     }
 
-    private List<VariableInfo> ExtractVariables(ProcessDefinitionInfo process)
+    private static List<VariableInfo> ExtractVariables(ProcessDefinitionInfo process)
     {
         if (string.IsNullOrWhiteSpace(process.BpmnXml))
             return new List<VariableInfo>();
@@ -820,6 +1211,12 @@ public class LiveProcessMigrationService : ILiveProcessMigrationService
                 return variable;
         }
         return null;
+    }
+
+    private static void EnsureTenantAccess(string? resourceTenantId, string? requestedTenantId)
+    {
+        if (!string.Equals(resourceTenantId, requestedTenantId, StringComparison.Ordinal))
+            throw new UnauthorizedAccessException("The migration resource does not belong to the requested tenant.");
     }
 
 }

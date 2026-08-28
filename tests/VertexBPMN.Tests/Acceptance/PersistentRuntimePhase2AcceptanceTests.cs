@@ -287,9 +287,8 @@ public sealed class PersistentRuntimePhase2AcceptanceTests : IDisposable
             <startEvent id="start"/><sequenceFlow id="to-score" sourceRef="start" targetRef="score"/>
             <serviceTask id="score" implementation="calculateScore"/>
             <boundaryEvent id="compensate-score" attachedToRef="score" cancelActivity="false"><compensateEventDefinition/></boundaryEvent>
-            <sequenceFlow id="to-undo" sourceRef="compensate-score" targetRef="undo"/>
             <userTask id="undo" name="Undo score" isForCompensation="true"/>
-            <sequenceFlow id="undo-to-end" sourceRef="undo" targetRef="compensated"/><endEvent id="compensated"/>
+            <association id="compensation-handler" sourceRef="compensate-score" targetRef="undo" associationDirection="One"/>
             <sequenceFlow id="to-throw" sourceRef="score" targetRef="throw-compensation"/>
             <intermediateThrowEvent id="throw-compensation"><compensateEventDefinition/></intermediateThrowEvent>
             <sequenceFlow id="to-end" sourceRef="throw-compensation" targetRef="end"/><endEvent id="end"/>

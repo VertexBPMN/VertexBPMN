@@ -3,6 +3,9 @@ namespace VertexBPMN.Api.Migration;
 public class MigrationPlan
 {
     public Guid Id { get; set; }
+    public Guid FromProcessDefinitionId { get; set; }
+    public Guid ToProcessDefinitionId { get; set; }
+    public string? TenantId { get; set; }
     public string FromProcessKey { get; set; } = string.Empty;
     public string ToProcessKey { get; set; } = string.Empty;
     public MigrationOptions Options { get; set; } = new();

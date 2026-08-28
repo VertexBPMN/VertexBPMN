@@ -8,6 +8,7 @@ using VertexBPMN.Domain.Exceptions;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Domain.Model.Bpmn;
 using VertexBPMN.Domain.Model.Cmn;
+using VertexBPMN.Application;
 using VertexBPMN.Infrastructure.Scripting;
 using ExecutionToken = VertexBPMN.Domain.Entities.ExecutionToken;
 
@@ -459,11 +460,13 @@ namespace VertexBPMN.Engine.Execution
         {
             try
             {
-                await _dmnParser.ParseAsync(dmnXml);
+                var decision = await _dmnParser.ParseAsync(dmnXml);
+                if (!string.IsNullOrWhiteSpace(decision.SourceXml))
+                    _ = DmnDecisionGraph.Parse(decision.SourceXml, decisionId);
                 await _store.SaveDmnModelAsync(decisionId, dmnXml);
                 _logger.LogInformation("Registered DMN model {DecisionId}", decisionId);
             }
-            catch (DmnParseException ex)
+            catch (Exception ex) when (ex is DmnParseException or InvalidOperationException)
             {
                 _logger.LogError(ex, "Invalid DMN XML for decision {DecisionId}", decisionId);
                 throw new DistributedTokenException($"Invalid DMN XML for decision {decisionId}", ex);
@@ -1643,6 +1646,8 @@ namespace VertexBPMN.Engine.Execution
                                              ?? throw new DistributedTokenException(
                                                  $"DMN model {decisionRef} not found");
                                 var decision = await _dmnParser.ParseAsync(dmnXml, cancellationToken);
+                                if (!string.IsNullOrWhiteSpace(decision.SourceXml))
+                                    decision = decision with { EvaluationTargetId = decisionRef };
                                 var decisionResult = await _dmnEngine.EvaluateDecisionAsync(decision, decisionInputs, cancellationToken);
                                 token.Variables[resultVariable] = decisionResult;
                                 if (model.ProcessVariables == null)

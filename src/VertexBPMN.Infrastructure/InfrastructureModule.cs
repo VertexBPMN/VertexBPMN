@@ -195,10 +195,10 @@ public static class InfrastructureModule
             switch (provider)
             {
                 case "npgsql":
-                    options.UseNpgsql(connectionString);
+                    options.UseVertexNpgsql(connectionString);
                     break;
                 case "sqlserver":
-                    options.UseSqlServer(connectionString);
+                    options.UseVertexSqlServer(connectionString);
                     break;
                 case "sqlite":
                 default:

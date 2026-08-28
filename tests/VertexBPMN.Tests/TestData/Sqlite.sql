@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS ProcessInstance (
     ActiveTokens TEXT NOT NULL DEFAULT '[]',
     Variables TEXT NOT NULL DEFAULT '{}',
     Revision INTEGER NOT NULL DEFAULT 1,
+    ParentProcessInstanceId TEXT,
+    CallingActivityId TEXT,
     CreatedAt TEXT NOT NULL,
     LastModified TEXT NOT NULL
 );
@@ -50,6 +52,7 @@ CREATE INDEX IF NOT EXISTS IX_ProcessInstance_BusinessKey ON ProcessInstance(Bus
 CREATE INDEX IF NOT EXISTS IX_ProcessInstance_Tenant ON ProcessInstance(TenantId);
 CREATE INDEX IF NOT EXISTS IX_ProcessInstance_State ON ProcessInstance(State);
 CREATE INDEX IF NOT EXISTS IX_ProcessInstance_StartedAt ON ProcessInstance(StartedAt);
+CREATE INDEX IF NOT EXISTS IX_ProcessInstance_ParentProcessInstanceId ON ProcessInstance(ParentProcessInstanceId);
 CREATE VIEW IF NOT EXISTS ProcessInstances AS SELECT * FROM ProcessInstance;
 
 CREATE TABLE IF NOT EXISTS ExecutionToken (

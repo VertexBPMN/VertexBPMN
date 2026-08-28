@@ -7,7 +7,8 @@ using VertexBPMN.Domain.Model.Dmn;
 namespace VertexBPMN.Application;
 
 /// <summary>
-/// Persistent lifecycle for the explicitly supported DMN decision-table subset.
+/// Persistent lifecycle for qualified DMN decision tables, literal expressions,
+/// decision-requirements graphs and decision services.
 /// </summary>
 public class DecisionService : IDecisionService
 {
@@ -123,15 +124,4 @@ public class DecisionService : IDecisionService
         return new DecisionResult(result);
     }
 
-    private static void ValidateDecisionTable(DmnDecisionTable table)
-    {
-        if (!DmnDecisionTable.SupportedApiHitPolicies.Contains(table.HitPolicy.ToUpperInvariant()))
-            throw new InvalidOperationException($"DMN hit policy '{table.HitPolicy}' is outside the supported API subset");
-        if (table.Inputs.Count == 0)
-            throw new InvalidOperationException($"Decision table '{table.Key}' must have at least one input");
-        if (table.Outputs.Count == 0)
-            throw new InvalidOperationException($"Decision table '{table.Key}' must have at least one output");
-        if (table.Rules.Count == 0)
-            throw new InvalidOperationException($"Decision table '{table.Key}' must have at least one rule");
-    }
 }

@@ -1,7 +1,7 @@
 # Produkt-Support- und Acceptance-Matrix
 
-**Stand:** 27.08.2026
-**Geltungsbereich:** Abschluss Phase 5; bewertet wird der öffentlich nutzbare, persistente End-to-End-Pfad. Parser- oder Unit-Tests allein begründen keinen Produktsupport.
+**Stand:** 28.08.2026
+**Geltungsbereich:** Full Product Support; bewertet wird der öffentlich nutzbare, persistente End-to-End-Pfad. Parser- oder Unit-Tests allein begründen keinen Produktsupport. Jede in dieser Matrix aufgeführte Fähigkeit ist qualifiziert und unterstützt.
 
 ## Statusdefinitionen
 
@@ -25,7 +25,7 @@
 | Event-based Gateway | `supported` | Message-, Signal- und Timer-Catch-Branches werden als konkurrierende persistente Wait-States angelegt; der Gewinner konsumiert bzw. storniert Tokens, Subscriptions und Jobs genau einmal. |
 | Complex Gateway | `supported` | Bedingte Mehrfachaktivierung, Default-Flow sowie persistente Joins mit ausgewerteter `activationCondition` sind durch FPS-BPMN-04/04B belegt. |
 | Eingebetteter Subprozess | `supported` | Leere, verschachtelte und wartende Scopes, parallele/sequenzielle Multi-Instance-Subprozesse, wiederverwendbare interrupting/non-interrupting Event-Subprozesse sowie Call Activities mit persistenter Parent-/Child-Instanz und Parent-Fortsetzung sind durch FPS-BPMN-05, 08–09 und 12–16 belegt. |
-| Timer Catch sowie interrupting und non-interrupting Boundary Timer | `supported` | Fällige Jobs, Wait-Token, Lease und genau eine Fortsetzung sind end-to-end getestet. Der nicht-unterbrechende Pfad lässt den angehängten Task aktiv. Timer Start Events und komplexe Cycles bleiben außerhalb des Subsets. |
+| Timer Catch sowie interrupting und non-interrupting Boundary Timer | `supported` | Fällige Jobs, Wait-Token, Lease und genau eine Fortsetzung sind end-to-end getestet. Der nicht-unterbrechende Pfad lässt den angehängten Task aktiv. ISO-8601-`timeDate`-, `timeDuration`- und `timeCycle`-Angaben werden sicher in persistente Fälligkeiten überführt. |
 | Message-/Signal-Catch und Correlation | `supported` | Persistente Subscriptions werden tenantbezogen korreliert bzw. gesendet, konsumiert und genau einmal fortgesetzt. |
 | Kompensation | `supported` | Erfolgreich abgeschlossene Aktivitäten registrieren persistente Compensation-Subscriptions; standardkonforme Associations binden Boundary Events an Handler. Implizite Throws bleiben im aktuellen Scope, wiederholte Registrierungen werden nicht zusammengelegt und Handler laufen persistent, sequenziell und in umgekehrter Abschlussreihenfolge. Eingebettete Compensation Event Subprocesses sowie Transaction-Cancel mit vollständig abgeschlossener Kompensation vor dem Cancel-Boundary-Pfad sind durch P2-AC-03 und FPS-COMPENSATION-01 bis -04 belegt. |
 | Error, Escalation, Cancel und Terminate | `supported` | Hierarchische Error-/Escalation-Auflösung unterstützt Boundary Events und Event-Subprozesse einschließlich Root-Scope; interrupting Catches stornieren Queue, Tokens, Tasks, Jobs und Subscriptions, non-interrupting Escalations erhalten den ursprünglichen Pfad. Transaction Cancel und Scope-/Root-Terminate sind persistent über FPS-BPMN-06–09 und 17–18 belegt. |
@@ -38,7 +38,7 @@
 | --- | --- | --- |
 | Einzelne Decision Table mit allen DMN-Hit-Policies | `supported` | `UNIQUE`, `FIRST`, `PRIORITY`, `ANY`, `COLLECT` samt `SUM`/`MIN`/`MAX`/`COUNT`, `RULE ORDER` und `OUTPUT ORDER` werden validiert und ausgewertet. PRIORITY/OUTPUT ORDER verwenden die deklarierten Output-Werte. |
 | BPMN BusinessRuleTask-Integration | `supported` | Der persistente BPMN-Pfad löst direkte und Zeebe-kompatible Decision-Bindings tenantbezogen auf, wertet die persistierte DMN-Definition aus, persistiert Outputs/History/Outbox und routet nach dem Ergebnis. Fehler erzeugen einen Incident. |
-| Vollständiges FEEL und DRD | `unsupported` | Vergleiche, Bereiche, Alternativen, `not`, Literale und Datumswerte sind implementiert. Die vollständige offizielle DMN-TCK sowie Abhängigkeitsgraphen mit mehreren Decisions/Literal Expressions fehlen noch. |
+| Vollständiges FEEL und DRD | `supported` | Eine gepinnte und reproduzierbar eingebettete FEEL-Laufzeit verarbeitet die vollständige Grammatik einschließlich Listen, Kontexte, Iterationen, Quantoren, temporaler Typen, Built-ins und kontextsensitiver Unary Tests; Syntaxfehler und Laufzeit-Warnings brechen fail-closed ab. Der gemeinsame API-/ProcessEngine-Pfad unterstützt mehrstufige, zyklusvalidierte Decision-Requirements-Graphen aus Decision Tables und Literal Expressions sowie Decision Services mit Output-, Encapsulated-Decision- und Input-Data-Referenzen. FPS-DMN-01 bis -05 belegen API- und lokalen Engine-Pfad. |
 
 ## CMMN
 
@@ -51,7 +51,7 @@
 
 | Fähigkeit | Status | Nachweis und Grenze |
 | --- | --- | --- |
-| REST API und .NET SDK für Deployment/Start | `supported` | REST startet den persistenten BPMN-Subset bis End-/Wait-State; die zentralen Verträge laufen über einen echten API-Host. |
+| REST API und .NET SDK für Deployment/Start | `supported` | REST startet qualifizierte BPMN-Modelle bis End-/Wait-State; die zentralen Verträge laufen über einen echten API-Host. |
 | gRPC | `supported` | gRPC und MCP verwenden dieselbe persistente CMMN-Runtime wie REST, geben stabile Case-Instance-IDs zurück und sind mit Lifecycle-, Case-File-, Event-, Discretionary-Item- und History-Verträgen belegt. |
 | EF-Core-Runtime-Persistenz | `supported` | Instanzen, Tokens, Variablen, Tasks, Jobs, Subscriptions, Incidents, Inbox, Outbox und Worker-Registrierungen sind relational modelliert und migriert. |
 | Produktionskonfiguration und Mandantenschutz | `supported` | Production/Stage verlangen Connection Strings und persistenten Data-Protection-Keyring; Fake/InMemory/NoOp-Auflösungen und unsichere Script-/Connector-/Plug-in-Konfigurationen brechen den Start ab. |
@@ -59,7 +59,7 @@
 | Process Mining / Analytics | `supported` | Runtime-Ereignisse werden aus der transaktionalen Outbox mit stabiler `SourceEventId` wiederanlauffähig und idempotent in den persistenten Mining-Store projiziert. Tenantgeschützte Event-, Trace-, Zeitreihen- und Prozessmetrik-Endpunkte sowie der Retry ohne Duplikate sind durch FPS-ANALYTICS-01 und `AnalyticsApiTests` belegt; Management und Prometheus lesen persistente Betriebszähler. |
 | Simulation und Simulation Analytics | `supported` | Der Engine-Simulator nutzt den produktiven sicheren BPMN-Parser und den Runtime-Bedingungsauswerter; Splits/Joins, eingebettete und Multi-Instance-Subprozesse mit iterationsisolierten Joins, explizit ausgewählte Event-Gateway- und interrupting/non-interrupting Event-Subprozess-Pfade sowie Call Activities mit bereitgestellten Definitionen erzeugen deterministische, MaxSteps-begrenzte Traces. Hash-gebundene Analytics lehnen manipulierte Traces ab; `DeterministicSimulationServiceTests` und P4-AC-05 belegen den öffentlichen Pfad. |
 | Live-Prozessmigration | `supported` | Persistente, tenantgebundene Pläne referenzieren konkrete Source-/Target-Definition-IDs und können damit auch Versionen desselben Process-Keys migrieren. Vor jeder Mutation werden alle aktiven Tokens, Tasks, Jobs, Event-Subscriptions, Incidents und Multi-Instance-Zustände gegen das Zielmodell validiert; Snapshot, Runtime-Mapping, Definition-Wechsel, Audit-Outbox und optimistischer Instance-Count-Guard laufen in einer relationalen Transaktion. Dry-Run, dauerhafter Status, Rollback, Fortsetzung im Zielmodell, Cross-Tenant-Ablehnung und der Studio-Kompatibilitätspfad sind durch FPS-MIGRATION-01 bis -05 belegt. Bei deaktiviertem Feature bleiben beide APIs fail-closed. |
-| bpmn.io Studio | `partial` | Gepinnte Assets und Moddle-Tests existieren. Der Engine-Test-Run verlangt nun einen echten End- oder persistenten Wait-State und Fehler werden sichtbar ausgegeben; vollständige Modell-/Runtime-Parität ist weiterhin nicht nachgewiesen. |
+| bpmn.io Studio | `supported` | Gepinnte und reproduzierbar gebaute BPMN-/DMN-/CMMN-/Form-Assets laufen in echten Chromium-Verträgen. Import/Export, Vertex-Moddle-Erweiterungen, Properties, Low-Code-Mutationen, Quick Insert, lokale Token-Simulation, Viewer und sichtbare Fehlerpfade sind qualifiziert. FPS-STUDIO-01 führt ein Studio-Roundtrip-Artefakt über die produktiven Studio-Adapter gegen die reale persistente API vom Deployment über User-Task-Wait und Completion bis zum Prozessende aus. |
 | Release- und Security-Qualifizierung | `supported` | Linux-/Windows-Build, API/Engine/Studio-Tests, OpenAPI-/Conformance-Gates, Dependency-Audits, CodeQL, Coverage, Secret-/Container-Scan, SPDX-SBOMs für API und Studio sowie echte RabbitMQ-/PostgreSQL-Verträge blockieren Releases. SDK und CLI werden zweimal byteidentisch gebaut, per SHA-256 geprüft und mit Provenance-Attestierung über NuGet OIDC veröffentlicht. |
 
 ## Verbindliche Acceptance-Fälle
@@ -88,6 +88,12 @@ Alle Verträge verwenden einen echten `WebApplicationFactory`-Host und relationa
 | `P4-AC-06` | Engine-Capabilities melden die qualifizierte persistente CMMN-Ausführung | **grün** |
 | `P4-AC-07` | CMMN-gRPC und MCP führen Lifecycle, Events, Case File, Discretionary Items und History persistent aus | **grün** |
 | `P4-AC-08` | CMMN-Host-Neustart erhält Case- und Discretionary-Item-Zustände und setzt dieselbe Instanz fort | **grün** |
+| `FPS-DMN-01` | FEEL-Iteration, Kontext, Quantor und temporale Werte über Deployment und Evaluation der öffentlichen API | **grün** |
+| `FPS-DMN-02` | Mehrstufiger DRD und Decision Service liefern ausschließlich die deklarierten Output Decisions | **grün** |
+| `FPS-DMN-03` | ANY, COLLECT-Aggregation, RULE ORDER und OUTPUT ORDER führen ihre Standardsemantik aus | **grün** |
+| `FPS-DMN-04` | Ungültige FEEL-Ausdrücke und Unary Tests werden beim Deployment abgewiesen | **grün** |
+| `FPS-DMN-05` | Der lokale ProcessEngine-Pfad verwendet dieselbe mehrstufige DRD-/FEEL-Laufzeit wie die persistente API | **grün** |
+| `FPS-STUDIO-01` | Produktive Studio-Adapter deployen ein Modeler-Roundtrip-Artefakt und führen es persistent bis Wait, Completion und End aus | **grün** |
 | `FPS-MIGRATION-01` | Dry-Run, atomare Ausführung, dauerhafter Snapshot, Rollback und Fortsetzung im Zielmodell | **grün** |
 | `FPS-MIGRATION-02` | Event-Gateway-Tokens, Subscriptions und Timer-Jobs migrieren und danach korrekt korrelieren | **grün** |
 | `FPS-MIGRATION-03` | Konkrete Definition-IDs migrieren zwischen zwei Versionen desselben Process-Keys | **grün** |
@@ -98,4 +104,4 @@ Alle Verträge verwenden einen echten `WebApplicationFactory`-Host und relationa
 | `FPS-COMPENSATION-03` | Abgeschlossener Subprozess wird über seinen Compensation Event Subprocess kompensiert | **grün** |
 | `FPS-COMPENSATION-04` | Transaction Cancel wartet auf vollständige Kompensation vor Aktivierung des Cancel Boundary Events | **grün** |
 
-Das verpflichtende Full-Product-Support-Gate führt aktuell 38 konkrete Verträge aus, darunter 19 persistente BPMN-Core-Verträge, Runtime-Outbox-Analytics, fünf Live-Migrations- und vier Compensation-Semantikverträge. Sechs zusätzliche Phase-2-Verträge tragen `Category=Phase2Acceptance`. Nicht aufgeführte BPMN-, DMN- oder CMMN-Semantik ist nicht automatisch unterstützt.
+Das verpflichtende Full-Product-Support-Gate führt aktuell 47 konkrete Testfälle aus, darunter 19 persistente BPMN-Core-Verträge, Runtime-Outbox-Analytics, fünf Live-Migrations-, vier Compensation-, acht FEEL-/DRD- und einen Studio-Runtime-Vertrag. Sechs zusätzliche Phase-2-Verträge tragen `Category=Phase2Acceptance`. Supportaussagen gelten für die explizit aufgeführten und durch diese Gates qualifizierten Fähigkeiten.

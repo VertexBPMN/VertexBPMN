@@ -151,8 +151,7 @@ public sealed class DmnDecisionGraph
             RequiredAttribute(output, "id"),
             (string?)output.Attribute("name") ?? (string?)output.Attribute("label") ?? RequiredAttribute(output, "id"),
             OutputPriorities(output, context))).ToArray();
-        var inputValues = inputs.Select(input =>
-            FeelEvaluator.EvaluateExpression(input.Expression, context)).ToArray();
+        var inputValues = inputs.Select(input => EvaluateInputExpression(input, context)).ToArray();
         var matches = new List<Dictionary<string, object>>();
 
         foreach (var rule in table.Elements(_namespace + "rule"))
@@ -331,11 +330,19 @@ public sealed class DmnDecisionGraph
 
         foreach (var input in inputs) FeelEvaluator.ValidateExpression(InputExpression(input));
         foreach (var rule in rules)
+        {
+            foreach (var inputEntry in rule.Elements(_namespace + "inputEntry"))
+            {
+                var unaryTests = ExpressionText(inputEntry, "-");
+                if (!string.IsNullOrWhiteSpace(unaryTests) && unaryTests != "-")
+                    FeelEvaluator.ValidateUnaryTests(unaryTests);
+            }
             foreach (var outputEntry in rule.Elements(_namespace + "outputEntry"))
             {
                 var expression = ExpressionText(outputEntry, "null");
                 if (!IsLegacyBareOutput(expression)) FeelEvaluator.ValidateExpression(expression);
             }
+        }
         if (hitPolicy is "PRIORITY" or "OUTPUT ORDER"
             && outputs.All(output => string.IsNullOrWhiteSpace(output.Element(_namespace + "outputValues")?.Value)))
             throw new InvalidOperationException($"DMN {hitPolicy} requires ordered outputValues.");
@@ -369,6 +376,22 @@ public sealed class DmnDecisionGraph
             : text.Trim();
     }
 
+    private static object? EvaluateInputExpression(
+        InputClause input,
+        IReadOnlyDictionary<string, object> context)
+    {
+        if (IsSimpleFeelName(input.Expression) && !context.ContainsKey(input.Expression))
+        {
+            // Older VertexBPMN API clients bind decision-table inputs by the
+            // clause id/label. Preserve that public contract while preferring
+            // the standard FEEL input expression whenever its variable exists.
+            if (context.TryGetValue(input.Id, out var value)) return value;
+            if (context.TryGetValue(input.Label, out value)) return value;
+        }
+
+        return FeelEvaluator.EvaluateExpression(input.Expression, context);
+    }
+
     private IReadOnlyList<object?> OutputPriorities(
         XElement output,
         IReadOnlyDictionary<string, object> context)
@@ -390,8 +413,11 @@ public sealed class DmnDecisionGraph
             : FeelEvaluator.EvaluateExpression(expression, context);
 
     private static bool IsLegacyBareOutput(string expression) =>
-        Regex.IsMatch(expression, @"^[A-Za-z_][A-Za-z0-9_-]*$", RegexOptions.CultureInvariant)
+        IsSimpleFeelName(expression)
         && expression is not ("true" or "false" or "null");
+
+    private static bool IsSimpleFeelName(string expression) =>
+        Regex.IsMatch(expression, @"^[A-Za-z_][A-Za-z0-9_-]*$", RegexOptions.CultureInvariant);
 
     private static void AddToContext(
         XElement decision,

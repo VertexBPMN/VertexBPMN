@@ -34,9 +34,13 @@ jobs:
       with:
         node-version: '22.x'
         cache: npm
-        cache-dependency-path: src/VertexBPMN.Studio/package-lock.json
+        cache-dependency-path: |
+          src/VertexBPMN.Studio/package-lock.json
+          src/VertexBPMN.Application/tools/feelin/package-lock.json
     - run: dotnet restore VertexBPMN.sln
     - working-directory: src/VertexBPMN.Studio
+      run: npm ci
+    - working-directory: src/VertexBPMN.Application/tools/feelin
       run: npm ci
     - name: Audit resolved dependencies
       shell: bash
@@ -83,7 +87,9 @@ jobs:
       with:
         node-version: '22.x'
         cache: npm
-        cache-dependency-path: src/VertexBPMN.Studio/package-lock.json
+        cache-dependency-path: |
+          src/VertexBPMN.Studio/package-lock.json
+          src/VertexBPMN.Application/tools/feelin/package-lock.json
     - name: Reject tracked build artifacts
       shell: bash
       run: bash scripts/verify-no-tracked-build-artifacts.sh
@@ -96,6 +102,13 @@ jobs:
         npm run build:bpmnio
         npm run test:vertex-moddle
         git diff --exit-code -- wwwroot/lib
+    - name: Build and verify pinned FEEL runtime
+      shell: bash
+      working-directory: src/VertexBPMN.Application/tools/feelin
+      run: |
+        npm ci
+        npm run build
+        git diff --exit-code -- ../../FeelRuntime/feelin.bundle.js
     - run: dotnet restore VertexBPMN.sln
     - run: dotnet build VertexBPMN.sln --configuration Release --no-restore
     - name: Test green suite
@@ -161,8 +174,12 @@ jobs:
       with:
         node-version: '22.x'
         cache: npm
-        cache-dependency-path: src/VertexBPMN.Studio/package-lock.json
+        cache-dependency-path: |
+          src/VertexBPMN.Studio/package-lock.json
+          src/VertexBPMN.Application/tools/feelin/package-lock.json
     - working-directory: src/VertexBPMN.Studio
+      run: npm ci
+    - working-directory: src/VertexBPMN.Application/tools/feelin
       run: npm ci
     - name: Restore and build test target
       run: |
@@ -266,7 +283,9 @@ jobs:
       with:
         node-version: '22.x'
         cache: npm
-        cache-dependency-path: src/VertexBPMN.Studio/package-lock.json
+        cache-dependency-path: |
+          src/VertexBPMN.Studio/package-lock.json
+          src/VertexBPMN.Application/tools/feelin/package-lock.json
     - name: Build and verify Studio assets
       working-directory: src/VertexBPMN.Studio
       shell: bash
@@ -275,6 +294,13 @@ jobs:
         npm run build:bpmnio
         npm run test:vertex-moddle
         git diff --exit-code -- wwwroot/lib
+    - name: Build and verify FEEL runtime
+      working-directory: src/VertexBPMN.Application/tools/feelin
+      shell: bash
+      run: |
+        npm ci
+        npm run build
+        git diff --exit-code -- ../../FeelRuntime/feelin.bundle.js
     - name: Build complete solution
       run: |
         dotnet restore VertexBPMN.sln

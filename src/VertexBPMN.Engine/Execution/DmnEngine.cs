@@ -1,5 +1,6 @@
 ﻿using Jint;
 using Microsoft.Extensions.Logging;
+using VertexBPMN.Application;
 using VertexBPMN.Domain.Exceptions;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Domain.Model.Dmn;
@@ -29,6 +30,17 @@ public class DmnEngine : IDmnEngine
     {
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!string.IsNullOrWhiteSpace(decision.SourceXml))
+            {
+                var targetId = decision.EvaluationTargetId ?? decision.Id;
+                var graphResult = DmnDecisionGraph.Parse(decision.SourceXml, targetId).Evaluate(variables);
+                _logger.LogInformation(
+                    "Evaluated DMN decision graph target {DecisionId} through the qualified FEEL runtime",
+                    targetId);
+                return graphResult;
+            }
+
             var matchingRules = new List<DmnRule>();
 
             foreach (var rule in decision.Rules)

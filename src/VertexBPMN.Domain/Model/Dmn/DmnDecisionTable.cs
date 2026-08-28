@@ -305,6 +305,14 @@ public class DmnDecisionTable
         return FeelEquals(value, ParseFeelLiteral(expression));
     }
 
+    /// <summary>
+    /// Compatibility evaluator for the established decision-table API. The
+    /// production DMN graph uses a full FEEL engine first and calls this only
+    /// for legacy scalar/range cells that older deployments accepted.
+    /// </summary>
+    public static bool MatchesLegacyUnaryTest(string expression, object? value) =>
+        FeelMatches(expression, value);
+
     private static IReadOnlyList<object>? ParseFeelList(string? i)
         => string.IsNullOrWhiteSpace(i)
             ? null

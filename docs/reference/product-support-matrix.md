@@ -64,7 +64,7 @@
 
 ## Verbindliche Acceptance-Fälle
 
-Alle Verträge verwenden einen echten `WebApplicationFactory`-Host und relationale SQLite-Persistenz. Die fachlichen Assertions prüfen End-/Wait-State und dauerhafte Runtime-Datensätze.
+Die Runtime-Verträge verwenden einen echten `WebApplicationFactory`-Host und relationale Persistenz. Die fachlichen Assertions prüfen End-/Wait-State und dauerhafte Runtime-Datensätze. Die vier `P3-EXT`-Verträge laufen zusätzlich gegen echte RabbitMQ- und PostgreSQL-Dienste; sie sind nicht übersprungen und blockieren den CI-Build.
 
 | ID | Vertrag | Status |
 | --- | --- | --- |
@@ -79,6 +79,10 @@ Alle Verträge verwenden einen echten `WebApplicationFactory`-Host und relationa
 | `P2-AC-04` | Servicefehler → Incident → Recovery, genau einmal | **grün** |
 | `P2-AC-05` | Negativer tenantbezogener Runtime-Lesezugriff | **grün** |
 | `P2-AC-06` | Zwei API-Replikate teilen eine Idempotency-Claim | **grün** |
+| `P3-EXT-01` | RabbitMQ-Health, Publish und Consume als echter Broker-Roundtrip | **grün** |
+| `P3-EXT-02` | Vollständige Migration aller fünf EF-DbContexts auf echtem PostgreSQL | **grün** |
+| `P3-EXT-03` | Zwei isolierte Publisher leasen PostgreSQL-Outbox-Nachrichten ohne Duplikate | **grün** |
+| `P3-EXT-04` | RabbitMQ lehnt unroutbare Mandatory-Delivery mit `NO_ROUTE` ab | **grün** |
 | `P4-AC-01` | Unterstützte DMN-Tabelle persistent deployen und über API auswerten | **grün** |
 | `P4-AC-02` | PRIORITY-Hit-Policy verwendet deklarierte Output-Reihenfolge | **grün** |
 | `P4-AC-02B` | Persistente DMN-Definition im BusinessRuleTask auswerten und Ergebnis für BPMN-Routing verwenden | **grün** |
@@ -104,4 +108,4 @@ Alle Verträge verwenden einen echten `WebApplicationFactory`-Host und relationa
 | `FPS-COMPENSATION-03` | Abgeschlossener Subprozess wird über seinen Compensation Event Subprocess kompensiert | **grün** |
 | `FPS-COMPENSATION-04` | Transaction Cancel wartet auf vollständige Kompensation vor Aktivierung des Cancel Boundary Events | **grün** |
 
-Das verpflichtende Full-Product-Support-Gate führt aktuell 47 konkrete Testfälle aus, darunter 19 persistente BPMN-Core-Verträge, Runtime-Outbox-Analytics, fünf Live-Migrations-, vier Compensation-, acht FEEL-/DRD- und einen Studio-Runtime-Vertrag. Sechs zusätzliche Phase-2-Verträge tragen `Category=Phase2Acceptance`. Supportaussagen gelten für die explizit aufgeführten und durch diese Gates qualifizierten Fähigkeiten.
+Die Full-Product-Support-Qualifizierung umfasst 51 konkrete Testfälle: 47 Fälle im verpflichtenden Hauptgate sowie vier nicht übersprungene externe RabbitMQ-/PostgreSQL-Verträge. Darin enthalten sind 19 persistente BPMN-Core-Verträge, Runtime-Outbox-Analytics, fünf Live-Migrations-, vier Compensation-, acht FEEL-/DRD- und ein Studio-Runtime-Vertrag. Sechs zusätzliche Phase-2-Verträge tragen `Category=Phase2Acceptance`. Supportaussagen gelten für die explizit aufgeführten und durch diese Gates qualifizierten Fähigkeiten.

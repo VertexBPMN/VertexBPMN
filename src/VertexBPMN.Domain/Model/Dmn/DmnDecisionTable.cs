@@ -1,5 +1,7 @@
 using System.Xml;
 using System.Xml.Linq;
+using System.Globalization;
+using System.Text.Json;
 
 namespace VertexBPMN.Domain.Model.Dmn;
 
@@ -11,7 +13,9 @@ namespace VertexBPMN.Domain.Model.Dmn;
 public class DmnDecisionTable
 {
     public static readonly IReadOnlySet<string> SupportedApiHitPolicies =
-        new HashSet<string>(["UNIQUE", "FIRST", "ANY", "COLLECT", "RULE ORDER"], StringComparer.Ordinal);
+        new HashSet<string>(
+            ["UNIQUE", "FIRST", "PRIORITY", "ANY", "COLLECT", "RULE ORDER", "OUTPUT ORDER"],
+            StringComparer.Ordinal);
 
     public string Key { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
@@ -19,6 +23,7 @@ public class DmnDecisionTable
     public List<DmnOutput> Outputs { get; set; } = new();
     public List<DmnRule> Rules { get; set; } = new();
     public string HitPolicy { get; set; } = "UNIQUE";
+    public string? Aggregation { get; set; }
 
     // Parameterless ctor for EF / serializers
     public DmnDecisionTable() { }
@@ -29,7 +34,8 @@ public class DmnDecisionTable
         List<DmnInput> inputs,
         List<DmnOutput> outputs,
         List<DmnRule> rules,
-        string hitPolicy)
+        string hitPolicy,
+        string? aggregation = null)
     {
         Key = key;
         Name = name;
@@ -37,6 +43,7 @@ public class DmnDecisionTable
         Outputs = outputs.ToList();
         Rules = rules.ToList();
         HitPolicy = hitPolicy;
+        Aggregation = aggregation;
     }
 
     /// <summary>
@@ -93,7 +100,8 @@ public class DmnDecisionTable
                 throw new InvalidOperationException("Every DMN output requires an id.");
             var label = (string?)o.Attribute("name") ?? (string?)o.Attribute("label") ?? id;
             var typeRef = (string?)o.Attribute("typeRef") ?? "string";
-            return new DmnOutput(id, label, typeRef);
+            var allowedValues = ParseFeelList(i: o.Element(ns + "outputValues")?.Value);
+            return new DmnOutput(id, label, typeRef, allowedValues);
         }).ToList();
 
         var rules = table.Elements(ns + "rule").Select((r, ruleIndex) =>
@@ -110,7 +118,7 @@ public class DmnDecisionTable
             for (int j = 0; j < outputEntries.Count && j < outputs.Count; j++)
             {
                 var val = outputEntries[j].Value?.Trim() ?? string.Empty;
-                outputVals[outputs[j].Id] = val;
+                outputVals[outputs[j].Id] = ParseFeelLiteral(val) ?? string.Empty;
             }
             return new DmnRule($"rule_{ruleIndex}", inputConds, outputVals);
         }).ToList();
@@ -120,7 +128,13 @@ public class DmnDecisionTable
         if (rules.Any(rule => rule.InputConditions.Count != inputs.Count || rule.OutputValues.Count != outputs.Count))
             throw new InvalidOperationException("Every DMN rule must provide one entry per input and output.");
 
-        return new DmnDecisionTable(key, name, inputs, outputs, rules, hitPolicy);
+        var aggregation = ((string?)table.Attribute("aggregation"))?.Trim().ToUpperInvariant();
+        if (aggregation is not null && aggregation is not ("SUM" or "MIN" or "MAX" or "COUNT"))
+            throw new InvalidOperationException($"Unsupported DMN COLLECT aggregation '{aggregation}'.");
+        if (aggregation is not null && hitPolicy != "COLLECT")
+            throw new InvalidOperationException("DMN aggregation is only valid with the COLLECT hit policy.");
+
+        return new DmnDecisionTable(key, name, inputs, outputs, rules, hitPolicy, aggregation);
     }
 
     /// <summary>
@@ -185,7 +199,17 @@ public class DmnDecisionTable
     {
         var result = new Dictionary<string, object>();
         foreach (var output in Outputs)
-            result[output.Label] = matches.Select(m => m.OutputValues[output.Id]).ToList();
+        {
+            var values = matches.Select(m => m.OutputValues[output.Id]).ToList();
+            result[output.Label] = Aggregation switch
+            {
+                "COUNT" => values.Count,
+                "SUM" => values.Sum(ToDecimal),
+                "MIN" => values.Min(ToDecimal),
+                "MAX" => values.Max(ToDecimal),
+                _ => values
+            };
+        }
         return result;
     }
 
@@ -199,21 +223,28 @@ public class DmnDecisionTable
 
     private Dictionary<string, object> EvaluatePriority(List<DmnRule> matches)
     {
-        var result = new Dictionary<string, object>();
-        foreach (var output in Outputs)
-        {
-            var min = matches.Select(m => m.OutputValues[output.Id]).OrderBy(v => v).First();
-            result[output.Label] = min;
-        }
-        return result;
+        return ProjectOutputs(matches.OrderBy(PriorityRank).First());
     }
 
     private Dictionary<string, object> EvaluateOutputOrder(List<DmnRule> matches)
     {
         var result = new Dictionary<string, object>();
         foreach (var output in Outputs)
-            result[output.Label] = matches.Select(m => m.OutputValues[output.Id]).OrderBy(v => v).ToList();
+            result[output.Label] = matches.OrderBy(PriorityRank).Select(m => m.OutputValues[output.Id]).ToList();
         return result;
+    }
+
+    private int PriorityRank(DmnRule rule)
+    {
+        for (var outputIndex = 0; outputIndex < Outputs.Count; outputIndex++)
+        {
+            var output = Outputs[outputIndex];
+            if (output.AllowedValues is not { Count: > 0 }) continue;
+            var value = rule.OutputValues[output.Id];
+            var rank = output.AllowedValues.ToList().FindIndex(allowed => FeelEquals(allowed, value));
+            return rank < 0 ? int.MaxValue : (outputIndex * 10_000) + rank;
+        }
+        throw new InvalidOperationException($"DMN {HitPolicy} requires ordered outputValues.");
     }
 
     private Dictionary<string, object> ProjectOutputs(DmnRule rule)
@@ -237,9 +268,133 @@ public class DmnDecisionTable
     private static bool FeelMatches(string expression, object? value)
     {
         if (expression == "-" || string.IsNullOrWhiteSpace(expression)) return true;
-        if (expression.StartsWith("=", StringComparison.Ordinal))
-            return string.Equals(expression.Substring(1).Trim(), value?.ToString(), StringComparison.OrdinalIgnoreCase);
-        return string.Equals(expression.Trim(), value?.ToString(), StringComparison.OrdinalIgnoreCase);
+        expression = expression.Trim();
+        if (expression.StartsWith("not(", StringComparison.OrdinalIgnoreCase) && expression.EndsWith(')'))
+            return !FeelMatches(expression[4..^1], value);
+        if ((expression.StartsWith('[') || expression.StartsWith('('))
+            && (expression.EndsWith(']') || expression.EndsWith(')'))
+            && expression.Contains("..", StringComparison.Ordinal))
+        {
+            var bounds = expression[1..^1].Split("..", 2, StringSplitOptions.TrimEntries);
+            var lower = ParseFeelLiteral(bounds[0]);
+            var upper = ParseFeelLiteral(bounds[1]);
+            var lowerCompare = FeelCompare(value, lower);
+            var upperCompare = FeelCompare(value, upper);
+            return (expression[0] == '[' ? lowerCompare >= 0 : lowerCompare > 0)
+                   && (expression[^1] == ']' ? upperCompare <= 0 : upperCompare < 0);
+        }
+        var alternatives = SplitFeelList(expression);
+        if (alternatives.Count > 1)
+            return alternatives.Any(alternative => FeelMatches(alternative, value));
+
+        foreach (var op in new[] { "<=", ">=", "!=", "<", ">", "=" })
+        {
+            if (!expression.StartsWith(op, StringComparison.Ordinal)) continue;
+            var literal = ParseFeelLiteral(expression[op.Length..].Trim());
+            var comparison = FeelCompare(value, literal);
+            return op switch
+            {
+                "<=" => comparison <= 0,
+                ">=" => comparison >= 0,
+                "!=" => comparison != 0,
+                "<" => comparison < 0,
+                ">" => comparison > 0,
+                _ => comparison == 0
+            };
+        }
+        return FeelEquals(value, ParseFeelLiteral(expression));
     }
+
+    /// <summary>
+    /// Compatibility evaluator for the established decision-table API. The
+    /// production DMN graph uses a full FEEL engine first and calls this only
+    /// for legacy scalar/range cells that older deployments accepted.
+    /// </summary>
+    public static bool MatchesLegacyUnaryTest(string expression, object? value) =>
+        FeelMatches(expression, value);
+
+    private static IReadOnlyList<object>? ParseFeelList(string? i)
+        => string.IsNullOrWhiteSpace(i)
+            ? null
+            : SplitFeelList(i).Select(value => ParseFeelLiteral(value) ?? string.Empty).ToArray();
+
+    private static List<string> SplitFeelList(string expression)
+    {
+        var values = new List<string>();
+        var start = 0;
+        var depth = 0;
+        char quote = '\0';
+        for (var index = 0; index < expression.Length; index++)
+        {
+            var character = expression[index];
+            if (quote != '\0')
+            {
+                if (character == quote && (index == 0 || expression[index - 1] != '\\')) quote = '\0';
+                continue;
+            }
+            if (character is '\'' or '"') quote = character;
+            else if (character is '(' or '[') depth++;
+            else if (character is ')' or ']') depth--;
+            else if (character == ',' && depth == 0)
+            {
+                values.Add(expression[start..index].Trim());
+                start = index + 1;
+            }
+        }
+        values.Add(expression[start..].Trim());
+        return values;
+    }
+
+    private static object? ParseFeelLiteral(string expression)
+    {
+        expression = expression.Trim();
+        if (expression.Equals("null", StringComparison.OrdinalIgnoreCase)) return null;
+        if (bool.TryParse(expression, out var boolean)) return boolean;
+        if (decimal.TryParse(expression, NumberStyles.Number, CultureInfo.InvariantCulture, out var number)) return number;
+        if (expression.StartsWith("date(\"", StringComparison.OrdinalIgnoreCase) && expression.EndsWith("\")", StringComparison.Ordinal)
+            && DateOnly.TryParse(expression[6..^2], CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+            return date;
+        if (expression.Length >= 2
+            && ((expression[0] == '"' && expression[^1] == '"')
+                || (expression[0] == '\'' && expression[^1] == '\'')))
+            return expression[1..^1].Replace("\\\"", "\"", StringComparison.Ordinal);
+        return expression;
+    }
+
+    private static bool FeelEquals(object? left, object? right) => FeelCompare(left, right) == 0;
+
+    private static int FeelCompare(object? left, object? right)
+    {
+        left = Normalize(left);
+        right = Normalize(right);
+        if (left is null || right is null) return left is null ? (right is null ? 0 : -1) : 1;
+        if (TryDecimal(left, out var leftNumber) && TryDecimal(right, out var rightNumber))
+            return leftNumber.CompareTo(rightNumber);
+        if (left is DateOnly leftDate && right is DateOnly rightDate) return leftDate.CompareTo(rightDate);
+        if (left is bool leftBoolean && right is bool rightBoolean) return leftBoolean.CompareTo(rightBoolean);
+        return string.Compare(left.ToString(), right.ToString(), StringComparison.Ordinal);
+    }
+
+    private static object? Normalize(object? value)
+    {
+        if (value is not JsonElement json) return value;
+        return json.ValueKind switch
+        {
+            JsonValueKind.String => json.GetString(),
+            JsonValueKind.Number when json.TryGetDecimal(out var number) => number,
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Null or JsonValueKind.Undefined => null,
+            _ => json.GetRawText()
+        };
+    }
+
+    private static bool TryDecimal(object value, out decimal number)
+        => decimal.TryParse(value.ToString(), NumberStyles.Number, CultureInfo.InvariantCulture, out number);
+
+    private static decimal ToDecimal(object value)
+        => TryDecimal(Normalize(value) ?? 0, out var number)
+            ? number
+            : throw new InvalidOperationException($"COLLECT aggregation requires numeric values, got '{value}'.");
 }
 

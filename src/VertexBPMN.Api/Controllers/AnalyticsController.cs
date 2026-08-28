@@ -113,12 +113,14 @@ namespace VertexBPMN.Api.Controllers
     {
         var processGroups = _db.Events
             .Where(e => e.TenantId == CurrentTenantId() &&
-                        (e.EventType == "ProcessStarted" || e.EventType == "ProcessEnded"))
+                        (e.EventType == "ProcessStarted"
+                         || e.EventType == "ProcessEnded"
+                         || e.EventType == "ProcessCompleted"))
             .GroupBy(e => e.ProcessInstanceId)
             .ToList()
             .Select(g => {
                 var started = g.FirstOrDefault(e => e.EventType == "ProcessStarted")?.Timestamp;
-                var ended = g.FirstOrDefault(e => e.EventType == "ProcessEnded")?.Timestamp;
+                var ended = g.FirstOrDefault(e => e.EventType is "ProcessEnded" or "ProcessCompleted")?.Timestamp;
                 return new {
                     ProcessInstanceId = g.Key,
                     Started = started,

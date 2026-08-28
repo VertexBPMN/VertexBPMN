@@ -105,7 +105,8 @@ public sealed class OperationalReadinessPhase3AcceptanceTests : IDisposable
     {
         var bpmnFile = NewDatabaseFile();
         var services = new ServiceCollection();
-        services.AddDbContext<BpmnDbContext>(options => options.UseSqlite($"Data Source={bpmnFile}"));
+        services.AddDbContext<BpmnDbContext>(options => options.UseSqlite(
+            $"Data Source={bpmnFile};Pooling=False"));
         AddOtherInMemoryContexts(services);
         await using var provider = services.BuildServiceProvider();
         await using (var setupScope = provider.CreateAsyncScope())
@@ -232,7 +233,8 @@ public sealed class OperationalReadinessPhase3AcceptanceTests : IDisposable
         var databaseFile = NewDatabaseFile();
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddDbContext<BpmnDbContext>(options => options.UseSqlite($"Data Source={databaseFile}"));
+        services.AddDbContext<BpmnDbContext>(options => options.UseSqlite(
+            $"Data Source={databaseFile};Pooling=False"));
         services.AddScoped<IRuntimeMetricsReader, RuntimeMetricsReader>();
         var provider = services.BuildServiceProvider();
         await using var scope = provider.CreateAsyncScope();

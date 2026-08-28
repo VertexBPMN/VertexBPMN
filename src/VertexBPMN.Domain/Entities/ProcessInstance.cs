@@ -21,5 +21,7 @@ public class ProcessInstance
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime LastModified { get; set; } = DateTime.UtcNow;
     public long Revision { get; set; }
+    public Guid? ParentProcessInstanceId { get; set; }
+    public string? CallingActivityId { get; set; }
     public ProcessDefinition ProcessDefinition { get; set; } = null!;
 }

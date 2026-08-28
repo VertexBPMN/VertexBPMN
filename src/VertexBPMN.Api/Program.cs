@@ -41,15 +41,6 @@ builder.Configuration.GetSection("Dependencies").Bind(dependencyOptions);
 // Resolve operational mode
 var opMode = builder.Environment.ResolveOperationalMode(builder.Configuration);
 
-if (opMode is OperationalMode.Production or OperationalMode.Stage &&
-	(advancedFeatureOptions.SimulationExecution ||
-	 advancedFeatureOptions.LiveProcessMigration ||
-	 advancedFeatureOptions.CmmnExecution))
-{
-	throw new InvalidOperationException(
-		"AdvancedFeatures execution flags cannot be enabled in Production or Stage until the corresponding feature has passed its qualification gate.");
-}
-
 builder.Services.AddScoped<IMultiInstanceExecutionRepository, MultiInstanceExecutionRepository>();
 builder.Services.AddScoped<IProcessMigrationService>(sp =>
 	new ProcessMigrationService(

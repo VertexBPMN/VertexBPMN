@@ -2,10 +2,12 @@ namespace VertexBPMN.Api.Dto
 {
     public class SimulationRequestDto
     {
-    public string? BpmnXml { get; set; }
-    public string ProcessDefinitionId { get; set; } = string.Empty;
-    public Dictionary<string, object> Variables { get; set; } = new();
-    public int? MaxSteps { get; set; }
-    public string TenantId { get; set; } = string.Empty;
+        public string? BpmnXml { get; set; }
+        public string ProcessDefinitionId { get; set; } = string.Empty;
+        public Dictionary<string, object> Variables { get; set; } = new();
+        public int? MaxSteps { get; set; }
+        public string TenantId { get; set; } = string.Empty;
+        public Dictionary<string, string> EventSelections { get; set; } = new();
+        public Dictionary<string, string> CalledProcessDefinitions { get; set; } = new();
     }
 }

@@ -13,19 +13,24 @@ public class ProcessInstanceTests : IAsyncLifetime
 
     public ProcessInstanceTests(SharedSqliteDbFixture fixture) => _fixture = fixture;
 
-    public async ValueTask InitializeAsync()
+    public  ValueTask InitializeAsync()
     {
-        _scope = new TestTransactionScope(_fixture);
-        await _scope.InitializeAsync();
+        //_scope = new TestTransactionScope(_fixture);
+        //await _scope.InitializeAsync();
         _ctx = new BpmnDbContext(_fixture.BpmnOptions);
+        return ValueTask.CompletedTask;
     }
 
-    public async ValueTask DisposeAsync() => await _scope!.DisposeAsync();
+    public async ValueTask DisposeAsync() => await _ctx.DisposeAsync();
 
     [Fact]
     public async Task CanQuerySeedProcessInstance()
     {
-        var pi = await _ctx.ProcessInstances.FirstOrDefaultAsync(p => p.InstanceId == "sample-instance-1");
-        Assert.NotNull(pi);
+        var processInstance = await _ctx.ProcessInstances
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                p => p.InstanceId == "sample-instance-1");
+
+        Assert.NotNull(processInstance);
     }
 }

@@ -55,19 +55,6 @@ public class RuntimeService : IRuntimeService
         if (def == null) throw new InvalidOperationException($"Process definition with key '{processDefinitionKey}' not found.");
         var instance = await _executionRuntime.StartAsync(
             def, variables, businessKey, tenantId, idempotencyKey, cancellationToken);
-        // Emit process mining event
-        await _eventSink.EmitAsync(new ProcessMiningEvent
-        {
-            EventType = "ProcessStarted",
-            ProcessInstanceId = instance.Id.ToString(),
-            TenantId = tenantId,
-            Timestamp = DateTimeOffset.UtcNow,
-            PayloadJson = System.Text.Json.JsonSerializer.Serialize(new
-            {
-                processDefinitionKey,
-                variables = variables ?? new Dictionary<string, object>()
-            })
-        }, cancellationToken);
         return instance;
     }
 

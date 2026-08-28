@@ -7,4 +7,6 @@ public class ProcessInstanceState
     public string State { get; set; } = string.Empty;
     public Guid ProcessDefinitionId { get; set; }
     public string ProcessId { get; set; } = string.Empty;
+    public List<string> ActiveTokens { get; set; } = new();
+    public List<string> ActiveTasks { get; set; } = new();
 }

@@ -19,6 +19,10 @@
 		<PackageReference Include="RabbitMQ.Client" Version="7.2.2" />
 		<PackageReference Include="SendGrid" Version="9.29.3" />
 	</ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="FeelRuntime\feelin.bundle.js" LogicalName="VertexBPMN.Application.FeelRuntime.feelin.bundle.js" />
+    <EmbeddedResource Include="FeelRuntime\THIRD-PARTY-NOTICES.md" LogicalName="VertexBPMN.Application.FeelRuntime.THIRD-PARTY-NOTICES.md" />
+  </ItemGroup>
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

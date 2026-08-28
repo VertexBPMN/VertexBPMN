@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using VertexBPMN.Application;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Domain.Model.Bpmn;
 using VertexBPMN.Domain.Model.Cmn;
@@ -159,6 +160,11 @@ public partial class ProcessEngine : IProcessEngine
         }
 
         var decision = await _dmnParser.ParseAsync(dmnXml);
+        if (!string.IsNullOrWhiteSpace(decision.SourceXml))
+        {
+            _ = DmnDecisionGraph.Parse(decision.SourceXml, decisionId);
+            decision = decision with { EvaluationTargetId = decisionId };
+        }
         _registeredDecisions[decisionId] = decision;
     }
 

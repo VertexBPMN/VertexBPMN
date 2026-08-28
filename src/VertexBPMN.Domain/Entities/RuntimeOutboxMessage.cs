@@ -13,6 +13,7 @@ public sealed class RuntimeOutboxMessage
     public string? TenantId { get; set; }
     public DateTime OccurredAt { get; set; } = DateTime.UtcNow;
     public DateTime? PublishedAt { get; set; }
+    public DateTime? AnalyticsProjectedAt { get; set; }
     public int Attempts { get; set; }
     public string? LockOwner { get; set; }
     public DateTime? LockedUntil { get; set; }

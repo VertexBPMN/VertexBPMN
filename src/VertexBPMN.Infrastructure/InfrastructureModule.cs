@@ -36,6 +36,9 @@ public static class InfrastructureModule
         services.AddScoped<ISimulationScenarioService, SimulationScenarioService>();
         services.AddScoped<IMessageDispatcher, PersistentMessageDispatcher>();
         services.AddScoped<PersistentProcessMiningEventSink>();
+        services.AddSingleton<RuntimeOutboxAnalyticsProjectionService>();
+        services.AddHostedService(serviceProvider =>
+            serviceProvider.GetRequiredService<RuntimeOutboxAnalyticsProjectionService>());
         services.AddScoped<IRuntimeMetricsReader, RuntimeMetricsReader>();
         services.AddSingleton<RuntimeMetricsState>();
         if (mode != "Test" && configuration.GetValue("Operational:Metrics:Enabled", true))
@@ -77,6 +80,8 @@ public static class InfrastructureModule
     {
         var options = new RuntimeOutboxOptions();
         configuration.GetSection("Runtime:Outbox").Bind(options);
+        options.ConnectionString ??=
+            configuration.GetConnectionString("messaging");
         var productionMode = mode is "Production" or "Stage";
         var provider = options.Provider.Trim().ToLowerInvariant();
 
@@ -190,10 +195,10 @@ public static class InfrastructureModule
             switch (provider)
             {
                 case "npgsql":
-                    options.UseNpgsql(connectionString);
+                    options.UseVertexNpgsql(connectionString);
                     break;
                 case "sqlserver":
-                    options.UseSqlServer(connectionString);
+                    options.UseVertexSqlServer(connectionString);
                     break;
                 case "sqlite":
                 default:

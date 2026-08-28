@@ -1,6 +1,6 @@
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
-using VertexBPMN.Api.Features;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 
@@ -12,11 +12,9 @@ namespace VertexBPMN.Api.Controllers
     public class SimulationAnalyticsController : ControllerBase
     {
         private readonly ISemanticValidationService _validationService;
-        private readonly AdvancedFeatureOptions _features;
-        public SimulationAnalyticsController(ISemanticValidationService validationService, IOptions<AdvancedFeatureOptions> features)
+        public SimulationAnalyticsController(ISemanticValidationService validationService)
         {
             _validationService = validationService;
-            _features = features.Value;
         }
         /// <summary>
         /// Compares two simulation results and returns differences in steps, variables, and outcomes.
@@ -24,9 +22,10 @@ namespace VertexBPMN.Api.Controllers
         [HttpPost("compare")]
         public ActionResult<SimulationComparisonDto> CompareScenarios([FromBody] SimulationComparisonRequestDto request)
         {
-            if (!_features.SimulationExecution) return SimulationUnavailable();
             var resultA = request.ResultA;
             var resultB = request.ResultB;
+            if (!IsEngineResult(resultA) || !IsEngineResult(resultB))
+                return InvalidSimulationResult();
             var stepDiff = (resultA?.Steps?.Count ?? 0) - (resultB?.Steps?.Count ?? 0);
             var variableDiff = new Dictionary<string, (object? A, object? B)>();
             var allVars = (resultA?.Steps?.LastOrDefault()?.Variables?.Keys ?? Enumerable.Empty<string>())
@@ -55,7 +54,7 @@ namespace VertexBPMN.Api.Controllers
         [HttpPost("variable-trace/{variableName}")]
         public ActionResult<List<VariableTraceDto>> GetVariableTrace([FromBody] SimulationResult result, string variableName)
         {
-            if (!_features.SimulationExecution) return SimulationUnavailable();
+            if (!IsEngineResult(result)) return InvalidSimulationResult();
             var trace = result.Steps?.Select(s => new VariableTraceDto
             {
                 StepNumber = s.StepNumber,
@@ -71,7 +70,7 @@ namespace VertexBPMN.Api.Controllers
         [HttpPost("steps")]
         public ActionResult<List<SimulationStepAnalyticsDto>> GetStepBreakdown([FromBody] SimulationResult result)
         {
-            if (!_features.SimulationExecution) return SimulationUnavailable();
+            if (!IsEngineResult(result)) return InvalidSimulationResult();
             var steps = result.Steps?.Select(s => new SimulationStepAnalyticsDto
             {
                 StepNumber = s.StepNumber,
@@ -90,7 +89,7 @@ namespace VertexBPMN.Api.Controllers
         [HttpPost("summary")]
         public ActionResult<SimulationAnalyticsSummaryDto> GetSummary([FromBody] SimulationResult result)
         {
-            if (!_features.SimulationExecution) return SimulationUnavailable();
+            if (!IsEngineResult(result)) return InvalidSimulationResult();
             var summary = new SimulationAnalyticsSummaryDto
             {
                 ProcessDefinitionId = result.ProcessDefinitionId,
@@ -103,10 +102,25 @@ namespace VertexBPMN.Api.Controllers
             return Ok(new { Summary = summary, Diagnostics = diagnostics });
         }
 
-        private ObjectResult SimulationUnavailable() => Problem(
-            statusCode: StatusCodes.Status501NotImplemented,
-            title: "Simulation analytics are not qualified for production use",
-            detail: "Simulation analytics are disabled because their source simulation is not yet engine-backed and deterministic.");
+        private static bool IsEngineResult(SimulationResult? result)
+        {
+            if (result is null
+                || string.IsNullOrWhiteSpace(result.BpmnXml)
+                || string.IsNullOrWhiteSpace(result.DefinitionHash)
+                || result.Steps is null)
+                return false;
+            var expectedHash = Convert.ToHexString(
+                SHA256.HashData(Encoding.UTF8.GetBytes(result.BpmnXml)));
+            return string.Equals(expectedHash, result.DefinitionHash, StringComparison.Ordinal)
+                   && result.Steps.Select((step, index) => step.StepNumber == index + 1
+                                                           && !string.IsNullOrWhiteSpace(step.ActivityId))
+                       .All(valid => valid);
+        }
+
+        private ObjectResult InvalidSimulationResult() => Problem(
+            statusCode: StatusCodes.Status400BadRequest,
+            title: "Simulation result is invalid",
+            detail: "Analytics require an engine-produced result with matching BPMN definition hash and a contiguous step trace.");
     }
 
     public class SimulationStepAnalyticsDto

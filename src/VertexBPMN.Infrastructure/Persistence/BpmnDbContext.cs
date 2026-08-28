@@ -39,6 +39,7 @@ public class BpmnDbContext : DbContext
     public DbSet<WorkflowTrigger> WorkflowTriggers => Set<WorkflowTrigger>();
     public DbSet<FormDefinitionRecord> FormDefinitions => Set<FormDefinitionRecord>();
     public DbSet<CaseDefinitionRecord> CaseDefinitions => Set<CaseDefinitionRecord>();
+    public DbSet<CaseInstanceRecord> CaseInstances => Set<CaseInstanceRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -67,6 +68,7 @@ public class BpmnDbContext : DbContext
         ConfigureFormDefinitions(modelBuilder);
         ConfigureCaseDefinitions(modelBuilder);
 
+        ConfigureCaseInstances(modelBuilder);
         // Only identity bootstrap data is seeded. Runtime state must exclusively be
         // created by deployments and process execution; a due sample job would be
         // indistinguishable from real work to every production worker.
@@ -289,6 +291,7 @@ public class BpmnDbContext : DbContext
         entity.Property(e => e.State).IsRequired().HasMaxLength(50);
         entity.Property(e => e.InstanceId).IsRequired().HasMaxLength(255);
         entity.Property(e => e.ProcessId).IsRequired().HasMaxLength(255);
+        entity.Property(e => e.CallingActivityId).HasMaxLength(255);
         entity.Property(e => e.Revision).IsConcurrencyToken();
 
         entity.Property(e => e.Variables)
@@ -316,6 +319,7 @@ public class BpmnDbContext : DbContext
         entity.HasIndex(e => e.TenantId);
         entity.HasIndex(e => e.State);
         entity.HasIndex(e => e.StartedAt);
+        entity.HasIndex(e => e.ParentProcessInstanceId);
     }
 
     private static void ConfigureExecutionToken(ModelBuilder modelBuilder)
@@ -407,6 +411,11 @@ public class BpmnDbContext : DbContext
         entity.Property(e => e.FormKey).HasMaxLength(255);
         entity.Property(e => e.ActivityId).IsRequired().HasMaxLength(255);
         entity.Property(e => e.Revision).IsConcurrencyToken();
+        entity.Property(e => e.LocalVariables)
+            .HasConversion(
+                value => JsonSerializer.Serialize(value, (JsonSerializerOptions)null!),
+                value => JsonSerializer.Deserialize<Dictionary<string, object>>(value, (JsonSerializerOptions)null!)
+                         ?? new Dictionary<string, object>());
 
         // FK -> ProcessInstance
         entity.HasOne<ProcessInstance>()
@@ -418,6 +427,7 @@ public class BpmnDbContext : DbContext
         entity.HasIndex(e => e.Type);
         entity.HasIndex(e => e.TenantId);
         entity.HasIndex(e => e.Assignee);
+        entity.HasIndex(e => e.MultiInstanceExecutionId);
         entity.HasIndex(e => new { e.ProcessInstanceId, e.ActivityId, e.Status });
     }
 
@@ -431,6 +441,22 @@ public class BpmnDbContext : DbContext
     {
         var entity = modelBuilder.Entity<CaseDefinitionRecord>();
         entity.HasKey(x => x.Id); entity.Property(x => x.TenantId).HasMaxLength(64).IsRequired(); entity.Property(x => x.Key).HasMaxLength(128).IsRequired(); entity.Property(x => x.Name).HasMaxLength(256).IsRequired(); entity.Property(x => x.CmmnXml).IsRequired(); entity.HasIndex(x => new { x.TenantId, x.Key }).IsUnique();
+    }
+
+    private static void ConfigureCaseInstances(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<CaseInstanceRecord>();
+        entity.HasKey(x => x.Id);
+        entity.Property(x => x.CaseDefinitionId).HasMaxLength(128).IsRequired();
+        entity.Property(x => x.CaseDefinitionKey).HasMaxLength(128).IsRequired();
+        entity.Property(x => x.TenantId).HasMaxLength(64).IsRequired();
+        entity.Property(x => x.State).HasMaxLength(32).IsRequired();
+        entity.Property(x => x.CaseFileJson).IsRequired();
+        entity.Property(x => x.PlanItemStatesJson).IsRequired();
+        entity.Property(x => x.DiscretionaryItemsJson).IsRequired();
+        entity.Property(x => x.Revision).IsConcurrencyToken();
+        entity.HasIndex(x => x.CaseDefinitionId);
+        entity.HasIndex(x => new { x.TenantId, x.CaseDefinitionKey, x.State });
     }
 
     private static void ConfigureHistoryEvent(ModelBuilder modelBuilder)
@@ -464,12 +490,14 @@ public class BpmnDbContext : DbContext
         entity.Property(e => e.EventType).IsRequired().HasMaxLength(32);
         entity.Property(e => e.EventName).IsRequired().HasMaxLength(255);
         entity.Property(e => e.State).IsRequired().HasMaxLength(32);
+        entity.Property(e => e.ActiveKey).HasMaxLength(320);
         entity.Property(e => e.TenantId).HasMaxLength(64);
         entity.Property(e => e.Revision).IsConcurrencyToken();
         entity.HasOne<ProcessInstance>().WithMany().HasForeignKey(e => e.ProcessInstanceId).OnDelete(DeleteBehavior.Cascade);
         entity.HasOne<ExecutionToken>().WithMany().HasForeignKey(e => e.ExecutionTokenId).OnDelete(DeleteBehavior.Cascade);
         entity.HasIndex(e => new { e.EventType, e.EventName, e.State, e.TenantId });
-        entity.HasIndex(e => new { e.ProcessInstanceId, e.ActivityId, e.State }).IsUnique();
+        entity.HasIndex(e => new { e.ProcessInstanceId, e.ActivityId, e.State });
+        entity.HasIndex(e => e.ActiveKey).IsUnique();
     }
 
     private static void ConfigureRuntimeMessaging(ModelBuilder modelBuilder)
@@ -537,6 +565,12 @@ public class BpmnDbContext : DbContext
 
         entity.HasKey(e => e.Id);
         entity.Property(e => e.ActivityId).IsRequired().HasMaxLength(255);
+        entity.Property(e => e.ItemsJson).IsRequired();
+        entity.Property(e => e.ElementVariable).HasMaxLength(255);
+        entity.Property(e => e.CompletionCondition).HasMaxLength(2000);
+        entity.Property(e => e.OutputCollection).HasMaxLength(255);
+        entity.Property(e => e.State).IsRequired().HasMaxLength(32);
+        entity.Property(e => e.Revision).IsConcurrencyToken();
 
         // FK -> ProcessInstance
         entity.HasOne<ProcessInstance>()
@@ -546,7 +580,7 @@ public class BpmnDbContext : DbContext
 
         entity.HasIndex(e => e.ProcessInstanceId);
         entity.HasIndex(e => e.ActivityId);
-        entity.HasIndex(e => new { e.ProcessInstanceId, e.ActivityId });
+        entity.HasIndex(e => new { e.ProcessInstanceId, e.ActivityId, e.State });
     }
 
     private static void ConfigureUser(ModelBuilder modelBuilder)

@@ -23,6 +23,7 @@ public class CustomWebApplicationFactory : WebApplicationFactory<VertexBPMN.Api.
     private string _engineType = "Simple";
     private bool _backgroundJobsEnabled;
     private bool _cmmnExecutionEnabled;
+    private bool _liveProcessMigrationEnabled;
     private readonly List<SqliteConnection> _ownedConnections = new();
     private readonly string _databaseId = Guid.NewGuid().ToString("N");
     private SharedSqliteDbFixture? _sharedFixture;
@@ -54,6 +55,14 @@ public class CustomWebApplicationFactory : WebApplicationFactory<VertexBPMN.Api.
         _cmmnExecutionEnabled = true;
         _configureTestServices += services =>
             services.PostConfigure<AdvancedFeatureOptions>(options => options.CmmnExecution = true);
+        return this;
+    }
+
+    public CustomWebApplicationFactory WithLiveProcessMigrationEnabled()
+    {
+        _liveProcessMigrationEnabled = true;
+        _configureTestServices += services =>
+            services.PostConfigure<AdvancedFeatureOptions>(options => options.LiveProcessMigration = true);
         return this;
     }
 
@@ -96,6 +105,7 @@ public class CustomWebApplicationFactory : WebApplicationFactory<VertexBPMN.Api.
                     ["ProcessEngine:Type"] = _engineType,
                     ["Modules:Swagger"] = "false",
                     ["AdvancedFeatures:CmmnExecution"] = _cmmnExecutionEnabled.ToString(),
+                    ["AdvancedFeatures:LiveProcessMigration"] = _liveProcessMigrationEnabled.ToString(),
                     ["PathBase"] = "/api"
                 });
         });

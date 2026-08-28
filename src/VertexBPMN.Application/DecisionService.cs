@@ -7,7 +7,8 @@ using VertexBPMN.Domain.Model.Dmn;
 namespace VertexBPMN.Application;
 
 /// <summary>
-/// Persistent lifecycle for the explicitly supported DMN decision-table subset.
+/// Persistent lifecycle for qualified DMN decision tables, literal expressions,
+/// decision-requirements graphs and decision services.
 /// </summary>
 public class DecisionService : IDecisionService
 {
@@ -91,17 +92,12 @@ public class DecisionService : IDecisionService
         {
             _logger.LogDebug("Deploying decision {DecisionKey} for tenant {TenantId}", decisionKey, tenantId ?? "default");
 
-            // Parse and validate DMN XML
-            var decisionTable = DmnDecisionTable.Parse(dmnXml);
-
-            ValidateDecisionTable(decisionTable);
-
-            var definition = new DecisionDefinition(decisionKey, name, dmnXml, tenantId, decisionTable);
+            _ = DmnDecisionGraph.Parse(dmnXml, decisionKey);
+            var definition = new DecisionDefinition(decisionKey, name, dmnXml, tenantId);
             await _repository.UpsertDefinitionAsync(definition);
             await _repository.SaveChangesAsync();
 
-            _logger.LogInformation("Successfully deployed decision {DecisionKey} with {InputCount} inputs and {RuleCount} rules",
-                decisionKey, decisionTable.Inputs.Count, decisionTable.Rules.Count);
+            _logger.LogInformation("Successfully deployed validated DMN decision graph {DecisionKey}", decisionKey);
         }
         catch (Exception ex)
         {
@@ -124,26 +120,8 @@ public class DecisionService : IDecisionService
 
     private DecisionResult EvaluateDecisionTable(DecisionDefinition definition, IDictionary<string, object> variables)
     {
-        if (definition.DecisionTable == null)
-        {
-            _logger.LogWarning("Decision {DecisionKey} has no decision table", definition.Key);
-            return new DecisionResult(variables);
-        }
-
-        var readonlyVariables = variables.ToDictionary(kv => kv.Key, kv => kv.Value);
-        var result = definition.DecisionTable.Evaluate(readonlyVariables);
+        var result = DmnDecisionGraph.Parse(definition.DmnXml, definition.Key).Evaluate(variables);
         return new DecisionResult(result);
     }
 
-    private static void ValidateDecisionTable(DmnDecisionTable table)
-    {
-        if (!DmnDecisionTable.SupportedApiHitPolicies.Contains(table.HitPolicy.ToUpperInvariant()))
-            throw new InvalidOperationException($"DMN hit policy '{table.HitPolicy}' is outside the supported API subset");
-        if (table.Inputs.Count == 0)
-            throw new InvalidOperationException($"Decision table '{table.Key}' must have at least one input");
-        if (table.Outputs.Count == 0)
-            throw new InvalidOperationException($"Decision table '{table.Key}' must have at least one output");
-        if (table.Rules.Count == 0)
-            throw new InvalidOperationException($"Decision table '{table.Key}' must have at least one rule");
-    }
 }

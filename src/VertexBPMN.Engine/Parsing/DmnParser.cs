@@ -41,16 +41,31 @@ public class DmnParser : IDmnParser
             var decisionName = decision.Attribute("name")?.Value ?? decisionId;
 
             // Parse Hit Policy
-            var decisionTable = decision.Element(ns + "decisionTable")
-                ?? throw new DmnParseException("No decisionTable element found");
+            var decisionTable = decision.Element(ns + "decisionTable");
+            if (decisionTable is null)
+            {
+                if (decision.Element(ns + "literalExpression") is null)
+                    throw new DmnParseException("Decision contains no supported boxed expression");
+
+                var literalModel = new DmnDecision(
+                    decisionId,
+                    decisionName,
+                    [],
+                    [],
+                    [],
+                    SourceXml: dmnXml,
+                    EvaluationTargetId: decisionId);
+                _logger.LogInformation("Parsed DMN literal decision {DecisionId}", decisionId);
+                return literalModel;
+            }
             var hitPolicy = decisionTable.Attribute("hitPolicy")?.Value?.ToUpper() ?? "UNIQUE";
-            if (!new[] { "UNIQUE", "FIRST", "PRIORITY", "COLLECT" }.Contains(hitPolicy))
+            if (!new[] { "UNIQUE", "FIRST", "PRIORITY", "ANY", "COLLECT", "RULE ORDER", "OUTPUT ORDER" }.Contains(hitPolicy))
                 throw new DmnParseException($"Unsupported hit policy: {hitPolicy}");
 
             // Parse Inputs (support both DMN forms: with <inputExpression> and direct attributes)
-            var inputs = decisionTable.Descendants(ns + "input").Select(input =>
+            var inputs = decisionTable.Elements(ns + "input").Select((input, index) =>
             {
-                var inputId = input.Attribute("id")?.Value ?? throw new DmnParseException("Input ID missing");
+                var inputId = input.Attribute("id")?.Value ?? $"input-{index + 1}";
                 var inputExpression = input.Element(ns + "inputExpression");
                 // Determine typeRef with fallbacks
                 var typeRef = inputExpression?.Element(ns + "typeRef")?.Value
@@ -65,28 +80,27 @@ public class DmnParser : IDmnParser
             }).ToList();
 
             // Parse Outputs
-            var outputs = decisionTable.Descendants(ns + "output").Select(output => new DmnOutput(
-                output.Attribute("id")?.Value ?? throw new DmnParseException("Output ID missing"),
-                output.Attribute("label")?.Value ?? output.Attribute("id")?.Value ?? "",
+            var outputs = decisionTable.Elements(ns + "output").Select((output, index) => new DmnOutput(
+                output.Attribute("id")?.Value ?? $"output-{index + 1}",
+                output.Attribute("name")?.Value ?? output.Attribute("label")?.Value ?? output.Attribute("id")?.Value ?? $"output-{index + 1}",
                 output.Attribute("typeRef")?.Value ?? "string"
             )).ToList();
 
             // Parse Rules
-            var rules = decisionTable.Descendants(ns + "rule").Select(rule =>
+            var rules = decisionTable.Elements(ns + "rule").Select((rule, ruleIndex) =>
             {
-                var ruleId = rule.Attribute("id")?.Value ?? throw new DmnParseException("Rule ID missing");
-                var inputConditions = rule.Descendants(ns + "inputEntry").Select(entry =>
-                {
-                    var inputRef = entry.Attribute("id")?.Value ?? throw new DmnParseException($"InputEntry in rule {ruleId} missing ID");
-                    return KeyValuePair.Create(inputRef, entry.Element(ns + "text")?.Value ?? "-");
-                }).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+                var ruleId = rule.Attribute("id")?.Value ?? $"rule-{ruleIndex + 1}";
+                var inputConditions = rule.Elements(ns + "inputEntry")
+                    .Select((entry, index) => KeyValuePair.Create(
+                        index < inputs.Count ? inputs[index].Id : $"input-{index + 1}",
+                        entry.Element(ns + "text")?.Value ?? entry.Value ?? "-"))
+                    .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
 
-                var outputValues = rule.Descendants(ns + "outputEntry").Select(entry =>
-                {
-                    var outputRef = entry.Attribute("id")?.Value ?? throw new DmnParseException($"OutputEntry in rule {ruleId} missing ID");
-                    var value = entry.Element(ns + "text")?.Value ?? "";
-                    return KeyValuePair.Create(outputRef, (object)value);
-                }).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+                var outputValues = rule.Elements(ns + "outputEntry")
+                    .Select((entry, index) => KeyValuePair.Create(
+                        index < outputs.Count ? outputs[index].Id : $"output-{index + 1}",
+                        (object)(entry.Element(ns + "text")?.Value ?? entry.Value ?? "")))
+                    .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
 
                 return new DmnRule(ruleId, inputConditions, outputValues);
             }).ToList();
@@ -94,7 +108,15 @@ public class DmnParser : IDmnParser
             // Validate
             ValidateDecision(decisionId, inputs, outputs, rules, hitPolicy);
 
-            var decisionModel = new DmnDecision(decisionId, decisionName, inputs, outputs, rules, hitPolicy);
+            var decisionModel = new DmnDecision(
+                decisionId,
+                decisionName,
+                inputs,
+                outputs,
+                rules,
+                hitPolicy,
+                dmnXml,
+                decisionId);
             _logger.LogInformation("Parsed DMN decision {DecisionId} with hit policy {HitPolicy}", decisionId, hitPolicy);
             return decisionModel;
         }

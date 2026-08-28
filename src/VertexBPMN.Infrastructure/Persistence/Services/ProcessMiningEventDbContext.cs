@@ -12,6 +12,7 @@ namespace VertexBPMN.Infrastructure.Persistence.Services
         {
             var entity = modelBuilder.Entity<ProcessMiningEvent>();
             entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.SourceEventId).IsUnique();
             entity.Property(e => e.EventType).HasMaxLength(200).IsRequired();
             entity.Property(e => e.ProcessInstanceId).HasMaxLength(100).IsRequired();
             entity.Property(e => e.TaskId).HasMaxLength(100);

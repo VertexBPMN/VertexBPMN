@@ -14,7 +14,10 @@ namespace VertexBPMN.Tests.Integration.Dmn
                 key: "d1",
                 name: "Test",
                 inputs: new List<DmnInput> { new DmnInput("i1", "input1") },
-                outputs: new List<DmnOutput> { new DmnOutput("o1", "output1") },
+                outputs: new List<DmnOutput>
+                {
+                    new("o1", "output1", "string", new object[] { "A", "B", "C" })
+                },
                 rules: new List<DmnRule>
                 {
                     new DmnRule(new List<string> { "1" }, new List<string> { "B" }),

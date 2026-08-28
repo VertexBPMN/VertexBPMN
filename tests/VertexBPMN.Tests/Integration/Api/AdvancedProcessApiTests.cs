@@ -31,7 +31,27 @@ public class AdvancedProcessApiTests
         dmnPost.EnsureSuccessStatusCode();
 
         // Deploy BPMN with multi-instance subprocess and businessRuleTask
-        const string bpmn = @"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='P2'><startEvent id='start1'/><subProcess id='sub1'><multiInstanceLoopCharacteristics/></subProcess><businessRuleTask id='brt1'/><endEvent id='end1'/><sequenceFlow id='f1' sourceRef='start1' targetRef='sub1'/><sequenceFlow id='f2' sourceRef='sub1' targetRef='brt1'/><sequenceFlow id='f3' sourceRef='brt1' targetRef='end1'/></process></definitions>";
+        const string bpmn  = """
+                                               <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
+                                                 <process id="P2">
+                                                   <startEvent id="start1"/>
+
+                                                   <subProcess id="sub1">
+                                                     <multiInstanceLoopCharacteristics isSequential="false">
+                                                       <loopCardinality>2</loopCardinality>
+                                                     </multiInstanceLoopCharacteristics>
+                                                   </subProcess>
+
+                                                   <businessRuleTask id="brt1"/>
+
+                                                   <endEvent id="end1"/>
+
+                                                   <sequenceFlow id="f1" sourceRef="start1" targetRef="sub1"/>
+                                                   <sequenceFlow id="f2" sourceRef="sub1" targetRef="brt1"/>
+                                                   <sequenceFlow id="f3" sourceRef="brt1" targetRef="end1"/>
+                                                 </process>
+                                               </definitions>
+                                               """;
         var deployBpmn = new { bpmnXml = bpmn, name = "AdvancedProcess", tenantId = (string?)null };
         var bpmnPost = await _client.PostAsJsonAsync("/api/repository", deployBpmn);
         bpmnPost.EnsureSuccessStatusCode();

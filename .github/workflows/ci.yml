@@ -17,7 +17,7 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - uses: actions/dependency-review-action@v5
       with:
         fail-on-severity: high
@@ -26,11 +26,11 @@ jobs:
     name: NuGet and npm audit
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - uses: actions/setup-dotnet@v6
       with:
         global-json-file: global.json
-    - uses: actions/setup-node@v6
+    - uses: actions/setup-node@v7
       with:
         node-version: '22.x'
         cache: npm
@@ -57,7 +57,7 @@ jobs:
       matrix:
         language: [csharp, javascript-typescript]
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - uses: github/codeql-action/init@v4
       with:
         languages: ${{ matrix.language }}
@@ -79,11 +79,11 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - uses: actions/setup-dotnet@v6
       with:
         global-json-file: global.json
-    - uses: actions/setup-node@v6
+    - uses: actions/setup-node@v7
       with:
         node-version: '22.x'
         cache: npm
@@ -124,7 +124,7 @@ jobs:
       shell: bash
       run: bash scripts/verify-openapi-snapshot.sh
     - if: runner.os == 'Linux'
-      uses: azure/setup-kubectl@v4
+      uses: azure/setup-kubectl@v5
       with:
         version: 'v1.33.4'
     - name: Validate Kubernetes manifests
@@ -140,7 +140,7 @@ jobs:
         dotnet pack src/VertexBPMN.Sdk/VertexBPMN.Sdk.csproj --configuration Release --no-build --output artifacts/nuget
         dotnet pack src/VertexBPMN.Cli/VertexBPMN.Cli.csproj --configuration Release --no-build --output artifacts/nuget
     - if: runner.os == 'Linux'
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: vertexbpmn-nuget
         path: artifacts/nuget/*
@@ -148,14 +148,14 @@ jobs:
         retention-days: 14
     - name: Build API container
       if: runner.os == 'Linux'
-      uses: docker/build-push-action@v6
+      uses: docker/build-push-action@v7
       with:
         context: .
         push: false
         tags: vertexbpmn:ci
     - name: Build Studio container
       if: runner.os == 'Linux'
-      uses: docker/build-push-action@v6
+      uses: docker/build-push-action@v7
       with:
         context: .
         file: src/VertexBPMN.Studio/Dockerfile
@@ -166,11 +166,11 @@ jobs:
     name: Coverage, secret, SBOM and container gates
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - uses: actions/setup-dotnet@v6
       with:
         global-json-file: global.json
-    - uses: actions/setup-node@v6
+    - uses: actions/setup-node@v7
       with:
         node-version: '22.x'
         cache: npm
@@ -189,7 +189,7 @@ jobs:
       shell: bash
       run: bash scripts/verify-coverage.sh
     - name: Scan dependencies, secrets and configuration
-      uses: aquasecurity/trivy-action@0.33.1
+      uses: aquasecurity/trivy-action@v0.36.0
       with:
         scan-type: fs
         scan-ref: .
@@ -202,7 +202,7 @@ jobs:
     - name: Build Studio release container
       run: docker build --file src/VertexBPMN.Studio/Dockerfile --tag vertexbpmn-studio:${{ github.sha }} .
     - name: Scan API release container
-      uses: aquasecurity/trivy-action@0.33.1
+      uses: aquasecurity/trivy-action@v0.36.0
       with:
         image-ref: vertexbpmn:${{ github.sha }}
         scanners: vuln,secret,misconfig
@@ -210,7 +210,7 @@ jobs:
         ignore-unfixed: true
         exit-code: '1'
     - name: Scan Studio release container
-      uses: aquasecurity/trivy-action@0.33.1
+      uses: aquasecurity/trivy-action@v0.36.0
       with:
         image-ref: vertexbpmn-studio:${{ github.sha }}
         scanners: vuln,secret,misconfig
@@ -258,7 +258,7 @@ jobs:
       VERTEXBPMN_TEST_RABBITMQ: amqp://guest:guest@localhost:5672/
       VERTEXBPMN_TEST_POSTGRES_ADMIN: Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=vertexbpmn-ci
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - uses: actions/setup-dotnet@v6
       with:
         global-json-file: global.json
@@ -273,13 +273,13 @@ jobs:
     needs: [build, dependency-audit, codeql, supply-chain, operational-integration]
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
       with:
         fetch-depth: 0
     - uses: actions/setup-dotnet@v6
       with:
         global-json-file: global.json
-    - uses: actions/setup-node@v6
+    - uses: actions/setup-node@v7
       with:
         node-version: '22.x'
         cache: npm
@@ -317,7 +317,7 @@ jobs:
     - name: Pack reproducible release artifacts
       shell: bash
       run: bash scripts/verify-reproducible-packages.sh "${GITHUB_REF_NAME#v}"
-    - uses: actions/upload-artifact@v6
+    - uses: actions/upload-artifact@v7
       with:
         name: vertexbpmn-release-nuget
         path: |
@@ -337,7 +337,7 @@ jobs:
       attestations: write
       artifact-metadata: write
     steps:
-    - uses: actions/download-artifact@v7
+    - uses: actions/download-artifact@v8
       with:
         name: vertexbpmn-release-nuget
         path: artifacts/nuget

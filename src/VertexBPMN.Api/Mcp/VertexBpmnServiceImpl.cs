@@ -1,91 +1,130 @@
+using System.Security.Claims;
+using System.Text.Json;
 using Grpc.Core;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.Extensions.Options;
-using VertexBPMN.Api.Features;
 using VertexBPMN.Api.Grpc;
+using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 
 namespace VertexBPMN.Api.Mcp;
 
 [Authorize]
-public class VertexBpmnServiceImpl : VertexBPMNService.VertexBPMNServiceBase
+public sealed class VertexBpmnServiceImpl(
+    ICaseExecutionRuntime cases,
+    ILogger<VertexBpmnServiceImpl> logger) : VertexBPMNService.VertexBPMNServiceBase
 {
-    private readonly IProcessEngine _engine;
-    private readonly ILogger<VertexBpmnServiceImpl> _logger;
-    private readonly AdvancedFeatureOptions _features;
-
-    public VertexBpmnServiceImpl(IProcessEngine engine,
-                                 ILogger<VertexBpmnServiceImpl> logger,
-                                 IOptions<AdvancedFeatureOptions> features)
-    {
-        _engine = engine ?? throw new ArgumentNullException(nameof(engine));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _features = features?.Value ?? throw new ArgumentNullException(nameof(features));
-    }
-
     public override async Task<CmmnResponse> RegisterCmmnModel(RegisterCmmnRequest request, ServerCallContext context)
     {
-        EnsureCmmnExecutionEnabled();
         Validate(request.CaseId, nameof(request.CaseId));
         Validate(request.CmmnXml, nameof(request.CmmnXml));
-        await _engine.RegisterCmmnModelAsync(request.CaseId, request.CmmnXml);
-        return new CmmnResponse { Message = $"CMMN model {request.CaseId} registered" };
+        try
+        {
+            await cases.DeployAsync(request.CaseId, request.CaseId, request.CmmnXml, Tenant(context), context.CancellationToken);
+            return new CmmnResponse { Message = $"CMMN model {request.CaseId} registered" };
+        }
+        catch (Exception exception)
+        {
+            throw Map(exception, logger);
+        }
     }
 
     public override async Task<ExecuteCaseResponse> ExecuteCase(ExecuteCaseRequest request, ServerCallContext context)
     {
-        EnsureCmmnExecutionEnabled();
         Validate(request.CaseId, nameof(request.CaseId));
-        var model = await _engine.GetCmmnModelAsync(request.CaseId);
-        var trace = await _engine.ExecuteCaseAsync(model, context.CancellationToken);
-        var resp = new ExecuteCaseResponse();
-        resp.Trace.AddRange(trace);
-        return resp;
+        try
+        {
+            var result = await cases.StartAsync(request.CaseId, Tenant(context), cancellationToken: context.CancellationToken);
+            var response = new ExecuteCaseResponse { CaseInstanceId = result.Instance.Id.ToString() };
+            response.Trace.AddRange(result.Trace);
+            return response;
+        }
+        catch (Exception exception)
+        {
+            throw Map(exception, logger);
+        }
     }
 
     public override async Task<CmmnResponse> TriggerUserEvent(TriggerEventRequest request, ServerCallContext context)
     {
-        EnsureCmmnExecutionEnabled();
         Validate(request.CaseId, nameof(request.CaseId));
         Validate(request.EventId, nameof(request.EventId));
-
-        var data = new Dictionary<string, object>(request.EventData.Count);
-        foreach (var kv in request.EventData)
-            data[kv.Key] = kv.Value;
-
-        await _engine.TriggerUserEventAsync(request.CaseId, request.EventId, data, context.CancellationToken);
-        return new CmmnResponse { Message = $"Event {request.EventId} triggered for case {request.CaseId}" };
+        try
+        {
+            var instance = await ResolveActiveAsync(request.CaseId, context);
+            var data = request.EventData.ToDictionary(item => item.Key, item => (object)item.Value);
+            await cases.TriggerUserEventAsync(instance.Id, request.EventId, data, Tenant(context), context.CancellationToken);
+            return new CmmnResponse { Message = $"Event {request.EventId} triggered for case {instance.Id}" };
+        }
+        catch (Exception exception)
+        {
+            throw Map(exception, logger);
+        }
     }
 
     public override async Task<CmmnResponse> UpdateCaseFileItem(CaseFileUpdateRequest request, ServerCallContext context)
     {
-        EnsureCmmnExecutionEnabled();
         Validate(request.CaseId, nameof(request.CaseId));
         Validate(request.CaseFileItemId, nameof(request.CaseFileItemId));
-
-        await _engine.UpdateCaseFileItemAsync(request.CaseId, request.CaseFileItemId, request.NewValue, context.CancellationToken);
-        return new CmmnResponse { Message = $"CaseFileItem {request.CaseFileItemId} updated for case {request.CaseId}" };
+        try
+        {
+            var instance = await ResolveActiveAsync(request.CaseId, context);
+            await cases.UpdateCaseFileItemAsync(instance.Id, request.CaseFileItemId, request.NewValue, Tenant(context), context.CancellationToken);
+            return new CmmnResponse { Message = $"CaseFileItem {request.CaseFileItemId} updated for case {instance.Id}" };
+        }
+        catch (Exception exception)
+        {
+            throw Map(exception, logger);
+        }
     }
 
     public override async Task<CmmnResponse> GenerateAdHocSubprocess(GenerateAdHocSubprocessRequest request, ServerCallContext context)
     {
-        EnsureCmmnExecutionEnabled();
         Validate(request.CaseId, nameof(request.CaseId));
-        await _engine.GenerateAdHocSubprocessAsync(request.CaseId, context.CancellationToken);
-        return new CmmnResponse { Message = $"Ad-hoc subprocess generated for case {request.CaseId}" };
+        try
+        {
+            var instance = await ResolveActiveAsync(request.CaseId, context);
+            var planItemId = string.IsNullOrWhiteSpace(request.PlanItemId)
+                ? FirstDiscretionaryItem(instance)
+                : request.PlanItemId;
+            await cases.ActivateDiscretionaryItemAsync(instance.Id, planItemId, Tenant(context), context.CancellationToken);
+            return new CmmnResponse { Message = $"Discretionary item {planItemId} activated for case {instance.Id}" };
+        }
+        catch (Exception exception)
+        {
+            throw Map(exception, logger);
+        }
     }
 
-    private static void Validate(string? value, string field)
+    private async Task<CaseInstanceRecord> ResolveActiveAsync(string identifier, ServerCallContext context) =>
+        await cases.ResolveInstanceAsync(identifier, Tenant(context), context.CancellationToken)
+        ?? throw new KeyNotFoundException($"Active case '{identifier}' was not found.");
+
+    internal static string Tenant(ServerCallContext context) =>
+        context.GetHttpContext().User.FindFirstValue("tenant_id") ?? "default";
+
+    internal static string FirstDiscretionaryItem(CaseInstanceRecord instance)
+    {
+        var states = JsonSerializer.Deserialize<Dictionary<string, string>>(instance.PlanItemStatesJson) ?? [];
+        return states.FirstOrDefault(item => item.Value == "Discretionary").Key
+            ?? throw new InvalidOperationException("The case has no available discretionary item.");
+    }
+
+    internal static void Validate(string? value, string field)
     {
         if (string.IsNullOrWhiteSpace(value))
             throw new RpcException(new Status(StatusCode.InvalidArgument, $"{field} is required"));
     }
 
-    private void EnsureCmmnExecutionEnabled()
+    internal static RpcException Map(Exception exception, ILogger logger)
     {
-        if (!_features.CmmnExecution)
-            throw new RpcException(new Status(
-                StatusCode.Unimplemented,
-                "CMMN execution is not qualified and is disabled."));
+        if (exception is RpcException rpc) return rpc;
+        logger.LogWarning(exception, "CMMN gRPC operation failed");
+        return exception switch
+        {
+            KeyNotFoundException => new RpcException(new Status(StatusCode.NotFound, exception.Message)),
+            InvalidOperationException => new RpcException(new Status(StatusCode.FailedPrecondition, exception.Message)),
+            ArgumentException => new RpcException(new Status(StatusCode.InvalidArgument, exception.Message)),
+            _ => new RpcException(new Status(StatusCode.Internal, "CMMN operation failed."))
+        };
     }
 }

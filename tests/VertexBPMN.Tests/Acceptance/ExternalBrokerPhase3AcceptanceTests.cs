@@ -106,19 +106,19 @@ public sealed class ExternalBrokerPhase3AcceptanceTests
 
             await AssertMigrationsCurrentAsync(new BpmnDbContext(
                 new DbContextOptionsBuilder<BpmnDbContext>()
-                    .UseNpgsql(ConnectionStringFor(adminConnectionString, databaseNames[0])).Options));
+                    .UseVertexNpgsql(ConnectionStringFor(adminConnectionString, databaseNames[0])).Options));
             await AssertMigrationsCurrentAsync(new TenantDbContext(
                 new DbContextOptionsBuilder<TenantDbContext>()
-                    .UseNpgsql(ConnectionStringFor(adminConnectionString, databaseNames[1])).Options));
+                    .UseVertexNpgsql(ConnectionStringFor(adminConnectionString, databaseNames[1])).Options));
             await AssertMigrationsCurrentAsync(new SimulationScenarioDbContext(
                 new DbContextOptionsBuilder<SimulationScenarioDbContext>()
-                    .UseNpgsql(ConnectionStringFor(adminConnectionString, databaseNames[2])).Options));
+                    .UseVertexNpgsql(ConnectionStringFor(adminConnectionString, databaseNames[2])).Options));
             await AssertMigrationsCurrentAsync(new ProcessMiningEventDbContext(
                 new DbContextOptionsBuilder<ProcessMiningEventDbContext>()
-                    .UseNpgsql(ConnectionStringFor(adminConnectionString, databaseNames[3])).Options));
+                    .UseVertexNpgsql(ConnectionStringFor(adminConnectionString, databaseNames[3])).Options));
             await AssertMigrationsCurrentAsync(new DecisionDbContext(
                 new DbContextOptionsBuilder<DecisionDbContext>()
-                    .UseNpgsql(ConnectionStringFor(adminConnectionString, databaseNames[4])).Options));
+                    .UseVertexNpgsql(ConnectionStringFor(adminConnectionString, databaseNames[4])).Options));
         }
         finally
         {
@@ -143,7 +143,8 @@ public sealed class ExternalBrokerPhase3AcceptanceTests
         {
             var connectionString = ConnectionStringFor(adminConnectionString, databaseName);
             await using (var migrationContext = new BpmnDbContext(
-                             new DbContextOptionsBuilder<BpmnDbContext>().UseNpgsql(connectionString).Options))
+                             new DbContextOptionsBuilder<BpmnDbContext>()
+                                 .UseVertexNpgsql(connectionString).Options))
             {
                 await migrationContext.Database.MigrateAsync(TestContext.Current.CancellationToken);
                 migrationContext.RuntimeOutbox.AddRange(Enumerable.Range(0, 40).Select(index =>
@@ -221,8 +222,9 @@ public sealed class ExternalBrokerPhase3AcceptanceTests
             OccurredAt = DateTime.UtcNow
         };
 
-        await Assert.ThrowsAsync<PublishException>(async () =>
+        var exception = await Assert.ThrowsAsync<PublishReturnException>(async () =>
             await transport.PublishAsync(message, TestContext.Current.CancellationToken));
+        Assert.Equal(Constants.NoRoute, exception.ReplyCode);
     }
 
     private static async Task AssertMigrationsCurrentAsync(DbContext context)
@@ -252,7 +254,7 @@ public sealed class ExternalBrokerPhase3AcceptanceTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddDbContext<BpmnDbContext>(options => options.UseNpgsql(connectionString));
+        services.AddDbContext<BpmnDbContext>(options => options.UseVertexNpgsql(connectionString));
         return services.BuildServiceProvider();
     }
 

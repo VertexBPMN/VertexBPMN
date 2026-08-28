@@ -245,13 +245,26 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                     table.PrimaryKey("PK_WorkerRegistrations", x => x.Id);
                 });
 
-            migrationBuilder.Sql(
-                "UPDATE ProcessDefinitions SET TenantScope = CASE " +
-                "WHEN TenantId IS NULL OR trim(TenantId) = '' THEN '$global' " +
-                "ELSE TenantId END;");
-
-            migrationBuilder.Sql(
-                "UPDATE Jobs SET CreatedAt = DueDate WHERE CreatedAt = '0001-01-01 00:00:00';");
+            if (migrationBuilder.ActiveProvider.Contains("SqlServer", StringComparison.Ordinal))
+            {
+                migrationBuilder.Sql(
+                    "UPDATE [ProcessDefinitions] SET [TenantScope] = CASE " +
+                    "WHEN [TenantId] IS NULL OR trim([TenantId]) = '' THEN '$global' " +
+                    "ELSE [TenantId] END;");
+                migrationBuilder.Sql(
+                    "UPDATE [Jobs] SET [CreatedAt] = [DueDate] " +
+                    "WHERE [CreatedAt] = '0001-01-01 00:00:00';");
+            }
+            else
+            {
+                migrationBuilder.Sql(
+                    "UPDATE \"ProcessDefinitions\" SET \"TenantScope\" = CASE " +
+                    "WHEN \"TenantId\" IS NULL OR trim(\"TenantId\") = '' THEN '$global' " +
+                    "ELSE \"TenantId\" END;");
+                migrationBuilder.Sql(
+                    "UPDATE \"Jobs\" SET \"CreatedAt\" = \"DueDate\" " +
+                    "WHERE \"CreatedAt\" = '0001-01-01 00:00:00';");
+            }
 
             migrationBuilder.CreateIndex(
                 name: "IX_Variables_ProcessInstanceId_ScopeId_Name",

@@ -7,5 +7,6 @@ public record PlanItem(
     Dictionary<string, string> Attributes = null,
     List<string> EntrySentryRefs = null,
     List<string> ExitSentryRefs = null,
-    bool IsDiscretionary = false
+    bool IsDiscretionary = false,
+    string ParentPlanItemId = null
 );

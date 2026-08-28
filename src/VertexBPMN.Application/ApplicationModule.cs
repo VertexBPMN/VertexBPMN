@@ -48,7 +48,6 @@ public static class ApplicationModule
         services.AddScoped<IManagementService, ManagementService>();
         services.AddScoped<IDecisionService, DecisionService>();
         services.AddScoped<IIncidentService, IncidentService>();
-        services.AddScoped<ISimulationService, SimulationService>();
         services.AddScoped<ITaskService, TaskService>();
         services.AddScoped<IProcessMigrationService, ProcessMigrationService>();
         services.AddSingleton<IN8nWorkflowImporter, N8nWorkflowImporter>();

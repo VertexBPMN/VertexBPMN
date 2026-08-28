@@ -19,26 +19,33 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
 
             modelBuilder.Entity("VertexBPMN.Domain.Entities.CaseDefinitionRecord", b =>
                 {
-                    b.Property<string>("Id");
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("CmmnXml")
-                        .IsRequired();
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("CreatedAt");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Key")
                         .IsRequired()
-                        .HasMaxLength(128);
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("LastModified");
+                    b.Property<DateTime>("LastModified")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(256);
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("TenantId")
                         .IsRequired()
-                        .HasMaxLength(64);
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
@@ -48,39 +55,110 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                     b.ToTable("CaseDefinitions");
                 });
 
-            modelBuilder.Entity("VertexBPMN.Domain.Entities.ConnectorRecord", b =>
+            modelBuilder.Entity("VertexBPMN.Domain.Entities.CaseInstanceRecord", b =>
                 {
-                    b.Property<string>("Id");
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("CreatedAt");
-
-                    b.Property<string>("CredentialId")
-                        .HasMaxLength(128);
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(2000);
-
-                    b.Property<bool>("Enabled");
-
-                    b.Property<string>("Endpoint")
-                        .HasMaxLength(2048);
-
-                    b.Property<DateTime>("LastModified");
-
-                    b.Property<string>("Name")
+                    b.Property<string>("CaseDefinitionId")
                         .IsRequired()
-                        .HasMaxLength(256);
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
 
-                    b.Property<string>("TemplateId")
-                        .HasMaxLength(128);
+                    b.Property<string>("CaseDefinitionKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CaseFileJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DiscretionaryItemsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("LastModified")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PlanItemStatesJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("TenantId")
                         .IsRequired()
-                        .HasMaxLength(64);
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CaseDefinitionId");
+
+                    b.HasIndex("TenantId", "CaseDefinitionKey", "State");
+
+                    b.ToTable("CaseInstances");
+                });
+
+            modelBuilder.Entity("VertexBPMN.Domain.Entities.ConnectorRecord", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CredentialId")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Endpoint")
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("LastModified")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TemplateId")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Type")
                         .IsRequired()
-                        .HasMaxLength(128);
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
@@ -100,36 +178,46 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
 
             modelBuilder.Entity("VertexBPMN.Domain.Entities.ConnectorTemplateRecord", b =>
                 {
-                    b.Property<string>("Id");
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("AppliesToJson")
-                        .IsRequired();
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Category")
                         .IsRequired()
-                        .HasMaxLength(128);
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("CreatedAt");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Icon")
-                        .HasMaxLength(256);
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("LastModified");
+                    b.Property<DateTime>("LastModified")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(256);
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("PropertiesJson")
-                        .IsRequired();
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Runtime")
                         .IsRequired()
-                        .HasMaxLength(128);
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("TenantId")
                         .IsRequired()
-                        .HasMaxLength(64);
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
@@ -144,35 +232,45 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
             modelBuilder.Entity("VertexBPMN.Domain.Entities.CredentialRecord", b =>
                 {
                     b.Property<string>("Id")
-                        .HasMaxLength(128);
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("CreatedAt");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Description")
-                        .HasMaxLength(2000);
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("LastModified");
+                    b.Property<DateTime>("LastModified")
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime?>("LastUsedAt");
+                    b.Property<DateTime?>("LastUsedAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(256);
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("ProtectedValues")
-                        .IsRequired();
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("SecretKeysJson")
                         .IsRequired()
-                        .HasMaxLength(4000);
+                        .HasMaxLength(4000)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("TenantId")
                         .IsRequired()
-                        .HasMaxLength(64);
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Type")
                         .IsRequired()
-                        .HasMaxLength(128);
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
@@ -189,16 +287,20 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
             modelBuilder.Entity("VertexBPMN.Domain.Entities.EngineDeployment", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd();
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("CreatedAt");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(500);
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64);
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
@@ -216,44 +318,61 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
             modelBuilder.Entity("VertexBPMN.Domain.Entities.EventSubscription", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd();
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ActiveKey")
+                        .HasMaxLength(320)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("ActivityId")
                         .IsRequired()
-                        .HasMaxLength(255);
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime?>("ConsumedAt");
+                    b.Property<DateTime?>("ConsumedAt")
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("CreatedAt");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("EventName")
                         .IsRequired()
-                        .HasMaxLength(255);
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("EventType")
                         .IsRequired()
-                        .HasMaxLength(32);
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
 
-                    b.Property<Guid>("ExecutionTokenId");
+                    b.Property<Guid>("ExecutionTokenId")
+                        .HasColumnType("TEXT");
 
-                    b.Property<Guid>("ProcessInstanceId");
+                    b.Property<Guid>("ProcessInstanceId")
+                        .HasColumnType("TEXT");
 
                     b.Property<long>("Revision")
-                        .IsConcurrencyToken();
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("State")
                         .IsRequired()
-                        .HasMaxLength(32);
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64);
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ActiveKey")
+                        .IsUnique();
+
                     b.HasIndex("ExecutionTokenId");
 
-                    b.HasIndex("ProcessInstanceId", "ActivityId", "State")
-                        .IsUnique();
+                    b.HasIndex("ProcessInstanceId", "ActivityId", "State");
 
                     b.HasIndex("EventType", "EventName", "State", "TenantId");
 
@@ -263,35 +382,46 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
             modelBuilder.Entity("VertexBPMN.Domain.Entities.ExecutionToken", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd();
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime?>("AssignedAt");
+                    b.Property<DateTime?>("AssignedAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("AssignedWorker")
-                        .HasMaxLength(255);
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("CreatedAt");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("CurrentNodeId")
                         .IsRequired()
-                        .HasMaxLength(255);
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("NodeType")
                         .IsRequired()
-                        .HasMaxLength(100);
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
 
-                    b.Property<Guid>("ProcessInstanceId");
+                    b.Property<Guid>("ProcessInstanceId")
+                        .HasColumnType("TEXT");
 
-                    b.Property<int>("RetryCount");
+                    b.Property<int>("RetryCount")
+                        .HasColumnType("INTEGER");
 
                     b.Property<long>("Revision")
-                        .IsConcurrencyToken();
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("State")
-                        .HasMaxLength(50);
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Variables")
-                        .IsRequired();
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
@@ -310,28 +440,36 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
 
             modelBuilder.Entity("VertexBPMN.Domain.Entities.FormDefinitionRecord", b =>
                 {
-                    b.Property<string>("Id");
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("CreatedAt");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Key")
                         .IsRequired()
-                        .HasMaxLength(128);
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("LastModified");
+                    b.Property<DateTime>("LastModified")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(256);
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Schema")
-                        .IsRequired();
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("TenantId")
                         .IsRequired()
-                        .HasMaxLength(64);
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
 
-                    b.Property<int>("Version");
+                    b.Property<int>("Version")
+                        .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 
@@ -344,28 +482,36 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
             modelBuilder.Entity("VertexBPMN.Domain.Entities.HistoryEvent", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd();
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Data")
-                        .HasMaxLength(4000);
+                        .HasMaxLength(4000)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Details")
-                        .HasMaxLength(4000);
+                        .HasMaxLength(4000)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("ElementId")
                         .IsRequired()
-                        .HasMaxLength(255);
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("EventType")
                         .IsRequired()
-                        .HasMaxLength(100);
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
 
-                    b.Property<Guid>("ProcessInstanceId");
+                    b.Property<Guid>("ProcessInstanceId")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64);
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("Timestamp");
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
@@ -385,33 +531,43 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
             modelBuilder.Entity("VertexBPMN.Domain.Entities.Incident", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd();
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("ActivityId")
-                        .HasMaxLength(255);
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("CreatedAt");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Message")
                         .IsRequired()
-                        .HasMaxLength(4000);
+                        .HasMaxLength(4000)
+                        .HasColumnType("TEXT");
 
-                    b.Property<Guid>("ProcessInstanceId");
+                    b.Property<Guid>("ProcessInstanceId")
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime?>("ResolvedAt");
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("TEXT");
 
-                    b.Property<int>("RetryCount");
+                    b.Property<int>("RetryCount")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("State")
                         .IsRequired()
-                        .HasMaxLength(50);
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64);
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Type")
                         .IsRequired()
-                        .HasMaxLength(100);
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
@@ -431,45 +587,60 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
             modelBuilder.Entity("VertexBPMN.Domain.Entities.Job", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd();
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("ActivityId")
                         .IsRequired()
-                        .HasMaxLength(255);
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime?>("CompletedAt");
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("CreatedAt");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("DueDate");
+                    b.Property<DateTime>("DueDate")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("ErrorMessage")
-                        .HasMaxLength(4000);
+                        .HasMaxLength(4000)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("LockOwner")
-                        .HasMaxLength(255);
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime?>("LockedUntil");
+                    b.Property<DateTime?>("LockedUntil")
+                        .HasColumnType("TEXT");
 
-                    b.Property<string>("Payload");
+                    b.Property<string>("Payload")
+                        .HasColumnType("TEXT");
 
-                    b.Property<Guid>("ProcessInstanceId");
+                    b.Property<Guid>("ProcessInstanceId")
+                        .HasColumnType("TEXT");
 
-                    b.Property<int>("Retries");
+                    b.Property<int>("Retries")
+                        .HasColumnType("INTEGER");
 
                     b.Property<long>("Revision")
-                        .IsConcurrencyToken();
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("State")
                         .IsRequired()
-                        .HasMaxLength(50);
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64);
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Type")
                         .IsRequired()
-                        .HasMaxLength(100);
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
@@ -491,14 +662,18 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
             modelBuilder.Entity("VertexBPMN.Domain.Entities.MigrationExecutionRecord", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd();
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
 
-                    b.Property<Guid>("MigrationPlanId");
+                    b.Property<Guid>("MigrationPlanId")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Payload")
-                        .IsRequired();
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("StartedAt");
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
@@ -512,12 +687,15 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
             modelBuilder.Entity("VertexBPMN.Domain.Entities.MigrationPlanRecord", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd();
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("CreatedAt");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Payload")
-                        .IsRequired();
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
@@ -529,19 +707,53 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
             modelBuilder.Entity("VertexBPMN.Domain.Entities.MultiInstanceExecution", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd();
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("ActivityId")
                         .IsRequired()
-                        .HasMaxLength(255);
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
 
-                    b.Property<int>("CompletedCount");
+                    b.Property<int>("CompletedCount")
+                        .HasColumnType("INTEGER");
 
-                    b.Property<int>("InstanceCount");
+                    b.Property<string>("CompletionCondition")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
 
-                    b.Property<bool>("IsSequential");
+                    b.Property<string>("ElementVariable")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
 
-                    b.Property<Guid>("ProcessInstanceId");
+                    b.Property<int>("InstanceCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsSequential")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ItemsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("NextIndex")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("OutputCollection")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ProcessInstanceId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
@@ -549,7 +761,7 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
 
                     b.HasIndex("ProcessInstanceId");
 
-                    b.HasIndex("ProcessInstanceId", "ActivityId");
+                    b.HasIndex("ProcessInstanceId", "ActivityId", "State");
 
                     b.ToTable("MultiInstanceExecutions");
                 });
@@ -557,31 +769,40 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
             modelBuilder.Entity("VertexBPMN.Domain.Entities.ProcessDefinition", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd();
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("BpmnXml")
-                        .IsRequired();
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("CreatedAt");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
 
-                    b.Property<Guid>("DeploymentId");
+                    b.Property<Guid>("DeploymentId")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Key")
                         .IsRequired()
-                        .HasMaxLength(255);
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(500);
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64);
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("TenantScope")
                         .IsRequired()
-                        .HasMaxLength(128);
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
 
-                    b.Property<int>("Version");
+                    b.Property<int>("Version")
+                        .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 
@@ -600,55 +821,80 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
             modelBuilder.Entity("VertexBPMN.Domain.Entities.ProcessInstance", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd();
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("ActiveTasks")
-                        .IsRequired();
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("ActiveTokens")
-                        .IsRequired();
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("BusinessKey")
-                        .HasMaxLength(255);
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("CreatedAt");
+                    b.Property<string>("CallingActivityId")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime?>("EndedAt");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("EndedAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("InstanceId")
                         .IsRequired()
-                        .HasMaxLength(255);
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("LastModified");
+                    b.Property<DateTime>("LastModified")
+                        .HasColumnType("TEXT");
 
-                    b.Property<Guid>("ProcessDefinitionId");
+                    b.Property<Guid?>("ParentProcessInstanceId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ProcessDefinitionId")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("ProcessId")
                         .IsRequired()
-                        .HasMaxLength(255);
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
 
                     b.Property<long>("Revision")
-                        .IsConcurrencyToken();
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
 
-                    b.Property<DateTime>("StartedAt");
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("State")
                         .IsRequired()
-                        .HasMaxLength(50);
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
 
-                    b.Property<int>("Status");
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64);
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Variables")
-                        .IsRequired();
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
                     b.HasIndex("BusinessKey");
 
                     b.HasIndex("ProcessDefinitionId");
+
+                    b.HasIndex("ParentProcessInstanceId");
 
                     b.HasIndex("StartedAt");
 
@@ -662,28 +908,36 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
             modelBuilder.Entity("VertexBPMN.Domain.Entities.RuntimeInboxMessage", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd();
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime?>("CompletedAt");
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("IdempotencyKey")
                         .IsRequired()
-                        .HasMaxLength(255);
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Operation")
                         .IsRequired()
-                        .HasMaxLength(128);
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("ReceivedAt");
+                    b.Property<DateTime>("ReceivedAt")
+                        .HasColumnType("TEXT");
 
-                    b.Property<string>("Result");
+                    b.Property<string>("Result")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64);
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("TenantScope")
                         .IsRequired()
-                        .HasMaxLength(128);
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
@@ -696,37 +950,52 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
             modelBuilder.Entity("VertexBPMN.Domain.Entities.RuntimeOutboxMessage", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd();
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
 
-                    b.Property<int>("Attempts");
+                    b.Property<int>("Attempts")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("AnalyticsProjectedAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("EventType")
                         .IsRequired()
-                        .HasMaxLength(128);
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("LastError")
-                        .HasMaxLength(4000);
+                        .HasMaxLength(4000)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("LockOwner")
-                        .HasMaxLength(255);
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime?>("LockedUntil");
+                    b.Property<DateTime?>("LockedUntil")
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("OccurredAt");
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Payload")
-                        .IsRequired();
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
-                    b.Property<Guid>("ProcessInstanceId");
+                    b.Property<Guid>("ProcessInstanceId")
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime?>("PublishedAt");
+                    b.Property<DateTime?>("PublishedAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("State")
                         .IsRequired()
-                        .HasMaxLength(32);
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64);
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
@@ -739,27 +1008,35 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
 
             modelBuilder.Entity("VertexBPMN.Domain.Entities.User", b =>
                 {
-                    b.Property<string>("Id");
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("CreatedAt");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Email")
                         .IsRequired()
-                        .HasMaxLength(400);
+                        .HasMaxLength(400)
+                        .HasColumnType("TEXT");
 
-                    b.Property<bool>("IsActive");
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
 
-                    b.Property<DateTime>("LastModified");
+                    b.Property<DateTime>("LastModified")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Roles")
-                        .IsRequired();
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64);
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Username")
                         .IsRequired()
-                        .HasMaxLength(200);
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
@@ -811,60 +1088,91 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
             modelBuilder.Entity("VertexBPMN.Domain.Entities.UserTask", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd();
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("ActivityId")
                         .IsRequired()
-                        .HasMaxLength(255);
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
 
-                    b.Property<string>("Assignee");
+                    b.Property<string>("Assignee")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("CandidateRole")
-                        .IsRequired();
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.PrimitiveCollection<string>("CandidateUsers")
-                        .IsRequired();
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime?>("CompletedAt");
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("CreatedAt");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime?>("DueDate");
+                    b.Property<DateTime?>("DueDate")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("FormKey")
-                        .HasMaxLength(255);
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
 
-                    b.Property<string>("FormSchema");
+                    b.Property<string>("FormSchema")
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("LastModified");
+                    b.Property<DateTime>("LastModified")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LocalVariables")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("ModifiedBy")
-                        .IsRequired();
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("MultiInstanceExecutionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("MultiInstanceIndex")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(500);
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
 
-                    b.Property<Guid>("ProcessInstanceId");
+                    b.Property<Guid>("ProcessInstanceId")
+                        .HasColumnType("TEXT");
 
                     b.PrimitiveCollection<string>("RequiredFields")
-                        .IsRequired();
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<long>("Revision")
-                        .IsConcurrencyToken();
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
 
-                    b.Property<int>("Status");
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64);
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Type")
                         .IsRequired()
-                        .HasMaxLength(100);
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
                     b.HasIndex("Assignee");
+
+                    b.HasIndex("MultiInstanceExecutionId");
 
                     b.HasIndex("ProcessInstanceId");
 
@@ -880,26 +1188,34 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
             modelBuilder.Entity("VertexBPMN.Domain.Entities.Variable", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd();
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("CreatedAt");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(255);
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
 
-                    b.Property<Guid>("ProcessInstanceId");
+                    b.Property<Guid>("ProcessInstanceId")
+                        .HasColumnType("TEXT");
 
-                    b.Property<Guid>("ScopeId");
+                    b.Property<Guid>("ScopeId")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64);
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Type")
                         .IsRequired()
-                        .HasMaxLength(100);
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
 
-                    b.Property<string>("Value");
+                    b.Property<string>("Value")
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
@@ -922,37 +1238,51 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
             modelBuilder.Entity("VertexBPMN.Domain.Entities.WorkerRegistration", b =>
                 {
                     b.Property<string>("Id")
-                        .HasMaxLength(255);
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
 
-                    b.Property<int>("ActiveTasks");
+                    b.Property<int>("ActiveTasks")
+                        .HasColumnType("INTEGER");
 
-                    b.Property<double>("CpuUsage");
+                    b.Property<double>("CpuUsage")
+                        .HasColumnType("REAL");
 
-                    b.Property<int>("CurrentLoad");
+                    b.Property<int>("CurrentLoad")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("HostName")
                         .IsRequired()
-                        .HasMaxLength(255);
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("LastHeartbeat");
+                    b.Property<DateTime>("LastHeartbeat")
+                        .HasColumnType("TEXT");
 
-                    b.Property<int>("MaxCapacity");
+                    b.Property<int>("MaxCapacity")
+                        .HasColumnType("INTEGER");
 
-                    b.Property<double>("MemoryUsage");
+                    b.Property<double>("MemoryUsage")
+                        .HasColumnType("REAL");
 
-                    b.Property<int>("Port");
+                    b.Property<int>("Port")
+                        .HasColumnType("INTEGER");
 
-                    b.Property<DateTime>("RegisteredAt");
+                    b.Property<DateTime>("RegisteredAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<long>("Revision")
-                        .IsConcurrencyToken();
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("SupportedNodeTypes")
-                        .IsRequired();
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
-                    b.Property<double>("TotalProcessingMilliseconds");
+                    b.Property<double>("TotalProcessingMilliseconds")
+                        .HasColumnType("REAL");
 
-                    b.Property<long>("TotalTasksProcessed");
+                    b.Property<long>("TotalTasksProcessed")
+                        .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 
@@ -964,55 +1294,73 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
             modelBuilder.Entity("VertexBPMN.Domain.Entities.WorkflowTrigger", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd();
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("AuthenticationMode")
                         .IsRequired()
-                        .HasMaxLength(32);
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("CorrelationKey")
-                        .HasMaxLength(256);
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("CreatedAt");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("CredentialId")
-                        .HasMaxLength(128);
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("CredentialSecretKey")
-                        .HasMaxLength(128);
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
 
-                    b.Property<bool>("Enabled");
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
 
-                    b.Property<long>("InvocationCount");
+                    b.Property<long>("InvocationCount")
+                        .HasColumnType("INTEGER");
 
-                    b.Property<DateTime>("LastModified");
+                    b.Property<DateTime>("LastModified")
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime?>("LastTriggeredAt");
+                    b.Property<DateTime?>("LastTriggeredAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Method")
-                        .HasMaxLength(16);
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(256);
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Path")
-                        .HasMaxLength(512);
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
 
-                    b.Property<string>("PayloadSchemaJson");
+                    b.Property<string>("PayloadSchemaJson")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("ProcessDefinitionKey")
                         .IsRequired()
-                        .HasMaxLength(255);
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("SecretHash")
                         .IsRequired()
-                        .HasMaxLength(128);
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
 
-                    b.Property<string>("SourceElementId");
+                    b.Property<string>("SourceElementId")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64);
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
@@ -1037,19 +1385,24 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
             modelBuilder.Entity("VertexBPMN.Infrastructure.Persistence.CmmnHistoryRecord", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd();
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("CaseFileJson")
-                        .IsRequired();
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("CaseId")
                         .IsRequired()
-                        .HasMaxLength(255);
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("CompletedPlanItemsJson")
-                        .IsRequired();
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("Timestamp");
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
@@ -1061,9 +1414,11 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
             modelBuilder.Entity("VertexBPMN.Infrastructure.Persistence.FeatureFlagRecord", b =>
                 {
                     b.Property<string>("Name")
-                        .HasMaxLength(128);
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
 
-                    b.Property<bool>("Enabled");
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
 
                     b.HasKey("Name");
 
@@ -1090,26 +1445,32 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
             modelBuilder.Entity("VertexBPMN.Infrastructure.Persistence.IdentityAuthorizationRecord", b =>
                 {
                     b.Property<string>("Id")
-                        .HasMaxLength(128);
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("GroupId")
                         .IsRequired()
-                        .HasMaxLength(128);
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Permissions")
                         .IsRequired()
-                        .HasMaxLength(512);
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Resource")
                         .IsRequired()
-                        .HasMaxLength(512);
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64);
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("UserId")
                         .IsRequired()
-                        .HasMaxLength(128);
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
@@ -1124,13 +1485,16 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
             modelBuilder.Entity("VertexBPMN.Infrastructure.Persistence.IdentityGroupMembershipRecord", b =>
                 {
                     b.Property<string>("GroupId")
-                        .HasMaxLength(128);
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("UserId")
-                        .HasMaxLength(128);
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64);
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
 
                     b.HasKey("GroupId", "UserId");
 
@@ -1143,18 +1507,22 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
 
             modelBuilder.Entity("VertexBPMN.Infrastructure.Persistence.IdentityGroupRecord", b =>
                 {
-                    b.Property<string>("Id");
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(256);
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64);
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Type")
                         .IsRequired()
-                        .HasMaxLength(128);
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 

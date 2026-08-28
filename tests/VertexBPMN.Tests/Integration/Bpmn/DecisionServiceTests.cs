@@ -9,16 +9,28 @@ namespace VertexBPMN.Tests.Integration.Bpmn;
 public class DecisionServiceTests
 {
     [Fact]
-    public async Task Evaluate_Decision_Returns_Inputs_As_Outputs()
+    public async Task Evaluate_Decision_Returns_Dmn_Output()
     {
         var logger = new LoggerFactory().CreateLogger<DecisionService>();
         var repository = new InMemoryDecisionRepository();
-        await repository.UpsertDefinitionAsync(new DecisionDefinition("test", "Test", string.Empty, null));
         var service = new DecisionService(logger, repository);
+        const string dmnXml = """
+            <definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/">
+              <decision id="test" name="Test">
+                <decisionTable hitPolicy="UNIQUE">
+                  <input id="foo"><inputExpression typeRef="number"><text>foo</text></inputExpression></input>
+                  <output id="result" name="result" typeRef="string" />
+                  <rule><inputEntry><text>&gt;= 40</text></inputEntry><outputEntry><text>"accepted"</text></outputEntry></rule>
+                </decisionTable>
+              </decision>
+            </definitions>
+            """;
+        await service.DeployAsync("test", "Test", dmnXml);
         var inputs = new Dictionary<string, object> { { "foo", 42 } };
+
         var result = await service.EvaluateDecisionByKeyAsync("test", inputs);
+
         Assert.NotNull(result);
-        Assert.True(result.Variables.ContainsKey("foo"));
-        Assert.Equal(42, (result.Variables["foo"] as int?) ?? ((System.Text.Json.JsonElement)result.Variables["foo"]).GetInt32());
+        Assert.Equal("accepted", result.Variables["result"]);
     }
 }

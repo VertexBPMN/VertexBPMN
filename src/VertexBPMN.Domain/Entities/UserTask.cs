@@ -19,6 +19,9 @@ public class UserTask
     public string ModifiedBy { get; set; } = string.Empty;
     public UserTaskStatus Status { get; set; } = UserTaskStatus.Pending;
     public long Revision { get; set; }
+    public Guid? MultiInstanceExecutionId { get; set; }
+    public int? MultiInstanceIndex { get; set; }
+    public Dictionary<string, object> LocalVariables { get; set; } = new();
     public List<string> CandidateUsers { get; set; } = new();
     public string CandidateRole { get; set; } = string.Empty;
     public List<string> RequiredFields { get; set; } = new();

@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS ProcessInstance (
     ActiveTokens TEXT NOT NULL DEFAULT '[]',
     Variables TEXT NOT NULL DEFAULT '{}',
     Revision INTEGER NOT NULL DEFAULT 1,
+    ParentProcessInstanceId TEXT,
+    CallingActivityId TEXT,
     CreatedAt TEXT NOT NULL,
     LastModified TEXT NOT NULL
 );
@@ -50,6 +52,7 @@ CREATE INDEX IF NOT EXISTS IX_ProcessInstance_BusinessKey ON ProcessInstance(Bus
 CREATE INDEX IF NOT EXISTS IX_ProcessInstance_Tenant ON ProcessInstance(TenantId);
 CREATE INDEX IF NOT EXISTS IX_ProcessInstance_State ON ProcessInstance(State);
 CREATE INDEX IF NOT EXISTS IX_ProcessInstance_StartedAt ON ProcessInstance(StartedAt);
+CREATE INDEX IF NOT EXISTS IX_ProcessInstance_ParentProcessInstanceId ON ProcessInstance(ParentProcessInstanceId);
 CREATE VIEW IF NOT EXISTS ProcessInstances AS SELECT * FROM ProcessInstance;
 
 CREATE TABLE IF NOT EXISTS ExecutionToken (
@@ -249,6 +252,32 @@ CREATE TABLE IF NOT EXISTS CaseDefinitions (
     LastModified TEXT NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS IX_CaseDefinitions_TenantId_Key ON CaseDefinitions(TenantId, [Key]);
+
+CREATE TABLE IF NOT EXISTS CaseInstances (
+    Id TEXT PRIMARY KEY,
+    CaseDefinitionId TEXT NOT NULL,
+    CaseDefinitionKey TEXT NOT NULL,
+    TenantId TEXT NOT NULL,
+    State TEXT NOT NULL,
+    CaseFileJson TEXT NOT NULL,
+    PlanItemStatesJson TEXT NOT NULL,
+    DiscretionaryItemsJson TEXT NOT NULL,
+    CreatedAt TEXT NOT NULL,
+    LastModified TEXT NOT NULL,
+    CompletedAt TEXT,
+    Revision INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS IX_CaseInstances_CaseDefinitionId ON CaseInstances(CaseDefinitionId);
+CREATE INDEX IF NOT EXISTS IX_CaseInstances_TenantId_CaseDefinitionKey_State ON CaseInstances(TenantId, CaseDefinitionKey, State);
+
+CREATE TABLE IF NOT EXISTS CmmnHistory (
+    Id TEXT PRIMARY KEY,
+    CaseId TEXT NOT NULL,
+    CaseFileJson TEXT NOT NULL,
+    CompletedPlanItemsJson TEXT NOT NULL,
+    Timestamp TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS IX_CmmnHistory_CaseId_Timestamp ON CmmnHistory(CaseId, Timestamp);
 
 
 CREATE TABLE IF NOT EXISTS Credentials (

@@ -1,0 +1,15 @@
+{
+  "name": "vertexbpmn-feel-runtime",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild feelin.entry.mjs --bundle --format=iife --platform=browser --target=es2020 --minify --legal-comments=inline --outfile=../../FeelRuntime/feelin.bundle.js"
+  },
+  "dependencies": {
+    "feelin": "7.0.1"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

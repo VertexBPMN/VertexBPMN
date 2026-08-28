@@ -214,6 +214,18 @@ public sealed class VertexBpmnClient
     public Task<CaseRunResult?> StartCaseAsync(string key, string? tenantId = null, CancellationToken cancellationToken = default)
         => SendForNullableAsync<CaseRunResult>(HttpMethod.Post, $"api/case-definitions/{Uri.EscapeDataString(key)}/start", new TenantRequest(tenantId ?? options.TenantId), cancellationToken);
 
+    public Task<CaseRunResult?> CompleteCasePlanItemAsync(Guid caseInstanceId, string planItemId, IDictionary<string, object?>? caseFileUpdates = null, string? tenantId = null, CancellationToken cancellationToken = default)
+        => SendForNullableAsync<CaseRunResult>(HttpMethod.Post, $"api/case-definitions/instances/{caseInstanceId}/plan-items/{Uri.EscapeDataString(planItemId)}/complete", new { TenantId = tenantId ?? options.TenantId, CaseFileUpdates = caseFileUpdates }, cancellationToken);
+
+    public Task<CaseRunResult?> TriggerCaseEventAsync(Guid caseInstanceId, string eventId, IDictionary<string, object?>? eventData = null, string? tenantId = null, CancellationToken cancellationToken = default)
+        => SendForNullableAsync<CaseRunResult>(HttpMethod.Post, $"api/case-definitions/instances/{caseInstanceId}/events/{Uri.EscapeDataString(eventId)}", new { TenantId = tenantId ?? options.TenantId, EventData = eventData }, cancellationToken);
+
+    public Task<CaseRunResult?> UpdateCaseFileItemAsync(Guid caseInstanceId, string itemId, object? value, string? tenantId = null, CancellationToken cancellationToken = default)
+        => SendForNullableAsync<CaseRunResult>(HttpMethod.Put, $"api/case-definitions/instances/{caseInstanceId}/case-file/{Uri.EscapeDataString(itemId)}", new { TenantId = tenantId ?? options.TenantId, Value = value }, cancellationToken);
+
+    public Task<CaseRunResult?> ActivateDiscretionaryItemAsync(Guid caseInstanceId, string planItemId, string? tenantId = null, CancellationToken cancellationToken = default)
+        => SendForNullableAsync<CaseRunResult>(HttpMethod.Post, $"api/case-definitions/instances/{caseInstanceId}/discretionary-items/{Uri.EscapeDataString(planItemId)}/activate", new TenantRequest(tenantId ?? options.TenantId), cancellationToken);
+
     public Task<N8nImportResult?> ImportN8nWorkflowAsync(string workflowJson, CancellationToken cancellationToken = default)
         => ImportN8nWorkflowAsync(workflowJson, options.TenantId, cancellationToken);
 

@@ -69,6 +69,6 @@ public sealed record RuntimeExecutionTrace(Guid SessionId, Guid ProcessInstanceI
 public sealed record RuntimeTraceEvent(string Type, string ActivityId, DateTime Timestamp, string? Details, TimeSpan? Duration);
 public sealed record RuntimePerformanceMetrics(int TotalEvents, TimeSpan TotalExecutionTime, DateTime? FastestEventTime, DateTime? SlowestEventTime);
 public sealed record CaseDefinition(string Id, string TenantId, string Key, string Name, string CmmnXml, DateTime CreatedAt, DateTime LastModified);
-public sealed record CaseRunResult(string CaseDefinitionId, string Key, IReadOnlyList<string> Trace);
+public sealed record CaseRunResult(Guid CaseInstanceId, string CaseDefinitionId, string Key, string State, IReadOnlyList<string> Trace);
 public sealed record N8nImportResult(string BpmnXml, IReadOnlyList<N8nImportReportItem> Report);
 public sealed record N8nImportReportItem(string NodeName, string NodeType, string Disposition, string Message);

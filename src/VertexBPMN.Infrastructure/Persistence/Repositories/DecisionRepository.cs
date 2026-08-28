@@ -21,11 +21,6 @@ public class DecisionRepository : IDecisionRepository
 
         if (existing == null)
         {
-            if (definition.DecisionTable == null && !string.IsNullOrWhiteSpace(definition.DmnXml))
-            {
-                // Parse for in-memory use; not persisted
-                definition.DecisionTable = DmnDecisionTable.Parse(definition.DmnXml);
-            }
             await _db.DecisionDefinitions.AddAsync(definition, ct);
         }
         else
@@ -39,10 +34,6 @@ public class DecisionRepository : IDecisionRepository
             {
                 existing.DecisionTable = definition.DecisionTable; // transient
             }
-            else if (dmnChanged && !string.IsNullOrWhiteSpace(definition.DmnXml))
-            {
-                existing.DecisionTable = DmnDecisionTable.Parse(definition.DmnXml);
-            }
         }
     }
 
@@ -52,9 +43,6 @@ public class DecisionRepository : IDecisionRepository
         var entity = await _db.DecisionDefinitions
             .AsNoTracking()
             .FirstOrDefaultAsync(d => d.Id == id, ct);
-
-        if (entity != null)
-            EnsureParsed(entity);
 
         return entity;
     }
@@ -73,7 +61,6 @@ public class DecisionRepository : IDecisionRepository
             .AsAsyncEnumerable()
             .WithCancellation(ct))
         {
-            EnsureParsed(d);
             yield return d;
         }
     }
@@ -101,11 +88,4 @@ public class DecisionRepository : IDecisionRepository
     public async ValueTask SaveChangesAsync(CancellationToken ct = default)
         => await _db.SaveChangesAsync(ct);
 
-    private static void EnsureParsed(DecisionDefinition def)
-    {
-        if (def.DecisionTable == null && !string.IsNullOrWhiteSpace(def.DmnXml))
-        {
-            def.DecisionTable = DmnDecisionTable.Parse(def.DmnXml);
-        }
-    }
 }

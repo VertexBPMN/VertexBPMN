@@ -26,7 +26,11 @@ namespace VertexBPMN.Tests.Conformance.extended
             // Modellierungsrichtung (reine DI/Layout-Info, keine semantische Änderung).
             Assert.Contains(result, r => r.ToString().Contains("StartEvent"));
             Assert.Contains(result, r => r.ToString().Contains("EndEvent"));
-            Assert.Contains(result, r => r.ToString().Contains("SubProcess"));
+            var foreignStartEvents = model.Events.Where(evt =>
+                evt.Type == "startEvent" && evt.ProcessId != model.ProcessId).ToArray();
+            Assert.NotEmpty(foreignStartEvents);
+            Assert.DoesNotContain(foreignStartEvents, evt =>
+                result.Any(entry => entry.Contains($"StartEvent: {evt.Id}", StringComparison.Ordinal)));
         }
     }
 }

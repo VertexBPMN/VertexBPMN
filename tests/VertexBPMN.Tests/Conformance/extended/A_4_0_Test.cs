@@ -26,8 +26,11 @@ namespace VertexBPMN.Tests.Conformance.extended
             // Referenzmodell: 2 process/participant, 2 lane, 2 subProcess, 4 startEvent, 5 endEvent.
             Assert.Contains(result, r => r.ToString().Contains("StartEvent"));
             Assert.Contains(result, r => r.ToString().Contains("EndEvent"));
-            // ACHTUNG: "SubProcess" bisher unbestätigtes Vokabular – ggf. anpassen.
-            Assert.Contains(result, r => r.ToString().Contains("SubProcess"));
+            var foreignStartEvents = model.Events.Where(evt =>
+                evt.Type == "startEvent" && evt.ProcessId != model.ProcessId).ToArray();
+            Assert.NotEmpty(foreignStartEvents);
+            Assert.DoesNotContain(foreignStartEvents, evt =>
+                result.Any(entry => entry.Contains($"StartEvent: {evt.Id}", StringComparison.Ordinal)));
         }
     }
 }

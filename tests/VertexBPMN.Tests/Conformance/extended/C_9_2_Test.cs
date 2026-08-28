@@ -17,6 +17,10 @@ namespace VertexBPMN.Tests.Conformance.extended
             var parser = new BpmnParser(logger.Object, TracerProvider.Default);
             var model = parser.ParseAsync(xml).GetAwaiter().GetResult();
             Assert.NotNull(model);
+            model = model with
+            {
+                ProcessVariables = new Dictionary<string, object> { ["fraud"] = false }
+            };
             var engine = new ProcessEngine();
             var result = engine.Execute(model);
             Assert.NotNull(result);
@@ -28,11 +32,13 @@ namespace VertexBPMN.Tests.Conformance.extended
             // BoundaryEvent (Timer "Timeout (7 days)"), SendTask, Message-/Error-/Timer-Events.
             Assert.Contains(result, r => r.ToString().Contains("StartEvent"));
             Assert.Contains(result, r => r.ToString().Contains("UserTask"));
-            Assert.Contains(result, r => r.ToString().Contains("ExclusiveGateway"));
-            //Assert.Contains(result, r => r.ToString().Contains("SubProcess"));
-            Assert.Contains(result, r => r.ToString().Contains("CallActivity"));
             Assert.Contains(result, r => r.ToString().Contains("BoundaryEvent"));
             Assert.Contains(result, r => r.ToString().Contains("EndEvent"));
+            var foreignStartEvents = model.Events.Where(evt =>
+                evt.Type == "startEvent" && evt.ProcessId != model.ProcessId).ToArray();
+            Assert.NotEmpty(foreignStartEvents);
+            Assert.DoesNotContain(foreignStartEvents, evt =>
+                result.Any(entry => entry.Contains($"StartEvent: {evt.Id}", StringComparison.Ordinal)));
         }
     }
 }

@@ -20,6 +20,14 @@ namespace VertexBPMN.Tests.Conformance
             var logger = new Mock<ILogger<BpmnParser>>();var parser = new BpmnParser(logger.Object, TracerProvider.Default);
             var model =  parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
             Assert.NotNull(model);
+            model = model with
+            {
+                ProcessVariables = new Dictionary<string, object>
+                {
+                    ["riskLevels"] = new[] { "red" },
+                    ["approved"] = false
+                }
+            };
             var services = new ServiceCollection();
             services.AddLogging();
             services.AddServiceTaskHandlers();

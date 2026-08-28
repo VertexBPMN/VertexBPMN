@@ -37,8 +37,9 @@ namespace VertexBPMN.Tests.Conformance.extended
             Assert.Contains(result, r => r.ToString().Contains("UserTask"));
             Assert.Contains(result, r => r.ToString().Contains("ExclusiveGateway"));
             Assert.Contains(result, r => r.ToString().Contains("SequenceFlow"));
-            // ACHTUNG: "ServiceTask"/"DataObject" bisher unbestätigtes Vokabular – ggf. anpassen.
-            Assert.Contains(result, r => r.ToString().Contains("ExclusiveFallbackFirst"));
+            Assert.Contains(result, r => r.Contains(
+                "ExclusiveFlowSelected: _d74707c7-6af3-4db7-9403-924bfdf6a7d8",
+                StringComparison.Ordinal));
 
             foreach (var item in result)
             {

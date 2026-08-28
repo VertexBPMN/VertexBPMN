@@ -21,6 +21,14 @@ namespace VertexBPMN.Tests.Conformance.extended
             var parser = new BpmnParser(logger.Object, TracerProvider.Default);
             var model = parser.ParseAsync(xml).GetAwaiter().GetResult();
             Assert.NotNull(model);
+            model = model with
+            {
+                ProcessVariables = new Dictionary<string, object>
+                {
+                    ["riskLevels"] = new[] { "red" },
+                    ["approved"] = false
+                }
+            };
             var services = new ServiceCollection();
             services.AddLogging();
             services.AddServiceTaskHandlers();
@@ -46,9 +54,12 @@ namespace VertexBPMN.Tests.Conformance.extended
             // falls euer Trace andere Namen nutzt (z. B. "ServiceTask" vs. konkreter Handler-Name).
             Assert.Contains(result, r => r.ToString().Contains("ServiceTask"));
             Assert.Contains(result, r => r.ToString().Contains("BusinessRuleTask"));
-            Assert.Contains(result, r => r.ToString().Contains("ParallelGateway"));
-            //Assert.Contains(result, r => r.ToString().Contains("BoundaryEvent"));
+            Assert.Contains(result, r => r.Contains("ExclusiveFlowSelected: SequenceFlow_Red", StringComparison.Ordinal));
             Assert.Contains(result, r => r.ToString().Contains("EndEvent"));
+            var scopedEventStarts = model.Events.Where(evt =>
+                evt.Type == "startEvent" && evt.Definitions is { Count: > 0 }).ToArray();
+            Assert.DoesNotContain(scopedEventStarts, evt =>
+                result.Any(entry => entry.Contains($"StartEvent: {evt.Id}", StringComparison.Ordinal)));
         }
     }
 }

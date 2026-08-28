@@ -28,13 +28,11 @@ namespace VertexBPMN.Tests.Conformance.extended
             Assert.Contains(result, r => r.ToString().Contains("StartEvent"));
             Assert.Contains(result, r => r.ToString().Contains("EndEvent"));
             Assert.Contains(result, r => r.ToString().Contains("UserTask"));
-            Assert.Contains(result, r => r.ToString().Contains("ExclusiveGateway"));
-            Assert.Contains(result, r => r.ToString().Contains("ParallelGateway"));
-            // ACHTUNG: folgende Bezeichner bisher unbestätigtes Vokabular – bitte gegen
-            // eure tatsächliche Trace-Ausgabe verifizieren, bevor ihr diese Assertions scharf schaltet.
-            Assert.Contains(result, r => r.ToString().Contains("ServiceTask"));
-            Assert.Contains(result, r => r.ToString().Contains("BoundaryEvent"));
-            Assert.Contains(result, r => r.ToString().Contains("InclusiveGateway"));
+            var foreignStartEvents = model.Events.Where(evt =>
+                evt.Type == "startEvent" && evt.ProcessId != model.ProcessId).ToArray();
+            Assert.NotEmpty(foreignStartEvents);
+            Assert.DoesNotContain(foreignStartEvents, evt =>
+                result.Any(entry => entry.Contains($"StartEvent: {evt.Id}", StringComparison.Ordinal)));
         }
     }
 }

@@ -1864,12 +1864,7 @@ namespace VertexBPMN.Engine.Execution
                     var decision = _executionComponent.SelectExclusiveFlow(
                         outgoingFlows,
                         token.Variables,
-                        (flow, variables) =>
-                            EvaluateConditionAsync(
-                                    flow.ConditionExpression!,
-                                    variables)
-                                .GetAwaiter()
-                                .GetResult());
+                        static (flow, variables) => BpmnConditionEvaluator.Evaluate(flow, variables));
 
                     if (decision.Kind == GatewayDecisionKind.NoOutgoingFlow)
                     {
@@ -1899,9 +1894,10 @@ namespace VertexBPMN.Engine.Execution
                     break;
 
                 case "inclusiveGateway":
-                    var matchingFlows = _executionComponent.SelectInclusiveFlows(outgoingFlows, token.Variables,
-                        (flow, variables) =>
-                            EvaluateConditionAsync(flow.ConditionExpression!, variables).GetAwaiter().GetResult());
+                    var matchingFlows = _executionComponent.SelectInclusiveFlows(
+                        outgoingFlows,
+                        token.Variables,
+                        static (flow, variables) => BpmnConditionEvaluator.Evaluate(flow, variables));
 
                     if (matchingFlows.Count == 0)
                     {

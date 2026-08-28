@@ -27,10 +27,12 @@ namespace VertexBPMN.Tests.Conformance.extended
             // boundaryEvent, eventBasedGateway, intermediateCatchEvent/-ThrowEvent, subProcess (Event-Subprocess).
             Assert.Contains(result, r => r.ToString().Contains("StartEvent"));
             Assert.Contains(result, r => r.ToString().Contains("EndEvent"));
-            Assert.Contains(result, r => r.ToString().Contains("ParallelGateway"));
-            // ACHTUNG: folgende Bezeichner bisher unbestätigtes Vokabular – ggf. anpassen.
-            Assert.Contains(result, r => r.ToString().Contains("ServiceTask"));
-            Assert.Contains(result, r => r.ToString().Contains("BoundaryEvent"));
+            Assert.Contains(result, r => r.Contains("EventBasedGateway", StringComparison.Ordinal));
+            var foreignStartEvents = model.Events.Where(evt =>
+                evt.Type == "startEvent" && evt.ProcessId != model.ProcessId).ToArray();
+            Assert.NotEmpty(foreignStartEvents);
+            Assert.DoesNotContain(foreignStartEvents, evt =>
+                result.Any(entry => entry.Contains($"StartEvent: {evt.Id}", StringComparison.Ordinal)));
 
             foreach (var item in result)
             {

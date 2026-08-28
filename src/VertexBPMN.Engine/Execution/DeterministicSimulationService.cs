@@ -371,7 +371,7 @@ public sealed class DeterministicSimulationService(
         var selected = outgoing
             .Where(flow => !flow.IsDefault)
             .FirstOrDefault(flow => string.IsNullOrWhiteSpace(flow.ConditionExpression)
-                                    || BpmnConditionEvaluator.Evaluate(flow.ConditionExpression, variables));
+                                    || BpmnConditionEvaluator.Evaluate(flow, variables));
         return selected
                ?? defaults.SingleOrDefault()
                ?? throw new InvalidOperationException(
@@ -390,7 +390,7 @@ public sealed class DeterministicSimulationService(
         var selected = outgoing
             .Where(flow => !flow.IsDefault)
             .Where(flow => string.IsNullOrWhiteSpace(flow.ConditionExpression)
-                           || BpmnConditionEvaluator.Evaluate(flow.ConditionExpression, variables))
+                           || BpmnConditionEvaluator.Evaluate(flow, variables))
             .ToArray();
         if (selected.Length > 0) return selected;
         if (defaults.Length == 1) return defaults;

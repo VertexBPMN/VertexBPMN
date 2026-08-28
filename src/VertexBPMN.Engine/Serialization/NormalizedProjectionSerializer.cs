@@ -366,6 +366,8 @@ public class NormalizedProjectionSerializer
         if (!string.IsNullOrEmpty(flow.ConditionExpression))
         {
             var conditionElement = new XElement(ns + "conditionExpression", new XCData(flow.ConditionExpression));
+            if (!string.IsNullOrWhiteSpace(flow.ConditionExpressionLanguage))
+                conditionElement.SetAttributeValue("language", flow.ConditionExpressionLanguage);
             element.Add(conditionElement);
         }
 

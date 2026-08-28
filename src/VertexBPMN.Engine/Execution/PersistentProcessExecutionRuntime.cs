@@ -2647,7 +2647,10 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         foreach (var flow in flows.Where(flow => !flow.IsDefault))
         {
             if (string.IsNullOrWhiteSpace(flow.ConditionExpression)
-                || BpmnConditionEvaluator.Evaluate(flow.ConditionExpression, variables))
+                || BpmnConditionEvaluator.Evaluate(
+                    flow.ConditionExpression,
+                    variables,
+                    flow.ConditionExpressionLanguage))
                 return flow;
         }
 
@@ -2667,7 +2670,10 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         var selected = flows
             .Where(flow => !flow.IsDefault)
             .Where(flow => string.IsNullOrWhiteSpace(flow.ConditionExpression)
-                           || BpmnConditionEvaluator.Evaluate(flow.ConditionExpression, variables))
+                           || BpmnConditionEvaluator.Evaluate(
+                               flow.ConditionExpression,
+                               variables,
+                               flow.ConditionExpressionLanguage))
             .ToArray();
         return selected.Length > 0 ? selected : defaults;
     }
@@ -2686,6 +2692,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         string? FlowId = null,
         string? ConditionExpression = null,
         bool IsDefault = false,
+        string? ConditionExpressionLanguage = null,
         Guid? MultiInstanceExecutionId = null,
         int? MultiInstanceIndex = null,
         IReadOnlyDictionary<string, object>? LocalVariables = null,
@@ -2939,13 +2946,22 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                 if (string.IsNullOrWhiteSpace(source) || string.IsNullOrWhiteSpace(target)) continue;
                 if (!outgoing.TryGetValue(source, out var targets)) outgoing[source] = targets = [];
                 var flowId = (string?)flow.Attribute("id");
-                var condition = flow.Elements().FirstOrDefault(element =>
-                    element.Name.LocalName == "conditionExpression")?.Value;
+                var conditionElement = flow.Elements().FirstOrDefault(element =>
+                    element.Name.LocalName == "conditionExpression");
+                var condition = conditionElement?.Value;
+                var conditionLanguage = (string?)conditionElement?.Attribute("language")
+                                        ?? (string?)process.Document?.Root?.Attribute("expressionLanguage");
                 var isDefault = nodes.TryGetValue(source, out var sourceNode)
                                 && !string.IsNullOrWhiteSpace(flowId)
                                 && sourceNode.Attributes.TryGetValue("default", out var defaultFlowId)
                                 && string.Equals(flowId, defaultFlowId, StringComparison.Ordinal);
-                var pending = new PendingNode(target, source, flowId, condition, isDefault);
+                var pending = new PendingNode(
+                    target,
+                    source,
+                    flowId,
+                    condition,
+                    isDefault,
+                    conditionLanguage);
                 targets.Add(pending);
                 if (!incoming.TryGetValue(target, out var incomingFlows))
                     incoming[target] = incomingFlows = [];

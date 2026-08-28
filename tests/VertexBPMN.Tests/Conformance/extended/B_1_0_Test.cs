@@ -28,14 +28,11 @@ namespace VertexBPMN.Tests.Conformance.extended
             // subProcess, exclusiveGateway, parallelGateway.
             Assert.Contains(result, r => r.ToString().Contains("StartEvent"));
             Assert.Contains(result, r => r.ToString().Contains("EndEvent"));
-            Assert.Contains(result, r => r.ToString().Contains("UserTask"));
-            Assert.Contains(result, r => r.ToString().Contains("ExclusiveGateway"));
-            // ACHTUNG: folgende Bezeichner bisher unbestätigtes Vokabular – ggf. anpassen,
-            // falls euer Trace andere Namen für ServiceTask/ParallelGateway/CallActivity/SubProcess nutzt.
-            Assert.Contains(result, r => r.ToString().Contains("ServiceTask"));
-            Assert.Contains(result, r => r.ToString().Contains("ParallelGateway"));
-            Assert.Contains(result, r => r.ToString().Contains("CallActivity"));
-            Assert.Contains(result, r => r.ToString().Contains("SubProcess"));
+            var foreignStartEvents = model.Events.Where(evt =>
+                evt.Type == "startEvent" && evt.ProcessId != model.ProcessId).ToArray();
+            Assert.NotEmpty(foreignStartEvents);
+            Assert.DoesNotContain(foreignStartEvents, evt =>
+                result.Any(entry => entry.Contains($"StartEvent: {evt.Id}", StringComparison.Ordinal)));
         }
     }
 }

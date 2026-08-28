@@ -16,6 +16,14 @@ namespace VertexBPMN.Tests.Conformance.extended
             var logger = new Mock<ILogger<BpmnParser>>();var parser = new BpmnParser(logger.Object, TracerProvider.Default);
             var model =  parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
             Assert.NotNull(model);
+            model = model with
+            {
+                ProcessVariables = new Dictionary<string, object>
+                {
+                    ["approved"] = true,
+                    ["clarified"] = "yes"
+                }
+            };
             var engine = new ProcessEngine();
             var result = engine.Execute(model);
             Assert.NotNull(result);

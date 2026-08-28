@@ -18,7 +18,7 @@ namespace VertexBPMN.Tests.Conformance.extended
             var mockDecision = new Mock<IDecisionService>();
             mockDecision.Setup(d => d.EvaluateDecisionByKeyAsync(It.IsAny<string>(), It.IsAny<IDictionary<string, object>>(),
                     It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new DecisionResult(new Dictionary<string, object> { ["Approval"] = "Manual Validation Required" }));
+                .ReturnsAsync(new DecisionResult(new Dictionary<string, object> { ["Vacation Approval"] = "Manual Validation Required" }));
 
             var parserLogger = new Mock<ILogger<BpmnParser>>();
             // KORREKTUR: vorher `new BpmnParser()` ohne Logger/TracerProvider – inkonsistent
@@ -34,7 +34,10 @@ namespace VertexBPMN.Tests.Conformance.extended
             Assert.True(result.Count > 0, "No trace produced for C.8.1.bpmn");
             var types = result.Select(x => x.Split(':')[0].Trim()).ToList();
             Assert.Contains("StartEvent", types);
-            Assert.DoesNotContain("UserTask", types);
+            Assert.Contains("UserTask", types);
+            Assert.Contains(result, entry => entry.Contains(
+                "ExclusiveFlowSelected: _0a1c4f20-509f-4aeb-baf9-acc762f4fdf9",
+                StringComparison.Ordinal));
             Assert.Contains("BusinessRuleTask", types);  // Verify the rule eval happens
             Assert.Contains("SequenceFlow", types);
             Assert.Contains("ExclusiveGateway", types);

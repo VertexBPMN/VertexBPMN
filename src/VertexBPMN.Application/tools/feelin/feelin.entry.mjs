@@ -1,14 +1,54 @@
-import { evaluate, parseExpression, parseUnaryTests, unaryTest } from 'feelin';
+import { evaluate, parseExpression, parseUnaryTests, unaryTest } from './feelin.strict.mjs';
 
 function parseContext(contextJson) {
-  return contextJson ? JSON.parse(contextJson) : {};
+  return contextJson ? revive(JSON.parse(contextJson)) : {};
 }
 
 function serialize(result) {
-  return JSON.stringify(result, (_key, value) => {
-    if (typeof value === 'bigint') return value.toString();
-    return value;
-  });
+  return JSON.stringify(encode(result));
+}
+
+function temporalType(value) {
+  if (value?.isLuxonDuration) return 'duration';
+  if (!value?.isLuxonDateTime) return null;
+  if (value.year === 1900 && value.month === 1 && value.day === 1) return 'time';
+  if (value.hour === 0 && value.minute === 0 && value.second === 0
+      && value.millisecond === 0 && value.offset === 0) return 'date';
+  return 'date time';
+}
+
+function encode(value) {
+  if (typeof value === 'bigint') return value.toString();
+  const type = temporalType(value);
+  if (type) {
+    const includeOffset = value?.zone?.type !== 'system';
+    const lexical = type === 'date'
+      ? value.toISODate()
+      : type === 'time'
+        ? value.toISOTime({ suppressMilliseconds: true, includeOffset })
+        : type === 'date time'
+          ? value.toISO({ suppressMilliseconds: true, includeOffset })
+          : value.toISO();
+    return { $vertexFeelType: type, value: lexical };
+  }
+  if (Array.isArray(value)) return value.map(encode);
+  if (value && Object.getPrototypeOf(value) === Object.prototype) {
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, encode(entry)]));
+  }
+  return value;
+}
+
+function revive(value) {
+  if (Array.isArray(value)) return value.map(revive);
+  if (!value || Object.getPrototypeOf(value) !== Object.prototype) return value;
+  if (typeof value.$vertexFeelType === 'string' && typeof value.value === 'string') {
+    const literal = JSON.stringify(value.value);
+    const expression = value.$vertexFeelType === 'date time'
+      ? `date and time(${literal})`
+      : `${value.$vertexFeelType}(${literal})`;
+    return evaluate(expression).value;
+  }
+  return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, revive(entry)]));
 }
 
 function assertCompleteSyntax(tree, kind) {
@@ -26,7 +66,7 @@ globalThis.vertexFeelEvaluate = function vertexFeelEvaluate(expression, contextJ
 
 globalThis.vertexFeelUnaryTest = function vertexFeelUnaryTest(expression, inputJson, contextJson) {
   const context = parseContext(contextJson);
-  context['?'] = inputJson === undefined ? null : JSON.parse(inputJson);
+  context['?'] = inputJson === undefined ? null : revive(JSON.parse(inputJson));
   return serialize(unaryTest(expression, context));
 };
 

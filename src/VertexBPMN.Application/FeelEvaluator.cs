@@ -113,6 +113,9 @@ internal static class FeelEvaluator
     private static object? ReadValue(string resultJson)
     {
         using var document = JsonDocument.Parse(resultJson);
+        if (!document.RootElement.TryGetProperty("value", out var value))
+            throw new InvalidOperationException("FEEL runtime returned no value.");
+        var normalizedValue = NormalizeResult(value);
         if (document.RootElement.TryGetProperty("warnings", out var warnings)
             && warnings.ValueKind == JsonValueKind.Array
             && warnings.GetArrayLength() > 0)
@@ -121,18 +124,41 @@ internal static class FeelEvaluator
                 .Select(warning => warning.TryGetProperty("message", out var message)
                     ? message.GetString()
                     : warning.GetRawText())
-                .Where(message => !string.IsNullOrWhiteSpace(message));
+                .Where(message => !string.IsNullOrWhiteSpace(message))
+                .Select(message => message!)
+                .ToArray();
+            // FEEL null arithmetic evaluates to null. Other warnings (for
+            // example, a non-boolean conditional) remain hard failures.
+            if (normalizedValue is null && messages.All(IsNullArithmeticWarning)) return null;
             throw new InvalidOperationException($"FEEL evaluation failed: {string.Join("; ", messages)}");
         }
-        if (!document.RootElement.TryGetProperty("value", out var value))
-            throw new InvalidOperationException("FEEL runtime returned no value.");
-        return NormalizeResult(value);
+        return normalizedValue;
     }
+
+    private static bool IsNullArithmeticWarning(string message) =>
+        message.Contains("'null'", StringComparison.Ordinal)
+        && (message.Contains("add", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("subtract", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("multiply", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("divide", StringComparison.OrdinalIgnoreCase));
 
     private static object? NormalizeInput(object? value)
     {
-        if (value is not JsonElement json) return value;
-        return NormalizeResult(json);
+        if (value is FeelTemporalValue temporal)
+            return new Dictionary<string, object>(StringComparer.Ordinal)
+            {
+                ["$vertexFeelType"] = temporal.Kind,
+                ["value"] = temporal.Value
+            };
+        if (value is JsonElement json) return NormalizeResult(json);
+        if (value is System.Collections.IDictionary dictionary)
+            return dictionary.Keys.Cast<object>().ToDictionary(
+                key => key.ToString()!,
+                key => NormalizeInput(dictionary[key])!,
+                StringComparer.Ordinal);
+        if (value is System.Collections.IEnumerable sequence and not string)
+            return sequence.Cast<object?>().Select(NormalizeInput).ToList();
+        return value;
     }
 
     private static object? NormalizeResult(JsonElement json) => json.ValueKind switch
@@ -143,10 +169,22 @@ internal static class FeelEvaluator
         JsonValueKind.False => false,
         JsonValueKind.Null or JsonValueKind.Undefined => null,
         JsonValueKind.Array => json.EnumerateArray().Select(NormalizeResult).ToList(),
-        JsonValueKind.Object => json.EnumerateObject().ToDictionary(
-            property => property.Name,
-            property => NormalizeResult(property.Value)!,
-            StringComparer.Ordinal),
+        JsonValueKind.Object => NormalizeObject(json),
         _ => json.GetRawText()
     };
+
+    private static object NormalizeObject(JsonElement json)
+    {
+        if (json.TryGetProperty("$vertexFeelType", out var type)
+            && json.TryGetProperty("value", out var value)
+            && type.ValueKind == JsonValueKind.String
+            && value.ValueKind == JsonValueKind.String)
+            return new FeelTemporalValue(type.GetString()!, value.GetString()!);
+        return json.EnumerateObject().ToDictionary(
+            property => property.Name,
+            property => NormalizeResult(property.Value)!,
+            StringComparer.Ordinal);
+    }
 }
+
+internal sealed record FeelTemporalValue(string Kind, string Value);

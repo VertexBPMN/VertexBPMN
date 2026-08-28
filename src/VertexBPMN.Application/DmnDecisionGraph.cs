@@ -22,8 +22,9 @@ public sealed class DmnDecisionGraph
     private readonly IReadOnlyDictionary<string, XElement> _decisions;
     private readonly IReadOnlyDictionary<string, XElement> _decisionServices;
     private readonly IReadOnlyDictionary<string, XElement> _inputData;
+    private readonly IReadOnlyDictionary<string, XElement> _itemDefinitions;
+    private readonly IReadOnlyDictionary<string, XElement> _businessKnowledgeModels;
     private readonly string _targetId;
-    private readonly bool _targetIsDecisionService;
 
     private DmnDecisionGraph(XElement root, string deploymentKey)
     {
@@ -32,6 +33,10 @@ public sealed class DmnDecisionGraph
         _decisions = ElementsById("decision");
         _decisionServices = ElementsById("decisionService");
         _inputData = ElementsById("inputData");
+        _itemDefinitions = _root.Elements(_namespace + "itemDefinition")
+            .Where(element => !string.IsNullOrWhiteSpace((string?)element.Attribute("name")))
+            .ToDictionary(element => (string)element.Attribute("name")!, StringComparer.Ordinal);
+        _businessKnowledgeModels = ElementsById("businessKnowledgeModel");
 
         if (_decisions.ContainsKey(deploymentKey))
         {
@@ -40,7 +45,6 @@ public sealed class DmnDecisionGraph
         else if (_decisionServices.ContainsKey(deploymentKey))
         {
             _targetId = deploymentKey;
-            _targetIsDecisionService = true;
         }
         else if (_decisions.Count == 1 && _decisionServices.Count == 0)
         {
@@ -71,20 +75,122 @@ public sealed class DmnDecisionGraph
         var root = document.Root ?? throw new InvalidOperationException("DMN definitions element is missing.");
         if (root.Name.LocalName != "definitions"
             || root.Name.NamespaceName is not ("http://www.omg.org/spec/DMN/20191111/MODEL/"
-                or "https://www.omg.org/spec/DMN/20191111/MODEL/"))
+                or "https://www.omg.org/spec/DMN/20191111/MODEL/"
+                or "https://www.omg.org/spec/DMN/20230324/MODEL/"))
             throw new InvalidOperationException($"Unsupported DMN namespace '{root.Name.NamespaceName}'.");
         return new DmnDecisionGraph(root, deploymentKey);
     }
 
     public Dictionary<string, object> Evaluate(IDictionary<string, object> inputs)
+        => Evaluate(_targetId, inputs);
+
+    /// <summary>
+    /// Evaluates another decision or decision service from the same validated
+    /// DRD without parsing and validating the model again.
+    /// </summary>
+    public Dictionary<string, object> Evaluate(
+        string deploymentKey,
+        IDictionary<string, object> inputs)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(deploymentKey);
         ArgumentNullException.ThrowIfNull(inputs);
-        var context = new Dictionary<string, object>(inputs, StringComparer.Ordinal);
+        var context = NormalizeInputs(inputs);
         var cache = new Dictionary<string, DecisionEvaluation>(StringComparer.Ordinal);
-        return _targetIsDecisionService
-            ? EvaluateDecisionService(_decisionServices[_targetId], context, cache)
-            : EvaluateDecision(_targetId, context, cache).Variables;
+        Dictionary<string, object> result;
+        if (_decisions.ContainsKey(deploymentKey))
+            result = EvaluateDecision(deploymentKey, context, cache).Variables;
+        else if (_decisionServices.TryGetValue(deploymentKey, out var service))
+            result = EvaluateDecisionService(service, context, cache);
+        else
+            throw new InvalidOperationException(
+                $"DMN deployment key '{deploymentKey}' does not identify a decision or decision service in this DRD.");
+        return result.ToDictionary(
+            entry => entry.Key,
+            entry => ToPublicValue(entry.Value)!,
+            StringComparer.Ordinal);
     }
+
+    private static object? ToPublicValue(object? value)
+    {
+        if (value is FeelTemporalValue temporal) return temporal.Value;
+        if (value is IDictionary dictionary)
+            return dictionary.Keys.Cast<object>().ToDictionary(
+                key => key.ToString()!,
+                key => ToPublicValue(dictionary[key])!,
+                StringComparer.Ordinal);
+        if (value is IEnumerable sequence and not string)
+            return sequence.Cast<object?>().Select(ToPublicValue).ToList();
+        return value;
+    }
+
+    private Dictionary<string, object> NormalizeInputs(IDictionary<string, object> inputs)
+    {
+        var result = new Dictionary<string, object>(StringComparer.Ordinal);
+        foreach (var input in inputs)
+        {
+            var definition = _inputData.Values.FirstOrDefault(candidate =>
+                string.Equals((string?)candidate.Attribute("name"), input.Key, StringComparison.Ordinal)
+                || string.Equals(
+                    (string?)candidate.Element(_namespace + "variable")?.Attribute("name"),
+                    input.Key,
+                    StringComparison.Ordinal));
+            var typeRef = TypeReference(definition?.Element(_namespace + "variable"));
+            result[input.Key] = CoerceValue(input.Value, typeRef)!;
+        }
+        return result;
+    }
+
+    private object? CoerceValue(object? value, string? typeRef)
+    {
+        if (value is null || value is FeelTemporalValue || string.IsNullOrWhiteSpace(typeRef)) return value;
+        var type = typeRef.Split(':').Last();
+        var temporalKind = type switch
+        {
+            "date" => "date",
+            "time" => "time",
+            "dateTime" or "date and time" => "date time",
+            "dayTimeDuration" or "days and time duration" or "yearMonthDuration" or "years and months duration" => "duration",
+            _ => null
+        };
+        if (temporalKind is not null && value is string lexical)
+            return new FeelTemporalValue(temporalKind, lexical);
+
+        if (!_itemDefinitions.TryGetValue(type, out var itemDefinition)) return value;
+        if ((bool?)itemDefinition.Attribute("isCollection") == true
+            && value is IEnumerable collection and not string)
+        {
+            var elementType = TypeReference(itemDefinition);
+            return collection.Cast<object?>().Select(item => CoerceValue(item, elementType)).ToList();
+        }
+
+        var components = itemDefinition.Elements(_namespace + "itemComponent").ToArray();
+        if (components.Length > 0 && value is IDictionary dictionary)
+        {
+            var normalized = new Dictionary<string, object>(StringComparer.Ordinal);
+            foreach (var key in dictionary.Keys.Cast<object>())
+            {
+                var name = key.ToString()!;
+                var component = components.FirstOrDefault(candidate =>
+                    string.Equals((string?)candidate.Attribute("name"), name, StringComparison.Ordinal));
+                var componentType = TypeReference(component);
+                var componentValue = dictionary[key];
+                if ((bool?)component?.Attribute("isCollection") == true
+                    && componentValue is IEnumerable componentCollection and not string)
+                    normalized[name] = componentCollection.Cast<object?>()
+                        .Select(item => CoerceValue(item, componentType))
+                        .ToList();
+                else
+                    normalized[name] = CoerceValue(componentValue, componentType)!;
+            }
+            return normalized;
+        }
+
+        return CoerceValue(value, TypeReference(itemDefinition));
+    }
+
+    private string? TypeReference(XElement? element) =>
+        (string?)element?.Attribute("typeRef")
+        ?? element?.Element(_namespace + "typeRef")?.Value.Trim();
 
     private Dictionary<string, object> EvaluateDecisionService(
         XElement service,
@@ -114,9 +220,10 @@ public sealed class DmnDecisionGraph
             AddToContext(_decisions[dependency], dependencyEvaluation, context);
         }
 
-        var variables = decision.Element(_namespace + "decisionTable") is { } table
-            ? EvaluateDecisionTable(decision, table, context)
-            : EvaluateLiteralExpression(decision, context);
+        var expression = DecisionExpression(decision);
+        var variables = expression.Name.LocalName == "decisionTable"
+            ? EvaluateDecisionTable(decision, expression, context)
+            : EvaluateBoxedExpression(decision, expression, context);
         var value = variables.Count == 1
             ? variables.Values.Single()
             : variables.ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal);
@@ -126,16 +233,105 @@ public sealed class DmnDecisionGraph
         return evaluation;
     }
 
-    private Dictionary<string, object> EvaluateLiteralExpression(
+    private Dictionary<string, object> EvaluateBoxedExpression(
         XElement decision,
+        XElement expression,
         IReadOnlyDictionary<string, object> context)
     {
-        var expression = ExpressionText(decision.Element(_namespace + "literalExpression")!);
-        var value = FeelEvaluator.EvaluateExpression(expression, context);
+        var value = expression.Name.LocalName switch
+        {
+            "conditional" => EvaluateConditional(decision, expression, context),
+            "some" or "every" => EvaluateQuantified(decision, expression, context),
+            "filter" => EvaluateFilter(decision, expression, context),
+            _ => EvaluateFeel(decision, expression, context)
+        };
         return new Dictionary<string, object>(StringComparer.Ordinal)
         {
             [DecisionBindingName(decision)] = value!
         };
+    }
+
+    private object? EvaluateFeel(
+        XElement decision,
+        XElement expression,
+        IReadOnlyDictionary<string, object> context) =>
+        FeelEvaluator.EvaluateExpression(
+            BindRequiredKnowledge(decision, BoxedExpressionToFeel(expression)),
+            context);
+
+    private object? EvaluateConditional(
+        XElement decision,
+        XElement conditional,
+        IReadOnlyDictionary<string, object> context)
+    {
+        XElement Branch(string name)
+        {
+            var wrapper = conditional.Element(_namespace + name)
+                          ?? throw new InvalidOperationException($"DMN conditional requires '{name}'.");
+            return wrapper.Elements().SingleOrDefault(IsBoxedExpression)
+                   ?? throw new InvalidOperationException(
+                       $"DMN conditional '{name}' requires one boxed expression.");
+        }
+
+        var conditionExpression = BoxedExpressionToFeel(Branch("if"));
+        var condition = FeelEvaluator.EvaluateExpression(
+            BindRequiredKnowledge(decision, conditionExpression),
+            context);
+        if (condition is not bool booleanCondition)
+            throw new InvalidOperationException("DMN conditional condition must evaluate to a boolean value.");
+        var selected = Branch(booleanCondition ? "then" : "else");
+        return FeelEvaluator.EvaluateExpression(
+            BindRequiredKnowledge(decision, BoxedExpressionToFeel(selected)),
+            context);
+    }
+
+    private object EvaluateQuantified(
+        XElement decision,
+        XElement quantified,
+        IReadOnlyDictionary<string, object> context)
+    {
+        var inputWrapper = quantified.Element(_namespace + "in")!;
+        var inputExpression = inputWrapper.Elements().Single(IsBoxedExpression);
+        var input = EvaluateFeel(decision, inputExpression, context);
+        if (input is not IEnumerable sequence || input is string)
+            throw new InvalidOperationException(
+                $"DMN {quantified.Name.LocalName} input must evaluate to a list.");
+
+        var predicateWrapper = quantified.Element(_namespace + "satisfies")!;
+        var predicate = predicateWrapper.Elements().Single(IsBoxedExpression);
+        var iterator = RequiredAttribute(quantified, "iteratorVariable");
+        var isEvery = quantified.Name.LocalName == "every";
+        foreach (var item in sequence)
+        {
+            var iterationContext = new Dictionary<string, object>(context, StringComparer.Ordinal)
+            {
+                [iterator] = item!
+            };
+            var result = EvaluateFeel(decision, predicate, iterationContext);
+            if (result is not bool booleanResult)
+                throw new InvalidOperationException(
+                    $"DMN {quantified.Name.LocalName} predicate must evaluate to a boolean value.");
+            if (!isEvery && booleanResult) return true;
+            if (isEvery && !booleanResult) return false;
+        }
+
+        return isEvery;
+    }
+
+    private object? EvaluateFilter(
+        XElement decision,
+        XElement filter,
+        IReadOnlyDictionary<string, object> context)
+    {
+        var match = filter.Element(_namespace + "match")!.Elements().Single(IsBoxedExpression);
+        if (match.Name.LocalName == "literalExpression")
+        {
+            var text = ExpressionText(match).Trim();
+            if (text.Length >= 2 && text.StartsWith('"') && text.EndsWith('"'))
+                throw new InvalidOperationException("DMN filter match expression must be boolean-compatible.");
+        }
+
+        return EvaluateFeel(decision, filter, context);
     }
 
     private Dictionary<string, object> EvaluateDecisionTable(
@@ -256,22 +452,39 @@ public sealed class DmnDecisionGraph
         foreach (var decision in _decisions.Values)
         {
             var id = RequiredAttribute(decision, "id");
-            var executableCount = decision.Elements().Count(element =>
-                element.Name.LocalName is "decisionTable" or "literalExpression");
+            var executableCount = decision.Elements().Count(IsBoxedExpression);
             if (executableCount != 1)
                 throw new InvalidOperationException(
-                    $"Decision '{id}' must contain exactly one decisionTable or literalExpression.");
+                    $"Decision '{id}' must contain exactly one executable boxed expression.");
             foreach (var dependency in RequiredDecisions(decision))
                 if (!_decisions.ContainsKey(dependency))
                     throw new InvalidOperationException($"Decision '{id}' references unknown required decision '{dependency}'.");
             foreach (var input in RequiredInputs(decision))
                 if (!_inputData.ContainsKey(input))
                     throw new InvalidOperationException($"Decision '{id}' references unknown required input '{input}'.");
+            foreach (var knowledge in RequiredKnowledge(decision))
+                if (!_businessKnowledgeModels.ContainsKey(knowledge))
+                    throw new InvalidOperationException($"Decision '{id}' references unknown required knowledge '{knowledge}'.");
 
-            if (decision.Element(_namespace + "decisionTable") is { } table)
-                ValidateDecisionTable(id, table);
+            var expression = DecisionExpression(decision);
+            if (expression.Name.LocalName == "decisionTable")
+                ValidateDecisionTable(id, expression);
             else
-                FeelEvaluator.ValidateExpression(ExpressionText(decision.Element(_namespace + "literalExpression")!));
+                FeelEvaluator.ValidateExpression(BoxedExpressionToFeel(expression));
+        }
+
+        foreach (var model in _businessKnowledgeModels.Values)
+        {
+            var id = RequiredAttribute(model, "id");
+            var logic = model.Element(_namespace + "encapsulatedLogic")
+                        ?? throw new InvalidOperationException(
+                            $"Business knowledge model '{id}' requires encapsulatedLogic.");
+            var expression = logic.Elements().SingleOrDefault(IsBoxedExpression)
+                             ?? throw new InvalidOperationException(
+                                 $"Business knowledge model '{id}' requires one executable boxed expression.");
+            if (expression.Name.LocalName == "decisionTable")
+                ValidateDecisionTable(id, expression);
+            FeelEvaluator.ValidateExpression(BoxedExpressionToFeel(expression));
         }
 
         foreach (var service in _decisionServices.Values)
@@ -348,6 +561,215 @@ public sealed class DmnDecisionGraph
             throw new InvalidOperationException($"DMN {hitPolicy} requires ordered outputValues.");
     }
 
+    private static bool IsBoxedExpression(XElement element) => element.Name.LocalName is
+        "decisionTable" or "literalExpression" or "context" or "conditional" or "list"
+        or "invocation" or "functionDefinition" or "relation" or "filter" or "for"
+        or "some" or "every";
+
+    private static XElement DecisionExpression(XElement decision) =>
+        decision.Elements().Single(IsBoxedExpression);
+
+    private string BoxedExpressionToFeel(XElement expression) => expression.Name.LocalName switch
+    {
+        "decisionTable" => DecisionTableToFeel(expression),
+        "literalExpression" => RewriteKnowledgeReferences(ExpressionText(expression)),
+        "context" => ContextToFeel(expression),
+        "conditional" => ConditionalToFeel(expression),
+        "list" => $"[{string.Join(", ", expression.Elements().Where(IsBoxedExpression).Select(BoxedExpressionToFeel))}]",
+        "invocation" => InvocationToFeel(expression),
+        "functionDefinition" => FunctionDefinitionToFeel(expression),
+        "relation" => RelationToFeel(expression),
+        "filter" => FilterToFeel(expression),
+        "for" => ForToFeel(expression),
+        "some" or "every" => QuantifiedToFeel(expression),
+        _ => throw new InvalidOperationException(
+            $"Unsupported DMN boxed expression '{expression.Name.LocalName}'.")
+    };
+
+    private string DecisionTableToFeel(XElement table)
+    {
+        var inputExpressions = table.Elements(_namespace + "input")
+            .Select(InputExpression)
+            .ToArray();
+        var outputs = table.Elements(_namespace + "output")
+            .Select(output => (string?)output.Attribute("name")
+                              ?? (string?)output.Attribute("label")
+                              ?? RequiredAttribute(output, "id"))
+            .ToArray();
+        var rules = table.Elements(_namespace + "rule").Select(rule =>
+        {
+            var inputEntries = rule.Elements(_namespace + "inputEntry").ToArray();
+            var conditions = inputExpressions.Select((input, index) =>
+            {
+                var unaryTests = ExpressionText(inputEntries[index], "-");
+                return unaryTests == "-" ? "true" : $"({input}) in ({unaryTests})";
+            });
+            var outputEntries = rule.Elements(_namespace + "outputEntry").ToArray();
+            var values = outputEntries.Select(entry => ExpressionText(entry, "null")).ToArray();
+            var result = values.Length == 1
+                ? values[0]
+                : $"{{ {string.Join(", ", outputs.Zip(values, (name, value) => $"{name}: ({value})"))} }}";
+            return new CompiledRule(string.Join(" and ", conditions.Select(condition => $"({condition})")), result);
+        }).ToArray();
+
+        var hitPolicy = ((string?)table.Attribute("hitPolicy") ?? "UNIQUE").Trim().ToUpperInvariant();
+        if (hitPolicy is "PRIORITY" or "OUTPUT ORDER")
+        {
+            var priorities = table.Elements(_namespace + "output")
+                .Select(output => (output.Element(_namespace + "outputValues")?.Value ?? string.Empty)
+                    .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+                .ToArray();
+            rules = rules.OrderBy(rule =>
+            {
+                var rank = priorities.Length == 0 || priorities[0].Length == 0
+                    ? 0
+                    : Array.IndexOf(priorities[0], rule.Result.Trim());
+                return rank < 0 ? int.MaxValue : rank;
+            }).ToArray();
+        }
+
+        if (hitPolicy is "COLLECT" or "RULE ORDER" or "OUTPUT ORDER")
+        {
+            var matches = $"[{string.Join(", ", rules.Select(rule => $"if ({rule.Condition}) then ({rule.Result}) else null"))}][item != null]";
+            var aggregation = ((string?)table.Attribute("aggregation"))?.Trim().ToUpperInvariant();
+            return aggregation switch
+            {
+                "SUM" => $"sum({matches})",
+                "MIN" => $"min({matches})",
+                "MAX" => $"max({matches})",
+                "COUNT" => $"count({matches})",
+                _ => matches
+            };
+        }
+
+        var resultExpression = "null";
+        for (var index = rules.Length - 1; index >= 0; index--)
+            resultExpression = $"if ({rules[index].Condition}) then ({rules[index].Result}) else ({resultExpression})";
+        return resultExpression;
+    }
+
+    private string ContextToFeel(XElement context)
+    {
+        var entries = new List<string>();
+        string? result = null;
+        foreach (var entry in context.Elements(_namespace + "contextEntry"))
+        {
+            var expression = entry.Elements().FirstOrDefault(IsBoxedExpression)
+                             ?? throw new InvalidOperationException("DMN contextEntry requires a boxed expression.");
+            var value = BoxedExpressionToFeel(expression);
+            var name = (string?)entry.Element(_namespace + "variable")?.Attribute("name");
+            if (string.IsNullOrWhiteSpace(name))
+                result = value;
+            else
+                entries.Add($"{name}: ({value})");
+        }
+
+        if (result is null) return $"{{ {string.Join(", ", entries)} }}";
+        entries.Add($"__vertexContextResult: ({result})");
+        return $"{{ {string.Join(", ", entries)} }}.__vertexContextResult";
+    }
+
+    private string ConditionalToFeel(XElement conditional)
+    {
+        string Convert(string wrapperName)
+        {
+            var wrapper = conditional.Element(_namespace + wrapperName)
+                          ?? throw new InvalidOperationException($"DMN conditional requires '{wrapperName}'.");
+            var expression = wrapper.Elements().SingleOrDefault(IsBoxedExpression)
+                             ?? throw new InvalidOperationException(
+                                 $"DMN conditional '{wrapperName}' requires one boxed expression.");
+            return BoxedExpressionToFeel(expression);
+        }
+
+        return $"if ({Convert("if")}) then ({Convert("then")}) else ({Convert("else")})";
+    }
+
+    private string InvocationToFeel(XElement invocation)
+    {
+        var calledFunction = invocation.Elements().FirstOrDefault(IsBoxedExpression)
+                             ?? throw new InvalidOperationException("DMN invocation requires a called function expression.");
+        var bindings = invocation.Elements(_namespace + "binding").Select(binding =>
+        {
+            var value = binding.Elements().FirstOrDefault(IsBoxedExpression)
+                        ?? throw new InvalidOperationException("DMN invocation binding requires a boxed expression.");
+            var parameter = binding.Element(_namespace + "parameter")
+                            ?? throw new InvalidOperationException("DMN invocation binding requires a parameter.");
+            return new InvocationBinding(RequiredAttribute(parameter, "name"), BoxedExpressionToFeel(value));
+        }).ToArray();
+        var calledExpression = BoxedExpressionToFeel(calledFunction);
+        IEnumerable<string> arguments = bindings.Select(binding => binding.Expression);
+        if (calledFunction.Name.LocalName == "literalExpression")
+        {
+            var knowledge = _businessKnowledgeModels
+                .FirstOrDefault(entry => string.Equals(KnowledgeBindingName(entry.Value), calledExpression, StringComparison.Ordinal));
+            if (!string.IsNullOrEmpty(knowledge.Key))
+            {
+                calledExpression = KnowledgeAlias(knowledge.Key);
+                var logic = knowledge.Value.Element(_namespace + "encapsulatedLogic")!;
+                arguments = logic.Elements(_namespace + "formalParameter").Select(parameter =>
+                {
+                    var name = RequiredAttribute(parameter, "name");
+                    return bindings.Single(binding => string.Equals(binding.Name, name, StringComparison.Ordinal)).Expression;
+                });
+            }
+        }
+        return $"({calledExpression})({string.Join(", ", arguments)})";
+    }
+
+    private string FunctionDefinitionToFeel(XElement function)
+    {
+        var parameters = function.Elements(_namespace + "formalParameter")
+            .Select(parameter => RequiredAttribute(parameter, "name"));
+        var body = function.Elements().FirstOrDefault(IsBoxedExpression)
+                   ?? throw new InvalidOperationException("DMN functionDefinition requires a body expression.");
+        return $"function({string.Join(", ", parameters)}) ({BoxedExpressionToFeel(body)})";
+    }
+
+    private string RelationToFeel(XElement relation)
+    {
+        var columns = relation.Elements(_namespace + "column")
+            .Select(column => RequiredAttribute(column, "name"))
+            .ToArray();
+        var rows = relation.Elements(_namespace + "row").Select(row =>
+        {
+            var values = row.Elements().Where(IsBoxedExpression).ToArray();
+            if (values.Length != columns.Length)
+                throw new InvalidOperationException("Every DMN relation row must match the declared column count.");
+            var entries = columns.Zip(values, (column, value) =>
+                $"{column}: ({BoxedExpressionToFeel(value)})");
+            return $"{{ {string.Join(", ", entries)} }}";
+        });
+        return $"[{string.Join(", ", rows)}]";
+    }
+
+    private string FilterToFeel(XElement filter) =>
+        $"({WrappedExpression(filter, "in")})[{WrappedExpression(filter, "match")}]";
+
+    private string ForToFeel(XElement forExpression)
+    {
+        var iterator = RequiredAttribute(forExpression, "iteratorVariable");
+        return $"for {iterator} in ({WrappedExpression(forExpression, "in")}) "
+               + $"return ({WrappedExpression(forExpression, "return")})";
+    }
+
+    private string QuantifiedToFeel(XElement quantified)
+    {
+        var iterator = RequiredAttribute(quantified, "iteratorVariable");
+        return $"{quantified.Name.LocalName} {iterator} in ({WrappedExpression(quantified, "in")}) "
+               + $"satisfies ({WrappedExpression(quantified, "satisfies")})";
+    }
+
+    private string WrappedExpression(XElement parent, string wrapperName)
+    {
+        var wrapper = parent.Element(_namespace + wrapperName)
+                      ?? throw new InvalidOperationException(
+                          $"DMN {parent.Name.LocalName} requires '{wrapperName}'.");
+        var expression = wrapper.Elements().SingleOrDefault(IsBoxedExpression)
+                         ?? throw new InvalidOperationException(
+                             $"DMN {parent.Name.LocalName}/{wrapperName} requires one boxed expression.");
+        return BoxedExpressionToFeel(expression);
+    }
+
     private IReadOnlyDictionary<string, XElement> ElementsById(string localName) =>
         _root.Elements(_namespace + localName)
             .ToDictionary(element => RequiredAttribute(element, "id"), StringComparer.Ordinal);
@@ -363,6 +785,70 @@ public sealed class DmnDecisionGraph
             .Select(requirement => requirement.Element(_namespace + "requiredInput"))
             .Where(required => required is not null)
             .Select(required => LocalReference(required!, "href"));
+
+    private IEnumerable<string> RequiredKnowledge(XElement decision) =>
+        decision.Elements(_namespace + "knowledgeRequirement")
+            .Select(requirement => requirement.Element(_namespace + "requiredKnowledge"))
+            .Where(required => required is not null)
+            .Select(required => LocalReference(required!, "href"));
+
+    private string BindRequiredKnowledge(XElement decision, string expression)
+    {
+        var requiredKnowledge = ExpandRequiredKnowledge(RequiredKnowledge(decision));
+        if (requiredKnowledge.Length == 0) return expression;
+
+        var bindings = requiredKnowledge.Select(id =>
+        {
+            var model = _businessKnowledgeModels[id];
+            var logic = model.Element(_namespace + "encapsulatedLogic")!;
+            var parameters = logic.Elements(_namespace + "formalParameter")
+                .Select(parameter => RequiredAttribute(parameter, "name"));
+            var body = BoxedExpressionToFeel(logic.Elements().Single(IsBoxedExpression));
+            return $"{KnowledgeAlias(id)}: function({string.Join(", ", parameters)}) ({body})";
+        });
+
+        return $"{{ {string.Join(", ", bindings)}, __vertexResult: ({expression}) }}.__vertexResult";
+    }
+
+    private string[] ExpandRequiredKnowledge(IEnumerable<string> roots)
+    {
+        var ordered = new List<string>();
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+
+        void Visit(string id)
+        {
+            if (!visited.Add(id)) return;
+            if (!_businessKnowledgeModels.TryGetValue(id, out var model))
+                throw new InvalidOperationException($"Unknown required knowledge '{id}'.");
+            foreach (var dependency in RequiredKnowledge(model)) Visit(dependency);
+            ordered.Add(id);
+        }
+
+        foreach (var root in roots) Visit(root);
+        return ordered.ToArray();
+    }
+
+    private string KnowledgeAlias(string id) =>
+        $"__vertexBkm{_businessKnowledgeModels.Keys.ToList().IndexOf(id)}";
+
+    private string KnowledgeBindingName(XElement model) =>
+        (string?)model.Attribute("name")
+        ?? (string?)model.Element(_namespace + "variable")?.Attribute("name")
+        ?? RequiredAttribute(model, "id");
+
+    private string RewriteKnowledgeReferences(string expression)
+    {
+        foreach (var model in _businessKnowledgeModels)
+        {
+            var name = KnowledgeBindingName(model.Value);
+            expression = Regex.Replace(
+                expression,
+                $@"(?<![A-Za-z0-9_]){Regex.Escape(name)}(?=\s*\()",
+                KnowledgeAlias(model.Key),
+                RegexOptions.CultureInvariant);
+        }
+        return expression;
+    }
 
     private IEnumerable<string> DecisionServiceReferences(XElement service, string localName) =>
         service.Elements(_namespace + localName).Select(reference => LocalReference(reference, "href"));
@@ -454,10 +940,23 @@ public sealed class DmnDecisionGraph
             ? value
             : throw new InvalidOperationException($"DMN {element.Name.LocalName} requires attribute '{name}'.");
 
-    private static decimal ToDecimal(object value) =>
-        decimal.TryParse(value.ToString(), NumberStyles.Number, CultureInfo.InvariantCulture, out var number)
-            ? number
-            : throw new InvalidOperationException($"COLLECT aggregation requires numeric values, got '{value}'.");
+    private static decimal ToDecimal(object value)
+    {
+        if (value is decimal decimalValue) return decimalValue;
+        if (value is IConvertible convertible)
+        {
+            try
+            {
+                return convertible.ToDecimal(CultureInfo.InvariantCulture);
+            }
+            catch (Exception exception) when (exception is FormatException or InvalidCastException or OverflowException)
+            {
+                // Fall through to the standard domain error below.
+            }
+        }
+
+        throw new InvalidOperationException($"COLLECT aggregation requires numeric values, got '{value}'.");
+    }
 
     private static bool StructuralEquals(object? left, object? right)
     {
@@ -483,6 +982,8 @@ public sealed class DmnDecisionGraph
 
     private sealed record InputClause(string Id, string Label, string Expression);
     private sealed record OutputClause(string Id, string Name, IReadOnlyList<object?> Priorities);
+    private sealed record CompiledRule(string Condition, string Result);
+    private sealed record InvocationBinding(string Name, string Expression);
     private sealed record DecisionEvaluation(Dictionary<string, object> Variables, object? Value);
 
     private sealed class IntArrayComparer : IComparer<int[]>

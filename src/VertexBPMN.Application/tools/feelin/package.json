@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "esbuild feelin.entry.mjs --bundle --format=iife --platform=browser --target=es2020 --minify --legal-comments=inline --outfile=../../FeelRuntime/feelin.bundle.js"
+    "build": "node prepare-feelin.mjs && esbuild feelin.entry.mjs --bundle --format=iife --platform=browser --target=es2020 --minify --legal-comments=inline --outfile=../../FeelRuntime/feelin.bundle.js"
   },
   "dependencies": {
     "feelin": "7.0.1"

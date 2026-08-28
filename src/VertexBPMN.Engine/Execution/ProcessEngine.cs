@@ -348,7 +348,10 @@ public partial class ProcessEngine : IProcessEngine
         IDecisionService? decisionService = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(startEventId);
-        return Execute(model, decisionService ?? _decisionService, [startEventId]);
+        return Execute(
+            model,
+            decisionService ?? _decisionService,
+            new HashSet<string>(StringComparer.Ordinal) { startEventId });
     }
 
     private List<string> Execute(

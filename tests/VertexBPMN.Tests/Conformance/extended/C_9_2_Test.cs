@@ -34,10 +34,11 @@ namespace VertexBPMN.Tests.Conformance.extended
             Assert.Contains(result, r => r.ToString().Contains("UserTask"));
             Assert.Contains(result, r => r.ToString().Contains("BoundaryEvent"));
             Assert.Contains(result, r => r.ToString().Contains("EndEvent"));
-            var foreignStartEvents = model.Events.Where(evt =>
-                evt.Type == "startEvent" && evt.ProcessId != model.ProcessId).ToArray();
-            Assert.NotEmpty(foreignStartEvents);
-            Assert.DoesNotContain(foreignStartEvents, evt =>
+            var nestedStartEvents = model.Events.Where(evt =>
+                evt.Type == "startEvent" &&
+                (evt.SubprocessId is not null || evt.ProcessId != model.ProcessId)).ToArray();
+            Assert.NotEmpty(nestedStartEvents);
+            Assert.DoesNotContain(nestedStartEvents, evt =>
                 result.Any(entry => entry.Contains($"StartEvent: {evt.Id}", StringComparison.Ordinal)));
         }
     }

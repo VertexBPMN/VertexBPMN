@@ -26,7 +26,9 @@ namespace VertexBPMN.Tests.Conformance
                 }
             };
             var engine = new ProcessEngine();
-            var result = engine.Execute(model);
+            var startEvent = model.Events.First(evt =>
+                evt.Type == "startEvent" && evt.SubprocessId is null && evt.ProcessId == model.ProcessId);
+            var result = engine.ExecuteFromStartEvent(model, startEvent.Id);
             Assert.NotNull(result);
             Assert.True(result.Count > 0, "No trace produced for C.1.0.bpmn");
             Assert.Contains(result, r => r.ToString().Contains("StartEvent"));

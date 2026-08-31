@@ -218,14 +218,14 @@ jobs:
         ignore-unfixed: true
         exit-code: '1'
     - name: Generate API SPDX SBOM
-      uses: anchore/sbom-action@v0.24.0
+      uses: anchore/sbom-action@v0.24.2
       with:
         image: vertexbpmn:${{ github.sha }}
         format: spdx-json
         output-file: artifacts/sbom/vertexbpmn.spdx.json
         artifact-name: vertexbpmn-sbom.spdx.json
     - name: Generate Studio SPDX SBOM
-      uses: anchore/sbom-action@v0.24.0
+      uses: anchore/sbom-action@v0.24.2
       with:
         image: vertexbpmn-studio:${{ github.sha }}
         format: spdx-json

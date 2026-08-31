@@ -413,7 +413,7 @@ public class KafkaMessageDispatcher : IMessageDispatcher, IDisposable
         }, cancellationToken);
     }
 
-    private static Dictionary<string, object>? TryExtractVariables(string json)
+    private static Dictionary<string, object> TryExtractVariables(string json)
     {
         try
         {
@@ -438,7 +438,7 @@ public class KafkaMessageDispatcher : IMessageDispatcher, IDisposable
             }
         }
         catch { /* ignore parse errors */ }
-        return null;
+        return new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
     }
 
     public async Task PublishCaseFileUpdateAsync(CaseFileUpdateEvent updateEvent, CancellationToken cancellationToken = default)

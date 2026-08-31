@@ -33,10 +33,10 @@ namespace VertexBPMN.Engine.Execution
         }
 
         /// <summary>
-        /// Startet eine neue Prozessinstanz für den angegebenen Prozessschlüssel.
+        /// Startet eine neue Prozessinstanz fÃ¼r den angegebenen ProzessschlÃ¼ssel.
         /// </summary>
-        /// <param name="processKey">Der Schlüssel des Prozesses im Registry.</param>
-        /// <param name="variables">Initiale Variablen für die Prozessinstanz.</param>
+        /// <param name="processKey">Der SchlÃ¼ssel des Prozesses im Registry.</param>
+        /// <param name="variables">Initiale Variablen fÃ¼r die Prozessinstanz.</param>
         /// <returns>Die ID der gestarteten Prozessinstanz.</returns>
         /// <exception cref="BpmnEngineException">Wird geworfen, wenn der Prozess nicht gefunden wird oder ein Fehler auftritt.</exception>
         public async Task<string> StartInstanceAsync(string processKey, Dictionary<string, object> variables)
@@ -94,7 +94,7 @@ namespace VertexBPMN.Engine.Execution
         /// <summary>
         /// Registriert einen neuen Prozess.
         /// </summary>
-        /// <param name="key">Der Schlüssel des Prozesses.</param>
+        /// <param name="key">Der SchlÃ¼ssel des Prozesses.</param>
         /// <param name="bpmnXml">Der BPMN-XML-Inhalt.</param>
         public async Task RegisterProcessAsync(string key, string bpmnXml)
         {
@@ -113,11 +113,11 @@ namespace VertexBPMN.Engine.Execution
         }
 
         /// <summary>
-        /// Schließt eine Benutzeraufgabe ab.
+        /// SchlieÃŸt eine Benutzeraufgabe ab.
         /// </summary>
         /// <param name="instanceId">Die ID der Prozessinstanz.</param>
         /// <param name="taskId">Die ID der Aufgabe.</param>
-        /// <param name="variables">Zusätzliche Variablen.</param>
+        /// <param name="variables">ZusÃ¤tzliche Variablen.</param>
         public async Task CompleteTaskAsync(string instanceId, string taskId, Dictionary<string, object> variables)
         {
             try
@@ -152,13 +152,22 @@ namespace VertexBPMN.Engine.Execution
         private async Task HandleUserTaskCompletionAsync(BpmnModel model, ProcessInstance instance, BpmnTask task, Dictionary<string, object> variables)
         {
             // Validierung der Formularfelder (falls vorhanden)
-            if (task.Attributes.TryGetValue("camunda:formFields", out var formFieldsJson))
+            if (task.Attributes?.TryGetValue("camunda:formFields", out var formFieldsJson) == true)
             {
-                var formFields = JsonSerializer.Deserialize<List<dynamic>>(formFieldsJson);
-                foreach (var field in formFields)
+                using var formFields = JsonDocument.Parse(formFieldsJson);
+                if (formFields.RootElement.ValueKind != JsonValueKind.Array)
+                    throw new BpmnEngineException($"Form fields for task {task.Id} must be a JSON array.");
+                foreach (var field in formFields.RootElement.EnumerateArray())
                 {
-                    if (!variables.ContainsKey((string)field.Id))
-                        throw new BpmnEngineException($"Missing required field {field.Id} for task {task.Id}");
+                    var idProperty = field.TryGetProperty("Id", out var id)
+                        ? id
+                        : field.TryGetProperty("id", out id)
+                            ? id
+                            : throw new BpmnEngineException($"A form field for task {task.Id} has no id.");
+                    var fieldId = idProperty.GetString()
+                                  ?? throw new BpmnEngineException($"A form field id for task {task.Id} is null.");
+                    if (!variables.ContainsKey(fieldId))
+                        throw new BpmnEngineException($"Missing required field {fieldId} for task {task.Id}");
                 }
             }
 
@@ -171,7 +180,7 @@ namespace VertexBPMN.Engine.Execution
             var outgoingFlows = model.SequenceFlows.Where(f => f.SourceRef == task.Id).Select(f => f.TargetRef).ToList();
             instance.ActiveTokens.AddRange(outgoingFlows);
 
-            // Führe nächste Schritte aus
+            // FÃ¼hre nÃ¤chste Schritte aus
             var trace = await _engine.ExecuteAsync(model);
             if (instance.ActiveTasks.Count == 0 && instance.ActiveTokens.Count == 0)
                 instance.Status = ProcessInstanceStatus.Completed;

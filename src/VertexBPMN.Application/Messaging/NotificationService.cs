@@ -16,6 +16,7 @@ public class NotificationService(ILogger<NotificationService> logger, IMessageDi
         foreach (var n in notifications)
         {
             logger.LogInformation("Notify {Recipient}: {Message}", n.RecipientId, n.Message);
+            if (dispatcher is null) continue;
             await dispatcher.DispatchUserTaskAsync(n.RecipientId, "notification", new Dictionary<string, object>
             {
                 { "message", n.Message },

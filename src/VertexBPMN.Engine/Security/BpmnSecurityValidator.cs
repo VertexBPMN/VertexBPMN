@@ -115,7 +115,7 @@ public sealed class BpmnSecurityValidator
         return new XmlReaderSettings
         {
             DtdProcessing = DtdProcessing.Prohibit,   // DTDs verbieten
-            XmlResolver = null,                       // Keine externen Ressourcen auflösen
+            XmlResolver = null,                       // Keine externen Ressourcen auflÃ¶sen
             MaxCharactersFromEntities = 1024,         // Schutz vor Entity-Expansion (Billion Laughs)
             MaxCharactersInDocument = _options.MaxXmlSizeBytes, // Schutz vor DoS
             ValidationType = ValidationType.None,
@@ -131,7 +131,7 @@ public sealed class BpmnSecurityValidator
         // Sichere Parser-Settings, die du produktiv verwenden solltest
         var secureSettings = GetDefaultXmlReaderSettings();
 
-        // 1) Versuche, das übergebene XML sicher zu parsen (zur Laufzeitverifizierung deiner Pipeline)
+        // 1) Versuche, das Ã¼bergebene XML sicher zu parsen (zur Laufzeitverifizierung deiner Pipeline)
         try
         {
             using var secureReader = XmlReader.Create(new StringReader(xml), secureSettings);
@@ -142,42 +142,42 @@ public sealed class BpmnSecurityValidator
         }
         catch (XmlException ex)
         {
-            // Falls dein Input eine DTD enthält, ist das erwartete Verhalten (Prohibit) ein Fehler.
+            // Falls dein Input eine DTD enthÃ¤lt, ist das erwartete Verhalten (Prohibit) ein Fehler.
             // Das ist gut (keine XXE), aber melde es informativ.
             result.DtdProcessingDisabled = true;
             result.ExternalEntityResolutionDisabled = true;
             result.Vulnerabilities.Add($"Sicheres Parsing hat DTDs blockiert: {ex.Message}");
         }
 
-        // 2) Explizite XXE-Prüfung: interne DTD-Entität
+        // 2) Explizite XXE-PrÃ¼fung: interne DTD-EntitÃ¤t
 
         try
         {
-            // Wenn ein Parser DTDs erlaubt (unsichere Settings), würde dieser Test expandieren.
+            // Wenn ein Parser DTDs erlaubt (unsichere Settings), wÃ¼rde dieser Test expandieren.
             // Hier testen wir bewusst mit einem expliziten Reader mit DtdProcessing.Parse,
             // um eine potenzielle Schwachstelle sichtbar zu machen.
             var insecureSettings = new XmlReaderSettings
             {
                 DtdProcessing = DtdProcessing.Parse,
-                XmlResolver = null // interne Entitäten funktionieren auch ohne Resolver
+                XmlResolver = null // interne EntitÃ¤ten funktionieren auch ohne Resolver
             };
             using var reader = XmlReader.Create(new StringReader(xml), insecureSettings);
             var doc = XDocument.Load(reader);
 
             if (doc.Root?.Value == "SECURITY_BREACH")
             {
-                // Zeigt: Mit DTD erlaubt wäre XXE möglich.
+                // Zeigt: Mit DTD erlaubt wÃ¤re XXE mÃ¶glich.
                 // Deine produktiven secureSettings verhindern dies (oben).
-                result.Vulnerabilities.Add("XXE möglich, wenn DTDs erlaubt sind (interne Entität wurde expandiert).");
+                result.Vulnerabilities.Add("XXE mÃ¶glich, wenn DTDs erlaubt sind (interne EntitÃ¤t wurde expandiert).");
             }
         }
         catch (XmlException)
         {
-            // Wenn DTDs verboten sind, wird hier geworfen – das ist sicher.
-            // Kein Eintrag nötig; der erste Block deckt die produktive Sicherheit bereits ab.
+            // Wenn DTDs verboten sind, wird hier geworfen â€“ das ist sicher.
+            // Kein Eintrag nÃ¶tig; der erste Block deckt die produktive Sicherheit bereits ab.
         }
 
-        // 3) Externe Entitäten/DTD-Auflösung prüfen, ohne echte Netzwerkanfragen
+        // 3) Externe EntitÃ¤ten/DTD-AuflÃ¶sung prÃ¼fen, ohne echte Netzwerkanfragen
 
         var countingResolver = new CountingXmlResolver();
         try
@@ -185,19 +185,19 @@ public sealed class BpmnSecurityValidator
             var parseSettings = new XmlReaderSettings
             {
                 DtdProcessing = DtdProcessing.Parse,      // bewusst erlauben, um Verhalten zu beobachten
-                XmlResolver = countingResolver            // unser Resolver zeigt, ob Auflösung versucht wird
+                XmlResolver = countingResolver            // unser Resolver zeigt, ob AuflÃ¶sung versucht wird
             };
             using var reader = XmlReader.Create(new StringReader(xml), parseSettings);
             var doc = XDocument.Load(reader);
 
             if (countingResolver.RequestCount > 0 && doc.Root?.Value == "EXTERNAL_ENTITY_RESOLVED")
             {
-                result.Vulnerabilities.Add("Externe Entitätsauflösung ist möglich, wenn XmlResolver gesetzt ist.");
+                result.Vulnerabilities.Add("Externe EntitÃ¤tsauflÃ¶sung ist mÃ¶glich, wenn XmlResolver gesetzt ist.");
             }
         }
         catch (XmlException)
         {
-            // Fehler bei DTD-Parsing oder Entitätsauflösung – zeigt, dass ohne geeignete Resolver keine Auflösung passiert.
+            // Fehler bei DTD-Parsing oder EntitÃ¤tsauflÃ¶sung â€“ zeigt, dass ohne geeignete Resolver keine AuflÃ¶sung passiert.
             if (countingResolver.RequestCount > 0)
             {
                 result.Vulnerabilities.Add("Externe DTD wurde angefragt, Parsing schlug jedoch fehl.");
@@ -256,8 +256,6 @@ public sealed class BpmnSecurityValidator
     {
         int maxDepth = 0;
         int currentDepth = 0;
-        bool inElement = false;
-        
         for (int i = 0; i < xml.Length - 1; i++)
         {
             if (xml[i] == '<' && xml[i + 1] != '!' && xml[i + 1] != '?')

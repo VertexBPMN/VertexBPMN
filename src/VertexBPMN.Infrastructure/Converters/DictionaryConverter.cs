@@ -8,8 +8,9 @@ public class DictionaryConverter : ValueConverter<Dictionary<string, object>, st
 {
     public DictionaryConverter()
         : base(
-            d => JsonSerializer.Serialize(d, (JsonSerializerOptions)null),
-            s => JsonSerializer.Deserialize<Dictionary<string, object>>(s, (JsonSerializerOptions)null))
+            dictionary => JsonSerializer.Serialize(dictionary, (JsonSerializerOptions?)null),
+            json => JsonSerializer.Deserialize<Dictionary<string, object>>(json, (JsonSerializerOptions?)null)
+                    ?? new Dictionary<string, object>())
     {
     }
 }

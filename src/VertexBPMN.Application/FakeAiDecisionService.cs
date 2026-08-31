@@ -53,22 +53,29 @@ public sealed class FakeAiDecisionService : IAiDecisionService
 
     public Task<PlanItem> GenerateAdHocSubprocessAsync(string caseId, Dictionary<string, object> caseFile, CancellationToken cancellationToken = default)
     {
-        return null;
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(new PlanItem(
+            $"{caseId}-adhoc",
+            "adHocSubprocess",
+            "generated-ad-hoc-subprocess"));
     }
 
     public Task<List<PlanItem>> PredictOptimalPlanItemsAsync(string caseId, Dictionary<string, object> caseFile, List<HistoricalCaseData> historicalData,
         CancellationToken cancellationToken = default)
     {
-        return null;
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(new List<PlanItem>());
     }
 
     public Task<Dictionary<string, object>> FetchExternalContextAsync(string caseId, string resourceId, CancellationToken cancellationToken = default)
     {
-        return null;
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(new Dictionary<string, object>());
     }
 
     public Task ExecuteMcpActionAsync(string caseId, string mcpServerUrl, string method, Dictionary<string, object> parameters, CancellationToken cancellationToken = default)
     {
-       return null;
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.CompletedTask;
     }
 }

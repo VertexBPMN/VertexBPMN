@@ -362,8 +362,9 @@ public partial class BpmnParser : IBpmnParser
                                          el.Element("multiInstanceLoopCharacteristics");
                             var stdNode = el.Element(ns + "standardLoopCharacteristics") ??
                                           el.Element("standardLoopCharacteristics");
-                            if (miNode != null || stdNode != null)
-                                rawMultiInstance![id] = new XElement(miNode ?? stdNode);
+                            var rawLoop = miNode ?? stdNode;
+                            if (rawLoop is not null)
+                                rawMultiInstance![id] = new XElement(rawLoop);
                         }
 
                         subprocesses.Add(new BpmnSubprocess(id, isEvent, isTx, loopInfo.loop, currentSub, ext)
@@ -446,7 +447,8 @@ public partial class BpmnParser : IBpmnParser
                         {
                             var miNodeT = el.Element(ns + "multiInstanceLoopCharacteristics") ?? el.Element("multiInstanceLoopCharacteristics");
                             var stdNodeT = el.Element(ns + "standardLoopCharacteristics") ?? el.Element("standardLoopCharacteristics");
-                            if (miNodeT != null || stdNodeT != null) rawMultiInstance![id] = new XElement(miNodeT ?? stdNodeT);
+                            var rawTaskLoop = miNodeT ?? stdNodeT;
+                            if (rawTaskLoop is not null) rawMultiInstance![id] = new XElement(rawTaskLoop);
                         }
 
                         if (local == "scriptTask" && !string.IsNullOrEmpty(id))

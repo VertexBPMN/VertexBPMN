@@ -56,7 +56,11 @@ internal static class FeelEvaluator
             if (ReadValue(numericResult) is true) return true;
         }
 
-        return DmnDecisionTable.MatchesLegacyUnaryTest(unaryTests, normalizedInput);
+        // A syntactically valid FEEL unary test returning false is definitive.
+        // Falling back to the legacy scalar comparator here made references
+        // such as `> Complex.aDate` compare against their source text and could
+        // therefore match multiple mutually exclusive rules.
+        return false;
     }
 
     public static void ValidateExpression(string expression)
@@ -90,7 +94,7 @@ internal static class FeelEvaluator
         var engine = new Jint.Engine(options => options
             .TimeoutInterval(TimeSpan.FromSeconds(2))
             .LimitRecursion(256)
-            .MaxStatements(2_000_000));
+            .MaxStatements(20_000_000));
         engine.Execute(RuntimeSource.Value);
         return engine;
     }
@@ -118,7 +122,8 @@ internal static class FeelEvaluator
         var normalizedValue = NormalizeResult(value);
         if (document.RootElement.TryGetProperty("warnings", out var warnings)
             && warnings.ValueKind == JsonValueKind.Array
-            && warnings.GetArrayLength() > 0)
+            && warnings.GetArrayLength() > 0
+            && normalizedValue is not null)
         {
             var messages = warnings.EnumerateArray()
                 .Select(warning => warning.TryGetProperty("message", out var message)
@@ -127,20 +132,10 @@ internal static class FeelEvaluator
                 .Where(message => !string.IsNullOrWhiteSpace(message))
                 .Select(message => message!)
                 .ToArray();
-            // FEEL null arithmetic evaluates to null. Other warnings (for
-            // example, a non-boolean conditional) remain hard failures.
-            if (normalizedValue is null && messages.All(IsNullArithmeticWarning)) return null;
             throw new InvalidOperationException($"FEEL evaluation failed: {string.Join("; ", messages)}");
         }
         return normalizedValue;
     }
-
-    private static bool IsNullArithmeticWarning(string message) =>
-        message.Contains("'null'", StringComparison.Ordinal)
-        && (message.Contains("add", StringComparison.OrdinalIgnoreCase)
-            || message.Contains("subtract", StringComparison.OrdinalIgnoreCase)
-            || message.Contains("multiply", StringComparison.OrdinalIgnoreCase)
-            || message.Contains("divide", StringComparison.OrdinalIgnoreCase));
 
     private static object? NormalizeInput(object? value)
     {

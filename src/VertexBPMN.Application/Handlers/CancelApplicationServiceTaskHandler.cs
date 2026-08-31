@@ -1,52 +1,43 @@
 using Microsoft.Extensions.Logging;
 using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.Application.Handlers
+namespace VertexBPMN.Application.Handlers;
+
+public class CancelApplicationServiceTaskHandler(
+    ILogger<CancelApplicationServiceTaskHandler> logger) : IServiceTaskHandler
 {
-    public class CancelApplicationServiceTaskHandler : IServiceTaskHandler
+    private readonly ILogger<CancelApplicationServiceTaskHandler> _logger =
+        logger ?? throw new ArgumentNullException(nameof(logger));
+
+    public async Task ExecuteAsync(
+        IDictionary<string, string> attributes,
+        IDictionary<string, object> variables,
+        CancellationToken ct = default)
     {
-        private readonly ILogger<CancelApplicationServiceTaskHandler> _logger;
+        var applicationId = RequiredVariable(variables, "applicationId");
+        var reason = RequiredVariable(variables, "reason");
 
-        public CancelApplicationServiceTaskHandler(ILogger<CancelApplicationServiceTaskHandler> logger)
-        {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        }
-
-        public async Task ExecuteAsync(
-            IDictionary<string, string> attributes,
-            IDictionary<string, object> variables,
-            CancellationToken ct = default)
-        {
-            // Extrahiere notwendige Variablen
-            if (!variables.TryGetValue("applicationId", out var applicationId) || string.IsNullOrWhiteSpace(applicationId?.ToString()))
-            {
-                throw new InvalidOperationException("Missing or invalid 'applicationId' variable.");
-            }
-
-            if (!variables.TryGetValue("reason", out var reason) || string.IsNullOrWhiteSpace(reason?.ToString()))
-            {
-                throw new InvalidOperationException("Missing or invalid 'reason' variable.");
-            }
-
-            // Logge die Stornierungsanfrage
-            _logger.LogInformation("Cancelling application {ApplicationId} for reason: {Reason}", applicationId, reason);
-
-            // Simuliere die Stornierungslogik
-            await CancelApplicationAsync(applicationId.ToString(), reason.ToString(), ct);
-
-            // Aktualisiere die Prozessvariablen
-            variables["applicationStatus"] = "Cancelled";
-
-            // Logge den Abschluss
-            _logger.LogInformation("Application {ApplicationId} successfully cancelled.", applicationId);
-        }
-
-        private Task CancelApplicationAsync(string applicationId, string reason, CancellationToken ct)
-        {
-            // Simulierte Logik für die Stornierung
-            // In einer echten Implementierung könnte dies ein API-Aufruf oder eine Datenbankoperation sein
-            _logger.LogDebug("Simulating cancellation of application {ApplicationId} with reason: {Reason}", applicationId, reason);
-            return Task.CompletedTask;
-        }
+        _logger.LogInformation(
+            "Cancelling application {ApplicationId} for reason: {Reason}",
+            applicationId,
+            reason);
+        await CancelApplicationAsync(applicationId, reason, ct);
+        variables["applicationStatus"] = "Cancelled";
+        _logger.LogInformation("Application {ApplicationId} successfully cancelled.", applicationId);
     }
+
+    private Task CancelApplicationAsync(string applicationId, string reason, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        _logger.LogDebug(
+            "Simulating cancellation of application {ApplicationId} with reason: {Reason}",
+            applicationId,
+            reason);
+        return Task.CompletedTask;
+    }
+
+    private static string RequiredVariable(IDictionary<string, object> variables, string name) =>
+        variables.TryGetValue(name, out var value) && !string.IsNullOrWhiteSpace(value?.ToString())
+            ? value.ToString()!
+            : throw new InvalidOperationException($"Missing or invalid '{name}' variable.");
 }

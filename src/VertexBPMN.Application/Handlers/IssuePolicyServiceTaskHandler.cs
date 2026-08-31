@@ -1,52 +1,43 @@
 using Microsoft.Extensions.Logging;
 using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.Application.Handlers
+namespace VertexBPMN.Application.Handlers;
+
+public class IssuePolicyServiceTaskHandler(
+    ILogger<IssuePolicyServiceTaskHandler> logger) : IServiceTaskHandler
 {
-    public class IssuePolicyServiceTaskHandler : IServiceTaskHandler
+    private readonly ILogger<IssuePolicyServiceTaskHandler> _logger =
+        logger ?? throw new ArgumentNullException(nameof(logger));
+
+    public async Task ExecuteAsync(
+        IDictionary<string, string> attributes,
+        IDictionary<string, object> variables,
+        CancellationToken ct = default)
     {
-        private readonly ILogger<IssuePolicyServiceTaskHandler> _logger;
+        var policyId = RequiredVariable(variables, "policyId");
+        var customerId = RequiredVariable(variables, "customerId");
 
-        public IssuePolicyServiceTaskHandler(ILogger<IssuePolicyServiceTaskHandler> logger)
-        {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        }
-
-        public async Task ExecuteAsync(
-            IDictionary<string, string> attributes,
-            IDictionary<string, object> variables,
-            CancellationToken ct = default)
-        {
-            // Extrahiere notwendige Variablen
-            if (!variables.TryGetValue("policyId", out var policyId) || string.IsNullOrWhiteSpace(policyId?.ToString()))
-            {
-                throw new InvalidOperationException("Missing or invalid 'policyId' variable.");
-            }
-
-            if (!variables.TryGetValue("customerId", out var customerId) || string.IsNullOrWhiteSpace(customerId?.ToString()))
-            {
-                throw new InvalidOperationException("Missing or invalid 'customerId' variable.");
-            }
-
-            // Logge die Anfrage
-            _logger.LogInformation("Issuing policy {PolicyId} for customer {CustomerId}", policyId, customerId);
-
-            // Simuliere die Logik zum Ausstellen der Police
-            await IssuePolicyAsync(policyId.ToString(), customerId.ToString(), ct);
-
-            // Aktualisiere die Prozessvariablen
-            variables["policyStatus"] = "Issued";
-
-            // Logge den Abschluss
-            _logger.LogInformation("Policy {PolicyId} successfully issued for customer {CustomerId}.", policyId, customerId);
-        }
-
-        private Task IssuePolicyAsync(string policyId, string customerId, CancellationToken ct)
-        {
-            // Simulierte Logik für das Ausstellen der Police
-            // In einer echten Implementierung könnte dies ein API-Aufruf oder eine Datenbankoperation sein
-            _logger.LogDebug("Simulating issuance of policy {PolicyId} for customer {CustomerId}", policyId, customerId);
-            return Task.CompletedTask;
-        }
+        _logger.LogInformation("Issuing policy {PolicyId} for customer {CustomerId}", policyId, customerId);
+        await IssuePolicyAsync(policyId, customerId, ct);
+        variables["policyStatus"] = "Issued";
+        _logger.LogInformation(
+            "Policy {PolicyId} successfully issued for customer {CustomerId}.",
+            policyId,
+            customerId);
     }
+
+    private Task IssuePolicyAsync(string policyId, string customerId, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        _logger.LogDebug(
+            "Simulating issuance of policy {PolicyId} for customer {CustomerId}",
+            policyId,
+            customerId);
+        return Task.CompletedTask;
+    }
+
+    private static string RequiredVariable(IDictionary<string, object> variables, string name) =>
+        variables.TryGetValue(name, out var value) && !string.IsNullOrWhiteSpace(value?.ToString())
+            ? value.ToString()!
+            : throw new InvalidOperationException($"Missing or invalid '{name}' variable.");
 }

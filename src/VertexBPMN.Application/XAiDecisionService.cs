@@ -15,7 +15,6 @@ public class XAiDecisionService : IAiDecisionService
     private readonly ILogger<XAiDecisionService> _logger;
     private readonly Tracer _tracer;
     private readonly string _apiEndpoint = "https://api.x.ai/grok";
-    private readonly string _aiApiEndpoint = "https://api.x.ai/ml-predict";
     private readonly string _mcpServerEndpoint = "http://mcp-server:8080/api/mcp"; // Konfigurierbar
     public XAiDecisionService(HttpClient httpClient, ILogger<XAiDecisionService> logger,  TracerProvider tracerProvider)
     {
@@ -62,7 +61,7 @@ public class XAiDecisionService : IAiDecisionService
         {
             // Externe Kontextdaten via MCP abrufen
             var externalContext = await FetchExternalContextAsync(caseId, "external_workflow_data", cancellationToken);
-            // Beispiel: Steuerung eines externen MCP-Servers, um eine Aktion auszuführen
+            // Beispiel: Steuerung eines externen MCP-Servers, um eine Aktion auszufÃ¼hren
             if (externalContext.ContainsKey("requiresApproval"))
             {
                 await ExecuteMcpActionAsync(caseId, _mcpServerEndpoint, "trigger_approval", new Dictionary<string, object>

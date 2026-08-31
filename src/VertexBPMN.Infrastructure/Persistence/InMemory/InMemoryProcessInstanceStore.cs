@@ -153,7 +153,6 @@ public sealed class InMemoryProcessInstanceStore : IProcessInstanceStore
 
     public Task SaveCaseTokenAsync(CaseToken token)
     {
-        ArgumentNullException.ThrowIfNull(token);
         var id = GetCaseTokenId(token);
         _caseTokens[id] = token;
         return Task.CompletedTask;

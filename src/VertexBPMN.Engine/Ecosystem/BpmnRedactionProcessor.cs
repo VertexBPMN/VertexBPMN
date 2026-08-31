@@ -65,7 +65,12 @@ public sealed class BpmnRedactionProcessor
         foreach (var task in tasks)
         {
             var redactedAttributes = RedactAttributes(task.Attributes, stats);
-            var redactedTask = task with { Attributes = (Dictionary<string, string>)redactedAttributes };
+            var redactedTask = task with
+            {
+                Attributes = redactedAttributes is null
+                    ? null
+                    : new Dictionary<string, string>(redactedAttributes)
+            };
             redactedTasks.Add(redactedTask);
         }
 
@@ -79,7 +84,12 @@ public sealed class BpmnRedactionProcessor
         foreach (var evt in events)
         {
             var redactedExtensions = RedactAttributes(evt.Attributes, stats);
-            var redactedEvent = evt with { Attributes = (Dictionary<string, string>)redactedExtensions };
+            var redactedEvent = evt with
+            {
+                Attributes = redactedExtensions is null
+                    ? null
+                    : new Dictionary<string, string>(redactedExtensions)
+            };
             redactedEvents.Add(redactedEvent);
         }
 
@@ -93,7 +103,12 @@ public sealed class BpmnRedactionProcessor
         foreach (var subprocess in subprocesses)
         {
             var redactedExtensions = RedactAttributes(subprocess.Attributes, stats);
-            var redactedSubprocess = subprocess with { Attributes = (Dictionary<string, string>)redactedExtensions };
+            var redactedSubprocess = subprocess with
+            {
+                Attributes = redactedExtensions is null
+                    ? null
+                    : new Dictionary<string, string>(redactedExtensions)
+            };
             redactedSubprocesses.Add(redactedSubprocess);
         }
 
@@ -107,7 +122,12 @@ public sealed class BpmnRedactionProcessor
         foreach (var flow in flows)
         {
             var redactedExtensions = RedactAttributes(flow.Attributes, stats);
-            var redactedFlow = flow with { Attributes = (Dictionary<string, string>)redactedExtensions };
+            var redactedFlow = flow with
+            {
+                Attributes = redactedExtensions is null
+                    ? null
+                    : new Dictionary<string, string>(redactedExtensions)
+            };
             redactedFlows.Add(redactedFlow);
         }
 

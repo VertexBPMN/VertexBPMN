@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Globalization;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
 using VertexBPMN.Application;
@@ -80,15 +81,23 @@ internal static class DmnTckProgram
     {
         XDocument tests;
         string dmnXml;
+        string[] importedDmnXml;
         XDocument dmn;
         try
         {
-            tests = XDocument.Load(testDefinitionPath, LoadOptions.SetLineInfo);
+            tests = XDocument.Load(
+                testDefinitionPath,
+                LoadOptions.SetLineInfo | LoadOptions.PreserveWhitespace);
             var modelName = tests.Root?.Element(TestNamespace + "modelName")?.Value;
             if (string.IsNullOrWhiteSpace(modelName))
                 throw new InvalidOperationException("testCases/modelName is missing.");
             var modelPath = Path.Combine(Path.GetDirectoryName(testDefinitionPath)!, modelName);
             dmnXml = File.ReadAllText(modelPath);
+            importedDmnXml = Directory.EnumerateFiles(Path.GetDirectoryName(modelPath)!, "*.dmn")
+                .Where(path => !string.Equals(
+                    Path.GetFullPath(path), Path.GetFullPath(modelPath), StringComparison.OrdinalIgnoreCase))
+                .Select(File.ReadAllText)
+                .ToArray();
             dmn = XDocument.Parse(dmnXml, LoadOptions.SetLineInfo);
         }
         catch (Exception exception)
@@ -105,7 +114,7 @@ internal static class DmnTckProgram
             total++;
             try
             {
-                ExecuteCase(testCase, dmn.Root!, dmnXml, ref graph);
+                ExecuteCase(testCase, dmn.Root!, dmnXml, importedDmnXml, ref graph);
                 succeeded++;
             }
             catch (Exception exception)
@@ -119,12 +128,13 @@ internal static class DmnTckProgram
         XElement testCase,
         XElement definitions,
         string dmnXml,
+        IReadOnlyList<string> importedDmnXml,
         ref DmnDecisionGraph? graph)
     {
         var inputs = testCase.Elements(TestNamespace + "inputNode")
             .ToDictionary(
                 node => RequiredAttribute(node, "name"),
-                node => ReadValue(node)!,
+                node => ReadValue(node, preserveTemporalType: true)!,
                 StringComparer.Ordinal);
         var resultNodes = testCase.Elements(TestNamespace + "resultNode").ToArray();
         if (resultNodes.Length == 0)
@@ -142,10 +152,17 @@ internal static class DmnTckProgram
                     ? invocableName
                     : resultName;
                 var targetId = ResolveTargetId(definitions, caseType, targetName);
-                graph ??= DmnDecisionGraph.Parse(dmnXml, targetId);
+                graph ??= DmnDecisionGraph.Parse(dmnXml, targetId, importedDmnXml);
                 var actualVariables = graph.Evaluate(targetId, inputs);
                 if (expectsError)
-                    throw new TckAssertionException($"Expected an error result for '{resultName}', but evaluation succeeded.");
+                {
+                    var expectedErrorElement = resultNode.Element(TestNamespace + "expected");
+                    var expectedErrorValue = expectedErrorElement is null ? null : ReadValue(expectedErrorElement);
+                    var actualErrorValue = ResolveActual(actualVariables, resultName, expectedErrorValue);
+                    if (actualErrorValue is null) continue;
+                    throw new TckAssertionException(
+                        $"Expected an error or null result for '{resultName}', but evaluation returned {Format(actualErrorValue)}.");
+                }
 
                 var expectedElement = resultNode.Element(TestNamespace + "expected")
                     ?? throw new TckAssertionException($"Expected value for '{resultName}' is missing.");
@@ -163,6 +180,11 @@ internal static class DmnTckProgram
             {
                 // The TCK explicitly expects evaluation to fail for this result.
             }
+            catch (Exception exception)
+            {
+                throw new InvalidOperationException(
+                    $"Result '{resultName}' could not be evaluated: {exception.Message}", exception);
+            }
         }
     }
 
@@ -175,6 +197,7 @@ internal static class DmnTckProgram
                 && ((string?)element.Attribute("id") == targetName
                     || (string?)element.Attribute("name") == targetName));
         return (string?)target?.Attribute("id")
+               ?? (string?)target?.Attribute("name")
                ?? throw new InvalidOperationException($"DMN {localName} '{targetName}' was not found.");
     }
 
@@ -206,41 +229,53 @@ internal static class DmnTckProgram
             $"Result '{resultName}' is absent. Returned keys: {string.Join(", ", actualVariables.Keys)}.");
     }
 
-    private static object? ReadValue(XElement container)
+    private static object? ReadValue(XElement container, bool preserveTemporalType = false)
     {
         var value = container.Element(TestNamespace + "value");
         if (value is not null)
         {
             if ((bool?)value.Attribute(XsiNamespace + "nil") == true) return null;
             var type = ((string?)value.Attribute(XsiNamespace + "type"))?.Split(':').LastOrDefault();
-            return ParseScalar(value.Value, type);
+            return ParseScalar(value.Value, type, preserveTemporalType);
         }
 
         var list = container.Element(TestNamespace + "list");
         if (list is not null)
         {
             if ((bool?)list.Attribute(XsiNamespace + "nil") == true) return null;
-            return list.Elements(TestNamespace + "item").Select(ReadValue).ToList();
+            return list.Elements(TestNamespace + "item")
+                .Select(item => ReadValue(item, preserveTemporalType))
+                .ToList();
         }
 
         var components = container.Elements(TestNamespace + "component").ToArray();
         if (components.Length > 0)
             return components.ToDictionary(
                 component => AttributeValue(component, "name"),
-                ReadValue,
+                component => ReadValue(component, preserveTemporalType),
                 StringComparer.Ordinal);
 
         return null;
     }
 
-    private static object ParseScalar(string text, string? type) => type switch
+    private static object ParseScalar(string text, string? type, bool preserveTemporalType) => type switch
     {
         "boolean" => XmlConvert.ToBoolean(text),
         "byte" or "short" or "int" or "integer" or "long" or "nonNegativeInteger" or "positiveInteger"
             or "nonPositiveInteger" or "negativeInteger" or "unsignedByte" or "unsignedShort" or "unsignedInt"
             or "unsignedLong" => decimal.Parse(text, NumberStyles.Number, CultureInfo.InvariantCulture),
         "decimal" or "double" or "float" => decimal.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture),
+        "date" when preserveTemporalType => TemporalValue("date", text),
+        "time" when preserveTemporalType => TemporalValue("time", text),
+        "dateTime" when preserveTemporalType => TemporalValue("date time", text),
+        "duration" when preserveTemporalType => TemporalValue("duration", text),
         _ => text
+    };
+
+    private static Dictionary<string, object> TemporalValue(string kind, string value) => new(StringComparer.Ordinal)
+    {
+        ["$vertexFeelType"] = kind,
+        ["value"] = value
     };
 
     private static bool StructuralEquals(object? expected, object? actual)
@@ -264,11 +299,58 @@ internal static class DmnTckProgram
         if (TryGetDecimal(expected, out var expectedNumber)
             && TryGetDecimal(actual, out var actualNumber))
             return Math.Abs(expectedNumber - actualNumber) < 0.00000001m;
-        if (expected is string expectedText && actual is string actualText
-            && DateTimeOffset.TryParse(expectedText, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var expectedDateTime)
-            && DateTimeOffset.TryParse(actualText, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var actualDateTime))
-            return expectedDateTime.EqualsExact(actualDateTime);
+        if (expected is string expectedText && actual is string actualText)
+        {
+            if (TryCompareFeelDurations(expectedText, actualText, out var durationsEqual))
+                return durationsEqual;
+            if (DateTimeOffset.TryParse(expectedText, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var expectedDateTime)
+                && DateTimeOffset.TryParse(actualText, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var actualDateTime))
+                return expectedDateTime.EqualsExact(actualDateTime);
+        }
         return string.Equals(expected.ToString(), actual.ToString(), StringComparison.Ordinal);
+    }
+
+    private static bool TryCompareFeelDurations(string expected, string actual, out bool equal)
+    {
+        const string yearMonthPattern = "^(?<sign>-)?P(?:(?<years>[0-9]+(?:\\.[0-9]+)?)Y)?(?:(?<months>[0-9]+(?:\\.[0-9]+)?)M)?$";
+        var expectedYearMonth = Regex.Match(expected, yearMonthPattern, RegexOptions.CultureInvariant);
+        var actualYearMonth = Regex.Match(actual, yearMonthPattern, RegexOptions.CultureInvariant);
+        if (expectedYearMonth.Success && actualYearMonth.Success)
+        {
+            equal = ToMonths(expectedYearMonth) == ToMonths(actualYearMonth);
+            return true;
+        }
+
+        if (IsDayTimeDuration(expected) && IsDayTimeDuration(actual))
+        {
+            try
+            {
+                equal = XmlConvert.ToTimeSpan(expected) == XmlConvert.ToTimeSpan(actual);
+                return true;
+            }
+            catch (FormatException)
+            {
+                // These strings are not both valid FEEL day-time durations.
+            }
+        }
+
+        equal = false;
+        return false;
+
+        static decimal ToMonths(Match match)
+        {
+            var years = match.Groups["years"].Success
+                ? decimal.Parse(match.Groups["years"].Value, CultureInfo.InvariantCulture)
+                : 0m;
+            var months = match.Groups["months"].Success
+                ? decimal.Parse(match.Groups["months"].Value, CultureInfo.InvariantCulture)
+                : 0m;
+            var total = years * 12m + months;
+            return match.Groups["sign"].Success ? -total : total;
+        }
+
+        static bool IsDayTimeDuration(string value) =>
+            Regex.IsMatch(value, "^-?P(?=.+)(?:(?:[0-9]+(?:\\.[0-9]+)?)D)?(?:T(?=.+)(?:(?:[0-9]+(?:\\.[0-9]+)?)H)?(?:(?:[0-9]+(?:\\.[0-9]+)?)M)?(?:(?:[0-9]+(?:\\.[0-9]+)?)S)?)?$", RegexOptions.CultureInvariant);
     }
 
     private static bool TryGetDecimal(object value, out decimal number)

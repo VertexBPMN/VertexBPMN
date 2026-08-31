@@ -11,7 +11,7 @@ public interface IWorkerNodeManager
     Task<WorkerNode> RegisterWorkerAsync(WorkerRegistrationRequest request);
     System.Threading.Tasks.Task UnregisterWorkerAsync(string workerId);
     Task<List<WorkerNode>> GetActiveWorkersAsync();
-    Task<WorkerNode> GetWorkerAsync(string workerId);
+    Task<WorkerNode?> GetWorkerAsync(string workerId);
     System.Threading.Tasks.Task UpdateWorkerStatusAsync(string workerId, WorkerStatus status);
     Task<WorkerCapacityInfo> GetWorkerCapacityAsync(string workerId);
     Task<bool> IsWorkerHealthyAsync(string workerId);

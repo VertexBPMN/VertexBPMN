@@ -33,7 +33,7 @@ public record BpmnSubprocess(string Id,bool IsEventSubprocess,bool IsTransaction
     public int LoopCardinality => Loop is MultiInstanceLoopCharacteristics multiInstance
         ? multiInstance.LoopCardinality.GetValueOrDefault(1)
         : 1;
-    public bool IsSequential => (Loop is MultiInstanceLoopCharacteristics) && (Loop as MultiInstanceLoopCharacteristics).IsSequential;
+    public bool IsSequential => Loop is MultiInstanceLoopCharacteristics { IsSequential: true };
 }
 public record BpmnSequenceFlow(string Id,string SourceRef,string TargetRef,bool IsDefault = false,string? ConditionExpression = null,string? SubprocessId = null,Dictionary<string,string>? Attributes=null,int? Priority=null)
 {

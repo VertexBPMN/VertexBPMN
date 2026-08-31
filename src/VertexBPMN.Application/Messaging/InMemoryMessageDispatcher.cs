@@ -38,7 +38,7 @@ public class InMemoryMessageDispatcher : IMessageDispatcher
     public Task DispatchServiceTaskAsync(string targetWorkerId, string implementation, Dictionary<string, string> attributes, Dictionary<string, object> variables,
         CancellationToken cancellationToken = default)
     {
-        if (_registry.TryResolve(implementation, out var handler))
+        if (_registry.TryResolve(implementation, out var handler) && handler is not null)
         {
             // Fire & forget; echte Engine würde ExecutionContext etc. mitgeben.
             _ = ExecuteHandlerSafeAsync(handler, attributes, variables, cancellationToken);

@@ -50,7 +50,7 @@ public class TaskService : ITaskService
         }
     }
 
-    public async ValueTask<ProcessMiningEvent> CompleteAsync(Guid taskId, IDictionary<string, object>? variables = null, CancellationToken cancellationToken = default, string? idempotencyKey = null)
+    public async ValueTask<ProcessMiningEvent?> CompleteAsync(Guid taskId, IDictionary<string, object>? variables = null, CancellationToken cancellationToken = default, string? idempotencyKey = null)
     {
         var task = await _repo.GetByIdAsync(taskId, cancellationToken);
         if (task != null)
@@ -91,7 +91,7 @@ public class TaskService : ITaskService
         return null;
     }
 
-    public async ValueTask<ProcessMiningEvent> DelegateAsync(Guid taskId, string userId, CancellationToken cancellationToken = default)
+    public async ValueTask<ProcessMiningEvent?> DelegateAsync(Guid taskId, string userId, CancellationToken cancellationToken = default)
     {
         var task = await _repo.GetByIdAsync(taskId, cancellationToken);
         if (task != null)
@@ -133,7 +133,7 @@ public class TaskService : ITaskService
     /// <param name="userTaskId">The task identifier.</param>
     /// <param name="rejectionReason">An object describing the rejection reason (will be serialized).</param>
     /// <returns>The emitted <see cref="ProcessMiningEvent"/> or null if task not found.</returns>
-    public async ValueTask<ProcessMiningEvent> RejectAsync(Guid userTaskId, object rejectionReason, CancellationToken cancellationToken = default)
+    public async ValueTask<ProcessMiningEvent?> RejectAsync(Guid userTaskId, object rejectionReason, CancellationToken cancellationToken = default)
     {
 
         var task = await _repo.GetByIdAsync(userTaskId, cancellationToken);

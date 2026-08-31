@@ -6,52 +6,63 @@ namespace VertexBPMN.Application;
 
 public class CachingKernelFactory : IKernelFactory
 {
-    // Thread-sicherer Cache, um Kernel-Instanzen wiederzuverwenden
     private readonly ConcurrentDictionary<string, Kernel> _kernelCache = new();
 
     public Kernel GetKernel(IDictionary<string, string> attributes)
     {
         var provider = GetAttribute(attributes, "provider", "OpenAI");
         var modelId = GetAttribute(attributes, "modelId", "gpt-3.5-turbo");
-
-        // Erzeuge einen einzigartigen Cache-Schlüssel für die Provider/Modell-Kombination
-        string cacheKey = $"{provider}-{modelId}";
-
-        // Gib den Kernel aus dem Cache zurück oder erstelle ihn neu, falls nicht vorhanden.
+        var cacheKey = $"{provider}-{modelId}";
         return _kernelCache.GetOrAdd(cacheKey, _ => CreateKernel(provider, modelId, attributes));
     }
 
-    private Kernel CreateKernel(string provider, string modelId, IDictionary<string, string> attributes)
+    private static Kernel CreateKernel(
+        string provider,
+        string modelId,
+        IDictionary<string, string> attributes)
     {
         var kernelBuilder = Kernel.CreateBuilder();
-        var endpoint = GetAttribute(attributes, "endpoint", null);
+        var endpoint = GetOptionalAttribute(attributes, "endpoint");
 
         switch (provider.ToLowerInvariant())
         {
             case "openai":
-                var openAiKey = GetEnvOrAttr("OPENAI_API_KEY", attributes, "apiKey");
+                var openAiKey = GetEnvOrAttribute("OPENAI_API_KEY", attributes, "apiKey");
                 kernelBuilder.AddOpenAIChatCompletion(modelId, openAiKey);
                 break;
 
             case "azureopenai":
-                var azureKey = GetEnvOrAttr("AZURE_OPENAI_API_KEY", attributes, "apiKey");
-                var azureEndpoint = endpoint ?? GetEnvOrAttr("AZURE_OPENAI_ENDPOINT", attributes, "endpoint");
+                var azureKey = GetEnvOrAttribute("AZURE_OPENAI_API_KEY", attributes, "apiKey");
+                var azureEndpoint = endpoint
+                                    ?? GetEnvOrAttribute("AZURE_OPENAI_ENDPOINT", attributes, "endpoint");
                 kernelBuilder.AddAzureOpenAIChatCompletion(modelId, azureEndpoint, azureKey);
                 break;
 
-            // ... weitere Provider ...
-
             default:
-                throw new NotSupportedException($"Provider '{provider}' wird nicht unterstützt.");
+                throw new NotSupportedException($"Provider '{provider}' is not supported.");
         }
 
         return kernelBuilder.Build();
     }
 
-    // Die Hilfsmethoden bleiben dieselben wie in deiner ursprünglichen Klasse
-    private static string GetEnvOrAttr(string envName, IDictionary<string, string> attrs, string attrName) =>
-        attrs.TryGetValue(attrName, out var val) && !string.IsNullOrWhiteSpace(val) ? val : Environment.GetEnvironmentVariable(envName);
+    private static string GetEnvOrAttribute(
+        string environmentVariable,
+        IDictionary<string, string> attributes,
+        string attributeName)
+    {
+        var value = GetOptionalAttribute(attributes, attributeName)
+                    ?? Environment.GetEnvironmentVariable(environmentVariable);
+        return !string.IsNullOrWhiteSpace(value)
+            ? value
+            : throw new InvalidOperationException(
+                $"Configuration value '{attributeName}' or environment variable '{environmentVariable}' is required.");
+    }
 
-    private static string GetAttribute(IDictionary<string, string> attrs, string key, string defaultValue) =>
-        attrs.TryGetValue(key, out var val) && !string.IsNullOrWhiteSpace(val) ? val : defaultValue;
+    private static string GetAttribute(
+        IDictionary<string, string> attributes,
+        string key,
+        string defaultValue) => GetOptionalAttribute(attributes, key) ?? defaultValue;
+
+    private static string? GetOptionalAttribute(IDictionary<string, string> attributes, string key) =>
+        attributes.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value) ? value : null;
 }

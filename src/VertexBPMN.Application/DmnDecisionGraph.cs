@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Globalization;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
@@ -63,6 +64,62 @@ public sealed class DmnDecisionGraph
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(xml);
         ArgumentException.ThrowIfNullOrWhiteSpace(deploymentKey);
+        return new DmnDecisionGraph(ParseDefinitions(xml), deploymentKey);
+    }
+
+    public static DmnDecisionGraph Parse(
+        string xml,
+        string deploymentKey,
+        IEnumerable<string> importedModels)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(xml);
+        ArgumentException.ThrowIfNullOrWhiteSpace(deploymentKey);
+        ArgumentNullException.ThrowIfNull(importedModels);
+        var root = ParseDefinitions(xml);
+        var candidates = importedModels
+            .Where(model => !string.IsNullOrWhiteSpace(model))
+            .Select(ParseDefinitions)
+            .ToArray();
+        var imports = ResolveImportClosure(root, candidates);
+        return imports.Length == 0
+            ? new DmnDecisionGraph(root, deploymentKey)
+            : new DmnDecisionGraph(MergeDefinitions(root, imports), deploymentKey);
+    }
+
+    private static XElement[] ResolveImportClosure(XElement main, IReadOnlyList<XElement> candidates)
+    {
+        var candidatesByNamespace = candidates
+            .GroupBy(candidate => RequiredAttribute(candidate, "namespace"), StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
+        var selected = new List<XElement>();
+        var visited = new HashSet<string>(StringComparer.Ordinal)
+        {
+            RequiredAttribute(main, "namespace")
+        };
+        var pending = new Queue<XElement>();
+        pending.Enqueue(main);
+        while (pending.Count > 0)
+        {
+            var owner = pending.Dequeue();
+            foreach (var import in owner.Elements(owner.Name.Namespace + "import"))
+            {
+                var importNamespace = RequiredAttribute(import, "namespace");
+                if (!visited.Add(importNamespace)) continue;
+                if (!candidatesByNamespace.TryGetValue(importNamespace, out var matches))
+                    throw new InvalidOperationException(
+                        $"Imported DMN namespace '{importNamespace}' was not supplied.");
+                if (matches.Length != 1)
+                    throw new InvalidOperationException(
+                        $"Imported DMN namespace '{importNamespace}' is ambiguous ({matches.Length} models supplied).");
+                selected.Add(matches[0]);
+                pending.Enqueue(matches[0]);
+            }
+        }
+        return selected.ToArray();
+    }
+
+    private static XElement ParseDefinitions(string xml)
+    {
         using var input = new StringReader(xml);
         using var reader = XmlReader.Create(input, new XmlReaderSettings
         {
@@ -78,7 +135,87 @@ public sealed class DmnDecisionGraph
                 or "https://www.omg.org/spec/DMN/20191111/MODEL/"
                 or "https://www.omg.org/spec/DMN/20230324/MODEL/"))
             throw new InvalidOperationException($"Unsupported DMN namespace '{root.Name.NamespaceName}'.");
-        return new DmnDecisionGraph(root, deploymentKey);
+        return root;
+    }
+
+    private static XElement MergeDefinitions(XElement main, IReadOnlyList<XElement> imported)
+    {
+        var roots = new[] { main }.Concat(imported).ToArray();
+        var byNamespace = roots.ToDictionary(
+            root => RequiredAttribute(root, "namespace"),
+            StringComparer.Ordinal);
+        var modelNamespace = main.Name.Namespace;
+        var supportedElements = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "itemDefinition", "inputData", "decision", "decisionService",
+            "businessKnowledgeModel", "knowledgeSource"
+        };
+        var idMap = new Dictionary<(string Namespace, string Id), string>();
+        for (var modelIndex = 0; modelIndex < roots.Length; modelIndex++)
+        {
+            var root = roots[modelIndex];
+            var ownerNamespace = RequiredAttribute(root, "namespace");
+            foreach (var element in root.Elements().Where(element => supportedElements.Contains(element.Name.LocalName)))
+            {
+                var id = (string?)element.Attribute("id");
+                if (string.IsNullOrWhiteSpace(id)) continue;
+                idMap[(ownerNamespace, id)] = modelIndex == 0 ? id : $"__vertexImport{modelIndex}_{id}";
+            }
+        }
+
+        var merged = new XElement(main.Name, main.Attributes());
+        foreach (var root in roots)
+        {
+            var ownerNamespace = RequiredAttribute(root, "namespace");
+            var aliases = root.Elements(modelNamespace + "import")
+                .Where(import => !string.IsNullOrWhiteSpace((string?)import.Attribute("name")))
+                .ToDictionary(
+                    import => RequiredAttribute(import, "name"),
+                    import => RequiredAttribute(import, "namespace"),
+                    StringComparer.Ordinal);
+            foreach (var source in root.Elements().Where(element => supportedElements.Contains(element.Name.LocalName)))
+            {
+                var clone = new XElement(source);
+                if ((string?)clone.Attribute("id") is { Length: > 0 } topId)
+                    clone.SetAttributeValue("id", idMap[(ownerNamespace, topId)]);
+
+                foreach (var reference in clone.DescendantsAndSelf().Attributes("href"))
+                {
+                    var href = reference.Value;
+                    var fragmentIndex = href.LastIndexOf('#');
+                    var targetNamespace = fragmentIndex == 0 ? ownerNamespace : href[..fragmentIndex];
+                    var targetId = Uri.UnescapeDataString(href[(fragmentIndex + 1)..]);
+                    if (!byNamespace.ContainsKey(targetNamespace)
+                        || !idMap.TryGetValue((targetNamespace, targetId), out var mappedId))
+                        throw new InvalidOperationException($"Imported DMN reference '{href}' could not be resolved.");
+                    reference.Value = $"#{mappedId}";
+                }
+
+                foreach (var typeReference in clone.DescendantsAndSelf()
+                             .Where(element => element.Name.LocalName == "typeRef"))
+                    typeReference.Value = StripImportAlias(typeReference.Value, aliases.Keys);
+                foreach (var typeReference in clone.DescendantsAndSelf().Attributes("typeRef"))
+                    typeReference.Value = StripImportAlias(typeReference.Value, aliases.Keys);
+                foreach (var text in clone.DescendantsAndSelf()
+                             .Where(element => element.Name.LocalName == "text"))
+                    text.Value = RewriteOutsideFeelStrings(
+                        text.Value,
+                        segment => aliases.Keys.Aggregate(
+                            segment,
+                            (current, alias) => current.Replace($"{alias}.", string.Empty, StringComparison.Ordinal)));
+                merged.Add(clone);
+            }
+        }
+        return merged;
+    }
+
+    private static string StripImportAlias(string typeReference, IEnumerable<string> aliases)
+    {
+        var trimmed = typeReference.Trim();
+        foreach (var alias in aliases)
+            if (trimmed.StartsWith($"{alias}.", StringComparison.Ordinal))
+                return trimmed[(alias.Length + 1)..];
+        return trimmed;
     }
 
     public Dictionary<string, object> Evaluate(IDictionary<string, object> inputs)
@@ -192,38 +329,178 @@ public sealed class DmnDecisionGraph
         (string?)element?.Attribute("typeRef")
         ?? element?.Element(_namespace + "typeRef")?.Value.Trim();
 
+    private string ResolveItemDefinitionTypes(string expression)
+    {
+        if (!expression.Contains("instance of", StringComparison.OrdinalIgnoreCase)
+            || _itemDefinitions.Count == 0)
+            return expression;
+
+        var result = expression;
+        foreach (var name in _itemDefinitions.Keys.OrderByDescending(candidate => candidate.Length))
+        {
+            var resolved = ResolveFeelType(name, new HashSet<string>(StringComparer.Ordinal));
+            result = Regex.Replace(
+                result,
+                $@"(?<![A-Za-z0-9_-]){Regex.Escape(name)}(?![A-Za-z0-9_-])",
+                _ => resolved,
+                RegexOptions.CultureInvariant);
+        }
+        return result;
+    }
+
+    private string ResolveFeelType(string typeRef, ISet<string> resolving)
+    {
+        var type = typeRef.Split(':').Last().Trim();
+        if (type is "dateTime" or "date and time") return "date_time";
+        if (type is "dayTimeDuration" or "days and time duration") return "days and time duration";
+        if (type is "yearMonthDuration" or "years and months duration") return "years and months duration";
+        if (!_itemDefinitions.TryGetValue(type, out var definition)) return type;
+        if (!resolving.Add(type))
+            throw new InvalidOperationException($"Recursive DMN item definition '{type}' is not supported.");
+
+        try
+        {
+            var function = definition.Element(_namespace + "functionItem");
+            if (function is not null)
+            {
+                var parameters = function.Elements(_namespace + "parameters")
+                    .Select(parameter => ResolveFeelType(TypeReference(parameter) ?? "Any", resolving));
+                var output = ResolveFeelType((string?)function.Attribute("outputTypeRef") ?? "Any", resolving);
+                return $"function<{string.Join(", ", parameters)}> -> {output}";
+            }
+
+            var components = definition.Elements(_namespace + "itemComponent").ToArray();
+            if (components.Length > 0)
+            {
+                var entries = components.Select(component =>
+                    $"{RequiredAttribute(component, "name")}: "
+                    + ResolveFeelType(TypeReference(component) ?? "Any", resolving));
+                return $"context<{string.Join(", ", entries)}>";
+            }
+
+            var underlying = ResolveFeelType(TypeReference(definition) ?? "Any", resolving);
+            return (bool?)definition.Attribute("isCollection") == true
+                ? $"list<{underlying}>"
+                : underlying;
+        }
+        finally
+        {
+            resolving.Remove(type);
+        }
+    }
+
     private Dictionary<string, object> EvaluateDecisionService(
         XElement service,
         Dictionary<string, object> context,
         Dictionary<string, DecisionEvaluation> cache)
     {
+        var suppliedDecisions = PrepareDecisionServiceInputs(service, context, cache);
         var result = new Dictionary<string, object>(StringComparer.Ordinal);
         foreach (var decisionId in DecisionServiceReferences(service, "outputDecision"))
         {
-            var evaluation = EvaluateDecision(decisionId, context, cache);
+            var evaluation = EvaluateDecision(decisionId, context, cache, suppliedDecisions);
+            EnsureValueMatchesType(
+                DecisionBindingName(_decisions[decisionId]),
+                evaluation.Value,
+                DecisionServiceOutputType(service));
             foreach (var output in evaluation.Variables) result[output.Key] = output.Value;
             result[DecisionBindingName(_decisions[decisionId])] = evaluation.Value!;
         }
         return result;
     }
 
+    private IReadOnlySet<string> PrepareDecisionServiceInputs(
+        XElement service,
+        Dictionary<string, object> context,
+        Dictionary<string, DecisionEvaluation> cache)
+    {
+        foreach (var inputId in DecisionServiceReferences(service, "inputData"))
+        {
+            var input = _inputData[inputId];
+            var name = DecisionBindingName(input);
+            if (!context.TryGetValue(name, out var value))
+                throw new InvalidOperationException($"Decision service input '{name}' was not supplied.");
+            var type = TypeReference(input.Element(_namespace + "variable"));
+            value = CoerceServiceInput(value, type);
+            EnsureValueMatchesType(name, value, type);
+            context[name] = value!;
+        }
+
+        var supplied = DecisionServiceReferences(service, "inputDecision").ToHashSet(StringComparer.Ordinal);
+        foreach (var decisionId in supplied)
+        {
+            var decision = _decisions[decisionId];
+            var name = DecisionBindingName(decision);
+            if (!context.TryGetValue(name, out var value))
+                throw new InvalidOperationException($"Decision service input '{name}' was not supplied.");
+            var type = TypeReference(decision.Element(_namespace + "variable"));
+            value = CoerceServiceInput(value, type);
+            EnsureValueMatchesType(name, value, type);
+            context[name] = value!;
+            context[DecisionAlias(decisionId)] = value!;
+            cache[decisionId] = new DecisionEvaluation(
+                new Dictionary<string, object>(StringComparer.Ordinal) { [name] = value! },
+                value);
+        }
+        return supplied;
+    }
+
+    private object? CoerceServiceInput(object? value, string? typeRef)
+    {
+        if (value is null || string.IsNullOrWhiteSpace(typeRef)) return value;
+        var type = typeRef.Split(':').Last();
+        if (_itemDefinitions.TryGetValue(type, out var definition)
+            && (bool?)definition.Attribute("isCollection") == true)
+        {
+            var elementType = TypeReference(definition);
+            return value is IEnumerable sequence and not string
+                ? sequence.Cast<object?>().Select(item => CoerceValue(item, elementType)).ToList()
+                : new List<object?> { CoerceValue(value, elementType) };
+        }
+
+        if (value is IEnumerable collection and not string)
+        {
+            var values = collection.Cast<object?>().ToArray();
+            if (values.Length == 1) value = values[0];
+        }
+        return CoerceValue(value, typeRef);
+    }
+
+    private void EnsureValueMatchesType(string name, object? value, string? type)
+    {
+        if (string.IsNullOrWhiteSpace(type)) return;
+        if (RequiresManagedStructuralType(type))
+        {
+            if (!ValueMatchesType(value, type))
+                throw new InvalidOperationException($"Decision service input '{name}' does not match type '{type}'.");
+            return;
+        }
+        var expression = ResolveItemDefinitionTypes($"__vertexInput instance of {type}");
+        var matches = FeelEvaluator.EvaluateExpression(
+            expression,
+            new Dictionary<string, object>(StringComparer.Ordinal) { ["__vertexInput"] = value! });
+        if (matches is not true)
+            throw new InvalidOperationException($"Decision service input '{name}' does not match type '{type}'.");
+    }
+
     private DecisionEvaluation EvaluateDecision(
         string id,
         Dictionary<string, object> context,
-        Dictionary<string, DecisionEvaluation> cache)
+        Dictionary<string, DecisionEvaluation> cache,
+        IReadOnlySet<string>? suppliedDecisions = null)
     {
         if (cache.TryGetValue(id, out var cached)) return cached;
         var decision = _decisions[id];
         foreach (var dependency in RequiredDecisions(decision))
         {
-            var dependencyEvaluation = EvaluateDecision(dependency, context, cache);
+            var dependencyEvaluation = EvaluateDecision(dependency, context, cache, suppliedDecisions);
             AddToContext(_decisions[dependency], dependencyEvaluation, context);
         }
 
         var expression = DecisionExpression(decision);
         var variables = expression.Name.LocalName == "decisionTable"
             ? EvaluateDecisionTable(decision, expression, context)
-            : EvaluateBoxedExpression(decision, expression, context);
+            : EvaluateBoxedExpression(decision, expression, context, suppliedDecisions);
         var value = variables.Count == 1
             ? variables.Values.Single()
             : variables.ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal);
@@ -236,15 +513,33 @@ public sealed class DmnDecisionGraph
     private Dictionary<string, object> EvaluateBoxedExpression(
         XElement decision,
         XElement expression,
-        IReadOnlyDictionary<string, object> context)
+        IReadOnlyDictionary<string, object> context,
+        IReadOnlySet<string>? suppliedDecisions)
     {
         var value = expression.Name.LocalName switch
         {
-            "conditional" => EvaluateConditional(decision, expression, context),
-            "some" or "every" => EvaluateQuantified(decision, expression, context),
-            "filter" => EvaluateFilter(decision, expression, context),
-            _ => EvaluateFeel(decision, expression, context)
+            "conditional" => EvaluateConditional(decision, expression, context, suppliedDecisions),
+            "some" or "every" => EvaluateQuantified(decision, expression, context, suppliedDecisions),
+            "filter" => EvaluateFilter(decision, expression, context, suppliedDecisions),
+            _ => EvaluateFeel(decision, expression, context, suppliedDecisions)
         };
+        var outputType = TypeReference(expression)
+                         ?? TypeReference(decision.Element(_namespace + "variable"));
+        if (RequiresManagedStructuralType(outputType))
+        {
+            value = CoerceValue(value, outputType);
+            if (!ValueMatchesType(value, outputType))
+            {
+                var isContextFunction = expression.Name.LocalName == "literalExpression"
+                                        && ExpressionText(expression).TrimStart().StartsWith(
+                                            "context(", StringComparison.Ordinal);
+                if (isContextFunction)
+                    value = null;
+                else
+                    throw new InvalidOperationException(
+                        $"Decision '{DecisionBindingName(decision)}' produced a value that does not match type '{outputType}'.");
+            }
+        }
         return new Dictionary<string, object>(StringComparer.Ordinal)
         {
             [DecisionBindingName(decision)] = value!
@@ -254,15 +549,17 @@ public sealed class DmnDecisionGraph
     private object? EvaluateFeel(
         XElement decision,
         XElement expression,
-        IReadOnlyDictionary<string, object> context) =>
+        IReadOnlyDictionary<string, object> context,
+        IReadOnlySet<string>? suppliedDecisions) =>
         FeelEvaluator.EvaluateExpression(
-            BindRequiredKnowledge(decision, BoxedExpressionToFeel(expression)),
+            CompileDecisionExpression(decision, expression, suppliedDecisions),
             context);
 
     private object? EvaluateConditional(
         XElement decision,
         XElement conditional,
-        IReadOnlyDictionary<string, object> context)
+        IReadOnlyDictionary<string, object> context,
+        IReadOnlySet<string>? suppliedDecisions)
     {
         XElement Branch(string name)
         {
@@ -275,24 +572,25 @@ public sealed class DmnDecisionGraph
 
         var conditionExpression = BoxedExpressionToFeel(Branch("if"));
         var condition = FeelEvaluator.EvaluateExpression(
-            BindRequiredKnowledge(decision, conditionExpression),
+            CompileDecisionExpression(decision, conditionExpression, suppliedDecisions),
             context);
         if (condition is not bool booleanCondition)
             throw new InvalidOperationException("DMN conditional condition must evaluate to a boolean value.");
         var selected = Branch(booleanCondition ? "then" : "else");
         return FeelEvaluator.EvaluateExpression(
-            BindRequiredKnowledge(decision, BoxedExpressionToFeel(selected)),
+            CompileDecisionExpression(decision, selected, suppliedDecisions),
             context);
     }
 
     private object EvaluateQuantified(
         XElement decision,
         XElement quantified,
-        IReadOnlyDictionary<string, object> context)
+        IReadOnlyDictionary<string, object> context,
+        IReadOnlySet<string>? suppliedDecisions)
     {
         var inputWrapper = quantified.Element(_namespace + "in")!;
         var inputExpression = inputWrapper.Elements().Single(IsBoxedExpression);
-        var input = EvaluateFeel(decision, inputExpression, context);
+        var input = EvaluateFeel(decision, inputExpression, context, suppliedDecisions);
         if (input is not IEnumerable sequence || input is string)
             throw new InvalidOperationException(
                 $"DMN {quantified.Name.LocalName} input must evaluate to a list.");
@@ -307,7 +605,7 @@ public sealed class DmnDecisionGraph
             {
                 [iterator] = item!
             };
-            var result = EvaluateFeel(decision, predicate, iterationContext);
+            var result = EvaluateFeel(decision, predicate, iterationContext, suppliedDecisions);
             if (result is not bool booleanResult)
                 throw new InvalidOperationException(
                     $"DMN {quantified.Name.LocalName} predicate must evaluate to a boolean value.");
@@ -321,7 +619,8 @@ public sealed class DmnDecisionGraph
     private object? EvaluateFilter(
         XElement decision,
         XElement filter,
-        IReadOnlyDictionary<string, object> context)
+        IReadOnlyDictionary<string, object> context,
+        IReadOnlySet<string>? suppliedDecisions)
     {
         var match = filter.Element(_namespace + "match")!.Elements().Single(IsBoxedExpression);
         if (match.Name.LocalName == "literalExpression")
@@ -331,7 +630,7 @@ public sealed class DmnDecisionGraph
                 throw new InvalidOperationException("DMN filter match expression must be boolean-compatible.");
         }
 
-        return EvaluateFeel(decision, filter, context);
+        return EvaluateFeel(decision, filter, context, suppliedDecisions);
     }
 
     private Dictionary<string, object> EvaluateDecisionTable(
@@ -376,7 +675,22 @@ public sealed class DmnDecisionGraph
             matches.Add(outputValues);
         }
 
-        if (matches.Count == 0) return new Dictionary<string, object>(StringComparer.Ordinal);
+        if (matches.Count == 0)
+        {
+            var defaults = table.Elements(_namespace + "output")
+                .Select(output => output.Element(_namespace + "defaultOutputEntry"))
+                .ToArray();
+            if (defaults.Length == outputs.Length && defaults.All(entry => entry is not null))
+            {
+                return outputs.Select((output, index) => new
+                    {
+                        output.Name,
+                        Value = EvaluateOutputExpression(ExpressionText(defaults[index]!, "null"), context)!
+                    })
+                    .ToDictionary(entry => entry.Name, entry => entry.Value, StringComparer.Ordinal);
+            }
+            return new Dictionary<string, object>(StringComparer.Ordinal);
+        }
         var hitPolicy = ((string?)table.Attribute("hitPolicy") ?? "UNIQUE").Trim().ToUpperInvariant();
         var aggregation = ((string?)table.Attribute("aggregation"))?.Trim().ToUpperInvariant();
         return hitPolicy switch
@@ -451,11 +765,11 @@ public sealed class DmnDecisionGraph
         if (_decisions.Count == 0) throw new InvalidOperationException("DMN document contains no decision.");
         foreach (var decision in _decisions.Values)
         {
-            var id = RequiredAttribute(decision, "id");
+            var id = ElementIdentity(decision);
             var executableCount = decision.Elements().Count(IsBoxedExpression);
-            if (executableCount != 1)
+            if (executableCount > 1)
                 throw new InvalidOperationException(
-                    $"Decision '{id}' must contain exactly one executable boxed expression.");
+                    $"Decision '{id}' must contain at most one executable boxed expression.");
             foreach (var dependency in RequiredDecisions(decision))
                 if (!_decisions.ContainsKey(dependency))
                     throw new InvalidOperationException($"Decision '{id}' references unknown required decision '{dependency}'.");
@@ -463,33 +777,51 @@ public sealed class DmnDecisionGraph
                 if (!_inputData.ContainsKey(input))
                     throw new InvalidOperationException($"Decision '{id}' references unknown required input '{input}'.");
             foreach (var knowledge in RequiredKnowledge(decision))
-                if (!_businessKnowledgeModels.ContainsKey(knowledge))
+                if (!_businessKnowledgeModels.ContainsKey(knowledge) && !_decisionServices.ContainsKey(knowledge))
                     throw new InvalidOperationException($"Decision '{id}' references unknown required knowledge '{knowledge}'.");
 
+            if (executableCount == 0) continue;
             var expression = DecisionExpression(decision);
-            if (expression.Name.LocalName == "decisionTable")
-                ValidateDecisionTable(id, expression);
-            else
-                FeelEvaluator.ValidateExpression(BoxedExpressionToFeel(expression));
+            try
+            {
+                if (expression.Name.LocalName == "decisionTable")
+                    ValidateDecisionTable(id, expression);
+                else
+                    FeelEvaluator.ValidateExpression(RewriteDecisionReferences(
+                        BoxedExpressionToFeel(expression), RequiredDecisions(decision)));
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                throw new InvalidOperationException(
+                    $"Decision '{id}' contains invalid executable logic: {exception.Message}", exception);
+            }
         }
 
         foreach (var model in _businessKnowledgeModels.Values)
         {
-            var id = RequiredAttribute(model, "id");
+            var id = ElementIdentity(model);
             var logic = model.Element(_namespace + "encapsulatedLogic")
                         ?? throw new InvalidOperationException(
                             $"Business knowledge model '{id}' requires encapsulatedLogic.");
             var expression = logic.Elements().SingleOrDefault(IsBoxedExpression)
                              ?? throw new InvalidOperationException(
                                  $"Business knowledge model '{id}' requires one executable boxed expression.");
-            if (expression.Name.LocalName == "decisionTable")
-                ValidateDecisionTable(id, expression);
-            FeelEvaluator.ValidateExpression(BoxedExpressionToFeel(expression));
+            try
+            {
+                if (expression.Name.LocalName == "decisionTable")
+                    ValidateDecisionTable(id, expression);
+                FeelEvaluator.ValidateExpression(BoxedExpressionToFeel(expression));
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                throw new InvalidOperationException(
+                    $"Business knowledge model '{id}' contains invalid executable logic: {exception.Message}", exception);
+            }
         }
 
         foreach (var service in _decisionServices.Values)
         {
-            var serviceId = RequiredAttribute(service, "id");
+            var serviceId = ElementIdentity(service);
             var outputs = DecisionServiceReferences(service, "outputDecision").ToArray();
             if (outputs.Length == 0)
                 throw new InvalidOperationException($"Decision service '{serviceId}' requires at least one outputDecision.");
@@ -502,6 +834,10 @@ public sealed class DmnDecisionGraph
                 if (!_inputData.ContainsKey(inputId))
                     throw new InvalidOperationException(
                         $"Decision service '{serviceId}' references unknown input data '{inputId}'.");
+            foreach (var inputDecisionId in DecisionServiceReferences(service, "inputDecision"))
+                if (!_decisions.ContainsKey(inputDecisionId))
+                    throw new InvalidOperationException(
+                        $"Decision service '{serviceId}' references unknown input decision '{inputDecisionId}'.");
         }
 
         var visiting = new HashSet<string>(StringComparer.Ordinal);
@@ -572,7 +908,7 @@ public sealed class DmnDecisionGraph
     private string BoxedExpressionToFeel(XElement expression) => expression.Name.LocalName switch
     {
         "decisionTable" => DecisionTableToFeel(expression),
-        "literalExpression" => RewriteKnowledgeReferences(ExpressionText(expression)),
+        "literalExpression" => RewriteKnowledgeReferences(RewriteExternalJavaFunctions(ExpressionText(expression))),
         "context" => ContextToFeel(expression),
         "conditional" => ConditionalToFeel(expression),
         "list" => $"[{string.Join(", ", expression.Elements().Where(IsBoxedExpression).Select(BoxedExpressionToFeel))}]",
@@ -632,6 +968,22 @@ public sealed class DmnDecisionGraph
         {
             var matches = $"[{string.Join(", ", rules.Select(rule => $"if ({rule.Condition}) then ({rule.Result}) else null"))}][item != null]";
             var aggregation = ((string?)table.Attribute("aggregation"))?.Trim().ToUpperInvariant();
+            var defaultOutput = table.Elements(_namespace + "output").SingleOrDefault()
+                ?.Element(_namespace + "defaultOutputEntry");
+            var aggregate = aggregation switch
+            {
+                "SUM" => $"sum(__vertexMatches)",
+                "MIN" => $"min(__vertexMatches)",
+                "MAX" => $"max(__vertexMatches)",
+                "COUNT" => $"count(__vertexMatches)",
+                _ => "__vertexMatches"
+            };
+            if (defaultOutput is not null)
+            {
+                var fallback = ExpressionText(defaultOutput, "null");
+                return $"{{ __vertexMatches: ({matches}), __vertexCollectResult: "
+                       + $"(if count(__vertexMatches) = 0 then ({fallback}) else ({aggregate})) }}.__vertexCollectResult";
+            }
             return aggregation switch
             {
                 "SUM" => $"sum({matches})",
@@ -661,13 +1013,15 @@ public sealed class DmnDecisionGraph
             if (string.IsNullOrWhiteSpace(name))
                 result = value;
             else
-                entries.Add($"{name}: ({value})");
+                entries.Add($"{ContextKeyToFeel(name)}: ({value})");
         }
 
         if (result is null) return $"{{ {string.Join(", ", entries)} }}";
         entries.Add($"__vertexContextResult: ({result})");
         return $"{{ {string.Join(", ", entries)} }}.__vertexContextResult";
     }
+
+    private static string ContextKeyToFeel(string name) => JsonSerializer.Serialize(name);
 
     private string ConditionalToFeel(XElement conditional)
     {
@@ -697,20 +1051,27 @@ public sealed class DmnDecisionGraph
             return new InvocationBinding(RequiredAttribute(parameter, "name"), BoxedExpressionToFeel(value));
         }).ToArray();
         var calledExpression = BoxedExpressionToFeel(calledFunction);
-        IEnumerable<string> arguments = bindings.Select(binding => binding.Expression);
+        IEnumerable<string> arguments = bindings.Select(binding =>
+            $"{binding.Name}: ({binding.Expression})");
         if (calledFunction.Name.LocalName == "literalExpression")
         {
             var knowledge = _businessKnowledgeModels
-                .FirstOrDefault(entry => string.Equals(KnowledgeBindingName(entry.Value), calledExpression, StringComparison.Ordinal));
+                .FirstOrDefault(entry =>
+                    string.Equals(KnowledgeBindingName(entry.Value), calledExpression, StringComparison.Ordinal)
+                    || string.Equals(KnowledgeAlias(entry.Key), calledExpression, StringComparison.Ordinal));
             if (!string.IsNullOrEmpty(knowledge.Key))
             {
                 calledExpression = KnowledgeAlias(knowledge.Key);
-                var logic = knowledge.Value.Element(_namespace + "encapsulatedLogic")!;
-                arguments = logic.Elements(_namespace + "formalParameter").Select(parameter =>
-                {
-                    var name = RequiredAttribute(parameter, "name");
-                    return bindings.Single(binding => string.Equals(binding.Name, name, StringComparison.Ordinal)).Expression;
-                });
+                var byName = bindings.ToDictionary(binding => binding.Name, StringComparer.Ordinal);
+                arguments = knowledge.Value.Element(_namespace + "encapsulatedLogic")!
+                    .Elements(_namespace + "formalParameter")
+                    .Select(parameter =>
+                    {
+                        var name = RequiredAttribute(parameter, "name");
+                        return byName.TryGetValue(name, out var binding)
+                            ? $"({binding.Expression})"
+                            : "__vertexMissingArgument()";
+                    });
             }
         }
         return $"({calledExpression})({string.Join(", ", arguments)})";
@@ -718,11 +1079,57 @@ public sealed class DmnDecisionGraph
 
     private string FunctionDefinitionToFeel(XElement function)
     {
-        var parameters = function.Elements(_namespace + "formalParameter")
-            .Select(parameter => RequiredAttribute(parameter, "name"));
+        var parameters = function.Elements(_namespace + "formalParameter").ToArray();
         var body = function.Elements().FirstOrDefault(IsBoxedExpression)
                    ?? throw new InvalidOperationException("DMN functionDefinition requires a body expression.");
-        return $"function({string.Join(", ", parameters)}) ({BoxedExpressionToFeel(body)})";
+        if (string.Equals((string?)function.Attribute("kind"), "Java", StringComparison.OrdinalIgnoreCase))
+            return ExternalJavaFunctionToFeel(parameters, body);
+        var bodyExpression = CoerceFeelExpression(BoxedExpressionToFeel(body), TypeReference(body));
+        return $"function({string.Join(", ", parameters.Select(FormalParameterToFeel))}) ({bodyExpression})";
+    }
+
+    private string ExternalJavaFunctionToFeel(IReadOnlyList<XElement> parameters, XElement body)
+    {
+        if (body.Name.LocalName != "context")
+            throw new InvalidOperationException("A Java external function requires a context body.");
+        var metadata = body.Elements(_namespace + "contextEntry").ToDictionary(
+            entry => RequiredAttribute(
+                entry.Element(_namespace + "variable")
+                ?? throw new InvalidOperationException("External function metadata requires a variable."),
+                "name"),
+            entry => JsonSerializer.Deserialize<string>(ExpressionText(
+                entry.Elements().Single(IsBoxedExpression)))
+                     ?? throw new InvalidOperationException("External function metadata must be a string."),
+            StringComparer.Ordinal);
+        if (!metadata.TryGetValue("class", out var className)
+            || !metadata.TryGetValue("method signature", out var signature))
+            throw new InvalidOperationException("A Java external function requires class and method signature metadata.");
+        var names = parameters.Select(parameter => RequiredAttribute(parameter, "name")).ToArray();
+        return $"function({string.Join(", ", parameters.Select(FormalParameterToFeel))}) "
+               + $"(__vertexJavaExternal({JsonSerializer.Serialize(className)}, "
+               + $"{JsonSerializer.Serialize(signature)}, [{string.Join(", ", names)}]))";
+    }
+
+    private static string RewriteExternalJavaFunctions(string expression)
+    {
+        const string pattern = """function\s*\((?<parameters>[^)]*)\)\s*external\s*\{\s*java\s*:\s*\{\s*class\s*:\s*(?<class>"(?:\\.|[^"])*")\s*,\s*method\s+signature\s*:\s*(?<signature>"(?:\\.|[^"])*")\s*\}\s*\}""";
+        return Regex.Replace(expression, pattern, match =>
+        {
+            var parameters = match.Groups["parameters"].Value;
+            var arguments = parameters.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .Select(parameter => parameter.Split(':', 2)[0].Trim());
+            return $"function({parameters}) (__vertexJavaExternal({match.Groups["class"].Value}, "
+                   + $"{match.Groups["signature"].Value}, [{string.Join(", ", arguments)}]))";
+        }, RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+    }
+
+    private string FormalParameterToFeel(XElement parameter)
+    {
+        var name = RequiredAttribute(parameter, "name");
+        var type = TypeReference(parameter);
+        return string.IsNullOrWhiteSpace(type)
+            ? name
+            : $"{name}: {ResolveFeelType(type, new HashSet<string>(StringComparer.Ordinal))}";
     }
 
     private string RelationToFeel(XElement relation)
@@ -772,7 +1179,7 @@ public sealed class DmnDecisionGraph
 
     private IReadOnlyDictionary<string, XElement> ElementsById(string localName) =>
         _root.Elements(_namespace + localName)
-            .ToDictionary(element => RequiredAttribute(element, "id"), StringComparer.Ordinal);
+            .ToDictionary(ElementIdentity, StringComparer.Ordinal);
 
     private IEnumerable<string> RequiredDecisions(XElement decision) =>
         decision.Elements(_namespace + "informationRequirement")
@@ -792,19 +1199,186 @@ public sealed class DmnDecisionGraph
             .Where(required => required is not null)
             .Select(required => LocalReference(required!, "href"));
 
-    private string BindRequiredKnowledge(XElement decision, string expression)
+    private string CompileDecisionExpression(
+        XElement decision,
+        XElement expression,
+        IReadOnlySet<string>? suppliedDecisions)
     {
-        var requiredKnowledge = ExpandRequiredKnowledge(RequiredKnowledge(decision));
+        var feel = BoxedExpressionToFeel(expression);
+        feel = RewriteDecisionReferences(feel, RequiredDecisions(decision));
+        var outputType = TypeReference(expression)
+                         ?? TypeReference(decision.Element(_namespace + "variable"));
+        var mismatchExpression = expression.Name.LocalName == "literalExpression"
+                                 && ExpressionText(expression).TrimStart().StartsWith("context(", StringComparison.Ordinal)
+                                 && !string.IsNullOrWhiteSpace(outputType)
+                                 && _itemDefinitions.TryGetValue(outputType.Split(':').Last(), out var outputDefinition)
+                                 && outputDefinition.Elements(_namespace + "itemComponent").Any()
+            ? "null"
+            : "__vertexTypeError()";
+        if (RequiresManagedStructuralType(outputType))
+            return CompileDecisionExpression(decision, feel, suppliedDecisions);
+        return CompileDecisionExpression(
+            decision,
+            CoerceFeelExpression(feel, outputType, mismatchExpression),
+            suppliedDecisions);
+    }
+
+    private string CompileDecisionExpression(
+        XElement decision,
+        string expression,
+        IReadOnlySet<string>? suppliedDecisions)
+    {
+        expression = BindRequiredDecisions(decision, expression, suppliedDecisions);
+        expression = BindRequiredKnowledge(decision, expression, suppliedDecisions);
+        return ResolveItemDefinitionTypes(expression);
+    }
+
+    private string CoerceFeelExpression(
+        string expression,
+        string? typeRef,
+        string mismatchExpression = "__vertexTypeError()")
+    {
+        if (string.IsNullOrWhiteSpace(typeRef)) return expression;
+        var type = typeRef.Split(':').Last().Trim();
+        var resolvedType = ResolveFeelType(type, new HashSet<string>(StringComparer.Ordinal));
+        var value = "__vertexCoerceValue";
+        string coercion;
+        if (_itemDefinitions.TryGetValue(type, out var definition)
+            && (bool?)definition.Attribute("isCollection") == true)
+        {
+            var elementType = ResolveFeelType(TypeReference(definition) ?? "Any", new HashSet<string>(StringComparer.Ordinal));
+            coercion = $"if ({value} instance of {resolvedType}) then {value} "
+                       + $"else if ({value} instance of {elementType}) then [{value}] "
+                       + $"else {mismatchExpression}";
+        }
+        else
+        {
+            coercion = $"if ({value} instance of {resolvedType}) then {value} "
+                       + $"else if ({value} instance of list<any> and count({value}) = 1 "
+                       + $"and {value}[1] instance of {resolvedType}) then {value}[1] "
+                       + $"else {mismatchExpression}";
+        }
+
+        return $"{{ {value}: ({expression}), __vertexCoerceResult: "
+               + $"(if {value} = null then null else {coercion}) }}.__vertexCoerceResult";
+    }
+
+    private bool RequiresManagedStructuralType(string? typeRef)
+    {
+        if (string.IsNullOrWhiteSpace(typeRef)) return false;
+        var type = typeRef.Split(':').Last().Trim();
+        return _itemDefinitions.TryGetValue(type, out var definition)
+               && definition.Elements(_namespace + "itemComponent").Any();
+    }
+
+    private bool ValueMatchesType(object? value, string? typeRef)
+    {
+        if (value is null || string.IsNullOrWhiteSpace(typeRef)) return true;
+        var type = typeRef.Split(':').Last().Trim();
+        if (_itemDefinitions.TryGetValue(type, out var definition))
+        {
+            if ((bool?)definition.Attribute("isCollection") == true)
+                return value is IEnumerable collection and not string and not IDictionary
+                       && collection.Cast<object?>().All(item => ValueMatchesType(item, TypeReference(definition)));
+
+            var components = definition.Elements(_namespace + "itemComponent").ToArray();
+            if (components.Length > 0)
+            {
+                if (value is not IDictionary dictionary) return false;
+                foreach (var component in components)
+                {
+                    var name = RequiredAttribute(component, "name");
+                    if (!dictionary.Contains(name)) return false;
+                    var componentValue = dictionary[name];
+                    var componentType = TypeReference(component);
+                    if ((bool?)component.Attribute("isCollection") == true)
+                    {
+                        if (componentValue is not IEnumerable items
+                            || componentValue is string or IDictionary
+                            || !items.Cast<object?>().All(item => ValueMatchesType(item, componentType)))
+                            return false;
+                    }
+                    else if (!ValueMatchesType(componentValue, componentType))
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+            return ValueMatchesType(value, TypeReference(definition));
+        }
+
+        return type.ToLowerInvariant() switch
+        {
+            "any" => true,
+            "string" => value is string,
+            "boolean" => value is bool,
+            "number" => value is byte or sbyte or short or ushort or int or uint or long or ulong
+                or float or double or decimal,
+            "date" => value is FeelTemporalValue { Kind: "date" },
+            "time" => value is FeelTemporalValue { Kind: "time" },
+            "datetime" or "date and time" => value is FeelTemporalValue { Kind: "date time" },
+            "daytimeduration" or "days and time duration" or "yearmonthduration"
+                or "years and months duration" or "duration" => value is FeelTemporalValue { Kind: "duration" },
+            "context" => value is IDictionary,
+            _ => true
+        };
+    }
+
+    private string BindRequiredDecisions(
+        XElement decision,
+        string expression,
+        IReadOnlySet<string>? suppliedDecisions)
+    {
+        var dependencies = DecisionDependencyClosure(decision, suppliedDecisions).ToArray();
+        if (dependencies.Length == 0) return expression;
+        var bindings = dependencies.Select(id =>
+            $"{DecisionAlias(id)}: ({RewriteDecisionReferences(
+                BoxedExpressionToFeel(DecisionExpression(_decisions[id])), RequiredDecisions(_decisions[id]))})");
+        return $"{{ {string.Join(", ", bindings)}, __vertexResult: ({expression}) }}.__vertexResult";
+    }
+
+    private IEnumerable<string> DecisionDependencyClosure(
+        XElement decision,
+        IReadOnlySet<string>? suppliedDecisions)
+    {
+        var ordered = new List<string>();
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+
+        void Visit(string id)
+        {
+            if (suppliedDecisions?.Contains(id) == true || !visited.Add(id)) return;
+            foreach (var dependency in RequiredDecisions(_decisions[id])) Visit(dependency);
+            ordered.Add(id);
+        }
+
+        foreach (var dependency in RequiredDecisions(decision)) Visit(dependency);
+        return ordered;
+    }
+
+    private string BindRequiredKnowledge(
+        XElement decision,
+        string expression,
+        IReadOnlySet<string>? suppliedDecisions = null)
+    {
+        var knowledgeRoots = RequiredKnowledge(decision)
+            .Concat(DecisionDependencyClosure(decision, suppliedDecisions)
+                .SelectMany(id => RequiredKnowledge(_decisions[id])));
+        var requiredKnowledge = ExpandRequiredKnowledge(knowledgeRoots);
         if (requiredKnowledge.Length == 0) return expression;
 
         var bindings = requiredKnowledge.Select(id =>
         {
+            if (_decisionServices.TryGetValue(id, out var service))
+                return $"{KnowledgeAlias(id)}: {DecisionServiceToFeel(service)}";
+
             var model = _businessKnowledgeModels[id];
             var logic = model.Element(_namespace + "encapsulatedLogic")!;
-            var parameters = logic.Elements(_namespace + "formalParameter")
-                .Select(parameter => RequiredAttribute(parameter, "name"));
-            var body = BoxedExpressionToFeel(logic.Elements().Single(IsBoxedExpression));
-            return $"{KnowledgeAlias(id)}: function({string.Join(", ", parameters)}) ({body})";
+            var parameters = logic.Elements(_namespace + "formalParameter").ToArray();
+            var expression = logic.Elements().Single(IsBoxedExpression);
+            var body = CoerceFeelExpression(BoxedExpressionToFeel(expression), TypeReference(expression));
+            return $"{KnowledgeAlias(id)}: function("
+                   + $"{string.Join(", ", parameters.Select(FormalParameterToFeel))}) ({body})";
         });
 
         return $"{{ {string.Join(", ", bindings)}, __vertexResult: ({expression}) }}.__vertexResult";
@@ -818,9 +1392,20 @@ public sealed class DmnDecisionGraph
         void Visit(string id)
         {
             if (!visited.Add(id)) return;
-            if (!_businessKnowledgeModels.TryGetValue(id, out var model))
+            if (_businessKnowledgeModels.TryGetValue(id, out var model))
+            {
+                foreach (var dependency in RequiredKnowledge(model)) Visit(dependency);
+            }
+            else if (_decisionServices.TryGetValue(id, out var service))
+            {
+                foreach (var decisionId in DecisionServiceDecisionClosure(service))
+                    foreach (var dependency in RequiredKnowledge(_decisions[decisionId]))
+                        Visit(dependency);
+            }
+            else
+            {
                 throw new InvalidOperationException($"Unknown required knowledge '{id}'.");
-            foreach (var dependency in RequiredKnowledge(model)) Visit(dependency);
+            }
             ordered.Add(id);
         }
 
@@ -828,8 +1413,55 @@ public sealed class DmnDecisionGraph
         return ordered.ToArray();
     }
 
-    private string KnowledgeAlias(string id) =>
-        $"__vertexBkm{_businessKnowledgeModels.Keys.ToList().IndexOf(id)}";
+    private string KnowledgeAlias(string id) => _businessKnowledgeModels.ContainsKey(id)
+        ? $"__vertexBkm{_businessKnowledgeModels.Keys.ToList().IndexOf(id)}"
+        : $"__vertexDs{_decisionServices.Keys.ToList().IndexOf(id)}";
+
+    private string DecisionAlias(string id) =>
+        $"__vertexDecision{_decisions.Keys.ToList().IndexOf(id)}";
+
+    private string RewriteDecisionReferences(string expression, IEnumerable<string> decisionIds)
+    {
+        foreach (var decision in decisionIds
+                     .Distinct(StringComparer.Ordinal)
+                     .Select(id => new KeyValuePair<string, XElement>(id, _decisions[id]))
+                     .OrderByDescending(entry => DecisionBindingName(entry.Value).Length))
+        {
+            var name = DecisionBindingName(decision.Value);
+            expression = RewriteOutsideFeelStrings(expression, segment => Regex.Replace(
+                    segment,
+                    $@"(?<![A-Za-z0-9_]){Regex.Escape(name)}(?![A-Za-z0-9_])",
+                    DecisionAlias(decision.Key),
+                    RegexOptions.CultureInvariant));
+        }
+        return expression;
+    }
+
+    private static string RewriteOutsideFeelStrings(string expression, Func<string, string> rewrite)
+    {
+        var result = new System.Text.StringBuilder(expression.Length);
+        var segmentStart = 0;
+        for (var index = 0; index < expression.Length; index++)
+        {
+            if (expression[index] != '"') continue;
+            result.Append(rewrite(expression[segmentStart..index]));
+            var stringStart = index++;
+            while (index < expression.Length)
+            {
+                if (expression[index] == '\\')
+                {
+                    index++;
+                    continue;
+                }
+                if (expression[index] == '"') break;
+                index++;
+            }
+            result.Append(expression[stringStart..Math.Min(index + 1, expression.Length)]);
+            segmentStart = Math.Min(index + 1, expression.Length);
+        }
+        result.Append(rewrite(expression[segmentStart..]));
+        return result.ToString();
+    }
 
     private string KnowledgeBindingName(XElement model) =>
         (string?)model.Attribute("name")
@@ -846,8 +1478,91 @@ public sealed class DmnDecisionGraph
                 $@"(?<![A-Za-z0-9_]){Regex.Escape(name)}(?=\s*\()",
                 KnowledgeAlias(model.Key),
                 RegexOptions.CultureInvariant);
+            expression = Regex.Replace(
+                expression,
+                $@"(?<![A-Za-z0-9_]){Regex.Escape(name)}(?=\s*(?:,|\)|$))",
+                KnowledgeAlias(model.Key),
+                RegexOptions.CultureInvariant);
+        }
+        foreach (var service in _decisionServices)
+        {
+            var name = KnowledgeBindingName(service.Value);
+            expression = Regex.Replace(
+                expression,
+                $@"(?<![A-Za-z0-9_]){Regex.Escape(name)}(?=\s*\()",
+                KnowledgeAlias(service.Key),
+                RegexOptions.CultureInvariant);
+            expression = Regex.Replace(
+                expression,
+                $@"(?<![A-Za-z0-9_]){Regex.Escape(name)}(?=\s*(?:,|\)|$))",
+                KnowledgeAlias(service.Key),
+                RegexOptions.CultureInvariant);
         }
         return expression;
+    }
+
+    private string DecisionServiceToFeel(XElement service)
+    {
+        var inputData = DecisionServiceReferences(service, "inputData").ToArray();
+        var inputDecisions = DecisionServiceReferences(service, "inputDecision").ToArray();
+        var parameterIds = inputData.Concat(inputDecisions).ToArray();
+        var parameterNames = inputData
+            .Select(id => DecisionBindingName(_inputData[id]))
+            .Concat(inputDecisions.Select(id => DecisionBindingName(_decisions[id])))
+            .ToArray();
+
+        var closure = DecisionServiceDecisionClosure(service).ToArray();
+        var entries = closure.Select(id =>
+            $"{DecisionBindingName(_decisions[id])}: ({BoxedExpressionToFeel(DecisionExpression(_decisions[id]))})").ToList();
+        var outputIds = DecisionServiceReferences(service, "outputDecision").ToArray();
+        var result = outputIds.Length == 1
+            ? DecisionBindingName(_decisions[outputIds[0]])
+            : $"{{ {string.Join(", ", outputIds.Select(id =>
+                $"{JsonSerializer.Serialize(DecisionBindingName(_decisions[id]))}: "
+                + $"{DecisionBindingName(_decisions[id])}"))} }}";
+        result = CoerceFeelExpression(result, DecisionServiceOutputType(service));
+        entries.Add($"__vertexServiceResult: ({result})");
+        var body = $"{{ {string.Join(", ", entries)} }}.__vertexServiceResult";
+
+        var parameterBindings = parameterIds.Zip(parameterNames, (id, name) =>
+        {
+            var source = _inputData.TryGetValue(id, out var input) ? input : _decisions[id];
+            var type = TypeReference(source.Element(_namespace + "variable"));
+            return string.IsNullOrWhiteSpace(type) ? null : $"{name}: ({CoerceFeelExpression(name, type)})";
+        }).Where(binding => binding is not null).ToArray();
+        if (parameterBindings.Length > 0)
+            body = $"{{ {string.Join(", ", parameterBindings)}, __vertexServiceBody: ({body}) }}.__vertexServiceBody";
+
+        return $"function({string.Join(", ", parameterNames)}) ({body})";
+    }
+
+    private string? DecisionServiceOutputType(XElement service)
+    {
+        var serviceType = TypeReference(service.Element(_namespace + "variable"));
+        if (string.IsNullOrWhiteSpace(serviceType)) return null;
+        var type = serviceType.Split(':').Last();
+        var function = _itemDefinitions.TryGetValue(type, out var definition)
+            ? definition.Element(_namespace + "functionItem")
+            : null;
+        return (string?)function?.Attribute("outputTypeRef");
+    }
+
+    private IEnumerable<string> DecisionServiceDecisionClosure(XElement service)
+    {
+        var supplied = DecisionServiceReferences(service, "inputDecision").ToHashSet(StringComparer.Ordinal);
+        var ordered = new List<string>();
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+
+        void Visit(string id)
+        {
+            if (supplied.Contains(id) || !visited.Add(id)) return;
+            foreach (var dependency in RequiredDecisions(_decisions[id])) Visit(dependency);
+            ordered.Add(id);
+        }
+
+        foreach (var output in DecisionServiceReferences(service, "outputDecision")) Visit(output);
+        foreach (var encapsulated in DecisionServiceReferences(service, "encapsulatedDecision")) Visit(encapsulated);
+        return ordered;
     }
 
     private IEnumerable<string> DecisionServiceReferences(XElement service, string localName) =>
@@ -905,13 +1620,14 @@ public sealed class DmnDecisionGraph
     private static bool IsSimpleFeelName(string expression) =>
         Regex.IsMatch(expression, @"^[A-Za-z_][A-Za-z0-9_-]*$", RegexOptions.CultureInvariant);
 
-    private static void AddToContext(
+    private void AddToContext(
         XElement decision,
         DecisionEvaluation evaluation,
         IDictionary<string, object> context)
     {
         foreach (var output in evaluation.Variables) context[output.Key] = output.Value;
         context[DecisionBindingName(decision)] = evaluation.Value!;
+        context[DecisionAlias(ElementIdentity(decision))] = evaluation.Value!;
     }
 
     private static string DecisionBindingName(XElement decision) =>
@@ -927,18 +1643,32 @@ public sealed class DmnDecisionGraph
         return fallback ?? throw new InvalidOperationException($"DMN {expression.Name.LocalName} requires FEEL text.");
     }
 
-    private static string LocalReference(XElement element, string attribute)
+    private string LocalReference(XElement element, string attribute)
     {
         var reference = RequiredAttribute(element, attribute);
-        if (!reference.StartsWith('#'))
-            throw new InvalidOperationException($"Only local DMN references are supported, got '{reference}'.");
-        return reference[1..];
+        if (reference.StartsWith('#')) return Uri.UnescapeDataString(reference[1..]);
+
+        var fragmentIndex = reference.LastIndexOf('#');
+        var modelNamespace = (string?)_root.Attribute("namespace");
+        if (fragmentIndex > 0
+            && string.Equals(reference[..fragmentIndex], modelNamespace, StringComparison.Ordinal))
+            return Uri.UnescapeDataString(reference[(fragmentIndex + 1)..]);
+
+        throw new InvalidOperationException($"DMN reference '{reference}' does not address the local model namespace.");
     }
 
     private static string RequiredAttribute(XElement element, string name) =>
         (string?)element.Attribute(name) is { Length: > 0 } value
             ? value
             : throw new InvalidOperationException($"DMN {element.Name.LocalName} requires attribute '{name}'.");
+
+    private static string ElementIdentity(XElement element) =>
+        (string?)element.Attribute("id") is { Length: > 0 } id
+            ? id
+            : (string?)element.Attribute("name") is { Length: > 0 } name
+                ? name
+                : throw new InvalidOperationException(
+                    $"DMN {element.Name.LocalName} requires an 'id' or 'name' attribute.");
 
     private static decimal ToDecimal(object value)
     {

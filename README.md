@@ -1,6 +1,6 @@
 # VertexBPMN™
 
-**Eine moderne Prozessautomatisierungsplattform für .NET mit einem BPMN-Kern und experimentellen DMN-/CMMN-Modulen**
+**Cloud-native Prozessautomatisierung für .NET mit BPMN 2.0, DMN, CMMN, Low-Code Studio, REST, gRPC, MCP, SDK und CLI.**
 
 ![Build Status](https://img.shields.io/github/actions/workflow/status/VertexBPMN/VertexBPMN/ci.yml?branch=master&style=for-the-badge)
 ![NuGet Version](https://img.shields.io/nuget/v/VertexBPMN.Sdk?style=for-the-badge)
@@ -8,75 +8,130 @@
 ![License](https://img.shields.io/github/license/VertexBPMN/VertexBPMN?style=for-the-badge)
 ![.NET](https://img.shields.io/badge/.NET-10.0-512BD4?style=for-the-badge&logo=dotnet)
 
----
+VertexBPMN ist eine Open-Source-Plattform für die Modellierung, Ausführung und den Betrieb von Geschäftsprozessen, Entscheidungen und Cases. Die Plattform ist nativ für .NET 10 entwickelt und verbindet eine persistente Workflow-Runtime mit einem browserbasierten Studio, mandantenfähigen APIs, SDK, CLI, Messaging, Analytics und einer Aspire-basierten lokalen Entwicklungsumgebung.
 
-**VertexBPMN™** ist eine von Grund auf neu entwickelte Prozess-Engine für das .NET-Ökosystem. Inspiriert von der Robustheit von Camunda, aber gebaut mit der vollen Kraft von modernem .NET und C# 13, um maximale Performance und eine erstklassige Entwicklererfahrung zu bieten. Unser Ziel ist es, eine leichtgewichtige, skalierbare und Cloud-native Lösung für die Orchestrierung von Geschäftsprozessen, Cases und Entscheidungen bereitzustellen.
+## Supportstatus
 
-## ✨ Key Features
+Die verbindliche Quelle für Produkt-Support und Acceptance-Nachweise ist die [Produkt-Support- und Acceptance-Matrix](docs/reference/product-support-matrix.md). Alle dort aufgeführten Fähigkeiten sind als `supported` qualifiziert. `Supported` bedeutet: Die Funktion besitzt einen öffentlich nutzbaren, persistenten End-to-End-Pfad und ist durch die zugeordneten Acceptance- und Release-Gates abgesichert. Ein isolierter Parser- oder Unit-Test genügt dafür nicht.
 
-### BPMN 2.0 - Business Process Model and Notation
-* **Parser und Roundtrip:** Breite Modellabdeckung mit automatisierten Parser-, Serialisierungs- und MIWG-Referenztests.
-* **Persistenter Runtime-Subset:** None Events, Service/User Tasks, Parallel Gateway, Timer Catch/Boundary, Message/Signal und ein begrenzter Kompensationspfad laufen über denselben relationalen API-Runtime-Pfad.
-* **Klare Grenze:** Vollständige BPMN-Konformität, komplexe Gateways, Event-Subprozesse, Call Activities und echte Multi-Instance-Semantik werden noch nicht behauptet.
+Die Full-Product-Support-Qualifizierung umfasst 51 konkrete Acceptance-Fälle: 47 Fälle im verpflichtenden Hauptgate sowie vier externe RabbitMQ-/PostgreSQL-Verträge. Der Build-Badge oben zeigt den aktuellen Status des `master`-Branches; eine Veröffentlichung ist nur freigegeben, wenn alle Build-, Test-, Security-, Supply-Chain- und externen Infrastruktur-Gates erfolgreich sind.
 
-### CMMN 1.1 - Case Management Model and Notation
-* **Experimentell:** Parser, Modelle und einzelne API-Verträge sind vorhanden.
-* **Nicht als produktionsreif freigegeben:** Vollständige Sentry-, Discretionary-Item- und Case-Lifecycle-Semantik ist nicht durch eine Conformance-Suite belegt.
+### Standards und Runtime
 
-### DMN - Decision Model and Notation
-* **Teilweise unterstützt:** Decision Tables und mehrere Hit Policies besitzen automatisierte Tests.
-* **Nicht vollständig:** FEEL, DRD und die DMN-Konformität sind nicht vollständig implementiert oder durch die offizielle TCK nachgewiesen.
+| Bereich | Unterstützte Fähigkeiten | Status |
+| --- | --- | --- |
+| BPMN-Definitionen | Sichere XML-Verarbeitung, Validierung, Roundtrip, Deployment und tenantbezogene Versionierung | ✅ Supported |
+| BPMN-Basisfluss | None Start/End Events, Sequence Flows, Service Tasks und User Tasks mit Claim/Complete/Resume | ✅ Supported |
+| BPMN-Gateways | Parallel, Exclusive, Inclusive, Event-based und Complex Gateway einschließlich Split-/Join-Semantik | ✅ Supported |
+| BPMN-Ereignisse | Timer, Message, Signal, Error, Escalation, Cancel, Compensation und Terminate | ✅ Supported |
+| BPMN-Scopes | Eingebettete und verschachtelte Subprozesse, Event Subprocesses, Call Activities und Transaktionen | ✅ Supported |
+| BPMN Multi-Instance | Sequenzielle und parallele Multi-Instance-Ausführung, auch in wartenden Scopes | ✅ Supported |
+| BPMN Timer | Catch- und Boundary-Timer mit ISO-8601 `timeDate`, `timeDuration` und `timeCycle` | ✅ Supported |
+| BPMN Fehlerbehandlung | Interrupting/non-interrupting Boundary Events, hierarchische Propagation, Compensation in Rückwärtsreihenfolge und Transaction Cancel | ✅ Supported |
+| BPMN Betrieb | Restart, mehrere API-Replikate, Idempotenz, Incident Recovery und Job Dead Letter | ✅ Supported |
+| DMN Decision Tables | `UNIQUE`, `FIRST`, `PRIORITY`, `ANY`, `COLLECT`, `SUM`, `MIN`, `MAX`, `COUNT`, `RULE ORDER` und `OUTPUT ORDER` | ✅ Supported |
+| DMN FEEL | Listen, Kontexte, Iterationen, Quantoren, temporale Typen, Built-ins, Unary Tests und fail-closed Syntaxprüfung | ✅ Supported |
+| DMN DRD | Mehrstufige Decision Requirement Diagrams, Literal Expressions, Decision Services und Zyklusvalidierung | ✅ Supported |
+| BPMN/DMN-Integration | Business Rule Tasks mit direktem und Zeebe-kompatiblem Binding | ✅ Supported |
+| CMMN | Persistente Definitionen und Case-Lifecycle mit Plan Items, Case File, History, Sentries und verschachtelten Stages | ✅ Supported |
+| CMMN Tasks und Events | Human, Manual und Service Tasks, User Events sowie Discretionary Items | ✅ Supported |
 
-### Plattform & Integration
-* **Gebaut für modernes .NET:** Modernste C#-Features, hohe Performance, geringe Allokationen, echte Asynchronität.
-* **bpmn.io-Integration:** Gepinnte Web-Assets und eigene Moddle-Verifikation; vollständige Interoperabilität wird noch nicht behauptet.
-* **Flexible APIs:** REST-API und gRPC-Schnittstelle für Microservice-Architekturen.
-* **Persistenter Job-Executor:** Timer-Jobs besitzen Lease, Retry/Backoff, Dead Letter und Incident-Anbindung.
-* **Konfigurierbare Persistenz:** EF Core für SQLite, PostgreSQL und SQL Server; der freigegebene BPMN-Runtime-Subset speichert Tokens, Variablen, Tasks, Jobs, Subscriptions, Incidents sowie Inbox/Outbox dauerhaft.
-* **Process Mining & Analytics (teilweise):** Persistente Events und REST-Abfragen sind vorhanden; atomare Runtime-Kopplung und vollständige Betriebsmetriken fehlen.
-* **Security:** Rollenbasierte Authentifizierung für alle Analytics- und Reporting-Endpunkte.
+### Plattform und Produktfunktionen
 
-## 🚀 Projektstatus
+| Bereich | Unterstützte Fähigkeiten | Status |
+| --- | --- | --- |
+| REST und OpenAPI | Tenantfähige Deployments, Runtime, Tasks, Decisions, Cases, Forms, Trigger, Migration, Analytics und Administration | ✅ Supported |
+| gRPC und MCP | Maschinen- und Agenten-Schnittstellen für BPMN, DMN und CMMN | ✅ Supported |
+| .NET SDK | Typisierte Client-APIs für Deployment, Start, Runtime, Trigger und Administration | ✅ Supported |
+| CLI / .NET Tool | Validierung, Testlauf, Ausführung, Deployment, Registrierung, Status, Worker, Dashboard, Trigger, Credentials, Connectoren und Templates | ✅ Supported |
+| Low-Code Studio | BPMN-/DMN-/CMMN-/Form-Modellierung, Import/Export, Properties, Quick Insert, Runtime-Overlay, Token-Simulation und Fehleranzeige | ✅ Supported |
+| Persistenz | EF Core für Instanzen, Tokens, Variablen, Tasks, Jobs, Subscriptions, Incidents, Inbox, Outbox und Worker | ✅ Supported |
+| Datenbanken | SQLite für lokale/Container-Profile sowie PostgreSQL und SQL Server für relationale Deployments | ✅ Supported |
+| Messaging | RabbitMQ- und Kafka-Auslieferung aus der Outbox mit Retry, Dead Letter und Readiness | ✅ Supported |
+| Workflow-Trigger | Persistente, tenantisolierte Webhook-Starts mit einmalig ausgegebenem Secret und serverseitigem Hash | ✅ Supported |
+| Credentials und Connectoren | Secret-geschützte Credentials, Rotation, Connector-Verwaltung und wiederverwendbare Connector-Templates | ✅ Supported |
+| Process Mining und Analytics | Transaktionale, idempotente Projektion, tenantfähige APIs, Prozessmetriken, Traces und Zeitreihen | ✅ Supported |
+| Simulation | Deterministische Simulation mit hashgebundener Analytics-Auswertung | ✅ Supported |
+| Live-Migration | Dry Run, Snapshot, atomare Migration, Rollback, Versionsmigration und Cross-Tenant-Schutz | ✅ Supported |
+| Sicherheit | JWT/API-Key-Authentifizierung, Rollen und Policies, Mandantenisolation, Rate Limiting und fail-closed Produktionskonfiguration | ✅ Supported |
+| Observability | Health, Liveness, Readiness, strukturierte Logs, OpenTelemetry und Prometheus-Metriken | ✅ Supported |
+| Aspire AppHost | Orchestrierung von API, Studio, PostgreSQL und RabbitMQ mit Dependency- und Readiness-Modell | ✅ Supported |
+| Release Supply Chain | Deterministische SDK-/CLI-Pakete, SHA-256-Prüfung, SPDX-SBOM, Scans, CodeQL und NuGet-OIDC-Provenance | ✅ Supported |
 
-**VertexBPMN™ ist derzeit nicht als vollständig produktionsreife BPMN-, DMN- oder CMMN-Engine freigegeben.**
+### Weitere Produktfunktionen
 
-Die Phasen 1 bis 5 stellen einen begrenzten, persistenten BPMN-Produktionskern, einen ausdrücklich eingegrenzten DMN-Decision-Table-Subset und blockierende Release-/Security-Gates bereit. CMMN-Ausführung, Simulation und Prozessmigration bleiben fail-closed gesperrt; VertexBPMN behauptet deshalb weiterhin keine vollständige BPMN-, DMN- oder CMMN-Standardkonformität. Der tatsächliche Supportstatus, bekannte Einschränkungen und verbindliche Akzeptanzfälle stehen in der [Produkt-Support- und Acceptance-Matrix](docs/reference/product-support-matrix.md). Funktionen ohne bestandenen End-to-End-Nachweis gelten als `partial` oder `unsupported`, auch wenn Parser-, Unit- oder Komponenten-Tests existieren.
+- **Form Lifecycle:** tenantbezogene Form-Definitionen erstellen, lesen, aktualisieren, löschen, im Studio bearbeiten und zur Laufzeit anzeigen
+- **AI Service Tasks:** Handler für OpenAI, Anthropic, Gemini, generische AI-Endpunkte, Context Enrichment und MCP-basierte Aufgaben
+- **Plug-in-System:** validierte Plug-in-Assemblies, kontrollierte Aktivierung und fail-closed Produktionskonfiguration
+- **External Worker Control Plane:** Worker-Registrierung, Heartbeats, Health, Pending Work, Rebalancing und Lastverteilung
+- **Operations und Diagnose:** Instanzen suspendieren/fortsetzen, Incidents, Jobs, Variablen, History, Audit, Runtime Inspector, Performance- und Visual-Debug-Endpunkte
+- **Identity und Tenancy:** Benutzer, Gruppen, Autorisierung, Tenant-Verwaltung sowie Camunda-orientierte Ressourcen für bestehende Integrationen
+- **Webhook Ingress:** authentifizierter externer Eingang mit Korrelation in die persistente Runtime
+- **Feature- und Dependency-Konfiguration:** API-gesteuerte Feature Flags und persistente Dependency Registry mit sicherer Konfigurationspriorität
+- **n8n-Import:** Import von Workflows mit Credential-Referenzen, Bedingungs-Mapping und expliziten Review-Markierungen
 
-Wir freuen uns weiterhin über Feedback und Beiträge aus der Community!
+## Architektur
 
-## 🔒 Security & Analytics
+```text
+Studio / CLI / .NET SDK / REST / gRPC / MCP
+                      |
+                VertexBPMN.Api
+                      |
+     +----------------+----------------+
+     |                |                |
+ BPMN Runtime     DMN Engine       CMMN Runtime
+     |                |                |
+     +---------- Persistence ----------+
+                EF Core / Outbox
+                      |
+       SQLite / PostgreSQL / SQL Server
+                      |
+             RabbitMQ / Kafka
 
-Alle Analytics- und Reporting-Endpunkte sind durch rollenbasierte Authentifizierung geschützt (`[Authorize]`).
-Die Event-Analytics ist persistent, performant und mandantenfähig.
-
-### Beispiel: Analytics-API (JWT erforderlich)
-
-```http
-GET /api/analytics/events
-Authorization: Bearer <JWT>
+VertexBPMN.AppHost orchestriert API, Studio, PostgreSQL,
+RabbitMQ, Health Checks, Logs, Traces und Metriken.
 ```
 
-**Weitere Endpunkte:**
-- `/api/analytics/event-stats` – Event-Typ-Statistiken
-- `/api/analytics/events/by-tenant/{tenantId}` – Mandantenfilter
-- `/api/analytics/events/timeseries/{eventType}` – Zeitreihen
-- `/api/analytics/metrics/process` – Prozessmetriken
+Die Runtime speichert ihren Zustand dauerhaft. Jobs werden über Leases, Retry/Backoff und Dead Letter verarbeitet; Inbox/Outbox und idempotente Operationen schützen die Ausführung bei Neustarts und mehreren API-Replikaten.
 
-Alle Endpunkte sind über Swagger/OpenAPI dokumentiert und testbar.
+## Schnellstart mit Aspire
 
-## 🏁 Getting Started (Quick Start)
+Voraussetzungen:
 
-Die öffentliche .NET-Integration von VertexBPMN erfolgt über das NuGet-Paket **VertexBPMN.Sdk**. Das SDK kommuniziert mit einer laufenden VertexBPMN-API und bietet typisierte Methoden für Deployment, Prozessstart, Instanzen und Workflow-Trigger.
+- .NET 10 SDK
+- ein OCI-kompatibler Container-Runtime für PostgreSQL und RabbitMQ
 
-**1. SDK installieren**
+Das Development-Profil startet API und Studio als .NET-Projekte und provisioniert PostgreSQL und RabbitMQ über Aspire:
+
+```powershell
+dotnet run --project src/VertexBPMN.AppHost --no-launch-profile -e DOTNET_ENVIRONMENT=Development
+```
+
+Das Containerprofil baut die API aus dem Root-Dockerfile, verwendet persistente SQLite-Dateien in einem Volume und startet das Studio lokal:
+
+```powershell
+dotnet run --project src/VertexBPMN.AppHost --no-launch-profile -e DOTNET_ENVIRONMENT=Containers
+```
+
+| Dienst | Standardadresse |
+| --- | --- |
+| API | `http://localhost:51870` |
+| Studio | `http://localhost:5263` |
+| Swagger/OpenAPI | `http://localhost:51870/swagger` |
+| Health | `http://localhost:51870/api/health` |
+| Liveness | `http://localhost:51870/api/health/live` |
+| Readiness | `http://localhost:51870/api/ready` |
+| Prometheus | `http://localhost:51870/api/metrics/prometheus` |
+
+Zugangsdaten und Verbindungsinformationen werden vom AppHost provisioniert und an die Ressourcen injiziert. Secrets gehören nicht in die AppHost-Konfiguration oder in das Repository.
+
+## .NET SDK
+
+Das öffentliche SDK kommuniziert mit einer laufenden VertexBPMN-API:
 
 ```bash
 dotnet add package VertexBPMN.Sdk
 ```
-
-**2. API-Client konfigurieren**
-
-Die API muss erreichbar sein. Für geschützte Endpunkte wird ein gültiger Bearer-Token oder API-Key benötigt:
 
 ```csharp
 using VertexBPMN.Sdk;
@@ -93,135 +148,75 @@ var client = new VertexBpmnClient(
         BearerToken = Environment.GetEnvironmentVariable("VERTEXBPMN_BEARER_TOKEN"),
         TenantId = "acme"
     });
-```
 
-**3. BPMN deployen und Prozess starten**
-
-```csharp
-const string bpmnXml =
-    "<definitions xmlns=\"http://www.omg.org/spec/BPMN/20100524/MODEL\">" +
-    "<process id=\"Process_HelloWorld\">" +
-    "<startEvent id=\"start\" />" +
-    "<endEvent id=\"end\" />" +
-    "</process>" +
-    "</definitions>";
-
+var bpmnXml = await File.ReadAllTextAsync("order-process.bpmn");
 var deployed = await client.DeployProcessAsync(
     bpmnXml,
-    "hello-world.bpmn");
+    "order-process.bpmn",
+    "acme");
 
-if (deployed is null)
-    throw new InvalidOperationException("Das BPMN-Deployment wurde nicht zurückgegeben.");
-
-var processInstance = await client.StartProcessAsync(
-    deployed.Key,
+var instance = await client.StartProcessAsync(
+    deployed!.Key,
     new Dictionary<string, object?>
     {
-        ["source"] = "quick-start"
+        ["customerId"] = "C-42"
     },
-    businessKey: "HELLO-001");
+    businessKey: "ORDER-123");
 
-Console.WriteLine($"Prozess '{deployed.Key}' wurde deployt.");
-Console.WriteLine($"Prozessinstanz '{processInstance?.Id}' wurde gestartet.");
+Console.WriteLine(instance?.Id);
 ```
 
-Für externe Starts kann anschließend ein Workflow-Trigger registriert und über sein einmalig ausgegebenes Secret aufgerufen werden. Die vollständige Anleitung steht im Abschnitt [Persistente BPMN-Deployments und externe Workflow-Trigger](#persistente-bpmn-deployments-und-externe-workflow-trigger) sowie in [docs/runbooks/workflow-triggers.md](docs/runbooks/workflow-triggers.md).
+## CLI und .NET Tool
 
-## 🖥️ CLI, API & Studio Dashboard
-
-VertexBPMN kann lokal wie eine Control-Plane-Anwendung über die Terminal-CLI bedient werden. Die CLI führt Engine-Kommandos aus und kann nach dem OpenClaw-Prinzip das API-Gateway und das Blazor-Studio gemeinsam starten.
-
-### Lokale Aspire-Orchestrierung
-
-Der Aspire AppHost startet API und Studio in definierter Reihenfolge, wartet auf echte Readiness und stellt Logs, Traces und Metriken im Aspire Dashboard bereit. Im Standardprofil laufen die Anwendungen als .NET-Projekte mit PostgreSQL und RabbitMQ:
+Die CLI kann direkt aus dem Repository ausgeführt werden:
 
 ```powershell
-dotnet run --project src/VertexBPMN.AppHost --no-launch-profile -e DOTNET_ENVIRONMENT=Development
-```
-
-Das Containerprofil baut die API aus dem Root-Dockerfile, verwendet persistente SQLite-Dateien in einem Docker-Volume und startet das Studio weiterhin lokal:
-
-```powershell
-dotnet run --project src/VertexBPMN.AppHost --no-launch-profile -e DOTNET_ENVIRONMENT=Containers
-```
-
-Die Standardendpunkte sind `http://localhost:51870` für die API und `http://localhost:5263` für das Studio. PostgreSQL, RabbitMQ und ihre Zugangsdaten werden im Projektprofil durch Aspire provisioniert und injiziert; Secrets gehören nicht in die AppHost-Konfigurationsdateien.
-
-### Dashboard aus der CLI öffnen
-
-```powershell
+dotnet run --project src/VertexBPMN.Cli -- --help
 dotnet run --project src/VertexBPMN.Cli -- dashboard
 ```
 
-Der Befehl:
+Oder als .NET Tool installiert werden, sobald die gewünschte Version auf NuGet.org verfügbar ist:
 
-1. verwendet eine bereits laufende API oder startet `VertexBPMN.Api` lokal,
-2. wartet auf den Health-Endpoint `/api/Health`,
-3. startet `VertexBPMN.Studio`,
-4. öffnet das Dashboard im Standardbrowser.
+```bash
+dotnet tool install --global VertexBPMN.Cli
+vertexbpmn --help
+```
 
-Die Standardadressen sind:
+Wichtige Befehlsgruppen:
 
-| Dienst | Adresse |
+| Aufgabe | Befehle |
 | --- | --- |
-| API-Gateway | `http://localhost:51870/` |
-| Blazor Studio | `http://localhost:5263/` |
-| API Health | `http://localhost:51870/api/Health` |
+| Validierung und lokaler Test | `validate`, `test-run` |
+| Prozessausführung | `execute`, `execute-id`, `execute-case` |
+| Deployment und Registrierung | `deploy-bpmn`, `deploy-dmn`, `deploy-form`, `register-bpmn`, `register-cmmn`, `register-dmn` |
+| Integrationen | `import-n8n`, `connector`, `template`, `credential` |
+| Betrieb | `status`, `pending`, `workers` |
+| Control Plane | `dashboard`, `studio`, `config` |
+| Externe Starts | `trigger create`, `trigger list`, `trigger invoke`, `trigger enable`, `trigger disable`, `trigger delete` |
 
-Der Alias `studio` startet denselben Workflow. Für eine interaktive CLI-Sitzung:
+`dashboard` verwendet eine laufende API oder startet sie lokal, wartet auf Readiness, startet das Blazor Studio und öffnet das Dashboard. Der Alias `studio` führt denselben Workflow aus. Einstellungen können in [`src/VertexBPMN.Cli/appsettings.json`](src/VertexBPMN.Cli/appsettings.json) oder über `VERTEXBPMN_`-Umgebungsvariablen gesetzt werden.
 
-```powershell
-dotnet run --project src/VertexBPMN.Cli
-```
+## Low-Code Studio
 
-Danach kann der Befehl direkt eingegeben werden:
+`VertexBPMN.Studio` stellt eine browserbasierte Arbeitsoberfläche bereit:
 
-```text
-vertexbpmn> dashboard
-```
+- BPMN-, DMN-, CMMN- und Form-Modellierung mit gepinnten, reproduzierbaren bpmn.io-Assets
+- Import, Export, Moddle-Erweiterungen und Properties-Panel
+- Quick Insert und Low-Code-Mutationen
+- Deployment von Definitionen und Verwaltung persistenter Workflow-Trigger
+- Runtime-Viewer, Token-Overlay, Simulation und Fehlerdiagnose
+- Prozessmigration mit Planung, Dry Run, Ausführung und Rollback
+- Verwaltung von Credentials, Connectoren und Templates
+- Chromium-basierte End-to-End-Tests gegen reale persistente API-Pfade
 
-Die Dashboard-Startparameter können in [`src/VertexBPMN.Cli/appsettings.json`](src/VertexBPMN.Cli/appsettings.json) oder über `VERTEXBPMN_`-Umgebungsvariablen angepasst werden. Dazu gehören Projektpfade, URLs, automatischer API-/Studio-Start, Browseröffnung und das Readiness-Timeout.
+## Workflow-Trigger
 
-### Persistente BPMN-Deployments und externe Workflow-Trigger
+Ein externer Workflow-Start besteht aus vier Schritten:
 
-BPMN-Workflows können jetzt dauerhaft im Repository registriert und später manuell oder durch externe Systeme gestartet werden. Der typische Ablauf ist:
-
-1. BPMN-Datei persistent deployen.
-2. Einen tenantbezogenen Workflow-Trigger für den Process-Key registrieren.
+1. BPMN-Datei tenantbezogen deployen.
+2. Trigger für den Process-Key registrieren.
 3. Das einmalig ausgegebene Secret sicher speichern.
-4. Den Trigger über API, CLI, SDK oder Studio aufrufen.
-
-#### REST API
-
-Ein BPMN-Workflow wird über das Repository deployt:
-
-```http
-POST /api/repository
-Authorization: Bearer <JWT>
-Content-Type: application/json
-
-{
-  "bpmnXml": "<definitions>...</definitions>",
-  "name": "order-process.bpmn",
-  "tenantId": "acme"
-}
-```
-
-Danach kann ein geschützter Trigger angelegt werden:
-
-```http
-POST /api/triggers
-Authorization: Bearer <JWT>
-Content-Type: application/json
-
-{
-  "name": "Order webhook",
-  "processDefinitionKey": "order-process",
-  "tenantId": "acme"
-}
-```
-
-Die Antwort enthält das Secret nur einmal. Persistiert wird ausschließlich ein Hash. Der externe Aufruf benötigt keine Benutzeranmeldung, aber das Trigger-Secret:
+4. Trigger über REST, CLI, SDK oder Studio aufrufen.
 
 ```http
 POST /api/triggers/{id}/invoke
@@ -236,188 +231,92 @@ Content-Type: application/json
 }
 ```
 
-Weitere Verwaltungsendpunkte:
+Persistiert wird ausschließlich ein Hash des Secrets. Verwaltung und Aufrufe sind tenantisoliert. Details: [Workflow-Trigger Runbook](docs/runbooks/workflow-triggers.md).
 
-- `GET /api/triggers` – Trigger auflisten
-- `PUT /api/triggers/{id}` – Trigger umbenennen oder aktivieren/deaktivieren
-- `DELETE /api/triggers/{id}` – Trigger löschen
+## APIs und Integrationen
 
-Die Verwaltung ist authentifiziert und tenantisoliert. Einzelheiten stehen in [docs/runbooks/workflow-triggers.md](docs/runbooks/workflow-triggers.md).
+- **REST/OpenAPI:** Prozessdefinitionen und -instanzen, User Tasks, Decisions, Cases, Forms, Migration, Simulation, Analytics, Trigger, Credentials, Connectoren und Administration
+- **gRPC:** typisierte Runtime- und Verwaltungsverträge
+- **MCP:** Werkzeugzugriff für KI-Agenten auf BPMN-, DMN- und CMMN-Funktionen
+- **RabbitMQ/Kafka:** zuverlässige externe Event-Auslieferung über die persistente Outbox
+- **n8n Import:** Workflow-Import mit Credential-Referenzen, Mapping und Review-Markierungen
+- **External Workers:** Registrierung, Heartbeats, Load-Balancing und Zustandsabfragen
 
-Credentials für Connectoren werden über `api/credentials` verwaltet. Die API gibt ausschließlich Metadaten und Secret-Key-Namen zurück; Klartext-Secrets bleiben serverseitig geschützt und werden auch bei Rotation nicht in Responses, Logs oder Audit-Details ausgegeben.
+Geschützte Endpunkte verwenden JWT oder API Keys sowie rollenbasierte Policies. Tenantkontext und Cross-Tenant-Regeln werden serverseitig validiert. Credentials geben über die API nur Metadaten und Secret-Key-Namen zurück; Klartext-Secrets werden weder in Responses noch in Audit-Details ausgegeben.
 
-#### CLI
+## Process Mining, Analytics und Observability
 
-Für persistente BPMN-Deployments und Trigger stehen folgende Befehle zur Verfügung:
+Runtime-Ereignisse werden persistent und transaktional projiziert. Die Plattform stellt unter anderem folgende Funktionen bereit:
 
-```text
-deploy-bpmn <bpmn-file> [tenant]
-trigger create <name> <process-key> [tenant]
-trigger list [tenant]
-trigger invoke <id> <secret> [variables-json] [business-key]
-trigger enable|disable <id> [tenant]
-trigger delete <id> [tenant]
-```
+- Prozess- und Event-Metriken, Event-Statistiken und Zeitreihen
+- Ausführungstraces pro Prozessinstanz
+- tenantbezogene Analytics-Abfragen
+- Prognosen für Dauer, Abschluss und Bottlenecks
+- Audit- und History-Abfragen
+- Health-, Liveness- und Readiness-Probes
+- OpenTelemetry für Logs, Traces und Metriken
+- Prometheus-kompatible Laufzeit-, Job-, Incident-, Worker- und Outbox-Metriken
 
-Beispiel:
+## Build, Tests und Qualifizierung
 
 ```powershell
-dotnet run --project src/VertexBPMN.Cli -- deploy-bpmn examples/order.bpmn acme
-dotnet run --project src/VertexBPMN.Cli -- trigger create "Order webhook" order-process acme
+dotnet restore VertexBPMN.sln
+dotnet build VertexBPMN.sln --configuration Release --no-restore
+dotnet test VertexBPMN.sln --configuration Release --no-build --no-restore --max-parallel-test-modules 1
 ```
 
-`register-bpmn` bleibt als lokaler Engine-Registrierungsbefehl für direkte CLI-Ausführung bestehen. Für dauerhaft gespeicherte BPMN-Definitionen, die später über API oder Trigger gestartet werden sollen, wird `deploy-bpmn` verwendet.
+Die Release-Pipeline enthält zusätzlich:
 
-#### .NET SDK
+- 51 Full-Product-Support-Acceptance-Fälle
+- externe PostgreSQL- und RabbitMQ-Verträge
+- Linux- und Windows-Builds
+- OpenAPI-, BPMN-, DMN-, CMMN- und Studio-Conformance-Gates
+- Coverage-Schwellen und Analyzer ohne Warnungsbudget
+- Dependency-, Secret-, Container- und CodeQL-Scans
+- SPDX-SBOM und Provenance-Attestierung
+- deterministische SDK- und CLI-Pakete mit SHA-256-Vergleich
 
-```csharp
-var deployed = await client.DeployProcessAsync(
-    bpmnXml,
-    "order-process.bpmn",
-    "acme");
+Weitere Befehle und Filter: [Build- und Test-Runbook](docs/runbooks/build-and-test.md).
 
-var created = await client.CreateWorkflowTriggerAsync(
-    "Order webhook",
-    "order-process",
-    "acme");
+## NuGet und Releases
 
-// Das Secret sicher speichern; es wird nur bei der Registrierung zurückgegeben.
-var instance = await client.InvokeWorkflowTriggerAsync(
-    created!.Trigger.Id,
-    created.Secret,
-    new Dictionary<string, object?>
-    {
-        ["customerId"] = "C-42"
-    },
-    "ORDER-123");
-```
+- [`VertexBPMN.Sdk`](https://www.nuget.org/packages/VertexBPMN.Sdk) ist das öffentliche .NET-Clientpaket.
+- [`VertexBPMN.Cli`](https://www.nuget.org/packages/VertexBPMN.Cli) ist als globales .NET Tool paketiert.
 
-#### Studio
+Normale CI-Läufe erzeugen beide Pakete als Artefakte, veröffentlichen sie aber nicht. Ein SemVer-Tag startet die qualifizierte Veröffentlichung. Nach erfolgreichen Gates tauscht GitHub OIDC über NuGet Trusted Publishing gegen kurzlebige Veröffentlichungsberechtigungen; ein dauerhafter NuGet API Key ist nicht erforderlich. Die tatsächliche Verfügbarkeit einer konkreten Version muss auf NuGet.org und in der zugehörigen GitHub-Release-Ausführung geprüft werden.
 
-Im Studio können BPMN-Dateien unter **Deployments** hochgeladen und tenantbezogen dauerhaft registriert werden. Unter **Workflow Triggers** können anschließend Trigger erstellt, aktiviert/deaktiviert, getestet und gelöscht werden. Das Secret wird nach der Erstellung einmalig angezeigt.
+## Dokumentation
 
-### SDK-NuGet-Release
+- [Dokumentationsübersicht](docs/README.md)
+- [Produkt-Support- und Acceptance-Matrix](docs/reference/product-support-matrix.md)
+- [Getting Started](docs/getting-started/README.md)
+- [API Quickstart](docs/getting-started/api-quickstart.md)
+- [Produktions-Deployment](docs/runbooks/production-deployment.md)
+- [Security- und Release-Gates](docs/runbooks/security-and-release-gates.md)
+- [Monitoring und Observability](docs/runbooks/monitoring.md)
+- [Workflow-Trigger](docs/runbooks/workflow-triggers.md)
+- [CLI im Wiki](https://github.com/VertexBPMN/VertexBPMN/wiki/CLI)
+- [Aspire AppHost im Wiki](https://github.com/VertexBPMN/VertexBPMN/wiki/Aspire-AppHost)
+- [Projektwebsite](https://vertexbpmn.com)
 
-Das SDK wird durch GitHub Actions als NuGet-Paket veröffentlicht. Der Workflow verwendet [NuGet Trusted Publishing](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing) und keine dauerhaft gespeicherte API-Key-Secret.
+## Mitwirken
 
-Einmalige Einrichtung:
+Beiträge sind willkommen. Bitte vor einem Pull Request:
 
-1. Auf nuget.org unter **Trusted Publishing** eine GitHub-Actions-Policy für dieses Repository anlegen:
-   - Repository Owner: `VertexBPMN`
-   - Repository: `VertexBPMN`
-   - Workflow File: `ci.yml` (nur der Dateiname, nicht der Pfad)
-2. Im GitHub-Repository das Actions-Secret `NUGET_USER` mit dem NuGet-Profilnamen hinterlegen. Für dieses Repository ist das `yrodriguez`; nicht die E-Mail-Adresse verwenden.
-3. Einen SemVer-Tag erstellen und pushen, zum Beispiel:
+1. ein Issue für größere Änderungen eröffnen,
+2. Implementierung und Dokumentation gemeinsam aktualisieren,
+3. relevante Unit-, Integrations- und Acceptance-Tests ergänzen,
+4. Build und Tests lokal ausführen,
+5. keine Secrets oder generierten Build-Artefakte committen.
 
-   ```bash
-   git tag v1.0.1
-   git push origin v1.0.1
-   ```
+## Lizenz
 
-Der Workflow baut und testet API, Engine und Studio, durchläuft die Security-/Supply-Chain-Gates, erzeugt `VertexBPMN.Sdk` und das `VertexBPMN.Cli` .NET Tool zweimal byteidentisch und prüft ihre SHA-256-Summen. Erst danach tauscht er GitHub-OIDC gegen einen kurzlebigen NuGet-Veröffentlichungsschlüssel, attestiert die Provenance und veröffentlicht genau diese qualifizierten Pakete. Normale CI-Läufe erzeugen beide NuGet-Artefakte, veröffentlichen sie aber nicht.
+VertexBPMN ist unter der [Apache License 2.0](LICENSE) veröffentlicht.
 
-Verifikation: Nach dem einmaligen Einrichten der NuGet-Policy einen neuen, noch nicht verwendeten SemVer-Tag pushen. Der Job **Publish VertexBPMN.Sdk and CLI to NuGet** muss erfolgreich sein; anschließend müssen SDK und CLI auf NuGet.org erreichbar und die GitHub-Provenance-Attestierung vorhanden sein. Ein fehlgeschlagener OIDC-Login weist auf eine abweichende Repository-, Workflow-Datei- oder NuGet-Benutzerkonfiguration hin; dafür wird kein dauerhafter API-Key benötigt.
+## Danksagungen
 
-### Architektur
-
-```text
-VertexBPMN.Cli (TUI / Control Plane)
-  |
-  v
-VertexBPMN.Api (Runtime Gateway / REST / SignalR)
-  |
-  v
-VertexBPMN.Studio (Blazor Web Dashboard)
-```
-
-Das Studio ruft die API über HTTP auf. Dadurch greifen CLI, API und Dashboard auf denselben Runtime-Zustand zu, wenn persistente Engine-Datenbanken konfiguriert sind. Die CLI-Dokumentation mit allen Befehlen und Konfigurationsbeispielen befindet sich in [`src/VertexBPMN.Cli/README.md`](src/VertexBPMN.Cli/README.md). Details zur Dependency-Konfiguration, Registry und Priorität der Konfigurationsquellen stehen in [`docs/runbooks/dependency-configuration.md`](docs/runbooks/dependency-configuration.md).
-
-**3. Ein einfacher Case (CMMN)**
-
-```csharp
-// Starte einen CMMN Case
-var caseInstance = await engine.CaseService.StartCaseByKeyAsync("Case_CustomerOnboarding");
-
-// Schließe einen Human Task im Case ab
-await engine.CaseService.CompleteHumanTaskAsync(caseInstance.Id, "HumanTask_ReviewApplication");
-```
-
-## 📚 OpenAPI & bpmn.io Integration
-
-VertexBPMN™ bietet eine vollständige OpenAPI/Swagger-Spezifikation (`openapi.json`) für die REST-API. Damit ist die Engine nahtlos kompatibel mit:
-
-- **bpmn-js, dmn-js, cmmn-js, form-js** (bpmn.io)
-- **Camunda Modeler**
-- **Swagger UI, ReDoc, Postman**
-
-**Wichtige Endpunkte:**
-- `GET/PUT /api/process-definition/{id}/xml` (BPMN-XML)
-- `GET/PUT /api/decision-definition/{key}/xml` (DMN-XML)
-- `GET/PUT /api/case-definition/{key}/xml` (CMMN-XML)
-- `GET/PUT /api/task/{id}/form-schema` (User-Task-Formulare)
-
-**Dokumentation & Nutzung:**
-- Siehe [`docs/reference/openapi.md`](docs/reference/openapi.md) für Details und Beispiele.
-- Die OpenAPI-Datei wird bei jedem Build automatisch generiert und kann direkt in Postman, Swagger UI oder bpmn.io-Tools importiert werden.
-
-## ☁️ Cloud-Native Exzellenz
-
-VertexBPMN™ ist für Cloud, Container und moderne DevOps-Umgebungen gebaut:
-- Health-/Liveness-/Readiness-Probes (`/api/health`)
-- Prometheus/OpenTelemetry-Metriken (`/api/metrics`, `/api/metrics/prometheus`)
-- Asynchrone Job-Engine (BackgroundService)
-- Graceful Shutdown, Dockerfile, Kubernetes-Ready
-- Live-Inspector-API für Visual Debugging und Analytics
-
-**Details, Beispiele und Kubernetes-Deployment:**
-Siehe [`docs/runbooks/cloud-native.md`](docs/runbooks/cloud-native.md)
-
-## 🚀 Innovationen & Einzigartige Features
-
-VertexBPMN™ bietet mehr als klassische BPMN/CMMN/DMN-Engines:
-- Live-Inspector-API & Visual Debugger
-- Feature Flags & experimentelle Features
-- API-Hooks für Process Mining & Predictive Analytics
-- High-Performance-Architektur für .NET
-
-**Details und Beispiele:**
-Siehe [`docs/architecture/features-innovation.md`](docs/architecture/features-innovation.md)
-
-## 📊 Process Mining & Analytics Hooks
-
-VertexBPMN™ ist vorbereitet für moderne Analytics- und Mining-Workflows:
-- Event-Log- und Token-Log-Export (API-Design)
-- Predictive Analytics & KI-Hooks (Feature Flag)
-- Kompatibel mit Celonis, Camunda Optimize, Power BI, u.v.m.
-
-**Details und API-Entwürfe:**
-Siehe [`docs/reference/process-mining-hooks.md`](docs/reference/process-mining-hooks.md)
-
-## 🛣️ Roadmap & Vision
-
-Die nächsten Schritte und die langfristige Vision für VertexBPMN™ findest du in [`docs/working/roadmap.md`](docs/working/roadmap.md).
-
-## 🤝 Wie man beitragen kann (How to Contribute)
-
-Wir freuen uns über jede Hilfe! Egal ob Sie Fehler melden, Code beitragen oder die Dokumentation verbessern – Ihr Beitrag ist wertvoll.
-
-1. Schauen Sie sich unsere **[Issues](https://github.com/VertexBPMN/VertexBPMN/issues)** an. Insbesondere die mit den Labels `good first issue` oder `help wanted` sind ein guter Startpunkt.
-2. Forken Sie das Repository.
-3. Erstellen Sie einen neuen Branch für Ihr Feature (`git checkout -b feature/AmazingFeature`).
-4. Implementieren Sie Ihr Feature und schreiben Sie die notwendigen Tests.
-5. Erstellen Sie einen Pull Request.
-
-Bitte lesen Sie unsere `CONTRIBUTING.md`-Datei für detailliertere Richtlinien.
-
-## 📄 Lizenz (License)
-
-Dieses Projekt ist unter der **MIT-Lizenz** lizenziert. Weitere Informationen finden Sie in der `LICENSE`-Datei.
-
-## 🙏 Danksagungen (Acknowledgments)
-
-* Ein großes Dankeschön an das **Camunda**-Team für die Pionierarbeit im Bereich der Open-Source-BPMN-Engines.
-* Danke an das Team von **bpmn.io** für die fantastischen JavaScript-Toolkits, die das Modellieren von Prozessen zu einer Freude machen.
+Danke an die .NET-, bpmn.io- und Open-Source-Community sowie an alle Mitwirkenden, die VertexBPMN verbessern.
 
 ---
-*VertexBPMN™ ist eine nicht eingetragene Marke von Yovanny Rodríguez/Tainosoft UG.*
-*VertexBPMN™ is an unregistered trademark of Yovanny Rodríguez/Tainosoft UG.*
+
+**VertexBPMN™** ist eine Marke von Tainosoft UG (haftungsbeschränkt).

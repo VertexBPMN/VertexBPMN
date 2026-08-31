@@ -23,11 +23,20 @@
   --color-blue-218-100-74: hsl(218, 100%, 74%);
   --color-blue-205-100-85: hsl(205, 100%, 85%);
   --color-blue-205-100-95: hsl(205, 100%, 95%);
+  --color-blue-205-100-50-a35: hsla(205, 100%, 50%, 0.35);
 
   --color-red-360-100-40: hsl(360, 100%, 40%);
   --color-red-360-100-45: hsl(360, 100%, 45%);
   --color-red-360-100-92: hsl(360, 100%, 92%);
   --color-red-360-100-97: hsl(360, 100%, 97%);
+  --color-red-360-100-45-a35: hsla(360, 100%, 45%, 0.35);
+
+  --color-amber-39-100-33: hsl(39, 100%, 33%);
+  --color-amber-35-84-62: hsl(35, 84%, 62%);
+  --color-amber-35-84-57: hsl(35, 84%, 57%);
+  --color-amber-38-100-96: hsl(38, 100%, 96%);
+  --color-amber-35-84-62-a35: hsla(35, 84%, 62%, 0.35);
+
   --color-white: white;
   --color-black: black;
   --color-transparent: transparent;
@@ -37,6 +46,7 @@
 .bio-properties-panel {
   --text-base-color: var(--color-grey-225-10-15);
   --text-error-color: var(--color-red-360-100-45);
+  --text-warning-color: var(--color-amber-39-100-33);
   --link-color: var(--color-blue-205-100-50);
 
   --description-color: var(--color-grey-225-10-35);
@@ -70,22 +80,54 @@
   --arrow-fill-color: var(--color-grey-225-10-35);
   --arrow-hover-background-color: var(--color-grey-225-10-95);
 
+  --warning-badge-background-color: var(--color-amber-35-84-62);
+  --warning-badge-color: var(--color-grey-225-10-15);
+  --warning-badge-hover-background-color: var(--color-amber-35-84-57);
+  --error-badge-background-color: var(--color-red-360-100-45);
+  --error-badge-color: var(--color-white);
+  --error-badge-hover-background-color: var(--color-red-360-100-40);
+
   --dot-color: var(--color-grey-225-10-35);
-  --dot-color-error: var(--color-red-360-100-45);
+  --dot-color-error: var(--error-badge-background-color);
+  --dot-color-warning: var(--warning-badge-background-color);
 
   --list-badge-color: var(--color-white);
   --list-badge-background-color: var(--color-grey-225-10-35);
 
   --input-background-color: var(--color-grey-225-10-97);
   --input-border-color: var(--color-grey-225-10-75);
+  --input-border-radius: 2px;
+
+  --checkbox-size: 14px;
+  --checkbox-border-radius: 4px;
+  --checkbox-border-color: var(--input-border-color);
+  --checkbox-background-color: var(--input-background-color);
+  --checkbox-checked-background-color: var(--color-blue-205-100-50);
+  --checkbox-checked-border-color: var(--color-blue-205-100-50);
 
   --input-focus-background-color: var(--color-blue-205-100-95);
   --input-focus-border-color: var(--color-blue-205-100-50);
+
   --focus-outline-color: var(--color-blue-205-100-40);
+
+  /**
+   * Focus ring — reusable, themeable primitive shared by inputs, checkboxes,
+   * toggles and any control with the `bio-properties-panel-focus-ring` class.
+   */
+  --focus-ring-color: var(--color-blue-205-100-50-a35);
+  --focus-ring-error-color: var(--color-red-360-100-45-a35);
+  --focus-ring-warning-color: var(--color-amber-35-84-62-a35);
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 0px;
+  --focus-ring-offset-color: var(--group-background-color);
 
   --input-error-background-color: var(--color-red-360-100-97);
   --input-error-border-color: var(--color-red-360-100-45);
   --input-error-focus-border-color: var(--color-red-360-100-45);
+
+  --input-warning-background-color: var(--color-amber-38-100-96);
+  --input-warning-border-color: var(--color-amber-35-84-62);
+  --input-warning-focus-border-color: var(--color-amber-35-84-62);
 
   --input-disabled-color: var(--color-grey-225-10-55);
   --input-disabled-background-color: var(--color-grey-225-10-97);
@@ -129,7 +171,12 @@
   --text-size-small: 13px;
   --text-size-smallest: 12px;
   --text-line-height: 21px;
-  --line-height-condensed: 17px;
+  --line-height-condensed: 18px;
+
+  --input-height: 28px;
+
+  --description-offset: 5px;
+  --label-offset: 3px;
 
   --font-family: sans-serif;
   --font-family-monospace: monospace;
@@ -376,6 +423,10 @@
   background-color: var(--dot-color);
 }
 
+.bio-properties-panel-dot--warning {
+  --dot-color: var(--dot-color-warning);
+}
+
 .bio-properties-panel-dot--error {
   --dot-color: var(--dot-color-error);
 }
@@ -407,15 +458,21 @@
   background-color: var(--list-badge-background-color);
 }
 
+.bio-properties-panel-list-badge--warning {
+  --list-badge-background-color: var(--warning-badge-background-color);
+  --list-badge-color: var(--warning-badge-color);
+}
+
 .bio-properties-panel-list-badge--error {
-  --list-badge-background-color: var(--dot-color-error);
+  --list-badge-background-color: var(--error-badge-background-color);
+  --list-badge-color: var(--error-badge-color);
 }
 
 /**
  * Basic entries
  */
 .bio-properties-panel-entry {
-  margin: 2px 32px 6px 12px;
+  margin: 3px 32px 6px 12px;
 }
 
 .bio-properties-panel-entry:last-child {
@@ -425,7 +482,7 @@
 .bio-properties-panel-label {
   display: block;
   font-size: var(--text-size-small);
-  margin: 2px 0 1px;
+  margin: var(--label-offset) 0;
 }
 
 .bio-properties-panel-description,
@@ -434,7 +491,7 @@
 .bio-properties-panel-description div {
   color: var(--description-color);
   display: block;
-  margin: 2px 0 4px;
+  margin: var(--description-offset) 0;
   line-height: var(--line-height-condensed);
   font-weight: 400;
   font-size: var(--text-size-small);
@@ -478,11 +535,25 @@
 
 .bio-properties-panel-feelers-editor.bio-properties-panel-input {
   padding: 0;
+  min-height: var(--input-height);
+}
+
+/**
+ * Normalize the vertical rhythm of the feelers and JSON editors so single-line
+ * editors line up with plain inputs. CodeMirror's default `.cm-content` padding
+ * of `4px 0` would otherwise render them a few pixels taller than the
+ * surrounding controls. (The FEEL editor already zeroes its own content padding
+ * and sizes to the shared baseline, so it is intentionally left untouched.)
+ */
+.bio-properties-panel-feelers-editor .cm-content,
+.bio-properties-panel-json-editor .cm-content {
+  padding-top: 3px;
+  padding-bottom: 2px;
 }
 
 .bio-properties-panel-feelers-input .cm-editor
 {
-  min-height: 32px;
+  min-height: var(--input-height);
   max-height: 215px;
   background-color: transparent;
 }
@@ -495,7 +566,7 @@
 .bio-properties-panel-input {
   padding: 3px 6px 2px;
   border: 1px solid var(--input-border-color);
-  border-radius: 2px;
+  border-radius: var(--input-border-radius);
   background-color: var(--input-background-color);
   font-size: var(--text-size-base);
   font-family: inherit;
@@ -507,23 +578,54 @@ textarea.bio-properties-panel-input,
 .bio-properties-panel-input[type=text] {
   display: block;
   width: 100%;
+  min-height: var(--input-height);
 }
 
-textarea.bio-properties-panel-input {
-  min-height: 28px;
-}
-
+/**
+ * Focus ring
+ *
+ * A themeable, reusable focus indicator shared by all controls — inputs,
+ * checkboxes (rendered as custom `appearance: none` controls so the ring
+ * paints and follows their corners) and toggles. To reuse it in a custom
+ * component, add the `bio-properties-panel-focus-ring` class to the focusable
+ * element; when placed inside an entry with `has-error` it switches to the
+ * error color. Tune the look via the `--focus-ring-*` variables (and
+ * `--input-border-radius` / `--checkbox-border-radius` for corners).
+ */
 .bio-properties-panel-input:focus,
-.bio-properties-panel-input:focus-within {
+.bio-properties-panel-input:focus-within,
+.bio-properties-panel-toggle-switch__switcher:focus-within,
+.bio-properties-panel-focus-ring:focus,
+.bio-properties-panel-focus-ring:focus-within {
   outline: none;
+  box-shadow:
+    0 0 0 var(--focus-ring-offset) var(--focus-ring-offset-color),
+    0 0 0 calc(var(--focus-ring-offset) + var(--focus-ring-width)) var(--focus-ring-color);
+}
+
+/* keep focus visible where box-shadow is dropped (e.g. Windows High Contrast) */
+@media (forced-colors: active) {
+  .bio-properties-panel-input:focus,
+  .bio-properties-panel-input:focus-within,
+  .bio-properties-panel-toggle-switch__switcher:focus-within,
+  .bio-properties-panel-focus-ring:focus,
+  .bio-properties-panel-focus-ring:focus-within {
+    outline: 2px solid Highlight;
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  /* the custom checkmark (SVG background) is not recolored by the OS; fall back
+     to the native checkbox so the checked state stays visible */
+  .bio-properties-panel-input[type="checkbox"] {
+    appearance: auto;
+    -webkit-appearance: auto;
+  }
+}
+
+.bio-properties-panel-input:focus:not([type="checkbox"]),
+.bio-properties-panel-input:focus-within {
   background-color: var(--input-focus-background-color);
   border: 1px solid var(--input-focus-border-color);
-}
-
-.bio-properties-panel-textfield:focus-within,
-.bio-properties-panel-feel-entry:focus-within {
-  --input-background-color: var(--input-focus-background-color);
-  --input-border-color: var(--input-focus-border-color);
 }
 
 .bio-properties-panel-input:disabled {
@@ -541,22 +643,57 @@ select.bio-properties-panel-input {
   font-family: var(--font-family-monospace);
 }
 
-.bio-properties-panel-input[type="checkbox"], .bio-properties-panel-input[type="radio"] {
+.bio-properties-panel-input[type="radio"] {
   margin: 0;
   vertical-align: middle;
 }
 
-.bio-properties-panel-input[type="checkbox"]:focus {
-  outline: auto;
-  outline-color: var(--focus-outline-color);
-  outline-offset: 2px;
+/* native radios drop `box-shadow`; keep a visible outline-based focus ring */
+.bio-properties-panel-input[type="radio"]:focus {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/**
+ * Checkbox
+ *
+ * Rendered as a custom control (`appearance: none`) following shadcn/ui: native
+ * checkboxes drop `box-shadow`, so the shared focus ring could never paint on
+ * them and fell back to the browser's square outline. As a custom element the
+ * box-shadow ring renders and follows `border-radius`, giving a properly rounded
+ * ring — no checkbox-specific focus rule needed. Themeable via `--checkbox-*`.
+ */
+.bio-properties-panel-input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  width: var(--checkbox-size);
+  height: var(--checkbox-size);
+  margin: 0;
+  padding: 0;
+  vertical-align: middle;
+  border: 1px solid var(--checkbox-border-color);
+  border-radius: var(--checkbox-border-radius);
+  background: var(--checkbox-background-color) center / contain no-repeat;
+  cursor: pointer;
+}
+
+.bio-properties-panel-input[type="checkbox"]:checked {
+  border-color: var(--checkbox-checked-border-color);
+  background-color: var(--checkbox-checked-background-color);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M13 4.5 6.5 11.5 3 8'/%3E%3C/svg%3E");
+}
+
+.bio-properties-panel-input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  border-color: var(--input-disabled-border-color);
+  background-color: var(--input-disabled-background-color);
 }
 
 .bio-properties-panel-checkbox > .bio-properties-panel-label {
   display: inline-block;
   font-size: var(--text-size-base);
   margin-left: 6px;
-  margin-top: auto;
   vertical-align: middle;
 }
 
@@ -572,6 +709,36 @@ textarea.bio-properties-panel-input {
   resize: vertical;
 }
 
+textarea.bio-properties-panel-input.auto-resize {
+  /* auto-resizing textareas grow with their content, so manual resizing is pointless */
+  resize: none;
+  field-sizing: content;
+}
+
+.bio-properties-panel-entry.has-warning .bio-properties-panel-input,
+.bio-properties-panel-entry.has-warning .bio-properties-panel-feel-editor__open-popup-placeholder {
+  border-color: var(--input-warning-border-color);
+  background-color: var(--input-warning-background-color);
+}
+
+.bio-properties-panel-entry.has-warning .bio-properties-panel-feel-indicator {
+  border-color: var(--input-warning-border-color);
+}
+
+.bio-properties-panel-entry.has-warning .bio-properties-panel-input:focus,
+.bio-properties-panel-entry.has-warning .bio-properties-panel-input:focus-within,
+.bio-properties-panel-entry.has-warning .bio-properties-panel-feel-indicator:focus {
+  border-color: var(--input-warning-focus-border-color);
+}
+
+.bio-properties-panel-entry.has-warning .bio-properties-panel-input:focus,
+.bio-properties-panel-entry.has-warning .bio-properties-panel-input:focus-within,
+.bio-properties-panel-entry.has-warning .bio-properties-panel-toggle-switch__switcher:focus-within,
+.bio-properties-panel-entry.has-warning .bio-properties-panel-focus-ring:focus,
+.bio-properties-panel-entry.has-warning .bio-properties-panel-focus-ring:focus-within {
+  --focus-ring-color: var(--focus-ring-warning-color);
+}
+
 .bio-properties-panel-entry.has-error .bio-properties-panel-input,
 .bio-properties-panel-entry.has-error .bio-properties-panel-feel-editor__open-popup-placeholder {
   border-color: var(--input-error-border-color);
@@ -583,14 +750,32 @@ textarea.bio-properties-panel-input {
 }
 
 .bio-properties-panel-entry.has-error .bio-properties-panel-input:focus,
+.bio-properties-panel-entry.has-error .bio-properties-panel-input:focus-within,
 .bio-properties-panel-entry.has-error .bio-properties-panel-feel-indicator:focus {
   border-color: var(--input-error-focus-border-color);
 }
 
-.bio-properties-panel-entry .bio-properties-panel-error {
-  color: var(--text-error-color);
-  margin: 4px 0;
+.bio-properties-panel-entry.has-error .bio-properties-panel-input:focus,
+.bio-properties-panel-entry.has-error .bio-properties-panel-input:focus-within,
+.bio-properties-panel-entry.has-error .bio-properties-panel-toggle-switch__switcher:focus-within,
+.bio-properties-panel-entry.has-error .bio-properties-panel-focus-ring:focus,
+.bio-properties-panel-entry.has-error .bio-properties-panel-focus-ring:focus-within {
+  --focus-ring-color: var(--focus-ring-error-color);
+}
+
+.bio-properties-panel-warning,
+.bio-properties-panel-error {
+  margin: var(--description-offset) 0;
   font-size: var(--text-size-small);
+  line-height: var(--line-height-condensed);
+}
+
+.bio-properties-panel-warning {
+  color: var(--text-warning-color);
+}
+
+.bio-properties-panel-error {
+  color: var(--text-error-color);
 }
 
 .bio-properties-panel-simple {
@@ -608,6 +793,7 @@ textarea.bio-properties-panel-input {
 
 .bio-properties-panel-json-editor .bio-properties-panel-input {
   padding: 0;
+  min-height: var(--input-height);
 }
 
 .bio-properties-panel-json-editor .cm-editor {
@@ -667,11 +853,7 @@ textarea.bio-properties-panel-input {
   position: relative;
   width: 32px;
   height: 16px;
-}
-
-.bio-properties-panel-toggle-switch .bio-properties-panel-toggle-switch__switcher:focus-within {
-  outline: 2px solid var(--input-focus-border-color);
-  outline-offset: 1px;
+  border-radius: 34px;
 }
 
 .bio-properties-panel-toggle-switch .bio-properties-panel-toggle-switch__switcher input[type='checkbox'] {
@@ -1117,7 +1299,7 @@ textarea.bio-properties-panel-input {
 .bio-properties-panel-feel-container .bio-properties-panel-feel-editor-container>div {
   position: static;
   padding-left: 2.4em !important;
-  min-height: 28px;
+  min-height: var(--input-height);
 }
 
 .bio-properties-panel-feel-indicator {
@@ -1125,12 +1307,34 @@ textarea.bio-properties-panel-input {
   border: 1px solid var(--input-border-color);
   background-color: var(--feel-indicator-background-color);
   border-right: 0px;
-  border-radius: 2px 0 0 2px;
+  border-radius: var(--input-border-radius) 0 0 var(--input-border-radius);
   z-index: 1;
   height: 100%;
   width: 2em;
   text-align: center;
   padding: 2px 6px;
+}
+
+/**
+ * `:has()` so the indicator tracks real editor focus only — a plain
+ * `:focus-within` would also match the sibling pop-out button. Degrades to a
+ * neutral border where `:has()` is unsupported.
+ */
+.bio-properties-panel-feel-container:has(.bio-properties-panel-input:focus-within)
+  .bio-properties-panel-feel-indicator {
+  border-color: var(--input-focus-border-color);
+}
+
+.bio-properties-panel-entry.has-warning
+  .bio-properties-panel-feel-container:has(.bio-properties-panel-input:focus-within)
+  .bio-properties-panel-feel-indicator {
+  border-color: var(--input-warning-focus-border-color);
+}
+
+.bio-properties-panel-entry.has-error
+  .bio-properties-panel-feel-container:has(.bio-properties-panel-input:focus-within)
+  .bio-properties-panel-feel-indicator {
+  border-color: var(--input-error-focus-border-color);
 }
 
 .bio-properties-panel-feel-editor-container .cm-scroller {
@@ -1290,7 +1494,7 @@ textarea.bio-properties-panel-input {
   color: hsla(0, 0%, 9%, 0.25);
   padding: 3px 6px 2px;
   border: 1px solid var(--input-border-color);
-  border-radius: 2px;
+  border-radius: var(--input-border-radius);
   background-color: var(--input-background-color);
   font-size: var(--text-size-base);
   font-family: inherit;
@@ -1342,6 +1546,15 @@ textarea.bio-properties-panel-input {
   width: auto;
   overflow: hidden;
   font-size: 14px;
+}
+
+/**
+ * Popups render through a portal outside `.bio-properties-panel`, so re-apply
+ * the global box-sizing reset here.
+ */
+.bio-properties-panel-popup,
+.bio-properties-panel-popup * {
+  box-sizing: border-box;
 }
 
 .bio-properties-panel-popup h1,
@@ -1522,6 +1735,7 @@ textarea.bio-properties-panel-input {
 .bio-properties-panel-feelers-editor-container .bio-properties-panel-open-feel-popup svg,
 .bio-properties-panel-feel-container .bio-properties-panel-open-feel-popup svg,
 .bio-properties-panel-textarea-container .bio-properties-panel-open-feel-popup svg {
+  display: block;
   width: 16px;
   height: 16px;
 }

@@ -31,8 +31,12 @@
   --breadcrumbs-font-family: var(--bjs-font-family);
   --breadcrumbs-item-color: var(--color-blue-205-100-50);
   --breadcrumbs-arrow-color: var(--color-black);
+  --breadcrumbs-background-color: var(--color-grey-225-10-97);
+  --breadcrumbs-border-color: var(--color-grey-225-10-75);
+  --breadcrumbs-focus-outline-color: var(--color-blue-205-100-50);
   --drilldown-fill-color: var(--color-white);
   --drilldown-background-color: var(--color-blue-205-100-50);
+  --drilldown-focus-outline-color: var(--color-blue-205-100-50);
 }
 
 .bjs-breadcrumbs {
@@ -40,13 +44,17 @@
   display: none;
   flex-wrap: wrap;
   align-items: center;
-  top: 30px;
-  left: 30px;
-  padding: 0px;
+  top: 20px;
+  left: 20px;
+  padding: 5px 10px;
   margin: 0px;
   font-family: var(--breadcrumbs-font-family);
   font-size: 16px;
   line-height: normal;
+  background-color: var(--breadcrumbs-background-color);
+  border: solid 1px var(--breadcrumbs-border-color);
+  border-radius: 2px;
+  row-gap: 5px;
 }
 
 .bjs-breadcrumbs-shown .bjs-breadcrumbs {
@@ -63,18 +71,18 @@
 
 .bjs-breadcrumbs li {
   display: inline-flex;
-  padding-bottom: 5px;
   align-items: center;
 }
 
-.bjs-breadcrumbs li a {
+.bjs-breadcrumbs a.bjs-crumb {
   cursor: pointer;
   color: var(--breadcrumbs-item-color);
+  text-decoration: none;
 }
 
-.bjs-breadcrumbs li:last-of-type a {
-  color: inherit;
-  cursor: default;
+.bjs-breadcrumbs a.bjs-crumb:focus-visible {
+  outline: solid 1px var(--breadcrumbs-focus-outline-color);
+  outline-offset: 1px;
 }
 
 .bjs-breadcrumbs li:not(:first-child)::before {
@@ -102,10 +110,14 @@
   cursor: pointer;
   border: none;
   border-radius: 2px;
-  outline: none;
 
   fill: var(--drilldown-fill-color);
   background-color: var(--drilldown-background-color);
+}
+
+.bjs-drilldown:focus-visible {
+  outline: solid 1px var(--drilldown-focus-outline-color);
+  outline-offset: 1px;
 }
 
 .bjs-drilldown-empty {

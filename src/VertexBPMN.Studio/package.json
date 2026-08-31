@@ -8,13 +8,13 @@
     "test:vertex-moddle": "node tools/bpmn-io/test/vertex-moddle.roundtrip.mjs"
   },
   "dependencies": {
-    "@bpmn-io/form-js": "1.24.1",
-    "@bpmn-io/properties-panel": "3.48.0",
-    "bpmn-js": "18.24.0",
-    "bpmn-js-properties-panel": "5.63.0",
+    "@bpmn-io/form-js": "1.25.0",
+    "@bpmn-io/properties-panel": "3.52.0",
+    "bpmn-js": "18.25.1",
+    "bpmn-js-properties-panel": "5.65.0",
     "bpmn-js-token-simulation": "0.40.0",
     "cmmn-js": "0.20.0",
-    "dmn-js": "17.10.1"
+    "dmn-js": "17.10.2"
   },
   "devDependencies": {
     "esbuild": "0.28.2"

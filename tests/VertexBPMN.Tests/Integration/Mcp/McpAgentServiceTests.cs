@@ -38,7 +38,7 @@ public class McpAgentServiceTests : IClassFixture<CustomWebApplicationFactory>
             });
         var service = new McpAgentService(configuration, new HttpClient(handler.Object));
         var input = new JsonObject { ["input"] = "Test" };
-        var resp = await service.CallAgentAsync("NLP", input, CancellationToken.None);
+        var resp = await service.CallAgentAsync("NLP", input, TestContext.Current.CancellationToken);
         Assert.NotNull(resp);
     }
 
@@ -49,7 +49,7 @@ public class McpAgentServiceTests : IClassFixture<CustomWebApplicationFactory>
             .AddJsonFile(_agentFilePath)
             .Build();
         var service = new McpAgentService(configuration);
-        var resp = await service.WaitForAgentResponseAsync("corr-123", CancellationToken.None);
+        var resp = await service.WaitForAgentResponseAsync("corr-123", TestContext.Current.CancellationToken);
         Assert.Equal("corr-123", resp["correlationId"]!.ToString());
         Assert.Equal("DemoResponse", resp["result"]!.ToString());
     }

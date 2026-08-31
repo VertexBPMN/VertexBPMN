@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -50,7 +50,7 @@ public class McpServiceTaskHandlerTests
             .ReturnsAsync(httpResponse);
 
         // Act
-        await _handler.ExecuteAsync(attributes, variables, CancellationToken.None);
+        await _handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken);
 
         // Assert
         _httpMessageHandlerMock
@@ -73,6 +73,6 @@ public class McpServiceTaskHandlerTests
         var variables = new Dictionary<string, object>();
 
         // Act & Assert
-        await Assert.ThrowsAsync<DistributedTokenException>(() => _handler.ExecuteAsync(attributes, variables, CancellationToken.None));
+        await Assert.ThrowsAsync<DistributedTokenException>(() => _handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken));
     }
 }

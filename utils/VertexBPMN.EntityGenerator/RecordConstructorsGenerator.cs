@@ -43,7 +43,7 @@ public sealed class RecordConstructorsFullGenerator : IIncrementalGenerator
         {
             var targets = symbols
                 .Where(s => s.ContainingNamespace?.ToDisplayString() == "VertexBPMN.Domain.Model.Bpmn2")
-                .Distinct(SymbolEqualityComparer.Default)
+                .Distinct<INamedTypeSymbol>(SymbolEqualityComparer.Default)
                 .ToArray();
 
             foreach (INamedTypeSymbol type in targets)

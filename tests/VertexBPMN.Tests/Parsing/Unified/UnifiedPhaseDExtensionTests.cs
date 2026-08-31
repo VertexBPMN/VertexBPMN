@@ -27,7 +27,7 @@ public class UnifiedPhaseDExtensionTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var task = Assert.Single(model.Tasks);
         Assert.NotNull(task.Attributes);
         Assert.Contains(task.Attributes!, kv => kv.Value == "field1");
@@ -54,7 +54,7 @@ public class UnifiedPhaseDExtensionTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var task = Assert.Single(model.Tasks);
         Assert.NotNull(task.Attributes);
         Assert.Contains(task.Attributes!, kv => kv.Value == "orderVar");

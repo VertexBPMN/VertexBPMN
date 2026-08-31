@@ -30,7 +30,6 @@ public class McpClientTests
         var client = new McpClient.McpClient("http://localhost:5000", new HttpClient(handler.Object));
         var token = "<JWT-Token>"; // Test-Token einfügen
         var result = await client.CallJsonRpcAsync("bpmn.listProcesses", null, token);
-        Assert.NotNull(result);
-        Assert.True(result.ToString().Contains("invoice"));
+        Assert.Contains("invoice", result.ToString());
     }
 }

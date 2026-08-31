@@ -17,15 +17,15 @@ public sealed class CmmnHistoryPersistenceTests
 
         await using (var writeContext = new BpmnDbContext(options))
         {
-            await writeContext.Database.EnsureCreatedAsync();
-            var flag = await writeContext.FeatureFlags.FindAsync("liveinspector");
+            await writeContext.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
+            var flag = await writeContext.FeatureFlags.FindAsync(new object?[] { "liveinspector" }, TestContext.Current.CancellationToken);
             Assert.NotNull(flag);
             flag!.Enabled = false;
-            await writeContext.SaveChangesAsync();
+            await writeContext.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
         await using var readContext = new BpmnDbContext(options);
-        var persisted = await readContext.FeatureFlags.FindAsync("liveinspector");
+        var persisted = await readContext.FeatureFlags.FindAsync(new object?[] { "liveinspector" }, TestContext.Current.CancellationToken);
 
         Assert.NotNull(persisted);
         Assert.False(persisted!.Enabled);
@@ -70,7 +70,7 @@ public sealed class CmmnHistoryPersistenceTests
 
         await using (var writeContext = new BpmnDbContext(options))
         {
-            await writeContext.Database.EnsureCreatedAsync();
+            await writeContext.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
             writeContext.IdentityGroups.Add(new IdentityGroupRecord
             {
                 Id = "group-1",
@@ -93,7 +93,7 @@ public sealed class CmmnHistoryPersistenceTests
                 Permissions = "read,execute",
                 TenantId = "tenant-1"
             });
-            await writeContext.SaveChangesAsync();
+            await writeContext.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
         await using var readContext = new BpmnDbContext(options);
@@ -104,13 +104,13 @@ public sealed class CmmnHistoryPersistenceTests
         var identity = new PersistentIdentityService(readContext, tenantContext);
 
         var groups = new List<Domain.Interfaces.GroupInfo>();
-        await foreach (var group in identity.ListGroupsAsync())
+        await foreach (var group in identity.ListGroupsAsync(TestContext.Current.CancellationToken))
             groups.Add(group);
         var users = new List<Domain.Interfaces.UserInfo>();
-        await foreach (var user in identity.ListUsersByGroupAsync("group-1"))
+        await foreach (var user in identity.ListUsersByGroupAsync("group-1", TestContext.Current.CancellationToken))
             users.Add(user);
         var authorizations = new List<Domain.Interfaces.AuthorizationInfo>();
-        await foreach (var authorization in identity.ListAuthorizationsAsync())
+        await foreach (var authorization in identity.ListAuthorizationsAsync(TestContext.Current.CancellationToken))
             authorizations.Add(authorization);
 
         Assert.Collection(groups, group =>
@@ -126,10 +126,14 @@ public sealed class CmmnHistoryPersistenceTests
         });
 
         var tenantGroups = new List<Domain.Interfaces.GroupInfo>();
-        await foreach (var group in identity.ListGroupsAsync(tenantId: "tenant-other"))
+        await foreach (var group in identity.ListGroupsAsync(
+                           tenantId: "tenant-other",
+                           cancellationToken: TestContext.Current.CancellationToken))
             tenantGroups.Add(group);
         var tenantAuthorizations = new List<Domain.Interfaces.AuthorizationInfo>();
-        await foreach (var authorization in identity.ListAuthorizationsAsync(tenantId: "tenant-other"))
+        await foreach (var authorization in identity.ListAuthorizationsAsync(
+                           tenantId: "tenant-other",
+                           cancellationToken: TestContext.Current.CancellationToken))
             tenantAuthorizations.Add(authorization);
 
         Assert.Empty(tenantGroups);

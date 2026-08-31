@@ -43,7 +43,7 @@ public class DmnParserTests
                                     </decision>
                                 </definitions>";
 
-        var decision = await _parser.ParseAsync(dmnXml);
+        var decision = await _parser.ParseAsync(dmnXml, TestContext.Current.CancellationToken);
 
         Assert.Equal("creditDecision", decision.Id);
         Assert.Equal("FIRST", decision.HitPolicy);
@@ -63,8 +63,8 @@ public class DmnParserTests
     public async Task ParseAsync_ValidDecisionTableWithHitPolicy_ReturnsDmnDecision2()
     {
         var path = Path.Combine("TestData", "dinnerDecisions.dmn");
-        var dmnXml = await File.ReadAllTextAsync(path);
-        var decision = await _parser.ParseAsync(dmnXml);
+        var dmnXml = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
+        var decision = await _parser.ParseAsync(dmnXml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(decision);
 
@@ -139,6 +139,6 @@ public class DmnParserTests
                             </dmn:decision>
                         </dmn:definitions>";
 
-        await Assert.ThrowsAsync<DmnParseException>(() => _parser.ParseAsync(dmnXml));
+        await Assert.ThrowsAsync<DmnParseException>(() => _parser.ParseAsync(dmnXml, TestContext.Current.CancellationToken));
     }
 }

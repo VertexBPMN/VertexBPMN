@@ -10,7 +10,7 @@ public class StrictPhaseCDeepCloneTests
     private static BpmnParser P => new(new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict, PreserveUnknownExtensions = true });
 
     [Fact]
-    public void RawExtensionElements_Mutation_DoesNotChange_StrictSnapshot()
+    public async Task RawExtensionElements_Mutation_DoesNotChange_StrictSnapshot()
     {
         const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL' xmlns:v='http://vendor/x'>
   <bpmn:process id='p1'>
@@ -23,7 +23,7 @@ public class StrictPhaseCDeepCloneTests
     </bpmn:startEvent>
   </bpmn:process>
 </bpmn:definitions>";
-        var model = P.ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await P.ParseAsync(xml, TestContext.Current.CancellationToken);
         Assert.NotNull(model.RawMetadata);
         var rawExt = model.RawMetadata!.RawExtensionElements!;
         Assert.True(rawExt.ContainsKey("s1"));
@@ -43,7 +43,7 @@ public class StrictPhaseCDeepCloneTests
 //    <bpmn:sequenceFlow id='f1' sourceRef='s1' targetRef='t1'/>
 //  </bpmn:process>
 //</bpmn:definitions>";
-//        var model = P.ParseAsync(xml).GetAwaiter().GetResult();
+//        var model = await P.ParseAsync(xml);
 //        var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict, PreserveGeneratedIfMissing = true }.Serialize(model);
 //        var doc = XDocument.Parse(outXml);
 //        XNamespace bpmn = "http://www.omg.org/spec/BPMN/20100524/MODEL";
@@ -67,7 +67,7 @@ public class StrictPhaseCDeepCloneTests
 //    <bpmn:sequenceFlow id='f1' sourceRef='s1' targetRef='t1'/>
 //  </bpmn:process>
 //</bpmn:definitions>";
-//        var model = P.ParseAsync(xml).GetAwaiter().GetResult();
+//        var model = await P.ParseAsync(xml);
 //        var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict, PreserveGeneratedIfMissing = false }.Serialize(model);
 //        var doc = XDocument.Parse(outXml);
 //        XNamespace bpmn = "http://www.omg.org/spec/BPMN/20100524/MODEL";
@@ -78,7 +78,7 @@ public class StrictPhaseCDeepCloneTests
 //    }
 
     [Fact]
-    public void RawMultiInstance_Node_Not_Altered_By_Serializer()
+    public async Task RawMultiInstance_Node_Not_Altered_By_Serializer()
     {
         const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <bpmn:process id='p1'>
@@ -89,7 +89,7 @@ public class StrictPhaseCDeepCloneTests
     </bpmn:userTask>
   </bpmn:process>
 </bpmn:definitions>";
-        var model = P.ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await P.ParseAsync(xml, TestContext.Current.CancellationToken);
         var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
         var doc = XDocument.Parse(outXml);
         XNamespace bpmn = "http://www.omg.org/spec/BPMN/20100524/MODEL";

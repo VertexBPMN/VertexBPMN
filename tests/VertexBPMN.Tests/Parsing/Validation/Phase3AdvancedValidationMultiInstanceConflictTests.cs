@@ -49,13 +49,13 @@ public class Phase3AdvancedValidationMultiInstanceConflictTests
 """;
 
     [Fact]
-    public void MultiInstanceConflict_Disabled_NoStructuredDiagnostics()
+    public async Task MultiInstanceConflict_Disabled_NoStructuredDiagnostics()
     {
-        var model = new BpmnParser(new BpmnParserOptions
+        var model = await new BpmnParser(new BpmnParserOptions
         {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = false
-        }).ParseAsync(ConflictXml).GetAwaiter().GetResult();
+        }).ParseAsync(ConflictXml, TestContext.Current.CancellationToken);
 
         Assert.Null(model.ValidationDiagnostics);
     }
@@ -63,11 +63,11 @@ public class Phase3AdvancedValidationMultiInstanceConflictTests
     //[Fact]
     //public void MultiInstanceConflict_Enabled_ReportsWarning()
     //{
-    //    var model = new BpmnParser(new BpmnParserOptions
+    //    var model = await new BpmnParser(new BpmnParserOptions
     //    {
     //        RoundtripMode = BpmnRoundtripMode.Strict,
     //        EnableAdvancedValidation = true
-    //    }).ParseAsync(ConflictXml).GetAwaiter().GetResult();
+    //    }).ParseAsync(ConflictXml);
 
     //    Assert.NotNull(model.ValidationDiagnostics);
     //    Assert.Contains(model.ValidationDiagnostics!, d =>
@@ -80,13 +80,13 @@ public class Phase3AdvancedValidationMultiInstanceConflictTests
     //}
 
     [Fact]
-    public void MultiInstanceConflict_Enabled_NoConflicts_EmptyForRule()
+    public async Task MultiInstanceConflict_Enabled_NoConflicts_EmptyForRule()
     {
-        var model = new BpmnParser(new BpmnParserOptions
+        var model = await new BpmnParser(new BpmnParserOptions
         {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(CleanXml).GetAwaiter().GetResult();
+        }).ParseAsync(CleanXml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         Assert.DoesNotContain(model.ValidationDiagnostics!, d => d.Code == "SEM-MI-CONFLICT");

@@ -19,26 +19,26 @@ public class Phase3AdvancedValidationTests
 """;
 
     [Fact]
-    public void AdvancedValidation_Disabled_NoStructuredDiagnostics()
+    public async Task AdvancedValidation_Disabled_NoStructuredDiagnostics()
     {
-        var model = new BpmnParser(new BpmnParserOptions
+        var model = await new BpmnParser(new BpmnParserOptions
         {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = false
-        }).ParseAsync(DuplicateIdXml).GetAwaiter().GetResult();
+        }).ParseAsync(DuplicateIdXml, TestContext.Current.CancellationToken);
 
         Assert.Null(model.ValidationDiagnostics);
         Assert.Contains(model.Diagnostics, m => m.StartsWith("Duplicate ID:"));
     }
 
     [Fact]
-    public void AdvancedValidation_Enabled_DuplicateIdReportedStructurally()
+    public async Task AdvancedValidation_Enabled_DuplicateIdReportedStructurally()
     {
-        var model = new BpmnParser(new BpmnParserOptions
+        var model = await new BpmnParser(new BpmnParserOptions
         {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(DuplicateIdXml).GetAwaiter().GetResult();
+        }).ParseAsync(DuplicateIdXml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         var diag = Assert.Single(model.ValidationDiagnostics!);
@@ -50,7 +50,7 @@ public class Phase3AdvancedValidationTests
     }
 
     [Fact]
-    public void AdvancedValidation_Enabled_NoDuplicates_NoStructuredDiagnostics()
+    public async Task AdvancedValidation_Enabled_NoDuplicates_NoStructuredDiagnostics()
     {
         const string cleanXml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
@@ -61,11 +61,11 @@ public class Phase3AdvancedValidationTests
   </bpmn:process>
 </bpmn:definitions>
 """;
-        var model = new BpmnParser(new BpmnParserOptions
+        var model = await new BpmnParser(new BpmnParserOptions
         {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(cleanXml).GetAwaiter().GetResult();
+        }).ParseAsync(cleanXml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         Assert.Empty(model.ValidationDiagnostics!);

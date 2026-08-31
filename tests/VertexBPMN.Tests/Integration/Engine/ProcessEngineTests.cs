@@ -20,7 +20,7 @@ public class ProcessEngineTests
         var engine = new ProcessEngine();
 
         engine.RegisterBpmnModel("registered-process", model);
-        var trace = await engine.ExecuteProcessAsync("registered-process");
+        var trace = await engine.ExecuteProcessAsync("registered-process", TestContext.Current.CancellationToken);
 
         Assert.Contains(trace, x => x.Contains("StartEvent: start1"));
         Assert.Contains(trace, x => x.Contains("EndEvent: end1"));
@@ -33,7 +33,7 @@ public class ProcessEngineTests
         engine.RegisterBpmnModel("replaceable", CreateSimpleModel("first"));
         engine.RegisterBpmnModel("replaceable", CreateSimpleModel("second"));
 
-        var trace = await engine.ExecuteProcessAsync("replaceable");
+        var trace = await engine.ExecuteProcessAsync("replaceable", TestContext.Current.CancellationToken);
 
         Assert.Contains(trace, x => x.Contains("StartEvent: start1"));
         Assert.Contains(trace, x => x.Contains("EndEvent: end1"));
@@ -52,8 +52,8 @@ public class ProcessEngineTests
             NullServiceTaskRegistry.Instance,
             bpmnParser: parser.Object);
 
-        await engine.RegisterBpmnModelAsync("xml-process", "<definitions />");
-        var trace = await engine.ExecuteProcessAsync("xml-process");
+        await engine.RegisterBpmnModelAsync("xml-process", "<definitions />", TestContext.Current.CancellationToken);
+        var trace = await engine.ExecuteProcessAsync("xml-process", TestContext.Current.CancellationToken);
 
         Assert.Contains(trace, x => x.Contains("EndEvent: end1"));
         parser.Verify(x => x.ParseAsync("<definitions />", It.IsAny<CancellationToken>()), Times.Once);
@@ -64,7 +64,7 @@ public class ProcessEngineTests
     {
         var engine = new ProcessEngine();
 
-        await Assert.ThrowsAsync<KeyNotFoundException>(() => engine.ExecuteProcessAsync("missing"));
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => engine.ExecuteProcessAsync("missing", TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -72,7 +72,7 @@ public class ProcessEngineTests
     {
         var engine = new ProcessEngine();
 
-        var trace = await engine.ExecuteAsync(CreateSimpleModel("history-process"));
+        var trace = await engine.ExecuteAsync(CreateSimpleModel("history-process"), TestContext.Current.CancellationToken);
 
         Assert.NotNull(engine.LastExecutionId);
         Assert.True(engine.TryGetExecutionHistory(engine.LastExecutionId!, out var history));
@@ -110,7 +110,7 @@ public class ProcessEngineTests
             []);
 
         await engine.RegisterDmnModelAsync("decision-1", "<definitions />");
-        var trace = await engine.ExecuteAsync(model);
+        var trace = await engine.ExecuteAsync(model, TestContext.Current.CancellationToken);
 
         Assert.Contains(trace, x => x.Contains("DecisionEvaluated: decision-1 (local)"));
         dmnEngine.Verify(x => x.EvaluateDecisionAsync(
@@ -186,6 +186,167 @@ public class ProcessEngineTests
         Assert.Contains(trace, x => x.Contains("InclusiveGateway: gw1"));
         Assert.Contains(trace, x => x.Contains("InclusiveBranch: t1"));
         Assert.Contains(trace, x => x.Contains("InclusiveBranch: t2"));
+    }
+
+    [Fact]
+    public void ExclusiveGateway_Selects_Matching_Condition_Instead_Of_Default()
+    {
+        var model = new BpmnModel(
+            "exclusive-conditions",
+            "Exclusive conditions",
+            Events:
+            [
+                new BpmnEvent("start", "startEvent"),
+                new BpmnEvent("approved-end", "endEvent"),
+                new BpmnEvent("rejected-end", "endEvent")
+            ],
+            Gateways: [new BpmnGateway("decision", "exclusiveGateway", "to-rejected")],
+            Subprocesses: [],
+            SequenceFlows:
+            [
+                new BpmnSequenceFlow("to-decision", "start", "decision"),
+                new BpmnSequenceFlow("to-approved", "decision", "approved-end", ConditionExpression: "${score >= 80}"),
+                new BpmnSequenceFlow("to-rejected", "decision", "rejected-end", IsDefault: true)
+            ],
+            Tasks: [],
+            ProcessVariables: new Dictionary<string, object> { ["score"] = 90 });
+
+        var trace = new ProcessEngine().Execute(model);
+
+        Assert.Contains(trace, entry => entry.Contains("ExclusiveFlowSelected: to-approved", StringComparison.Ordinal));
+        Assert.Contains(trace, entry => entry.Contains("EndEvent: approved-end", StringComparison.Ordinal));
+        Assert.DoesNotContain(trace, entry => entry.Contains("EndEvent: rejected-end", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ExclusiveGateway_Without_Match_Or_Default_Throws()
+    {
+        var model = new BpmnModel(
+            "exclusive-no-route",
+            "Exclusive no route",
+            Events: [new BpmnEvent("start", "startEvent"), new BpmnEvent("end", "endEvent")],
+            Gateways: [new BpmnGateway("decision", "exclusiveGateway")],
+            Subprocesses: [],
+            SequenceFlows:
+            [
+                new BpmnSequenceFlow("to-decision", "start", "decision"),
+                new BpmnSequenceFlow("conditional", "decision", "end", ConditionExpression: "${score >= 80}")
+            ],
+            Tasks: [],
+            ProcessVariables: new Dictionary<string, object> { ["score"] = 10 });
+
+        var exception = Assert.Throws<InvalidOperationException>(() => new ProcessEngine().Execute(model));
+
+        Assert.Contains("no matching outgoing Sequence Flow", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void InclusiveGateway_Activates_Only_Matching_Branches()
+    {
+        var model = new BpmnModel(
+            "inclusive-conditions",
+            "Inclusive conditions",
+            Events:
+            [
+                new BpmnEvent("start", "startEvent"),
+                new BpmnEvent("email-end", "endEvent"),
+                new BpmnEvent("sms-end", "endEvent"),
+                new BpmnEvent("default-end", "endEvent")
+            ],
+            Gateways: [new BpmnGateway("channels", "inclusiveGateway", "default-channel")],
+            Subprocesses: [],
+            SequenceFlows:
+            [
+                new BpmnSequenceFlow("to-channels", "start", "channels"),
+                new BpmnSequenceFlow("email-channel", "channels", "email-end", ConditionExpression: "${email == true}"),
+                new BpmnSequenceFlow("sms-channel", "channels", "sms-end", ConditionExpression: "${sms == true}"),
+                new BpmnSequenceFlow("default-channel", "channels", "default-end", IsDefault: true)
+            ],
+            Tasks: [],
+            ProcessVariables: new Dictionary<string, object> { ["email"] = true, ["sms"] = false });
+
+        var trace = new ProcessEngine().Execute(model);
+
+        Assert.Contains(trace, entry => entry.Contains("InclusiveBranch: email-end via email-channel", StringComparison.Ordinal));
+        Assert.Contains(trace, entry => entry.Contains("EndEvent: email-end", StringComparison.Ordinal));
+        Assert.DoesNotContain(trace, entry => entry.Contains("EndEvent: sms-end", StringComparison.Ordinal));
+        Assert.DoesNotContain(trace, entry => entry.Contains("EndEvent: default-end", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ExclusiveGateway_Evaluates_Declared_Feel_Quantifier()
+    {
+        var feelAttributes = new Dictionary<string, string>
+        {
+            ["conditionExpressionLanguage"] = "https://www.omg.org/spec/DMN/20191111/FEEL/"
+        };
+        var model = new BpmnModel(
+            "exclusive-feel",
+            "Exclusive FEEL",
+            Events:
+            [
+                new BpmnEvent("start", "startEvent"),
+                new BpmnEvent("risk-end", "endEvent"),
+                new BpmnEvent("default-end", "endEvent")
+            ],
+            Gateways: [new BpmnGateway("decision", "exclusiveGateway", "default")],
+            Subprocesses: [],
+            SequenceFlows:
+            [
+                new BpmnSequenceFlow("to-decision", "start", "decision"),
+                new BpmnSequenceFlow(
+                    "risk",
+                    "decision",
+                    "risk-end",
+                    ConditionExpression: "= some risk in riskLevels satisfies risk = \"red\"",
+                    Attributes: feelAttributes),
+                new BpmnSequenceFlow("default", "decision", "default-end", IsDefault: true)
+            ],
+            Tasks: [],
+            ProcessVariables: new Dictionary<string, object>
+            {
+                ["riskLevels"] = new[] { "green", "red" }
+            });
+
+        var trace = new ProcessEngine().Execute(model);
+
+        Assert.Contains(trace, entry => entry.Contains("ExclusiveFlowSelected: risk", StringComparison.Ordinal));
+        Assert.Contains(trace, entry => entry.Contains("EndEvent: risk-end", StringComparison.Ordinal));
+        Assert.DoesNotContain(trace, entry => entry.Contains("EndEvent: default-end", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Execution_Starts_Only_None_Start_Events_In_The_Selected_Process()
+    {
+        var primaryStart = new BpmnEvent("primary-start", "startEvent") { ProcessId = "primary" };
+        var primaryEnd = new BpmnEvent("primary-end", "endEvent") { ProcessId = "primary" };
+        var messageStart = new BpmnEvent(
+            "message-start",
+            "startEvent",
+            [new MessageEventDefinition("message", null)]) { ProcessId = "primary" };
+        var messageEnd = new BpmnEvent("message-end", "endEvent") { ProcessId = "primary" };
+        var foreignStart = new BpmnEvent("foreign-start", "startEvent") { ProcessId = "foreign" };
+        var foreignEnd = new BpmnEvent("foreign-end", "endEvent") { ProcessId = "foreign" };
+        var model = new BpmnModel(
+            "primary",
+            "Scoped execution",
+            Events: [primaryStart, primaryEnd, messageStart, messageEnd, foreignStart, foreignEnd],
+            Gateways: [],
+            Subprocesses: [],
+            SequenceFlows:
+            [
+                new BpmnSequenceFlow("primary-flow", "primary-start", "primary-end") { ProcessId = "primary" },
+                new BpmnSequenceFlow("message-flow", "message-start", "message-end") { ProcessId = "primary" },
+                new BpmnSequenceFlow("foreign-flow", "foreign-start", "foreign-end") { ProcessId = "foreign" }
+            ],
+            Tasks: []);
+
+        var trace = new ProcessEngine().Execute(model);
+
+        Assert.Contains(trace, entry => entry.Contains("StartEvent: primary-start", StringComparison.Ordinal));
+        Assert.Contains(trace, entry => entry.Contains("EndEvent: primary-end", StringComparison.Ordinal));
+        Assert.DoesNotContain(trace, entry => entry.Contains("message-start", StringComparison.Ordinal));
+        Assert.DoesNotContain(trace, entry => entry.Contains("foreign-start", StringComparison.Ordinal));
     }
 
     [Fact]

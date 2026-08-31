@@ -10,7 +10,7 @@ namespace VertexBPMN.Tests.Conformance.extended
     {
         // KORREKTUR: Hier fehlte das [Fact]-Attribut – der Test wurde von xUnit nie ausgeführt.
         [Fact]
-        public void Test_C_8_0_Bpmn()
+        public async Task Test_C_8_0_Bpmn()
         {
             var bpmnFile = Path.Combine(Directory.GetCurrentDirectory(), "TestData", "Reference", "C.8.0.bpmn");
             var xml = File.ReadAllText(bpmnFile);
@@ -18,8 +18,15 @@ namespace VertexBPMN.Tests.Conformance.extended
             // KORREKTUR: vorher `new BpmnParser()` ohne Logger/TracerProvider – inkonsistent
             // zu allen anderen Tests dieser Suite, `logger` wurde deklariert aber nie benutzt.
             var parser = new BpmnParser(logger.Object, TracerProvider.Default);
-            var model = parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
+            var model = await parser.ParseAsync(xml.Replace('\'', '"'), TestContext.Current.CancellationToken);
             Assert.NotNull(model);
+            model = model with
+            {
+                ProcessVariables = new Dictionary<string, object>
+                {
+                    ["Vacation Approval"] = "Approved"
+                }
+            };
             var engine = new ProcessEngine();
             var result = engine.Execute(model);
             Assert.NotNull(result);

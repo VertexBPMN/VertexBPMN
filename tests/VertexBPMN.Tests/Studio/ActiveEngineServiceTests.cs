@@ -47,7 +47,7 @@ namespace VertexBPMN.Tests.Studio
             svc.ActiveEngineId = svc.ActiveEngineId;
 
             // allow potential async actions to run
-            await Task.Delay(150);
+            await Task.Delay(150, TestContext.Current.CancellationToken);
 
             propertyChangedCount.ShouldBe(0);
             onChangeCount.ShouldBe(0);
@@ -58,7 +58,7 @@ namespace VertexBPMN.Tests.Studio
         {
             var svc = new ActiveEngineService();
             svc.ActiveEngineId = "engine-live"; // triggers async check
-            await Task.Delay(150); // wait for CheckConnectionAsync
+            await Task.Delay(150, TestContext.Current.CancellationToken); // wait for CheckConnectionAsync
             svc.IsConnected.ShouldBeTrue();
             svc.LastConnectionCheck.ShouldBeGreaterThan(DateTime.MinValue);
         }

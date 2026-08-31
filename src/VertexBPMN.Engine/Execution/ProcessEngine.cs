@@ -339,6 +339,54 @@ public partial class ProcessEngine : IProcessEngine
 
     public List<string> Execute(BpmnModel model, IDecisionService? decisionService = null)
     {
+        return Execute(model, decisionService, null);
+    }
+
+    public List<string> ExecuteFromStartEvent(
+        BpmnModel model,
+        string startEventId,
+        IDecisionService? decisionService = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(startEventId);
+        return Execute(
+            model,
+            decisionService ?? _decisionService,
+            new HashSet<string>(StringComparer.Ordinal) { startEventId });
+    }
+
+    public List<string> ExecuteTriggeredEventSubprocess(
+        BpmnModel model,
+        string startEventId,
+        IDecisionService? decisionService = null)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentException.ThrowIfNullOrWhiteSpace(startEventId);
+
+        var startEvent = model.Events.FirstOrDefault(e =>
+            e.Id == startEventId && e.Type == "startEvent");
+        if (startEvent is null || string.IsNullOrWhiteSpace(startEvent.SubprocessId))
+            throw new InvalidOperationException(
+                $"Requested Event Subprocess Start Event '{startEventId}' was not found.");
+
+        var subprocess = model.Subprocesses.FirstOrDefault(s =>
+            s.Id == startEvent.SubprocessId && s.IsEventSubprocess);
+        if (subprocess is null || startEvent.Definitions is not { Count: > 0 })
+            throw new InvalidOperationException(
+                $"Start Event '{startEventId}' is not a typed Event Subprocess Start Event.");
+
+        return Execute(
+            model,
+            decisionService ?? _decisionService,
+            new HashSet<string>(StringComparer.Ordinal) { startEventId },
+            allowEventSubprocessStarts: true);
+    }
+
+    private List<string> Execute(
+        BpmnModel model,
+        IDecisionService? decisionService,
+        IReadOnlySet<string>? requestedStartEventIds,
+        bool allowEventSubprocessStarts = false)
+    {
         ArgumentNullException.ThrowIfNull(model);
         var executionId = Guid.NewGuid().ToString("N");
         var startedAt = DateTime.UtcNow;
@@ -353,8 +401,23 @@ public partial class ProcessEngine : IProcessEngine
 
         PrecomputeIncoming(model);
         IndexEventSubprocessStartEvents(model, trace);
-        var startEvents = model.Events.Where(e => e.Type == "startEvent").ToList();
-        if (startEvents.Count == 0) throw new InvalidOperationException("No startEvent found");
+        var startEvents = requestedStartEventIds is null
+            ? model.Events.Where(e =>
+                e.Type == "startEvent"
+                && e.SubprocessId is null
+                && e.Definitions is not { Count: > 0 }
+                && (string.IsNullOrWhiteSpace(e.ProcessId)
+                    || string.Equals(e.ProcessId, model.ProcessId, StringComparison.Ordinal))).ToList()
+            : model.Events.Where(e =>
+                e.Type == "startEvent"
+                && (allowEventSubprocessStarts || e.SubprocessId is null)
+                && requestedStartEventIds.Contains(e.Id)).ToList();
+        if (startEvents.Count == 0)
+            throw new InvalidOperationException(requestedStartEventIds is null
+                ? "No none Start Event exists for automatic process instantiation. Trigger a typed Start Event explicitly."
+                : $"Requested Start Event '{string.Join(", ", requestedStartEventIds)}' was not found at process scope.");
+        if (requestedStartEventIds is not null && startEvents.Count != requestedStartEventIds.Count)
+            throw new InvalidOperationException("One or more requested Start Events were not found at process scope.");
         var linkCatchMap = BuildLinkCatchMap(model.Events);
 
         // Seed tokens
@@ -581,18 +644,17 @@ public partial class ProcessEngine : IProcessEngine
         {
             case "exclusiveGateway":
                 {
-                    // Step 1: evaluate conditions using shared variable dictionary
                     var vars = GetOrCreateWorkingVariables(model);
-                    var selected = _executionComponent.SelectExclusiveFlow(
+                    var decision = _executionComponent.SelectExclusiveFlow(
                         outs,
                         vars,
-                        (condition, variables) => _executionComponent.EvaluateSimpleCondition(condition, variables),
-                        flowId => trace.Add($"ExclusiveConditionMatched: {flowId}"),
-                        flowId => trace.Add($"ExclusiveDefaultTaken: {flowId}"),
-                        flowId => trace.Add($"ExclusiveFallbackFirst: {flowId}"));
+                        static (flow, variables) => BpmnConditionEvaluator.Evaluate(flow, variables));
 
-                    if (selected != null)
+                    if (decision.Flow is { } selected)
                     {
+                        trace.Add(decision.Kind == GatewayDecisionKind.DefaultSelected
+                            ? $"ExclusiveDefaultTaken: {selected.Id}"
+                            : $"ExclusiveFlowSelected: {selected.Id}");
                         EmitNewToken(trace, tokenId, parentTxn, selected);
                         foreach (var dead in outs.Where(f => f != selected))
                         {
@@ -602,18 +664,8 @@ public partial class ProcessEngine : IProcessEngine
                     }
                     else
                     {
-                        // Fallback safety (should not happen if any flow exists)
-                        var first = outs.FirstOrDefault();
-                        if (first != null)
-                        {
-                            trace.Add($"ExclusiveFallbackFirst: {first.Id}");
-                            EmitNewToken(trace, tokenId, parentTxn, first);
-                            foreach (var dead in outs.Skip(1))
-                            {
-                                _disabledFlows.Add(dead.Id);
-                                trace.Add($"DeadPathEliminated: {dead.Id}");
-                            }
-                        }
+                        throw new InvalidOperationException(
+                            $"Exclusive Gateway '{g.Id}' has no matching outgoing Sequence Flow and no default Flow.");
                     }
                     break;
                 }
@@ -627,12 +679,34 @@ public partial class ProcessEngine : IProcessEngine
                 break;
 
             case "inclusiveGateway":
-                foreach (var f in outs)
                 {
-                    trace.Add($"InclusiveBranch: {f.TargetRef} via {f.Id}");
-                    EmitNewToken(trace, tokenId, parentTxn, f);
+                    var vars = GetOrCreateWorkingVariables(model);
+                    var selected = _executionComponent.SelectInclusiveFlows(
+                        outs,
+                        vars,
+                        static (flow, variables) => BpmnConditionEvaluator.Evaluate(flow, variables));
+
+                    if (selected.Count == 0)
+                    {
+                        throw new InvalidOperationException(
+                            $"Inclusive Gateway '{g.Id}' has no matching outgoing Sequence Flow and no default Flow.");
+                    }
+
+                    foreach (var flow in selected)
+                    {
+                        trace.Add(flow.IsDefault
+                            ? $"InclusiveDefaultTaken: {flow.Id}"
+                            : $"InclusiveBranch: {flow.TargetRef} via {flow.Id}");
+                        EmitNewToken(trace, tokenId, parentTxn, flow);
+                    }
+
+                    foreach (var dead in outs.Except(selected))
+                    {
+                        _disabledFlows.Add(dead.Id);
+                        trace.Add($"DeadPathEliminated: {dead.Id}");
+                    }
+                    break;
                 }
-                break;
 
             case "complexGateway":
             case "eventBasedGateway":
@@ -1016,7 +1090,9 @@ partial class ProcessEngine
         foreach (var sp in model.Subprocesses)
         {
             if (!IsEventSubprocess(sp)) continue;
-            var starts = model.Events.Where(e => e.Type == "startEvent" && e.Id.StartsWith(sp.Id, StringComparison.OrdinalIgnoreCase)).ToList();
+            var starts = model.Events.Where(e =>
+                e.Type == "startEvent"
+                && string.Equals(e.SubprocessId, sp.Id, StringComparison.Ordinal)).ToList();
             foreach (var ev in starts)
             {
                 var evtType = GetEventDefinitionType(ev) ?? "message";

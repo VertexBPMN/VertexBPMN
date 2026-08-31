@@ -43,12 +43,13 @@ public class OpenAiServiceTaskHandlerTests : IDisposable
         };
 
         // Act
-        await _handler.ExecuteAsync(attributes, variables);
+        await _handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken);
 
         // Assert
         variables.ShouldContainKey("openAiResult");
-        variables["openAiResult"].ToString().ShouldContain("OpenAI gpt-4 processed");
-        variables["openAiResult"].ToString().ShouldContain("Analyze customer sentiment");
+        var result = Assert.IsType<string>(variables["openAiResult"]);
+        result.ShouldContain("OpenAI gpt-4 processed");
+        result.ShouldContain("Analyze customer sentiment");
     }
 
     [Fact]
@@ -112,12 +113,13 @@ public class OpenAiServiceTaskHandlerTests : IDisposable
         };
 
         // Act
-        await _handler.ExecuteAsync(attributes, variables);
+        await _handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken);
 
         // Assert
         variables.ShouldContainKey("openAiResult");
-        variables["openAiResult"].ToString().ShouldContain("Mocked OpenAI response");
-        variables["openAiResult"].ToString().ShouldContain("positive");
+        var result = Assert.IsType<string>(variables["openAiResult"]);
+        result.ShouldContain("Mocked OpenAI response");
+        result.ShouldContain("positive");
 
         // Verify HTTP request was made correctly
         _httpMessageHandlerMock.Protected().Verify(

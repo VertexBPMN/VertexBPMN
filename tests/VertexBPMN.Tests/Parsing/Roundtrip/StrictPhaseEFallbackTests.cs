@@ -9,7 +9,7 @@ public class StrictPhaseEFallbackTests
     private static BpmnParser P => new(new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict, PreserveUnknownExtensions = true });
 
     [Fact]
-    public void Strict_Fallback_When_RawExtensions_Removed()
+    public async Task Strict_Fallback_When_RawExtensions_Removed()
     {
         const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL' xmlns:ven='http://vendor/x'>
   <bpmn:process id='p1'>
@@ -18,7 +18,7 @@ public class StrictPhaseEFallbackTests
     </bpmn:userTask>
   </bpmn:process>
 </bpmn:definitions>";
-        var model = P.ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await P.ParseAsync(xml, TestContext.Current.CancellationToken);
         Assert.NotNull(model.RawMetadata);
         Assert.NotNull(model.RawMetadata!.RawExtensionElements);
         // simulate loss

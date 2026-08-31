@@ -24,18 +24,13 @@ public sealed class HttpSimulationServiceTests
         factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
         var service = new HttpSimulationService(factory.Object);
 
-        var result = await service.SimulateAsync(
-            "<definitions />",
-            "invoice",
-            new Dictionary<string, object?> { ["approved"] = true },
-            25,
-            "tenant-a");
+        var result = await service.SimulateAsync("<definitions />", "invoice", new Dictionary<string, object?> { ["approved"] = true }, 25, "tenant-a", TestContext.Current.CancellationToken);
 
         Assert.True(result.GetProperty("simulation").GetProperty("completed").GetBoolean());
         var request = Assert.Single(requests);
         Assert.Equal(HttpMethod.Post, request.Method);
         Assert.Equal("http://api.test/api/simulation", request.RequestUri!.ToString());
-        var body = await request.Content!.ReadFromJsonAsync<JsonElement>();
+        var body = await request.Content!.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal("<definitions />", body.GetProperty("bpmnXml").GetString());
         Assert.Equal("invoice", body.GetProperty("processDefinitionId").GetString());
         Assert.Equal(25, body.GetProperty("maxSteps").GetInt32());
@@ -59,7 +54,7 @@ public sealed class HttpSimulationServiceTests
         factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
         var service = new HttpSimulationService(factory.Object);
 
-        await service.GetVariableTraceAsync(JsonDocument.Parse("{\"bpmnXml\":\"<definitions />\"}").RootElement, "order/status");
+        await service.GetVariableTraceAsync(JsonDocument.Parse("{\"bpmnXml\":\"<definitions />\"}").RootElement, "order/status", TestContext.Current.CancellationToken);
 
         var request = Assert.Single(requests);
         Assert.Equal(HttpMethod.Post, request.Method);

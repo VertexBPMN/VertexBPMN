@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
 using OpenTelemetry.Trace;
@@ -68,12 +68,12 @@ public class DistributedProcessEngineTests
         var caseToken = new CaseToken(Guid.NewGuid(), Guid.Parse(caseId), eventId, "eventListener", new Dictionary<string, object>(), DateTime.UtcNow);
 
         _storeMock.Setup(s => s.GetCmmnModelAsync(caseId)).ReturnsAsync("<cmmn:case id='D2DD968A-6748-4C17-83A6-8EAE354F5C77'>...</cmmn:case>");
-        _cmmnParserMock.Setup(p => p.ParseAsync(It.IsAny<string>(), CancellationToken.None)).ReturnsAsync(caseModel);
+        _cmmnParserMock.Setup(p => p.ParseAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(caseModel);
         _storeMock.Setup(s => s.GetPendingCaseTokensAsync()).ReturnsAsync([caseToken]);
         _dispatcherMock.Setup(d => d.PublishCaseTokenAsync(It.IsAny<CaseToken>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
         // Act
-        await _engine.TriggerUserEventAsync(caseId, eventId, new Dictionary<string, object> { { "key", "value" } }, CancellationToken.None);
+        await _engine.TriggerUserEventAsync(caseId, eventId, new Dictionary<string, object> { { "key", "value" } }, TestContext.Current.CancellationToken);
 
         // Assert
         _dispatcherMock.Verify(d => d.PublishCaseTokenAsync(It.Is<CaseToken>(t => t.CurrentPlanItemId == eventId), It.IsAny<CancellationToken>()), Times.Once());
@@ -100,14 +100,14 @@ public class DistributedProcessEngineTests
         var caseToken = new CaseToken(Guid.NewGuid(), Guid.Parse(caseId), "event1", "eventListener", new Dictionary<string, object> { { caseFileItemId, 200 } }, DateTime.UtcNow);
 
         _storeMock.Setup(s => s.GetCmmnModelAsync(caseId)).ReturnsAsync("<cmmn:case id='D2DD968A-6748-4C17-83A6-8EAE354F5C77'>...</cmmn:case>");
-        _cmmnParserMock.Setup(p => p.ParseAsync(It.IsAny<string>(), CancellationToken.None)).ReturnsAsync(caseModel);
+        _cmmnParserMock.Setup(p => p.ParseAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(caseModel);
         _storeMock.Setup(s => s.GetPendingCaseTokensAsync()).ReturnsAsync([caseToken]);
         _storeMock.Setup(s => s.UpdateCaseModelAsync(It.IsAny<CaseModel>())).Returns(Task.CompletedTask);
         _dispatcherMock.Setup(d => d.PublishCaseFileUpdateAsync(It.IsAny<CaseFileUpdateEvent>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         _dispatcherMock.Setup(d => d.PublishCaseTokenAsync(It.IsAny<CaseToken>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
         // Act
-        await _engine.UpdateCaseFileItemAsync(caseId, caseFileItemId, newValue, CancellationToken.None);
+        await _engine.UpdateCaseFileItemAsync(caseId, caseFileItemId, newValue, TestContext.Current.CancellationToken);
 
         // Assert
         _dispatcherMock.Verify(d => d.PublishCaseFileUpdateAsync(It.Is<CaseFileUpdateEvent>(e => e.CaseId == caseId && e.CaseFileItemId == caseFileItemId && e.NewValue.Equals(newValue)), It.IsAny<CancellationToken>()), Times.Once());
@@ -137,10 +137,10 @@ public class DistributedProcessEngineTests
             new List<DmnRule> { new((string) "rule1", (IReadOnlyDictionary<string, string>) new Dictionary<string, string> { { "input1", "> 100" } },
                 (IReadOnlyDictionary<string, object>) new Dictionary<string, object> { { "output1", "Approved" } }) });
 
-        dmnParser.Setup(p => p.ParseAsync(It.IsAny<string>(), CancellationToken.None)).ReturnsAsync(decision);
-        dmnEngine.Setup(e => e.EvaluateDecisionAsync(decision, It.IsAny<Dictionary<string, object>>(), CancellationToken.None))
+        dmnParser.Setup(p => p.ParseAsync(It.IsAny<string>(), TestContext.Current.CancellationToken)).ReturnsAsync(decision);
+        dmnEngine.Setup(e => e.EvaluateDecisionAsync(decision, It.IsAny<Dictionary<string, object>>(), TestContext.Current.CancellationToken))
                  .ReturnsAsync(new Dictionary<string, object> { { "output1", "Approved" } });
-        store.Setup(s => s.GetDmnModelAsync("decision1", CancellationToken.None)).ReturnsAsync("<dmn:decision id='decision1'>...</dmn:decision>");
+        store.Setup(s => s.GetDmnModelAsync("decision1", TestContext.Current.CancellationToken)).ReturnsAsync("<dmn:decision id='decision1'>...</dmn:decision>");
 
         var engine = new DistributedProcessEngine(logger, registry, dispatcher.Object, store.Object, dmnEngine.Object, dmnParser.Object, cmmnParser.Object, bpmnParser.Object, aiService.Object, TracerProvider.Default);
         var model = new BpmnModel("process1", "process1",
@@ -157,7 +157,7 @@ public class DistributedProcessEngineTests
 
         var method = engine.GetType().GetMethod("ProcessTaskAsync", BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(method);
-        var task = (Task?)method.Invoke(engine, new object[] { model.Tasks[0], token, model, trace, CancellationToken.None });
+        var task = (Task?)method.Invoke(engine, new object[] { model.Tasks[0], token, model, trace, TestContext.Current.CancellationToken });
         Assert.NotNull(task);
         await task;
 
@@ -175,14 +175,14 @@ public class DistributedProcessEngineTests
         var dmnParser = new Mock<IDmnParser>();
         var dmnEngine = new Mock<IDmnEngine>();
         store.Setup(s => s.GetActiveWorkersAsync()).ReturnsAsync(new List<WorkerNode>());
-        store.Setup(s => s.GetDmnModelAsync("risk-assessment", CancellationToken.None)).ReturnsAsync("<definitions />");
+        store.Setup(s => s.GetDmnModelAsync("risk-assessment", TestContext.Current.CancellationToken)).ReturnsAsync("<definitions />");
 
         var decision = new DmnDecision("risk-assessment", "Risk", [], [], [], "UNIQUE");
-        dmnParser.Setup(parser => parser.ParseAsync("<definitions />", CancellationToken.None)).ReturnsAsync(decision);
+        dmnParser.Setup(parser => parser.ParseAsync("<definitions />", TestContext.Current.CancellationToken)).ReturnsAsync(decision);
         dmnEngine.Setup(engine => engine.EvaluateDecisionAsync(
                 decision,
                 It.Is<Dictionary<string, object>>(input => input.Count == 1 && Equals(input["amount"], 250)),
-                CancellationToken.None))
+                TestContext.Current.CancellationToken))
             .ReturnsAsync(new Dictionary<string, object> { ["risk"] = "low" });
 
         var engine = new DistributedProcessEngine(logger, new ServiceTaskRegistry(), dispatcher.Object, store.Object,
@@ -200,7 +200,7 @@ public class DistributedProcessEngineTests
         var trace = new List<string>();
 
         var method = engine.GetType().GetMethod("ProcessTaskAsync", BindingFlags.NonPublic | BindingFlags.Instance);
-        var execution = (Task?)method!.Invoke(engine, [task, token, model, trace, CancellationToken.None]);
+        var execution = (Task?)method!.Invoke(engine, [task, token, model, trace, TestContext.Current.CancellationToken]);
         await execution!;
 
         dmnEngine.VerifyAll();
@@ -221,7 +221,7 @@ public class DistributedProcessEngineTests
                                   </process>
                                 </definitions>";
         var logger1 = new Mock<ILogger<BpmnParser>>(); var parser = new BpmnParser(logger1.Object, TracerProvider.Default);
-        var model = await parser.ParseAsync(simpleXml);
+        var model = await parser.ParseAsync(simpleXml, TestContext.Current.CancellationToken);
 
         var logger = new LoggerFactory().CreateLogger<DistributedProcessEngine>();
         var registry = new ServiceTaskRegistry();
@@ -240,7 +240,7 @@ public class DistributedProcessEngineTests
 
 
         var engine = new DistributedProcessEngine(logger, registry, dispatcher.Object, store, dmnEngine.Object, dmnParser.Object, cmmnParser.Object, bpmnParser.Object, aiService.Object, TracerProvider.Default);
-        var trace = await engine.ExecuteAsync(model);
+        var trace = await engine.ExecuteAsync(model, TestContext.Current.CancellationToken);
 
         Assert.Contains(trace, l => l.StartsWith("DistributedExecution: Starting process"));
         Assert.Contains("Start->Token:task1", trace);
@@ -252,9 +252,9 @@ public class DistributedProcessEngineTests
     public async Task ExecuteAsync_ExternalTaskFile_DistributesToken()
     {
         var path = Path.Combine("TestData", "ExternalTask1.bpmn");
-        var xml = await File.ReadAllTextAsync(path);
+        var xml = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
         var logger1 = new Mock<ILogger<BpmnParser>>(); var parser = new BpmnParser(logger1.Object, TracerProvider.Default);
-        var model = await parser.ParseAsync(xml);
+        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
 
         var logger = new LoggerFactory().CreateLogger<DistributedProcessEngine>();
         var registry = new ServiceTaskRegistry();
@@ -274,7 +274,7 @@ public class DistributedProcessEngineTests
                   .Returns(Task.CompletedTask);
 
         var engine = new DistributedProcessEngine(logger, registry, dispatcher.Object, store, dmnEngine.Object, dmnParser.Object, cmmnParser.Object, bpmnParser.Object, aiService.Object, TracerProvider.Default);
-        var trace = await engine.ExecuteAsync(model);
+        var trace = await engine.ExecuteAsync(model, TestContext.Current.CancellationToken);
 
         Assert.Contains(trace, l => l.StartsWith("DistributedExecution: Starting process"));
         Assert.Contains("Start->Token:task1", trace);
@@ -289,7 +289,7 @@ public class DistributedProcessEngineTests
 
         // 1. Definiere ein einfaches BPMN 2.0-Prozessmodell als XML-String
         var path = Path.Combine("TestData", "hello-world.bpmn");
-        var bpmnProcess = await File.ReadAllTextAsync(path);
+        var bpmnProcess = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
 
         // 2. Baue eine In-Memory-Engine für einen schnellen Test
         var engine = await new EngineBuilder()
@@ -304,7 +304,7 @@ public class DistributedProcessEngineTests
                 services.AddSingleton(TracerProvider.Default);
                 // Add any additional services or overrides here if needed
             })
-            .BuildAsync();
+            .BuildAsync(TestContext.Current.CancellationToken);
 
         // 3. Deploye den Prozess in die Engine
           await engine.RegisterProcessAsync("Process_HelloWorld", bpmnProcess);
@@ -598,12 +598,11 @@ public class DistributedProcessEngineTests
                 token,
                 model,
                 trace,
-                CancellationToken.None
+                TestContext.Current.CancellationToken
             });
 
-        result.ShouldBeAssignableTo<Task>();
-
-        await (Task)result!;
+        var task = Assert.IsAssignableFrom<Task>(result);
+        await task;
     }
     private static BpmnModel CreateModel()
     {

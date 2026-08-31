@@ -10,8 +10,6 @@ public class AiServiceTaskHandlerTests
 {
     private readonly Mock<HttpMessageHandler> _httpMessageHandlerMock;
     private readonly HttpClient _httpClient;
-    private readonly Mock<ILogger<AIServiceTaskHandler>> _loggerMock;
-    private readonly AIServiceTaskHandler _handler;
 
     public AiServiceTaskHandlerTests()
     {
@@ -40,14 +38,14 @@ public class AiServiceTaskHandlerTests
         };
 
         // Act
-        await handler.ExecuteAsync(attributes, variables);
+        await handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken);
 
         // Assert
         variables.ShouldContainKey("testResult");
-        variables["testResult"].ShouldNotBeNull();
-        variables["testResult"].ToString().ShouldContain("Mock AI");
-        variables["testResult"].ToString().ShouldContain("test-model");
-        variables["testResult"].ToString().ShouldContain("Test prompt");
+        var result = Assert.IsType<string>(variables["testResult"]);
+        result.ShouldContain("Mock AI");
+        result.ShouldContain("test-model");
+        result.ShouldContain("Test prompt");
     }
 
     [Fact]
@@ -100,6 +98,6 @@ public class AiServiceTaskHandlerTests
         variables.ShouldContainKey("aiTask_error");
         variables.ShouldContainKey("aiTask_failed");
         variables["aiTask_failed"].ShouldBe(true);
-        variables["aiTask_error"].ToString().ShouldContain("OPENAI_API_KEY");
+        Assert.IsType<string>(variables["aiTask_error"]).ShouldContain("OPENAI_API_KEY");
     }
 }

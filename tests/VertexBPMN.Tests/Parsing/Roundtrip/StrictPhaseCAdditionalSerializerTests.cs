@@ -9,7 +9,7 @@ public class StrictPhaseCAdditionalSerializerTests
     private static BpmnParser P => new(new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict, PreserveUnknownExtensions = true });
 
     [Fact]
-    public void Strict_Retains_Unknown_Vendor_EventDefinition_Raw()
+    public async Task Strict_Retains_Unknown_Vendor_EventDefinition_Raw()
     {
         const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL' xmlns:x='http://vendor/custom'>
   <bpmn:process id='p1'>
@@ -18,14 +18,14 @@ public class StrictPhaseCAdditionalSerializerTests
     </bpmn:startEvent>
   </bpmn:process>
 </bpmn:definitions>";
-        var model = P.ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await P.ParseAsync(xml, TestContext.Current.CancellationToken);
         var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
         Assert.Contains("<x:customEventDefinition", outXml);
         Assert.Contains("foo=\"bar\"", outXml);
     }
 
     [Fact]
-    public void Strict_Retains_MultiInstance_Loop_Node_Unmodified()
+    public async Task Strict_Retains_MultiInstance_Loop_Node_Unmodified()
     {
         const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <bpmn:process id='p1'>
@@ -36,7 +36,7 @@ public class StrictPhaseCAdditionalSerializerTests
     </bpmn:userTask>
   </bpmn:process>
 </bpmn:definitions>";
-        var model = P.ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await P.ParseAsync(xml, TestContext.Current.CancellationToken);
         var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
         // ensure same cardinality and isSequential attribute present exactly once
         Assert.Contains("<bpmn:multiInstanceLoopCharacteristics", outXml);
@@ -48,7 +48,7 @@ public class StrictPhaseCAdditionalSerializerTests
     }
 
     [Fact]
-    public void Strict_DoesNot_Generate_Incoming_Outgoing_When_Disabled_And_Missing_In_Original()
+    public async Task Strict_DoesNot_Generate_Incoming_Outgoing_When_Disabled_And_Missing_In_Original()
     {
         // sequenceFlow present but no incoming/outgoing elements on the flow nodes in original
         const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL'>
@@ -58,7 +58,7 @@ public class StrictPhaseCAdditionalSerializerTests
     <bpmn:sequenceFlow id='f1' sourceRef='s1' targetRef='t1'/>
   </bpmn:process>
 </bpmn:definitions>";
-        var model = P.ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await P.ParseAsync(xml, TestContext.Current.CancellationToken);
         var serializer = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict };
         var outXml = serializer.Serialize(model);
         Assert.DoesNotContain("<bpmn:incoming>f1</bpmn:incoming>", outXml);

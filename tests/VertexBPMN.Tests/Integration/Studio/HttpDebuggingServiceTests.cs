@@ -22,7 +22,7 @@ public sealed class HttpDebuggingServiceTests
         var service = new HttpDebuggingService(factory.Object);
         var sessionId = Guid.Parse("11111111-1111-1111-1111-111111111111");
 
-        await service.StepOverAsync(sessionId);
+        await service.StepOverAsync(sessionId, TestContext.Current.CancellationToken);
 
         var request = Assert.Single(requests);
         Assert.Equal(HttpMethod.Post, request.Method);
@@ -43,7 +43,7 @@ public sealed class HttpDebuggingServiceTests
         var service = new HttpDebuggingService(factory.Object);
         var processInstanceId = Guid.Parse("33333333-3333-3333-3333-333333333333");
 
-        await service.GetProcessVisualizationAsync(processInstanceId);
+        await service.GetProcessVisualizationAsync(processInstanceId, TestContext.Current.CancellationToken);
 
         var request = Assert.Single(requests);
         Assert.Equal(HttpMethod.Get, request.Method);
@@ -64,7 +64,7 @@ public sealed class HttpDebuggingServiceTests
         var service = new HttpDebuggingService(factory.Object);
         var processInstanceId = Guid.Parse("33333333-3333-3333-3333-333333333333");
 
-        await service.GetExecutionTraceAsync(processInstanceId);
+        await service.GetExecutionTraceAsync(processInstanceId, TestContext.Current.CancellationToken);
 
         var request = Assert.Single(requests);
         Assert.Equal(HttpMethod.Get, request.Method);
@@ -85,7 +85,7 @@ public sealed class HttpDebuggingServiceTests
         var service = new HttpDebuggingService(factory.Object);
         var sessionId = Guid.Parse("44444444-4444-4444-4444-444444444444");
 
-        await service.InspectVariablesAsync(sessionId);
+        await service.InspectVariablesAsync(sessionId, TestContext.Current.CancellationToken);
 
         var request = Assert.Single(requests);
         Assert.Equal($"http://api.test/api/visual-debug/variables/{sessionId}", request.RequestUri!.ToString());

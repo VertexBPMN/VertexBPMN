@@ -328,6 +328,7 @@ public partial class BpmnParser : IBpmnParser
         var linkThrowCounts = new Dictionary<string, int>(StringComparer.Ordinal);
         var linkCatchNames = new HashSet<string>(StringComparer.Ordinal);
         var orderCounter = 0;
+        var currentProcessId = pid;
 
         var unknownEventDefinitionDiagnostics = new List<ValidationDiagnostic>();
         void Walk(XElement parent)
@@ -361,11 +362,15 @@ public partial class BpmnParser : IBpmnParser
                                          el.Element("multiInstanceLoopCharacteristics");
                             var stdNode = el.Element(ns + "standardLoopCharacteristics") ??
                                           el.Element("standardLoopCharacteristics");
-                            if (miNode != null || stdNode != null)
-                                rawMultiInstance![id] = new XElement(miNode ?? stdNode);
+                            var rawLoop = miNode ?? stdNode;
+                            if (rawLoop is not null)
+                                rawMultiInstance![id] = new XElement(rawLoop);
                         }
 
-                        subprocesses.Add(new BpmnSubprocess(id, isEvent, isTx, loopInfo.loop, currentSub, ext));
+                        subprocesses.Add(new BpmnSubprocess(id, isEvent, isTx, loopInfo.loop, currentSub, ext)
+                        {
+                            ProcessId = currentProcessId
+                        });
                         if (isTx && !string.IsNullOrEmpty(id)) transactionIds.Add(id);
                         flowNodeIds.Add(id);
                         CaptureElementMeta(strict, flowNodeAttributes, rawDocumentation, elementsMetadata, orderCounter, ns, el, id,
@@ -388,7 +393,10 @@ public partial class BpmnParser : IBpmnParser
                         unknownEventDefinitionDiagnostics.AddRange(eventDefDiagnostics);
 
                         var eventAttributes = BuildEventAttributes(el, ext);
-                        events.Add(new BpmnEvent(id, local, defs, currentSub, eventAttributes));
+                        events.Add(new BpmnEvent(id, local, defs, currentSub, eventAttributes)
+                        {
+                            ProcessId = currentProcessId
+                        });
                         flowNodeIds.Add(id);
 
                         if (local == "boundaryEvent")
@@ -439,7 +447,8 @@ public partial class BpmnParser : IBpmnParser
                         {
                             var miNodeT = el.Element(ns + "multiInstanceLoopCharacteristics") ?? el.Element("multiInstanceLoopCharacteristics");
                             var stdNodeT = el.Element(ns + "standardLoopCharacteristics") ?? el.Element("standardLoopCharacteristics");
-                            if (miNodeT != null || stdNodeT != null) rawMultiInstance![id] = new XElement(miNodeT ?? stdNodeT);
+                            var rawTaskLoop = miNodeT ?? stdNodeT;
+                            if (rawTaskLoop is not null) rawMultiInstance![id] = new XElement(rawTaskLoop);
                         }
 
                         if (local == "scriptTask" && !string.IsNullOrEmpty(id))
@@ -480,7 +489,8 @@ public partial class BpmnParser : IBpmnParser
                             implementation = "vertex:connector";
                         var task = new BpmnTask(id, local, currentSub, taskAttributes, implementation)
                         {
-                            Name = el.Attribute("name")?.Value ?? string.Empty
+                            Name = el.Attribute("name")?.Value ?? string.Empty,
+                            ProcessId = currentProcessId
                         };
 
                         if (tasks.All(x => x.Id != id)) tasks.Add(task);
@@ -542,15 +552,21 @@ public partial class BpmnParser : IBpmnParser
                             ext ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                             ext["activationCondition"] = activationCondition;
                         }
-                        flowNodeIds.Add(id); gateways.Add(new BpmnGateway(id, local, gatewaysRaw.FirstOrDefault(g => g.Id == id)?.DefaultId, currentSub, ext));
+                        flowNodeIds.Add(id); gateways.Add(new BpmnGateway(id, local, gatewaysRaw.FirstOrDefault(g => g.Id == id)?.DefaultId, currentSub, ext)
+                        {
+                            ProcessId = currentProcessId
+                        });
                         CaptureElementMeta(strict, flowNodeAttributes, rawDocumentation, elementsMetadata, orderCounter, ns, el, id); break;
                     case "laneSet":
                         if (strict) rawLanes!.Add(new XElement(el)); // keep laneSet structure
                         Walk(el); // recurse into lanes
                         continue; // prevent double attribute handling
                     case "sequenceFlow":
-                        int? priority = null; var prAttr = el.Attribute(XName.Get("priority", "http://vertexbpmn.io/schema/1.0")) ?? el.Attribute(XName.Get("priority", "http://camunda.org/schema/1.0/bpmn")) ?? el.Attribute("priority"); if (prAttr != null && int.TryParse(prAttr.Value, out var pVal)) priority = pVal; if (strict && prAttr != null && !string.IsNullOrEmpty(id)) priorityAttrNs![id] = prAttr.Name.NamespaceName; var condNode = el.Element(ns + "conditionExpression") ?? el.Element("conditionExpression"); var condText = condNode?.Value?.Trim(); if (!string.IsNullOrWhiteSpace(condText)) { ext ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase); ext["conditionExpression"] = condText; }
-                        flows.Add(new BpmnSequenceFlow(id, Intern(el.Attribute("sourceRef")?.Value ?? string.Empty), Intern(el.Attribute("targetRef")?.Value ?? string.Empty), defaultIds.Contains(id), condText, currentSub, ext, priority)); if (strict && condNode != null) { bool wasCData = condNode.Nodes().OfType<XCData>().Any(); rawCond![id] = (condNode.Value, wasCData); }
+                        int? priority = null; var prAttr = el.Attribute(XName.Get("priority", "http://vertexbpmn.io/schema/1.0")) ?? el.Attribute(XName.Get("priority", "http://camunda.org/schema/1.0/bpmn")) ?? el.Attribute("priority"); if (prAttr != null && int.TryParse(prAttr.Value, out var pVal)) priority = pVal; if (strict && prAttr != null && !string.IsNullOrEmpty(id)) priorityAttrNs![id] = prAttr.Name.NamespaceName; var condNode = el.Element(ns + "conditionExpression") ?? el.Element("conditionExpression"); var condText = condNode?.Value?.Trim(); if (!string.IsNullOrWhiteSpace(condText)) { ext ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase); ext["conditionExpression"] = condText; var expressionLanguage = condNode?.Attribute("language")?.Value ?? root.Attribute("expressionLanguage")?.Value; if (!string.IsNullOrWhiteSpace(expressionLanguage)) ext["conditionExpressionLanguage"] = expressionLanguage; }
+                        flows.Add(new BpmnSequenceFlow(id, Intern(el.Attribute("sourceRef")?.Value ?? string.Empty), Intern(el.Attribute("targetRef")?.Value ?? string.Empty), defaultIds.Contains(id), condText, currentSub, ext, priority)
+                        {
+                            ProcessId = currentProcessId
+                        }); if (strict && condNode != null) { bool wasCData = condNode.Nodes().OfType<XCData>().Any(); rawCond![id] = (condNode.Value, wasCData); }
                         CaptureElementMeta(strict, flowNodeAttributes, rawDocumentation, elementsMetadata, orderCounter, ns, el, id); break;
                     case "dataObject":
                         dataObjects.Add(new BpmnDataObject(id, el.Attribute("name")?.Value));
@@ -610,10 +626,12 @@ public partial class BpmnParser : IBpmnParser
         {
             if (_options.StrictValidation)
                 diagnostics.Add($"Collaboration mit {allProcesses.Count} <process>-Elementen erkannt – alle wurden gemerged.");
-            foreach (var otherProcess in allProcesses.Skip(1))
-            {
-                Walk(otherProcess);
-            }
+        foreach (var otherProcess in allProcesses.Skip(1))
+        {
+            currentProcessId = Intern(otherProcess.Attribute("id")?.Value ?? string.Empty);
+            Walk(otherProcess);
+        }
+        currentProcessId = pid;
         }
 
         // Reference resolution diagnostics

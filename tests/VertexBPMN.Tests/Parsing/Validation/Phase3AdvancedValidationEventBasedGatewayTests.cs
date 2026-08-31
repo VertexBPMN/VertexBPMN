@@ -53,25 +53,25 @@ public class Phase3AdvancedValidationEventBasedGatewayTests
 """;
 
     [Fact]
-    public void EventBasedGateway_Disabled_NoStructuredDiagnostics()
+    public async Task EventBasedGateway_Disabled_NoStructuredDiagnostics()
     {
-        var model = new BpmnParser(new BpmnParserOptions
+        var model = await new BpmnParser(new BpmnParserOptions
         {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = false
-        }).ParseAsync(InvalidTargetsXml).GetAwaiter().GetResult();
+        }).ParseAsync(InvalidTargetsXml, TestContext.Current.CancellationToken);
 
         Assert.Null(model.ValidationDiagnostics);
     }
 
     [Fact]
-    public void EventBasedGateway_InvalidTargets_Reported()
+    public async Task EventBasedGateway_InvalidTargets_Reported()
     {
-        var model = new BpmnParser(new BpmnParserOptions
+        var model = await new BpmnParser(new BpmnParserOptions
         {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(InvalidTargetsXml).GetAwaiter().GetResult();
+        }).ParseAsync(InvalidTargetsXml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         var diags = model.ValidationDiagnostics!;
@@ -94,13 +94,13 @@ public class Phase3AdvancedValidationEventBasedGatewayTests
     }
 
     [Fact]
-    public void EventBasedGateway_AllValid_NoDiagnostics()
+    public async Task EventBasedGateway_AllValid_NoDiagnostics()
     {
-        var model = new BpmnParser(new BpmnParserOptions
+        var model = await new BpmnParser(new BpmnParserOptions
         {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(AllValidXml).GetAwaiter().GetResult();
+        }).ParseAsync(AllValidXml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         Assert.DoesNotContain(model.ValidationDiagnostics!,

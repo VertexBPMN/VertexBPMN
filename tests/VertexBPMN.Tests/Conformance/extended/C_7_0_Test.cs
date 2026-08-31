@@ -10,7 +10,7 @@ namespace VertexBPMN.Tests.Conformance.extended
     public class C_7_0_Test
     {
         [Fact]
-        public void Test_C_7_0_Bpmn()
+        public async Task Test_C_7_0_Bpmn()
         {
             // KORREKTUR: Der bisherige Test erwartete eine SecurityException beim Parsen.
             // C.7.0 ("Advertise a job vacancy") ist laut BPMN-MIWG-Spezifikation ein völlig
@@ -25,7 +25,7 @@ namespace VertexBPMN.Tests.Conformance.extended
             var logger = new Mock<ILogger<BpmnParser>>();
             var parser = new BpmnParser(new BpmnParserOptions() { EnableSecurityValidation = false },  logger.Object, TracerProvider.Default);
             //xml = xml.Replace('\'', '"');
-            var model = parser.ParseAsync(xml, CancellationToken.None).GetAwaiter().GetResult();
+            var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
             Assert.NotNull(model);
             var engine = new ProcessEngine();
             var result = engine.Execute(model);
@@ -37,8 +37,9 @@ namespace VertexBPMN.Tests.Conformance.extended
             Assert.Contains(result, r => r.ToString().Contains("UserTask"));
             Assert.Contains(result, r => r.ToString().Contains("ExclusiveGateway"));
             Assert.Contains(result, r => r.ToString().Contains("SequenceFlow"));
-            // ACHTUNG: "ServiceTask"/"DataObject" bisher unbestätigtes Vokabular – ggf. anpassen.
-            Assert.Contains(result, r => r.ToString().Contains("ExclusiveFallbackFirst"));
+            Assert.Contains(result, r => r.Contains(
+                "ExclusiveFlowSelected: _d74707c7-6af3-4db7-9403-924bfdf6a7d8",
+                StringComparison.Ordinal));
 
             foreach (var item in result)
             {

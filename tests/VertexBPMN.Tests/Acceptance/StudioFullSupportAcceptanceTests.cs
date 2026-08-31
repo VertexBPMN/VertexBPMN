@@ -66,12 +66,12 @@ public sealed class StudioFullSupportAcceptanceTests
         Assert.Equal(ProcessInstanceStatus.Running, started.Status);
         Assert.NotEmpty(started.ActiveTasks);
         var task = Assert.Single((await engine.GetTasksAsync())
-            .Where(candidate => candidate.ProcessInstanceId == started.Id));
+, candidate => candidate.ProcessInstanceId == started.Id);
 
         await engine.CompleteTaskAsync(task.Id, new Dictionary<string, object?> { ["approved"] = true });
 
         var completed = Assert.Single((await workflow.GetProcessInstancesAsync())
-            .Where(instance => instance.Id == started.Id));
+, instance => instance.Id == started.Id);
         Assert.Equal(ProcessInstanceStatus.Completed, completed.Status);
         Assert.Empty(completed.ActiveTasks);
     }

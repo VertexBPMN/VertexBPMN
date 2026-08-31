@@ -49,7 +49,7 @@ public sealed class PersistentRuntimePhase2AcceptanceTests : IDisposable
         Assert.Equal(first.Id, second.Id);
         var instances = await _client.GetFromJsonAsync<List<RuntimeInstance>>(
             "/api/runtime", TestContext.Current.CancellationToken);
-        Assert.Single((instances ?? []).Where(instance => instance.Id == first.Id));
+        Assert.Single((instances ?? []), instance => instance.Id == first.Id);
     }
 
     [Fact]
@@ -131,7 +131,7 @@ public sealed class PersistentRuntimePhase2AcceptanceTests : IDisposable
 
         var incidents = await client.GetFromJsonAsync<List<IncidentRecord>>(
             "/api/vertex/incident", TestContext.Current.CancellationToken);
-        var incident = Assert.Single((incidents ?? []).Where(item => item.ProcessInstanceId == instance.Id.ToString()));
+        var incident = Assert.Single((incidents ?? []), item => item.ProcessInstanceId == instance.Id.ToString());
         Assert.Equal("ExecutionFailure", incident.IncidentType);
 
         using var recovery = new HttpRequestMessage(HttpMethod.Post, $"/api/vertex/incident/{incident.Id}/resolve")
@@ -187,7 +187,7 @@ public sealed class PersistentRuntimePhase2AcceptanceTests : IDisposable
         Assert.Equal(starts[0].Id, starts[1].Id);
         var instances = await firstClient.GetFromJsonAsync<List<RuntimeInstance>>(
             "/api/runtime", TestContext.Current.CancellationToken);
-        Assert.Single((instances ?? []).Where(instance => instance.Id == starts[0].Id));
+        Assert.Single((instances ?? []), instance => instance.Id == starts[0].Id);
     }
 
     private async Task DeployAsync(string key, string bpmn, string? tenantId)

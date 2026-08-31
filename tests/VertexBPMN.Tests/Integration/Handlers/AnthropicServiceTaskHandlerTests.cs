@@ -39,12 +39,13 @@ public class AnthropicServiceTaskHandlerTests : IDisposable
         var variables = new Dictionary<string, object>();
 
         // Act
-        await _handler.ExecuteAsync(attributes, variables);
+        await _handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken);
 
         // Assert
         variables.ShouldContainKey("claudeResult");
-        variables["claudeResult"].ToString().ShouldContain("Claude claude-3-sonnet-20240229 processed");
-        variables["claudeResult"].ToString().ShouldContain("Provide analysis and recommendation");
+        var result = Assert.IsType<string>(variables["claudeResult"]);
+        result.ShouldContain("Claude claude-3-sonnet-20240229 processed");
+        result.ShouldContain("Provide analysis and recommendation");
     }
 
     [Fact]
@@ -107,12 +108,13 @@ public class AnthropicServiceTaskHandlerTests : IDisposable
         try
         {
             // Act
-            await _handler.ExecuteAsync(attributes, variables);
+            await _handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken);
 
             // Assert
             variables.ShouldContainKey("claudeResult");
-            variables["claudeResult"].ToString().ShouldContain("Mocked Claude response");
-            variables["claudeResult"].ToString().ShouldContain("careful analysis");
+            var result = Assert.IsType<string>(variables["claudeResult"]);
+            result.ShouldContain("Mocked Claude response");
+            result.ShouldContain("careful analysis");
 
             // Verify HTTP request headers
             _httpMessageHandlerMock.Protected().Verify(

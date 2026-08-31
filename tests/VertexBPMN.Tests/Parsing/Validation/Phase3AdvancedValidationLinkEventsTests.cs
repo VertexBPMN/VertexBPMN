@@ -62,23 +62,23 @@ public class Phase3AdvancedValidationLinkEventsTests
 """;
 
     [Fact]
-    public void LinkEvents_Disabled_NoStructuredDiagnostics()
+    public async Task LinkEvents_Disabled_NoStructuredDiagnostics()
     {
-        var model = new BpmnParser(new BpmnParserOptions {
+        var model = await new BpmnParser(new BpmnParserOptions {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = false
-        }).ParseAsync(UnmatchedLinkXml).GetAwaiter().GetResult();
+        }).ParseAsync(UnmatchedLinkXml, TestContext.Current.CancellationToken);
 
         Assert.Null(model.ValidationDiagnostics);
     }
 
     [Fact]
-    public void LinkEvents_Unmatched_ProducesSemanticError()
+    public async Task LinkEvents_Unmatched_ProducesSemanticError()
     {
-        var model = new BpmnParser(new BpmnParserOptions {
+        var model = await new BpmnParser(new BpmnParserOptions {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(UnmatchedLinkXml).GetAwaiter().GetResult();
+        }).ParseAsync(UnmatchedLinkXml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         Assert.Contains(model.ValidationDiagnostics!, d =>
@@ -87,12 +87,12 @@ public class Phase3AdvancedValidationLinkEventsTests
     }
 
     [Fact]
-    public void LinkEvents_MultipleThrow_ProducesSemanticError()
+    public async Task LinkEvents_MultipleThrow_ProducesSemanticError()
     {
-        var model = new BpmnParser(new BpmnParserOptions {
+        var model = await new BpmnParser(new BpmnParserOptions {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(MultipleThrowLinkXml).GetAwaiter().GetResult();
+        }).ParseAsync(MultipleThrowLinkXml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         // Multiple throw rule
@@ -105,12 +105,12 @@ public class Phase3AdvancedValidationLinkEventsTests
     }
 
     [Fact]
-    public void LinkEvents_Valid_NoSemanticLinkDiagnostics()
+    public async Task LinkEvents_Valid_NoSemanticLinkDiagnostics()
     {
-        var model = new BpmnParser(new BpmnParserOptions {
+        var model = await new BpmnParser(new BpmnParserOptions {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(ValidLinkXml).GetAwaiter().GetResult();
+        }).ParseAsync(ValidLinkXml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         Assert.DoesNotContain(model.ValidationDiagnostics!, d =>

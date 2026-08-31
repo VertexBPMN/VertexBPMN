@@ -1,4 +1,4 @@
-﻿using VertexBPMN.Domain.Model.Bpmn;
+using VertexBPMN.Domain.Model.Bpmn;
 using VertexBPMN.Engine.Parsing;
 
 namespace VertexBPMN.Tests.Parsing.Validation;
@@ -46,23 +46,23 @@ public class Phase3AdvancedValidationTransactionContextEndEventsTests
 """;
 
     [Fact]
-    public void TransactionRules_Disabled_NoStructuredDiagnostics()
+    public async Task TransactionRules_Disabled_NoStructuredDiagnostics()
     {
-        var model = new BpmnParser(new BpmnParserOptions {
+        var model = await new BpmnParser(new BpmnParserOptions {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = false
-        }).ParseAsync(OutsideTxXml).GetAwaiter().GetResult();
+        }).ParseAsync(OutsideTxXml, TestContext.Current.CancellationToken);
 
         Assert.Null(model.ValidationDiagnostics);
     }
 
     [Fact]
-    public void CancelAndTerminateOutsideTx_ProducesWarnings()
+    public async Task CancelAndTerminateOutsideTx_ProducesWarnings()
     {
-        var model = new BpmnParser(new BpmnParserOptions {
+        var model = await new BpmnParser(new BpmnParserOptions {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(OutsideTxXml).GetAwaiter().GetResult();
+        }).ParseAsync(OutsideTxXml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         Assert.Contains(model.ValidationDiagnostics!, d =>
@@ -77,12 +77,12 @@ public class Phase3AdvancedValidationTransactionContextEndEventsTests
     }
 
     [Fact]
-    public void CancelAndTerminateInsideTx_NoWarnings()
+    public async Task CancelAndTerminateInsideTx_NoWarnings()
     {
-        var model = new BpmnParser(new BpmnParserOptions {
+        var model = await new BpmnParser(new BpmnParserOptions {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(InsideTxXml).GetAwaiter().GetResult();
+        }).ParseAsync(InsideTxXml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         Assert.DoesNotContain(model.ValidationDiagnostics!, d => d.Code is "SEM-CANCEL-OUTSIDE-TX" or "SEM-TERMINATE-OUTSIDE-TX");

@@ -9,8 +9,6 @@ public class ContextEnrichmentServiceTaskHandlerTests
 {
     private readonly Mock<HttpMessageHandler> _httpMessageHandlerMock;
     private readonly HttpClient _httpClient;
-    private readonly Mock<ILogger<GeminiServiceTaskHandler>> _loggerMock;
-    private readonly GeminiServiceTaskHandler _handler;
 
     public ContextEnrichmentServiceTaskHandlerTests()
     {
@@ -42,11 +40,11 @@ public class ContextEnrichmentServiceTaskHandlerTests
         };
 
         // Act
-        await handler.ExecuteAsync(attributes, variables);
+        await handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken);
 
         // Assert
         variables.ShouldContainKey($"{dataType}Context");
-        var result = variables[$"{dataType}Context"].ToString();
+        var result = Assert.IsType<string>(variables[$"{dataType}Context"]);
         result.ShouldContain(dataType);
         result.ShouldContain(entityId);
     }

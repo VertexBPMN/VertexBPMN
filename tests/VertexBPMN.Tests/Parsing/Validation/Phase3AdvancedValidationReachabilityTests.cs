@@ -38,23 +38,23 @@ public class Phase3AdvancedValidationReachabilityTests
 """;
 
     [Fact]
-    public void Reachability_Disabled_NoAdvisoryDiagnostics()
+    public async Task Reachability_Disabled_NoAdvisoryDiagnostics()
     {
-        var model = new BpmnParser(new BpmnParserOptions {
+        var model = await new BpmnParser(new BpmnParserOptions {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = false
-        }).ParseAsync(UnreachableNodeXml).GetAwaiter().GetResult();
+        }).ParseAsync(UnreachableNodeXml, TestContext.Current.CancellationToken);
 
         Assert.Null(model.ValidationDiagnostics);
     }
 
     [Fact]
-    public void Unreachable_Island_ProducesNodeAndFlowDiagnostics()
+    public async Task Unreachable_Island_ProducesNodeAndFlowDiagnostics()
     {
-        var model = new BpmnParser(new BpmnParserOptions {
+        var model = await new BpmnParser(new BpmnParserOptions {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(UnreachableNodeXml).GetAwaiter().GetResult();
+        }).ParseAsync(UnreachableNodeXml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         var diags = model.ValidationDiagnostics!;
@@ -76,12 +76,12 @@ public class Phase3AdvancedValidationReachabilityTests
     }
 
     [Fact]
-    public void OrphanedEndEvent_ProducesOrphanedEndAndUnreachable()
+    public async Task OrphanedEndEvent_ProducesOrphanedEndAndUnreachable()
     {
-        var model = new BpmnParser(new BpmnParserOptions {
+        var model = await new BpmnParser(new BpmnParserOptions {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(OrphanedEndOnlyXml).GetAwaiter().GetResult();
+        }).ParseAsync(OrphanedEndOnlyXml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         var diags = model.ValidationDiagnostics!;
@@ -98,7 +98,7 @@ public class Phase3AdvancedValidationReachabilityTests
     }
 
     [Fact]
-    public void AllReachable_NoAdvisoryDiagnostics()
+    public async Task AllReachable_NoAdvisoryDiagnostics()
     {
         const string reachable = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
@@ -116,10 +116,10 @@ public class Phase3AdvancedValidationReachabilityTests
   </bpmn:process>
 </bpmn:definitions>
 """;
-        var model = new BpmnParser(new BpmnParserOptions {
+        var model = await new BpmnParser(new BpmnParserOptions {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(reachable).GetAwaiter().GetResult();
+        }).ParseAsync(reachable, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         Assert.DoesNotContain(model.ValidationDiagnostics!, d =>

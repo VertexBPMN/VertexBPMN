@@ -9,14 +9,14 @@ public class StrictPhaseDDirtyTrackingTests
     private static BpmnParser StrictParser() => new(new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict, PreserveUnknownExtensions = true });
 
     [Fact]
-    public void Changing_Task_Name_Sets_RoundtripDirty_And_Forces_Fallback()
+    public async Task Changing_Task_Name_Sets_RoundtripDirty_And_Forces_Fallback()
     {
         const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <bpmn:process id='p1'>
     <bpmn:userTask id='t1' name='Orig'/>
   </bpmn:process>
 </bpmn:definitions>";
-        var model = StrictParser().ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await StrictParser().ParseAsync(xml, TestContext.Current.CancellationToken);
         Assert.NotNull(model.RawMetadata);
         Assert.False(model.RawMetadata!.RoundtripDirty);
         // mutate: change task name via Attributes map clone and mark dirty
@@ -36,7 +36,7 @@ public class StrictPhaseDDirtyTrackingTests
     }
 
     [Fact]
-    public void RoundtripDirty_Serializes_Without_Raw_Global_Elements_Echo()
+    public async Task RoundtripDirty_Serializes_Without_Raw_Global_Elements_Echo()
     {
         const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <bpmn:message id='m1'/>
@@ -44,12 +44,12 @@ public class StrictPhaseDDirtyTrackingTests
     <bpmn:startEvent id='s1'/>
   </bpmn:process>
 </bpmn:definitions>";
-        var model = StrictParser().ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await StrictParser().ParseAsync(xml, TestContext.Current.CancellationToken);
         Assert.NotNull(model.RawMetadata);
         Assert.True(model.RawMetadata!.RawGlobalElements?.Count > 0);
         model = model with { RawMetadata = model.RawMetadata with { RoundtripDirty = true } };
         var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
-        // In fallback the serializer should not necessarily preserve message position (we just check message still exists but cannot assert ordering) – ensure still valid output
+        // In fallback the serializer should not necessarily preserve message position (we just check message still exists but cannot assert ordering) ï¿½ ensure still valid output
         Assert.Contains("<bpmn:message id=\"m1\"", outXml);
         Assert.Contains("<bpmn:process id=\"p1\"", outXml);
     }

@@ -10,12 +10,12 @@ namespace VertexBPMN.Tests.Conformance
     public class C_5_0_Test
     {
         [Fact]
-        public void Test_C_5_0_Bpmn()
+        public async Task Test_C_5_0_Bpmn()
         {
             var bpmnFile = Path.Combine(Directory.GetCurrentDirectory(), "TestData", "Reference", "C.5.0.bpmn");
             var xml = File.ReadAllText(bpmnFile);
             var logger = new Mock<ILogger<BpmnParser>>();var parser = new BpmnParser(logger.Object, TracerProvider.Default);
-            var model =  parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
+            var model = await parser.ParseAsync(xml.Replace('\'', '"'), TestContext.Current.CancellationToken);
             Assert.NotNull(model);
             var engine = new ProcessEngine();
             var result = engine.Execute(model);

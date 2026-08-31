@@ -24,15 +24,21 @@ public class UnifiedPhaseGContainmentTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var spOuter = model.Subprocesses.Single(sp => sp.Id == "spOuter");
-        Assert.Contains("s1", spOuter.ChildFlowNodeIds);
-        Assert.Contains("spInner", spOuter.ChildFlowNodeIds);
-        Assert.Contains("e1", spOuter.ChildFlowNodeIds);
-        Assert.Contains("f1", spOuter.ChildSequenceFlowIds);
-        Assert.Contains("f2", spOuter.ChildSequenceFlowIds);
+        Assert.NotNull(spOuter.ChildFlowNodeIds);
+        Assert.NotNull(spOuter.ChildSequenceFlowIds);
+        var outerFlowNodes = spOuter.ChildFlowNodeIds!;
+        var outerSequenceFlows = spOuter.ChildSequenceFlowIds!;
+        Assert.Contains("s1", outerFlowNodes);
+        Assert.Contains("spInner", outerFlowNodes);
+        Assert.Contains("e1", outerFlowNodes);
+        Assert.Contains("f1", outerSequenceFlows);
+        Assert.Contains("f2", outerSequenceFlows);
         var spInner = model.Subprocesses.Single(sp => sp.Id == "spInner");
-        Assert.Single(spInner.ChildFlowNodeIds); // t_inner
-        Assert.Contains("t_inner", spInner.ChildFlowNodeIds);
+        Assert.NotNull(spInner.ChildFlowNodeIds);
+        var innerFlowNodes = spInner.ChildFlowNodeIds!;
+        Assert.Single(innerFlowNodes); // t_inner
+        Assert.Contains("t_inner", innerFlowNodes);
     }
 }

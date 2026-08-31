@@ -30,16 +30,22 @@ public class McpAgentPlugin : IPlugin
         if (context.Configuration["agentsConfigPath"] is string configPath && File.Exists(configPath))
         {
             var configJson = await File.ReadAllTextAsync(configPath);
-            var config = JsonNode.Parse(configJson)!["agents"]!.AsArray();
+            var config = JsonNode.Parse(configJson)?["agents"]?.AsArray()
+                ?? throw new InvalidDataException($"Agent configuration '{configPath}' must contain an 'agents' array.");
             _agents = new();
             foreach (var x in config)
             {
-                _agents[x["name"]!.ToString()] = new AgentConfig
+                var agent = x ?? throw new InvalidDataException($"Agent configuration '{configPath}' contains a null entry.");
+                var name = agent["name"]?.GetValue<string>()
+                    ?? throw new InvalidDataException($"Agent configuration '{configPath}' contains an agent without a name.");
+                _agents[name] = new AgentConfig
                 {
-                    Name = x["name"]!.ToString(),
-                    Type = x["type"]!.ToString(),
-                    Url = x["url"]!.ToString(),
-                    Auth = x["auth"]?.ToString()
+                    Name = name,
+                    Type = agent["type"]?.GetValue<string>()
+                        ?? throw new InvalidDataException($"Agent '{name}' has no type."),
+                    Url = agent["url"]?.GetValue<string>()
+                        ?? throw new InvalidDataException($"Agent '{name}' has no URL."),
+                    Auth = agent["auth"]?.GetValue<string>()
                 };
             }
         }

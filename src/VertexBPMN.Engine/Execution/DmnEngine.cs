@@ -128,7 +128,7 @@ public class DmnEngine : IDmnEngine
             "integer" => Convert.ToInt32(value),
             "double" => Convert.ToDouble(value),
             "boolean" => Convert.ToBoolean(value),
-            "string" => value?.ToString(),
+            "string" => value.ToString() ?? string.Empty,
             _ => value
         };
     }

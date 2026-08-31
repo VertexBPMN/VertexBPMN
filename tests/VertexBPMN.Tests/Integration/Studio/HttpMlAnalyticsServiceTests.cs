@@ -24,13 +24,13 @@ public sealed class HttpMlAnalyticsServiceTests
         factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
         var service = new HttpMlAnalyticsService(factory.Object);
 
-        var result = await service.PredictDurationAsync("invoice");
+        var result = await service.PredictDurationAsync("invoice", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(12.5, result.GetProperty("estimatedDurationMinutes").GetDouble());
         var request = Assert.Single(requests);
         Assert.Equal(HttpMethod.Post, request.Method);
         Assert.Equal("http://api.test/api/ml/predict/duration", request.RequestUri!.ToString());
-        var body = await request.Content!.ReadFromJsonAsync<JsonElement>();
+        var body = await request.Content!.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal("invoice", body.GetProperty("processDefinitionKey").GetString());
     }
 
@@ -50,7 +50,7 @@ public sealed class HttpMlAnalyticsServiceTests
         factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
         var service = new HttpMlAnalyticsService(factory.Object);
 
-        await service.PredictBottlenecksAsync("invoice/v2");
+        await service.PredictBottlenecksAsync("invoice/v2", cancellationToken: TestContext.Current.CancellationToken);
 
         var request = Assert.Single(requests);
         Assert.Equal("http://api.test/api/ml/predict/bottlenecks/invoice%2Fv2", request.RequestUri!.ToString());
@@ -70,7 +70,7 @@ public sealed class HttpMlAnalyticsServiceTests
         factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
         var service = new HttpMlAnalyticsService(factory.Object);
 
-        await service.TrainModelsAsync();
+        await service.TrainModelsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         var request = Assert.Single(requests);
         Assert.Equal(HttpMethod.Post, request.Method);
@@ -93,7 +93,7 @@ public sealed class HttpMlAnalyticsServiceTests
         factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
         var service = new HttpMlAnalyticsService(factory.Object);
 
-        var csv = await service.ExportTrainingDataAsync("invoice/v2");
+        var csv = await service.ExportTrainingDataAsync("invoice/v2", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal("tenantId,processDefinitionKey\n", System.Text.Encoding.UTF8.GetString(csv));
         var request = Assert.Single(requests);

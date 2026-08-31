@@ -24,12 +24,12 @@ namespace VertexBPMN.Tests.Integration.Bpmn
 
         [Theory]
         [MemberData(nameof(GetBpmnFiles))]
-        public void Engine_Should_Execute_MIWG_Bpmn_File(string bpmnFile)
+        public async Task Engine_Should_Execute_MIWG_Bpmn_File(string bpmnFile)
         {
             var xml = File.ReadAllText(bpmnFile);
            var logger = new Mock<ILogger<BpmnParser>>();
             var parser = new BpmnParser(logger.Object, TracerProvider.Default);
-            var model =  parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
+            var model =  await parser.ParseAsync(xml.Replace('\'', '"'), TestContext.Current.CancellationToken);
             var engine = new ProcessEngine();
             var result = engine.Execute(model);
             Assert.NotNull(result);

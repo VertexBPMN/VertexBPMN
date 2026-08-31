@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Moq;
 using OpenTelemetry.Trace;
 using Shouldly;
@@ -284,12 +284,11 @@ public class DistributedProcessEngineEventTests
                     token,
                     model,
                     trace,
-                    CancellationToken.None
+                    TestContext.Current.CancellationToken
                 });
 
-            result.ShouldBeAssignableTo<Task>();
-
-            await (Task)result!;
+            var task = Assert.IsAssignableFrom<Task>(result);
+            await task;
         }
         catch (TargetInvocationException exception)
             when (exception.InnerException != null)

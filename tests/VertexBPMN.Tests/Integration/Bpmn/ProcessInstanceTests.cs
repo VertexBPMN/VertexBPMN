@@ -8,7 +8,6 @@ namespace VertexBPMN.Tests.Integration.Bpmn;
 public class ProcessInstanceTests : IAsyncLifetime
 {
     private readonly SharedSqliteDbFixture _fixture;
-    private TestTransactionScope? _scope;
     private BpmnDbContext _ctx = null!;
 
     public ProcessInstanceTests(SharedSqliteDbFixture fixture) => _fixture = fixture;
@@ -28,8 +27,7 @@ public class ProcessInstanceTests : IAsyncLifetime
     {
         var processInstance = await _ctx.ProcessInstances
             .AsNoTracking()
-            .FirstOrDefaultAsync(
-                p => p.InstanceId == "sample-instance-1");
+            .FirstOrDefaultAsync(p => p.InstanceId == "sample-instance-1", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(processInstance);
     }

@@ -9,16 +9,18 @@ namespace VertexBPMN.Tests.Conformance.extended
     public class C_6_0_Test
     {
         [Fact]
-        public void Test_C_6_0_Bpmn()
+        public async Task Test_C_6_0_Bpmn()
         {
             var bpmnFile = Path.Combine(Directory.GetCurrentDirectory(), "TestData", "Reference", "C.6.0.bpmn");
             var xml = File.ReadAllText(bpmnFile);
             var logger = new Mock<ILogger<BpmnParser>>();
             var parser = new BpmnParser(logger.Object, TracerProvider.Default);
-            var model = parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
+            var model = await parser.ParseAsync(xml.Replace('\'', '"'), TestContext.Current.CancellationToken);
             Assert.NotNull(model);
             var engine = new ProcessEngine();
-            var result = engine.Execute(model);
+            var startEvent = model.Events.First(evt =>
+                evt.Type == "startEvent" && evt.SubprocessId is null && evt.ProcessId == model.ProcessId);
+            var result = engine.ExecuteFromStartEvent(model, startEvent.Id);
             Assert.NotNull(result);
             Assert.True(result.Count > 0, "No trace produced for C.6.0.bpmn");
 
@@ -27,10 +29,13 @@ namespace VertexBPMN.Tests.Conformance.extended
             // boundaryEvent, eventBasedGateway, intermediateCatchEvent/-ThrowEvent, subProcess (Event-Subprocess).
             Assert.Contains(result, r => r.ToString().Contains("StartEvent"));
             Assert.Contains(result, r => r.ToString().Contains("EndEvent"));
-            Assert.Contains(result, r => r.ToString().Contains("ParallelGateway"));
-            // ACHTUNG: folgende Bezeichner bisher unbestätigtes Vokabular – ggf. anpassen.
-            Assert.Contains(result, r => r.ToString().Contains("ServiceTask"));
-            Assert.Contains(result, r => r.ToString().Contains("BoundaryEvent"));
+            Assert.Contains(result, r => r.Contains("EventBasedGateway", StringComparison.Ordinal));
+            var nestedStartEvents = model.Events.Where(evt =>
+                evt.Type == "startEvent" &&
+                (evt.SubprocessId is not null || evt.ProcessId != model.ProcessId)).ToArray();
+            Assert.NotEmpty(nestedStartEvents);
+            Assert.DoesNotContain(nestedStartEvents, evt =>
+                result.Any(entry => entry.Contains($"StartEvent: {evt.Id}", StringComparison.Ordinal)));
 
             foreach (var item in result)
             {

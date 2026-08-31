@@ -45,7 +45,7 @@ public class Phase7EventDefinitionEnrichmentTests
         var parser = new BpmnParser(options);
 
         // Act
-        var model = await parser.ParseAsync(xml);
+        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
 
         // Assert - Should have strongly-typed event definitions
         Assert.Equal(5, model.Events.Count);
@@ -112,7 +112,7 @@ public class Phase7EventDefinitionEnrichmentTests
         var parser = new BpmnParser(options);
 
         // Act
-        var model = await parser.ParseAsync(xml);
+        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
 
         // Assert - Should handle unknown event definitions gracefully
         Assert.Equal(2, model.Events.Count);
@@ -157,7 +157,7 @@ public class Phase7EventDefinitionEnrichmentTests
         var parser = new BpmnParser(options);
 
         // Act
-        var model = await parser.ParseAsync(xml);
+        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
 
         // Assert - Should have both event definitions
         var multiEvent = model.Events.First(e => e.Id == "multi1");
@@ -205,7 +205,7 @@ public class Phase7EventDefinitionEnrichmentTests
         var parser = new BpmnParser(options);
 
         // Act
-        var model = await parser.ParseAsync(xml);
+        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
 
         // Assert - Runtime projection should see consistent event definition counts
         Assert.NotNull(model.Runtime);
@@ -265,7 +265,7 @@ public class Phase7EventDefinitionEnrichmentTests
         var parser = new BpmnParser(options);
 
         // Act
-        var model = await parser.ParseAsync(xml);
+        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var serialized = parser.Serialize(model);
 
         // Assert - Roundtrip should be byte-identical (or canonically equivalent)
@@ -281,7 +281,7 @@ public class Phase7EventDefinitionEnrichmentTests
         Assert.Contains("escalationRef=\"esc1\"", serialized);
         
         // Verify no data loss in roundtrip
-        var reparsed = await parser.ParseAsync(serialized);
+        var reparsed = await parser.ParseAsync(serialized, TestContext.Current.CancellationToken);
         Assert.Equal(model.Events.Count, reparsed.Events.Count);
         
         foreach (var originalEvent in model.Events)
@@ -315,13 +315,12 @@ public class Phase7EventDefinitionEnrichmentTests
         var parser = new BpmnParser(options);
 
         // Act
-        var model = await parser.ParseAsync(xml);
+        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
 
         // Assert - Should have diagnostic about unknown event definition
         Assert.NotNull(model.ValidationDiagnostics);
         var unknownDiagnostic = model.ValidationDiagnostics
             .FirstOrDefault(d => d.Code == "VEN-UNKNOWN-EVENT-DEFINITION");
-        Assert.NotNull(unknownDiagnostic);
         Assert.Equal("start", unknownDiagnostic.ElementId);
         Assert.Contains("unknown:proprietaryEventDefinition", unknownDiagnostic.Message);
         Assert.Equal(ValidationSeverity.Info, unknownDiagnostic.Severity);
@@ -348,7 +347,7 @@ public class Phase7EventDefinitionEnrichmentTests
         var parser = new BpmnParser(options);
 
         // Act
-        var model = await parser.ParseAsync(xml);
+        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
 
         // Assert - Should handle events without definitions
         Assert.Equal(2, model.Events.Count);

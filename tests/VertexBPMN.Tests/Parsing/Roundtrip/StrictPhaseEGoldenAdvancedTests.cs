@@ -19,7 +19,7 @@ public class StrictPhaseEGoldenAdvancedTests
     private static string Normalize(string s) => string.Concat(s.Where(c => c!='\n' && c!='\r'));
 
     [Fact]
-    public void Golden_Subprocess_Boundary_Signal_Message()
+    public async Task Golden_Subprocess_Boundary_Signal_Message()
     {
         // Subprocess kept empty (serializer currently emits no nested flow nodes) + boundary timer event attached to user task + global message/signal
         const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL'>
@@ -37,7 +37,7 @@ public class StrictPhaseEGoldenAdvancedTests
     <bpmn:sequenceFlow id='f2' sourceRef='ut1' targetRef='e1'/>
   </bpmn:process>
 </bpmn:definitions>";
-        var model = StrictParser.ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await StrictParser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
 
         var document = XDocument.Parse(outXml);

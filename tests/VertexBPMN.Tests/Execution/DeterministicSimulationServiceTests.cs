@@ -37,7 +37,7 @@ public sealed class DeterministicSimulationServiceTests
 
         Assert.True(result.Completed);
         Assert.Equal(new[] { "start", "split", "a", "b", "join", "end" }, Ids(result));
-        Assert.Single(result.Steps.Where(step => step.ActivityId == "join"));
+        Assert.Single(result.Steps, step => step.ActivityId == "join");
     }
 
     [Fact]
@@ -310,7 +310,7 @@ public sealed class DeterministicSimulationServiceTests
         Assert.Equal(
             [0, 1, 2],
             iterations.Select(step => Convert.ToInt32(step.Variables["loopCounter"])).ToArray());
-        Assert.Single(result.Steps.Where(step => step.ActivityId == "end"));
+        Assert.Single(result.Steps, step => step.ActivityId == "end");
     }
 
     [Fact]
@@ -349,7 +349,7 @@ public sealed class DeterministicSimulationServiceTests
         Assert.True(result.Completed);
         Assert.Equal(2, result.Steps.Count(step => step.ActivityId == "join"));
         Assert.Equal(2, result.Steps.Count(step => step.ActivityId == "innerEnd"));
-        Assert.Single(result.Steps.Where(step => step.ActivityId == "end"));
+        Assert.Single(result.Steps, step => step.ActivityId == "end");
     }
 
     private Task<SimulationResult> Simulate(

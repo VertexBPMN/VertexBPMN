@@ -21,11 +21,11 @@ public sealed class HttpCredentialServiceTests
         factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
         var service = new HttpCredentialService(factory.Object);
 
-        await service.ListAsync("tenant-a");
-        await service.CreateAsync("tenant-a", "Payments", "api-key", null, "token", "secret");
-        await service.UpdateMetadataAsync("tenant-a", "credential-1", "Payments", "api-key", "updated");
-        await service.RotateSecretAsync("tenant-a", "credential-1", "token", "rotated");
-        await service.DeleteAsync("tenant-a", "credential-1");
+        await service.ListAsync("tenant-a", TestContext.Current.CancellationToken);
+        await service.CreateAsync("tenant-a", "Payments", "api-key", null, "token", "secret", TestContext.Current.CancellationToken);
+        await service.UpdateMetadataAsync("tenant-a", "credential-1", "Payments", "api-key", "updated", TestContext.Current.CancellationToken);
+        await service.RotateSecretAsync("tenant-a", "credential-1", "token", "rotated", TestContext.Current.CancellationToken);
+        await service.DeleteAsync("tenant-a", "credential-1", TestContext.Current.CancellationToken);
 
         Assert.Collection(
             requests,

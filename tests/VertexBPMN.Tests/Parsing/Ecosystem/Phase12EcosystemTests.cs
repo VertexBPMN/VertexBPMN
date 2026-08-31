@@ -49,7 +49,7 @@ public class Phase12EcosystemTests
 </definitions>
 """;
 
-        var model = await parser.ParseAsync(xmlWithCustomExtensions);
+        var model = await parser.ParseAsync(xmlWithCustomExtensions, TestContext.Current.CancellationToken);
         
         // Verify custom handler was invoked
         Assert.True(customHandler.WasInvoked);
@@ -81,7 +81,7 @@ public class Phase12EcosystemTests
         var standardParser = new BpmnParser(standardOptions);
         
         long memoryBeforeStandard = GC.GetTotalMemory(true);
-        var standardModel = await standardParser.ParseAsync(largeModelXml);
+        var standardModel = await standardParser.ParseAsync(largeModelXml, TestContext.Current.CancellationToken);
         long memoryAfterStandard = GC.GetTotalMemory(false);
         
         // Streaming parsing (optimized)
@@ -96,7 +96,7 @@ public class Phase12EcosystemTests
         
         GC.Collect(); // Clean up from previous test
         long memoryBeforeStreaming = GC.GetTotalMemory(true);
-        var streamingModel = await streamingParser.ParseAsync(largeModelXml);
+        var streamingModel = await streamingParser.ParseAsync(largeModelXml, TestContext.Current.CancellationToken);
         long memoryAfterStreaming = GC.GetTotalMemory(false);
         
         // Verify functionality equivalence
@@ -164,7 +164,7 @@ public class Phase12EcosystemTests
 </definitions>
 """;
 
-        var model = await parser.ParseAsync(xmlWithConfidentialData);
+        var model = await parser.ParseAsync(xmlWithConfidentialData, TestContext.Current.CancellationToken);
         
         // Verify documentation was redacted
         Assert.True(model.RawMetadata?.RawDocumentation == null || 
@@ -172,12 +172,15 @@ public class Phase12EcosystemTests
         
         // Verify confidential extensions were stripped
         var task = Assert.Single(model.Tasks);
-        
+        IEnumerable<string> extensionKeys = task.Extensions is null
+            ? Array.Empty<string>()
+            : task.Extensions.Keys;
+
         // These should be redacted
-        Assert.DoesNotContain("camunda:assignee", (IEnumerable<string>) task.Extensions?.Keys ?? Array.Empty<string>());
-        Assert.DoesNotContain("camunda:candidateUsers", (IEnumerable<string>) task.Extensions?.Keys ?? Array.Empty<string>());
-        Assert.DoesNotContain("internal:salaryBand", (IEnumerable<string>) task.Extensions?.Keys ?? Array.Empty<string>());
-        Assert.DoesNotContain("internal:department", (IEnumerable<string>) task.Extensions?.Keys ?? Array.Empty<string>());
+        Assert.DoesNotContain("camunda:assignee", extensionKeys);
+        Assert.DoesNotContain("camunda:candidateUsers", extensionKeys);
+        Assert.DoesNotContain("internal:salaryBand", extensionKeys);
+        Assert.DoesNotContain("internal:department", extensionKeys);
 
         // Task name should remain (not sensitive)
         Assert.Equal("Approve Request", task.Name);
@@ -199,7 +202,7 @@ public class Phase12EcosystemTests
         
         using var xmlStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(largeXml));
         
-        var result = await streamingParser.ParseStreamAsync(xmlStream);
+        var result = await streamingParser.ParseStreamAsync(xmlStream, TestContext.Current.CancellationToken);
         
         Assert.NotNull(result);
         Assert.Equal("largeTestProcess", result.ProcessId);
@@ -237,7 +240,7 @@ public class Phase12EcosystemTests
 </definitions>
 """;
 
-        var model = await parser.ParseAsync(xml);
+        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         
         Assert.True(namespaceHandler.WasInvoked);
         Assert.Equal(namespaceUri, namespaceHandler.ProcessedNamespace);
@@ -274,19 +277,22 @@ public class Phase12EcosystemTests
             RedactionPolicies = policies
         });
         
-        var model = await parser.ParseAsync(xml);
+        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         
         var task = Assert.Single(model.Tasks);
+        IEnumerable<string> extensionKeys = task.Extensions is null
+            ? Array.Empty<string>()
+            : task.Extensions.Keys;
         
         // Should be preserved
         Assert.Equal("task1", task.Id);
         Assert.Equal("Public Task", task.Name);
         
         // Should be redacted
-        Assert.DoesNotContain("camunda:assignee", (IEnumerable<string>) task.Extensions?.Keys ?? Array.Empty<string>());
+        Assert.DoesNotContain("camunda:assignee", extensionKeys);
 
         // Form fields should be preserved (not in redacted list)
-        Assert.Contains("camunda:formField.name", (IEnumerable<string>)task.Extensions?.Keys ?? Array.Empty<string>());
+        Assert.Contains("camunda:formField.name", extensionKeys);
         Assert.Equal("Amount", task.Extensions?["camunda:formField.name"]);
     }
 

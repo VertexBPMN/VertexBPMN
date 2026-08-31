@@ -22,7 +22,7 @@ public sealed class ServiceTaskRegistry : IServiceTaskRegistry
     }
     public IServiceTaskHandler GetHandler(string type)
     {
-        if (TryResolve(type, out var handler))
+        if (TryResolve(type, out var handler) && handler is not null)
             return handler;
         throw new DistributedTokenException($"No handler registered for service task type: {type}");
     }

@@ -23,7 +23,7 @@ public class UnifiedPhaseCReferenceTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         Assert.Single(model.Messages);
         Assert.Single(model.Signals);
         Assert.DoesNotContain(model.Diagnostics, d => d.Contains("messageRef"));
@@ -51,7 +51,7 @@ public class UnifiedPhaseCReferenceTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var messageRefs = model.Diagnostics.Where(se => se.Contains("Unknown messageRef") && se.Contains("MissingMsg")).ToList();
         Assert.Contains(model.Diagnostics, d => d.Contains("Unknown messageRef") && d.Contains("MissingMsg"));
         Assert.Contains(model.Diagnostics, d => d.Contains("Unknown signalRef") && d.Contains("MissingSig"));
@@ -76,7 +76,7 @@ public class UnifiedPhaseCReferenceTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         Assert.Single(model.Errors);
         Assert.Single(model.Escalations);
         Assert.DoesNotContain(model.Diagnostics, d => d.Contains("errorRef"));

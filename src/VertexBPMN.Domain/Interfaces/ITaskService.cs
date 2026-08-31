@@ -16,12 +16,12 @@ public interface ITaskService
     /// <summary>
     /// Completes a user task with optional variables.
     /// </summary>
-    ValueTask<ProcessMiningEvent> CompleteAsync(Guid taskId, IDictionary<string, object>? variables = null, CancellationToken cancellationToken = default, string? idempotencyKey = null);
+    ValueTask<ProcessMiningEvent?> CompleteAsync(Guid taskId, IDictionary<string, object>? variables = null, CancellationToken cancellationToken = default, string? idempotencyKey = null);
 
     /// <summary>
     /// Delegates a user task to another user.
     /// </summary>
-    ValueTask<ProcessMiningEvent> DelegateAsync(Guid taskId, string userId, CancellationToken cancellationToken = default);
+    ValueTask<ProcessMiningEvent?> DelegateAsync(Guid taskId, string userId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets a user task by ID.
@@ -33,5 +33,5 @@ public interface ITaskService
     /// </summary>
     IAsyncEnumerable<UserTask> ListAsync(Guid? processInstanceId = null, string? assignee = null, string? tenantId = null, CancellationToken cancellationToken = default);
 
-    ValueTask<ProcessMiningEvent> RejectAsync(Guid userTaskId, object rejectionReason, CancellationToken cancellationToken = default);
+    ValueTask<ProcessMiningEvent?> RejectAsync(Guid userTaskId, object rejectionReason, CancellationToken cancellationToken = default);
 }

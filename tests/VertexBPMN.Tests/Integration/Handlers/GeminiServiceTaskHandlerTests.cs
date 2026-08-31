@@ -39,12 +39,13 @@ public class GeminiServiceTaskHandlerTests : IDisposable
         var variables = new Dictionary<string, object>();
 
         // Act
-        await _handler.ExecuteAsync(attributes, variables);
+        await _handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken);
 
         // Assert
         variables.ShouldContainKey("geminiResult");
-        variables["geminiResult"].ToString().ShouldContain("Gemini gemini-pro processed");
-        variables["geminiResult"].ToString().ShouldContain("Analyze this data comprehensively");
+        var result = Assert.IsType<string>(variables["geminiResult"]);
+        result.ShouldContain("Gemini gemini-pro processed");
+        result.ShouldContain("Analyze this data comprehensively");
     }
 
     [Fact]
@@ -109,12 +110,13 @@ public class GeminiServiceTaskHandlerTests : IDisposable
         try
         {
             // Act
-            await _handler.ExecuteAsync(attributes, variables);
+            await _handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken);
 
             // Assert
             variables.ShouldContainKey("geminiResult");
-            variables["geminiResult"].ToString().ShouldContain("Mocked Gemini response");
-            variables["geminiResult"].ToString().ShouldContain("comprehensive analysis");
+            var result = Assert.IsType<string>(variables["geminiResult"]);
+            result.ShouldContain("Mocked Gemini response");
+            result.ShouldContain("comprehensive analysis");
 
             // Verify HTTP request was made correctly
             _httpMessageHandlerMock.Protected().Verify(
@@ -151,11 +153,11 @@ public class GeminiServiceTaskHandlerTests : IDisposable
         var variables = new Dictionary<string, object>();
 
         // Act
-        await _handler.ExecuteAsync(attributes, variables);
+        await _handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken);
 
         // Assert
         variables.ShouldContainKey("taskOutput");
-        var result = variables["taskOutput"].ToString();
+        var result = Assert.IsType<string>(variables["taskOutput"]);
         result.ShouldContain("Gemini");
         result.ShouldContain($"Execute {taskType} task");
     }

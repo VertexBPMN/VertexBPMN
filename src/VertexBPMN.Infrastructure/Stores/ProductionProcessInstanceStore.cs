@@ -116,7 +116,7 @@ public sealed class ProductionProcessInstanceStore : IProcessInstanceStore
 
     // Worker
     public Task SaveWorkerAsync(WorkerNode worker) => Task.CompletedTask; // TODO: Implement persistence (Upsert)
-    public Task<WorkerNode> GetWorkerAsync(string workerId)
+    public Task<WorkerNode?> GetWorkerAsync(string workerId)
     {
         // TODO: Replace with real retrieval from persistence layer once WorkerNodes are stored
         var worker = new WorkerNode(
@@ -131,7 +131,7 @@ public sealed class ProductionProcessInstanceStore : IProcessInstanceStore
             false,                   // IsBusy
             true                     // IsHealthy
         );
-        return Task.FromResult(worker);
+        return Task.FromResult<WorkerNode?>(worker);
     }
     public Task<List<WorkerNode>> GetActiveWorkersAsync() => Task.FromResult(new List<WorkerNode>());
     public Task RemoveWorkerAsync(string workerId) => Task.CompletedTask;

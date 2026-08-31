@@ -281,7 +281,7 @@ public class CustomWebApplicationFactory : WebApplicationFactory<VertexBPMN.Api.
         _initialized = true;
     }
 
-    public async Task DisposeAsync()
+    public override async ValueTask DisposeAsync()
     {
         foreach (var c in _ownedConnections)
         {
@@ -293,6 +293,7 @@ public class CustomWebApplicationFactory : WebApplicationFactory<VertexBPMN.Api.
             catch { /* ignore */ }
         }
         _ownedConnections.Clear();
+        await base.DisposeAsync();
     }
     private static async Task<bool> TableExistsAsync(IServiceProvider sp, string table)
     {
@@ -351,7 +352,7 @@ public class CustomWebApplicationFactory : WebApplicationFactory<VertexBPMN.Api.
         return client;
     }
 
-    public new HttpClient CreateClient(ITestOutputHelper output)
+    public HttpClient CreateClient(ITestOutputHelper output)
     {
         InitializeAsync().GetAwaiter().GetResult();
         var options = new WebApplicationFactoryClientOptions

@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Configuration;
 using VertexBPMN.Infrastructure;
 
 namespace VertexBPMN.Tests.Integration.Api;
@@ -48,7 +48,7 @@ public class ServiceDependenciesHealthCheckTests
             Registration = new HealthCheckRegistration("service_deps", hc, null, [])
         };
 
-        var result = await hc.CheckHealthAsync(ctx, CancellationToken.None);
+        var result = await hc.CheckHealthAsync(ctx, TestContext.Current.CancellationToken);
 
         Assert.Equal(HealthStatus.Healthy, result.Status);
         Assert.Equal("All critical services resolved", result.Description);
@@ -64,7 +64,7 @@ public class ServiceDependenciesHealthCheckTests
             Registration = new HealthCheckRegistration("service_deps", hc, null, [])
         };
 
-        var result = await hc.CheckHealthAsync(ctx, CancellationToken.None);
+        var result = await hc.CheckHealthAsync(ctx, TestContext.Current.CancellationToken);
 
         Assert.Equal(HealthStatus.Unhealthy, result.Status);
         Assert.Contains("Missing", result.Description);

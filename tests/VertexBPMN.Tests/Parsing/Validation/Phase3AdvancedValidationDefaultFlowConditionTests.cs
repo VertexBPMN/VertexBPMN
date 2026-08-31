@@ -49,25 +49,25 @@ public class Phase3AdvancedValidationDefaultFlowConditionTests
 """;
 
     [Fact]
-    public void DefaultFlowCondition_Disabled_NoStructuredDiagnostics()
+    public async Task DefaultFlowCondition_Disabled_NoStructuredDiagnostics()
     {
-        var model = new BpmnParser(new BpmnParserOptions
+        var model = await new BpmnParser(new BpmnParserOptions
         {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = false
-        }).ParseAsync(XmlWithDefaultCondition).GetAwaiter().GetResult();
+        }).ParseAsync(XmlWithDefaultCondition, TestContext.Current.CancellationToken);
 
         Assert.Null(model.ValidationDiagnostics);
     }
 
     [Fact]
-    public void DefaultFlowCondition_Enabled_FindsViolation()
+    public async Task DefaultFlowCondition_Enabled_FindsViolation()
     {
-        var model = new BpmnParser(new BpmnParserOptions
+        var model = await new BpmnParser(new BpmnParserOptions
         {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(XmlWithDefaultCondition).GetAwaiter().GetResult();
+        }).ParseAsync(XmlWithDefaultCondition, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         Assert.Contains(model.ValidationDiagnostics!, d =>
@@ -79,13 +79,13 @@ public class Phase3AdvancedValidationDefaultFlowConditionTests
     }
 
     [Fact]
-    public void DefaultFlowCondition_Enabled_NoViolationWhenValid()
+    public async Task DefaultFlowCondition_Enabled_NoViolationWhenValid()
     {
-        var model = new BpmnParser(new BpmnParserOptions
+        var model = await new BpmnParser(new BpmnParserOptions
         {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(XmlWithoutDefaultCondition).GetAwaiter().GetResult();
+        }).ParseAsync(XmlWithoutDefaultCondition, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         Assert.DoesNotContain(model.ValidationDiagnostics!, d => d.Code == "SEM-DEFAULT-WITH-CONDITION");

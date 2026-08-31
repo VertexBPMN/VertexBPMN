@@ -21,7 +21,7 @@ public sealed class HttpSimulationScenarioServiceTests
         factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
         var service = new HttpSimulationScenarioService(factory.Object);
 
-        await service.GetAllAsync("tenant/a");
+        await service.GetAllAsync("tenant/a", TestContext.Current.CancellationToken);
 
         var request = Assert.Single(requests);
         Assert.Equal("http://api.test/api/simulation-scenario?tenantId=tenant%2Fa", request.RequestUri!.ToString());
@@ -40,7 +40,7 @@ public sealed class HttpSimulationScenarioServiceTests
         factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
         var service = new HttpSimulationScenarioService(factory.Object);
 
-        var result = await service.CreateAsync(new { name = "invoice" });
+        var result = await service.CreateAsync(new { name = "invoice" }, TestContext.Current.CancellationToken);
 
         Assert.Equal("scenario-1", result.GetProperty("id").GetString());
         var request = Assert.Single(requests);
@@ -61,7 +61,7 @@ public sealed class HttpSimulationScenarioServiceTests
         factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
         var service = new HttpSimulationScenarioService(factory.Object);
 
-        await service.GetByIdAsync("scenario/1");
+        await service.GetByIdAsync("scenario/1", TestContext.Current.CancellationToken);
 
         var request = Assert.Single(requests);
         Assert.Equal(HttpMethod.Get, request.Method);
@@ -81,7 +81,7 @@ public sealed class HttpSimulationScenarioServiceTests
         factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
         var service = new HttpSimulationScenarioService(factory.Object);
 
-        await service.UpdateAsync("scenario-1", new { name = "updated" });
+        await service.UpdateAsync("scenario-1", new { name = "updated" }, TestContext.Current.CancellationToken);
 
         var request = Assert.Single(requests);
         Assert.Equal(HttpMethod.Put, request.Method);

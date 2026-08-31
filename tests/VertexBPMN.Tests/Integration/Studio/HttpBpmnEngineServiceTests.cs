@@ -27,7 +27,7 @@ public sealed class HttpBpmnEngineServiceTests
         var request = Assert.Single(requests);
         Assert.Equal(HttpMethod.Post, request.Method);
         Assert.Equal("http://api.test/api/repository", request.RequestUri!.ToString());
-        var body = await request.Content!.ReadFromJsonAsync<JsonElement>();
+        var body = await request.Content!.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal("<definitions />", body.GetProperty("bpmnXml").GetString());
         Assert.Equal("invoice.bpmn", body.GetProperty("name").GetString());
         Assert.Equal("tenant-a", body.GetProperty("tenantId").GetString());
@@ -45,7 +45,7 @@ public sealed class HttpBpmnEngineServiceTests
         Assert.Equal(instance.Id, result.Id);
         var request = Assert.Single(requests);
         Assert.Equal("http://api.test/api/runtime/start", request.RequestUri!.ToString());
-        var body = await request.Content!.ReadFromJsonAsync<JsonElement>();
+        var body = await request.Content!.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal("InvoiceProcess", body.GetProperty("processDefinitionKey").GetString());
         Assert.Equal("business-42", body.GetProperty("businessKey").GetString());
         Assert.True(body.GetProperty("variables").GetProperty("approved").GetBoolean());
@@ -62,7 +62,7 @@ public sealed class HttpBpmnEngineServiceTests
         var request = Assert.Single(requests);
         Assert.Equal(HttpMethod.Post, request.Method);
         Assert.Equal($"http://api.test/api/task/{taskId}/complete", request.RequestUri!.ToString());
-        var body = await request.Content!.ReadFromJsonAsync<JsonElement>();
+        var body = await request.Content!.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal("{}", body.GetProperty("variables").GetProperty("formData").GetString());
     }
 
@@ -90,7 +90,7 @@ public sealed class HttpBpmnEngineServiceTests
         await service.CompleteTaskAsync(taskId, null, "tenant-a");
 
         var request = Assert.Single(requests);
-        var body = await request.Content!.ReadFromJsonAsync<JsonElement>();
+        var body = await request.Content!.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal("tenant-a", body.GetProperty("tenantId").GetString());
     }
 

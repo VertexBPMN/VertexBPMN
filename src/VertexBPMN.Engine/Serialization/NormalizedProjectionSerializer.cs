@@ -366,6 +366,8 @@ public class NormalizedProjectionSerializer
         if (!string.IsNullOrEmpty(flow.ConditionExpression))
         {
             var conditionElement = new XElement(ns + "conditionExpression", new XCData(flow.ConditionExpression));
+            if (!string.IsNullOrWhiteSpace(flow.ConditionExpressionLanguage))
+                conditionElement.SetAttributeValue("language", flow.ConditionExpressionLanguage);
             element.Add(conditionElement);
         }
 
@@ -880,8 +882,9 @@ public class NormalizedProjectionSerializer
                     }
                     return null;
                 })
-                .Where(item => item != null)
-                .GroupBy(item => item!.FieldId)
+                .Where(item => item is not null)
+                .Select(item => item!)
+                .GroupBy(item => item.FieldId)
                 .OrderBy(g => g.Key);
 
             foreach (var fieldGroup in fieldGroups)
@@ -1037,8 +1040,9 @@ public class NormalizedProjectionSerializer
                     }
                     return null;
                 })
-                .Where(item => item != null)
-                .GroupBy(item => item!.PropertyId);
+                .Where(item => item is not null)
+                .Select(item => item!)
+                .GroupBy(item => item.PropertyId);
 
             foreach (var propGroup in propGroups.OrderBy(g => g.Key))
             {
@@ -1106,8 +1110,9 @@ public class NormalizedProjectionSerializer
                     }
                     return null;
                 })
-                .Where(item => item != null)
-                .GroupBy(item => item!.ConnectorId);
+                .Where(item => item is not null)
+                .Select(item => item!)
+                .GroupBy(item => item.ConnectorId);
 
             foreach (var connectorGroup in connectorGroups.OrderBy(g => g.Key))
             {
@@ -1137,8 +1142,9 @@ public class NormalizedProjectionSerializer
                     }
                     return null;
                 })
-                .Where(item => item != null)
-                .GroupBy(item => item!.ModuleId);
+                .Where(item => item is not null)
+                .Select(item => item!)
+                .GroupBy(item => item.ModuleId);
 
             foreach (var moduleGroup in moduleGroups.OrderBy(g => g.Key))
             {
@@ -1192,8 +1198,9 @@ public class NormalizedProjectionSerializer
                     }
                     return null;
                 })
-                .Where(item => item != null)
-                .GroupBy(item => item!.HandlerId);
+                .Where(item => item is not null)
+                .Select(item => item!)
+                .GroupBy(item => item.HandlerId);
 
             foreach (var handlerGroup in handlerGroups.OrderBy(g => g.Key))
             {
@@ -1310,8 +1317,9 @@ public class NormalizedProjectionSerializer
                 }
                 return null;
             })
-            .Where(item => item != null)
-            .GroupBy(item => item!.ElementName);
+            .Where(item => item is not null)
+            .Select(item => item!)
+            .GroupBy(item => item.ElementName);
 
         foreach (var elementGroup in elementGroups.OrderBy(g => g.Key))
         {
@@ -1345,8 +1353,9 @@ public class NormalizedProjectionSerializer
                 }
                 return null;
             })
-            .Where(item => item != null)
-            .GroupBy(item => item!.FieldId)
+            .Where(item => item is not null)
+            .Select(item => item!)
+            .GroupBy(item => item.FieldId)
             .OrderBy(g => g.Key);
 
         foreach (var fieldGroup in fieldGroups)
@@ -1377,8 +1386,9 @@ public class NormalizedProjectionSerializer
                 }
                 return null;
             })
-            .Where(item => item != null)
-            .GroupBy(item => item!.Index);
+            .Where(item => item is not null)
+            .Select(item => item!)
+            .GroupBy(item => item.Index);
 
         foreach (var group in groups.OrderBy(g => g.Key))
         {

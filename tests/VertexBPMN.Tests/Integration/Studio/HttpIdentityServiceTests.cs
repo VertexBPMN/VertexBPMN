@@ -23,7 +23,7 @@ public sealed class HttpIdentityServiceTests
         factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
         var service = new HttpIdentityService(factory.Object);
 
-        var tenants = await service.ListTenantsAsync();
+        var tenants = await service.ListTenantsAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, tenants.Count);
         Assert.Equal("tenant-a", tenants[0].Id);
@@ -45,9 +45,9 @@ public sealed class HttpIdentityServiceTests
         factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
         var service = new HttpIdentityService(factory.Object);
 
-        await service.CreateTenantAsync("Tenant 1", "Description");
-        await service.UpdateTenantAsync("tenant-1", "Tenant 2", "Updated");
-        await service.DeleteTenantAsync("tenant-1");
+        await service.CreateTenantAsync("Tenant 1", "Description", TestContext.Current.CancellationToken);
+        await service.UpdateTenantAsync("tenant-1", "Tenant 2", "Updated", TestContext.Current.CancellationToken);
+        await service.DeleteTenantAsync("tenant-1", TestContext.Current.CancellationToken);
 
         Assert.Collection(
             requests,

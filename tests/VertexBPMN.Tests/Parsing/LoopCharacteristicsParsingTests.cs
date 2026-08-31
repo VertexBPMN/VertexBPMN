@@ -22,7 +22,7 @@ public class LoopCharacteristicsParsingTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var sp = Assert.Single(model.Subprocesses);
         var mi = Assert.IsType<MultiInstanceLoopCharacteristics>(sp.Loop);
         Assert.True(mi.IsSequential);
@@ -44,7 +44,7 @@ public class LoopCharacteristicsParsingTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var sp = Assert.Single(model.Subprocesses);
         var loop = Assert.IsType<StandardLoopCharacteristics>(sp.Loop);
         Assert.True(loop.TestBefore);

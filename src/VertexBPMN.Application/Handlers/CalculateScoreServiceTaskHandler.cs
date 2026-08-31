@@ -21,7 +21,7 @@ namespace VertexBPMN.Application.Handlers
             }
 
             // Simuliere die Berechnung des Scores
-            var creditScore = CalculateCreditScore(applicantName.ToString(), applicantAge);
+            var creditScore = CalculateCreditScore(applicantName.ToString()!, applicantAge);
 
             // Speichere das Ergebnis in den Prozessvariablen
             variables["creditScore"] = creditScore;

@@ -54,7 +54,9 @@ public sealed class DmnFeelDrdFullSupportAcceptanceTests
         var serviceKey = $"fps-service-{Guid.NewGuid():N}";
         var dmn = $$"""
             <definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/">
-              <inputData id="applicantData" name="Applicant" />
+              <inputData id="applicantData" name="Applicant">
+                <variable name="score" />
+              </inputData>
               <decision id="scoreDecision" name="Score">
                 <informationRequirement><requiredInput href="#applicantData" /></informationRequirement>
                 <variable name="adjustedScore" />
@@ -199,7 +201,7 @@ public sealed class DmnFeelDrdFullSupportAcceptanceTests
             ProcessVariables: variables);
 
         await processEngine.RegisterDmnModelAsync(targetDecision, dmn);
-        var trace = await processEngine.ExecuteAsync(model);
+        var trace = await processEngine.ExecuteAsync(model, TestContext.Current.CancellationToken);
 
         Assert.Contains(trace, entry => entry.Contains($"DecisionEvaluated: {targetDecision} (local)", StringComparison.Ordinal));
         Assert.Equal(42m, variables["answer"]);

@@ -92,7 +92,7 @@ public sealed class TaskAndAnalyticsSecurityTests
             ControllerContext = ContextFor("tenant-a")
         };
 
-        var result = await controller.List("tenant-b");
+        var result = await controller.List("tenant-b", TestContext.Current.CancellationToken);
 
         var events = Assert.IsType<List<HistoryEvent>>(result.Value);
         Assert.Single(events);

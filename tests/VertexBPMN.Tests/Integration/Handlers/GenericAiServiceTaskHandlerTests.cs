@@ -42,11 +42,11 @@ public class GenericAiServiceTaskHandlerTests
         var variables = new Dictionary<string, object>();
 
         // Act
-        await handler.ExecuteAsync(attributes, variables);
+        await handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken);
 
         // Assert
         variables.ShouldContainKey($"{provider}Result");
-        var result = variables[$"{provider}Result"].ToString();
+        var result = Assert.IsType<string>(variables[$"{provider}Result"]);
         result.ShouldContain(provider);
         result.ShouldContain(model);
         result.ShouldContain($"Test {provider} provider");

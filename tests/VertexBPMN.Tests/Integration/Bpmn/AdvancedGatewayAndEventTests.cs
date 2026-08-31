@@ -86,12 +86,16 @@ public class AdvancedGatewayAndEventTests
     {
         var model = CreateEventSubprocessModel("message", new MessageEventDefinition("message1", null), "msg_subprocess", "msg_subprocess_start", "event_end", "task1");
 
-        var trace = new ProcessEngine().Execute(model);
+        var engine = new ProcessEngine();
+        var normalTrace = engine.Execute(model);
+        var eventTrace = engine.ExecuteTriggeredEventSubprocess(model, "msg_subprocess_start");
 
-        Assert.Contains(trace, r => r.Contains("IndexedEventSubprocessStart: msg_subprocess_start (message)"));
-        Assert.Contains(trace, r => r.Contains("UserTask: task1"));
-        Assert.Contains(trace, r => r.Contains("EndEvent: normal_end"));
-        Assert.Contains(trace, r => r.Contains("EndEvent: event_end"));
+        Assert.Contains(normalTrace, r => r.Contains("UserTask: task1"));
+        Assert.Contains(normalTrace, r => r.Contains("EndEvent: normal_end"));
+        Assert.DoesNotContain(normalTrace, r => r.Contains("EndEvent: event_end"));
+        Assert.Contains(eventTrace, r => r.Contains("IndexedEventSubprocessStart: msg_subprocess_start (message)"));
+        Assert.Contains(eventTrace, r => r.Contains("EndEvent: event_end"));
+        Assert.DoesNotContain(eventTrace, r => r.Contains("EndEvent: normal_end"));
     }
 
     [Fact]
@@ -99,12 +103,16 @@ public class AdvancedGatewayAndEventTests
     {
         var model = CreateEventSubprocessModel("error", new ErrorEventDefinition("error1"), "error_subprocess", "error_subprocess_start", "error_end", "risky_task");
 
-        var trace = new ProcessEngine().Execute(model);
+        var engine = new ProcessEngine();
+        var normalTrace = engine.Execute(model);
+        var eventTrace = engine.ExecuteTriggeredEventSubprocess(model, "error_subprocess_start");
 
-        Assert.Contains(trace, r => r.Contains("IndexedEventSubprocessStart: error_subprocess_start (error)"));
-        Assert.Contains(trace, r => r.Contains("ServiceTask: risky_task"));
-        Assert.Contains(trace, r => r.Contains("EndEvent: normal_end"));
-        Assert.Contains(trace, r => r.Contains("EndEvent: error_end"));
+        Assert.Contains(normalTrace, r => r.Contains("ServiceTask: risky_task"));
+        Assert.Contains(normalTrace, r => r.Contains("EndEvent: normal_end"));
+        Assert.DoesNotContain(normalTrace, r => r.Contains("EndEvent: error_end"));
+        Assert.Contains(eventTrace, r => r.Contains("IndexedEventSubprocessStart: error_subprocess_start (error)"));
+        Assert.Contains(eventTrace, r => r.Contains("EndEvent: error_end"));
+        Assert.DoesNotContain(eventTrace, r => r.Contains("EndEvent: normal_end"));
     }
 
     [Fact]
@@ -112,12 +120,16 @@ public class AdvancedGatewayAndEventTests
     {
         var model = CreateEventSubprocessModel("timer", new TimerEventDefinition(null, "PT1M", null), "timer_subprocess", "timer_subprocess_start", "timer_end", "long_task");
 
-        var trace = new ProcessEngine().Execute(model);
+        var engine = new ProcessEngine();
+        var normalTrace = engine.Execute(model);
+        var eventTrace = engine.ExecuteTriggeredEventSubprocess(model, "timer_subprocess_start");
 
-        Assert.Contains(trace, r => r.Contains("IndexedEventSubprocessStart: timer_subprocess_start (timer)"));
-        Assert.Contains(trace, r => r.Contains("UserTask: long_task"));
-        Assert.Contains(trace, r => r.Contains("EndEvent: normal_end"));
-        Assert.Contains(trace, r => r.Contains("EndEvent: timer_end"));
+        Assert.Contains(normalTrace, r => r.Contains("UserTask: long_task"));
+        Assert.Contains(normalTrace, r => r.Contains("EndEvent: normal_end"));
+        Assert.DoesNotContain(normalTrace, r => r.Contains("EndEvent: timer_end"));
+        Assert.Contains(eventTrace, r => r.Contains("IndexedEventSubprocessStart: timer_subprocess_start (timer)"));
+        Assert.Contains(eventTrace, r => r.Contains("EndEvent: timer_end"));
+        Assert.DoesNotContain(eventTrace, r => r.Contains("EndEvent: normal_end"));
     }
 
     [Fact]
@@ -125,12 +137,16 @@ public class AdvancedGatewayAndEventTests
     {
         var model = CreateEventSubprocessModel("signal", new SignalEventDefinition("signal1"), "signal_subprocess", "signal_subprocess_start", "signal_end", "waiting_task");
 
-        var trace = new ProcessEngine().Execute(model);
+        var engine = new ProcessEngine();
+        var normalTrace = engine.Execute(model);
+        var eventTrace = engine.ExecuteTriggeredEventSubprocess(model, "signal_subprocess_start");
 
-        Assert.Contains(trace, r => r.Contains("IndexedEventSubprocessStart: signal_subprocess_start (signal)"));
-        Assert.Contains(trace, r => r.Contains("UserTask: waiting_task"));
-        Assert.Contains(trace, r => r.Contains("EndEvent: normal_end"));
-        Assert.Contains(trace, r => r.Contains("EndEvent: signal_end"));
+        Assert.Contains(normalTrace, r => r.Contains("UserTask: waiting_task"));
+        Assert.Contains(normalTrace, r => r.Contains("EndEvent: normal_end"));
+        Assert.DoesNotContain(normalTrace, r => r.Contains("EndEvent: signal_end"));
+        Assert.Contains(eventTrace, r => r.Contains("IndexedEventSubprocessStart: signal_subprocess_start (signal)"));
+        Assert.Contains(eventTrace, r => r.Contains("EndEvent: signal_end"));
+        Assert.DoesNotContain(eventTrace, r => r.Contains("EndEvent: normal_end"));
     }
 
     [Fact]
@@ -188,7 +204,7 @@ public class AdvancedGatewayAndEventTests
                 new(eventEndId, "endEvent", null, subprocessId),
                 new("normal_end", "endEvent"),
             },
-            new List<BpmnTask> { new(taskId, eventType == "error" ? "serviceTask" : "userTask", subprocessId) },
+            new List<BpmnTask> { new(taskId, eventType == "error" ? "serviceTask" : "userTask") },
             new List<BpmnGateway>(),
             new List<BpmnSequenceFlow>
             {
@@ -198,7 +214,7 @@ public class AdvancedGatewayAndEventTests
             new List<BpmnSubprocess>
             {
                 new(subprocessId, true, false, null, null, null,
-                    new[] { startId, eventEndId, taskId }, new[] { "event_flow1" })
+                    new[] { startId, eventEndId }, new[] { "event_flow1" })
             });
     }
 

@@ -128,7 +128,7 @@ public class UserTaskHandler
             : UserTaskValidationResult.Failure(errors);
     }
 
-    private async ValueTask<object> ExecuteUserTaskAsync(UserTask userTask, UserTaskContext context) =>
+    private async ValueTask<object?> ExecuteUserTaskAsync(UserTask userTask, UserTaskContext context) =>
         context.Action switch
         {
             UserTaskAction.Complete => await _taskService.CompleteAsync(userTask.Id, context.TaskData),

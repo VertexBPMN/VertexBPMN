@@ -134,7 +134,7 @@ public class Phase11HardeningTests
 
         // Should fail safely without exposing system files
         var exception = await Assert.ThrowsAsync<SecurityException>(
-            () => parser.ParseAsync(xxeAttempt));
+            () => parser.ParseAsync(xxeAttempt, TestContext.Current.CancellationToken));
         
         // Verify the error is related to DTD/entity processing
         Assert.True(

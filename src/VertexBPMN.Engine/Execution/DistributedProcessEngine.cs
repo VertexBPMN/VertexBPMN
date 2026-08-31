@@ -127,10 +127,12 @@ namespace VertexBPMN.Engine.Execution
                 Guid.NewGuid(),
                 Guid.Parse(processModel.Id),
                 processModel.Events.FirstOrDefault(pi =>
-                    pi.Type == "eventListener" && pi.Definitions.SingleOrDefault().Kind == "startEvent")?.Id
+                    pi.Type == "eventListener" && pi.Definitions?.SingleOrDefault()?.Kind == "startEvent")?.Id
                 ?? throw new DistributedTokenException("No start event found in process"),
                 "eventListener",
-                (Dictionary<string, object>) processModel.ProcessVariables,
+                processModel.ProcessVariables is null
+                    ? new Dictionary<string, object>()
+                    : new Dictionary<string, object>(processModel.ProcessVariables),
                 DateTime.UtcNow
             );
 
@@ -640,7 +642,7 @@ namespace VertexBPMN.Engine.Execution
 
                 var caseTokens = await _store.GetPendingCaseTokensAsync();
                 var caseToken = caseTokens.FirstOrDefault(t => t.CaseInstanceId == Guid.Parse(caseId));
-                if (caseToken == null)
+                if (caseToken.Id == Guid.Empty)
                 {
                     throw new DistributedTokenException($"No active tokens found for case {caseId}");
                 }
@@ -1045,7 +1047,7 @@ namespace VertexBPMN.Engine.Execution
                             await CompletePlanItemAsync(planItem, token, model, trace, cancellationToken);
                             break;
                         case "eventlistener" when planItem.DefinitionRef == "timerEventListener":
-                            var duration = planItem.Attributes?.GetValueOrDefault("timeDuration", "PT1M");
+                            var duration = planItem.Attributes?.GetValueOrDefault("timeDuration") ?? "PT1M";
                             await Task.Delay(ParseDuration(duration), cancellationToken);
                             trace.Add($"TimerEventListenerTriggered: {planItem.Id} after {duration}");
                             await CompletePlanItemAsync(planItem, token, model, trace, cancellationToken);
@@ -1555,7 +1557,7 @@ namespace VertexBPMN.Engine.Execution
                         attributes["implementation"] = taskDef;
 
                     if (_serviceRegistry.TryResolve(attributes.GetValueOrDefault("implementation", ""),
-                            out var handler))
+                            out var handler) && handler is not null)
                     {
                         trace.Add($"ServiceTask: local handler found for {task.Implementation}");
                         await handler.ExecuteAsync(attributes, variables, cancellationToken);
@@ -1755,8 +1757,7 @@ namespace VertexBPMN.Engine.Execution
             List<string> trace, CancellationToken cancellationToken)
         {
             var attributes = planItem.Attributes ?? new Dictionary<string, string>();
-            string processRef;
-            if (attributes.TryGetValue("camunda:processRef", out processRef) ||
+            if (attributes.TryGetValue("camunda:processRef", out var processRef) ||
                 attributes.TryGetValue("flowable:processRef", out processRef))
             {
                 trace.Add($"ProcessTask: {planItem.Id} starting process {processRef}");
@@ -1772,8 +1773,7 @@ namespace VertexBPMN.Engine.Execution
             CancellationToken cancellationToken)
         {
             var attributes = planItem.Attributes ?? new Dictionary<string, string>();
-            string caseRef;
-            if (attributes.TryGetValue("vertex:case.caseRef", out caseRef) ||
+            if (attributes.TryGetValue("vertex:case.caseRef", out var caseRef) ||
                 attributes.TryGetValue("camunda:caseRef", out caseRef) ||
                 attributes.TryGetValue("flowable:caseRef", out caseRef))
             {
@@ -1864,12 +1864,7 @@ namespace VertexBPMN.Engine.Execution
                     var decision = _executionComponent.SelectExclusiveFlow(
                         outgoingFlows,
                         token.Variables,
-                        (flow, variables) =>
-                            EvaluateConditionAsync(
-                                    flow.ConditionExpression!,
-                                    variables)
-                                .GetAwaiter()
-                                .GetResult());
+                        static (flow, variables) => BpmnConditionEvaluator.Evaluate(flow, variables));
 
                     if (decision.Kind == GatewayDecisionKind.NoOutgoingFlow)
                     {
@@ -1899,9 +1894,10 @@ namespace VertexBPMN.Engine.Execution
                     break;
 
                 case "inclusiveGateway":
-                    var matchingFlows = _executionComponent.SelectInclusiveFlows(outgoingFlows, token.Variables,
-                        (flow, variables) =>
-                            EvaluateConditionAsync(flow.ConditionExpression!, variables).GetAwaiter().GetResult());
+                    var matchingFlows = _executionComponent.SelectInclusiveFlows(
+                        outgoingFlows,
+                        token.Variables,
+                        static (flow, variables) => BpmnConditionEvaluator.Evaluate(flow, variables));
 
                     if (matchingFlows.Count == 0)
                     {

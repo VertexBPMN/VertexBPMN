@@ -69,7 +69,7 @@ public sealed class PersistentWorkerNodeManager(
             .ToList();
     }
 
-    public async Task<WorkerNode> GetWorkerAsync(string workerId)
+    public async Task<WorkerNode?> GetWorkerAsync(string workerId)
     {
         var worker = await db.WorkerRegistrations.AsNoTracking().SingleOrDefaultAsync(x => x.Id == workerId)
             ?? throw new KeyNotFoundException($"Worker '{workerId}' is not registered.");

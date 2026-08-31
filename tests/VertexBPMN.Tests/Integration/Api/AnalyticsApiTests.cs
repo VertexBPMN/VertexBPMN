@@ -35,8 +35,7 @@ namespace VertexBPMN.Tests.Integration.Api
                 "X-Test-Tenant",
                 "vertexbpmn");
 
-            var response = await client.GetAsync(
-                "/api/analytics/events");
+            var response = await client.GetAsync("/api/analytics/events", TestContext.Current.CancellationToken);
 
             Assert.Equal(
                 HttpStatusCode.OK,
@@ -47,7 +46,7 @@ namespace VertexBPMN.Tests.Integration.Api
         public async Task AnonymousRequest_ReturnsUnauthorized()
         {
             using var client = _factory.CreateClient();
-            var response = await client.GetAsync("/api/analytics/events");
+            var response = await client.GetAsync("/api/analytics/events", TestContext.Current.CancellationToken);
 
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         }
@@ -56,9 +55,9 @@ namespace VertexBPMN.Tests.Integration.Api
         public async Task GetAllEvents_ReturnsOkAndEvents()
         {
             var client = CreateAuthenticatedClient();
-            var response = await client.GetAsync("/api/analytics/events");
+            var response = await client.GetAsync("/api/analytics/events", TestContext.Current.CancellationToken);
             response.EnsureSuccessStatusCode();
-            var events = await response.Content.ReadFromJsonAsync<ProcessMiningEvent[]>();
+            var events = await response.Content.ReadFromJsonAsync<ProcessMiningEvent[]>(cancellationToken: TestContext.Current.CancellationToken);
             Assert.NotNull(events);
         }
 
@@ -66,9 +65,9 @@ namespace VertexBPMN.Tests.Integration.Api
         public async Task GetEventTypeStats_ReturnsOkAndStats()
         {
             var client = CreateAuthenticatedClient();
-            var response = await client.GetAsync("/api/analytics/event-stats");
+            var response = await client.GetAsync("/api/analytics/event-stats", TestContext.Current.CancellationToken);
             response.EnsureSuccessStatusCode();
-            var stats = await response.Content.ReadFromJsonAsync<Dictionary<string, int>>();
+            var stats = await response.Content.ReadFromJsonAsync<Dictionary<string, int>>(cancellationToken: TestContext.Current.CancellationToken);
             Assert.NotNull(stats);
         }
 
@@ -77,7 +76,7 @@ namespace VertexBPMN.Tests.Integration.Api
         {
             var client = CreateAuthenticatedClient();
             // Use a known processInstanceId or mock data
-            var response = await client.GetAsync("/api/analytics/trace/1");
+            var response = await client.GetAsync("/api/analytics/trace/1", TestContext.Current.CancellationToken);
             Assert.True(response.StatusCode == HttpStatusCode.OK || response.StatusCode == HttpStatusCode.NotFound);
         }
 
@@ -85,7 +84,7 @@ namespace VertexBPMN.Tests.Integration.Api
         public async Task GetEventsByTenant_ReturnsOk()
         {
             var client = CreateAuthenticatedClient();
-            var response = await client.GetAsync("/api/analytics/events/by-tenant/vertexbpmn");
+            var response = await client.GetAsync("/api/analytics/events/by-tenant/vertexbpmn", TestContext.Current.CancellationToken);
             response.EnsureSuccessStatusCode();
         }
 
@@ -93,7 +92,7 @@ namespace VertexBPMN.Tests.Integration.Api
         public async Task GetEventsByTenant_ForDifferentTenant_ReturnsForbidden()
         {
             var client = CreateAuthenticatedClient("tenant-a");
-            var response = await client.GetAsync("/api/analytics/events/by-tenant/tenant-b");
+            var response = await client.GetAsync("/api/analytics/events/by-tenant/tenant-b", TestContext.Current.CancellationToken);
 
             Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         }
@@ -104,11 +103,11 @@ namespace VertexBPMN.Tests.Integration.Api
             await _factory.SeedTenantIsolationEventsAsync();
             var client = CreateAuthenticatedClient("tenant-a");
 
-            var eventsResponse = await client.GetFromJsonAsync<ProcessMiningEvent[]>("/api/analytics/events");
-            var statsResponse = await client.GetFromJsonAsync<Dictionary<string, int>>("/api/analytics/event-stats");
-            var seriesResponse = await client.GetFromJsonAsync<JsonElement[]>("/api/analytics/events/timeseries/TenantIsolationEvent");
-            var traceResponse = await client.GetFromJsonAsync<ProcessMiningEvent[]>("/api/analytics/trace/tenant-isolation-a");
-            var metricsResponse = await client.GetFromJsonAsync<JsonElement>("/api/analytics/metrics/process");
+            var eventsResponse = await client.GetFromJsonAsync<ProcessMiningEvent[]>("/api/analytics/events", cancellationToken: TestContext.Current.CancellationToken);
+            var statsResponse = await client.GetFromJsonAsync<Dictionary<string, int>>("/api/analytics/event-stats", cancellationToken: TestContext.Current.CancellationToken);
+            var seriesResponse = await client.GetFromJsonAsync<JsonElement[]>("/api/analytics/events/timeseries/TenantIsolationEvent", cancellationToken: TestContext.Current.CancellationToken);
+            var traceResponse = await client.GetFromJsonAsync<ProcessMiningEvent[]>("/api/analytics/trace/tenant-isolation-a", cancellationToken: TestContext.Current.CancellationToken);
+            var metricsResponse = await client.GetFromJsonAsync<JsonElement>("/api/analytics/metrics/process", cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.NotNull(eventsResponse);
             Assert.NotNull(statsResponse);
@@ -125,7 +124,7 @@ namespace VertexBPMN.Tests.Integration.Api
         public async Task GetEventTimeSeries_ReturnsOk()
         {
             var client = CreateAuthenticatedClient();
-            var response = await client.GetAsync("/api/analytics/events/timeseries/ProcessStarted");
+            var response = await client.GetAsync("/api/analytics/events/timeseries/ProcessStarted", TestContext.Current.CancellationToken);
             response.EnsureSuccessStatusCode();
         }
 
@@ -133,7 +132,7 @@ namespace VertexBPMN.Tests.Integration.Api
         public async Task GetProcessMetrics_ReturnsOk()
         {
             var client = CreateAuthenticatedClient();
-            var response = await client.GetAsync("/api/analytics/metrics/process");
+            var response = await client.GetAsync("/api/analytics/metrics/process", TestContext.Current.CancellationToken);
             response.EnsureSuccessStatusCode();
         }
 
@@ -221,16 +220,6 @@ namespace VertexBPMN.Tests.Integration.Api
             await db.SaveChangesAsync();
         }
 
-        public Task InitializeAsync()
-        {
-            _ = Services;
-            return Task.CompletedTask;
-        }
-
-        public Task DisposeAsync()
-        {
-            return Task.CompletedTask;
-        }
     }
 
 }

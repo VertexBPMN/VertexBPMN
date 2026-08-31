@@ -25,7 +25,7 @@ public sealed class InspectorApiTests : IClassFixture<InspectorApiFactory>
     public async Task AnonymousRequest_ReturnsUnauthorized()
     {
         using var client = _factory.CreateClient();
-        var response = await client.GetAsync($"/api/inspector/process-instance/{Guid.NewGuid()}/state");
+        var response = await client.GetAsync($"/api/inspector/process-instance/{Guid.NewGuid()}/state", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -37,7 +37,7 @@ public sealed class InspectorApiTests : IClassFixture<InspectorApiFactory>
         client.DefaultRequestHeaders.Add("X-Test-User", "inspector-reader");
         client.DefaultRequestHeaders.Add("X-Test-Tenant", "tenant-a");
 
-        var response = await client.GetAsync($"/api/inspector/process-instance/{Guid.NewGuid()}/state");
+        var response = await client.GetAsync($"/api/inspector/process-instance/{Guid.NewGuid()}/state", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -51,7 +51,7 @@ public sealed class InspectorApiTests : IClassFixture<InspectorApiFactory>
         otherTenantClient.DefaultRequestHeaders.Add("X-Test-User", "inspector-reader");
         otherTenantClient.DefaultRequestHeaders.Add("X-Test-Tenant", "tenant-b");
 
-        var forbidden = await otherTenantClient.GetAsync($"/api/inspector/process-instance/{instanceId}/state");
+        var forbidden = await otherTenantClient.GetAsync($"/api/inspector/process-instance/{instanceId}/state", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
 
@@ -59,8 +59,8 @@ public sealed class InspectorApiTests : IClassFixture<InspectorApiFactory>
         owningTenantClient.DefaultRequestHeaders.Add("X-Test-User", "inspector-reader");
         owningTenantClient.DefaultRequestHeaders.Add("X-Test-Tenant", "tenant-a");
 
-        var response = await owningTenantClient.GetAsync($"/api/inspector/process-instance/{instanceId}/state");
-        var body = await response.Content.ReadAsStringAsync();
+        var response = await owningTenantClient.GetAsync($"/api/inspector/process-instance/{instanceId}/state", TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("tenant-a", body, StringComparison.Ordinal);

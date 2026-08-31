@@ -44,7 +44,7 @@ public class BpmnParserTests
 </definitions>";
 
         // Act
-        var model = await _parser.ParseAsync(bpmnXml);
+        var model = await _parser.ParseAsync(bpmnXml, TestContext.Current.CancellationToken);
 
         // Assert
         model.ShouldNotBeNull();
@@ -61,7 +61,7 @@ public class BpmnParserTests
         // Arrange
         var invalidXml = "<invalid></invalid";
         // Act & Assert
-        await Assert.ThrowsAsync<SecurityException>(() => _parser.ParseAsync(invalidXml));
+        await Assert.ThrowsAsync<SecurityException>(() => _parser.ParseAsync(invalidXml, TestContext.Current.CancellationToken));
         //_loggerMock.Verify(l => l.LogError(It.IsAny<Exception>(), It.IsAny<string>()), Times.AtLeastOnce);
     }
 
@@ -78,22 +78,24 @@ targetNamespace=""http://www.example.org/Processes/sellerProcess"" >
 </definitions>";
 
         // Act
-        var model = await _parser.ParseAsync(bpmnXml);
+        var model = await _parser.ParseAsync(bpmnXml, TestContext.Current.CancellationToken);
 
         // Assert
         model.ShouldNotBeNull();
         // Assume BpmnModel has Attributes dictionary for extensions
         model.Events[0].Id.ShouldBe("StartEvent_1");
         model.Events[0].Name.ShouldBe("startEvent");
-        model.Events[0].ExtensionAttributes.ShouldContainKey("ext:customAttr");
-        model.Events[0].ExtensionAttributes["ext:customAttr"].ShouldBe("value");
+        Assert.NotNull(model.Events[0].ExtensionAttributes);
+        var extensionAttributes = model.Events[0].ExtensionAttributes!;
+        extensionAttributes.ShouldContainKey("ext:customAttr");
+        extensionAttributes["ext:customAttr"].ShouldBe("value");
     }
 
     [Fact]
     public async Task ParseAsync_EmptyXml_ThrowsArgumentException()
     {
         // Act & Assert
-        await Assert.ThrowsAsync<SecurityException>(() => _parser.ParseAsync(string.Empty));
+        await Assert.ThrowsAsync<SecurityException>(() => _parser.ParseAsync(string.Empty, TestContext.Current.CancellationToken));
     }
 
     [Fact]

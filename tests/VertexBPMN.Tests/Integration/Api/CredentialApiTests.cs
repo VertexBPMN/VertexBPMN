@@ -32,26 +32,26 @@ public sealed class CredentialApiTests
             type = "api-key",
             description = "Payment gateway",
             secrets = new Dictionary<string, string> { ["token"] = InitialSecret }
-        });
+        }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, create.StatusCode);
-        var createJson = await create.Content.ReadAsStringAsync();
+        var createJson = await create.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.DoesNotContain(InitialSecret, createJson, StringComparison.Ordinal);
         Assert.DoesNotContain("protectedValues", createJson, StringComparison.OrdinalIgnoreCase);
         var created = JsonSerializer.Deserialize<CredentialDto>(createJson, JsonOptions);
         Assert.NotNull(created);
         Assert.Equal(new[] { "token" }, created!.SecretKeys);
 
-        var list = await _client.GetAsync($"/api/credentials?tenantId={tenantId}");
+        var list = await _client.GetAsync($"/api/credentials?tenantId={tenantId}", TestContext.Current.CancellationToken);
         list.EnsureSuccessStatusCode();
-        var listJson = await list.Content.ReadAsStringAsync();
+        var listJson = await list.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains(created.Id, listJson, StringComparison.Ordinal);
         Assert.DoesNotContain(InitialSecret, listJson, StringComparison.Ordinal);
         Assert.DoesNotContain("protectedValues", listJson, StringComparison.OrdinalIgnoreCase);
 
-        var get = await _client.GetAsync($"/api/credentials/{created.Id}?tenantId={tenantId}");
+        var get = await _client.GetAsync($"/api/credentials/{created.Id}?tenantId={tenantId}", TestContext.Current.CancellationToken);
         get.EnsureSuccessStatusCode();
-        var getJson = await get.Content.ReadAsStringAsync();
+        var getJson = await get.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.DoesNotContain(InitialSecret, getJson, StringComparison.Ordinal);
 
         var update = await _client.PutAsJsonAsync($"/api/credentials/{created.Id}", new
@@ -60,7 +60,7 @@ public sealed class CredentialApiTests
             name = "Payments API updated",
             type = "api-key",
             description = "Updated metadata"
-        });
+        }, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, update.StatusCode);
 
         var rotate = await _client.PutAsJsonAsync($"/api/credentials/{created.Id}/secret", new
@@ -68,7 +68,7 @@ public sealed class CredentialApiTests
             tenantId,
             key = "token",
             value = RotatedSecret
-        });
+        }, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, rotate.StatusCode);
 
         await using (var scope = _factory.Services.CreateAsyncScope())
@@ -82,10 +82,10 @@ public sealed class CredentialApiTests
             Assert.DoesNotContain(RotatedSecret, auditJson, StringComparison.Ordinal);
         }
 
-        var delete = await _client.DeleteAsync($"/api/credentials/{created.Id}?tenantId={tenantId}");
+        var delete = await _client.DeleteAsync($"/api/credentials/{created.Id}?tenantId={tenantId}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
 
-        var deleted = await _client.GetAsync($"/api/credentials/{created.Id}?tenantId={tenantId}");
+        var deleted = await _client.GetAsync($"/api/credentials/{created.Id}?tenantId={tenantId}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, deleted.StatusCode);
     }
 
@@ -101,24 +101,24 @@ public sealed class CredentialApiTests
             type = "api-key",
             description = (string?)null,
             secrets = new Dictionary<string, string> { ["token"] = InitialSecret }
-        });
+        }, cancellationToken: TestContext.Current.CancellationToken);
         create.EnsureSuccessStatusCode();
-        var created = await create.Content.ReadFromJsonAsync<CredentialDto>(JsonOptions);
+        var created = await create.Content.ReadFromJsonAsync<CredentialDto>(JsonOptions, cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(created);
 
-        var otherTenant = await _client.GetAsync($"/api/credentials/{created!.Id}?tenantId={tenantB}");
+        var otherTenant = await _client.GetAsync($"/api/credentials/{created!.Id}?tenantId={tenantB}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, otherTenant.StatusCode);
 
         using var readOnlyRequest = new HttpRequestMessage(HttpMethod.Get, $"/api/credentials?tenantId={tenantA}");
         readOnlyRequest.Headers.Add("X-Test-User", "reader");
         readOnlyRequest.Headers.Add("X-Test-Tenant", tenantA);
-        var readOnlyList = await _client.SendAsync(readOnlyRequest);
+        var readOnlyList = await _client.SendAsync(readOnlyRequest, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, readOnlyList.StatusCode);
 
         using var crossTenantRequest = new HttpRequestMessage(HttpMethod.Get, $"/api/credentials?tenantId={tenantB}");
         crossTenantRequest.Headers.Add("X-Test-User", "reader");
         crossTenantRequest.Headers.Add("X-Test-Tenant", tenantA);
-        var crossTenantList = await _client.SendAsync(crossTenantRequest);
+        var crossTenantList = await _client.SendAsync(crossTenantRequest, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Forbidden, crossTenantList.StatusCode);
 
         using var readOnlyCreate = new HttpRequestMessage(HttpMethod.Post, "/api/credentials")
@@ -133,7 +133,7 @@ public sealed class CredentialApiTests
         };
         readOnlyCreate.Headers.Add("X-Test-User", "reader");
         readOnlyCreate.Headers.Add("X-Test-Tenant", tenantA);
-        var denied = await _client.SendAsync(readOnlyCreate);
+        var denied = await _client.SendAsync(readOnlyCreate, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
     }
 

@@ -17,7 +17,7 @@ public sealed class ConnectorRuntimeTests
             new ConnectorExecutionResult(false, 503, new Dictionary<string, object>(), "remote_server_error"),
             new ConnectorExecutionResult(true, 200, new Dictionary<string, object> { ["token"] = "clear-secret", ["status"] = "ok" }));
         var runtime = new ConnectorRuntime(new ConnectorRegistry([executor]), new ConnectorRateLimitPolicy(), new ConnectorRedactionPolicy(), NullLogger<ConnectorRuntime>.Instance);
-        var result = await runtime.ExecuteAsync(Context(new ConnectorRetryPolicy(2, TimeSpan.FromSeconds(1), TimeSpan.Zero)));
+        var result = await runtime.ExecuteAsync(Context(new ConnectorRetryPolicy(2, TimeSpan.FromSeconds(1), TimeSpan.Zero)), TestContext.Current.CancellationToken);
 
         Assert.True(result.Success);
         Assert.Equal(2, result.Attempts);
@@ -50,7 +50,7 @@ public sealed class ConnectorRuntimeTests
             ["vertex:connector.credentialRef"] = "credential-1"
         };
 
-        await handler.ExecuteAsync(attributes, new Dictionary<string, object>());
+        await handler.ExecuteAsync(attributes, new Dictionary<string, object>(), TestContext.Current.CancellationToken);
 
         Assert.Equal(secret, capturedContext!.CredentialSecret);
         Assert.NotNull(capturedAudit);
@@ -73,7 +73,7 @@ public sealed class ConnectorRuntimeTests
             ["vertex:connector.credentialRef"] = "credential-1"
         };
 
-        await Assert.ThrowsAsync<VertexBPMN.Domain.Exceptions.ServiceTaskExecutionException>(() => handler.ExecuteAsync(attributes, new Dictionary<string, object>()));
+        await Assert.ThrowsAsync<VertexBPMN.Domain.Exceptions.ServiceTaskExecutionException>(() => handler.ExecuteAsync(attributes, new Dictionary<string, object>(), TestContext.Current.CancellationToken));
         credentials.Verify(x => x.ResolveSecretAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -99,7 +99,7 @@ public sealed class ConnectorRuntimeTests
         };
 
         await Assert.ThrowsAsync<VertexBPMN.Domain.Exceptions.ServiceTaskExecutionException>(
-            () => handler.ExecuteAsync(attributes, new Dictionary<string, object>()));
+            () => handler.ExecuteAsync(attributes, new Dictionary<string, object>(), TestContext.Current.CancellationToken));
         credentials.Verify(
             x => x.ResolveSecretAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Never);
@@ -110,7 +110,7 @@ public sealed class ConnectorRuntimeTests
     {
         var executor = new DelayingExecutor();
         var runtime = new ConnectorRuntime(new ConnectorRegistry([executor]), new ConnectorRateLimitPolicy(), new ConnectorRedactionPolicy(), NullLogger<ConnectorRuntime>.Instance);
-        var result = await runtime.ExecuteAsync(Context(new ConnectorRetryPolicy(1, TimeSpan.FromMilliseconds(20), TimeSpan.Zero)));
+        var result = await runtime.ExecuteAsync(Context(new ConnectorRetryPolicy(1, TimeSpan.FromMilliseconds(20), TimeSpan.Zero)), TestContext.Current.CancellationToken);
         Assert.False(result.Success);
         Assert.Equal("timeout", result.ErrorCode);
         Assert.Empty(result.Outputs);
@@ -125,9 +125,9 @@ public sealed class ConnectorRuntimeTests
         var limiter = new ConnectorRateLimitPolicy();
         var runtime = new ConnectorRuntime(new ConnectorRegistry([executor]), limiter, new ConnectorRedactionPolicy(), NullLogger<ConnectorRuntime>.Instance);
         var context = new ConnectorExecutionContext("tenant-a", "test", "test.execute", new Uri("https://api.example.test"), new Dictionary<string, string> { ["vertex:connector.requestsPerSecond"] = "10" }, new Dictionary<string, object>(), new ConnectorRetryPolicy(1));
-        await runtime.ExecuteAsync(context);
+        await runtime.ExecuteAsync(context, TestContext.Current.CancellationToken);
         var started = System.Diagnostics.Stopwatch.StartNew();
-        await runtime.ExecuteAsync(context);
+        await runtime.ExecuteAsync(context, TestContext.Current.CancellationToken);
         Assert.True(started.Elapsed >= TimeSpan.FromMilliseconds(75));
     }
 

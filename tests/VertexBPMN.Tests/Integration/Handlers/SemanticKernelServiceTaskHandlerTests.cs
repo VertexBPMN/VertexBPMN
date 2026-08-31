@@ -23,8 +23,6 @@ public class SemanticKernelServiceTaskHandlerTests
 {
     private readonly Mock<HttpMessageHandler> _httpMessageHandlerMock;
     private readonly HttpClient _httpClient;
-    private readonly Mock<ILogger<GeminiServiceTaskHandler>> _loggerMock;
-    private readonly GeminiServiceTaskHandler _handler;
 
     public SemanticKernelServiceTaskHandlerTests()
     {
@@ -81,7 +79,7 @@ public class SemanticKernelServiceTaskHandlerTests
         };
 
         // ACT
-        await handler.ExecuteAsync(attributes, processVariables, CancellationToken.None);
+        await handler.ExecuteAsync(attributes, processVariables, TestContext.Current.CancellationToken);
 
         // ASSERT
         Assert.True(processVariables.ContainsKey(resultVariable));
@@ -92,7 +90,7 @@ public class SemanticKernelServiceTaskHandlerTests
     }
 
     [Fact]
-    public void Executes_MultiInstanceSubprocess_FlowsToEnd()
+    public async Task Executes_MultiInstanceSubprocess_FlowsToEnd()
     {
         // Arrange
         var bpmnFile = Path.Combine(Directory.GetCurrentDirectory(), "TestData", "SemanticKernelTestProcess.bpmn");
@@ -102,7 +100,7 @@ public class SemanticKernelServiceTaskHandlerTests
         {
             { "customerMessage", "Wie ist das Wetter heute?" }
         };
-        var model = parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
+        var model = await parser.ParseAsync(xml.Replace('\'', '"'), TestContext.Current.CancellationToken);
         model = model with {ProcessVariables = processVariables};
         Assert.NotNull(model);
 
@@ -140,7 +138,7 @@ public class SemanticKernelServiceTaskHandlerTests
     }
 
     [Fact]
-    public void Parse_ServiceTask_WithAttributesAndExtensionElements()
+    public async Task Parse_ServiceTask_WithAttributesAndExtensionElements()
     {
         // Arrange: Minimal BPMN XML with serviceTask
         var xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<bpmn:definitions xmlns:bpmn=\"http://www.omg.org/spec/BPMN/20100524/MODEL\">\n  <bpmn:process id=\"TestProcess\" name=\"Test Process\" isExecutable=\"true\">\n    <bpmn:serviceTask id=\"ServiceTask_1\" name=\"AI Task\" implementation=\"semanticKernelServiceTask\">\n      <bpmn:extensionElements>\n        <bpmn:property name=\"provider\" value=\"OpenAI\"/>\n        <bpmn:property name=\"modelId\" value=\"gpt-4o\"/>\n        <bpmn:property name=\"prompt\" value=\"customerMessage\"/>\n        <bpmn:property name=\"resultVariable\" value=\"llmResult\"/>\n      </bpmn:extensionElements>\n    </bpmn:serviceTask>\n  </bpmn:process>\n</bpmn:definitions>";
@@ -148,7 +146,7 @@ public class SemanticKernelServiceTaskHandlerTests
         var logger = new Mock<ILogger<BpmnParser>>();var parser = new BpmnParser(logger.Object, TracerProvider.Default);
 
         // Act
-        var model = parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
+        var model = await parser.ParseAsync(xml.Replace('\'', '"'), TestContext.Current.CancellationToken);
         // Assert
         var task = Assert.Single(model.Tasks);
         Assert.Equal("serviceTask", task.Type);

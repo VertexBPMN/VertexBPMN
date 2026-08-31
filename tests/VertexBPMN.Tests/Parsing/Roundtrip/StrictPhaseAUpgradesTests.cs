@@ -8,7 +8,7 @@ public class StrictPhaseAUpgradesTests
     private static BpmnParser CreateStrictParser() => new(new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict, PreserveUnknownExtensions = true });
 
     [Fact]
-    public void Captures_RawMultiInstance_And_PriorityNamespace_And_FlowNodeAttributes()
+    public async Task Captures_RawMultiInstance_And_PriorityNamespace_And_FlowNodeAttributes()
     {
         const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL' xmlns:camunda='http://camunda.org/schema/1.0/bpmn'>
   <bpmn:process id='p1'>
@@ -21,7 +21,7 @@ public class StrictPhaseAUpgradesTests
   </bpmn:process>
 </bpmn:definitions>";
         var parser = CreateStrictParser();
-        var model = parser.ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         Assert.NotNull(model.RawMetadata);
         // RawMultiInstance
         Assert.NotNull(model.RawMetadata!.RawMultiInstance);
@@ -37,7 +37,7 @@ public class StrictPhaseAUpgradesTests
     }
 
     [Fact]
-    public void Captures_Boundary_And_StartEvent_Interrupting_Flags()
+    public async Task Captures_Boundary_And_StartEvent_Interrupting_Flags()
     {
         const string xml = @"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <process id='p1'>
@@ -51,7 +51,7 @@ public class StrictPhaseAUpgradesTests
   </process>
 </definitions>";
         var parser = CreateStrictParser();
-        var model = parser.ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         Assert.NotNull(model.RawMetadata);
         var attrs = model.RawMetadata!.FlowNodeAttributes!;
         Assert.True(attrs.ContainsKey("start1"));
@@ -61,7 +61,7 @@ public class StrictPhaseAUpgradesTests
     }
 
     [Fact]
-    public void Captures_LaneSet_And_Lane()
+    public async Task Captures_LaneSet_And_Lane()
     {
         const string xml = @"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <process id='p1'>
@@ -74,7 +74,7 @@ public class StrictPhaseAUpgradesTests
   </process>
 </definitions>";
         var parser = CreateStrictParser();
-        var model = parser.ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         Assert.NotNull(model.RawMetadata);
         Assert.NotNull(model.RawMetadata!.RawLanes);
         // Should contain laneSet and lane
@@ -83,7 +83,7 @@ public class StrictPhaseAUpgradesTests
     }
 
     [Fact]
-    public void Propagates_Task_Name_Property()
+    public async Task Propagates_Task_Name_Property()
     {
         const string xml = @"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <process id='p1'>
@@ -91,7 +91,7 @@ public class StrictPhaseAUpgradesTests
   </process>
 </definitions>";
         var parser = CreateStrictParser();
-        var model = parser.ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var task = Assert.Single(model.Tasks);
         Assert.Equal("Do Work", task.Name);
         Assert.NotNull(model.RawMetadata);

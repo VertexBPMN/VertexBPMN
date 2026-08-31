@@ -19,7 +19,7 @@ namespace VertexBPMN.Infrastructure.Persistence.Services
             return await _db.Scenarios.Where(s => s.TenantId == tenantId).ToListAsync();
         }
 
-        public async Task<SimulationScenario> GetByIdAsync(string id)
+        public async Task<SimulationScenario?> GetByIdAsync(string id)
         {
             return await _db.Scenarios.FindAsync(id);
         }
@@ -32,7 +32,7 @@ namespace VertexBPMN.Infrastructure.Persistence.Services
             return scenario;
         }
 
-        public async Task<SimulationScenario> UpdateAsync(string id, SimulationScenario scenario)
+        public async Task<SimulationScenario?> UpdateAsync(string id, SimulationScenario scenario)
         {
             var existing = await _db.Scenarios.FindAsync(id);
             if (existing == null) return null;

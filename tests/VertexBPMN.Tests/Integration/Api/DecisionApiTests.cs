@@ -40,16 +40,16 @@ public class DecisionApiTests
           </decision>
         </definitions>";
         var deploy = new { DecisionKey = "d1", Name = "Test", DmnXml = dmn };
-        var post = await _client.PostAsJsonAsync("/api/decision/deploy", deploy);
+        var post = await _client.PostAsJsonAsync("/api/decision/deploy", deploy, cancellationToken: TestContext.Current.CancellationToken);
         post.EnsureSuccessStatusCode();
 
         var eval = new { DecisionKey = "d1", Inputs = new Dictionary<string, object> { { "i1", "18" } } };
-        var evalPost = await _client.PostAsJsonAsync("/api/decision/evaluate", eval);
+        var evalPost = await _client.PostAsJsonAsync("/api/decision/evaluate", eval, cancellationToken: TestContext.Current.CancellationToken);
         evalPost.EnsureSuccessStatusCode();
-        var result = await evalPost.Content.ReadFromJsonAsync<DecisionResult>();
+        var result = await evalPost.Content.ReadFromJsonAsync<DecisionResult>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         var output = result.Variables["result"];
-        string value = output is System.Text.Json.JsonElement je ? je.GetString() : output?.ToString();
+        string? value = output is System.Text.Json.JsonElement je ? je.GetString() : output?.ToString();
         Assert.Equal("adult", value);
     }
 

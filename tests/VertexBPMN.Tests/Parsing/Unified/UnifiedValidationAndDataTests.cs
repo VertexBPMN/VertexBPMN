@@ -16,7 +16,7 @@ public class UnifiedValidationAndDataTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         Assert.Contains(model.Diagnostics, d => d.Contains("No startEvent"));
     }
 
@@ -38,7 +38,7 @@ public class UnifiedValidationAndDataTests
  </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         Assert.Contains(model.Diagnostics, d => d.Contains("Default flow") && d.Contains("f2"));
     }
 
@@ -55,7 +55,7 @@ public class UnifiedValidationAndDataTests
  </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         Assert.Contains(model.Diagnostics, d => d.Contains("attachedToRef") && d.Contains("missing"));
     }
 
@@ -71,7 +71,7 @@ public class UnifiedValidationAndDataTests
  </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         Assert.Contains(model.Diagnostics, d => d.Contains("Unmatched link") && d.Contains("L_A"));
     }
 
@@ -90,7 +90,7 @@ public class UnifiedValidationAndDataTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         Assert.Single(model.DataObjects);
         Assert.Single(model.DataObjectReferences);
         Assert.Single(model.DataStores);
@@ -123,7 +123,7 @@ public class UnifiedValidationAndDataTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var io = Assert.Single(model.ActivityIo);
         Assert.Single(io.DataInputs);
         Assert.Single(io.DataOutputs);

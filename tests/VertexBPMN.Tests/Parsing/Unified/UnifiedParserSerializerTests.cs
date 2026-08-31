@@ -31,7 +31,7 @@ public class UnifiedParserSerializerTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var serialized = _serializer.Serialize(model);
         Assert.Contains("timerEventDefinition", serialized);
         Assert.Contains("signalEventDefinition", serialized);

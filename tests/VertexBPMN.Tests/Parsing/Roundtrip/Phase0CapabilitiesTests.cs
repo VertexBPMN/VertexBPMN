@@ -17,11 +17,11 @@ public class Phase0CapabilitiesTests
     }
 
     [Fact]
-    public void RoundtripParser_BasicRegression_ProcessIdPreserved()
+    public async Task RoundtripParser_BasicRegression_ProcessIdPreserved()
     {
         const string xml = "<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL'><bpmn:process id='p1'/></bpmn:definitions>";
-        var model = new BpmnParser(new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict })
-            .ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await new BpmnParser(new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict })
+            .ParseAsync(xml, TestContext.Current.CancellationToken);
         Assert.Equal("p1", model.ProcessId);
         // Ensure capability introduction caused no diagnostics regression beyond existing expectations.
         // (If future changes add diagnostics, adapt assertion accordingly.)

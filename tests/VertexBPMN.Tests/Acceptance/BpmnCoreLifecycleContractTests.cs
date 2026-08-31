@@ -158,7 +158,7 @@ public sealed class BpmnCoreLifecycleContractTests : IDisposable
         var jobs = await _client.GetFromJsonAsync<List<PersistedJob>>(
             "/api/vertex/job",
             TestContext.Current.CancellationToken);
-        var timer = Assert.Single((jobs ?? []).Where(job => job.ProcessInstanceId == started.Id.ToString()));
+        var timer = Assert.Single((jobs ?? []), job => job.ProcessInstanceId == started.Id.ToString());
         Assert.Equal("timer", timer.JobType, ignoreCase: true);
         Assert.True(timer.DueDate > DateTime.UtcNow.AddSeconds(-1));
 
@@ -207,7 +207,7 @@ public sealed class BpmnCoreLifecycleContractTests : IDisposable
         var jobs = await _client.GetFromJsonAsync<List<PersistedJob>>(
             "/api/vertex/job",
             TestContext.Current.CancellationToken);
-        Assert.Single((jobs ?? []).Where(job => job.ProcessInstanceId == started.Id.ToString()));
+        Assert.Single((jobs ?? []), job => job.ProcessInstanceId == started.Id.ToString());
 
         var completed = await WaitForStatusAsync(started.Id, ProcessInstanceStatus.Completed, TimeSpan.FromSeconds(8));
         Assert.Empty(completed.ActiveTasks);
@@ -1015,13 +1015,13 @@ public sealed class BpmnCoreLifecycleContractTests : IDisposable
         var allTasks = await _client.GetFromJsonAsync<List<PersistedUserTask>>(
             "/api/task",
             TestContext.Current.CancellationToken) ?? [];
-        var childTask = Assert.Single(allTasks.Where(task => task.Name == "Child review"));
+        var childTask = Assert.Single(allTasks, task => task.Name == "Child review");
         Assert.NotEqual(parent.Id, childTask.ProcessInstanceId);
 
         await CompleteTaskAsync(childTask.Id);
         var parentContinuation = Assert.Single(await GetTasksAsync(parent.Id));
         Assert.Equal("Parent continuation", parentContinuation.Name);
-        Assert.Empty((await GetInstanceAsync(parent.Id)).ActiveTokens.Where(id => id == "call-child"));
+        Assert.DoesNotContain((await GetInstanceAsync(parent.Id)).ActiveTokens, id => id == "call-child");
 
         await CompleteTaskAsync(parentContinuation.Id);
         Assert.Equal(ProcessInstanceStatus.Completed, (await GetInstanceAsync(parent.Id)).Status);
@@ -1184,7 +1184,7 @@ public sealed class BpmnCoreLifecycleContractTests : IDisposable
             trigger.EnsureSuccessStatusCode();
             var tasks = await GetTasksAsync(started.Id);
             Assert.Contains(tasks, task => task.Id == normal.Id);
-            var acknowledgement = Assert.Single(tasks.Where(task => task.Name == "Acknowledge notification"));
+            var acknowledgement = Assert.Single(tasks, task => task.Name == "Acknowledge notification");
             await CompleteTaskAsync(acknowledgement.Id);
             Assert.Equal("Normal work", Assert.Single(await GetTasksAsync(started.Id)).Name);
         }

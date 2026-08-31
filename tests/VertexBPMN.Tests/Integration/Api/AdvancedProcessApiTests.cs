@@ -27,7 +27,7 @@ public class AdvancedProcessApiTests
         // Deploy DMN decision
         const string dmn = @"<definitions xmlns='http://www.omg.org/spec/DMN/20191111/MODEL/'><decision id='d1' name='Test'><decisionTable hitPolicy='UNIQUE'><input id='i1'><inputExpression>val</inputExpression></input><output id='o1' name='result'/><rule><inputEntry>42</inputEntry><outputEntry>ok</outputEntry></rule></decisionTable></decision></definitions>";
         var deployDmn = new { DecisionKey = "d1", Name = "Test", DmnXml = dmn };
-        var dmnPost = await _client.PostAsJsonAsync("api/decision/deploy", deployDmn);
+        var dmnPost = await _client.PostAsJsonAsync("api/decision/deploy", deployDmn, cancellationToken: TestContext.Current.CancellationToken);
         dmnPost.EnsureSuccessStatusCode();
 
         // Deploy BPMN with multi-instance subprocess and businessRuleTask
@@ -53,9 +53,9 @@ public class AdvancedProcessApiTests
                                                </definitions>
                                                """;
         var deployBpmn = new { bpmnXml = bpmn, name = "AdvancedProcess", tenantId = (string?)null };
-        var bpmnPost = await _client.PostAsJsonAsync("/api/repository", deployBpmn);
+        var bpmnPost = await _client.PostAsJsonAsync("/api/repository", deployBpmn, cancellationToken: TestContext.Current.CancellationToken);
         bpmnPost.EnsureSuccessStatusCode();
-        var deployed = await bpmnPost.Content.ReadFromJsonAsync<ProcessDefinition>();
+        var deployed = await bpmnPost.Content.ReadFromJsonAsync<ProcessDefinition>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(deployed);
         Assert.Equal("P2", deployed.Key);
 
@@ -66,9 +66,9 @@ public class AdvancedProcessApiTests
             BusinessKey = (string?)null,
             TenantId = (string?)null
         };
-        var execPost = await _client.PostAsJsonAsync("/api/runtime/start", start);
+        var execPost = await _client.PostAsJsonAsync("/api/runtime/start", start, cancellationToken: TestContext.Current.CancellationToken);
         execPost.EnsureSuccessStatusCode();
-        var instance = await execPost.Content.ReadFromJsonAsync<ProcessInstance>();
+        var instance = await execPost.Content.ReadFromJsonAsync<ProcessInstance>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(instance);
         
         // TODO: Fix ProcessDefinitionId mapping issue - temporarily check for non-empty GUID

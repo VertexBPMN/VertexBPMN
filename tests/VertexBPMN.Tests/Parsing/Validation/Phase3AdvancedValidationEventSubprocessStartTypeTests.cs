@@ -26,7 +26,7 @@ public class Phase3AdvancedValidationEventSubprocessStartTypeTests
       </bpmn:startEvent>
     </bpmn:subProcess>
 
-    <!-- Normal subprocess (not triggeredByEvent) — its plain start (no def) is OK -->
+    <!-- Normal subprocess (not triggeredByEvent) ï¿½ its plain start (no def) is OK -->
     <bpmn:subProcess id="spNormal">
       <bpmn:startEvent id="normalStart"/>
     </bpmn:subProcess>
@@ -76,23 +76,23 @@ public class Phase3AdvancedValidationEventSubprocessStartTypeTests
 """;
 
     [Fact]
-    public void EventSubprocessStartType_Disabled_NoStructuredDiagnostics()
+    public async Task EventSubprocessStartType_Disabled_NoStructuredDiagnostics()
     {
-        var model = new BpmnParser(new BpmnParserOptions {
+        var model = await new BpmnParser(new BpmnParserOptions {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = false
-        }).ParseAsync(InvalidStartTypesXml).GetAwaiter().GetResult();
+        }).ParseAsync(InvalidStartTypesXml, TestContext.Current.CancellationToken);
 
         Assert.Null(model.ValidationDiagnostics);
     }
 
     [Fact]
-    public void EventSubprocessStartType_InvalidReported()
+    public async Task EventSubprocessStartType_InvalidReported()
     {
-        var model = new BpmnParser(new BpmnParserOptions {
+        var model = await new BpmnParser(new BpmnParserOptions {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(InvalidStartTypesXml).GetAwaiter().GetResult();
+        }).ParseAsync(InvalidStartTypesXml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         var diags = model.ValidationDiagnostics!;
@@ -109,12 +109,12 @@ public class Phase3AdvancedValidationEventSubprocessStartTypeTests
     }
 
     [Fact]
-    public void EventSubprocessStartType_AllValid_NoDiagnostics()
+    public async Task EventSubprocessStartType_AllValid_NoDiagnostics()
     {
-        var model = new BpmnParser(new BpmnParserOptions {
+        var model = await new BpmnParser(new BpmnParserOptions {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(AllValidXml).GetAwaiter().GetResult();
+        }).ParseAsync(AllValidXml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         Assert.DoesNotContain(model.ValidationDiagnostics!,

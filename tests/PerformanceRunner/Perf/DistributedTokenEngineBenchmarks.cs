@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using BenchmarkDotNet.Attributes;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -16,6 +16,7 @@ public class DistributedTokenEngineBenchmarks
     private readonly DistributedProcessEngine _engine;
     private readonly CaseModel _caseModel;
     private readonly CaseToken _caseToken;
+    private readonly CancellationToken _cancellationToken = new();
 
     public DistributedTokenEngineBenchmarks()
     {
@@ -51,7 +52,7 @@ public class DistributedTokenEngineBenchmarks
         _caseToken = new CaseToken(Guid.NewGuid(), Guid.NewGuid(), "task1", "humanTask", new() { { "amount", 200 } }, DateTime.UtcNow);
 
         store.Setup(s => s.GetCmmnModelAsync("case1")).ReturnsAsync("<cmmn:case id='case1'>...</cmmn:case>");
-        cmmnParser.Setup(p => p.ParseAsync(It.IsAny<string>(),CancellationToken.None )).ReturnsAsync(_caseModel);
+        cmmnParser.Setup(p => p.ParseAsync(It.IsAny<string>(), _cancellationToken)).ReturnsAsync(_caseModel);
         store.Setup(s => s.GetPendingCaseTokensAsync()).ReturnsAsync([_caseToken]);
 
         _engine = new DistributedProcessEngine(logger, registry, dispatcher.Object, store.Object, dmnEngine.Object, dmnParser.Object, cmmnParser.Object, bpmnParser.Object, aiService.Object, TracerProvider.Default);
@@ -62,13 +63,16 @@ public class DistributedTokenEngineBenchmarks
     public async Task BenchmarkSentryEvaluation()
     {
         var trace = new List<string>();
-         _engine.GetType().GetMethod("ProcessCaseTokenAsync", BindingFlags.NonPublic | BindingFlags.Instance)
-            .Invoke(_engine, new object[] { _caseToken, _caseModel, trace, CancellationToken.None });
+        var method = _engine.GetType().GetMethod("ProcessCaseTokenAsync", BindingFlags.NonPublic | BindingFlags.Instance)
+            ?? throw new MissingMethodException(typeof(DistributedProcessEngine).FullName, "ProcessCaseTokenAsync");
+        var invocation = method.Invoke(_engine, new object[] { _caseToken, _caseModel, trace, _cancellationToken });
+        await (invocation as Task
+            ?? throw new InvalidOperationException("ProcessCaseTokenAsync did not return a Task."));
     }
 
     [Benchmark]
     public async Task BenchmarkCaseFileUpdate()
     {
-        await _engine.UpdateCaseFileItemAsync("case1", "amount", 300, CancellationToken.None);
+        await _engine.UpdateCaseFileItemAsync("case1", "amount", 300, _cancellationToken);
     }
 }

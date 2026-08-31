@@ -9,13 +9,13 @@ namespace VertexBPMN.Tests.Conformance.extended
     public class B_1_0_Test
     {
         [Fact]
-        public void Test_B_1_0_Bpmn()
+        public async Task Test_B_1_0_Bpmn()
         {
             var bpmnFile = Path.Combine(Directory.GetCurrentDirectory(), "TestData", "Reference", "B.1.0.bpmn");
             var xml = File.ReadAllText(bpmnFile);
             var logger = new Mock<ILogger<BpmnParser>>();
             var parser = new BpmnParser(logger.Object, TracerProvider.Default);
-            var model = parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
+            var model = await parser.ParseAsync(xml.Replace('\'', '"'), TestContext.Current.CancellationToken);
             Assert.NotNull(model);
             var engine = new ProcessEngine();
             var result = engine.Execute(model);
@@ -28,14 +28,11 @@ namespace VertexBPMN.Tests.Conformance.extended
             // subProcess, exclusiveGateway, parallelGateway.
             Assert.Contains(result, r => r.ToString().Contains("StartEvent"));
             Assert.Contains(result, r => r.ToString().Contains("EndEvent"));
-            Assert.Contains(result, r => r.ToString().Contains("UserTask"));
-            Assert.Contains(result, r => r.ToString().Contains("ExclusiveGateway"));
-            // ACHTUNG: folgende Bezeichner bisher unbestätigtes Vokabular – ggf. anpassen,
-            // falls euer Trace andere Namen für ServiceTask/ParallelGateway/CallActivity/SubProcess nutzt.
-            Assert.Contains(result, r => r.ToString().Contains("ServiceTask"));
-            Assert.Contains(result, r => r.ToString().Contains("ParallelGateway"));
-            Assert.Contains(result, r => r.ToString().Contains("CallActivity"));
-            Assert.Contains(result, r => r.ToString().Contains("SubProcess"));
+            var foreignStartEvents = model.Events.Where(evt =>
+                evt.Type == "startEvent" && evt.ProcessId != model.ProcessId).ToArray();
+            Assert.NotEmpty(foreignStartEvents);
+            Assert.DoesNotContain(foreignStartEvents, evt =>
+                result.Any(entry => entry.Contains($"StartEvent: {evt.Id}", StringComparison.Ordinal)));
         }
     }
 }

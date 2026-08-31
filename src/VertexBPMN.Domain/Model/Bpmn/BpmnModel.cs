@@ -9,6 +9,7 @@ using System.Xml.Linq;
 public record BpmnDefinition(string Id, string? Name, string? TargetNamespace, string? Expression);
 public record BpmnEvent(string Id,string Type, IReadOnlyList<EventDefinition> Definitions = null, string? SubprocessId = null, Dictionary<string,string>? Attributes=null)
 {
+    public string? ProcessId { get; init; }
     public Dictionary<string, string>? ExtensionAttributes => Attributes;
     public string Name => Attributes?.TryGetValue("name", out var name) == true ? name : string.Empty;
     public string AttachedToRef => Attributes?.TryGetValue("attachedToRef", out var attachedToRef) == true ? attachedToRef : string.Empty;
@@ -20,23 +21,33 @@ public record BpmnEvent(string Id,string Type, IReadOnlyList<EventDefinition> De
         bool.TryParse(value, out var parsed) && parsed;
     public string? EventDefinitionType => Definitions is {Count: > 0} ? Definitions[0].Kind : null;
 }
-public record BpmnGateway(string Id,string Type,string? DefaultFlowId = null,string? SubprocessId = null, Dictionary<string,string>? ExtensionAttributes=null);
+public record BpmnGateway(string Id,string Type,string? DefaultFlowId = null,string? SubprocessId = null, Dictionary<string,string>? ExtensionAttributes=null)
+{
+    public string? ProcessId { get; init; }
+}
 public record BpmnSubprocess(string Id,bool IsEventSubprocess,bool IsTransaction = false, LoopCharacteristics? Loop = null,string? SubprocessId = null,Dictionary<string,string>? Attributes=null,IReadOnlyList<string>? ChildFlowNodeIds=null,IReadOnlyList<string>? ChildSequenceFlowIds=null)
 {
+    public string? ProcessId { get; init; }
     public Dictionary<string, string>? ExtensionAttributes => Attributes;
     public bool IsMultiInstance => Loop is MultiInstanceLoopCharacteristics;
     public int LoopCardinality => Loop is MultiInstanceLoopCharacteristics multiInstance
         ? multiInstance.LoopCardinality.GetValueOrDefault(1)
         : 1;
-    public bool IsSequential => (Loop is MultiInstanceLoopCharacteristics) && (Loop as MultiInstanceLoopCharacteristics).IsSequential;
+    public bool IsSequential => Loop is MultiInstanceLoopCharacteristics { IsSequential: true };
 }
 public record BpmnSequenceFlow(string Id,string SourceRef,string TargetRef,bool IsDefault = false,string? ConditionExpression = null,string? SubprocessId = null,Dictionary<string,string>? Attributes=null,int? Priority=null)
 {
+    public string? ProcessId { get; init; }
     public Dictionary<string, string>? ExtensionAttributes => Attributes;
+    public string? ConditionExpressionLanguage =>
+        Attributes?.TryGetValue("conditionExpressionLanguage", out var language) == true
+            ? language
+            : null;
     public string Name { get; init; } = string.Empty;
 }
 public record BpmnTask(string Id,string Type, string? SubprocessId = null,  Dictionary<string,string>? Attributes=null, string? Implementation = null)
 {
+    public string? ProcessId { get; init; }
     // Add Name property for compatibility
     public string Name { get; init; } = string.Empty;
 

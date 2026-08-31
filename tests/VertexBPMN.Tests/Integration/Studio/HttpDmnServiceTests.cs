@@ -16,7 +16,7 @@ public sealed class HttpDmnServiceTests
         factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
         var service = new HttpDmnService(factory.Object);
 
-        var result = await service.ListDefinitionsAsync("approval", "tenant/a");
+        var result = await service.ListDefinitionsAsync("approval", "tenant/a", TestContext.Current.CancellationToken);
 
         Assert.Equal("approval", result[0].GetProperty("key").GetString());
         var request = Assert.Single(requests);
@@ -32,7 +32,7 @@ public sealed class HttpDmnServiceTests
         factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
         var service = new HttpDmnService(factory.Object);
 
-        await service.ListInstancesAsync("approval");
+        await service.ListInstancesAsync("approval", cancellationToken: TestContext.Current.CancellationToken);
 
         var request = Assert.Single(requests);
         Assert.Equal("http://api.test/api/vertex/decision-instance?decisionKey=approval", request.RequestUri!.ToString());

@@ -23,25 +23,25 @@ public class RuntimeProjectionBasicTests
 """;
 
     [Fact]
-    public void ProjectionDisabled_RuntimeNull()
+    public async Task ProjectionDisabled_RuntimeNull()
     {
-        var model = new BpmnParser(new BpmnParserOptions {
+        var model = await new BpmnParser(new BpmnParserOptions {
             RoundtripMode = BpmnRoundtripMode.Strict,
             BuildRuntimeProjection = false,
             NormalizeVendorExtensions = true
-        }).ParseAsync(Simple).GetAwaiter().GetResult();
+        }).ParseAsync(Simple, TestContext.Current.CancellationToken);
 
         Assert.Null(model.Runtime);
     }
 
     [Fact]
-    public void ProjectionEnabled_PopulatesNodesAndFlows()
+    public async Task ProjectionEnabled_PopulatesNodesAndFlows()
     {
-        var model = new BpmnParser(new BpmnParserOptions {
+        var model = await new BpmnParser(new BpmnParserOptions {
             RoundtripMode = BpmnRoundtripMode.Strict,
             BuildRuntimeProjection = true,
             NormalizeVendorExtensions = true
-        }).ParseAsync(Simple).GetAwaiter().GetResult();
+        }).ParseAsync(Simple, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.Runtime);
         var rt = model.Runtime!;

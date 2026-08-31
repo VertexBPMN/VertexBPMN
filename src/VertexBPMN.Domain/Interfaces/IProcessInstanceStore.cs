@@ -17,7 +17,7 @@ public interface IProcessInstanceStore
     Task<ExecutionToken> GetTokenAsync(Guid tokenId);
     Task<List<ExecutionToken>> GetPendingTokensAsync();
     Task SaveWorkerAsync(WorkerNode worker);
-    Task<WorkerNode> GetWorkerAsync(string workerId);
+    Task<WorkerNode?> GetWorkerAsync(string workerId);
     Task<List<WorkerNode>> GetActiveWorkersAsync();
     Task RemoveWorkerAsync(string workerId);
     Task SaveToDeadLetterQueueAsync<T>(T token, string errorMessage);

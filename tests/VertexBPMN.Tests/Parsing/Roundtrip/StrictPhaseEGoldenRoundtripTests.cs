@@ -7,7 +7,7 @@ using VertexBPMN.Engine.Serialization;
 namespace VertexBPMN.Tests.Parsing.Roundtrip;
 
 /// <summary>
-/// Phase E – Initial Golden & Structural Roundtrip Tests (incremental start).
+/// Phase E ï¿½ Initial Golden & Structural Roundtrip Tests (incremental start).
 /// Uses canonical formatting (no indentation) for byte-equal comparison goal.
 /// </summary>
 public class StrictPhaseEGoldenRoundtripTests
@@ -32,7 +32,7 @@ public class StrictPhaseEGoldenRoundtripTests
     }
 
     [Fact]
-    public void Golden_Gateway_Simple_Fork_Join()
+    public async Task Golden_Gateway_Simple_Fork_Join()
     {
         const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <bpmn:process id='p1'>
@@ -50,13 +50,13 @@ public class StrictPhaseEGoldenRoundtripTests
     <bpmn:sequenceFlow id='f_join_end' sourceRef='gw_join' targetRef='end'/>
   </bpmn:process>
 </bpmn:definitions>";
-        var model = StrictParser.ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await StrictParser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
         AssertCanonicalEqual(xml, outXml);
     }
 
     [Fact]
-    public void Golden_MultiInstance_Lanes_And_Artifacts()
+    public async Task Golden_MultiInstance_Lanes_And_Artifacts()
     {
         const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <bpmn:process id='p2'>
@@ -80,13 +80,13 @@ public class StrictPhaseEGoldenRoundtripTests
     <bpmn:sequenceFlow id='f2' sourceRef='miTask' targetRef='e'/>
   </bpmn:process>
 </bpmn:definitions>";
-        var model = StrictParser.ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await StrictParser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
         AssertCanonicalEqual(xml, outXml);
     }
 
     [Fact]
-    public void Edge_CDATA_ConditionExpression_Roundtrip()
+    public async Task Edge_CDATA_ConditionExpression_Roundtrip()
     {
         const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <bpmn:process id='p3'>
@@ -101,13 +101,13 @@ public class StrictPhaseEGoldenRoundtripTests
     <bpmn:sequenceFlow id='f_g_e2' sourceRef='g' targetRef='e2'/>
   </bpmn:process>
 </bpmn:definitions>";
-        var model = StrictParser.ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await StrictParser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
         AssertCanonicalEqual(xml, outXml);
     }
 
     [Fact]
-    public void Edge_Unknown_EventDefinition_Preserved()
+    public async Task Edge_Unknown_EventDefinition_Preserved()
     {
         // custom vendor event definition inside startEvent
         const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL' xmlns:ven='http://vendor/x'>
@@ -118,20 +118,20 @@ public class StrictPhaseEGoldenRoundtripTests
     </bpmn:startEvent>
   </bpmn:process>
 </bpmn:definitions>";
-        var model = StrictParser.ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await StrictParser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
         AssertCanonicalEqual(xml, outXml);
     }
 
     [Fact]
-    public void Mutation_TaskName_Fallback_Occurs()
+    public async Task Mutation_TaskName_Fallback_Occurs()
     {
         const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <bpmn:process id='p5'>
     <bpmn:userTask id='t1' name='Orig'/>
   </bpmn:process>
 </bpmn:definitions>";
-        var model = StrictParser.ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await StrictParser.ParseAsync(xml, TestContext.Current.CancellationToken);
         model = BpmnRoundtripUtil.ApplyAttributeChange(model, "t1", "name", "Changed");
         var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
         // Fallback path -> not equal canonically

@@ -9,13 +9,13 @@ namespace VertexBPMN.Tests.Conformance.extended
     public class A_4_1_Test
     {
         [Fact]
-        public void Test_A_4_1_Bpmn()
+        public async Task Test_A_4_1_Bpmn()
         {
             var bpmnFile = Path.Combine(Directory.GetCurrentDirectory(), "TestData", "Reference", "A.4.1.bpmn");
             var xml = File.ReadAllText(bpmnFile);
             var logger = new Mock<ILogger<BpmnParser>>();
             var parser = new BpmnParser(logger.Object, TracerProvider.Default);
-            var model = parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
+            var model = await parser.ParseAsync(xml.Replace('\'', '"'), TestContext.Current.CancellationToken);
             Assert.NotNull(model);
             var engine = new ProcessEngine();
             var result = engine.Execute(model);
@@ -26,7 +26,11 @@ namespace VertexBPMN.Tests.Conformance.extended
             // Modellierungsrichtung (reine DI/Layout-Info, keine semantische Änderung).
             Assert.Contains(result, r => r.ToString().Contains("StartEvent"));
             Assert.Contains(result, r => r.ToString().Contains("EndEvent"));
-            Assert.Contains(result, r => r.ToString().Contains("SubProcess"));
+            var foreignStartEvents = model.Events.Where(evt =>
+                evt.Type == "startEvent" && evt.ProcessId != model.ProcessId).ToArray();
+            Assert.NotEmpty(foreignStartEvents);
+            Assert.DoesNotContain(foreignStartEvents, evt =>
+                result.Any(entry => entry.Contains($"StartEvent: {evt.Id}", StringComparison.Ordinal)));
         }
     }
 }

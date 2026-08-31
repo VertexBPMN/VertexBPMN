@@ -29,6 +29,9 @@ using SendGrid;
 
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.AddServiceDefaults();
 // Bind module toggles
 builder.Services.Configure<ModuleOptions>(builder.Configuration.GetSection("Modules"));
 var moduleOptions = new ModuleOptions();
@@ -134,8 +137,6 @@ builder.Services.AddHealthChecks()
 		failureStatus: HealthStatus.Unhealthy,
 		tags: new[] { "ready" });
 
-builder.Logging.ClearProviders();
-builder.Logging.AddConsole();
 if (moduleOptions.SignalR)
 {
 	builder.Services.AddSignalR();
@@ -187,6 +188,7 @@ if (opMode == OperationalMode.Production && moduleOptions.Emails)
 }
 
 var app = builder.Build();
+app.MapDefaultEndpoints();
 
 var migrateOnly = args.Any(argument =>
 	string.Equals(argument, "--migrate-only", StringComparison.OrdinalIgnoreCase));

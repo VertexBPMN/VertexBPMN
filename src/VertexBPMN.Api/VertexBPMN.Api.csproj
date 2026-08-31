@@ -43,6 +43,7 @@
   <ProjectReference Include="..\VertexBPMN.Application\VertexBPMN.Application.csproj" />
   <ProjectReference Include="..\VertexBPMN.Infrastructure\VertexBPMN.Infrastructure.csproj" />
   <ProjectReference Include="..\VertexBPMN.Engine\VertexBPMN.Engine.csproj" />
+  <ProjectReference Include="..\VertexBPMN.ServiceDefaults\VertexBPMN.ServiceDefaults.csproj" />
   </ItemGroup>
 
 	<ItemGroup>

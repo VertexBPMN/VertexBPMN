@@ -131,6 +131,22 @@ Für externe Starts kann anschließend ein Workflow-Trigger registriert und übe
 
 VertexBPMN kann lokal wie eine Control-Plane-Anwendung über die Terminal-CLI bedient werden. Die CLI führt Engine-Kommandos aus und kann nach dem OpenClaw-Prinzip das API-Gateway und das Blazor-Studio gemeinsam starten.
 
+### Lokale Aspire-Orchestrierung
+
+Der Aspire AppHost startet API und Studio in definierter Reihenfolge, wartet auf echte Readiness und stellt Logs, Traces und Metriken im Aspire Dashboard bereit. Im Standardprofil laufen die Anwendungen als .NET-Projekte mit PostgreSQL und RabbitMQ:
+
+```powershell
+dotnet run --project src/VertexBPMN.AppHost --no-launch-profile -e DOTNET_ENVIRONMENT=Development
+```
+
+Das Containerprofil baut die API aus dem Root-Dockerfile, verwendet persistente SQLite-Dateien in einem Docker-Volume und startet das Studio weiterhin lokal:
+
+```powershell
+dotnet run --project src/VertexBPMN.AppHost --no-launch-profile -e DOTNET_ENVIRONMENT=Containers
+```
+
+Die Standardendpunkte sind `http://localhost:51870` für die API und `http://localhost:5263` für das Studio. PostgreSQL, RabbitMQ und ihre Zugangsdaten werden im Projektprofil durch Aspire provisioniert und injiziert; Secrets gehören nicht in die AppHost-Konfigurationsdateien.
+
 ### Dashboard aus der CLI öffnen
 
 ```powershell

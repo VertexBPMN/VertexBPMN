@@ -1,7 +1,6 @@
 ﻿#nullable enable
 using System.Diagnostics;
 using OpenTelemetry.Metrics;
-using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using VertexBPMN.Infrastructure.Operational;
 
@@ -27,66 +26,30 @@ public static class OpenTelemetryConfig
     private static readonly ActivitySource ActivitySource = new(TelemetryConstants.ActivitySourceName);
 
     /// <summary>
-    /// Adds and configures OpenTelemetry tracing and metrics for the VertexBPMN service.
-    /// The Jaeger endpoint can be overridden via configuration key: <c>Telemetry:Jaeger:Endpoint</c>.
+    /// Adds VertexBPMN-specific activity sources and meters to the shared Aspire telemetry pipeline.
     /// </summary>
     /// <param name="services">The DI service collection.</param>
     /// <param name="configuration">Application configuration.</param>
     /// <returns>The updated service collection.</returns>
     public static IServiceCollection AddVertexBPMNTelemetry(this IServiceCollection services, IConfiguration? configuration = null)
     {
-        var serviceVersion = configuration?["Build:Version"] ?? "dev";
-        var environment = configuration?["DOTNET_ENVIRONMENT"]
-                           ?? configuration?["ASPNETCORE_ENVIRONMENT"]
-                           ?? "Development";
-
-        services.AddSingleton(ActivitySource); // in case consumers want to inject it
+        services.AddSingleton(ActivitySource);
 
         services.AddOpenTelemetry()
-            .ConfigureResource(rb => rb
-                .AddService(
-                    serviceName: TelemetryConstants.ServiceName,
-                    serviceVersion: serviceVersion,
-                    serviceInstanceId: Environment.MachineName)
-                .AddAttributes(new[]
-                {
-                                        new KeyValuePair<string, object>("service.namespace", TelemetryConstants.ServiceNamespace),
-                                        new KeyValuePair<string, object>("deployment.environment", environment)
-                }))
             .WithTracing(builder =>
             {
                 builder
                     .AddSource(TelemetryConstants.ActivitySourceName)
-                    .AddSource(RuntimeTelemetry.ActivitySourceName)
-                    .AddAspNetCoreInstrumentation(o =>
-                    {
-                        o.RecordException = true;
-                        o.Filter = _ => true;
-                    })
-                    .AddHttpClientInstrumentation(o =>
-                    {
-                        o.RecordException = true;
-                    });
+                    .AddSource(RuntimeTelemetry.ActivitySourceName);
 
-                var otlpEndpoint = configuration?["Telemetry:Otlp:Endpoint"];
-                if (Uri.TryCreate(otlpEndpoint, UriKind.Absolute, out var traceEndpoint))
-                    builder.AddOtlpExporter(options => options.Endpoint = traceEndpoint);
-                else if (configuration?.GetValue("Telemetry:ConsoleExporter", false) == true)
+                if (configuration?.GetValue("Telemetry:ConsoleExporter", false) == true)
                     builder.AddConsoleExporter();
-
             })
             .WithMetrics(builder =>
             {
                 builder
                     .AddMeter(TelemetryConstants.MeterName)
-                    .AddMeter(RuntimeTelemetry.MeterName)
-                    .AddRuntimeInstrumentation()
-                    .AddAspNetCoreInstrumentation()
-                    .AddHttpClientInstrumentation();
-
-                var otlpEndpoint = configuration?["Telemetry:Otlp:Endpoint"];
-                if (Uri.TryCreate(otlpEndpoint, UriKind.Absolute, out var metricsEndpoint))
-                    builder.AddOtlpExporter(options => options.Endpoint = metricsEndpoint);
+                    .AddMeter(RuntimeTelemetry.MeterName);
             });
 
         return services;

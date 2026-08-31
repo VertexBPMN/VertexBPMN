@@ -6,10 +6,9 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using MudBlazor.Services;
-using Polly;
-using Polly.Extensions.Http;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.AddServiceDefaults();
 var isUiTest = builder.Environment.IsEnvironment("UiTest")
     && string.Equals(
         builder.Configuration["StudioAuthentication:UiTestEnabled"],
@@ -97,8 +96,7 @@ builder.Services.AddHttpClient("VertexBPMN.Api", client =>
     client.BaseAddress = apiUri;
     client.Timeout = TimeSpan.FromSeconds(30);
 })
-.AddHttpMessageHandler<StudioApiAuthorizationHandler>()
-.AddPolicyHandler(GetRetryPolicy());
+.AddHttpMessageHandler<StudioApiAuthorizationHandler>();
 
 builder.Services.AddTransient<StudioApiAuthorizationHandler>();
 
@@ -106,15 +104,6 @@ builder.Services.AddHttpClient("Default", client =>
 {
     client.BaseAddress = new Uri("http://localhost/");
 });
-
-static IAsyncPolicy<HttpResponseMessage> GetRetryPolicy()
-{
-    return HttpPolicyExtensions
-        .HandleTransientHttpError()
-        .WaitAndRetryAsync(
-            retryCount: 3,
-            sleepDurationProvider: retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)));
-}
 
 // Register HTTP-based services
 builder.Services.AddScoped<IBpmnEngineService, HttpBpmnEngineService>();
@@ -154,6 +143,7 @@ builder.Services.AddSingleton<ActiveEngineService>();
 builder.Services.AddLogging();
 
 var app = builder.Build();
+app.MapDefaultEndpoints();
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())

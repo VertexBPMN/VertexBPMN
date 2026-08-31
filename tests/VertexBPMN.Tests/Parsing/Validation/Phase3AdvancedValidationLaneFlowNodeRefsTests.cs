@@ -37,23 +37,23 @@ public class Phase3AdvancedValidationLaneFlowNodeRefsTests
 """;
 
     [Fact]
-    public void LaneFlowNodeRefs_Disabled_NoStructuredDiagnostics()
+    public async Task LaneFlowNodeRefs_Disabled_NoStructuredDiagnostics()
     {
-        var model = new BpmnParser(new BpmnParserOptions {
+        var model = await new BpmnParser(new BpmnParserOptions {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = false
-        }).ParseAsync(MissingRefXml).GetAwaiter().GetResult();
+        }).ParseAsync(MissingRefXml, TestContext.Current.CancellationToken);
 
         Assert.Null(model.ValidationDiagnostics);
     }
 
     [Fact]
-    public void LaneFlowNodeRefs_MissingReference_ProducesWarning()
+    public async Task LaneFlowNodeRefs_MissingReference_ProducesWarning()
     {
-        var model = new BpmnParser(new BpmnParserOptions {
+        var model = await new BpmnParser(new BpmnParserOptions {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(MissingRefXml).GetAwaiter().GetResult();
+        }).ParseAsync(MissingRefXml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         Assert.Contains(model.ValidationDiagnostics!, d =>
@@ -63,12 +63,12 @@ public class Phase3AdvancedValidationLaneFlowNodeRefsTests
     }
 
     [Fact]
-    public void LaneFlowNodeRefs_AllValid_NoDiagnostics()
+    public async Task LaneFlowNodeRefs_AllValid_NoDiagnostics()
     {
-        var model = new BpmnParser(new BpmnParserOptions {
+        var model = await new BpmnParser(new BpmnParserOptions {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(ValidRefsXml).GetAwaiter().GetResult();
+        }).ParseAsync(ValidRefsXml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         Assert.DoesNotContain(model.ValidationDiagnostics!, d => d.Code == "REF-LANE-FLOWNODE-MISSING");

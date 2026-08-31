@@ -20,7 +20,7 @@ public class UnifiedPhaseESequenceFlowPriorityTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var flow = Assert.Single(model.SequenceFlows);
         Assert.Equal(10, flow.Priority);
     }
@@ -38,7 +38,7 @@ public class UnifiedPhaseESequenceFlowPriorityTests
 </definitions>
 """;
 
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var flow = Assert.Single(model.SequenceFlows);
         Assert.Equal(5, flow.Priority);
         //var serialized = _serializer.Serialize(model);

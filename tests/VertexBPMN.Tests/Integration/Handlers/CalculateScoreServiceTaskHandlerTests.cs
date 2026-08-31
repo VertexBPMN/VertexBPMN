@@ -17,7 +17,7 @@ public class CalculateScoreServiceTaskHandlerTests
         };
 
         // Act
-        await handler.ExecuteAsync(new Dictionary<string, string>(), variables);
+        await handler.ExecuteAsync(new Dictionary<string, string>(), variables, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(variables.ContainsKey("creditScore"));
@@ -36,6 +36,6 @@ public class CalculateScoreServiceTaskHandlerTests
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            handler.ExecuteAsync(new Dictionary<string, string>(), variables));
+            handler.ExecuteAsync(new Dictionary<string, string>(), variables, TestContext.Current.CancellationToken));
     }
 }

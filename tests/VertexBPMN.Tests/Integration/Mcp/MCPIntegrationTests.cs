@@ -71,7 +71,7 @@ public class MCPIntegrationTests
         _storeMock.Setup(s => s.UpdateCaseModelAsync(It.IsAny<CaseModel>())).Returns(Task.CompletedTask);
 
         // Act
-        await _engine.GenerateAdHocSubprocessAsync(caseId);
+        await _engine.GenerateAdHocSubprocessAsync(caseId, TestContext.Current.CancellationToken);
 
         // Assert
         _aiDecisionServiceMock.Verify(s => s.PredictOptimalPlanItemsAsync(caseId, It.IsAny<Dictionary<string, object>>(), historicalData, It.IsAny<CancellationToken>()), Times.Once());
@@ -90,7 +90,7 @@ public class MCPIntegrationTests
             .ReturnsAsync(externalContext);
 
         // Act
-        var result = await _aiDecisionServiceMock.Object.FetchExternalContextAsync(caseId, resourceId);
+        var result = await _aiDecisionServiceMock.Object.FetchExternalContextAsync(caseId, resourceId, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(externalContext, result);

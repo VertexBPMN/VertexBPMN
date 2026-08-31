@@ -73,18 +73,18 @@ public sealed class GrpcContractTests : IDisposable
         {
             CaseId = caseId,
             CmmnXml = InteractiveCase(caseId)
-        });
+        }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Contains(caseId, registration.Message);
 
-        var execution = await client.ExecuteCaseAsync(new ApiExecuteCaseRequest { CaseId = caseId });
+        var execution = await client.ExecuteCaseAsync(new ApiExecuteCaseRequest { CaseId = caseId }, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(Guid.TryParse(execution.CaseInstanceId, out _));
 
         var eventResult = await client.TriggerUserEventAsync(new ApiTriggerEventRequest
         {
             CaseId = execution.CaseInstanceId,
             EventId = "user-event"
-        });
+        }, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Contains("user-event", eventResult.Message);
 
         var updateResult = await client.UpdateCaseFileItemAsync(new ApiCaseFileUpdateRequest
@@ -92,11 +92,10 @@ public sealed class GrpcContractTests : IDisposable
             CaseId = execution.CaseInstanceId,
             CaseFileItemId = "item",
             NewValue = "value"
-        });
+        }, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Contains("item", updateResult.Message);
 
-        var adhocResult = await client.GenerateAdHocSubprocessAsync(
-            new ApiGenerateAdHocSubprocessRequest { CaseId = execution.CaseInstanceId, PlanItemId = "optional-review" });
+        var adhocResult = await client.GenerateAdHocSubprocessAsync(new ApiGenerateAdHocSubprocessRequest { CaseId = execution.CaseInstanceId, PlanItemId = "optional-review" }, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Contains("optional-review", adhocResult.Message);
     }
 
@@ -111,16 +110,16 @@ public sealed class GrpcContractTests : IDisposable
         {
             CaseId = caseId,
             CmmnXml = InteractiveCase(caseId)
-        });
+        }, cancellationToken: TestContext.Current.CancellationToken);
 
-        var execution = await client.ExecuteCaseAsync(new McpExecuteCaseRequest { CaseId = caseId });
+        var execution = await client.ExecuteCaseAsync(new McpExecuteCaseRequest { CaseId = caseId }, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(Guid.TryParse(execution.CaseInstanceId, out _));
 
         var eventResult = await client.TriggerUserEventAsync(new McpTriggerEventRequest
         {
             CaseId = execution.CaseInstanceId,
             EventId = "user-event"
-        });
+        }, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Contains("user-event", eventResult.Message);
 
         var updateResult = await client.UpdateCaseFileItemAsync(new McpCaseFileUpdateRequest
@@ -128,15 +127,13 @@ public sealed class GrpcContractTests : IDisposable
             CaseId = execution.CaseInstanceId,
             CaseFileItemId = "item",
             NewValue = "value"
-        });
+        }, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Contains("item", updateResult.Message);
 
-        var adhocResult = await client.GenerateAdHocSubprocessAsync(
-            new McpGenerateAdHocSubprocessRequest { CaseId = execution.CaseInstanceId, PlanItemId = "optional-review" });
+        var adhocResult = await client.GenerateAdHocSubprocessAsync(new McpGenerateAdHocSubprocessRequest { CaseId = execution.CaseInstanceId, PlanItemId = "optional-review" }, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Contains("optional-review", adhocResult.Message);
 
-        var history = await client.GetHistoricalContextAsync(
-            new McpHistoricalContextRequest { CaseId = execution.CaseInstanceId });
+        var history = await client.GetHistoricalContextAsync(new McpHistoricalContextRequest { CaseId = execution.CaseInstanceId }, cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotEmpty(history.HistoricalData);
     }
 

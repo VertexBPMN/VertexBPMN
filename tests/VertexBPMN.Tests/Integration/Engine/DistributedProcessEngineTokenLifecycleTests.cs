@@ -1,4 +1,4 @@
-﻿using Moq;
+using Moq;
 using OpenTelemetry.Trace;
 using Shouldly;
 using System.Reflection;
@@ -216,12 +216,11 @@ public sealed class DistributedProcessEngineTokenLifecycleTests
                 token,
                 model,
                 trace,
-                CancellationToken.None
+                TestContext.Current.CancellationToken
             });
 
-        result.ShouldBeAssignableTo<Task>();
-
-        await (Task)result!;
+        var task = Assert.IsAssignableFrom<Task>(result);
+        await task;
     }
 
     private static async Task InvokeProcessTokenAsync(
@@ -245,11 +244,10 @@ public sealed class DistributedProcessEngineTokenLifecycleTests
                 token,
                 model,
                 trace,
-                CancellationToken.None
+                TestContext.Current.CancellationToken
             });
 
-        result.ShouldBeAssignableTo<Task>();
-
-        await (Task)result!;
+        var task = Assert.IsAssignableFrom<Task>(result);
+        await task;
     }
 }

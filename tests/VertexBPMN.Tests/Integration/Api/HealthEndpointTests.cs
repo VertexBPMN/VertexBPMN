@@ -23,10 +23,10 @@ public class HealthEndpointTests
     [Fact]
     public async Task HealthEndpoint_ReturnsOk_AndContainsServiceData()
     {
-        var response = await _client.GetAsync("/api/health");
+        var response = await _client.GetAsync("/api/health", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var json = await response.Content.ReadAsStringAsync();
+        var json = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         using var doc = JsonDocument.Parse(json);
         // Adapt to actual response shape (default HealthChecks UI format or your custom)
         Assert.True(json.Contains("healthy"), "Expected custom health check entry.");

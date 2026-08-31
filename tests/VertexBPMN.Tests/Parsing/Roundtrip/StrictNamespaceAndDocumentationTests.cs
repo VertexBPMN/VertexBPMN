@@ -22,10 +22,10 @@ public class StrictNamespaceAndDocumentationTests
 </bpmn:definitions>";
 
     [Fact]
-    public void Strict_Roundtrip_Preserves_Namespace_Order_And_Documentation()
+    public async Task Strict_Roundtrip_Preserves_Namespace_Order_And_Documentation()
     {
         var parser = new BpmnParser(new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict, PreserveUnknownExtensions = true });
-        var model = parser.ParseAsync(SourceBpmn).GetAwaiter().GetResult();
+        var model = await parser.ParseAsync(SourceBpmn, TestContext.Current.CancellationToken);
         Assert.NotNull(model.RawMetadata);
         Assert.NotNull(model.RawMetadata!.NamespacePrefixes);
         var xmlOut = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);

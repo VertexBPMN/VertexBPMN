@@ -21,7 +21,7 @@ public class EventDefinitionParsingTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var ev = Assert.Single(model.Events);
         var def = Assert.Single(ev.Definitions);
         Assert.Equal("timer", def.Kind);
@@ -40,7 +40,7 @@ public class EventDefinitionParsingTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var ev = Assert.Single(model.Events);
         var def = Assert.Single(ev.Definitions);
         var msg = Assert.IsType<MessageEventDefinition>(def);
@@ -62,7 +62,7 @@ public class EventDefinitionParsingTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         Assert.Equal(2, model.Events.Count);
         var signal = model.Events[0].Definitions[0] as SignalEventDefinition;
         Assert.Equal("Sig1", signal!.SignalRef);
@@ -84,7 +84,7 @@ public class EventDefinitionParsingTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var ev = Assert.Single(model.Events);
         var cond = Assert.IsType<ConditionalEventDefinition>(ev.Definitions[0]);
         Assert.Equal("${x > 10}", cond.Condition);

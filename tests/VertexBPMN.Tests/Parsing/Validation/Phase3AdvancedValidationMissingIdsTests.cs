@@ -22,24 +22,24 @@ public class Phase3AdvancedValidationMissingIdsTests
 """;
 
     [Fact]
-    public void MissingProcess_Disabled_NoStructuredDiagnostic()
+    public async Task MissingProcess_Disabled_NoStructuredDiagnostic()
     {
-        var model = new BpmnParser(new BpmnParserOptions {
+        var model = await new BpmnParser(new BpmnParserOptions {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = false
-        }).ParseAsync(NoProcessXml).GetAwaiter().GetResult();
+        }).ParseAsync(NoProcessXml, TestContext.Current.CancellationToken);
 
         Assert.Null(model.ValidationDiagnostics);
         Assert.Contains(model.Diagnostics, d => d.StartsWith("No <process> element"));
     }
 
     [Fact]
-    public void MissingProcess_Enabled_ReportsStructured()
+    public async Task MissingProcess_Enabled_ReportsStructured()
     {
-        var model = new BpmnParser(new BpmnParserOptions {
+        var model = await new BpmnParser(new BpmnParserOptions {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(NoProcessXml).GetAwaiter().GetResult();
+        }).ParseAsync(NoProcessXml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         Assert.Contains(model.ValidationDiagnostics!, d =>
@@ -48,12 +48,12 @@ public class Phase3AdvancedValidationMissingIdsTests
     }
 
     [Fact]
-    public void MissingIds_Enabled_ReportsEachMissingId()
+    public async Task MissingIds_Enabled_ReportsEachMissingId()
     {
-        var model = new BpmnParser(new BpmnParserOptions {
+        var model = await new BpmnParser(new BpmnParserOptions {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(MissingIdsXml).GetAwaiter().GetResult();
+        }).ParseAsync(MissingIdsXml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
 
@@ -67,12 +67,12 @@ public class Phase3AdvancedValidationMissingIdsTests
     }
 
     [Fact]
-    public void MissingIds_Disabled_NoStructuredDiagnostics()
+    public async Task MissingIds_Disabled_NoStructuredDiagnostics()
     {
-        var model = new BpmnParser(new BpmnParserOptions {
+        var model = await new BpmnParser(new BpmnParserOptions {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = false
-        }).ParseAsync(MissingIdsXml).GetAwaiter().GetResult();
+        }).ParseAsync(MissingIdsXml, TestContext.Current.CancellationToken);
 
         Assert.Null(model.ValidationDiagnostics);
     }

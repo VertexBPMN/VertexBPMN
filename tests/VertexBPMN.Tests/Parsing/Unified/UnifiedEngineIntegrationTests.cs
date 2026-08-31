@@ -22,7 +22,7 @@ public class UnifiedEngineIntegrationTests
 </definitions>
 """;
         var parser = CreateParser();
-        var unified = await parser.ParseAsync(xml);
+        var unified = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var mapper = new EngineMapper();
         var result = mapper.Map("p1", unified);
         Assert.NotNull(result.ProcessDefinition);
@@ -32,7 +32,7 @@ public class UnifiedEngineIntegrationTests
         Assert.Single(def.StartEventIds);
         Assert.True(def.Outgoing.ContainsKey("s1"));
         Assert.True(def.Incoming.ContainsKey("task1"));
-        Assert.Empty(result.MappingDiagnostics.Where(d=>d.Contains("error", StringComparison.OrdinalIgnoreCase)));
+        Assert.DoesNotContain(result.MappingDiagnostics, d =>d.Contains("error", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -50,7 +50,7 @@ public class UnifiedEngineIntegrationTests
 </definitions>
 """;
         var parser = CreateParser();
-        var unified = await parser.ParseAsync(xml);
+        var unified = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var mapper = new EngineMapper();
         var mapped = mapper.Map("demo", unified).ProcessDefinition!;
         var runtime = new EngineRuntime();
@@ -85,7 +85,7 @@ public class UnifiedEngineIntegrationTests
 </definitions>
 """;
         var parser = CreateParser();
-        var unified = await parser.ParseAsync(xml);
+        var unified = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var mapper = new EngineMapper();
         var def = mapper.Map("route", unified).ProcessDefinition!;
         var runtime = new EngineRuntime();

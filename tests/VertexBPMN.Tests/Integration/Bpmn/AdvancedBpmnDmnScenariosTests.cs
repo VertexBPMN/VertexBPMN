@@ -89,7 +89,7 @@ public class AdvancedBpmnDmnScenariosTests
         await service.DeployAsync("complex", "Complex", dmnXml);
         var inputs = new Dictionary<string, object> { { "foo", 42 }, { "bar", "baz" }, { "list", new List<int> { 1, 2, 3 } } };
 
-        var result = await service.EvaluateDecisionByKeyAsync("complex", inputs, null, CancellationToken.None);
+        var result = await service.EvaluateDecisionByKeyAsync("complex", inputs, null, TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
         Assert.Equal("complex-inputs-accepted", result.Variables["result"]);

@@ -331,7 +331,7 @@ public class ProductionHealthMonitoringService : IHealthMonitoringService
         };
 
         // Add CPU usage if available
-        if (_cpuCounter != null)
+        if (OperatingSystem.IsWindows() && _cpuCounter != null)
         {
             try
             {
@@ -344,7 +344,7 @@ public class ProductionHealthMonitoringService : IHealthMonitoringService
         }
 
         // Add available memory if available
-        if (_memoryCounter != null)
+        if (OperatingSystem.IsWindows() && _memoryCounter != null)
         {
             try
             {

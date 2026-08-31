@@ -17,7 +17,7 @@ public sealed class HttpMigrationServiceTests
         factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
         var service = new HttpMigrationService(factory.Object);
 
-        await service.PreviewAsync("source", "target");
+        await service.PreviewAsync("source", "target", TestContext.Current.CancellationToken);
 
         var request = Assert.Single(requests);
         Assert.Equal(HttpMethod.Post, request.Method);
@@ -34,7 +34,7 @@ public sealed class HttpMigrationServiceTests
         var service = new HttpMigrationService(factory.Object);
 
         using var document = JsonDocument.Parse("{\"sourceProcessDefinitionId\":\"source\",\"targetProcessDefinitionId\":\"target\"}");
-        await service.ExecuteAsync(document.RootElement);
+        await service.ExecuteAsync(document.RootElement, TestContext.Current.CancellationToken);
 
         var request = Assert.Single(requests);
         Assert.Equal(HttpMethod.Post, request.Method);
@@ -57,16 +57,16 @@ public sealed class HttpMigrationServiceTests
         switch (operation)
         {
             case "GetStatusAsync":
-                await service.GetStatusAsync("migration-1");
+                await service.GetStatusAsync("migration-1", TestContext.Current.CancellationToken);
                 break;
             case "CreateSnapshotAsync":
-                await service.CreateSnapshotAsync("process-1");
+                await service.CreateSnapshotAsync("process-1", TestContext.Current.CancellationToken);
                 break;
             case "RestoreFromSnapshotAsync":
-                await service.RestoreFromSnapshotAsync("process-1", "snapshot-1");
+                await service.RestoreFromSnapshotAsync("process-1", "snapshot-1", TestContext.Current.CancellationToken);
                 break;
             case "RollbackAsync":
-                await service.RollbackAsync("migration-1");
+                await service.RollbackAsync("migration-1", TestContext.Current.CancellationToken);
                 break;
         }
 

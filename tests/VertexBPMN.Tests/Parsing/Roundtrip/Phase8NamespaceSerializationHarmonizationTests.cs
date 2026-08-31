@@ -54,8 +54,8 @@ public class Phase8NamespaceSerializationHarmonizationTests
         var parser = new BpmnParser(options);
 
         // Act
-        var model1 = await parser.ParseAsync(xml1);
-        var model2 = await parser.ParseAsync(xml2);
+        var model1 = await parser.ParseAsync(xml1, TestContext.Current.CancellationToken);
+        var model2 = await parser.ParseAsync(xml2, TestContext.Current.CancellationToken);
 
         var normalizedSerializer = new NormalizedProjectionSerializer(options);
         var serialized1 = normalizedSerializer.Serialize(model1);
@@ -119,8 +119,8 @@ public class Phase8NamespaceSerializationHarmonizationTests
         var parser = new BpmnParser(options);
 
         // Act
-        var model1 = await parser.ParseAsync(xml1);
-        var model2 = await parser.ParseAsync(xml2);
+        var model1 = await parser.ParseAsync(xml1, TestContext.Current.CancellationToken);
+        var model2 = await parser.ParseAsync(xml2, TestContext.Current.CancellationToken);
 
         var hash1 = parser.ComputeStructuralModelHash(model1);
         var hash2 = parser.ComputeStructuralModelHash(model2);
@@ -167,8 +167,8 @@ public class Phase8NamespaceSerializationHarmonizationTests
         var parser = new BpmnParser(options);
 
         // Act
-        var model1 = await parser.ParseAsync(xml1);
-        var model2 = await parser.ParseAsync(xml2);
+        var model1 = await parser.ParseAsync(xml1, TestContext.Current.CancellationToken);
+        var model2 = await parser.ParseAsync(xml2, TestContext.Current.CancellationToken);
 
         var hash1 = parser.ComputeStructuralModelHash(model1);
         var hash2 = parser.ComputeStructuralModelHash(model2);
@@ -203,7 +203,7 @@ public class Phase8NamespaceSerializationHarmonizationTests
         var parser = new BpmnParser(options);
 
         // Act
-        var model = await parser.ParseAsync(xml);
+        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var normalizedSerializer = new NormalizedProjectionSerializer(options);
         var serialized = normalizedSerializer.Serialize(model);
 
@@ -262,12 +262,12 @@ public class Phase8NamespaceSerializationHarmonizationTests
         var parser = new BpmnParser(options);
 
         // Act
-        var model = await parser.ParseAsync(xml);
+        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var normalizedSerializer = new NormalizedProjectionSerializer(options);
         var serialized = normalizedSerializer.Serialize(model);
 
         // Reparse to verify semantic preservation
-        var reparsed = await parser.ParseAsync(serialized);
+        var reparsed = await parser.ParseAsync(serialized, TestContext.Current.CancellationToken);
 
         // Assert - All semantic content should be preserved
         Assert.Equal(model.ProcessId, reparsed.ProcessId);
@@ -317,11 +317,11 @@ public class Phase8NamespaceSerializationHarmonizationTests
         var parser = new BpmnParser(strictOptions);
 
         // Act
-        var model = await parser.ParseAsync(xml);
+        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var strictSerialized = parser.Serialize(model); // Uses existing BpmnSerializer
 
         // Assert - Should be able to roundtrip with strict serializer unchanged
-        var reparsed = await parser.ParseAsync(strictSerialized);
+        var reparsed = await parser.ParseAsync(strictSerialized, TestContext.Current.CancellationToken);
         
         Assert.Equal(model.ProcessId, reparsed.ProcessId);
         Assert.Equal(model.Tasks.Count, reparsed.Tasks.Count);
@@ -359,8 +359,8 @@ public class Phase8NamespaceSerializationHarmonizationTests
         var parser = new BpmnParser(options);
 
         // Act - Parse the same logical model multiple times
-        var model1 = await parser.ParseAsync(baseXml);
-        var model2 = await parser.ParseAsync(baseXml);
+        var model1 = await parser.ParseAsync(baseXml, TestContext.Current.CancellationToken);
+        var model2 = await parser.ParseAsync(baseXml, TestContext.Current.CancellationToken);
         
         var hash1 = parser.ComputeStructuralModelHash(model1);
         var hash2 = parser.ComputeStructuralModelHash(model2);

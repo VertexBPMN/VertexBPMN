@@ -32,7 +32,7 @@ public class RuntimeProjectionAdvancedTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var rt = model.Runtime!;
         var taskA = rt.FlowNodes.Single(n => n.Id == "taskA");
         var taskB = rt.FlowNodes.Single(n => n.Id == "taskB");
@@ -65,7 +65,7 @@ public class RuntimeProjectionAdvancedTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var rt = model.Runtime!;
 
         var miSeq = rt.FlowNodes.Single(n => n.Id == "miSeq");

@@ -21,25 +21,25 @@ public class Phase3AdvancedValidationSequenceFlowTests
 """;
 
     [Fact]
-    public void SequenceFlowInvalidEndpoints_Disabled_NoStructuredDiagnostics()
+    public async Task SequenceFlowInvalidEndpoints_Disabled_NoStructuredDiagnostics()
     {
-        var model = new BpmnParser(new BpmnParserOptions
+        var model = await new BpmnParser(new BpmnParserOptions
         {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = false
-        }).ParseAsync(InvalidEndpointsXml).GetAwaiter().GetResult();
+        }).ParseAsync(InvalidEndpointsXml, TestContext.Current.CancellationToken);
 
         Assert.Null(model.ValidationDiagnostics); // feature off
     }
 
     [Fact]
-    public void SequenceFlowInvalidEndpoints_Enabled_ProducesDiagnostics()
+    public async Task SequenceFlowInvalidEndpoints_Enabled_ProducesDiagnostics()
     {
-        var model = new BpmnParser(new BpmnParserOptions
+        var model = await new BpmnParser(new BpmnParserOptions
         {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(InvalidEndpointsXml).GetAwaiter().GetResult();
+        }).ParseAsync(InvalidEndpointsXml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         var diags = model.ValidationDiagnostics!;
@@ -63,7 +63,7 @@ public class Phase3AdvancedValidationSequenceFlowTests
     }
 
     [Fact]
-    public void SequenceFlowValid_NoEndpointDiagnostics()
+    public async Task SequenceFlowValid_NoEndpointDiagnostics()
     {
         const string valid = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
@@ -74,11 +74,11 @@ public class Phase3AdvancedValidationSequenceFlowTests
   </bpmn:process>
 </bpmn:definitions>
 """;
-        var model = new BpmnParser(new BpmnParserOptions
+        var model = await new BpmnParser(new BpmnParserOptions
         {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(valid).GetAwaiter().GetResult();
+        }).ParseAsync(valid, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         Assert.DoesNotContain(model.ValidationDiagnostics!, d => d.Code == "REF-SEQUENCE-ENDPOINT");

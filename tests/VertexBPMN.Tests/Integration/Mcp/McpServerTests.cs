@@ -86,7 +86,7 @@
 //    public async Task WebSocket_ListProcesses_ReturnsProcessList()
 //    {
 //        var wsClient = _factory.Server.CreateWebSocketClient();
-//        using var ws = await wsClient.ConnectAsync(new Uri("ws://localhost/mcp/ws"), CancellationToken.None);
+//        using var ws = await wsClient.ConnectAsync(new Uri("ws://localhost/mcp/ws"), TestContext.Current.CancellationToken);
 //        var req = new
 //        {
 //            jsonrpc = "2.0",
@@ -95,9 +95,9 @@
 //        };
 //        var reqJson = JsonSerializer.Serialize(req);
 //        var reqBytes = Encoding.UTF8.GetBytes(reqJson);
-//        await ws.SendAsync(new ArraySegment<byte>(reqBytes), WebSocketMessageType.Text, true, CancellationToken.None);
+//        await ws.SendAsync(new ArraySegment<byte>(reqBytes), WebSocketMessageType.Text, true, TestContext.Current.CancellationToken);
 //        var buffer = new byte[4096];
-//        var result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+//        var result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), TestContext.Current.CancellationToken);
 //        var respJson = Encoding.UTF8.GetString(buffer, 0, result.Count);
 //        Assert.Contains("invoice", respJson);
 //    }
@@ -106,7 +106,7 @@
 //    public async Task WebSocket_InstanceEventStream_EmitsAllEventTypes()
 //    {
 //        var wsClient = _factory.Server.CreateWebSocketClient();
-//        using var ws = await wsClient.ConnectAsync(new Uri("ws://localhost/mcp/ws"), CancellationToken.None);
+//        using var ws = await wsClient.ConnectAsync(new Uri("ws://localhost/mcp/ws"), TestContext.Current.CancellationToken);
 
 //        // Starte eine Instanz
 //        var startReq = new
@@ -118,9 +118,9 @@
 //        };
 //        var startJson = JsonSerializer.Serialize(startReq);
 //        var startBytes = Encoding.UTF8.GetBytes(startJson);
-//        await ws.SendAsync(new ArraySegment<byte>(startBytes), WebSocketMessageType.Text, true, CancellationToken.None);
+//        await ws.SendAsync(new ArraySegment<byte>(startBytes), WebSocketMessageType.Text, true, TestContext.Current.CancellationToken);
 //        var buffer = new byte[4096];
-//        var result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+//        var result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), TestContext.Current.CancellationToken);
 //        var respJson = Encoding.UTF8.GetString(buffer, 0, result.Count);
 //        var instanceId = JsonDocument.Parse(respJson).RootElement.GetProperty("result").GetProperty("instanceId").GetString();
 
@@ -134,7 +134,7 @@
 //        };
 //        var eventJson = JsonSerializer.Serialize(eventReq);
 //        var eventBytes = Encoding.UTF8.GetBytes(eventJson);
-//        await ws.SendAsync(new ArraySegment<byte>(eventBytes), WebSocketMessageType.Text, true, CancellationToken.None);
+//        await ws.SendAsync(new ArraySegment<byte>(eventBytes), WebSocketMessageType.Text, true, TestContext.Current.CancellationToken);
 
 //        // Simuliere Statusänderungen (z.B. Task completed, Progress, Incident, Process completed)
 //        for (int i = 0; i < 5; i++)
@@ -148,7 +148,7 @@
 //            };
 //            var stateJson = JsonSerializer.Serialize(stateReq);
 //            var stateBytes = Encoding.UTF8.GetBytes(stateJson);
-//            await ws.SendAsync(new ArraySegment<byte>(stateBytes), WebSocketMessageType.Text, true, CancellationToken.None);
+//            await ws.SendAsync(new ArraySegment<byte>(stateBytes), WebSocketMessageType.Text, true, TestContext.Current.CancellationToken);
 //            await Task.Delay(100);
 //        }
 
@@ -280,7 +280,7 @@
 //    public async Task WebSocket_ListProcesses_ReturnsProcessList_TestBypass()
 //    {
 //        var wsClient = _factory.Server.CreateWebSocketClient();
-//        using var ws = await wsClient.ConnectAsync(new Uri("ws://localhost/mcp/ws"), CancellationToken.None);
+//        using var ws = await wsClient.ConnectAsync(new Uri("ws://localhost/mcp/ws"), TestContext.Current.CancellationToken);
 //        var req = new
 //        {
 //            jsonrpc = "2.0",
@@ -289,9 +289,9 @@
 //        };
 //        var reqJson = JsonSerializer.Serialize(req);
 //        var reqBytes = Encoding.UTF8.GetBytes(reqJson);
-//        await ws.SendAsync(new ArraySegment<byte>(reqBytes), WebSocketMessageType.Text, true, CancellationToken.None);
+//        await ws.SendAsync(new ArraySegment<byte>(reqBytes), WebSocketMessageType.Text, true, TestContext.Current.CancellationToken);
 //        var buffer = new byte[4096];
-//        var result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+//        var result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), TestContext.Current.CancellationToken);
 //        var respJson = Encoding.UTF8.GetString(buffer, 0, result.Count);
 //        Assert.Contains("invoice", respJson);
 //    }
@@ -300,7 +300,7 @@
 //    public async Task WebSocket_InstanceEventStream_EmitsAllEventTypes_TestBypass()
 //    {
 //        var wsClient = _factory.Server.CreateWebSocketClient();
-//        using var ws = await wsClient.ConnectAsync(new Uri("ws://localhost/mcp/ws"), CancellationToken.None);
+//        using var ws = await wsClient.ConnectAsync(new Uri("ws://localhost/mcp/ws"), TestContext.Current.CancellationToken);
 
 //        // Starte eine Instanz
 //        var startReq = new
@@ -312,9 +312,9 @@
 //        };
 //        var startJson = JsonSerializer.Serialize(startReq);
 //        var startBytes = Encoding.UTF8.GetBytes(startJson);
-//        await ws.SendAsync(new ArraySegment<byte>(startBytes), WebSocketMessageType.Text, true, CancellationToken.None);
+//        await ws.SendAsync(new ArraySegment<byte>(startBytes), WebSocketMessageType.Text, true, TestContext.Current.CancellationToken);
 //        var buffer = new byte[4096];
-//        var result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+//        var result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), TestContext.Current.CancellationToken);
 //        var respJson = Encoding.UTF8.GetString(buffer, 0, result.Count);
 //        var instanceId = JsonDocument.Parse(respJson).RootElement.GetProperty("result").GetProperty("instanceId").GetString();
 
@@ -328,7 +328,7 @@
 //        };
 //        var eventJson = JsonSerializer.Serialize(eventReq);
 //        var eventBytes = Encoding.UTF8.GetBytes(eventJson);
-//        await ws.SendAsync(new ArraySegment<byte>(eventBytes), WebSocketMessageType.Text, true, CancellationToken.None);
+//        await ws.SendAsync(new ArraySegment<byte>(eventBytes), WebSocketMessageType.Text, true, TestContext.Current.CancellationToken);
 
 //        // Simuliere Statusänderungen (z.B. Task completed, Progress, Incident, Process completed)
 //        for (int i = 0; i < 5; i++)
@@ -342,7 +342,7 @@
 //            };
 //            var stateJson = JsonSerializer.Serialize(stateReq);
 //            var stateBytes = Encoding.UTF8.GetBytes(stateJson);
-//            await ws.SendAsync(new ArraySegment<byte>(stateBytes), WebSocketMessageType.Text, true, CancellationToken.None);
+//            await ws.SendAsync(new ArraySegment<byte>(stateBytes), WebSocketMessageType.Text, true, TestContext.Current.CancellationToken);
 //            await Task.Delay(100);
 //        }
 

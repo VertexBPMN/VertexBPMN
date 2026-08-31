@@ -10,7 +10,7 @@ public class StrictPhaseDPartialDirtyTests
 
     // RED: partial dirty should update only targeted element without global RoundtripDirty
     [Fact]
-    public void PartialDirty_TaskName_Updated_Without_Global_RoundtripDirty()
+    public async Task PartialDirty_TaskName_Updated_Without_Global_RoundtripDirty()
     {
         const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL' xmlns:v='http://vendor/x'>
   <bpmn:process id='p1'>
@@ -20,7 +20,7 @@ public class StrictPhaseDPartialDirtyTests
     <bpmn:userTask id='t2' name='Keep' />
   </bpmn:process>
 </bpmn:definitions>";
-        var model = P.ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await P.ParseAsync(xml, TestContext.Current.CancellationToken);
         Assert.False(model.RawMetadata!.RoundtripDirty);
         model = BpmnRoundtripUtil.ApplyAttributeChangePartial(model, "t1", "name", "NewName");
         // Expect no global dirty flag
@@ -34,14 +34,14 @@ public class StrictPhaseDPartialDirtyTests
 
     // RED: dirty element should not be raw-cloned; changed attribute must override original even if present in raw
     [Fact]
-    public void PartialDirty_Replaces_Raw_Name_Attribute()
+    public async Task PartialDirty_Replaces_Raw_Name_Attribute()
     {
         const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <bpmn:process id='p1'>
     <bpmn:userTask id='t1' name='Orig'/>
   </bpmn:process>
 </bpmn:definitions>";
-        var model = P.ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await P.ParseAsync(xml, TestContext.Current.CancellationToken);
         model = BpmnRoundtripUtil.ApplyAttributeChangePartial(model, "t1", "name", "Changed");
         var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
         Assert.Contains("name=\"Changed\"", outXml); // should be updated

@@ -27,7 +27,7 @@ public sealed class HistoricalPredictiveAnalyticsServiceTests
                 """{"processDefinitionKey":"invoice"}"""),
             Event("tenant-b", "instance-3", "ProcessEnded", DateTimeOffset.Parse("2026-01-03T10:30:00Z"),
                 """{"processDefinitionKey":"invoice"}"""));
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         var service = CreateService(db, "tenant-a");
         var prediction = await service.PredictProcessDurationAsync(
@@ -53,7 +53,7 @@ public sealed class HistoricalPredictiveAnalyticsServiceTests
                 """{"processDefinitionKey":"invoice"}"""),
             Event("tenant-b", "instance-2", "ProcessEnded", DateTimeOffset.Parse("2026-01-01T08:20:00Z"),
                 """{"processDefinitionKey":"invoice"}"""));
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         var csv = await CreateService(db, "tenant-a").ExportTrainingDataAsync("invoice");
 

@@ -20,64 +20,64 @@ public class Phase3AdvancedValidationThrowEscalationTests
 """;
 
     [Fact]
-    public void EscalationDisabled_DoesNotThrow()
+    public async Task EscalationDisabled_DoesNotThrow()
     {
-        var model = new BpmnParser(new BpmnParserOptions
+        var model = await new BpmnParser(new BpmnParserOptions
         {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true,
             ThrowOnFatalValidation = false
-        }).ParseAsync(DuplicateIdXml).GetAwaiter().GetResult();
+        }).ParseAsync(DuplicateIdXml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         Assert.Contains(model.ValidationDiagnostics!, d => d.Code == "STR-DUP-ID");
     }
 
     [Fact]
-    public void EscalationEnabled_ThrowsOnError()
+    public async Task EscalationEnabled_ThrowsOnError()
     {
-        var ex = Assert.Throws<BpmnValidationException>(() =>
+        var ex = await Assert.ThrowsAsync<BpmnValidationException>(async () =>
         {
-            new BpmnParser(new BpmnParserOptions
+            await new BpmnParser(new BpmnParserOptions
             {
                 RoundtripMode = BpmnRoundtripMode.Strict,
                 EnableAdvancedValidation = true,
                 ThrowOnFatalValidation = true,
                 MinimumThrowSeverity = ValidationSeverity.Error
-            }).ParseAsync(DuplicateIdXml).GetAwaiter().GetResult();
+            }).ParseAsync(DuplicateIdXml, TestContext.Current.CancellationToken);
         });
 
         Assert.Contains("STR-DUP-ID", ex.Diagnostics.Select(d => d.Code));
     }
 
     [Fact]
-    public void EscalationThresholdHigher_NoThrow()
+    public async Task EscalationThresholdHigher_NoThrow()
     {
-        var model = new BpmnParser(new BpmnParserOptions
+        var model = await new BpmnParser(new BpmnParserOptions
         {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true,
             ThrowOnFatalValidation = true,
             MinimumThrowSeverity = ValidationSeverity.Fatal // no Fatal present
-        }).ParseAsync(DuplicateIdXml).GetAwaiter().GetResult();
+        }).ParseAsync(DuplicateIdXml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         Assert.Contains(model.ValidationDiagnostics!, d => d.Code == "STR-DUP-ID");
     }
 
     [Fact]
-    public void MissingProcess_ThrowsWhenEnabled()
+    public async Task MissingProcess_ThrowsWhenEnabled()
     {
         const string noProcess = "<bpmn:definitions xmlns:bpmn=\"http://www.omg.org/spec/BPMN/20100524/MODEL\" />";
-        var ex = Assert.Throws<BpmnValidationException>(() =>
+        var ex = await Assert.ThrowsAsync<BpmnValidationException>(async () =>
         {
-            new BpmnParser(new BpmnParserOptions
+            await new BpmnParser(new BpmnParserOptions
             {
                 RoundtripMode = BpmnRoundtripMode.Strict,
                 EnableAdvancedValidation = true,
                 ThrowOnFatalValidation = true,
                 MinimumThrowSeverity = ValidationSeverity.Error
-            }).ParseAsync(noProcess).GetAwaiter().GetResult();
+            }).ParseAsync(noProcess, TestContext.Current.CancellationToken);
         });
         Assert.Contains(ex.Diagnostics, d => d.Code == "STR-MISSING-PROCESS");
     }

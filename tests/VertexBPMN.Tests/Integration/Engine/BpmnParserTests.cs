@@ -44,18 +44,20 @@ namespace VertexBPMN.Tests.Integration.Engine
                 </bpmn:definitions>";
 
             // Act
-            var processModel = await _parser.ParseAsync(bpmnXml);
+            var processModel = await _parser.ParseAsync(bpmnXml, TestContext.Current.CancellationToken);
 
             // Assert
             Assert.Equal("Process_1", processModel.Id);
             Assert.Equal("Test Process", processModel.Name);
             Assert.Contains(processModel.Events, pi => pi.Id == "start1" && pi.Type == "startEvent");
-            Assert.Contains(processModel.Tasks, pi => pi.Id == "task1" && pi.Type == "serviceTask" && pi.Attributes["type"] == "mcpServiceTask");
+            Assert.Contains(processModel.Tasks, pi => pi.Id == "task1" && pi.Type == "serviceTask" && pi.Attributes?.GetValueOrDefault("type") == "mcpServiceTask");
             Assert.Contains(processModel.SequenceFlows, s => s.Id == "flow1");
             var task = processModel.Tasks.Single(t => t.Id == "task1");
-            Assert.Equal("mcpServiceTask",task.Attributes["type"]);
-            Assert.Equal("http://cms-mcp:8080/api/mcp", task.Attributes["mcpServerUrl"]);
-            Assert.Equal("trigger_approval", task.Attributes["mcpMethod"]);
+            Assert.NotNull(task.Attributes);
+            var attributes = task.Attributes!;
+            Assert.Equal("mcpServiceTask", attributes["type"]);
+            Assert.Equal("http://cms-mcp:8080/api/mcp", attributes["mcpServerUrl"]);
+            Assert.Equal("trigger_approval", attributes["mcpMethod"]);
         }
 
         [Fact]
@@ -65,7 +67,7 @@ namespace VertexBPMN.Tests.Integration.Engine
             var invalidBpmnXml = "<invalid></invalid>";
 
             // Act & Assert
-            var model = await _parser.ParseAsync(invalidBpmnXml, CancellationToken.None);
+            var model = await _parser.ParseAsync(invalidBpmnXml, TestContext.Current.CancellationToken);
             var task = model.Diagnostics.First();
             Assert.Equal("No <process> element", task);
         }
@@ -82,10 +84,13 @@ namespace VertexBPMN.Tests.Integration.Engine
                     </userTask>
                   </process>
                 </definitions>";
-            var model = await parser.ParseAsync(xml);
+            var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
             var task = model.Tasks.First();
-            Assert.True(task.Attributes.ContainsKey("flowable:taskListeners"));
-            var listeners = JsonSerializer.Deserialize<List<dynamic>>(task.Attributes["flowable:taskListeners"]);
+            Assert.NotNull(task.Attributes);
+            var attributes = task.Attributes!;
+            Assert.True(attributes.ContainsKey("flowable:taskListeners"));
+            var listeners = JsonSerializer.Deserialize<List<dynamic>>(attributes["flowable:taskListeners"]);
+            Assert.NotNull(listeners);
             Assert.Equal("create", ((JsonElement)listeners[0]).GetProperty("Event").GetString());// (string)listeners[0].Event);
             Assert.Equal("com.example.MyTaskListener", ((JsonElement)listeners[0]).GetProperty("Class").GetString());
         }
@@ -99,7 +104,7 @@ namespace VertexBPMN.Tests.Integration.Engine
                         <userTask id='task1' name='Test Task'/>
                       </process>
                     </definitions>";
-            var model = await parser.ParseAsync(xml);
+            var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
             Assert.NotNull(model);
             Assert.Equal("process1", model.Id);
             Assert.Single(model.Tasks);
@@ -110,7 +115,7 @@ namespace VertexBPMN.Tests.Integration.Engine
         public async Task ParseAsync_InvalidXml_ThrowsBpmnParseException()
         {
             var logger = new Mock<ILogger<BpmnParser>>(); var parser = new BpmnParser(logger.Object, TracerProvider.Default);
-            await Assert.ThrowsAsync<SecurityException>(() => parser.ParseAsync("<invalid>"));
+            await Assert.ThrowsAsync<SecurityException>(() => parser.ParseAsync("<invalid>", TestContext.Current.CancellationToken));
         }
 
 
@@ -133,15 +138,17 @@ namespace VertexBPMN.Tests.Integration.Engine
                 </bpmn:definitions>";
 
             // Act
-            var processModel = await _parser.ParseAsync(bpmnXml);
+            var processModel = await _parser.ParseAsync(bpmnXml, TestContext.Current.CancellationToken);
 
             // Assert
             Assert.Equal("Process_1", processModel.Id);
             Assert.Equal("Test Process", processModel.Name);
             var task = processModel.Tasks.Single(t => t.Id == "task1");
             Assert.Equal("serviceTask", task.Type);
-            Assert.Equal("http://cms-mcp:8080/api/mcp", task.Attributes["mcpServerUrl"]);
-            Assert.Equal("trigger_approval", task.Attributes["mcpMethod"]);
+            Assert.NotNull(task.Attributes);
+            var attributes = task.Attributes!;
+            Assert.Equal("http://cms-mcp:8080/api/mcp", attributes["mcpServerUrl"]);
+            Assert.Equal("trigger_approval", attributes["mcpMethod"]);
             var start1 = processModel.Events.Single(e => e.Id == "start1");
             Assert.Equal("startEvent", start1.Type);
             var flow1 = processModel.SequenceFlows.Single(s => s.Id == "flow1");
@@ -164,7 +171,7 @@ namespace VertexBPMN.Tests.Integration.Engine
                 </bpmn:definitions>";
 
             // Act & Assert
-            var processModel = await _parser.ParseAsync(bpmnXml);
+            var processModel = await _parser.ParseAsync(bpmnXml, TestContext.Current.CancellationToken);
 
             Assert.Equal("Process_1", processModel.Id);
         }
@@ -190,15 +197,17 @@ namespace VertexBPMN.Tests.Integration.Engine
             </bpmn:process>
         </bpmn:definitions>";
 
-            var processModel = await _parser.ParseAsync(bpmnXml);
+            var processModel = await _parser.ParseAsync(bpmnXml, TestContext.Current.CancellationToken);
 
             Assert.Equal("Process_1", processModel.Id);
             Assert.Contains(processModel.Gateways, pi => pi.Id == "gateway1" && pi.Type == "exclusiveGateway");
             var gateway1 = processModel.Gateways.First(g => g.Id == "gateway1");
             var flow2 = processModel.SequenceFlows.First(s => s.Id == "flow2");
             var flow3 = processModel.SequenceFlows.First(s => s.Id == "flow3");
-            Assert.Equal(flow2.Attributes["conditionExpression"], "${amount > 1000}");
-            Assert.Equal(flow3.Attributes["conditionExpression"], "${amount <= 1000}");
+            Assert.NotNull(flow2.Attributes);
+            Assert.NotNull(flow3.Attributes);
+            Assert.Equal("${amount > 1000}", flow2.Attributes!["conditionExpression"]);
+            Assert.Equal("${amount <= 1000}", flow3.Attributes!["conditionExpression"]);
         }
 
         [Fact]
@@ -217,7 +226,7 @@ namespace VertexBPMN.Tests.Integration.Engine
                     </bpmn:process>
                 </bpmn:definitions>";
 
-            var processModel = await _parser.ParseAsync(bpmnXml);
+            var processModel = await _parser.ParseAsync(bpmnXml, TestContext.Current.CancellationToken);
 
             Assert.Equal("Process_1", processModel.Id);
             Assert.Contains(processModel.Gateways, pi => pi.Id == "gateway1" && pi.Type == "parallelGateway");
@@ -241,7 +250,7 @@ namespace VertexBPMN.Tests.Integration.Engine
                     </bpmn:process>
                 </bpmn:definitions>";
 
-            var processModel = await _parser.ParseAsync(bpmnXml);
+            var processModel = await _parser.ParseAsync(bpmnXml, TestContext.Current.CancellationToken);
 
             Assert.Equal("Process_1", processModel.Id);
             var subProcess = processModel.Subprocesses.FirstOrDefault(pi => pi.Id == "sub1");
@@ -270,7 +279,7 @@ namespace VertexBPMN.Tests.Integration.Engine
                     </bpmn:process>
                 </bpmn:definitions>";
 
-            var processModel = await _parser.ParseAsync(bpmnXml);
+            var processModel = await _parser.ParseAsync(bpmnXml, TestContext.Current.CancellationToken);
 
             var subProcess = processModel.Subprocesses.FirstOrDefault(pi => pi.Id == "sub1");
             Assert.NotNull(subProcess);
@@ -290,7 +299,7 @@ namespace VertexBPMN.Tests.Integration.Engine
                     </bpmn:process>
                 </bpmn:definitions>";
 
-            var processModel = await _parser.ParseAsync(bpmnXml);
+            var processModel = await _parser.ParseAsync(bpmnXml, TestContext.Current.CancellationToken);
             Assert.NotNull(processModel);
         }
 

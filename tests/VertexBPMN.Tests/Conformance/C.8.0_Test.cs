@@ -9,12 +9,12 @@ namespace VertexBPMN.Tests.Conformance
 {
     public class C_8_0_Test
     {
-        public void Test_C_8_0_Bpmn()
+        public async Task Test_C_8_0_Bpmn()
         {
             var bpmnFile = Path.Combine(Directory.GetCurrentDirectory(), "TestData", "Reference", "C.8.0.bpmn");
             var xml = File.ReadAllText(bpmnFile);
             var logger = new Mock<ILogger<BpmnParser>>();var parser = new BpmnParser();
-            var model =  parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
+            var model = await parser.ParseAsync(xml.Replace('\'', '"'), TestContext.Current.CancellationToken);
             Assert.NotNull(model);
             var engine = new ProcessEngine();
             var result = engine.Execute(model);

@@ -83,25 +83,25 @@ public class StrictPhase2VendorAllVendorsTests
 """;
 
     [Fact]
-    public void AllVendors_Disabled_Default_No_Map()
+    public async Task AllVendors_Disabled_Default_No_Map()
     {
-        var model = new BpmnParser(new BpmnParserOptions
+        var model = await new BpmnParser(new BpmnParserOptions
         {
             RoundtripMode = BpmnRoundtripMode.Strict
-        }).ParseAsync(Xml).GetAwaiter().GetResult();
+        }).ParseAsync(Xml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.RawMetadata);
         Assert.Null(model.RawMetadata!.VendorNormalizedExtensions);
     }
 
     [Fact]
-    public void AllVendors_Enabled_NoGenerics_GenericKeysMissing()
+    public async Task AllVendors_Enabled_NoGenerics_GenericKeysMissing()
     {
-        var model = new BpmnParser(new BpmnParserOptions
+        var model = await new BpmnParser(new BpmnParserOptions
         {
             RoundtripMode = BpmnRoundtripMode.Strict,
             NormalizeVendorExtensions = true
-        }).ParseAsync(Xml).GetAwaiter().GetResult();
+        }).ParseAsync(Xml, TestContext.Current.CancellationToken);
 
         var map = model.RawMetadata!.VendorNormalizedExtensions!;
         Assert.True(map.ContainsKey("utAll"));
@@ -123,18 +123,18 @@ public class StrictPhase2VendorAllVendorsTests
         Assert.Equal("jump", b["osmanthus:advance.type"]);
         Assert.Equal("frmKey", b["alfresco:formKey"]);
         Assert.Equal("http://mcp", b["mcp:mcpServiceTask.mcpServerUrl"]);
-        Assert.False(b.Keys.Contains("my:flag.enabled")); // generics OFF
+        Assert.DoesNotContain("my:flag.enabled", b.Keys); // generics OFF
     }
 
     //[Fact]
     //public void AllVendors_Enabled_WithGenerics_GenericKeysPresent()
     //{
-    //    var model = new BpmnParser(new BpmnParserOptions
+    //    var model = await new BpmnParser(new BpmnParserOptions
     //    {
     //        RoundtripMode = BpmnRoundtripMode.Strict,
     //        NormalizeVendorExtensions = true,
     //        NormalizeUnknownVendorExtensions = true
-    //    }).ParseAsync(Xml).GetAwaiter().GetResult();
+    //    }).ParseAsync(Xml);
 
     //    var map = model.RawMetadata!.VendorNormalizedExtensions!;
     //    var b = map["utAll"];

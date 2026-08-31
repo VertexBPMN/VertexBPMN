@@ -24,7 +24,7 @@ public class ProcessTests
     [Fact]
     public async Task RootEndpoint_ReturnsOk()
     {
-        var resp = await _client.GetAsync("/api");
+        var resp = await _client.GetAsync("/api", TestContext.Current.CancellationToken);
         Assert.True(resp.StatusCode is HttpStatusCode.OK or HttpStatusCode.NotFound);
     }
 
@@ -38,10 +38,10 @@ public class ProcessTests
         {
             try
             {
-                var response = await _client.GetAsync(url);
+                var response = await _client.GetAsync(url, TestContext.Current.CancellationToken);
                 if (response.IsSuccessStatusCode)
                 {
-                    var html = await response.Content.ReadAsStringAsync();
+                    var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
                     if (html.Contains("Swagger UI"))
                         return;
                 }
@@ -49,16 +49,16 @@ public class ProcessTests
             catch { /* ignore for iteration */ }
         }
 
-        var final = await _client.GetAsync("swagger");
+        var final = await _client.GetAsync("swagger", TestContext.Current.CancellationToken);
         final.EnsureSuccessStatusCode();
     }
 
     [Fact]
     public async Task ProcessDefinitions_AreSeeded()
     {
-        var resp = await _client.GetAsync("/api/repository");
+        var resp = await _client.GetAsync("/api/repository", TestContext.Current.CancellationToken);
         resp.EnsureSuccessStatusCode();
-        var content = await resp.Content.ReadAsStringAsync();
+        var content = await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.NotEmpty(content);
         // Ensure both seeded definitions are present
         //Assert.Contains("simpleProcess", content);

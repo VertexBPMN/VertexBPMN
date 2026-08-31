@@ -38,23 +38,23 @@ public class Phase3AdvancedValidationDataObjectsAndAssociationsTests
 """;
 
     [Fact]
-    public void DataObjectAndAssociationRules_Disabled_NoStructuredDiagnostics()
+    public async Task DataObjectAndAssociationRules_Disabled_NoStructuredDiagnostics()
     {
-        var model = new BpmnParser(new BpmnParserOptions {
+        var model = await new BpmnParser(new BpmnParserOptions {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = false
-        }).ParseAsync(MissingRefsXml).GetAwaiter().GetResult();
+        }).ParseAsync(MissingRefsXml, TestContext.Current.CancellationToken);
 
         Assert.Null(model.ValidationDiagnostics);
     }
 
     [Fact]
-    public void MissingReferences_Reported()
+    public async Task MissingReferences_Reported()
     {
-        var model = new BpmnParser(new BpmnParserOptions {
+        var model = await new BpmnParser(new BpmnParserOptions {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(MissingRefsXml).GetAwaiter().GetResult();
+        }).ParseAsync(MissingRefsXml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         var diags = model.ValidationDiagnostics!;
@@ -89,12 +89,12 @@ public class Phase3AdvancedValidationDataObjectsAndAssociationsTests
     }
 
     [Fact]
-    public void AllValid_NoDiagnosticsForTheseRules()
+    public async Task AllValid_NoDiagnosticsForTheseRules()
     {
-        var model = new BpmnParser(new BpmnParserOptions {
+        var model = await new BpmnParser(new BpmnParserOptions {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(ValidRefsXml).GetAwaiter().GetResult();
+        }).ParseAsync(ValidRefsXml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         Assert.DoesNotContain(model.ValidationDiagnostics!, d =>

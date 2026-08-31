@@ -31,7 +31,7 @@ public class SendGridServiceTaskHandlerTests
         };
 
         // Act
-        await handler.ExecuteAsync(attributes, variables);
+        await handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken);
 
     }
     [Fact]
@@ -57,7 +57,7 @@ public class SendGridServiceTaskHandlerTests
         };
 
         // Act
-        await Assert.ThrowsAsync<InvalidOperationException>(() => handler.ExecuteAsync(attributes, variables));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken));
 
     }
 
@@ -76,7 +76,7 @@ public class SendGridServiceTaskHandlerTests
         message.AddTo(new EmailAddress("recipient@example.com", "Test Recipient"));
 
         // Act
-        var response = await client.SendEmailAsync(message);
+        var response = await client.SendEmailAsync(message, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(System.Net.HttpStatusCode.Accepted, response.StatusCode);

@@ -71,7 +71,7 @@ public class TokenEngineBenchmarks
         
         for (int i = 0; i < 1000; i++) // Reduced count for distributed engine
         {
-            await engine.ExecuteAsync(model);
+            await engine.ExecuteAsync(model, TestContext.Current.CancellationToken);
         }
         sw.Stop();
         Console.WriteLine($"DistributedProcessEngine executed 1,000 simple processes in {sw.ElapsedMilliseconds} ms");
@@ -112,7 +112,7 @@ public class TokenEngineBenchmarks
         // Setup required mock returns
         store.Setup(s => s.GetPendingCaseTokensAsync()).ReturnsAsync(new List<CaseToken>());
         store.Setup(s => s.GetActiveWorkersAsync()).ReturnsAsync(new List<WorkerNode>());
-        cmmnParser.Setup(p => p.ParseAsync(It.IsAny<string>(), CancellationToken.None)).ReturnsAsync(caseModel);
+        cmmnParser.Setup(p => p.ParseAsync(It.IsAny<string>(), TestContext.Current.CancellationToken)).ReturnsAsync(caseModel);
         store.Setup(s => s.GetCmmnModelAsync("case1")).ReturnsAsync("<cmmn:case id='case1'>...</cmmn:case>");
 
         var engine = new DistributedProcessEngine(logger.Object, registry, dispatcher.Object, store.Object, dmnEngine.Object, dmnParser.Object, cmmnParser.Object, bpmnParser.Object, aiService.Object, TracerProvider.Default);
@@ -123,7 +123,7 @@ public class TokenEngineBenchmarks
         var methodInfo = engine.GetType().GetMethod("ProcessCaseTokenAsync", BindingFlags.NonPublic | BindingFlags.Instance);
         if (methodInfo != null)
         {
-            var task = (Task)methodInfo.Invoke(engine, new object[] { token, caseModel, trace, CancellationToken.None })!;
+            var task = (Task)methodInfo.Invoke(engine, new object[] { token, caseModel, trace, TestContext.Current.CancellationToken })!;
             await task;
         }
 
@@ -131,29 +131,29 @@ public class TokenEngineBenchmarks
         Assert.True(trace.Count > 0); // Should have some trace entries
     }
 
-    //[Fact]
-    //public async Task Benchmark_Execute_ProposalTokenEngine()
-    //{
-    //    var model = new BpmnModel(
-    //        "P1",
-    //        "Benchmark",
-    //        new List<BpmnEvent> { new("start1", "startEvent"), new("end1", "endEvent") },
-    //        new List<BpmnTask>(),
-    //        new List<BpmnGateway>(),
-    //        new List<BpmnSequenceFlow> { new("flow1", "start1", "end1") },
-    //        new List<BpmnSubprocess>()
-    //    );
-    //    var logger = new Mock<ILogger<ProposalTokenEngine>>();
-    //    var registry = new ServiceTaskRegistry();
-    //    var engine = new ProposalTokenEngine(logger.Object, registry);
-        
-    //    var sw = Stopwatch.StartNew();
-    //    for (int i = 0; i < 1000; i++) // Test with 1000 iterations
-    //    {
-    //        await engine.ExecuteAsync(model);
-    //    }
-    //    sw.Stop();
-    //    Console.WriteLine($"ProposalTokenEngine executed 1,000 simple processes in {sw.ElapsedMilliseconds} ms");
-    //    Assert.True(sw.ElapsedMilliseconds < 10000); // Should be reasonable
-    //}
+    [Fact(Skip ="Run only when testing performance benchmarks")]
+    public async Task Benchmark_Execute_ProposalTokenEngine()
+    {
+        var model = new BpmnModel(
+            "P1",
+            "Benchmark",
+            new List<BpmnEvent> { new("start1", "startEvent"), new("end1", "endEvent") },
+            new List<BpmnTask>(),
+            new List<BpmnGateway>(),
+            new List<BpmnSequenceFlow> { new("flow1", "start1", "end1") },
+            new List<BpmnSubprocess>()
+        );
+        var logger = new Mock<ILogger<ProposalTokenEngine>>();
+        var registry = new ServiceTaskRegistry();
+        var engine = new ProposalTokenEngine(logger.Object, registry);
+
+        var sw = Stopwatch.StartNew();
+        for (int i = 0; i < 1000; i++) // Test with 1000 iterations
+        {
+            await engine.ExecuteAsync(model);
+        }
+        sw.Stop();
+        Console.WriteLine($"ProposalTokenEngine executed 1,000 simple processes in {sw.ElapsedMilliseconds} ms");
+        Assert.True(sw.ElapsedMilliseconds < 10000); // Should be reasonable
+    }
 }

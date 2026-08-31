@@ -20,7 +20,7 @@ public class UnifiedPhaseBValidationTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         Assert.Contains(model.Diagnostics, d => d.Contains("multi-instance") && d.Contains("sp1"));
     }
 
@@ -36,7 +36,7 @@ public class UnifiedPhaseBValidationTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         Assert.Contains(model.Diagnostics, d => d.Contains("Cancel end event") && d.Contains("e1"));
     }
 
@@ -50,7 +50,7 @@ public class UnifiedPhaseBValidationTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         Assert.Contains(model.Diagnostics, d => d.Contains("Gateway g1 has no outgoing"));
     }
 
@@ -72,7 +72,7 @@ public class UnifiedPhaseBValidationTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         Assert.Contains(model.Diagnostics, d => d.Contains("Multiple throw link events") && d.Contains("L1"));
     }
 
@@ -88,7 +88,7 @@ public class UnifiedPhaseBValidationTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         Assert.Contains(model.Diagnostics, d => d.Contains("Unmatched link") && d.Contains("L2"));
     }
 }

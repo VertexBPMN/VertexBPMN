@@ -22,10 +22,10 @@ public sealed class PhaseTwelveApiTests
             name = $"{key}.bpmn",
             variables = new Dictionary<string, object> { ["source"] = "test" },
             businessKey = "phase-12"
-        });
+        }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        var payload = await response.Content.ReadAsStringAsync();
+        var payload = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains(key, payload, StringComparison.Ordinal);
     }
 
@@ -34,10 +34,10 @@ public sealed class PhaseTwelveApiTests
     {
         var key = $"case-{Guid.NewGuid():N}";
         const string cmmn = "<definitions xmlns='https://www.omg.org/spec/CMMN/20151109/MODEL'><case id='case'><casePlanModel id='plan'/></case></definitions>";
-        var deploy = await _client.PostAsJsonAsync("/api/case-definitions/deploy", new { key, name = "SDK case", cmmnXml = cmmn });
+        var deploy = await _client.PostAsJsonAsync("/api/case-definitions/deploy", new { key, name = "SDK case", cmmnXml = cmmn }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, deploy.StatusCode);
-        var get = await _client.GetAsync($"/api/case-definitions/{key}");
+        var get = await _client.GetAsync($"/api/case-definitions/{key}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, get.StatusCode);
     }
 }

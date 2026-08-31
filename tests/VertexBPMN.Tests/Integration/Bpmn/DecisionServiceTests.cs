@@ -28,7 +28,7 @@ public class DecisionServiceTests
         await service.DeployAsync("test", "Test", dmnXml);
         var inputs = new Dictionary<string, object> { { "foo", 42 } };
 
-        var result = await service.EvaluateDecisionByKeyAsync("test", inputs);
+        var result = await service.EvaluateDecisionByKeyAsync("test", inputs, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
         Assert.Equal("accepted", result.Variables["result"]);

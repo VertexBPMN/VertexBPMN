@@ -96,7 +96,7 @@ public class BpmnParserObservabilityTests
         var parser = new BpmnParser(options);
 
         // Act
-        var model = await parser.ParseAsync(ComplexXml);
+        var model = await parser.ParseAsync(ComplexXml, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(capturedActivity);
@@ -128,7 +128,7 @@ public class BpmnParserObservabilityTests
         var parser = new BpmnParser(options, logger);
 
         // Act
-        var model = await parser.ParseAsync(SimpleXml);
+        var model = await parser.ParseAsync(SimpleXml, TestContext.Current.CancellationToken);
 
         // Assert
         var logs = logger.LogEntries;
@@ -166,7 +166,7 @@ public class BpmnParserObservabilityTests
         var parser = new BpmnParser(options, logger);
 
         // Act & Assert - should not throw or allocate tracing objects
-        var model = await parser.ParseAsync(SimpleXml);
+        var model = await parser.ParseAsync(SimpleXml, TestContext.Current.CancellationToken);
         
         Assert.NotNull(model);
         Assert.Equal("testProcess", model.ProcessId);
@@ -189,7 +189,7 @@ public class BpmnParserObservabilityTests
         var parser = new BpmnParser(options, mockLogger);
 
         // Act
-        var model = await parser.ParseAsync(SimpleXml);
+        var model = await parser.ParseAsync(SimpleXml, TestContext.Current.CancellationToken);
 
         // Assert - no logs should be captured when logging is disabled
         var logs = mockLogger.LogEntries;
@@ -241,7 +241,7 @@ public class BpmnParserObservabilityTests
         var parser = new BpmnParser(options);
 
         // Act
-        var model = await parser.ParseAsync(xmlWithWarnings);
+        var model = await parser.ParseAsync(xmlWithWarnings, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(capturedActivity);

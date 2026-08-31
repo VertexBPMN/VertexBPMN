@@ -24,7 +24,7 @@ public sealed class ServiceDependenciesHealthCheck(IServiceProvider serviceProvi
     {
         var sp = serviceProvider;
         var missing = new List<string>();
-        var data = new Dictionary<string, object?>();
+        var data = new Dictionary<string, object>();
 
         foreach (var t in CriticalServices)
         {

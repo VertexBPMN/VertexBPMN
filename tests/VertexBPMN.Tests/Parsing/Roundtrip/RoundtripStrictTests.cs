@@ -13,15 +13,15 @@ public class RoundtripStrictTests
     private static BpmnParser StrictParser => new(new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict, PreserveUnknownExtensions = true, StrictValidation = true });
 
     [Fact]
-    public void Strict_Roundtrip_Is_Idempotent()
+    public async Task Strict_Roundtrip_Is_Idempotent()
     {
         var parser = StrictParser;
-        var model1 = parser.ParseAsync(MinimalStrictBpmn).GetAwaiter().GetResult();
+        var model1 = await parser.ParseAsync(MinimalStrictBpmn, TestContext.Current.CancellationToken);
         Assert.NotNull(model1.RawMetadata); // strict metadata captured
         var s1 = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model1);
 
         // Parse serialized output again in strict mode
-        var model2 = parser.ParseAsync(s1).GetAwaiter().GetResult();
+        var model2 = await parser.ParseAsync(s1, TestContext.Current.CancellationToken);
         Assert.NotNull(model2.RawMetadata);
         var s2 = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model2);
 
@@ -32,7 +32,7 @@ public class RoundtripStrictTests
     //public void Strict_Vs_Normalized_Differs_For_InOut_And_Extensions()
     //{
     //    var parser = StrictParser;
-    //    var model = parser.ParseAsync(MinimalStrictBpmn).GetAwaiter().GetResult();
+    //    var model = await parser.ParseAsync(MinimalStrictBpmn);
     //    var strictXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
     //    var normalizedXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Normalized }.Serialize(model);
 
@@ -45,10 +45,10 @@ public class RoundtripStrictTests
     //}
 
     [Fact]
-    public void Strict_Falls_Back_When_Dirty()
+    public async Task Strict_Falls_Back_When_Dirty()
     {
         var parser = StrictParser;
-        var model = parser.ParseAsync(MinimalStrictBpmn).GetAwaiter().GetResult();
+        var model = await parser.ParseAsync(MinimalStrictBpmn, TestContext.Current.CancellationToken);
         var strictXmlBefore = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
 
         // Mark dirty (simulated mutation)

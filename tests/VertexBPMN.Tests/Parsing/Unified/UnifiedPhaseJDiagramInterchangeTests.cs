@@ -33,7 +33,7 @@ public class UnifiedPhaseJDiagramInterchangeTests
 </definitions>
 """;
         var parser = new BpmnParser(new BpmnParserOptions { ParseDiagramInterchange = true });
-        var model = await parser.ParseAsync(xml);
+        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         Assert.NotNull(model.Shapes);
         Assert.NotNull(model.Edges);
         Assert.Equal(2, model.Shapes!.Count);
@@ -59,7 +59,7 @@ public class UnifiedPhaseJDiagramInterchangeTests
   </process>
 </definitions>
 """;
-        var model = await parser.ParseAsync(xml);
+        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         // Add synthetic DI
         var updated = model with { Shapes = new [] { new BpmnShape("shape_s1","s1",10,20,30,40) }, Edges = new [] { new BpmnEdge("edge_f1","f1", new [] { (0d,0d),(10d,10d) }) } };
         var serializer = new NormalizedProjectionSerializer();

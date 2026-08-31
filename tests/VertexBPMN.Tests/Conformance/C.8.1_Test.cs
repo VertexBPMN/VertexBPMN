@@ -12,7 +12,7 @@ namespace VertexBPMN.Tests.Conformance
     public class C_8_1_Test
     {
         [Fact]
-        public void Test_C_8_1_Bpmn()
+        public async Task Test_C_8_1_Bpmn()
         {
             var bpmnFile = Path.Combine(Directory.GetCurrentDirectory(), "TestData", "Reference", "C.8.1.bpmn");
             var xml = File.ReadAllText(bpmnFile);
@@ -22,7 +22,7 @@ namespace VertexBPMN.Tests.Conformance
                 .ReturnsAsync(new DecisionResult(new Dictionary<string, object> { ["Vacation Approval"] = "Manual Validation Required" }));
             
             var parser = new BpmnParser();
-            var model =  parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
+            var model = await parser.ParseAsync(xml.Replace('\'', '"'), TestContext.Current.CancellationToken);
             Assert.NotNull(model);
             var engine = new ProcessEngine(Mock.Of<ILogger<ProcessEngine>>(),
                 NullServiceTaskRegistry.Instance, mockDecision.Object);

@@ -21,7 +21,7 @@ public class CancelApplicationServiceTaskHandlerTests
         };
 
         // Act
-        await handler.ExecuteAsync(new Dictionary<string, string>(), variables);
+        await handler.ExecuteAsync(new Dictionary<string, string>(), variables, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(variables.ContainsKey("applicationStatus"));
@@ -30,9 +30,9 @@ public class CancelApplicationServiceTaskHandlerTests
             x => x.Log(
                 LogLevel.Information,
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((v, t) => v.ToString().Contains("12345")),
-                It.IsAny<Exception>(),
-                It.IsAny<Func<It.IsAnyType, Exception, string>>()),
+                It.Is<It.IsAnyType>((v, t) => (v.ToString() ?? string.Empty).Contains("12345")),
+                It.IsAny<Exception?>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.Exactly(2));
     }
 
@@ -49,6 +49,6 @@ public class CancelApplicationServiceTaskHandlerTests
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            handler.ExecuteAsync(new Dictionary<string, string>(), variables));
+            handler.ExecuteAsync(new Dictionary<string, string>(), variables, TestContext.Current.CancellationToken));
     }
 }

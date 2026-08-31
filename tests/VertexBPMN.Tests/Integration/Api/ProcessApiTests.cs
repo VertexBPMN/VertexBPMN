@@ -23,9 +23,9 @@ public class ProcessApiTests
     {
         const string bpmn = @"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='P1'><startEvent id='start1'/><endEvent id='end1'/><sequenceFlow id='flow1' sourceRef='start1' targetRef='end1'/></process></definitions>";
         var deploy = new { bpmnXml = bpmn, name = "TestProcess", tenantId = (string?)null };
-        var post = await _client.PostAsJsonAsync("/api/repository", deploy);
+        var post = await _client.PostAsJsonAsync("/api/repository", deploy, cancellationToken: TestContext.Current.CancellationToken);
         post.EnsureSuccessStatusCode();
-        var deployed = await post.Content.ReadFromJsonAsync<ProcessDefinition>();
+        var deployed = await post.Content.ReadFromJsonAsync<ProcessDefinition>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(deployed);
         Assert.Equal("P1", deployed.Key);
         Assert.Equal("TestProcess", deployed.Name);
@@ -36,9 +36,9 @@ public class ProcessApiTests
             BusinessKey = (string?)null,
             TenantId = (string?)null
         };
-        var execPost = await _client.PostAsJsonAsync("/api/runtime/start", start);
+        var execPost = await _client.PostAsJsonAsync("/api/runtime/start", start, cancellationToken: TestContext.Current.CancellationToken);
         execPost.EnsureSuccessStatusCode();
-        var instance = await execPost.Content.ReadFromJsonAsync<ProcessInstance>();
+        var instance = await execPost.Content.ReadFromJsonAsync<ProcessInstance>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(instance);
         
         // Debug output

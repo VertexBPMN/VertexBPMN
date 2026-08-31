@@ -22,7 +22,7 @@ public class SequenceFlowParsingTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         Assert.Equal(2, model.SequenceFlows.Count);
         var cond = model.SequenceFlows.First(f => f.Id == "flow1");
         Assert.Equal("${x > 5}", cond.ConditionExpression);
@@ -47,7 +47,7 @@ public class SequenceFlowParsingTests
 </definitions>
 """;
 
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
 
         Assert.Equal(
             "https://www.omg.org/spec/DMN/20191111/FEEL/",
@@ -75,7 +75,7 @@ public class SequenceFlowParsingTests
 </definitions>
 """;
 
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
 
         Assert.Equal("primary", model.Events.Single(evt => evt.Id == "primary-start").ProcessId);
         Assert.Equal("secondary", model.Events.Single(evt => evt.Id == "secondary-start").ProcessId);

@@ -15,7 +15,7 @@ namespace VertexBPMN.Tests.Conformance.extended
             var xml = File.ReadAllText(bpmnFile);
             var logger = new Mock<ILogger<BpmnParser>>();
             var parser = new BpmnParser(logger.Object, TracerProvider.Default);
-            var model = await parser.ParseAsync(xml, CancellationToken.None);
+            var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
             Assert.NotNull(model);
             var engine = new ProcessEngine();
             var result = engine.Execute(model);

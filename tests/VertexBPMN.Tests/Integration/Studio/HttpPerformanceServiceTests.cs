@@ -24,7 +24,7 @@ public sealed class HttpPerformanceServiceTests
         factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
         var service = new HttpPerformanceService(factory.Object);
 
-        var dashboard = await service.GetDashboardAsync();
+        var dashboard = await service.GetDashboardAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(0.25, dashboard.GetProperty("systemMetrics").GetProperty("cpuUsage").GetDouble());
         var request = Assert.Single(requests);
@@ -48,7 +48,7 @@ public sealed class HttpPerformanceServiceTests
         factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
         var service = new HttpPerformanceService(factory.Object);
 
-        await service.GetTrendsAsync(6);
+        await service.GetTrendsAsync(6, TestContext.Current.CancellationToken);
 
         var request = Assert.Single(requests);
         Assert.Equal("http://api.test/api/performance/trends?hours=6", request.RequestUri!.ToString());

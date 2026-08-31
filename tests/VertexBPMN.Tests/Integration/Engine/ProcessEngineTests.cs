@@ -20,7 +20,7 @@ public class ProcessEngineTests
         var engine = new ProcessEngine();
 
         engine.RegisterBpmnModel("registered-process", model);
-        var trace = await engine.ExecuteProcessAsync("registered-process");
+        var trace = await engine.ExecuteProcessAsync("registered-process", TestContext.Current.CancellationToken);
 
         Assert.Contains(trace, x => x.Contains("StartEvent: start1"));
         Assert.Contains(trace, x => x.Contains("EndEvent: end1"));
@@ -33,7 +33,7 @@ public class ProcessEngineTests
         engine.RegisterBpmnModel("replaceable", CreateSimpleModel("first"));
         engine.RegisterBpmnModel("replaceable", CreateSimpleModel("second"));
 
-        var trace = await engine.ExecuteProcessAsync("replaceable");
+        var trace = await engine.ExecuteProcessAsync("replaceable", TestContext.Current.CancellationToken);
 
         Assert.Contains(trace, x => x.Contains("StartEvent: start1"));
         Assert.Contains(trace, x => x.Contains("EndEvent: end1"));
@@ -52,8 +52,8 @@ public class ProcessEngineTests
             NullServiceTaskRegistry.Instance,
             bpmnParser: parser.Object);
 
-        await engine.RegisterBpmnModelAsync("xml-process", "<definitions />");
-        var trace = await engine.ExecuteProcessAsync("xml-process");
+        await engine.RegisterBpmnModelAsync("xml-process", "<definitions />", TestContext.Current.CancellationToken);
+        var trace = await engine.ExecuteProcessAsync("xml-process", TestContext.Current.CancellationToken);
 
         Assert.Contains(trace, x => x.Contains("EndEvent: end1"));
         parser.Verify(x => x.ParseAsync("<definitions />", It.IsAny<CancellationToken>()), Times.Once);
@@ -64,7 +64,7 @@ public class ProcessEngineTests
     {
         var engine = new ProcessEngine();
 
-        await Assert.ThrowsAsync<KeyNotFoundException>(() => engine.ExecuteProcessAsync("missing"));
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => engine.ExecuteProcessAsync("missing", TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -72,7 +72,7 @@ public class ProcessEngineTests
     {
         var engine = new ProcessEngine();
 
-        var trace = await engine.ExecuteAsync(CreateSimpleModel("history-process"));
+        var trace = await engine.ExecuteAsync(CreateSimpleModel("history-process"), TestContext.Current.CancellationToken);
 
         Assert.NotNull(engine.LastExecutionId);
         Assert.True(engine.TryGetExecutionHistory(engine.LastExecutionId!, out var history));
@@ -110,7 +110,7 @@ public class ProcessEngineTests
             []);
 
         await engine.RegisterDmnModelAsync("decision-1", "<definitions />");
-        var trace = await engine.ExecuteAsync(model);
+        var trace = await engine.ExecuteAsync(model, TestContext.Current.CancellationToken);
 
         Assert.Contains(trace, x => x.Contains("DecisionEvaluated: decision-1 (local)"));
         dmnEngine.Verify(x => x.EvaluateDecisionAsync(

@@ -38,23 +38,23 @@ public class Phase3AdvancedValidationBoundaryCompensationCancelActivityTests
 """;
 
     [Fact]
-    public void BoundaryCompensationCancelActivity_Disabled_NoStructuredDiagnostics()
+    public async Task BoundaryCompensationCancelActivity_Disabled_NoStructuredDiagnostics()
     {
-        var model = new BpmnParser(new BpmnParserOptions {
+        var model = await new BpmnParser(new BpmnParserOptions {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = false
-        }).ParseAsync(InvalidCompBoundaryXml).GetAwaiter().GetResult();
+        }).ParseAsync(InvalidCompBoundaryXml, TestContext.Current.CancellationToken);
 
         Assert.Null(model.ValidationDiagnostics);
     }
 
     [Fact]
-    public void BoundaryCompensationCancelActivity_Enabled_ReportsErrors()
+    public async Task BoundaryCompensationCancelActivity_Enabled_ReportsErrors()
     {
-        var model = new BpmnParser(new BpmnParserOptions {
+        var model = await new BpmnParser(new BpmnParserOptions {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(InvalidCompBoundaryXml).GetAwaiter().GetResult();
+        }).ParseAsync(InvalidCompBoundaryXml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         var diags = model.ValidationDiagnostics!;
@@ -70,12 +70,12 @@ public class Phase3AdvancedValidationBoundaryCompensationCancelActivityTests
     }
 
     [Fact]
-    public void BoundaryCompensationCancelActivity_Enabled_NoViolationWhenFalse()
+    public async Task BoundaryCompensationCancelActivity_Enabled_NoViolationWhenFalse()
     {
-        var model = new BpmnParser(new BpmnParserOptions {
+        var model = await new BpmnParser(new BpmnParserOptions {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(ValidCompBoundaryXml).GetAwaiter().GetResult();
+        }).ParseAsync(ValidCompBoundaryXml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         Assert.DoesNotContain(model.ValidationDiagnostics!,

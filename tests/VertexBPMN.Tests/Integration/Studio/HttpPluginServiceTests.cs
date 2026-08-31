@@ -16,7 +16,7 @@ public sealed class HttpPluginServiceTests
         factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
         var service = new HttpPluginService(factory.Object);
 
-        var result = await service.GetPluginsAsync();
+        var result = await service.GetPluginsAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal("sample", result[0].GetProperty("id").GetString());
         var request = Assert.Single(requests);
@@ -33,7 +33,7 @@ public sealed class HttpPluginServiceTests
         factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
         var service = new HttpPluginService(factory.Object);
 
-        await service.GetExtensionPointsAsync();
+        await service.GetExtensionPointsAsync(TestContext.Current.CancellationToken);
 
         var request = Assert.Single(requests);
         Assert.Equal("http://api.test/api/plugins/extension-points", request.RequestUri!.ToString());

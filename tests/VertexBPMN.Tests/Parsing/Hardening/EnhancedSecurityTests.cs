@@ -30,7 +30,7 @@ public class EnhancedSecurityTests
         var oversizedXml = new string('X', 2000) + "<definitions><process/></definitions>";
 
         var ex = await Assert.ThrowsAsync<SecurityException>(
-            () => parser.ParseAsync(oversizedXml));
+            () => parser.ParseAsync(oversizedXml, TestContext.Current.CancellationToken));
         
         Assert.Contains("exceeds limit", ex.Message);
     }
@@ -132,7 +132,7 @@ public class EnhancedSecurityTests
             FailOnSecurityThreat = true
         });
 
-        await Assert.ThrowsAnyAsync<Exception>(() => parser.ParseAsync(maliciousXml));
+        await Assert.ThrowsAnyAsync<Exception>(() => parser.ParseAsync(maliciousXml, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -149,7 +149,7 @@ public class EnhancedSecurityTests
         var deepXml = GenerateDeeplyNestedXml(1000);
 
         var ex = await Assert.ThrowsAsync<SecurityException>(
-            () => parser.ParseAsync(deepXml));
+            () => parser.ParseAsync(deepXml, TestContext.Current.CancellationToken));
         
         Assert.Contains("nesting depth", ex.Message, StringComparison.OrdinalIgnoreCase);
     }

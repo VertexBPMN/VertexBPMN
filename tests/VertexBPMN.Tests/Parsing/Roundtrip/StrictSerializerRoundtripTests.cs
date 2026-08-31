@@ -9,7 +9,7 @@ public class StrictSerializerRoundtripTests
     private static BpmnParser StrictParser() => new(new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict, PreserveUnknownExtensions = true });
 
     [Fact]
-    public void Strict_Roundtrip_Preserves_Raw_Structures()
+    public async Task Strict_Roundtrip_Preserves_Raw_Structures()
     {
         const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL' xmlns:camunda='http://camunda.org/schema/1.0/bpmn' targetNamespace='http://example.local/test'>
   <bpmn:message id='Msg_A' name='A'/>
@@ -35,7 +35,7 @@ public class StrictSerializerRoundtripTests
   </bpmn:process>
 </bpmn:definitions>";
 
-        var model = StrictParser().ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await StrictParser().ParseAsync(xml, TestContext.Current.CancellationToken);
         var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
 
         var idxMsg = outXml.IndexOf("<bpmn:message id=\"Msg_A\"");
@@ -63,7 +63,7 @@ public class StrictSerializerRoundtripTests
     }
 
     [Fact]
-    public void Strict_Roundtrip_Preserves_Task_Name_And_Does_Not_Add_When_Missing()
+    public async Task Strict_Roundtrip_Preserves_Task_Name_And_Does_Not_Add_When_Missing()
     {
         const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <bpmn:process id='p2'>
@@ -71,7 +71,7 @@ public class StrictSerializerRoundtripTests
     <bpmn:userTask id='t_without'/>
   </bpmn:process>
 </bpmn:definitions>";
-        var model = StrictParser().ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await StrictParser().ParseAsync(xml, TestContext.Current.CancellationToken);
         var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
 
         // Extract specific element snippets to avoid cross-line collisions (serializer is single-line)
@@ -93,7 +93,7 @@ public class StrictSerializerRoundtripTests
     }
 
     [Fact]
-    public void Strict_Roundtrip_Replays_SequenceFlow_Condition_CData_State()
+    public async Task Strict_Roundtrip_Replays_SequenceFlow_Condition_CData_State()
     {
         const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <bpmn:process id='p3'>
@@ -104,7 +104,7 @@ public class StrictSerializerRoundtripTests
     </bpmn:sequenceFlow>
   </bpmn:process>
 </bpmn:definitions>";
-        var model = StrictParser().ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await StrictParser().ParseAsync(xml, TestContext.Current.CancellationToken);
         var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
         Assert.Contains("<![CDATA[${x > 5}]]>", outXml);
     }

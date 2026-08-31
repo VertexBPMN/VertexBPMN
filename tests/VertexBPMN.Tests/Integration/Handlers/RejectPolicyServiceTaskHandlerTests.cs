@@ -19,7 +19,7 @@ namespace VertexBPMN.Tests.Integration.Handlers
             };
 
             // Act
-            await handler.ExecuteAsync(new Dictionary<string, string>(), variables);
+            await handler.ExecuteAsync(new Dictionary<string, string>(), variables, TestContext.Current.CancellationToken);
 
             // Assert
             Assert.True(variables.ContainsKey("policyStatus"));
@@ -28,9 +28,9 @@ namespace VertexBPMN.Tests.Integration.Handlers
                 x => x.Log(
                     LogLevel.Information,
                     It.IsAny<EventId>(),
-                    It.Is<It.IsAnyType>((v, t) => v.ToString().Contains("POL12345")),
-                    It.IsAny<Exception>(),
-                    It.IsAny<Func<It.IsAnyType, Exception, string>>()),
+                    It.Is<It.IsAnyType>((v, t) => (v.ToString() ?? string.Empty).Contains("POL12345")),
+                    It.IsAny<Exception?>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
                 Times.Exactly(2));
         }
 
@@ -47,7 +47,7 @@ namespace VertexBPMN.Tests.Integration.Handlers
 
             // Act & Assert
             await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                handler.ExecuteAsync(new Dictionary<string, string>(), variables));
+                handler.ExecuteAsync(new Dictionary<string, string>(), variables, TestContext.Current.CancellationToken));
         }
     }
 }

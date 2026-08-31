@@ -21,9 +21,9 @@ public sealed class PersistentVisualDebugStepApiTests : IClassFixture<CustomWebA
         var processInstanceId = await SeedProcessAsync();
         using var client = _factory.CreateClient();
 
-        var first = await client.PostAsync($"/api/visual-debugger/instance/{processInstanceId}/step", null);
+        var first = await client.PostAsync($"/api/visual-debugger/instance/{processInstanceId}/step", null, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
-        var firstBody = await first.Content.ReadFromJsonAsync<StepResponse>();
+        var firstBody = await first.Content.ReadFromJsonAsync<StepResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(firstBody);
         Assert.Equal("startEvent", firstBody!.StartActivityId);
         Assert.Equal("approvalTask", firstBody.EndActivityId);
@@ -32,18 +32,18 @@ public sealed class PersistentVisualDebugStepApiTests : IClassFixture<CustomWebA
         await using (var scope = _factory.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<BpmnDbContext>();
-            var instance = await db.ProcessInstances.SingleAsync(value => value.Id == processInstanceId);
-            var token = await db.ExecutionTokens.SingleAsync(value => value.ProcessInstanceId == processInstanceId);
+            var instance = await db.ProcessInstances.SingleAsync(value => value.Id == processInstanceId, cancellationToken: TestContext.Current.CancellationToken);
+            var token = await db.ExecutionTokens.SingleAsync(value => value.ProcessInstanceId == processInstanceId, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal("approvalTask", instance.State);
             Assert.Equal("approvalTask", token.CurrentNodeId);
             Assert.Equal("Active", token.State);
-            Assert.Contains(await db.HistoryEvents.Where(value => value.ProcessInstanceId == processInstanceId).ToListAsync(),
+            Assert.Contains(await db.HistoryEvents.Where(value => value.ProcessInstanceId == processInstanceId).ToListAsync(cancellationToken: TestContext.Current.CancellationToken),
                 value => value.EventType == "VISUAL_DEBUG_STEP_OVER" && value.ElementId == "approvalTask");
         }
 
-        var second = await client.PostAsync($"/api/visual-debugger/instance/{processInstanceId}/step", null);
+        var second = await client.PostAsync($"/api/visual-debugger/instance/{processInstanceId}/step", null, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, second.StatusCode);
-        var secondBody = await second.Content.ReadFromJsonAsync<StepResponse>();
+        var secondBody = await second.Content.ReadFromJsonAsync<StepResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(secondBody);
         Assert.Equal("approvalTask", secondBody!.StartActivityId);
         Assert.Equal("endEvent", secondBody.EndActivityId);
@@ -52,8 +52,8 @@ public sealed class PersistentVisualDebugStepApiTests : IClassFixture<CustomWebA
         await using (var scope = _factory.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<BpmnDbContext>();
-            var instance = await db.ProcessInstances.SingleAsync(value => value.Id == processInstanceId);
-            var token = await db.ExecutionTokens.SingleAsync(value => value.ProcessInstanceId == processInstanceId);
+            var instance = await db.ProcessInstances.SingleAsync(value => value.Id == processInstanceId, cancellationToken: TestContext.Current.CancellationToken);
+            var token = await db.ExecutionTokens.SingleAsync(value => value.ProcessInstanceId == processInstanceId, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(ProcessInstanceStatus.Completed, instance.Status);
             Assert.Equal("Completed", token.State);
             Assert.Empty(instance.ActiveTokens);
@@ -66,28 +66,28 @@ public sealed class PersistentVisualDebugStepApiTests : IClassFixture<CustomWebA
         var processInstanceId = await SeedProcessAsync();
         using var client = _factory.CreateClient();
 
-        var initial = await client.GetAsync($"/api/visual-debug/visualize/{processInstanceId}");
+        var initial = await client.GetAsync($"/api/visual-debug/visualize/{processInstanceId}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, initial.StatusCode);
-        var initialBody = await initial.Content.ReadFromJsonAsync<JsonElement>();
+        var initialBody = await initial.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Contains("approvalTask", initialBody.GetProperty("bpmnXml").GetString());
         Assert.Equal("startEvent", initialBody.GetProperty("activeTokens")[0].GetProperty("activityId").GetString());
         Assert.Empty(initialBody.GetProperty("completedActivities").EnumerateArray());
         Assert.Equal(3, initialBody.GetProperty("metrics").GetProperty("totalActivities").GetInt32());
 
-        var firstStep = await client.PostAsync($"/api/visual-debugger/instance/{processInstanceId}/step", null);
+        var firstStep = await client.PostAsync($"/api/visual-debugger/instance/{processInstanceId}/step", null, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, firstStep.StatusCode);
 
-        var afterFirstStep = await client.GetFromJsonAsync<JsonElement>($"/api/visual-debug/visualize/{processInstanceId}");
+        var afterFirstStep = await client.GetFromJsonAsync<JsonElement>($"/api/visual-debug/visualize/{processInstanceId}", cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal("approvalTask", afterFirstStep.GetProperty("activeTokens")[0].GetProperty("activityId").GetString());
         Assert.Contains(afterFirstStep.GetProperty("completedActivities").EnumerateArray(), value =>
             value.GetProperty("activityId").GetString() == "startEvent");
         Assert.Equal(1, afterFirstStep.GetProperty("metrics").GetProperty("completedActivities").GetInt32());
         Assert.Equal(1, afterFirstStep.GetProperty("metrics").GetProperty("activeActivities").GetInt32());
 
-        var secondStep = await client.PostAsync($"/api/visual-debugger/instance/{processInstanceId}/step", null);
+        var secondStep = await client.PostAsync($"/api/visual-debugger/instance/{processInstanceId}/step", null, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, secondStep.StatusCode);
 
-        var completed = await client.GetFromJsonAsync<JsonElement>($"/api/visual-debug/visualize/{processInstanceId}");
+        var completed = await client.GetFromJsonAsync<JsonElement>($"/api/visual-debug/visualize/{processInstanceId}", cancellationToken: TestContext.Current.CancellationToken);
         Assert.Empty(completed.GetProperty("activeTokens").EnumerateArray());
         Assert.Contains(completed.GetProperty("completedActivities").EnumerateArray(), value =>
             value.GetProperty("activityId").GetString() == "approvalTask");
@@ -103,7 +103,7 @@ public sealed class PersistentVisualDebugStepApiTests : IClassFixture<CustomWebA
         client.DefaultRequestHeaders.Add("X-Test-User", "tenant-reader");
         client.DefaultRequestHeaders.Add("X-Test-Tenant", "tenant-b");
 
-        var response = await client.GetAsync($"/api/visual-debug/visualize/{processInstanceId}");
+        var response = await client.GetAsync($"/api/visual-debug/visualize/{processInstanceId}", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -116,7 +116,7 @@ public sealed class PersistentVisualDebugStepApiTests : IClassFixture<CustomWebA
         client.DefaultRequestHeaders.Add("X-Test-User", "tenant-reader");
         client.DefaultRequestHeaders.Add("X-Test-Tenant", "tenant-b");
 
-        var response = await client.PostAsync($"/api/visual-debugger/instance/{processInstanceId}/step", null);
+        var response = await client.PostAsync($"/api/visual-debugger/instance/{processInstanceId}/step", null, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }

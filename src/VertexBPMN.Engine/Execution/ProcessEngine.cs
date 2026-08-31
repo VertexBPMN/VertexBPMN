@@ -354,10 +354,38 @@ public partial class ProcessEngine : IProcessEngine
             new HashSet<string>(StringComparer.Ordinal) { startEventId });
     }
 
+    public List<string> ExecuteTriggeredEventSubprocess(
+        BpmnModel model,
+        string startEventId,
+        IDecisionService? decisionService = null)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentException.ThrowIfNullOrWhiteSpace(startEventId);
+
+        var startEvent = model.Events.FirstOrDefault(e =>
+            e.Id == startEventId && e.Type == "startEvent");
+        if (startEvent is null || string.IsNullOrWhiteSpace(startEvent.SubprocessId))
+            throw new InvalidOperationException(
+                $"Requested Event Subprocess Start Event '{startEventId}' was not found.");
+
+        var subprocess = model.Subprocesses.FirstOrDefault(s =>
+            s.Id == startEvent.SubprocessId && s.IsEventSubprocess);
+        if (subprocess is null || startEvent.Definitions is not { Count: > 0 })
+            throw new InvalidOperationException(
+                $"Start Event '{startEventId}' is not a typed Event Subprocess Start Event.");
+
+        return Execute(
+            model,
+            decisionService ?? _decisionService,
+            new HashSet<string>(StringComparer.Ordinal) { startEventId },
+            allowEventSubprocessStarts: true);
+    }
+
     private List<string> Execute(
         BpmnModel model,
         IDecisionService? decisionService,
-        IReadOnlySet<string>? requestedStartEventIds)
+        IReadOnlySet<string>? requestedStartEventIds,
+        bool allowEventSubprocessStarts = false)
     {
         ArgumentNullException.ThrowIfNull(model);
         var executionId = Guid.NewGuid().ToString("N");
@@ -382,7 +410,7 @@ public partial class ProcessEngine : IProcessEngine
                     || string.Equals(e.ProcessId, model.ProcessId, StringComparison.Ordinal))).ToList()
             : model.Events.Where(e =>
                 e.Type == "startEvent"
-                && e.SubprocessId is null
+                && (allowEventSubprocessStarts || e.SubprocessId is null)
                 && requestedStartEventIds.Contains(e.Id)).ToList();
         if (startEvents.Count == 0)
             throw new InvalidOperationException(requestedStartEventIds is null
@@ -1062,7 +1090,9 @@ partial class ProcessEngine
         foreach (var sp in model.Subprocesses)
         {
             if (!IsEventSubprocess(sp)) continue;
-            var starts = model.Events.Where(e => e.Type == "startEvent" && e.Id.StartsWith(sp.Id, StringComparison.OrdinalIgnoreCase)).ToList();
+            var starts = model.Events.Where(e =>
+                e.Type == "startEvent"
+                && string.Equals(e.SubprocessId, sp.Id, StringComparison.Ordinal)).ToList();
             foreach (var ev in starts)
             {
                 var evtType = GetEventDefinitionType(ev) ?? "message";

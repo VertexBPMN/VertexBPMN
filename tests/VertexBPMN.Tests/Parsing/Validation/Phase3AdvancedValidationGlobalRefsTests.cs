@@ -58,25 +58,25 @@ public class Phase3AdvancedValidationGlobalRefsTests
 """;
 
     [Fact]
-    public void GlobalRefsMissing_Disabled_NoStructuredDiagnostics()
+    public async Task GlobalRefsMissing_Disabled_NoStructuredDiagnostics()
     {
-        var model = new BpmnParser(new BpmnParserOptions
+        var model = await new BpmnParser(new BpmnParserOptions
         {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = false
-        }).ParseAsync(MissingGlobalsXml).GetAwaiter().GetResult();
+        }).ParseAsync(MissingGlobalsXml, TestContext.Current.CancellationToken);
 
         Assert.Null(model.ValidationDiagnostics);
     }
 
     [Fact]
-    public void GlobalRefsMissing_Enabled_ProducesAllFourDiagnostics()
+    public async Task GlobalRefsMissing_Enabled_ProducesAllFourDiagnostics()
     {
-        var model = new BpmnParser(new BpmnParserOptions
+        var model = await new BpmnParser(new BpmnParserOptions
         {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(MissingGlobalsXml).GetAwaiter().GetResult();
+        }).ParseAsync(MissingGlobalsXml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         var d = model.ValidationDiagnostics!;
@@ -90,13 +90,13 @@ public class Phase3AdvancedValidationGlobalRefsTests
     }
 
     [Fact]
-    public void GlobalRefsPresent_Enabled_NoMissingDiagnostics()
+    public async Task GlobalRefsPresent_Enabled_NoMissingDiagnostics()
     {
-        var model = new BpmnParser(new BpmnParserOptions
+        var model = await new BpmnParser(new BpmnParserOptions
         {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(WithGlobalsXml).GetAwaiter().GetResult();
+        }).ParseAsync(WithGlobalsXml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         Assert.DoesNotContain(model.ValidationDiagnostics!,

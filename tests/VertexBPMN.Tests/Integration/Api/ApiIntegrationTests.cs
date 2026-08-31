@@ -35,7 +35,7 @@ public class ApiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     [Fact]
     public async Task Health_Endpoint_Returns_OK()
     {
-        var response = await _client.GetAsync("/api/health");
+        var response = await _client.GetAsync("/api/health", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
@@ -45,13 +45,13 @@ public class ApiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         var key = $"RepositoryGet_{Guid.NewGuid():N}";
         var bpmn = $"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='{key}'><startEvent id='start'/><endEvent id='end'/><sequenceFlow id='flow' sourceRef='start' targetRef='end'/></process></definitions>";
         var deploy = new { BpmnXml = bpmn, Name = key, TenantId = (string?)null };
-        var post = await _client.PostAsJsonAsync("/api/repository", deploy);
+        var post = await _client.PostAsJsonAsync("/api/repository", deploy, cancellationToken: TestContext.Current.CancellationToken);
         post.EnsureSuccessStatusCode();
-        var created = await post.Content.ReadFromJsonAsync<ProcessDefinition>();
+        var created = await post.Content.ReadFromJsonAsync<ProcessDefinition>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(created);
-        var get = await _client.GetAsync($"/api/repository/{created!.Id}");
+        var get = await _client.GetAsync($"/api/repository/{created!.Id}", TestContext.Current.CancellationToken);
         get.EnsureSuccessStatusCode();
-        var loaded = await get.Content.ReadFromJsonAsync<ProcessDefinition>();
+        var loaded = await get.Content.ReadFromJsonAsync<ProcessDefinition>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(created.Id, loaded!.Id);
     }
 
@@ -60,20 +60,20 @@ public class ApiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     {
         const string bpmn = "<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='RuntimeApiProcess'><startEvent id='start1'/><endEvent id='end1'/><sequenceFlow id='flow1' sourceRef='start1' targetRef='end1'/></process></definitions>";
         var deploy = new { BpmnXml = bpmn, Name = "RuntimeTestProcess", TenantId = (string?)null };
-        var deployResponse = await _client.PostAsJsonAsync("/api/repository", deploy);
+        var deployResponse = await _client.PostAsJsonAsync("/api/repository", deploy, cancellationToken: TestContext.Current.CancellationToken);
         deployResponse.EnsureSuccessStatusCode();
 
         var start = new { ProcessDefinitionKey = "RuntimeApiProcess",
             Variables = new Dictionary<string, object>(),
             BusinessKey = (string?)null, 
             TenantId = (string?)null };
-        var post = await _client.PostAsJsonAsync("/api/runtime/start", start);
+        var post = await _client.PostAsJsonAsync("/api/runtime/start", start, cancellationToken: TestContext.Current.CancellationToken);
         post.EnsureSuccessStatusCode();
-        var instance = await post.Content.ReadFromJsonAsync<ProcessInstance>();
+        var instance = await post.Content.ReadFromJsonAsync<ProcessInstance>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(instance);
-        var get = await _client.GetAsync($"/api/runtime/{instance!.Id}");
+        var get = await _client.GetAsync($"/api/runtime/{instance!.Id}", TestContext.Current.CancellationToken);
         get.EnsureSuccessStatusCode();
-        var loaded = await get.Content.ReadFromJsonAsync<ProcessInstance>();
+        var loaded = await get.Content.ReadFromJsonAsync<ProcessInstance>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(instance.Id, loaded!.Id);
     }
 
@@ -100,26 +100,26 @@ public class ApiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     {
         const string bpmn = "<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='ManagementApiProcess'><startEvent id='start1'/><endEvent id='end1'/><sequenceFlow id='flow1' sourceRef='start1' targetRef='end1'/></process></definitions>";
         var deploy = new { BpmnXml = bpmn, Name = "ManagementTestProcess", TenantId = (string?)null };
-        var deployResponse = await _client.PostAsJsonAsync("/api/repository", deploy);
+        var deployResponse = await _client.PostAsJsonAsync("/api/repository", deploy, cancellationToken: TestContext.Current.CancellationToken);
         deployResponse.EnsureSuccessStatusCode();
 
         // Start a process instance
         var start = new { ProcessDefinitionKey = "ManagementApiProcess", Variables = new Dictionary<string, object>(), BusinessKey = (string?)null, TenantId = (string?)null };
-        var post = await _client.PostAsJsonAsync("/api/runtime/start", start);
+        var post = await _client.PostAsJsonAsync("/api/runtime/start", start, cancellationToken: TestContext.Current.CancellationToken);
         post.EnsureSuccessStatusCode();
-        var instance = await post.Content.ReadFromJsonAsync<ProcessInstance>();
+        var instance = await post.Content.ReadFromJsonAsync<ProcessInstance>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(instance);
 
         // Suspend
-        var suspend = await _client.PostAsync($"/api/management/suspend-process-instance/{instance!.Id}", null);
+        var suspend = await _client.PostAsync($"/api/management/suspend-process-instance/{instance!.Id}", null, TestContext.Current.CancellationToken);
         suspend.EnsureSuccessStatusCode();
 
         // Resume
-        var resume = await _client.PostAsync($"/api/management/resume-process-instance/{instance.Id}", null);
+        var resume = await _client.PostAsync($"/api/management/resume-process-instance/{instance.Id}", null, TestContext.Current.CancellationToken);
         resume.EnsureSuccessStatusCode();
 
         // Delete
-        var delete = await _client.PostAsync($"/api/management/delete-process-instance/{instance.Id}", null);
+        var delete = await _client.PostAsync($"/api/management/delete-process-instance/{instance.Id}", null, TestContext.Current.CancellationToken);
         delete.EnsureSuccessStatusCode();
     }
 
@@ -128,7 +128,7 @@ public class ApiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     {
         const string bpmn = "<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='TenantManagementApiProcess'><startEvent id='start1'/><endEvent id='end1'/><sequenceFlow id='flow1' sourceRef='start1' targetRef='end1'/></process></definitions>";
         var deploy = new { BpmnXml = bpmn, Name = "TenantManagementTestProcess", TenantId = "tenant-a" };
-        var deployResponse = await _client.PostAsJsonAsync("/api/repository", deploy);
+        var deployResponse = await _client.PostAsJsonAsync("/api/repository", deploy, cancellationToken: TestContext.Current.CancellationToken);
         deployResponse.EnsureSuccessStatusCode();
 
         var start = new
@@ -138,26 +138,24 @@ public class ApiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
             BusinessKey = (string?)null,
             TenantId = "tenant-a"
         };
-        var startResponse = await _client.PostAsJsonAsync("/api/runtime/start", start);
+        var startResponse = await _client.PostAsJsonAsync("/api/runtime/start", start, cancellationToken: TestContext.Current.CancellationToken);
         startResponse.EnsureSuccessStatusCode();
-        var instance = await startResponse.Content.ReadFromJsonAsync<ProcessInstance>();
+        var instance = await startResponse.Content.ReadFromJsonAsync<ProcessInstance>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(instance);
 
-        var wrongTenant = await _client.PostAsync(
-            $"/api/management/suspend-process-instance/{instance!.Id}?tenantId=tenant-b", null);
+        var wrongTenant = await _client.PostAsync($"/api/management/suspend-process-instance/{instance!.Id}?tenantId=tenant-b", null, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Forbidden, wrongTenant.StatusCode);
 
-        var matchingTenant = await _client.PostAsync(
-            $"/api/management/suspend-process-instance/{instance.Id}?tenantId=tenant-a", null);
+        var matchingTenant = await _client.PostAsync($"/api/management/suspend-process-instance/{instance.Id}?tenantId=tenant-a", null, TestContext.Current.CancellationToken);
         matchingTenant.EnsureSuccessStatusCode();
     }
 
     [Fact]
     public async Task Identity_ListTenants_Works()
     {
-        var response = await _client.GetAsync("/api/identity/list-tenants");
+        var response = await _client.GetAsync("/api/identity/list-tenants", TestContext.Current.CancellationToken);
         response.EnsureSuccessStatusCode();
-        var tenants = await response.Content.ReadFromJsonAsync<List<TenantInfo>>();
+        var tenants = await response.Content.ReadFromJsonAsync<List<TenantInfo>>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(tenants);
         Assert.NotEmpty(tenants);
         Assert.Contains(tenants!, tenant => tenant.Name is "default" or "Acme Corp");
@@ -171,12 +169,12 @@ public class ApiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
             Name = "Integration Operators",
             Type = "role",
             TenantId = (string?)null
-        });
+        }, cancellationToken: TestContext.Current.CancellationToken);
         groupResponse.EnsureSuccessStatusCode();
-        var group = await groupResponse.Content.ReadFromJsonAsync<GroupResponse>();
+        var group = await groupResponse.Content.ReadFromJsonAsync<GroupResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(group);
 
-        var membership = await _client.PostAsync($"/api/vertex/group/{group!.Id}/users/1", null);
+        var membership = await _client.PostAsync($"/api/vertex/group/{group!.Id}/users/1", null, TestContext.Current.CancellationToken);
         membership.EnsureSuccessStatusCode();
 
         var authorizationResponse = await _client.PostAsJsonAsync("/api/vertex/authorization", new
@@ -185,19 +183,19 @@ public class ApiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
             GroupId = group.Id,
             Resource = "process-definition:integration",
             Permissions = "read"
-        });
+        }, cancellationToken: TestContext.Current.CancellationToken);
         authorizationResponse.EnsureSuccessStatusCode();
-        var authorization = await authorizationResponse.Content.ReadFromJsonAsync<AuthorizationResponse>();
+        var authorization = await authorizationResponse.Content.ReadFromJsonAsync<AuthorizationResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(authorization);
 
-        var deleteAuthorization = await _client.DeleteAsync($"/api/vertex/authorization/{authorization!.Id}");
+        var deleteAuthorization = await _client.DeleteAsync($"/api/vertex/authorization/{authorization!.Id}", TestContext.Current.CancellationToken);
         deleteAuthorization.EnsureSuccessStatusCode();
-        var removeMembership = await _client.DeleteAsync($"/api/vertex/group/{group.Id}/users/1");
+        var removeMembership = await _client.DeleteAsync($"/api/vertex/group/{group.Id}/users/1", TestContext.Current.CancellationToken);
         removeMembership.EnsureSuccessStatusCode();
 
-        var auditResponse = await _client.GetAsync("/api/audit/logs?action=HTTP_POST&limit=500");
+        var auditResponse = await _client.GetAsync("/api/audit/logs?action=HTTP_POST&limit=500", TestContext.Current.CancellationToken);
         auditResponse.EnsureSuccessStatusCode();
-        var auditLogs = await auditResponse.Content.ReadFromJsonAsync<List<AuditLog>>();
+        var auditLogs = await auditResponse.Content.ReadFromJsonAsync<List<AuditLog>>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(auditLogs);
         Assert.Contains(auditLogs!, log => log.Resource is "/vertex/group" or "/api/vertex/group");
     }
@@ -206,17 +204,17 @@ public class ApiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     public async Task Migration_RollbackMutation_IsPersistedInAuditLog()
     {
         var migrationId = Guid.NewGuid();
-        var response = await _client.PostAsync($"/api/migration/rollback/{migrationId}", null);
+        var response = await _client.PostAsync($"/api/migration/rollback/{migrationId}", null, TestContext.Current.CancellationToken);
 
         Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
         Assert.NotEqual(HttpStatusCode.Forbidden, response.StatusCode);
 
-        var auditResponse = await _client.GetAsync("/api/audit/logs?action=HTTP_POST&limit=500");
+        var auditResponse = await _client.GetAsync("/api/audit/logs?action=HTTP_POST&limit=500", TestContext.Current.CancellationToken);
         auditResponse.EnsureSuccessStatusCode();
-        var auditLogs = await auditResponse.Content.ReadFromJsonAsync<List<AuditLog>>();
+        var auditLogs = await auditResponse.Content.ReadFromJsonAsync<List<AuditLog>>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(auditLogs);
         Assert.Contains(auditLogs!, log =>
-            log.Resource.Contains($"/migration/rollback/{migrationId}", StringComparison.OrdinalIgnoreCase));
+            log.Resource?.Contains($"/migration/rollback/{migrationId}", StringComparison.OrdinalIgnoreCase) == true);
     }
 
     private sealed record GroupResponse(string Id, string Name, string Type);
@@ -228,19 +226,19 @@ public class ApiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         var processKey = $"HistoryTestProcess_{Guid.NewGuid():N}";
         var bpmn = $"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='{processKey}'><startEvent id='start'/><endEvent id='end'/><sequenceFlow id='flow' sourceRef='start' targetRef='end'/></process></definitions>";
         var deploy = new { BpmnXml = bpmn, Name = processKey, TenantId = (string?)null };
-        var deployResponse = await _client.PostAsJsonAsync("/api/repository", deploy);
+        var deployResponse = await _client.PostAsJsonAsync("/api/repository", deploy, cancellationToken: TestContext.Current.CancellationToken);
         deployResponse.EnsureSuccessStatusCode();
 
         // Starting and completing the process must durably record its runtime history.
         var start = new { ProcessDefinitionKey = processKey, Variables = new Dictionary<string, object>(), BusinessKey = (string?)null, TenantId = (string?)null };
-        var post = await _client.PostAsJsonAsync("/api/runtime/start", start);
+        var post = await _client.PostAsJsonAsync("/api/runtime/start", start, cancellationToken: TestContext.Current.CancellationToken);
         post.EnsureSuccessStatusCode();
-        var instance = await post.Content.ReadFromJsonAsync<ProcessInstance>();
+        var instance = await post.Content.ReadFromJsonAsync<ProcessInstance>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(instance);
 
-        var response = await _client.GetAsync($"/api/history/by-process-instance/{instance!.Id}");
+        var response = await _client.GetAsync($"/api/history/by-process-instance/{instance!.Id}", TestContext.Current.CancellationToken);
         response.EnsureSuccessStatusCode();
-        var events = await response.Content.ReadFromJsonAsync<List<HistoryEvent>>();
+        var events = await response.Content.ReadFromJsonAsync<List<HistoryEvent>>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(events);
         Assert.Contains(events!, item => item.EventType == "PROCESS_STARTED");
         Assert.Contains(events!, item => item.EventType == "END_EVENT_REACHED");
@@ -251,9 +249,9 @@ public class ApiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     [Fact]
     public async Task Task_List_Returns_Empty_By_Default()
     {
-        var response = await _client.GetAsync("/api/task");
+        var response = await _client.GetAsync("/api/task", TestContext.Current.CancellationToken);
         response.EnsureSuccessStatusCode();
-        var tasks = await response.Content.ReadFromJsonAsync<List<TaskInstance>>();
+        var tasks = await response.Content.ReadFromJsonAsync<List<TaskInstance>>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(tasks);
         //Assert.Empty(tasks);
     }
@@ -261,7 +259,7 @@ public class ApiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     [Fact]
     public async Task Identity_ValidateUser_IsExplicitlyUnavailableWithoutLocalCredentials()
     {
-        var response = await _client.GetAsync("/api/identity/validate-user?username=admin&password=irrelevant");
+        var response = await _client.GetAsync("/api/identity/validate-user?username=admin&password=irrelevant", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
@@ -269,37 +267,37 @@ public class ApiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     public async Task Task_List_And_GetById_Returns_NotFound()
     {
         // List should be empty
-        var response = await _client.GetAsync("/api/task");
+        var response = await _client.GetAsync("/api/task", TestContext.Current.CancellationToken);
         response.EnsureSuccessStatusCode();
-        var tasks = await response.Content.ReadFromJsonAsync<List<TaskInstance>>();
+        var tasks = await response.Content.ReadFromJsonAsync<List<TaskInstance>>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(tasks);
         //Assert.Empty(tasks);
         var id = tasks.FirstOrDefault()?.Id;
         // Get by random ID should return 404
-        var get = await _client.GetAsync($"/api/task/{id}");
+        var get = await _client.GetAsync($"/api/task/{id}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, get.StatusCode);
     }
 
     [Fact]
     public async Task History_GetById_Returns_NotFound()
     {
-        var get = await _client.GetAsync($"/api/history/{Guid.NewGuid()}");
+        var get = await _client.GetAsync($"/api/history/{Guid.NewGuid()}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, get.StatusCode);
     }
 
     [Fact]
     public async Task Management_GetMetrics_Works()
     {
-        var response = await _client.GetAsync("/api/management/metrics");
+        var response = await _client.GetAsync("/api/management/metrics", TestContext.Current.CancellationToken);
         response.EnsureSuccessStatusCode();
-        var metrics = await response.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+        var metrics = await response.Content.ReadFromJsonAsync<Dictionary<string, object>>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(metrics);
     }
 
     [Fact]
     public async Task Decision_GetDecisionByKey_Returns_Null()
     {
-        var get = await _client.GetAsync($"/api/decision/by-key?decisionKey=unknown");
+        var get = await _client.GetAsync($"/api/decision/by-key?decisionKey=unknown", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, get.StatusCode);
     }
 
@@ -309,15 +307,15 @@ public class ApiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         var key = $"RepositoryDelete_{Guid.NewGuid():N}";
         var bpmn = $"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='{key}'><startEvent id='start'/><endEvent id='end'/><sequenceFlow id='flow' sourceRef='start' targetRef='end'/></process></definitions>";
         var deploy = new { BpmnXml = bpmn, Name = key, TenantId = (string?)null };
-        var post = await _client.PostAsJsonAsync("/api/repository", deploy);
+        var post = await _client.PostAsJsonAsync("/api/repository", deploy, cancellationToken: TestContext.Current.CancellationToken);
         post.EnsureSuccessStatusCode();
-        var created = await post.Content.ReadFromJsonAsync<ProcessDefinition>();
+        var created = await post.Content.ReadFromJsonAsync<ProcessDefinition>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(created);
-        var wrongTenantDelete = await _client.DeleteAsync($"/api/repository/{created!.Id}?tenantId=other-tenant");
+        var wrongTenantDelete = await _client.DeleteAsync($"/api/repository/{created!.Id}?tenantId=other-tenant", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Forbidden, wrongTenantDelete.StatusCode);
-        var delete = await _client.DeleteAsync($"/api/repository/{created!.Id}");
+        var delete = await _client.DeleteAsync($"/api/repository/{created!.Id}", TestContext.Current.CancellationToken);
         delete.EnsureSuccessStatusCode();
-        var get = await _client.GetAsync($"/api/repository/{created.Id}");
+        var get = await _client.GetAsync($"/api/repository/{created.Id}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, get.StatusCode);
     }
 

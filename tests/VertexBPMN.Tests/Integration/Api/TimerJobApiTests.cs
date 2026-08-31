@@ -24,9 +24,9 @@ public class TimerJobApiTests
         // BPMN: StartEvent with timer (simulate timer job creation)
         const string bpmn = @"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='P4'><startEvent id='start1'><timerEventDefinition/></startEvent><userTask id='t1'/><endEvent id='end1'/><sequenceFlow id='f1' sourceRef='start1' targetRef='t1'/><sequenceFlow id='f2' sourceRef='t1' targetRef='end1'/></process></definitions>";
         var deployBpmn = new { bpmnXml = bpmn, name = "TimerProcess", tenantId = (string?)null };
-        var bpmnPost = await _client.PostAsJsonAsync("/api/repository", deployBpmn);
+        var bpmnPost = await _client.PostAsJsonAsync("/api/repository", deployBpmn, cancellationToken: TestContext.Current.CancellationToken);
         bpmnPost.EnsureSuccessStatusCode();
-        var deployed = await bpmnPost.Content.ReadFromJsonAsync<ProcessDefinition>();
+        var deployed = await bpmnPost.Content.ReadFromJsonAsync<ProcessDefinition>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(deployed);
         // API test temporarily excluded for MIWG test run
         Assert.Equal("P4", deployed.Key);
@@ -38,9 +38,9 @@ public class TimerJobApiTests
             BusinessKey = (string?)null,
             TenantId = (string?)null
         };
-        var execPost = await _client.PostAsJsonAsync("/api/runtime/start", start);
+        var execPost = await _client.PostAsJsonAsync("/api/runtime/start", start, cancellationToken: TestContext.Current.CancellationToken);
         execPost.EnsureSuccessStatusCode();
-        var instance = await execPost.Content.ReadFromJsonAsync<ProcessInstance>();
+        var instance = await execPost.Content.ReadFromJsonAsync<ProcessInstance>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(instance);
         
         // Debug output
@@ -48,9 +48,9 @@ public class TimerJobApiTests
         Console.WriteLine($"ProcessInstance.ProcessDefinitionId: {instance!.ProcessDefinitionId}");
         
         // Let's check if the issue is with the GetLatestByKeyAsync lookup
-        var checkLookup = await _client.GetAsync($"/api/repository?key=P4");
+        var checkLookup = await _client.GetAsync($"/api/repository?key=P4", TestContext.Current.CancellationToken);
         checkLookup.EnsureSuccessStatusCode();
-        var lookupResults = await checkLookup.Content.ReadAsStringAsync();
+        var lookupResults = await checkLookup.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Console.WriteLine($"Repository lookup for P4: {lookupResults}");
         
         // Since the IDs don't match, let's just check that the key is consistent for now
@@ -61,7 +61,7 @@ public class TimerJobApiTests
         Assert.True(instance!.ProcessDefinitionId != Guid.Empty, "ProcessDefinitionId should not be empty");
 
         // Wait for job executor to process the timer job (simulate short wait)
-        await Task.Delay(1500);
+        await Task.Delay(1500, TestContext.Current.CancellationToken);
         // TODO: Query API or DB for job completion/next step (userTask available)
         // This is a placeholder for a real job state assertion
     }

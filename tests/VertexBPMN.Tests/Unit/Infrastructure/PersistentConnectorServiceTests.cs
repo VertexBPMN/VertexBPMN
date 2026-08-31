@@ -22,12 +22,12 @@ public sealed class PersistentConnectorServiceTests
         var service = new PersistentConnectorService(db, credential.Object, audit.Object);
 
         var created = await service.CreateAsync("tenant-a", new ConnectorWriteRequest(
-            "Payments", "http", "Payment gateway", "https://payments.example.test", "credential-1"));
+            "Payments", "http", "Payment gateway", "https://payments.example.test", "credential-1"), TestContext.Current.CancellationToken);
 
         Assert.Equal("credential-1", created.CredentialId);
-        Assert.Single(await service.ListAsync("tenant-a"));
-        Assert.Empty(await service.ListAsync("tenant-b"));
-        Assert.Null(await service.GetAsync("tenant-b", created.Id));
+        Assert.Single(await service.ListAsync("tenant-a", TestContext.Current.CancellationToken));
+        Assert.Empty(await service.ListAsync("tenant-b", TestContext.Current.CancellationToken));
+        Assert.Null(await service.GetAsync("tenant-b", created.Id, TestContext.Current.CancellationToken));
         audit.Verify(value => value.RecordAsync(It.Is<AuditLog>(log => log.Action == "connector.created" && log.TenantId == "tenant-a"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -42,9 +42,7 @@ public sealed class PersistentConnectorServiceTests
             .ReturnsAsync((CredentialMetadata?)null);
         var service = new PersistentConnectorService(db, credential.Object, Mock.Of<IAuditLogService>());
 
-        await Assert.ThrowsAsync<ConnectorCredentialException>(() => service.CreateAsync("tenant-a",
-            new ConnectorWriteRequest("Payments", "http", null, "https://payments.example.test", "credential-1")));
-        await Assert.ThrowsAsync<ArgumentException>(() => service.CreateAsync("tenant-a",
-            new ConnectorWriteRequest("Payments", "http", null, "file:///tmp/secret", null)));
+        await Assert.ThrowsAsync<ConnectorCredentialException>(() => service.CreateAsync("tenant-a", new ConnectorWriteRequest("Payments", "http", null, "https://payments.example.test", "credential-1"), TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.CreateAsync("tenant-a", new ConnectorWriteRequest("Payments", "http", null, "file:///tmp/secret", null), TestContext.Current.CancellationToken));
     }
 }

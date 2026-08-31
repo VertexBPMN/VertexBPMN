@@ -31,7 +31,7 @@ println 'hi'
   </process>
 </definitions>
 """;
-        var model = await Create().ParseAsync(xml);
+        var model = await Create().ParseAsync(xml, TestContext.Current.CancellationToken);
         Assert.NotNull(model.Runtime);
 
         // RED: Erwartete neue Runtime API (ScriptTask-Details)
@@ -79,7 +79,7 @@ println 'hi'
   </process>
 </definitions>
 """;
-        var model = await Create().ParseAsync(xml);
+        var model = await Create().ParseAsync(xml, TestContext.Current.CancellationToken);
         var rt = model.Runtime!;
         Assert.NotNull(rt.VendorExtensions);
 

@@ -22,13 +22,15 @@ public class StrictPhase1CollaborationTests
 """;
 
     [Fact]
-    public void CollaborationParsing_Disabled_ByDefault()
+    public async Task CollaborationParsing_Disabled_ByDefault()
     {
-        var model = new BpmnParser(new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict })
-            .ParseAsync(XmlWithCollab).GetAwaiter().GetResult();
+        var model = await new BpmnParser(new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict })
+            .ParseAsync(XmlWithCollab, TestContext.Current.CancellationToken);
 
         Assert.Equal("p1", model.ProcessId);
-        Assert.Empty(model.Participants);          // still disabled (zero-break)
+        Assert.NotNull(model.Participants);
+        Assert.NotNull(model.MessageFlows);
+        Assert.Empty(model.Participants); // still disabled (zero-break)
         Assert.Empty(model.MessageFlows);
         Assert.NotNull(model.RawMetadata);         // strict
         Assert.NotNull(model.RawMetadata!.RawGlobalElements); // existing capture
@@ -37,19 +39,23 @@ public class StrictPhase1CollaborationTests
     }
 
     [Fact]
-    public void CollaborationParsing_Enabled_Participants_And_MessageFlows_Available()
+    public async Task CollaborationParsing_Enabled_Participants_And_MessageFlows_Available()
     {
-        var model = new BpmnParser(new BpmnParserOptions
+        var model = await new BpmnParser(new BpmnParserOptions
         {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableCollaborationParsing = true,
             BuildGlobalElementIndex = true
-        }).ParseAsync(XmlWithCollab).GetAwaiter().GetResult();
+        }).ParseAsync(XmlWithCollab, TestContext.Current.CancellationToken);
 
-        Assert.Single(model.Participants);
-        Assert.Equal("part1", model.Participants[0].Id);
-        Assert.Single(model.MessageFlows);
-        Assert.Equal("mf1", model.MessageFlows[0].Id);
+        Assert.NotNull(model.Participants);
+        Assert.NotNull(model.MessageFlows);
+        var participants = model.Participants!;
+        var messageFlows = model.MessageFlows!;
+        Assert.Single(participants);
+        Assert.Equal("part1", participants[0].Id);
+        Assert.Single(messageFlows);
+        Assert.Equal("mf1", messageFlows[0].Id);
 
         // Global element index present & correct
         Assert.NotNull(model.RawMetadata);

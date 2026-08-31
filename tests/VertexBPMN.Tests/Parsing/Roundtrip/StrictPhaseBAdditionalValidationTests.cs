@@ -8,7 +8,7 @@ public class StrictPhaseBAdditionalValidationTests
     private static BpmnParser P => new(new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict, PreserveUnknownExtensions = true });
 
     [Fact]
-    public void Terminate_End_Outside_Transaction_Produces_Diagnostic()
+    public async Task Terminate_End_Outside_Transaction_Produces_Diagnostic()
     {
         const string xml = @"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <process id='p1'>
@@ -17,12 +17,12 @@ public class StrictPhaseBAdditionalValidationTests
     </endEvent>
   </process>
 </definitions>";
-        var model = P.ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await P.ParseAsync(xml, TestContext.Current.CancellationToken);
         Assert.Contains(model.Diagnostics, d => d.Contains("Terminate end event end_t outside transaction"));
     }
 
     [Fact]
-    public void Boundary_Compensation_Default_CancelActivity_Produces_Diagnostic()
+    public async Task Boundary_Compensation_Default_CancelActivity_Produces_Diagnostic()
     {
         const string xml = @"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <process id='p1'>
@@ -32,12 +32,12 @@ public class StrictPhaseBAdditionalValidationTests
     </boundaryEvent>
   </process>
 </definitions>";
-        var model = P.ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await P.ParseAsync(xml, TestContext.Current.CancellationToken);
         Assert.Contains(model.Diagnostics, d => d.Contains("Boundary compensation event bComp must have cancelActivity='false'"));
     }
 
     [Fact]
-    public void Boundary_Compensation_With_CancelActivity_False_Is_Valid()
+    public async Task Boundary_Compensation_With_CancelActivity_False_Is_Valid()
     {
         const string xml = @"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <process id='p1'>
@@ -47,7 +47,7 @@ public class StrictPhaseBAdditionalValidationTests
     </boundaryEvent>
   </process>
 </definitions>";
-        var model = P.ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await P.ParseAsync(xml, TestContext.Current.CancellationToken);
         Assert.DoesNotContain(model.Diagnostics, d => d.Contains("Boundary compensation event bComp"));
     }
 }

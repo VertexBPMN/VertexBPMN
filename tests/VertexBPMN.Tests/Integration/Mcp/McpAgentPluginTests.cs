@@ -46,13 +46,13 @@ public class McpAgentPluginTests
 
     private class TestLogger : ILogger
     {
-        public IDisposable BeginScope<TState>(TState state) => null!;
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
         public bool IsEnabled(LogLevel level) => true;
         public void Log<TState>(LogLevel level, EventId id, TState state, Exception? ex, Func<TState, Exception?, string> formatter) { }
     }
     private class TestConfig : IConfiguration
     {
-        public string this[string key]
+        public string? this[string key]
         {
             get => key == "agentsConfigPath" ? _agentFilePath : _agentFilePath;
             set { }

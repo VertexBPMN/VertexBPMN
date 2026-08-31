@@ -9,7 +9,7 @@ public class StrictPhaseCSerializerTests
     private BpmnParser StrictParser() => new(new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict, PreserveUnknownExtensions = true });
 
     [Fact]
-    public void Strict_Appends_New_Extension_Namespace_Prefixes_At_End()
+    public async Task Strict_Appends_New_Extension_Namespace_Prefixes_At_End()
     {
         // definitions has only aaa + bbb; extensionElements introduces new prefix 'x'
         const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL' xmlns:aaa='http://example.com/aaa' xmlns:bbb='http://example.com/bbb'>
@@ -21,7 +21,7 @@ public class StrictPhaseCSerializerTests
     </bpmn:startEvent>
   </bpmn:process>
 </bpmn:definitions>";
-        var model = StrictParser().ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await StrictParser().ParseAsync(xml, TestContext.Current.CancellationToken);
         var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
 
         var idxAaa = outXml.IndexOf("xmlns:aaa=\"http://example.com/aaa\"");
@@ -33,7 +33,7 @@ public class StrictPhaseCSerializerTests
     }
 
     [Fact]
-    public void Strict_Preserves_FlowNode_Order_By_OrderIndex()
+    public async Task Strict_Preserves_FlowNode_Order_By_OrderIndex()
     {
         // Intentionally unusual order: task before startEvent, then gateway, then sequenceFlows
         const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL'>
@@ -45,7 +45,7 @@ public class StrictPhaseCSerializerTests
     <bpmn:sequenceFlow id='f2' sourceRef='t1' targetRef='g1'/>
   </bpmn:process>
 </bpmn:definitions>";
-        var model = StrictParser().ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await StrictParser().ParseAsync(xml, TestContext.Current.CancellationToken);
         var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
         // Extract ordering of elements inside process (ignore attributes)
         var processStart = outXml.IndexOf("<bpmn:process id=\"p1\"");

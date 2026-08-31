@@ -25,9 +25,9 @@ public class BpmnEdgeCaseApiTests
         // BPMN: Main process with userTask and boundary error, plus event subprocess
         const string bpmn = @"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='P3'><startEvent id='start1'/><userTask id='t1'/><boundaryEvent id='err1' attachedToRef='t1'><errorEventDefinition/></boundaryEvent><subProcess id='esp1' triggeredByEvent='true'><startEvent id='es1'/><endEvent id='esend1'/><sequenceFlow id='esf1' sourceRef='es1' targetRef='esend1'/></subProcess><endEvent id='end1'/><sequenceFlow id='f1' sourceRef='start1' targetRef='t1'/><sequenceFlow id='f2' sourceRef='t1' targetRef='end1'/><sequenceFlow id='f3' sourceRef='err1' targetRef='end1'/></process></definitions>";
         var deployBpmn = new { bpmnXml = bpmn, name = "EdgeCaseProcess", tenantId = (string?)null };
-        var bpmnPost = await _client.PostAsJsonAsync("/api/repository", deployBpmn);
+        var bpmnPost = await _client.PostAsJsonAsync("/api/repository", deployBpmn, cancellationToken: TestContext.Current.CancellationToken);
         bpmnPost.EnsureSuccessStatusCode();
-        var deployed = await bpmnPost.Content.ReadFromJsonAsync<ProcessDefinition>();
+        var deployed = await bpmnPost.Content.ReadFromJsonAsync<ProcessDefinition>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(deployed);
         Assert.Equal("P3", deployed.Key);
 
@@ -38,9 +38,9 @@ public class BpmnEdgeCaseApiTests
             BusinessKey = (string?)null,
             TenantId = (string?)null
         };
-        var execPost = await _client.PostAsJsonAsync("/api/runtime/start", start);
+        var execPost = await _client.PostAsJsonAsync("/api/runtime/start", start, cancellationToken: TestContext.Current.CancellationToken);
         execPost.EnsureSuccessStatusCode();
-        var instance = await execPost.Content.ReadFromJsonAsync<ProcessInstance>();
+        var instance = await execPost.Content.ReadFromJsonAsync<ProcessInstance>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(instance);
         
         // TODO: Fix ProcessDefinitionId mapping issue - temporarily check for non-empty GUID

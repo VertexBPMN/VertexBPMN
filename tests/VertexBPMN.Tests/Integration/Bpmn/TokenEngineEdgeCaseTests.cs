@@ -78,11 +78,11 @@ namespace VertexBPMN.Tests.Integration.Bpmn
         }
 
         [Fact]
-        public void Throws_On_Missing_Process_Element_In_Parser()
+        public async Task Throws_On_Missing_Process_Element_In_Parser()
         {
             var logger = new Mock<ILogger<BpmnParser>>();var parser = new BpmnParser(logger.Object, TracerProvider.Default);
             const string xml = "<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'></definitions>";
-            var model = parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
+            var model = await parser.ParseAsync(xml.Replace('\'', '"'), TestContext.Current.CancellationToken);
             Assert.Empty(model.Events);
             Assert.Empty(model.Tasks);
         }
@@ -92,7 +92,7 @@ namespace VertexBPMN.Tests.Integration.Bpmn
         {
             var logger = new LoggerFactory().CreateLogger<DecisionService>();
             var service = new DecisionService(logger, new InMemoryDecisionRepository());
-            var def = await service.GetDecisionByKeyAsync("unknown");
+            var def = await service.GetDecisionByKeyAsync("unknown", cancellationToken: TestContext.Current.CancellationToken);
             Assert.Null(def);
         }
 

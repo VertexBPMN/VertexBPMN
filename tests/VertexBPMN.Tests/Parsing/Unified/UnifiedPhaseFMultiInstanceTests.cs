@@ -24,7 +24,7 @@ public class UnifiedPhaseFMultiInstanceTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var mi = Assert.IsType<MultiInstanceLoopCharacteristics>(model.Subprocesses.Single().Loop);
         Assert.Equal("orders", mi.Collection);
         Assert.Equal("order", mi.InputElement);
@@ -47,7 +47,7 @@ public class UnifiedPhaseFMultiInstanceTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml);
+        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var mi = Assert.IsType<MultiInstanceLoopCharacteristics>(model.Subprocesses.Single().Loop);
         Assert.Equal("items", mi.Collection);
         Assert.Equal("it", mi.ElementVariable);

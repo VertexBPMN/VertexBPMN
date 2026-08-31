@@ -41,25 +41,25 @@ public class Phase3AdvancedValidationBoundaryAttachedMissingTests
 """;
 
     [Fact]
-    public void BoundaryAttachedMissing_Disabled_NoStructuredDiagnostics()
+    public async Task BoundaryAttachedMissing_Disabled_NoStructuredDiagnostics()
     {
-        var model = new BpmnParser(new BpmnParserOptions
+        var model = await new BpmnParser(new BpmnParserOptions
         {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = false
-        }).ParseAsync(InvalidBoundaryXml).GetAwaiter().GetResult();
+        }).ParseAsync(InvalidBoundaryXml, TestContext.Current.CancellationToken);
 
         Assert.Null(model.ValidationDiagnostics);
     }
 
     [Fact]
-    public void BoundaryAttachedMissing_Enabled_ReportsError()
+    public async Task BoundaryAttachedMissing_Enabled_ReportsError()
     {
-        var model = new BpmnParser(new BpmnParserOptions
+        var model = await new BpmnParser(new BpmnParserOptions
         {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(InvalidBoundaryXml).GetAwaiter().GetResult();
+        }).ParseAsync(InvalidBoundaryXml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         Assert.Contains(model.ValidationDiagnostics!, d =>
@@ -73,13 +73,13 @@ public class Phase3AdvancedValidationBoundaryAttachedMissingTests
     }
 
     [Fact]
-    public void BoundaryAttachedMissing_Enabled_NoIssues()
+    public async Task BoundaryAttachedMissing_Enabled_NoIssues()
     {
-        var model = new BpmnParser(new BpmnParserOptions
+        var model = await new BpmnParser(new BpmnParserOptions
         {
             RoundtripMode = BpmnRoundtripMode.Strict,
             EnableAdvancedValidation = true
-        }).ParseAsync(NoBoundaryIssueXml).GetAwaiter().GetResult();
+        }).ParseAsync(NoBoundaryIssueXml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.ValidationDiagnostics);
         Assert.DoesNotContain(model.ValidationDiagnostics!, d => d.Code == "REF-BOUNDARY-ATTACHED-MISSING");

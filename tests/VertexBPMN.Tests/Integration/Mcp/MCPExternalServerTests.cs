@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using Microsoft.Extensions.Logging;
 using Moq;
 using OpenTelemetry.Trace;
@@ -68,16 +68,20 @@ public class MCPExternalServerTests
         var trace = new List<string>();
 
         _storeMock.Setup(s => s.GetCmmnModelAsync(caseId)).ReturnsAsync("<cmmn:case id='case1'>...</cmmn:case>");
-        _cmmnParserMock.Setup(p => p.ParseAsync(It.IsAny<string>(), CancellationToken.None)).ReturnsAsync(caseModel);
+        _cmmnParserMock.Setup(p => p.ParseAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(caseModel);
         _storeMock.Setup(s => s.GetPendingCaseTokensAsync()).ReturnsAsync([caseToken]);
         _aiDecisionServiceMock.Setup(s => s.ExecuteMcpActionAsync(caseId, "http://cms-mcp:8080/api/mcp", "trigger_approval", It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         // Act
-          _engine.GetType().GetMethod("ProcessCaseTokenAsync", BindingFlags.NonPublic | BindingFlags.Instance)
-            .Invoke(_engine, new object[] { caseToken, caseModel, trace, CancellationToken.None });
+        var method = _engine.GetType().GetMethod("ProcessCaseTokenAsync", BindingFlags.NonPublic | BindingFlags.Instance)
+            ?? throw new MissingMethodException(typeof(DistributedProcessEngine).FullName, "ProcessCaseTokenAsync");
+        var invocation = method.Invoke(_engine, new object[] { caseToken, caseModel, trace, TestContext.Current.CancellationToken });
+        await (invocation as Task
+            ?? throw new InvalidOperationException("ProcessCaseTokenAsync did not return a Task."));
 
         // Assert
+        Assert.DoesNotContain(trace, entry => entry.StartsWith("CaseTokenFailed:", StringComparison.Ordinal));
         _aiDecisionServiceMock.Verify(s => s.ExecuteMcpActionAsync(caseId, "http://cms-mcp:8080/api/mcp", "trigger_approval", It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>()), Times.Once());
         Assert.Contains($"MCPActionTriggered: trigger_approval on http://cms-mcp:8080/api/mcp", trace);
     }
@@ -101,7 +105,7 @@ public class MCPExternalServerTests
             .ReturnsAsync(predictedPlanItems);
 
         // Act
-        var result = await _aiDecisionServiceMock.Object.PredictOptimalPlanItemsAsync(caseId, caseFile, historicalData);
+        var result = await _aiDecisionServiceMock.Object.PredictOptimalPlanItemsAsync(caseId, caseFile, historicalData, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(predictedPlanItems, result);

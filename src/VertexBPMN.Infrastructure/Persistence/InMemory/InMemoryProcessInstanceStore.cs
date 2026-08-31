@@ -107,11 +107,11 @@ public sealed class InMemoryProcessInstanceStore : IProcessInstanceStore
         return Task.CompletedTask;
     }
 
-    public Task<WorkerNode> GetWorkerAsync(string workerId)
+    public Task<WorkerNode?> GetWorkerAsync(string workerId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(workerId);
         if (_workers.TryGetValue(workerId, out var worker))
-            return Task.FromResult(worker);
+            return Task.FromResult<WorkerNode?>(worker);
         throw new KeyNotFoundException($"Worker '{workerId}' not found.");
     }
 

@@ -27,7 +27,7 @@ public class RuntimeProjectionUserAndScriptEnhancementsTests
   </process>
 </definitions>
 """;
-        var model = await Create().ParseAsync(xml);
+        var model = await Create().ParseAsync(xml, TestContext.Current.CancellationToken);
         var rt = model.Runtime!;
         var scriptTasksProp = rt.GetType().GetProperty("ScriptTasks");
         Assert.NotNull(scriptTasksProp);
@@ -60,7 +60,7 @@ public class RuntimeProjectionUserAndScriptEnhancementsTests
   </process>
 </definitions>
 """;
-        var model = await Create().ParseAsync(xml);
+        var model = await Create().ParseAsync(xml, TestContext.Current.CancellationToken);
         var rt = model.Runtime!;
         // Expect potentialOwner exposed via VendorExtensions OR new dedicated map (we check both paths):
         var ve = rt.VendorExtensions;
@@ -90,7 +90,7 @@ public class RuntimeProjectionUserAndScriptEnhancementsTests
   </process>
 </definitions>
 """;
-        var model = await Create(norm:false).ParseAsync(xml);
+        var model = await Create(norm:false).ParseAsync(xml, TestContext.Current.CancellationToken);
         var rt = model.Runtime!;
         // Even without NormalizeVendorExtensions we expect potentialOwner discoverable (either via VendorExtensions null OR still captured)
         var ve = rt.VendorExtensions;

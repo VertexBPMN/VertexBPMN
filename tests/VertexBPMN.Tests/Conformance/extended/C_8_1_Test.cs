@@ -11,7 +11,7 @@ namespace VertexBPMN.Tests.Conformance.extended
     public class C_8_1_Test
     {
         [Fact]
-        public void Test_C_8_1_Bpmn()
+        public async Task Test_C_8_1_Bpmn()
         {
             var bpmnFile = Path.Combine(Directory.GetCurrentDirectory(), "TestData", "Reference", "C.8.1.bpmn");
             var xml = File.ReadAllText(bpmnFile);
@@ -24,7 +24,7 @@ namespace VertexBPMN.Tests.Conformance.extended
             // KORREKTUR: vorher `new BpmnParser()` ohne Logger/TracerProvider – inkonsistent
             // zu allen anderen Tests dieser Suite.
             var parser = new BpmnParser(parserLogger.Object, TracerProvider.Default);
-            var model = parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
+            var model = await parser.ParseAsync(xml.Replace('\'', '"'), TestContext.Current.CancellationToken);
             Assert.NotNull(model);
             var engine = new ProcessEngine(Mock.Of<ILogger<ProcessEngine>>(),
                 NullServiceTaskRegistry.Instance, mockDecision.Object);

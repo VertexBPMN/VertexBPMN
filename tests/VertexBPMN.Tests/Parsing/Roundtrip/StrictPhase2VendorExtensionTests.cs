@@ -29,10 +29,10 @@ public class StrictPhase2VendorExtensionTests
 """;
 
     [Fact]
-    public void VendorNormalization_Disabled_ByDefault()
+    public async Task VendorNormalization_Disabled_ByDefault()
     {
-        var model = new BpmnParser(new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict })
-            .ParseAsync(Xml).GetAwaiter().GetResult();
+        var model = await new BpmnParser(new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict })
+            .ParseAsync(Xml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.RawMetadata);
         Assert.True(model.RawMetadata!.RawExtensionElements?.ContainsKey("ut1") == true);
@@ -40,13 +40,13 @@ public class StrictPhase2VendorExtensionTests
     }
 
     [Fact]
-    public void VendorNormalization_Enabled_FlattensKnownVendors()
+    public async Task VendorNormalization_Enabled_FlattensKnownVendors()
     {
-        var model = new BpmnParser(new BpmnParserOptions
+        var model = await new BpmnParser(new BpmnParserOptions
         {
             RoundtripMode = BpmnRoundtripMode.Strict,
             NormalizeVendorExtensions = true
-        }).ParseAsync(Xml).GetAwaiter().GetResult();
+        }).ParseAsync(Xml, TestContext.Current.CancellationToken);
 
         Assert.NotNull(model.RawMetadata);
         var map = model.RawMetadata!.VendorNormalizedExtensions;

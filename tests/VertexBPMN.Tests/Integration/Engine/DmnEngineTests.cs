@@ -35,7 +35,7 @@ public class DmnEngineTests
         );
 
         var variables = new Dictionary<string, object> { { "Age", 25 }, { "Income", 40000 } };
-        var result = await _engine.EvaluateDecisionAsync(decision, variables);
+        var result = await _engine.EvaluateDecisionAsync(decision, variables, TestContext.Current.CancellationToken);
 
         Assert.Equal("Approved", result["output1"]);
     }
@@ -57,7 +57,7 @@ public class DmnEngineTests
         );
 
         var variables = new Dictionary<string, object> { { "OrderValue", 250 } };
-        var result = await _engine.EvaluateDecisionAsync(decision, variables);
+        var result = await _engine.EvaluateDecisionAsync(decision, variables, TestContext.Current.CancellationToken);
 
         var discounts = (List<object>)result["output1"];
         Assert.Equal(2, discounts.Count);
@@ -78,6 +78,6 @@ public class DmnEngineTests
         );
 
         var variables = new Dictionary<string, object> { { "Age", 15 } };
-        await Assert.ThrowsAsync<DmnEvaluationException>(() => _engine.EvaluateDecisionAsync(decision, variables));
+        await Assert.ThrowsAsync<DmnEvaluationException>(() => _engine.EvaluateDecisionAsync(decision, variables, TestContext.Current.CancellationToken));
     }
 }

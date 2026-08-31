@@ -31,11 +31,11 @@ namespace VertexBPMN.Tests.Conformance
 
         [Theory]
         [MemberData(nameof(GetBpmnFiles))]
-        public void Engine_Should_Import_Export_Roundtrip_Bpmn_File(string bpmnFile)
+        public async Task Engine_Should_Import_Export_Roundtrip_Bpmn_File(string bpmnFile)
         {
             var xml = File.ReadAllText(bpmnFile);
             var parser = new BpmnParser();
-            var model = parser.ParseAsync(xml).GetAwaiter().GetResult();
+            var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
             var engine = new ProcessEngine();
             var result = engine.Execute(model);
             Assert.NotNull(result);
@@ -46,8 +46,10 @@ namespace VertexBPMN.Tests.Conformance
             Assert.False(string.IsNullOrWhiteSpace(xmlExported), $"Exported BPMN XML is empty for {Path.GetFileName(bpmnFile)}");
 
             // Roundtrip: Parse exported XML and compare structure
-            var modelRoundtrip = parser.ParseAsync(xmlExported).GetAwaiter().GetResult();
+            var modelRoundtrip = await parser.ParseAsync(xmlExported, TestContext.Current.CancellationToken);
             Assert.NotNull(modelRoundtrip);
+            Assert.NotNull(model.Activities);
+            Assert.NotNull(modelRoundtrip.Activities);
             // Optionally: Compare key model properties for equality
             Assert.Equal(model.ProcessId, modelRoundtrip.ProcessId);
             Assert.Equal(model.Activities.Count(), modelRoundtrip.Activities.Count());

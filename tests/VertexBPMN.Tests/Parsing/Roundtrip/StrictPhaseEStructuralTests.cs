@@ -28,7 +28,7 @@ public class StrictPhaseEStructuralTests
     }
 
     [Fact]
-    public void Structural_Gateway_ForkJoin_Roundtrip()
+    public async Task Structural_Gateway_ForkJoin_Roundtrip()
     {
         const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <bpmn:process id='p1'>
@@ -46,7 +46,7 @@ public class StrictPhaseEStructuralTests
     <bpmn:sequenceFlow id='f_join_end' sourceRef='gw_join' targetRef='end'/>
   </bpmn:process>
 </bpmn:definitions>";
-        var model = P.ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await P.ParseAsync(xml, TestContext.Current.CancellationToken);
         var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
         var expProc = XDocument.Parse(xml).Root!.Element(BPMN + "process")!;
         var actProc = XDocument.Parse(outXml).Root!.Element(BPMN + "process")!;
@@ -54,7 +54,7 @@ public class StrictPhaseEStructuralTests
     }
 
     [Fact]
-    public void Structural_Unknown_EventDefinition_Preserved()
+    public async Task Structural_Unknown_EventDefinition_Preserved()
     {
         const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL' xmlns:ven='http://vendor/x'>
   <bpmn:process id='p4'>
@@ -64,7 +64,7 @@ public class StrictPhaseEStructuralTests
     </bpmn:startEvent>
   </bpmn:process>
 </bpmn:definitions>";
-        var model = P.ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await P.ParseAsync(xml, TestContext.Current.CancellationToken);
         var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
         var expEvt = XDocument.Parse(xml).Root!.Descendants(BPMN + "startEvent").First();
         var actEvt = XDocument.Parse(outXml).Root!.Descendants(BPMN + "startEvent").First();

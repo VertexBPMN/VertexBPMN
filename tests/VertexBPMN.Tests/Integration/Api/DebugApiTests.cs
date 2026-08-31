@@ -34,9 +34,9 @@ public class DebugApiTests : IClassFixture<CustomWebApplicationFactory>
     {
         const string bpmn = @"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='P1'><startEvent id='start1'/><endEvent id='end1'/><sequenceFlow id='flow1' sourceRef='start1' targetRef='end1'/></process></definitions>";
         var traceReq = new { BpmnXml = bpmn, Variables = new Dictionary<string, object>() };
-        var tracePost = await _client.PostAsJsonAsync("/api/debug/trace", traceReq);
+        var tracePost = await _client.PostAsJsonAsync("/api/debug/trace", traceReq, cancellationToken: TestContext.Current.CancellationToken);
         tracePost.EnsureSuccessStatusCode();
-        var trace = await tracePost.Content.ReadFromJsonAsync<List<string>>();
+        var trace = await tracePost.Content.ReadFromJsonAsync<List<string>>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(trace);
         Assert.Contains(trace, item => item.Contains("StartEvent: start1"));
         Assert.Contains(trace, item => item.Contains("EndEvent: end1"));

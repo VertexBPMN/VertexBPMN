@@ -18,11 +18,11 @@ public sealed class HttpConnectorServiceTests
         factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
         var service = new HttpConnectorService(factory.Object);
 
-        await service.ListAsync("tenant-a");
-        await service.CreateAsync("tenant-a", "Payments", "http", null, "https://payments.example.test", "credential-1", null);
-        await service.UpdateAsync("tenant-a", "connector-1", "Payments", "http", "updated", null, null, null, false);
-        await service.SetEnabledAsync("tenant-a", "connector-1", false);
-        await service.DeleteAsync("tenant-a", "connector-1");
+        await service.ListAsync("tenant-a", TestContext.Current.CancellationToken);
+        await service.CreateAsync("tenant-a", "Payments", "http", null, "https://payments.example.test", "credential-1", null, cancellationToken: TestContext.Current.CancellationToken);
+        await service.UpdateAsync("tenant-a", "connector-1", "Payments", "http", "updated", null, null, null, false, TestContext.Current.CancellationToken);
+        await service.SetEnabledAsync("tenant-a", "connector-1", false, TestContext.Current.CancellationToken);
+        await service.DeleteAsync("tenant-a", "connector-1", TestContext.Current.CancellationToken);
 
         Assert.Collection(requests,
             request => AssertRequest(request, HttpMethod.Get, "/api/connectors?tenantId=tenant-a"),

@@ -28,7 +28,7 @@ public class VertexModdleRoundtripTests
         new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
 
     [Fact]
-    public void Connector_Retry_IoMapping_StrictRoundtrip_UsesCanonicalNamespace()
+    public async Task Connector_Retry_IoMapping_StrictRoundtrip_UsesCanonicalNamespace()
     {
         const string xml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
@@ -52,7 +52,7 @@ public class VertexModdleRoundtripTests
 </bpmn:definitions>
 """;
         var parser = StrictParser(normalizeVendors: true);
-        var model = parser.ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
         var outXml = parser.Serialize(model);
 
         Assert.Contains(VertexNs, outXml);
@@ -82,7 +82,7 @@ public class VertexModdleRoundtripTests
     }
 
     [Fact]
-    public void Webhook_OnStartEvent_StrictRoundtrip()
+    public async Task Webhook_OnStartEvent_StrictRoundtrip()
     {
         const string xml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
@@ -99,7 +99,7 @@ public class VertexModdleRoundtripTests
   </bpmn:process>
 </bpmn:definitions>
 """;
-        var model = StrictParser().ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await StrictParser().ParseAsync(xml, TestContext.Current.CancellationToken);
         var outXml = SerializeStrict(model);
         Assert.Contains("vertex:webhook", outXml);
         Assert.Contains("path=\"/hooks/orders\"", outXml);
@@ -115,7 +115,7 @@ public class VertexModdleRoundtripTests
     }
 
     [Fact]
-    public void Decision_AndIoMapping_OnBusinessRuleTask_StrictRoundtrip()
+    public async Task Decision_AndIoMapping_OnBusinessRuleTask_StrictRoundtrip()
     {
         const string xml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
@@ -135,7 +135,7 @@ public class VertexModdleRoundtripTests
   </bpmn:process>
 </bpmn:definitions>
 """;
-        var model = StrictParser(normalizeVendors: true).ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await StrictParser(normalizeVendors: true).ParseAsync(xml, TestContext.Current.CancellationToken);
         var outXml = SerializeStrict(model);
 
         Assert.Contains("vertex:decision", outXml);
@@ -149,7 +149,7 @@ public class VertexModdleRoundtripTests
     }
 
     [Fact]
-    public void Credential_Extension_StrictRoundtrip()
+    public async Task Credential_Extension_StrictRoundtrip()
     {
         const string xml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
@@ -165,7 +165,7 @@ public class VertexModdleRoundtripTests
   </bpmn:process>
 </bpmn:definitions>
 """;
-        var model = StrictParser().ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await StrictParser().ParseAsync(xml, TestContext.Current.CancellationToken);
         var outXml = SerializeStrict(model);
         Assert.Contains("vertex:credential", outXml);
         Assert.Contains("id=\"cred-orders-api\"", outXml);
@@ -174,7 +174,7 @@ public class VertexModdleRoundtripTests
     }
 
     [Fact]
-    public void UnknownExtension_NotDropped_BesideVertexConnector()
+    public async Task UnknownExtension_NotDropped_BesideVertexConnector()
     {
         const string xml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
@@ -192,7 +192,7 @@ public class VertexModdleRoundtripTests
   </bpmn:process>
 </bpmn:definitions>
 """;
-        var model = StrictParser().ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await StrictParser().ParseAsync(xml, TestContext.Current.CancellationToken);
         var outXml = SerializeStrict(model);
         Assert.Contains("vertex:connector", outXml);
         Assert.Contains("other:foo", outXml);
@@ -201,7 +201,7 @@ public class VertexModdleRoundtripTests
     }
 
     [Fact]
-    public void Connector_MissingTypeAndOperation_ProducesVertexDiagnostics()
+    public async Task Connector_MissingTypeAndOperation_ProducesVertexDiagnostics()
     {
         const string xml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
@@ -217,7 +217,7 @@ public class VertexModdleRoundtripTests
   </bpmn:process>
 </bpmn:definitions>
 """;
-        var model = StrictParser(advancedValidation: true).ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await StrictParser(advancedValidation: true).ParseAsync(xml, TestContext.Current.CancellationToken);
         Assert.NotNull(model.ValidationDiagnostics);
         var codes = model.ValidationDiagnostics!.Select(d => d.Code).ToList();
         Assert.Contains("VEN-VERTEX-CONNECTOR-TYPE", codes);
@@ -233,7 +233,7 @@ public class VertexModdleRoundtripTests
     }
 
     [Fact]
-    public void CamundaAssignee_And_VertexConnector_BothSurvive()
+    public async Task CamundaAssignee_And_VertexConnector_BothSurvive()
     {
         const string xml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
@@ -251,7 +251,7 @@ public class VertexModdleRoundtripTests
   </bpmn:process>
 </bpmn:definitions>
 """;
-        var model = StrictParser(normalizeVendors: true).ParseAsync(xml).GetAwaiter().GetResult();
+        var model = await StrictParser(normalizeVendors: true).ParseAsync(xml, TestContext.Current.CancellationToken);
         var outXml = SerializeStrict(model);
         Assert.Contains("camunda:assignee", outXml);
         Assert.Contains("value=\"alice\"", outXml);

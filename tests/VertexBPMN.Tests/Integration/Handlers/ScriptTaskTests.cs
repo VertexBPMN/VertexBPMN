@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Moq;
 using OpenTelemetry.Trace;
 using Shouldly;
@@ -32,20 +32,20 @@ public class ScriptTaskTests
 </definitions>";
 
         var logger = new Mock<ILogger<BpmnParser>>();var parser = new BpmnParser(logger.Object, TracerProvider.Default);
-        var model =  parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
+        var model =  await parser.ParseAsync(xml.Replace('\'', '"'), TestContext.Current.CancellationToken);
 
         // Nimm den ScriptTask aus dem Modell
         var task = model.Tasks.Single(t => t.Type == "scriptTask");
 
         // Variablen (so wie deine Engine sie hält)
-        var variables = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        var variables = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
         {
             ["a"] = 2,
             ["b"] = 40
         };
 
         // Act: Direkt den Runner testen (unabhängig vom Engine-Loop)
-        var handled = await ScriptTaskExecution.TryHandleScriptTaskAsync(task, variables);
+        var handled = await ScriptTaskExecution.TryHandleScriptTaskAsync(task, variables, TestContext.Current.CancellationToken);
 
         // Assert
         handled.ShouldBe(true);
@@ -74,16 +74,16 @@ public class ScriptTaskTests
 </definitions>";
 
         var logger = new Mock<ILogger<BpmnParser>>();var parser = new BpmnParser(logger.Object, TracerProvider.Default);
-        var model =  parser.ParseAsync(xml.Replace('\'', '"')).GetAwaiter().GetResult();
+        var model =  await parser.ParseAsync(xml.Replace('\'', '"'), TestContext.Current.CancellationToken);
         var task = model.Tasks.Single(t => t.Type == "scriptTask");
 
-        var variables = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        var variables = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
         {
             ["x"] = 10,
             ["y"] = 5
         };
 
-        var handled = await ScriptTaskExecution.TryHandleScriptTaskAsync(task, variables);
+        var handled = await ScriptTaskExecution.TryHandleScriptTaskAsync(task, variables, TestContext.Current.CancellationToken);
 
         handled.ShouldBe(true);
         variables.ShouldContainKey("out");
@@ -98,7 +98,7 @@ public class ScriptTaskTests
         (
             Id: "task1",
             Type: "scriptTask",
-            Attributes: new Dictionary<string, string?>
+            Attributes: new Dictionary<string, string>
                 {
                     { "scriptFormat", "C#" },
                     { "script", "variables[\"sum\"] = (int)variables[\"a\"] + (int)variables[\"b\"]; return variables[\"sum\"]; " },
@@ -122,12 +122,14 @@ public class ScriptTaskTests
         );
 
         // Act
-        var handled = await ScriptTaskExecution.TryHandleScriptTaskAsync(scriptTask, model.ProcessVariables);
+        Assert.NotNull(model.ProcessVariables);
+        var variables = model.ProcessVariables!;
+        var handled = await ScriptTaskExecution.TryHandleScriptTaskAsync(scriptTask, variables, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(handled);
-        Assert.True(model.ProcessVariables!.ContainsKey("sum"));
-        Assert.Equal(5, model.ProcessVariables["sum"]);
+        Assert.True(variables.ContainsKey("sum"));
+        Assert.Equal(5, variables["sum"]);
     }
 
     [Fact]
@@ -137,7 +139,7 @@ public class ScriptTaskTests
         var scriptTask = new BpmnTask(
             Id:"task2",
             Type:"scriptTask",
-            Attributes :new Dictionary<string, string?>
+            Attributes :new Dictionary<string, string>
                 {
                     { "scriptFormat", "JavaScript" },
                     { "script", "variables.sum = variables.a + variables.b; variables.sum;" },
@@ -161,12 +163,14 @@ public class ScriptTaskTests
         );
 
         // Act
-        var handled = await ScriptTaskExecution.TryHandleScriptTaskAsync(scriptTask, model.ProcessVariables);
+        Assert.NotNull(model.ProcessVariables);
+        var variables = model.ProcessVariables!;
+        var handled = await ScriptTaskExecution.TryHandleScriptTaskAsync(scriptTask, variables, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(handled);
-        Assert.True(model.ProcessVariables!.ContainsKey("sum"));
-        Assert.Equal(15, Convert.ToInt32(model.ProcessVariables["sum"]));
+        Assert.True(variables.ContainsKey("sum"));
+        Assert.Equal(15, Convert.ToInt32(variables["sum"]));
     }
 }
 

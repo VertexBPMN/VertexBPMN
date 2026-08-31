@@ -14,12 +14,12 @@ public sealed class HttpMessageSignalServiceTests
         var requests = new List<HttpRequestMessage>();
         var service = CreateService(requests, "{\"resultType\":\"Execution\"}");
 
-        await service.CorrelateMessageAsync("payment-received", "process-1", "{\"amount\":42}");
+        await service.CorrelateMessageAsync("payment-received", "process-1", "{\"amount\":42}", TestContext.Current.CancellationToken);
 
         var request = Assert.Single(requests);
         Assert.Equal(HttpMethod.Post, request.Method);
         Assert.Equal("http://api.test/api/vertex/message", request.RequestUri!.ToString());
-        var body = await request.Content!.ReadFromJsonAsync<JsonElement>();
+        var body = await request.Content!.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal("payment-received", body.GetProperty("messageName").GetString());
         Assert.Equal(42, body.GetProperty("variables").GetProperty("amount").GetInt32());
     }
@@ -30,7 +30,7 @@ public sealed class HttpMessageSignalServiceTests
         var requests = new List<HttpRequestMessage>();
         var service = CreateService(requests, string.Empty);
 
-        var result = await service.BroadcastSignalAsync("order-updated");
+        var result = await service.BroadcastSignalAsync("order-updated", cancellationToken: TestContext.Current.CancellationToken);
 
         var request = Assert.Single(requests);
         Assert.Equal(HttpMethod.Post, request.Method);

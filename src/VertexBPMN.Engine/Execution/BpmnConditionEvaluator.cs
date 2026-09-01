@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Jint;
+using Jint.Runtime;
 using VertexBPMN.Application;
 using VertexBPMN.Domain.Model.Bpmn;
 
@@ -86,7 +87,16 @@ internal static class BpmnConditionEvaluator
         foreach (var variable in context)
             engine.SetValue(variable.Key, variable.Value);
 
-        return engine.Evaluate(expression).AsBoolean();
+        try
+        {
+            return engine.Evaluate(expression).AsBoolean();
+        }
+        catch (JavaScriptException exception)
+        {
+            throw new InvalidOperationException(
+                $"BPMN condition '{rawExpression}' could not be evaluated with the available process variables.",
+                exception);
+        }
     }
 
     private static bool IsFeel(string? expressionLanguage, string expression) =>

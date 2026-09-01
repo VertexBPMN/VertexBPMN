@@ -241,6 +241,31 @@ public class ProcessEngineTests
     }
 
     [Fact]
+    public void Execute_With_Instance_Variables_Does_Not_Mutate_Or_Leak_Into_Next_Execution()
+    {
+        var model = new BpmnModel(
+            "isolated-runtime-variables",
+            "Isolated runtime variables",
+            Events: [new BpmnEvent("start", "startEvent"), new BpmnEvent("end", "endEvent")],
+            Gateways: [new BpmnGateway("decision", "exclusiveGateway")],
+            Subprocesses: [],
+            SequenceFlows:
+            [
+                new BpmnSequenceFlow("to-decision", "start", "decision"),
+                new BpmnSequenceFlow("approved", "decision", "end", ConditionExpression: "${approved}")
+            ],
+            Tasks: []);
+        var engine = new ProcessEngine();
+
+        var trace = engine.Execute(model, new Dictionary<string, object> { ["approved"] = true });
+
+        Assert.Contains(trace, entry => entry.Contains("EndEvent: end", StringComparison.Ordinal));
+        Assert.Null(model.ProcessVariables);
+        var exception = Assert.Throws<InvalidOperationException>(() => engine.Execute(model));
+        Assert.Contains("available process variables", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void InclusiveGateway_Activates_Only_Matching_Branches()
     {
         var model = new BpmnModel(

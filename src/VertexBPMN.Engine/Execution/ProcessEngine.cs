@@ -339,7 +339,20 @@ public partial class ProcessEngine : IProcessEngine
 
     public List<string> Execute(BpmnModel model, IDecisionService? decisionService = null)
     {
-        return Execute(model, decisionService, null);
+        return Execute(model, decisionService, null, null);
+    }
+
+    /// <summary>
+    /// Executes a new process instance with variables that are isolated from the
+    /// parsed process definition and from other executions of this engine.
+    /// </summary>
+    public List<string> Execute(
+        BpmnModel model,
+        IReadOnlyDictionary<string, object> variables,
+        IDecisionService? decisionService = null)
+    {
+        ArgumentNullException.ThrowIfNull(variables);
+        return Execute(model, decisionService ?? _decisionService, null, variables);
     }
 
     public List<string> ExecuteFromStartEvent(
@@ -351,7 +364,27 @@ public partial class ProcessEngine : IProcessEngine
         return Execute(
             model,
             decisionService ?? _decisionService,
-            new HashSet<string>(StringComparer.Ordinal) { startEventId });
+            new HashSet<string>(StringComparer.Ordinal) { startEventId },
+            null);
+    }
+
+    /// <summary>
+    /// Executes a new process instance from an explicitly triggered Start Event
+    /// with instance-scoped input variables.
+    /// </summary>
+    public List<string> ExecuteFromStartEvent(
+        BpmnModel model,
+        string startEventId,
+        IReadOnlyDictionary<string, object> variables,
+        IDecisionService? decisionService = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(startEventId);
+        ArgumentNullException.ThrowIfNull(variables);
+        return Execute(
+            model,
+            decisionService ?? _decisionService,
+            new HashSet<string>(StringComparer.Ordinal) { startEventId },
+            variables);
     }
 
     public List<string> ExecuteTriggeredEventSubprocess(
@@ -378,6 +411,7 @@ public partial class ProcessEngine : IProcessEngine
             model,
             decisionService ?? _decisionService,
             new HashSet<string>(StringComparer.Ordinal) { startEventId },
+            null,
             allowEventSubprocessStarts: true);
     }
 
@@ -385,6 +419,7 @@ public partial class ProcessEngine : IProcessEngine
         BpmnModel model,
         IDecisionService? decisionService,
         IReadOnlySet<string>? requestedStartEventIds,
+        IReadOnlyDictionary<string, object>? initialVariables,
         bool allowEventSubprocessStarts = false)
     {
         ArgumentNullException.ThrowIfNull(model);
@@ -394,6 +429,13 @@ public partial class ProcessEngine : IProcessEngine
         var trace = new List<string>();
         _tokens.Clear(); _history.Clear(); _tokenQueue.Clear(); _pendingNodes.Clear(); _joinContexts.Clear();
         _parallelJoinArrivals.Clear(); _inclusiveJoinArrivals.Clear(); _transactionContexts.Clear(); _eventSubprocessStartEvents.Clear(); _disabledFlows.Clear();
+        // Runtime variables belong to one process instance. Reinitialize them for
+        // every execution so a reused engine cannot leak state into the next run.
+        // The legacy overload keeps the model dictionary for backward compatibility;
+        // explicit inputs are copied and never mutate the static process definition.
+        _workingVariables = initialVariables is null
+            ? model.ProcessVariables
+            : new Dictionary<string, object>(initialVariables, StringComparer.OrdinalIgnoreCase);
         // FIX: _lastErrorCode wurde bisher hier NICHT zurückgesetzt – bei Wiederverwendung
         // derselben ProcessEngine-Instanz für mehrere Execute()-Aufrufe konnte ein Error-Code
         // aus einer vorherigen Ausführung fälschlich in die neue Ausführung durchsickern.
@@ -874,10 +916,8 @@ public partial class ProcessEngine : IProcessEngine
 
     private IDictionary<string, object> GetOrCreateWorkingVariables(BpmnModel model)
     {
-        // Prefer model.ProcessVariables if already instantiated
-        if (model.ProcessVariables is Dictionary<string, object> dict)
-            return dict;
-        // Fallback to engine-level working set
+        // Execute() initializes this per process instance. The fallback only protects
+        // internal callers that access variables before execution initialization.
         return _workingVariables ??= new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
     }
 

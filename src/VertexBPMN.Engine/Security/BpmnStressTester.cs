@@ -41,9 +41,18 @@ public sealed class BpmnStressTester
             EnableAdvancedValidation = true
         });
 
-        var semaphore = new SemaphoreSlim(concurrentOperations);
+        using var semaphore = new SemaphoreSlim(concurrentOperations);
+
+        // Warm up parser/JIT/static lookup tables before taking the retained-memory
+        // baseline. Otherwise their one-time initialization is incorrectly reported
+        // as a leak of the 10k-operation workload, especially on fresh CI runners.
+        _ = await parser.ParseAsync(xml, cancellation.Token);
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+        GC.WaitForPendingFinalizers();
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+
         var overallStopwatch = Stopwatch.StartNew();
-        var initialMemory = GC.GetTotalMemory(false);
+        var initialMemory = GC.GetTotalMemory(true);
         
         var tasks = Enumerable.Range(0, totalOperations)
             .Select(async i =>

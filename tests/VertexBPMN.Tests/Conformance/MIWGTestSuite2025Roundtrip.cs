@@ -5,6 +5,15 @@ namespace VertexBPMN.Tests.Conformance
 {
     public class MIWGTestSuite2025Roundtrip
     {
+        private static readonly string[] ExecutionScenarioFiles =
+        [
+            "A.2.0.bpmn",
+            "C.9.1.bpmn",
+            "C.1.1.bpmn",
+            "C.1.0.bpmn",
+            "C.2.0.bpmn"
+        ];
+
         public static IEnumerable<object[]> GetBpmnFiles()
         {
             var dir = Path.Combine(Directory.GetCurrentDirectory(), "TestData", "Reference");
@@ -22,8 +31,10 @@ namespace VertexBPMN.Tests.Conformance
                 var msg = $"No BPMN files found.\ndir: {dir}\nDirectory contents:\n{entries}";
                 Assert.Fail(msg);
             }
-            foreach (var file in files.Take(5))
+            foreach (var fileName in ExecutionScenarioFiles)
             {
+                var file = Path.Combine(dir, fileName);
+                Assert.True(File.Exists(file), $"Required MIWG execution scenario is missing: {fileName}");
                 Console.WriteLine($"Test file: {file}");
                 yield return new object[] { file };
             }
@@ -37,9 +48,16 @@ namespace VertexBPMN.Tests.Conformance
             var parser = new BpmnParser();
             var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
             var engine = new ProcessEngine();
-            var result = engine.Execute(model);
+            var variables = RuntimeInputsFor(Path.GetFileName(bpmnFile));
+            var startEvent = model.Events.First(evt =>
+                evt.Type == "startEvent"
+                && evt.SubprocessId is null
+                && (string.IsNullOrWhiteSpace(evt.ProcessId)
+                    || evt.ProcessId == model.ProcessId));
+            var result = engine.ExecuteFromStartEvent(model, startEvent.Id, variables);
             Assert.NotNull(result);
             Assert.True(result.Count > 0, $"No trace produced for {Path.GetFileName(bpmnFile)}");
+            Assert.Contains(result, entry => entry.StartsWith("StartEvent:", StringComparison.Ordinal));
 
             // Export: Serialize model back to BPMN XML
             var xmlExported = parser.Serialize(model);
@@ -57,6 +75,17 @@ namespace VertexBPMN.Tests.Conformance
             // Optionally: Compare XMLs (ignoring whitespace/ordering)
              //Assert.True(XmlEquals(xml, xmlExported), $"Roundtrip XML mismatch for {Path.GetFileName(bpmnFile)}");
         }
+
+        private static IReadOnlyDictionary<string, object> RuntimeInputsFor(string fileName) =>
+            fileName switch
+            {
+                "C.1.0.bpmn" or "C.1.1.bpmn" => new Dictionary<string, object>
+                {
+                    ["approved"] = true,
+                    ["clarified"] = "yes"
+                },
+                _ => new Dictionary<string, object>()
+            };
 
         private bool XmlEquals(string xml, string xmlExported)
         {

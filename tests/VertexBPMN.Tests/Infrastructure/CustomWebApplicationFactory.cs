@@ -24,7 +24,9 @@ public class CustomWebApplicationFactory : WebApplicationFactory<VertexBPMN.Api.
     private bool _backgroundJobsEnabled;
     private bool _cmmnExecutionEnabled;
     private bool _liveProcessMigrationEnabled;
+    private readonly object _ownedConnectionsLock = new();
     private readonly List<SqliteConnection> _ownedConnections = new();
+    private bool _ownedConnectionsDisposed;
     private readonly string _databaseId = Guid.NewGuid().ToString("N");
     private SharedSqliteDbFixture? _sharedFixture;
     private SqliteConnection? _persistentBpmnConnection;
@@ -243,7 +245,18 @@ public class CustomWebApplicationFactory : WebApplicationFactory<VertexBPMN.Api.
         var connString = $"Data Source=file:vertex_{_databaseId}_{label}?mode=memory&cache=shared";
         var conn = new SqliteConnection(connString);
         conn.Open();
-        _ownedConnections.Add(conn);
+
+        lock (_ownedConnectionsLock)
+        {
+            if (_ownedConnectionsDisposed)
+            {
+                conn.Dispose();
+                throw new ObjectDisposedException(nameof(CustomWebApplicationFactory));
+            }
+
+            _ownedConnections.Add(conn);
+        }
+
         return conn;
     }
 
@@ -283,17 +296,17 @@ public class CustomWebApplicationFactory : WebApplicationFactory<VertexBPMN.Api.
 
     public override async ValueTask DisposeAsync()
     {
-        foreach (var c in _ownedConnections)
-        {
-            try
-            {
-                await c.CloseAsync();
-                await c.DisposeAsync();
-            }
-            catch { /* ignore */ }
-        }
-        _ownedConnections.Clear();
         await base.DisposeAsync();
+
+        SqliteConnection[] ownedConnections;
+        lock (_ownedConnectionsLock)
+        {
+            _ownedConnectionsDisposed = true;
+            ownedConnections = [.. _ownedConnections];
+            _ownedConnections.Clear();
+        }
+
+        await Task.WhenAll(ownedConnections.Select(connection => connection.DisposeAsync().AsTask()));
     }
     private static async Task<bool> TableExistsAsync(IServiceProvider sp, string table)
     {

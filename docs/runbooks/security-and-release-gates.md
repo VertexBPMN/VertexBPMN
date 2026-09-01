@@ -1,24 +1,17 @@
-# Security and release gates
+# Build-, Security- und Release-Prüfungen
 
-## Pull requests and master
+## Schneller GitHub-Workflow
 
-The `VertexBPMN CI` workflow treats the following jobs as blocking qualification evidence:
+Der Workflow `.github/workflows/ci.yml` besitzt bewusst nur zwei Jobs:
 
-- Linux and Windows restore, build, Studio assets, complete green suite, BPMN and advanced-feature conformance contracts, OpenAPI snapshot and Kubernetes manifest validation;
-- NuGet and npm audits with zero vulnerable NuGet entries and zero high or critical npm findings;
-- CodeQL analysis for C# and JavaScript/TypeScript;
-- filesystem dependency, secret and misconfiguration scanning with Trivy at `HIGH` and `CRITICAL` severity;
-- measured line coverage of at least 60% and branch coverage of at least 45%;
-- API and Studio container builds, high/critical container scans and separate SPDX JSON SBOMs;
-- real RabbitMQ delivery and PostgreSQL migration qualification.
+1. `Build and test` restauriert die Solution, baut sie einmal im Release-Modus unter Linux und führt `tests/VertexBPMN.Tests` aus. Die vier Tests mit `Category=Phase3ExternalAcceptance` benötigen echte RabbitMQ-/PostgreSQL-Dienste und sind vom schnellen Standardlauf ausgenommen. Interaktive Performance-Runner, Benchmarks und die separate Browser-Suite werden nicht über den Solution-weiten `dotnet test`-Aufruf gestartet.
+2. `Publish SDK and CLI to NuGet` läuft ausschließlich für `v*`-Tags, übernimmt die im Build erzeugten Pakete und veröffentlicht sie mit NuGet Trusted Publishing.
 
-Pull requests additionally run GitHub dependency review and reject newly introduced dependencies at high or critical severity. Dependabot checks NuGet, Studio npm and GitHub Actions dependencies weekly.
+Neue Läufe für denselben Branch brechen ältere laufende Builds ab. Pull Requests und `master` müssen in den Repository Rules nur den Check `Build and test` verlangen.
 
-Repository rules for `master` must require all non-skipped jobs above, including both CodeQL languages and `Operational integration (RabbitMQ and PostgreSQL)`. The ruleset is GitHub repository state and must be checked after the workflow is merged; it cannot be enforced by this file alone.
+## Erweiterte Prüfungen bei Bedarf
 
-## Local security and quality checks
-
-After restore, build and `npm ci`, run:
+Die aufwendigeren Prüfungen bleiben als lokale beziehungsweise manuell ausführbare Werkzeuge erhalten, blockieren aber nicht mehr jeden Pull Request oder Release:
 
 ```text
 bash scripts/verify-dependency-audit.sh
@@ -26,11 +19,18 @@ bash scripts/verify-coverage.sh
 bash scripts/verify-openapi-snapshot.sh
 bash scripts/verify-phase1-acceptance-baseline.sh
 bash scripts/verify-phase4-acceptance.sh
+bash scripts/verify-reproducible-packages.sh 1.0.0-local.1
 ```
 
-Trivy, CodeQL, the SBOM action and the external RabbitMQ/PostgreSQL job are authoritative in GitHub Actions because they require their scanner runtime or service containers.
+Die externen Verträge benötigen explizite Verbindungsdaten:
 
-On the local Windows/WSL workstation, container builds use WSLC instead of Docker:
+```text
+VERTEXBPMN_TEST_RABBITMQ=amqp://...
+VERTEXBPMN_TEST_POSTGRES_ADMIN=Host=...;Database=postgres;Username=...;Password=...
+dotnet test tests/VertexBPMN.Tests/VertexBPMN.Tests.csproj --configuration Release --filter-trait "Category=Phase3ExternalAcceptance" --max-parallel-test-modules 1
+```
+
+Auf dem lokalen Windows-/WSL-Rechner können API- und Studio-Container mit WSLC gebaut und geprüft werden:
 
 ```text
 wslc.exe build --tag vertexbpmn:release-check .
@@ -39,18 +39,8 @@ wslc.exe inspect --type image vertexbpmn:release-check
 wslc.exe inspect --type image vertexbpmn-studio:release-check
 ```
 
-Both images must expose port 8080, use the expected .NET entrypoint and run as the non-root `APP_UID`. GitHub-hosted CI continues to use Docker and Trivy because WSLC is a local Windows/WSL runtime, not a GitHub Runner dependency.
+## Tagged Releases
 
-## Tagged releases
+Ein Tag wie `v1.0.1` durchläuft denselben Build und dasselbe zentrale Testprojekt wie `master`. Anschließend werden `VertexBPMN.Sdk` und `VertexBPMN.Cli` einmal mit der Version aus dem Tag paketiert, als Workflow-Artefakt hochgeladen und vom Publish-Job übernommen.
 
-A pushed `v*` tag cannot publish directly. `Clean release qualification` waits for the complete build matrix, dependency audits, both CodeQL analyses, supply-chain gates and operational integration. It then checks out the tag with full history, rebuilds Studio and the complete solution, reruns API/Engine/Studio tests plus the OpenAPI and conformance gates, verifies an unchanged source tree and packs the SDK and CLI twice.
-
-The package gate canonicalizes NuGet container metadata, uses stable entry ordering and timestamps, and requires both pack results to be byte-identical. It emits `SHA256SUMS`. The publish job downloads only these qualified artifacts, verifies their checksums, creates a GitHub build-provenance attestation, exchanges OIDC for a short-lived NuGet key and publishes both packages.
-
-Local package qualification uses an unpublished version:
-
-```text
-bash scripts/verify-reproducible-packages.sh 1.0.0-local.1
-```
-
-Do not create or reuse a release tag until all required checks on its source commit are green. NuGet Trusted Publishing must identify repository `VertexBPMN/VertexBPMN`, workflow file `ci.yml`, and the profile creator stored as `NUGET_USER`.
+NuGet Trusted Publishing muss Repository `VertexBPMN/VertexBPMN`, Workflow-Datei `ci.yml` und den tatsächlichen NuGet-Profilersteller aus dem GitHub-Secret `NUGET_USER` verwenden. `NuGet/login` erzeugt über OIDC einen kurzlebigen Schlüssel; ein dauerhaftes `NUGET_API_KEY`-Secret ist nicht erforderlich.

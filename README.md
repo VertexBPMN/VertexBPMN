@@ -14,7 +14,7 @@ VertexBPMN ist eine Open-Source-Plattform für die Modellierung, Ausführung und
 
 Die verbindliche Quelle für Produkt-Support und Acceptance-Nachweise ist die [Produkt-Support- und Acceptance-Matrix](docs/reference/product-support-matrix.md). Alle dort aufgeführten Fähigkeiten sind als `supported` qualifiziert. `Supported` bedeutet: Die Funktion besitzt einen öffentlich nutzbaren, persistenten End-to-End-Pfad und ist durch die zugeordneten Acceptance- und Release-Gates abgesichert. Ein isolierter Parser- oder Unit-Test genügt dafür nicht.
 
-Die Full-Product-Support-Qualifizierung umfasst 51 konkrete Acceptance-Fälle: 47 Fälle im verpflichtenden Hauptgate sowie vier externe RabbitMQ-/PostgreSQL-Verträge. Der Build-Badge oben zeigt den aktuellen Status des `master`-Branches; eine Veröffentlichung ist nur freigegeben, wenn alle Build-, Test-, Security-, Supply-Chain- und externen Infrastruktur-Gates erfolgreich sind.
+Die Full-Product-Support-Suite umfasst 51 konkrete Acceptance-Fälle: 47 reguläre Verträge sowie vier externe RabbitMQ-/PostgreSQL-Verträge. Der schnelle GitHub-Workflow blockiert Pull Requests und Releases auf Restore, Release-Build und dem zentralen Testprojekt; die externen Infrastruktur-, Browser-, Benchmark- und erweiterten Security-Prüfungen bleiben für gezielte Qualifikationsläufe verfügbar.
 
 ### Standards und Runtime
 
@@ -56,7 +56,7 @@ Die Full-Product-Support-Qualifizierung umfasst 51 konkrete Acceptance-Fälle: 4
 | Sicherheit | JWT/API-Key-Authentifizierung, Rollen und Policies, Mandantenisolation, Rate Limiting und fail-closed Produktionskonfiguration | ✅ Supported |
 | Observability | Health, Liveness, Readiness, strukturierte Logs, OpenTelemetry und Prometheus-Metriken | ✅ Supported |
 | Aspire AppHost | Orchestrierung von API, Studio, PostgreSQL und RabbitMQ mit Dependency- und Readiness-Modell | ✅ Supported |
-| Release Supply Chain | Deterministische SDK-/CLI-Pakete, SHA-256-Prüfung, SPDX-SBOM, Scans, CodeQL und NuGet-OIDC-Provenance | ✅ Supported |
+| Release-Automatisierung | Ein Release-Build, reguläre Tests, tagversionierte SDK-/CLI-Pakete und Veröffentlichung über kurzlebige NuGet-OIDC-Berechtigungen | ✅ Supported |
 
 ### Weitere Produktfunktionen
 
@@ -261,20 +261,19 @@ Runtime-Ereignisse werden persistent und transaktional projiziert. Die Plattform
 
 ```powershell
 dotnet restore VertexBPMN.sln
-dotnet build VertexBPMN.sln --configuration Release --no-restore
-dotnet test VertexBPMN.sln --configuration Release --no-build --no-restore --max-parallel-test-modules 1
+dotnet build VertexBPMN.sln --configuration Release --no-restore -p:SkipBpmnIoAssetBuild=true -m:1 --disable-build-servers
+dotnet test tests/VertexBPMN.Tests/VertexBPMN.Tests.csproj --configuration Release --no-build --no-restore --filter-not-trait "Category=Phase3ExternalAcceptance" --max-parallel-test-modules 1
 ```
 
-Die Release-Pipeline enthält zusätzlich:
+Der schnelle GitHub-Workflow führt genau die zentralen Blocker aus:
 
-- 51 Full-Product-Support-Acceptance-Fälle
-- externe PostgreSQL- und RabbitMQ-Verträge
-- Linux- und Windows-Builds
-- OpenAPI-, BPMN-, DMN-, CMMN- und Studio-Conformance-Gates
-- Coverage-Schwellen und Analyzer ohne Warnungsbudget
-- Dependency-, Secret-, Container- und CodeQL-Scans
-- SPDX-SBOM und Provenance-Attestierung
-- deterministische SDK- und CLI-Pakete mit SHA-256-Vergleich
+- Restore mit dem in `global.json` festgelegten .NET SDK
+- einmaliger Release-Build unter Linux
+- das zentrale Testprojekt einschließlich der persistenten Acceptance-Verträge; nur die externen RabbitMQ-/PostgreSQL-Tests werden ausgelassen
+- Packen von SDK und CLI bei `v*`-Tags
+- Veröffentlichung der gebauten Pakete über NuGet Trusted Publishing und OIDC
+
+Dependency-Audits, Coverage, OpenAPI-/Conformance-Skripte, Container-Scans, SBOMs und echte Infrastrukturtests bleiben als lokale beziehungsweise gezielt ausführbare Prüfungen im Repository erhalten, blockieren aber nicht mehr jeden Build oder Release.
 
 Weitere Befehle und Filter: [Build- und Test-Runbook](docs/runbooks/build-and-test.md).
 

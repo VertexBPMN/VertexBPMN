@@ -41,70 +41,75 @@ public sealed class BpmnStressTester
             EnableAdvancedValidation = true
         });
 
-        using var semaphore = new SemaphoreSlim(concurrentOperations);
-
         // Warm up parser/JIT/static lookup tables before taking the retained-memory
         // baseline. Otherwise their one-time initialization is incorrectly reported
         // as a leak of the 10k-operation workload, especially on fresh CI runners.
         _ = await parser.ParseAsync(xml, cancellation.Token);
-        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
-        GC.WaitForPendingFinalizers();
-        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+        var initialMemory = MeasureRetainedManagedMemory();
 
         var overallStopwatch = Stopwatch.StartNew();
-        var initialMemory = GC.GetTotalMemory(true);
-        
-        var tasks = Enumerable.Range(0, totalOperations)
-            .Select(async i =>
+        var midpoint = totalOperations / 2;
+
+        await ExecuteRangeAsync(0, midpoint);
+        var midpointMemory = MeasureRetainedManagedMemory();
+        await ExecuteRangeAsync(midpoint, totalOperations - midpoint);
+
+        async Task ExecuteRangeAsync(int start, int count)
+        {
+            var end = start + count;
+            for (var batchStart = start; batchStart < end; batchStart += concurrentOperations)
             {
-                await semaphore.WaitAsync(cancellation.Token);
+                var batchSize = Math.Min(concurrentOperations, end - batchStart);
+                var batch = new Task[batchSize];
+                for (var offset = 0; offset < batchSize; offset++)
+                {
+                    var operationIndex = batchStart + offset;
+                    batch[offset] = Task.Run(
+                        () => ExecuteOperationAsync(operationIndex),
+                        cancellation.Token);
+                }
+
                 try
                 {
-                    var operationStopwatch = Stopwatch.StartNew();
-                    try
-                    {
-                        var model = await parser.ParseAsync(xml, cancellation.Token);
-                        operationStopwatch.Stop();
-                        
-                        // Verify basic model integrity
-                        if (model == null || string.IsNullOrEmpty(model.ProcessId))
-                        {
-                            errors.Add($"Operation {i}: Invalid model returned");
-                            Interlocked.Increment(ref completedSuccessfully);
-                        }
-                        else
-                        {
-                            completionTimes.Add(operationStopwatch.Elapsed);
-                            Interlocked.Increment(ref completedSuccessfully);
-                        }
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        // Expected during cancellation
-                    }
-                    catch (Exception ex)
-                    {
-                        errors.Add($"Operation {i}: {ex.GetType().Name}: {ex.Message}");
-                    }
+                    await Task.WhenAll(batch);
                 }
-                finally
+                catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
                 {
-                    semaphore.Release();
+                    return;
                 }
-            });
+            }
+        }
 
-        try
+        async Task ExecuteOperationAsync(int operationIndex)
         {
-            await Task.WhenAll(tasks);
+            var operationStopwatch = Stopwatch.StartNew();
+            try
+            {
+                var model = await parser.ParseAsync(xml, cancellation.Token);
+                operationStopwatch.Stop();
+
+                if (string.IsNullOrEmpty(model.ProcessId))
+                {
+                    errors.Add($"Operation {operationIndex}: Invalid model returned");
+                    return;
+                }
+
+                completionTimes.Add(operationStopwatch.Elapsed);
+                Interlocked.Increment(ref completedSuccessfully);
+            }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            {
+                // Expected during cancellation.
+            }
+            catch (Exception ex)
+            {
+                errors.Add($"Operation {operationIndex}: {ex.GetType().Name}: {ex.Message}");
+            }
         }
-        catch (OperationCanceledException)
-        {
-            // Expected on timeout
-        }
-        
+
         overallStopwatch.Stop();
         result.CompletedSuccessfully = completedSuccessfully;
-        var finalMemory = GC.GetTotalMemory(true); // Force GC
+        var finalMemory = MeasureRetainedManagedMemory();
         
         // Calculate results
         if (completionTimes.Count > 0)
@@ -114,9 +119,10 @@ public sealed class BpmnStressTester
         
         result.ThroughputPerSecond = result.CompletedSuccessfully / overallStopwatch.Elapsed.TotalSeconds;
         
-        // Detect potential memory leaks
-        var memoryIncrease = finalMemory - initialMemory;
-        if (memoryIncrease > 100 * 1024 * 1024) // 100MB threshold
+        // A leak is sustained retained growth, not one-time JIT, thread-pool or parser
+        // initialization. Compare two equal workload phases after the first 5k parses.
+        var retainedGrowth = finalMemory - midpointMemory;
+        if (retainedGrowth > 100 * 1024 * 1024) // 100MB retained-growth threshold
         {
             result.MemoryLeakSuspects = 1;
         }
@@ -131,8 +137,17 @@ public sealed class BpmnStressTester
         result.ErrorSample = errors.Take(10).ToList();
         result.TotalExecutionTime = overallStopwatch.Elapsed;
         result.MemoryUsedMB = (finalMemory - initialMemory) / (1024.0 * 1024.0);
-        
+        result.RetainedMemoryGrowthMB = retainedGrowth / (1024.0 * 1024.0);
+
         return result;
+    }
+
+    private static long MeasureRetainedManagedMemory()
+    {
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+        GC.WaitForPendingFinalizers();
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+        return GC.GetTotalMemory(forceFullCollection: true);
     }
 }
 
@@ -149,5 +164,6 @@ public sealed record StressTestResult
     public int MemoryLeakSuspects { get; set; }
     public TimeSpan TotalExecutionTime { get; set; }
     public double MemoryUsedMB { get; set; }
+    public double RetainedMemoryGrowthMB { get; set; }
     public IReadOnlyList<string> ErrorSample { get; set; } = Array.Empty<string>();
 }

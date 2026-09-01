@@ -58,6 +58,12 @@ public class Phase11HardeningTests
             timeout: TimeSpan.FromMinutes(5)
         );
         
+        _output.WriteLine($"Stress test results: {results.CompletedSuccessfully}/{results.TotalAttempted} success, " +
+                         $"avg time: {results.AverageParseTime.TotalMilliseconds:F2}ms, " +
+                         $"throughput: {results.ThroughputPerSecond:F0} ops/sec, " +
+                         $"total retained delta: {results.MemoryUsedMB:F2}MB, " +
+                         $"second-phase retained growth: {results.RetainedMemoryGrowthMB:F2}MB");
+
         // Acceptance criteria
         Assert.True(results.CompletedSuccessfully >= 9900, "At least 99% success rate");
         Assert.True(results.AverageParseTime < TimeSpan.FromMilliseconds(100), "Average parse time under 100ms");
@@ -69,9 +75,6 @@ public class Phase11HardeningTests
         Assert.True(results.ThroughputPerSecond >= minimumThroughputPerSecond,
             $"Should handle at least {minimumThroughputPerSecond:F0} parses/second");
         
-        _output.WriteLine($"Stress test results: {results.CompletedSuccessfully}/{results.TotalAttempted} success, " +
-                         $"avg time: {results.AverageParseTime.TotalMilliseconds:F2}ms, " +
-                         $"throughput: {results.ThroughputPerSecond:F0} ops/sec");
     }
 
     // Update the security test to be more realistic

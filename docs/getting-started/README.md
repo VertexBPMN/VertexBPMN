@@ -7,7 +7,7 @@ Wenn du nur schnell etwas testen willst, sind die Referenzen hier am Ende die na
 
 - .NET SDK 10
 - Git
-- Optional Docker
+- Optional Docker/Podman oder WSLC 2.9.3+
 
 ## Siehe auch
 
@@ -28,6 +28,25 @@ API und Studio koennen gemeinsam gestartet werden:
 ```powershell
 dotnet run --project src/VertexBPMN.Cli -- dashboard
 ```
+
+Ohne Docker oder Podman können PostgreSQL und RabbitMQ mit WSLC extern gestartet und anschließend an den Aspire-AppHost angebunden werden:
+
+```powershell
+dotnet restore VertexBPMN.sln
+.\scripts\wslc-apphost.ps1
+```
+
+Aspire verwaltet in diesem Profil API und Studio; WSLC verwaltet die beiden Infrastruktur-Container. Der Infrastrukturstatus und ein kontrollierter Stopp sind über `-Action Status` beziehungsweise `-Action Stop` verfügbar.
+
+Für bereits lokal installierte Dienste wird derselbe opt-in AppHost-Modus ohne WSLC-Orchestrierung verwendet:
+
+```powershell
+.\scripts\wslc-apphost.ps1 -ExistingInfrastructure `
+  -PostgresPort 5432 -RabbitMqPort 5672 `
+  -User vertexbpmn -Password '<local-development-password>'
+```
+
+Der normale AppHost mit `Project` beziehungsweise `Containers` bleibt der Standard, sobald Docker oder Podman verfügbar ist.
 
 Der CLI-Workflow verwendet standardmaessig:
 

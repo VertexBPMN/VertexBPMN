@@ -99,7 +99,8 @@ Die Runtime speichert ihren Zustand dauerhaft. Jobs werden über Leases, Retry/B
 Voraussetzungen:
 
 - .NET 10 SDK
-- ein OCI-kompatibler Container-Runtime für PostgreSQL und RabbitMQ
+- Docker oder Podman für die normale Aspire-Containerorchestrierung; oder
+- WSLC 2.9.3+ beziehungsweise lokal installierte PostgreSQL-/RabbitMQ-Dienste für den optionalen lokalen Fallback
 
 Das Development-Profil startet API und Studio als .NET-Projekte und provisioniert PostgreSQL und RabbitMQ über Aspire:
 
@@ -113,6 +114,33 @@ Das Containerprofil baut die API aus dem Root-Dockerfile, verwendet persistente 
 dotnet run --project src/VertexBPMN.AppHost --no-launch-profile -e DOTNET_ENVIRONMENT=Containers
 ```
 
+`Project` bleibt das Standardprofil und provisioniert PostgreSQL und RabbitMQ wie bisher über Aspire mit Docker oder Podman. `Containers` bleibt ebenfalls unverändert verfügbar. Nur wenn keine dieser Container-Runtimes lokal installiert ist, kann der opt-in Modus `ExternalServices` verwendet werden. API und Studio bleiben dabei im Aspire-AppHost, während die Infrastruktur außerhalb von DCP läuft.
+
+Mit WSLC startet das Skript PostgreSQL und RabbitMQ automatisch:
+
+```powershell
+# Infrastruktur starten und AppHost im Vordergrund ausführen
+dotnet restore VertexBPMN.sln
+.\scripts\wslc-apphost.ps1
+
+# Nur Infrastruktur verwalten
+.\scripts\wslc-apphost.ps1 -InfrastructureOnly
+.\scripts\wslc-apphost.ps1 -Action Status
+.\scripts\wslc-apphost.ps1 -Action Stop
+```
+
+Bereits lokal laufende PostgreSQL- und RabbitMQ-Installationen werden nicht vom Skript verwaltet. Die fünf Datenbanken müssen dort vorhanden sein; Ports und lokale Zugangsdaten werden dem Launcher übergeben:
+
+```powershell
+.\scripts\wslc-apphost.ps1 -ExistingInfrastructure `
+  -PostgresPort 5432 -RabbitMqPort 5672 `
+  -User vertexbpmn -Password '<local-development-password>'
+```
+
+Das lokale Entwicklungskennwort kann vor dem Start über `VERTEXBPMN_WSLC_PASSWORD` gesetzt werden. Das Skript legt ein persistentes WSLC-Netzwerk, persistente Volumes und alle benötigten Datenbanken idempotent an. `Stop` entfernt weder Container noch Daten.
+Standardmäßig veröffentlicht das WSLC-Profil PostgreSQL auf `55432`, RabbitMQ auf `55672` und dessen Management-Oberfläche auf `15673`; alle drei Ports sind Skriptparameter.
+Beim ersten AppHost-Start benötigt Aspire Zugriff auf NuGet.org, um das zur AppHost-Version passende Aspire-CLI-Bundle aufzulösen.
+
 | Dienst | Standardadresse |
 | --- | --- |
 | API | `http://localhost:51870` |
@@ -123,7 +151,7 @@ dotnet run --project src/VertexBPMN.AppHost --no-launch-profile -e DOTNET_ENVIRO
 | Readiness | `http://localhost:51870/api/ready` |
 | Prometheus | `http://localhost:51870/api/metrics/prometheus` |
 
-Zugangsdaten und Verbindungsinformationen werden vom AppHost provisioniert und an die Ressourcen injiziert. Secrets gehören nicht in die AppHost-Konfiguration oder in das Repository.
+Im normalen `Project`-Modus werden Zugangsdaten und Verbindungsinformationen weiterhin vom AppHost provisioniert. Im opt-in Modus `ExternalServices` werden sie nur für den gestarteten Prozess als Umgebungsvariablen gesetzt. Secrets gehören nicht in die AppHost-Konfiguration oder in das Repository.
 
 ## .NET SDK
 

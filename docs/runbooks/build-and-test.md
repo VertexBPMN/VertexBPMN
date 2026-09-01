@@ -73,6 +73,27 @@ Migration und Modell müssen außerdem synchron sein:
 dotnet ef migrations has-pending-model-changes --project src/VertexBPMN.Infrastructure --startup-project src/VertexBPMN.Api --context BpmnDbContext --no-build
 ```
 
+## Lokale Studio-GUI-End-to-End-Tests
+
+Die Real-E2E-Suite startet die echte API, das echte Studio und einen echten Chromium-Browser. Sie verwendet keine Stub-API und läuft absichtlich nicht in GitHub Actions. PostgreSQL und RabbitMQ werden lokal über WSLC oder über bereits installierte Dienste bereitgestellt.
+
+Automatische Auswahl: Wenn `wslc.exe` vorhanden ist, wird WSLC verwendet; andernfalls werden bestehende lokale Dienste erwartet:
+
+```powershell
+./scripts/test-studio-e2e.ps1 -Infrastructure Auto
+```
+
+WSLC beziehungsweise vorhandene Dienste können explizit ausgewählt werden:
+
+```powershell
+./scripts/test-studio-e2e.ps1 -Infrastructure Wslc
+./scripts/test-studio-e2e.ps1 -Infrastructure Existing -PostgresPort 5432 -RabbitMqPort 5672
+```
+
+Der Runner baut API, Studio und Browser-Testprojekt vor dem Infrastrukturzugriff, prüft beide TCP-Endpunkte und führt ausschließlich Tests mit `Category=LocalStudioE2E` aus. API und Studio laufen auf freien Ports und werden nach dem Test vollständig beendet. Die WSLC-Datencontainer bleiben bestehen, damit lokale Folgeläufe ihre Infrastruktur wiederverwenden können.
+
+Ein direkter Lauf der separaten UI-Suite startet die Real-E2E-Tests nicht: Sie sind zusätzlich durch `VERTEXBPMN_STUDIO_E2E_ENABLED=true` geschützt. Diese Variable sowie die benötigten Verbindungswerte setzt der Runner nur für die Dauer des lokalen Testprozesses.
+
 ## Optionale erweiterte Qualitätsprüfungen
 
 Nach Restore, Release-Build und `npm ci` prüfen die folgenden Befehle die aufgelösten NuGet-/npm-Abhängigkeiten, mindestens 60% Zeilen- und 45% Branch-Coverage sowie zwei byteidentische SDK-/CLI-Paketläufe:

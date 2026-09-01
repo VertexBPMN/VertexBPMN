@@ -55,6 +55,31 @@ public sealed class AppHostTopologyTests
         AssertWaitsFor(studio, api);
     }
 
+    [Fact]
+    public void ExternalServicesMode_ModelsExternalConnectionsWithoutContainerResources()
+    {
+        var builder = DistributedApplication.CreateBuilder();
+
+        VertexBpmnAppHostTopology.ConfigureExternalServicesMode(builder);
+
+        var resources = builder.Resources.ToDictionary(resource => resource.Name);
+        Assert.Contains("BpmnDbContext", resources);
+        Assert.Contains("TenantDbContext", resources);
+        Assert.Contains("SimulationScenarioDbContext", resources);
+        Assert.Contains("ProcessMiningEvents", resources);
+        Assert.Contains("DecisionDbContext", resources);
+        Assert.Contains("messaging", resources);
+        Assert.Contains("api", resources);
+        Assert.Contains("studio", resources);
+        Assert.DoesNotContain(resources.Values, resource => resource is ContainerResource);
+
+        var api = resources["api"];
+        var studio = resources["studio"];
+        Assert.NotEmpty(api.Annotations.OfType<HealthCheckAnnotation>());
+        Assert.NotEmpty(studio.Annotations.OfType<HealthCheckAnnotation>());
+        AssertWaitsFor(studio, api);
+    }
+
     private static void AssertWaitsFor(IResource dependent, IResource dependency) =>
         Assert.Contains(
             dependent.Annotations.OfType<WaitAnnotation>(),

@@ -16,6 +16,9 @@ var isUiTest = builder.Environment.IsEnvironment("UiTest")
         StringComparison.OrdinalIgnoreCase);
 var isLocalDevelopment = builder.Environment.IsDevelopment()
     && builder.Configuration.GetValue<bool>("StudioAuthentication:LocalDevelopmentEnabled");
+var httpsRedirectionEnabled = builder.Configuration.GetValue(
+    "StudioHttpsRedirection:Enabled",
+    true);
 
 if (isUiTest)
     builder.WebHost.UseStaticWebAssets();
@@ -152,7 +155,7 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-if (!isUiTest)
+if (!isUiTest && httpsRedirectionEnabled)
     app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();

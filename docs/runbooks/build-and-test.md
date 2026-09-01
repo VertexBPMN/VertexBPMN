@@ -14,9 +14,11 @@ Die Befehle sind in Bash und PowerShell identisch:
 
 ```text
 dotnet restore VertexBPMN.sln --force --no-http-cache --disable-parallel
-dotnet build VertexBPMN.sln --configuration Release --no-restore -m:1
-dotnet test VertexBPMN.sln --configuration Release --no-build --no-restore --filter-not-trait "Category=Phase1Acceptance" --filter-not-trait "Category=Phase3ExternalAcceptance" --max-parallel-test-modules 1
+dotnet build VertexBPMN.sln --configuration Release --no-restore -p:SkipBpmnIoAssetBuild=true -m:1 --disable-build-servers
+dotnet test tests/VertexBPMN.Tests/VertexBPMN.Tests.csproj --configuration Release --no-build --no-restore --filter-not-trait "Category=Phase3ExternalAcceptance" --max-parallel-test-modules 1
 ```
+
+Der Testaufruf zielt absichtlich auf das echte zentrale Testprojekt. Ein Solution-weiter `dotnet test` würde auch den interaktiven `PerformanceRunner` starten, der in einer nicht interaktiven CI-Session auf `Console.ReadKey()` scheitert.
 
 Die Studio-Assets werden separat reproduziert:
 
@@ -57,7 +59,7 @@ Das Phase-4-Gate qualifiziert den öffentlich freigegebenen DMN-Subset und erzwi
 bash scripts/verify-phase4-acceptance.sh
 ```
 
-Die Phase-3-Akzeptanzverträge für Outbox-Leasing, Retry, Readiness, persistente Metriken und Deployment-Härtung laufen in der regulären Suite. Der separate CI-Job `operational-integration` startet echte RabbitMQ- und PostgreSQL-Dienste und prüft Broker-Roundtrip sowie sämtliche EF-Migrationen. Lokal benötigt er:
+Die Phase-3-Akzeptanzverträge für Outbox-Leasing, Retry, Readiness, persistente Metriken und Deployment-Härtung laufen in der regulären Suite. Vier zusätzliche externe Verträge prüfen bei Bedarf echte RabbitMQ- und PostgreSQL-Dienste; der schnelle GitHub-Workflow startet diese Infrastruktur nicht. Der lokale Lauf benötigt:
 
 ```text
 VERTEXBPMN_TEST_RABBITMQ=amqp://...
@@ -71,7 +73,7 @@ Migration und Modell müssen außerdem synchron sein:
 dotnet ef migrations has-pending-model-changes --project src/VertexBPMN.Infrastructure --startup-project src/VertexBPMN.Api --context BpmnDbContext --no-build
 ```
 
-## Phase-5-Qualitätsgates
+## Optionale erweiterte Qualitätsprüfungen
 
 Nach Restore, Release-Build und `npm ci` prüfen die folgenden Befehle die aufgelösten NuGet-/npm-Abhängigkeiten, mindestens 60% Zeilen- und 45% Branch-Coverage sowie zwei byteidentische SDK-/CLI-Paketläufe:
 
@@ -81,4 +83,4 @@ bash scripts/verify-coverage.sh
 bash scripts/verify-reproducible-packages.sh 1.0.0-local.1
 ```
 
-Die vollständige Security- und Release-Kette einschließlich CodeQL, Secret-/Container-Scan, SBOM, externer Dienste und Provenance-Attestierung ist in [Security and Release Gates](security-and-release-gates.md) beschrieben.
+Diese Prüfungen sind für gezielte Qualifikationsläufe verfügbar, blockieren aber nicht den schnellen Standardworkflow. Der aktuelle Workflow und weitere optionale Checks sind in [Build-, Security- und Release-Prüfungen](security-and-release-gates.md) beschrieben.

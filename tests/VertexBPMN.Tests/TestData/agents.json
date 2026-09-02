@@ -1,0 +1,22 @@
+{
+  "agents": [
+    {
+      "name": "NLP",
+      "type": "REST",
+      "url": "http://localhost:5000/api/nlp",
+      "auth": null
+    },
+    {
+      "name": "Recommender",
+      "type": "REST",
+      "url": "http://localhost:5000/api/recommend",
+      "auth": null
+    },
+    {
+      "name": "HumanInLoop",
+      "type": "REST",
+      "url": "http://localhost:5000/api/review",
+      "auth": null
+    }
+  ]
+}

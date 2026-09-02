@@ -1,0 +1,166 @@
+@page "/analytics"
+@using System.Text.Json
+@using Microsoft.JSInterop
+@inject IAnalyticsService AnalyticsService
+@inject IMlAnalyticsService MlAnalyticsService
+@inject StudioTenantContext TenantContext
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Analytics</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Process Analytics</MudText>
+
+<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RefreshAsync" Disabled="_isLoading || _mlBusy" Class="mb-4">
+    Refresh
+</MudButton>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h6">Predictive analytics</MudText>
+    <MudText Typo="Typo.body2" Class="mb-3">
+        Trainiert Modelle ausschließlich aus abgeschlossenen, tenant-isolierten Prozessinstanzen.
+    </MudText>
+    <MudTextField @bind-Value="_processDefinitionKey"
+                  Label="Process definition key (optional)"
+                  Placeholder="Alle Prozessdefinitionen"
+                  Variant="Variant.Outlined"
+                  Class="mb-3" />
+    <MudButton Variant="Variant.Filled"
+               Color="Color.Primary"
+               OnClick="TrainModelsAsync"
+               Disabled="_mlBusy"
+               Class="mr-2">
+        Modelle trainieren
+    </MudButton>
+    <MudButton Variant="Variant.Outlined"
+               Color="Color.Secondary"
+               OnClick="ExportTrainingDataAsync"
+               Disabled="_mlBusy">
+        Trainingsdaten exportieren
+    </MudButton>
+    @if (_mlMessage is not null)
+    {
+        <MudText Typo="Typo.body2" Class="mt-3">@_mlMessage</MudText>
+    }
+</MudPaper>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+}
+
+<MudGrid>
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4">
+            <MudText Typo="Typo.h6">Process metrics</MudText>
+            @RenderPayload(_processMetrics)
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4">
+            <MudText Typo="Typo.h6">Event statistics</MudText>
+            @RenderPayload(_eventStats)
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12">
+        <MudPaper Class="pa-4">
+            <MudText Typo="Typo.h6">Recent process-mining events</MudText>
+            @RenderPayload(_events)
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private JsonElement? _processMetrics;
+    private JsonElement? _eventStats;
+    private JsonElement? _events;
+    private bool _isLoading;
+    private bool _mlBusy;
+    private string? _error;
+    private string? _mlMessage;
+    private string? _processDefinitionKey;
+
+    protected override Task OnInitializedAsync() => RefreshAsync();
+
+    private async Task RefreshAsync()
+    {
+        _isLoading = true;
+        _error = null;
+
+        try
+        {
+            var processMetrics = AnalyticsService.GetProcessMetricsAsync();
+            var eventStats = AnalyticsService.GetEventStatsAsync();
+            var events = AnalyticsService.GetEventsAsync();
+            await Task.WhenAll(processMetrics, eventStats, events);
+
+            _processMetrics = await processMetrics;
+            _eventStats = await eventStats;
+            _events = await events;
+        }
+        catch (Exception exception)
+        {
+            _error = $"Analytics data could not be loaded: {exception.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task TrainModelsAsync()
+    {
+        _mlBusy = true;
+        _mlMessage = null;
+        try
+        {
+            await MlAnalyticsService.TrainModelsAsync(TenantContext.CurrentTenantId);
+            _mlMessage = "Modelltraining abgeschlossen. Die Modelle basieren auf den aktuell verfügbaren historischen Daten.";
+        }
+        catch (Exception exception)
+        {
+            _mlMessage = $"Modelltraining fehlgeschlagen: {exception.Message}";
+        }
+        finally
+        {
+            _mlBusy = false;
+        }
+    }
+
+    private async Task ExportTrainingDataAsync()
+    {
+        _mlBusy = true;
+        _mlMessage = null;
+        try
+        {
+            var bytes = await MlAnalyticsService.ExportTrainingDataAsync(_processDefinitionKey, TenantContext.CurrentTenantId);
+            var dataUri = $"data:text/csv;base64,{Convert.ToBase64String(bytes)}";
+            await JSRuntime.InvokeVoidAsync(
+                "downloadFile",
+                $"vertexbpmn-training-data-{DateTime.UtcNow:yyyyMMdd-HHmmss}.csv",
+                dataUri);
+            _mlMessage = "Trainingsdaten wurden exportiert.";
+        }
+        catch (Exception exception)
+        {
+            _mlMessage = $"Export fehlgeschlagen: {exception.Message}";
+        }
+        finally
+        {
+            _mlBusy = false;
+        }
+    }
+
+    private static RenderFragment RenderPayload(JsonElement? payload) => builder =>
+    {
+        if (payload is null)
+        {
+            builder.AddContent(0, "No data available.");
+            return;
+        }
+
+        builder.OpenElement(1, "pre");
+        builder.AddAttribute(2, "class", "mt-3");
+        builder.AddContent(3, JsonSerializer.Serialize(payload.Value, new JsonSerializerOptions { WriteIndented = true }));
+        builder.CloseElement();
+    };
+}

@@ -1,0 +1,13 @@
+{
+  "Id": "vertexbpmn-mcp-agent-plugin",
+  "Name": "VertexBPMN MCP-Agent Plugin",
+  "Version": "1.0.0",
+  "Description": "Plugin zur Integration von MCP-Agenten als Service Task Handler.",
+  "Author": "VertexBPMN Team",
+  "Dependencies": [
+    { "Name": "VertexBPMN.Core", "Version": "*", "Required": true }
+  ],
+  "Configuration": {
+    "agentsConfigPath": "agents.json"
+  }
+}

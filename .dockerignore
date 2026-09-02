@@ -1,0 +1,15 @@
+.git
+.github
+.vs
+.idea
+artifacts
+TestResults
+**/bin
+**/obj
+**/node_modules
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/*.user
+**/*.suo
+**/*.log

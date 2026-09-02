@@ -1,0 +1,628 @@
+@page "/bpmn-modeler"
+@using System.Text
+@using System.Text.Json
+@using System.Net.Http.Json
+@using Microsoft.AspNetCore.Components.Forms
+@using VertexBPMN.Studio.Components.Modeling
+@using VertexBPMN.Domain.Entities
+@inject VertexBPMN.Studio.Services.IRepositoryService RepositoryService
+@inject VertexBPMN.Studio.Services.IWorkflowService WorkflowService
+@inject VertexBPMN.Studio.Services.IConnectorTemplateService ConnectorTemplateService
+@inject VertexBPMN.Studio.Services.ICredentialService CredentialService
+@inject VertexBPMN.Studio.Services.IDmnService DmnService
+@inject VertexBPMN.Studio.Services.StudioTenantContext TenantContext
+@inject MudBlazor.ISnackbar Snackbar
+@inject VertexBPMN.Studio.Services.ActiveEngineService ActiveEngineService
+@inject IJSRuntime JSRuntime
+@inject IWebHostEnvironment HostEnvironment
+@inject IHttpClientFactory HttpClientFactory
+@implements IDisposable
+
+<PageTitle>BPMN Modeler</PageTitle>
+
+<MudStack Spacing="3">
+    <div>
+        <MudText Typo="Typo.h4" GutterBottom="true">BPMN Modeler</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            bpmn.io Modeler-Shell mit editierbarem Modeler, Properties Panel und getrenntem NavigatedViewer-Fallback fuer read-only Vorschau.
+        </MudText>
+    </div>
+
+    <MudPaper Class="pa-4">
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="DeployBpmnXml" StartIcon="@Icons.Material.Filled.CloudUpload">Deploy BPMN</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Tertiary" OnClick="@(() => _showNodeCatalog = true)" StartIcon="@Icons.Material.Filled.AddCircle">Add node</MudButton>
+            <MudButton Variant="Variant.Outlined" OnClick="ValidateAsync" StartIcon="@Icons.Material.Filled.FactCheck">Validate</MudButton>
+            <label class="mud-button-root mud-button mud-button-outlined mud-button-outlined-primary mud-button-outlined-size-medium mud-ripple" for="bpmn-import-file">
+                <MudIcon Icon="@Icons.Material.Filled.UploadFile" Size="Size.Small" Class="me-2" />
+                Import BPMN
+            </label>
+            <InputFile id="bpmn-import-file" data-testid="bpmn-import-file" OnChange="ImportBpmnAsync" accept=".bpmn,.xml,application/xml,text/xml" style="display:none" />
+            <label class="mud-button-root mud-button mud-button-outlined mud-button-outlined-secondary mud-button-outlined-size-medium mud-ripple" for="n8n-import-file">
+                <MudIcon Icon="@Icons.Material.Filled.AccountTree" Size="Size.Small" Class="me-2" />
+                Import n8n
+            </label>
+            <InputFile id="n8n-import-file" data-testid="n8n-import-file" OnChange="ImportN8nAsync" accept=".json,application/json" style="display:none" />
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="ExportBpmnXml" StartIcon="@Icons.Material.Filled.Download">Export XML</MudButton>
+            <MudButton Variant="Variant.Outlined" OnClick="@(() => LoadBpmnXml())" StartIcon="@Icons.Material.Filled.Refresh">Load template</MudButton>
+            <MudChip T="string" Color="Color.Info" Variant="Variant.Outlined">Tenant: @(TenantContext.CurrentTenantId ?? "default")</MudChip>
+        </MudStack>
+    </MudPaper>
+
+    @if (_n8nImportReport.Count > 0)
+    {
+        <MudPaper Class="pa-4" data-testid="n8n-import-report">
+            <MudText Typo="Typo.h6">n8n import report</MudText>
+            @foreach (var item in _n8nImportReport)
+            {
+                <MudAlert Dense="true" Severity="@(item.Disposition == "Migrated" ? Severity.Success : item.Disposition == "NeedsReview" ? Severity.Warning : Severity.Error)" Class="mt-2">
+                    <strong>@item.NodeName</strong> (@item.NodeType): @item.Message
+                </MudAlert>
+            }
+        </MudPaper>
+    }
+
+    <MudPaper Class="pa-4" data-testid="bpmn-local-simulation">
+        <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2" AlignItems="AlignItems.Center">
+            <div>
+                <MudText Typo="Typo.h6">Local simulation</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Run the current BPMN artifact locally with bpmn-js-token-simulation. This does not deploy or modify a process instance.</MudText>
+            </div>
+            <MudSpacer />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="StartLocalSimulationAsync" StartIcon="@Icons.Material.Filled.PlayArrow">Start simulation</MudButton>
+            <MudButton Variant="Variant.Outlined" OnClick="PauseLocalSimulationAsync" StartIcon="@Icons.Material.Filled.Pause">Pause simulation</MudButton>
+            <MudButton Variant="Variant.Outlined" OnClick="ResetLocalSimulationAsync" StartIcon="@Icons.Material.Filled.RestartAlt">Reset simulation</MudButton>
+        </MudStack>
+    </MudPaper>
+
+    <MudPaper Class="pa-4" data-testid="bpmn-engine-test-run">
+        <MudText Typo="Typo.h6">Engine test run</MudText>
+        <MudText Typo="Typo.caption" Color="Color.Secondary">Deploys a new test version of the current diagram and starts it with the supplied JSON variables. The created instance remains available for visual debugging and history replay.</MudText>
+        <MudTextField @bind-Value="_testVariablesJson" Label="Test variables (JSON object)" Lines="4" Variant="Variant.Outlined" Class="mt-3" />
+        <MudButton Variant="Variant.Filled" Color="Color.Tertiary" OnClick="RunEngineTestAsync" Disabled="_isRunningEngineTest" StartIcon="@Icons.Material.Filled.PlayCircle" Class="mt-2">Deploy and run test</MudButton>
+        @if (_testRunInstanceId is not null)
+        {
+            <MudAlert Class="mt-3" Severity="Severity.Success">Test version deployed and process instance <code>@_testRunInstanceId</code> reached @_testRunOutcome. Open Debugging and use this instance id to inspect runtime state.</MudAlert>
+        }
+    </MudPaper>
+
+    @if (_showNodeCatalog)
+    {
+        <MudPaper Class="pa-4" data-testid="low-code-node-catalog" role="dialog" aria-modal="true" aria-label="Add node">
+            <MudStack Spacing="2">
+                <MudStack Row="true" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.h6">Add node</MudText>
+                    <MudSpacer />
+                    <MudIconButton Icon="@Icons.Material.Filled.Close" aria-label="Close node catalog" OnClick="@(() => _showNodeCatalog = false)" />
+                </MudStack>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Choose a low-code building block. The generated artifact remains valid BPMN with Vertex extensions where configuration is required.</MudText>
+                <MudTextField @bind-Value="_nodeSearch" Label="Search nodes" Immediate="true" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
+                @foreach (var category in FilteredNodes.GroupBy(node => node.Category).OrderBy(group => group.Key))
+                {
+                    <MudText Typo="Typo.subtitle2" Class="mt-2">@category.Key</MudText>
+                    <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2">
+                        @foreach (var node in category)
+                        {
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@node.Icon" OnClick="@(() => InsertLowCodeNodeAsync(node))">@node.Name</MudButton>
+                        }
+                    </MudStack>
+                }
+                <MudText Typo="Typo.subtitle2" Class="mt-2">Patterns</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Patterns are inserted beside the current diagram and do not replace existing work.</MudText>
+                <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2">
+                    @foreach (var pattern in LowCodePatterns)
+                    {
+                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="@(() => InsertLowCodePatternAsync(pattern))">@pattern.Name</MudButton>
+                    }
+                </MudStack>
+            </MudStack>
+        </MudPaper>
+    }
+
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h6" GutterBottom="true">Connector templates</MudText>
+        <MudText Typo="Typo.caption" Color="Color.Secondary">Choose a manifest-defined node and configure its properties before inserting it into the diagram.</MudText>
+        @if (string.IsNullOrWhiteSpace(TenantContext.CurrentTenantId))
+        {
+            <MudAlert Class="mt-2" Severity="Severity.Info">Select a tenant to load connector templates.</MudAlert>
+        }
+        else
+        {
+            <ConnectorTemplatePalette Templates="_templates" Credentials="_credentials" OnInsert="InsertConfiguredTemplateAsync" />
+        }
+    </MudPaper>
+
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h6" GutterBottom="true">Modeler</MudText>
+        <BpmnModelerSurface @ref="_modeler" Xml="@_bpmnXml" ConnectorTemplates="_templates" DecisionOptions="_decisions" />
+    </MudPaper>
+
+    <MudGrid>
+        <MudItem xs="12" md="5">
+            <MudPaper Class="pa-4" data-testid="bpmn-validation-sidebar">
+                <MudStack Row="true" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.h6">Validation</MudText>
+                    <MudSpacer />
+                    <MudChip T="string" Color="@(_validationIssues.Count == 0 ? Color.Success : Color.Error)" Variant="Variant.Outlined">@(_validationIssues.Count == 0 ? "No issues" : $"{_validationIssues.Count} issue(s)")</MudChip>
+                </MudStack>
+                @if (_validationIssues.Count == 0)
+                {
+                    <MudText Typo="Typo.body2" Class="mt-2" Color="Color.Secondary">Run validation to check Vertex connector and trigger configuration.</MudText>
+                }
+                else
+                {
+                    <MudList T="string" Dense="true" Class="mt-2">
+                        @foreach (var issue in _validationIssues)
+                        {
+                            <MudListItem T="string" Icon="@Icons.Material.Filled.ErrorOutline">@issue.Code: @issue.Message @(issue.ElementId is null ? string.Empty : $"({issue.ElementId})")</MudListItem>
+                        }
+                    </MudList>
+                }
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="7">
+            <MudPaper Class="pa-4" data-testid="bpmn-xml-preview">
+                <MudStack Row="true" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.h6">XML Preview</MudText>
+                    <MudSpacer />
+                    <MudButton Variant="Variant.Text" OnClick="RefreshXmlPreviewAsync">Refresh</MudButton>
+                </MudStack>
+                <MudTextField T="string" Value="_xmlPreview" ReadOnly="true" Lines="14" Variant="Variant.Outlined" Class="mt-2" />
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudPaper Class="pa-4" data-testid="bpmn-version-compare">
+        <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h6">Version compare</MudText>
+            <MudSelect T="string" Label="Deployed process version" @bind-Value="_selectedVersionId" Dense="true" Style="min-width: 280px" data-testid="bpmn-version-select">
+                @foreach (var definition in _deployedDefinitions.OrderByDescending(definition => definition.CreatedAt))
+                {
+                    <MudSelectItem T="string" Value="@definition.Id.ToString()">@($"{definition.Name} (v{definition.Version}, {definition.Key})")</MudSelectItem>
+                }
+            </MudSelect>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@string.IsNullOrWhiteSpace(_selectedVersionId)" OnClick="LoadSelectedVersionAsync" data-testid="bpmn-version-load-action">Load version</MudButton>
+            <MudButton Variant="Variant.Outlined" Disabled="@string.IsNullOrWhiteSpace(_selectedVersionId)" OnClick="CompareSelectedVersionAsync" data-testid="bpmn-version-compare-action">Compare</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="LoadDeployedDefinitionsAsync">Refresh versions</MudButton>
+        </MudStack>
+        @if (!string.IsNullOrWhiteSpace(_versionDiff))
+        {
+            <MudAlert Class="mt-2" Severity="Severity.Info">@_versionDiff</MudAlert>
+        }
+    </MudPaper>
+
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h6" GutterBottom="true">Viewer</MudText>
+        <BpmnViewerSurface Xml="@_bpmnXml" />
+    </MudPaper>
+</MudStack>
+
+@code {
+    private string _bpmnXml = FallbackBpmn;
+    private BpmnModelerSurface? _modeler;
+    private IReadOnlyList<StudioConnectorTemplate> _templates = [];
+    private IReadOnlyList<StudioCredential> _credentials = [];
+    private IReadOnlyList<StudioDecisionOption> _decisions = [];
+    private bool _showNodeCatalog;
+    private string _nodeSearch = string.Empty;
+    private string _xmlPreview = FallbackBpmn;
+    private List<StudioValidationIssue> _validationIssues = [];
+    private IReadOnlyList<N8nImportReportItem> _n8nImportReport = [];
+    private IReadOnlyList<ProcessDefinition> _deployedDefinitions = [];
+    private string? _selectedVersionId;
+    private string? _versionDiff;
+    private string _testVariablesJson = "{}";
+    private bool _isRunningEngineTest;
+    private Guid? _testRunInstanceId;
+    private string? _testRunOutcome;
+
+    private async Task RunEngineTestAsync()
+    {
+        _isRunningEngineTest = true;
+        _testRunInstanceId = null;
+        _testRunOutcome = null;
+        try
+        {
+            var variables = ParseTestVariables(_testVariablesJson);
+            var xml = await CaptureBpmnXml();
+            var deployed = await RepositoryService.DeployXmlAsync(xml, "studio-test-run.bpmn", TenantContext.CurrentTenantId);
+            var instance = await WorkflowService.StartProcessAsync(deployed.Key, variables, $"studio-test-{Guid.NewGuid():N}", TenantContext.CurrentTenantId);
+            var isCompleted = instance.Status == ProcessInstanceStatus.Completed;
+            var isWaiting = instance.Status == ProcessInstanceStatus.Running
+                && (instance.State.Equals("Waiting", StringComparison.OrdinalIgnoreCase)
+                    || instance.ActiveTasks.Count > 0
+                    || instance.ActiveTokens.Count > 0);
+            if (!isCompleted && !isWaiting)
+                throw new InvalidOperationException(
+                    $"Engine test did not reach a completed or persistent wait state (status={instance.Status}, state={instance.State}).");
+
+            _testRunInstanceId = instance.Id;
+            _testRunOutcome = isCompleted ? "the completed state" : "a persistent wait state";
+            await LoadDeployedDefinitionsAsync();
+            Snackbar.Add($"Engine test run verified: {_testRunOutcome}.", Severity.Success);
+        }
+        catch (Exception exception)
+        {
+            Snackbar.Add($"Engine test run failed: {exception.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isRunningEngineTest = false;
+        }
+    }
+
+    private static IDictionary<string, object?> ParseTestVariables(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        if (document.RootElement.ValueKind != JsonValueKind.Object)
+            throw new InvalidOperationException("Test variables must be a JSON object.");
+
+        return document.RootElement.EnumerateObject()
+            .ToDictionary(property => property.Name, property => (object?)property.Value.Clone(), StringComparer.Ordinal);
+    }
+
+    private async Task StartLocalSimulationAsync()
+    {
+        if (_modeler is null)
+        {
+            Snackbar.Add("The modeler is still loading.", Severity.Info);
+            return;
+        }
+
+        await _modeler.StartSimulationAsync();
+        Snackbar.Add("Local token simulation started.", Severity.Success);
+    }
+
+    private async Task PauseLocalSimulationAsync()
+    {
+        if (_modeler is not null)
+            await _modeler.PauseSimulationAsync();
+    }
+
+    private async Task ResetLocalSimulationAsync()
+    {
+        if (_modeler is not null)
+            await _modeler.ResetSimulationAsync();
+    }
+
+    private static readonly LowCodeNode[] LowCodeNodes =
+    [
+        new("webhook", "Webhook trigger", "Triggers", Icons.Material.Filled.Webhook),
+        new("timer", "Cron / timer trigger", "Triggers", Icons.Material.Filled.Schedule),
+        new("http", "HTTP request", "Actions", Icons.Material.Filled.Http),
+        new("if", "IF condition", "Control flow", Icons.Material.Filled.CallSplit),
+        new("wait", "Wait", "Control flow", Icons.Material.Filled.HourglassBottom),
+        new("form", "User approval form", "Human tasks", Icons.Material.Filled.Approval),
+        new("decision", "Decision table", "Decisions", Icons.Material.Filled.AccountTree),
+        new("subworkflow", "Subworkflow", "Composition", Icons.Material.Filled.SubdirectoryArrowRight),
+        new("case", "Start case model", "Composition", Icons.Material.Filled.Workspaces),
+        new("batch", "Batch task", "Actions", Icons.Material.Filled.ViewList),
+        new("error", "Error handler", "Control flow", Icons.Material.Filled.ErrorOutline)
+    ];
+
+    private static readonly LowCodePattern[] LowCodePatterns =
+    [
+        new("http-retry", "HTTP with retry"),
+        new("webhook-if-http", "Webhook → IF → HTTP"),
+        new("cron-batch-db", "Cron → Batch → DB"),
+        new("user-approval", "User approval with form"),
+        new("decision-routing", "Decision table routing"),
+        new("case-start", "Case start from BPMN")
+    ];
+
+    private IEnumerable<LowCodeNode> FilteredNodes => LowCodeNodes.Where(node =>
+        string.IsNullOrWhiteSpace(_nodeSearch) ||
+        node.Name.Contains(_nodeSearch, StringComparison.OrdinalIgnoreCase) ||
+        node.Category.Contains(_nodeSearch, StringComparison.OrdinalIgnoreCase));
+
+    private const string FallbackBpmn = """
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Defs_Fallback" targetNamespace="http://vertexbpmn.io/schema/bpmn">
+  <bpmn:process id="Process_Fallback" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_Fallback" name="Start" />
+    <bpmn:sequenceFlow id="Flow_Start_End" sourceRef="StartEvent_Fallback" targetRef="EndEvent_Fallback" />
+    <bpmn:endEvent id="EndEvent_Fallback" name="Done" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Fallback">
+    <bpmndi:BPMNPlane id="BPMNPlane_Fallback" bpmnElement="Process_Fallback">
+      <bpmndi:BPMNShape id="StartEvent_Fallback_di" bpmnElement="StartEvent_Fallback"><dc:Bounds x="180" y="120" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_Fallback_di" bpmnElement="EndEvent_Fallback"><dc:Bounds x="320" y="120" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_Start_End_di" bpmnElement="Flow_Start_End"><di:waypoint x="216" y="138" /><di:waypoint x="320" y="138" /></bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+""";
+
+    protected override async Task OnInitializedAsync()
+    {
+        ActiveEngineService.OnChange += StateHasChanged;
+        TenantContext.Changed += OnTenantChanged;
+        await LoadBpmnXml(showNotification: false);
+        await LoadConnectorTemplatesAsync();
+        await LoadDecisionOptionsAsync();
+        await LoadDeployedDefinitionsAsync();
+    }
+
+    public void Dispose()
+    {
+        ActiveEngineService.OnChange -= StateHasChanged;
+        TenantContext.Changed -= OnTenantChanged;
+    }
+
+    private async void OnTenantChanged()
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadConnectorTemplatesAsync();
+            await LoadDecisionOptionsAsync();
+            await LoadDeployedDefinitionsAsync();
+            StateHasChanged();
+        });
+    }
+
+    private async Task LoadConnectorTemplatesAsync()
+    {
+        var tenantId = TenantContext.CurrentTenantId;
+        _templates = string.IsNullOrWhiteSpace(tenantId) ? [] : await ConnectorTemplateService.ListAsync(tenantId);
+        _credentials = string.IsNullOrWhiteSpace(tenantId) ? [] : await CredentialService.ListAsync(tenantId);
+        if (_modeler is not null)
+            await _modeler.ConfigureQuickInsertAsync(_templates);
+    }
+
+    private async Task LoadDecisionOptionsAsync()
+    {
+        try
+        {
+            var definitions = await DmnService.ListDefinitionsAsync(tenantId: TenantContext.CurrentTenantId);
+            _decisions = definitions.ValueKind == System.Text.Json.JsonValueKind.Array
+                ? definitions.EnumerateArray()
+                    .Select(definition => new StudioDecisionOption(
+                        definition.GetProperty("key").GetString() ?? string.Empty,
+                        definition.GetProperty("name").GetString() ?? string.Empty))
+                    .Where(decision => !string.IsNullOrWhiteSpace(decision.Key))
+                    .OrderBy(decision => decision.Name, StringComparer.OrdinalIgnoreCase)
+                    .ToArray()
+                : [];
+        }
+        catch
+        {
+            _decisions = [];
+        }
+
+        if (_modeler is not null)
+            await _modeler.ConfigureDecisionPickerAsync(_decisions);
+    }
+
+    private Task InsertConfiguredTemplateAsync(ConfiguredConnectorTemplate configured)
+        => InsertTemplateAsync(configured.Template, configured.Values);
+
+    private async Task InsertTemplateAsync(StudioConnectorTemplate template, IReadOnlyDictionary<string, string>? values = null)
+    {
+        if (_modeler is null)
+        {
+            Snackbar.Add("The modeler is still loading.", Severity.Info);
+            return;
+        }
+
+        try
+        {
+            await _modeler.InsertConnectorTemplateAsync(template, values);
+            _bpmnXml = await _modeler.GetXmlAsync();
+            Snackbar.Add($"Connector template {template.Name} inserted.", Severity.Success);
+        }
+        catch (Exception exception)
+        {
+            Snackbar.Add($"Connector template could not be inserted: {exception.Message}", Severity.Error);
+        }
+    }
+
+    private async Task InsertLowCodeNodeAsync(LowCodeNode node)
+    {
+        if (_modeler is null)
+        {
+            Snackbar.Add("The modeler is still loading.", Severity.Info);
+            return;
+        }
+
+        try
+        {
+            await _modeler.InsertLowCodeNodeAsync(node.Kind);
+            _bpmnXml = await _modeler.GetXmlAsync();
+            _xmlPreview = _bpmnXml;
+            _showNodeCatalog = false;
+            Snackbar.Add($"{node.Name} inserted. Configure the selected element in the properties panel.", Severity.Success);
+        }
+        catch (Exception exception)
+        {
+            Snackbar.Add($"{node.Name} could not be inserted: {exception.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ValidateAsync()
+    {
+        if (_modeler is null)
+            return;
+
+        _validationIssues = (await _modeler.GetValidationIssuesAsync()).ToList();
+        _xmlPreview = await _modeler.GetXmlAsync();
+        Snackbar.Add(_validationIssues.Count == 0 ? "BPMN validation completed without issues." : $"BPMN validation found {_validationIssues.Count} issue(s).", _validationIssues.Count == 0 ? Severity.Success : Severity.Warning);
+    }
+
+    private async Task InsertLowCodePatternAsync(LowCodePattern pattern)
+    {
+        if (_modeler is null)
+        {
+            Snackbar.Add("The modeler is still loading.", Severity.Info);
+            return;
+        }
+
+        try
+        {
+            await _modeler.InsertLowCodePatternAsync(pattern.Id);
+            _bpmnXml = await _modeler.GetXmlAsync();
+            _xmlPreview = _bpmnXml;
+            _showNodeCatalog = false;
+            Snackbar.Add($"Pattern {pattern.Name} inserted.", Severity.Success);
+        }
+        catch (Exception exception)
+        {
+            Snackbar.Add($"Pattern {pattern.Name} could not be inserted: {exception.Message}", Severity.Error);
+        }
+    }
+
+    private async Task RefreshXmlPreviewAsync()
+    {
+        _xmlPreview = await CaptureBpmnXml();
+    }
+
+    private async Task ImportBpmnAsync(InputFileChangeEventArgs args)
+    {
+        var file = args.File;
+        if (file.Size > 10 * 1024 * 1024)
+        {
+            Snackbar.Add("BPMN files must not exceed 10 MB.", Severity.Warning);
+            return;
+        }
+
+        await using var stream = file.OpenReadStream(10 * 1024 * 1024);
+        using var reader = new StreamReader(stream);
+        _bpmnXml = await reader.ReadToEndAsync();
+        _xmlPreview = _bpmnXml;
+        _validationIssues = [];
+        Snackbar.Add($"Imported {file.Name}.", Severity.Success);
+    }
+
+    private async Task ImportN8nAsync(InputFileChangeEventArgs args)
+    {
+        var file = args.File;
+        if (file.Size > 10 * 1024 * 1024) { Snackbar.Add("n8n files must not exceed 10 MB.", Severity.Warning); return; }
+        await using var stream = file.OpenReadStream(10 * 1024 * 1024);
+        using var reader = new StreamReader(stream);
+        var workflowJson = await reader.ReadToEndAsync();
+        try
+        {
+            var response = await HttpClientFactory.CreateClient("VertexBPMN.Api").PostAsJsonAsync("api/import/n8n", new { workflowJson, tenantId = TenantContext.CurrentTenantId });
+            response.EnsureSuccessStatusCode();
+            var result = await response.Content.ReadFromJsonAsync<N8nImportResponse>();
+            if (result is null) throw new InvalidOperationException("The importer returned no result.");
+            _bpmnXml = result.BpmnXml; _xmlPreview = result.BpmnXml; _n8nImportReport = result.Report ?? []; _validationIssues = [];
+            Snackbar.Add($"Imported n8n workflow {file.Name}.", Severity.Success);
+        }
+        catch (Exception exception) { Snackbar.Add($"n8n import failed: {exception.Message}", Severity.Error); }
+    }
+
+    private async Task LoadDeployedDefinitionsAsync()
+    {
+        try
+        {
+            _deployedDefinitions = (await RepositoryService.GetProcessDefinitionsAsync(TenantContext.CurrentTenantId)).ToArray();
+        }
+        catch (Exception exception)
+        {
+            _deployedDefinitions = [];
+            Snackbar.Add($"Process versions could not be loaded: {exception.Message}", Severity.Warning);
+        }
+    }
+
+    private async Task CompareSelectedVersionAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_selectedVersionId))
+            return;
+
+        var deployedXml = await RepositoryService.GetProcessDefinitionXmlAsync(_selectedVersionId, TenantContext.CurrentTenantId);
+        var currentXml = await CaptureBpmnXml();
+        var currentLines = NormalizeLines(currentXml);
+        var deployedLines = NormalizeLines(deployedXml);
+        var added = currentLines.Except(deployedLines, StringComparer.Ordinal).Count();
+        var removed = deployedLines.Except(currentLines, StringComparer.Ordinal).Count();
+        _versionDiff = added == 0 && removed == 0
+            ? "The editor and deployed version are equivalent after whitespace normalization."
+            : $"Compared with deployed version: {added} changed/added line(s), {removed} removed line(s).";
+    }
+
+    private async Task LoadSelectedVersionAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_selectedVersionId))
+            return;
+
+        try
+        {
+            var deployedXml = await RepositoryService.GetProcessDefinitionXmlAsync(
+                _selectedVersionId,
+                TenantContext.CurrentTenantId);
+            if (string.IsNullOrWhiteSpace(deployedXml))
+                throw new InvalidOperationException("The deployed version contains no BPMN XML.");
+
+            _bpmnXml = deployedXml;
+            _xmlPreview = deployedXml;
+            _validationIssues = [];
+            _versionDiff = null;
+            Snackbar.Add("Deployed BPMN version loaded into the editor.", Severity.Success);
+        }
+        catch (Exception exception)
+        {
+            Snackbar.Add($"BPMN version could not be loaded: {exception.Message}", Severity.Error);
+        }
+    }
+
+    private static string[] NormalizeLines(string xml) => xml
+        .Replace("\r\n", "\n", StringComparison.Ordinal)
+        .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    private async Task DeployBpmnXml()
+    {
+        var xml = await CaptureBpmnXml();
+        try
+        {
+            await RepositoryService.DeployXmlAsync(xml, "studio-model.bpmn", TenantContext.CurrentTenantId);
+            await LoadDeployedDefinitionsAsync();
+            Snackbar.Add("BPMN deployed successfully.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"BPMN deploy failed: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ExportBpmnXml()
+    {
+        var xml = await CaptureBpmnXml();
+        await DownloadTextAsync("studio-model.bpmn", xml, "application/xml");
+        Snackbar.Add("BPMN XML exported.", Severity.Success);
+    }
+
+    private async Task LoadBpmnXml(bool showNotification = true)
+    {
+        try
+        {
+            var templatePath = Path.Combine(HostEnvironment.WebRootPath, "data", "DefaultBpmn.xml");
+            _bpmnXml = await File.ReadAllTextAsync(templatePath);
+            if (showNotification)
+                Snackbar.Add("BPMN template loaded.", Severity.Info);
+        }
+        catch (Exception ex)
+        {
+            _bpmnXml = FallbackBpmn;
+            if (showNotification)
+                Snackbar.Add($"DefaultBpmn.xml not found. Using fallback. ({ex.Message})", Severity.Warning);
+        }
+    }
+
+    private async Task<string> CaptureBpmnXml()
+    {
+        if (_modeler is not null)
+            _bpmnXml = await _modeler.GetXmlAsync();
+        return _bpmnXml;
+    }
+
+    private async Task DownloadTextAsync(string fileName, string content, string contentType)
+    {
+        var dataUri = $"data:{contentType};base64,{Convert.ToBase64String(Encoding.UTF8.GetBytes(content))}";
+        await JSRuntime.InvokeVoidAsync("downloadFile", fileName, dataUri);
+    }
+
+    private sealed record LowCodeNode(string Kind, string Name, string Category, string Icon);
+    private sealed record LowCodePattern(string Id, string Name);
+    private sealed record N8nImportResponse(string BpmnXml, IReadOnlyList<N8nImportReportItem>? Report);
+    private sealed record N8nImportReportItem(string NodeName, string NodeType, string Disposition, string Message);
+}

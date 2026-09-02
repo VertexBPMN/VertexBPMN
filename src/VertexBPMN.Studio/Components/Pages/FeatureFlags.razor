@@ -1,0 +1,97 @@
+@page "/feature-flags"
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Text.Json
+@inject IFeatureFlagService FeatureFlagService
+
+<PageTitle>Feature Flags</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Feature Flags</MudText>
+<MudText Typo="Typo.body2" Color="Color.Tertiary" Class="mb-4">
+    Runtime flag state from the API.
+</MudText>
+
+<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RefreshAsync" Disabled="_isLoading" Class="mb-4">
+    Refresh
+</MudButton>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+}
+else if (_flags is not null)
+{
+    <MudTable Items="_flags.Value.EnumerateObject()" Hover="true" Striped="true">
+        <HeaderContent>
+            <MudTh>Flag</MudTh>
+            <MudTh>Enabled</MudTh>
+            <MudTh>Admin action</MudTh>
+        </HeaderContent>
+        <RowTemplate Context="flag">
+            <MudTd DataLabel="Flag">@flag.Name</MudTd>
+            <MudTd DataLabel="Enabled">
+                <MudChip T="string" Color="@(flag.Value.GetBoolean() ? Color.Success : Color.Default)">
+                    @(flag.Value.GetBoolean() ? "Enabled" : "Disabled")
+                </MudChip>
+            </MudTd>
+            <MudTd DataLabel="Admin action">
+                <AuthorizeView Roles="Admin">
+                    <Authorized>
+                        <MudSwitch T="bool"
+                                   Value="@flag.Value.GetBoolean()"
+                                   ValueChanged="value => SetFlagAsync(flag.Name, value)"
+                                   Color="Color.Primary"
+                                   Disabled="_isLoading" />
+                    </Authorized>
+                    <NotAuthorized>
+                        <MudText Typo="Typo.caption" Color="Color.Tertiary">Admin only</MudText>
+                    </NotAuthorized>
+                </AuthorizeView>
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private JsonElement? _flags;
+    private bool _isLoading;
+    private string? _error;
+
+    protected override Task OnInitializedAsync() => RefreshAsync();
+
+    private async Task RefreshAsync()
+    {
+        _isLoading = true;
+        _error = null;
+        try
+        {
+            _flags = await FeatureFlagService.GetAllAsync();
+        }
+        catch (Exception exception)
+        {
+            _error = $"Feature flags could not be loaded: {exception.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task SetFlagAsync(string name, bool enabled)
+    {
+        _isLoading = true;
+        _error = null;
+        try
+        {
+            await FeatureFlagService.SetAsync(name, enabled);
+            _flags = await FeatureFlagService.GetAllAsync();
+        }
+        catch (Exception exception)
+        {
+            _error = $"Feature flag could not be updated: {exception.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+}

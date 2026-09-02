@@ -1,0 +1,139 @@
+@inherits LayoutComponentBase
+@inject VertexBPMN.Studio.Services.IEngineAdministrationService EngineAdministrationService
+@inject VertexBPMN.Studio.Services.ActiveEngineService ActiveEngineService
+@inject VertexBPMN.Studio.Services.IIdentityService IdentityService
+@inject VertexBPMN.Studio.Services.StudioTenantContext TenantContext
+@inject ILogger<MainLayout> Logger
+@implements IDisposable
+
+<MudThemeProvider Theme="_theme" />
+<MudDialogProvider />
+<MudSnackbarProvider />
+<MudPopoverProvider /> <!-- Added to fix Missing <MudPopoverProvider /> exception -->
+
+<MudLayout>
+    <MudAppBar Elevation="1">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" 
+                      Color="Color.Inherit" 
+                      Edge="Edge.Start" 
+                      OnClick="DrawerToggle" />
+        
+        <MudText Typo="Typo.h5" Class="ml-3">VertexBPMN Studio</MudText>
+        <MudSpacer />
+
+        <MudSelect T="string" Label="Tenant" Value="TenantContext.CurrentTenantId" ValueChanged="SelectTenant" Variant="Variant.Outlined" Dense="true" Class="mr-4" Disabled="!_tenantsLoaded">
+            <MudSelectItem Value="@((string?)null)">Default</MudSelectItem>
+            @foreach (var tenant in _tenants)
+            {
+                <MudSelectItem Value="@tenant.Id">@tenant.Name</MudSelectItem>
+            }
+        </MudSelect>
+
+        <!-- Connection Status -->
+        <MudChip T="string" 
+                Color="@(ActiveEngineService.IsConnected ? Color.Success : Color.Error)" 
+                Size="Size.Small" 
+                Icon="@(ActiveEngineService.IsConnected ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Error)"
+                Class="mr-2">
+            @(ActiveEngineService.IsConnected ? "Connected" : "Disconnected")
+        </MudChip>
+
+        <!-- Engine Selector -->
+        <MudSelect T="string" 
+                  Label="Engine" 
+                  @bind-Value="ActiveEngineService.ActiveEngineId" 
+                  Variant="Variant.Outlined"
+                  Dense="true"
+                  Class="mr-4">
+            @foreach (var engine in _engineConnections)
+            {
+                <MudSelectItem Value="@engine.Id">
+                    @engine.Name
+                </MudSelectItem>
+            }
+        </MudSelect>
+
+        <MudIconButton Icon="@Icons.Material.Filled.Refresh" 
+                      Color="Color.Inherit" 
+                      OnClick="RefreshEngines" />
+        
+        <MudIconButton Icon="@Icons.Material.Filled.MoreVert" 
+                      Color="Color.Inherit" 
+                      Edge="Edge.End" />
+    </MudAppBar>
+
+    <MudDrawer @bind-Open="_drawerOpen" Elevation="2">
+        <MudDrawerHeader>
+            <MudText Typo="Typo.h6" Class="px-4">VertexBPMN Studio</MudText>
+        </MudDrawerHeader>
+        <NavMenu />
+    </MudDrawer>
+
+    <MudMainContent>
+        <MudContainer MaxWidth="MaxWidth.Large" Class="my-16 pt-16">
+            @Body
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    private static readonly MudTheme _theme = new();
+
+    private bool _drawerOpen = true;
+    private List<VertexBPMN.Studio.Services.EngineConnection> _engineConnections = new();
+    private IReadOnlyList<VertexBPMN.Studio.Services.StudioTenant> _tenants = Array.Empty<VertexBPMN.Studio.Services.StudioTenant>();
+    private bool _tenantsLoaded;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _tenants = await IdentityService.ListTenantsAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load tenants in MainLayout");
+        }
+        finally
+        {
+            _tenantsLoaded = true;
+        }
+    }
+
+    private async Task LoadEngineConnections()
+    {
+        try
+        {
+            StateHasChanged();
+
+            var connections = await EngineAdministrationService.GetEngineConnectionsAsync();
+            _engineConnections = connections.ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load engine connections");
+        }
+        finally
+        {
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshEngines()
+    {
+        await LoadEngineConnections();
+    }
+
+    private void DrawerToggle() => _drawerOpen = !_drawerOpen;
+
+    private void SelectTenant(string? tenantId)
+    {
+        TenantContext.SetTenant(tenantId);
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        // Clean up resources
+    }
+}

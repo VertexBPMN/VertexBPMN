@@ -1,0 +1,36 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+	<collaboration id="collaboration1">
+		<participant id="participant1" processRef="process1" />
+		<messageFlow id="mf1" sourceRef="task1" targetRef="externalTask" />
+	</collaboration>
+	<process id="process1" name="Approval Process">
+        <startEvent id="start1" />
+		<lane id="lane1" name="Manager">
+			<flowNodeRef>task1</flowNodeRef>
+		</lane>
+		<userTask id="task1" name="Approve Request">
+			<potentialOwner>
+				<resourceAssignmentExpression>
+					<formalExpression>user1</formalExpression>
+				</resourceAssignmentExpression>
+			</potentialOwner>
+			<extensionElements>
+				<camunda:assignee>user1</camunda:assignee>
+				<camunda:formData>
+					<camunda:formField id="approval" type="boolean" />
+				</camunda:formData>
+			</extensionElements>
+			<incoming>flow1</incoming>
+			<outgoing>flow2</outgoing>
+		</userTask>
+        <endEvent id="end1" />
+		<sequenceFlow id="flow1" sourceRef="start1" targetRef="task1" />
+		<sequenceFlow id="flow2" sourceRef="task1" targetRef="end1" />
+		<dataObject id="data1" name="Request Data" />
+		<textAnnotation id="ann1">
+			<text>Task description</text>
+		</textAnnotation>
+		<association id="assoc1" sourceRef="task1" targetRef="data1" />
+	</process>
+</definitions>

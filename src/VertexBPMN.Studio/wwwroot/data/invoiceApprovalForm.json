@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "type": "default",
+  "components": [
+    {
+      "type": "textfield",
+      "label": "Field 1",
+      "id": "field_1"
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.11" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.11" />
+    <PackageReference Include="Google.Protobuf" Version="3.36.0" />
+    <PackageReference Include="Grpc.Net.Client" Version="2.83.0" />
+    <PackageReference Include="Grpc.Tools" Version="2.83.0" PrivateAssets="All" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.9.0" />
+    <PackageReference Include="MudBlazor" Version="9.9.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\VertexBPMN.Domain\VertexBPMN.Domain.csproj" />
+    <ProjectReference Include="..\VertexBPMN.ServiceDefaults\VertexBPMN.ServiceDefaults.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Protobuf Include="..\VertexBPMN.Api\Protos\vertexbpmn.proto" GrpcServices="Client" />
+    <Protobuf Include="..\VertexBPMN.Api\Protos\vertexbpmn_mcp.proto" GrpcServices="Client" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Update="wwwroot\data\DefaultBpmn.xml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Update="wwwroot\data\DefaultCmmn.xml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Update="wwwroot\data\DefaultDmn.xml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Update="wwwroot\data\invoiceApprovalForm.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <Target Name="BuildBpmnIoAssets" BeforeTargets="Build" Condition="'$(SkipBpmnIoAssetBuild)' != 'true'" Inputs="package-lock.json;package.json;tools/bpmn-io/build-bpmn-io-assets.mjs;@(BpmnIoAssetSource)" Outputs="wwwroot/lib/bpmn-js/bpmn-modeler.js;wwwroot/lib/dmn-js/dmn-modeler.js;wwwroot/lib/form-js/form-editor.js;wwwroot/lib/cmmn-js/cmmn-modeler.js">
+    <Message Importance="high" Text="Building pinned bpmn.io Studio assets from npm packages..." />
+    <Exec Command="npm ci" />
+    <Exec Command="npm run build:bpmnio" />
+  </Target>
+
+  <ItemGroup>
+    <BpmnIoAssetSource Include="tools/bpmn-io/src/**/*.js" />
+  </ItemGroup>
+
+</Project>

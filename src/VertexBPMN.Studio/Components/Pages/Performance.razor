@@ -1,0 +1,81 @@
+@page "/performance"
+@using System.Text.Json
+@inject IPerformanceService PerformanceService
+
+<PageTitle>Performance</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Performance</MudText>
+<MudText Typo="Typo.body2" Color="Color.Tertiary" Class="mb-4">
+    Read-only runtime performance data from the distributed engine API.
+</MudText>
+
+<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RefreshAsync" Disabled="_isLoading" Class="mb-4">
+    Refresh
+</MudButton>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+}
+else if (_dashboard is not null)
+{
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.h6">Dashboard</MudText>
+                <pre>@Format(_dashboard.Value)</pre>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.h6">Load Balancer</MudText>
+                @if (_loadBalancer is not null)
+                {
+                    <pre>@Format(_loadBalancer.Value)</pre>
+                }
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.h6">Trends (24 hours)</MudText>
+                @if (_trends is not null)
+                {
+                    <pre>@Format(_trends.Value)</pre>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private JsonElement? _dashboard;
+    private JsonElement? _loadBalancer;
+    private JsonElement? _trends;
+    private bool _isLoading;
+    private string? _error;
+
+    protected override Task OnInitializedAsync() => RefreshAsync();
+
+    private async Task RefreshAsync()
+    {
+        _isLoading = true;
+        _error = null;
+        try
+        {
+            _dashboard = await PerformanceService.GetDashboardAsync();
+            _loadBalancer = await PerformanceService.GetLoadBalancerStatusAsync();
+            _trends = await PerformanceService.GetTrendsAsync();
+        }
+        catch (Exception exception)
+        {
+            _error = $"Performance data could not be loaded: {exception.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private static string Format(JsonElement value) =>
+        JsonSerializer.Serialize(value, new JsonSerializerOptions { WriteIndented = true });
+}

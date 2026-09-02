@@ -1,0 +1,192 @@
+using System.Xml;
+using System.Text;
+using VertexBPMN.Domain.Exceptions;
+using VertexBPMN.Domain.Model.Security;
+
+namespace VertexBPMN.Engine.Security;
+
+/// <summary>
+///  Resource limits for BPMN parsing to prevent DoS attacks.
+/// Enforces memory, time, and structural complexity limits.
+/// </summary>
+public sealed class BpmnResourceLimiter
+{
+    private readonly BpmnSecurityOptions _options;
+
+    public BpmnResourceLimiter(BpmnSecurityOptions options)
+    {
+        _options = options ?? throw new ArgumentNullException(nameof(options));
+    }
+
+    /// <summary>
+    /// Validates XML input size and structure before parsing.
+    /// </summary>
+    public ValidationResult ValidateInputLimits(string xml)
+    {
+        var result = new ValidationResult { IsValid = true };
+
+        // 1. XML Size Limit (DoS prevention)
+        var inputSizeBytes = Encoding.UTF8.GetByteCount(xml);
+        if (inputSizeBytes > _options.MaxXmlSizeBytes)
+        {
+            result.IsValid = false;
+            result.Violations.Add($"XML size {inputSizeBytes:N0} bytes exceeds limit of {_options.MaxXmlSizeBytes:N0} bytes");
+        }
+
+        // 2. Basic structure validation (prevent deeply nested or malformed XML)
+        var structureResult = ValidateXmlStructure(xml);
+        if (!structureResult.IsValid)
+        {
+            result.IsValid = false;
+            result.Violations.AddRange(structureResult.Violations);
+        }
+
+        // 3. Element count estimation (prevent XML bombs)
+        var estimatedElements = EstimateElementCount(xml);
+        if (estimatedElements > _options.MaxElementCount)
+        {
+            result.IsValid = false;
+            result.Violations.Add($"Estimated element count {estimatedElements:N0} exceeds limit of {_options.MaxElementCount:N0}");
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Creates an XML reader with security-hardened settings.
+    /// </summary>
+    public XmlReader CreateSecureXmlReader(string xml, CancellationToken cancellationToken = default)
+    {
+        var settings = new XmlReaderSettings
+        {
+            DtdProcessing = DtdProcessing.Prohibit,           // Prevent XXE
+            XmlResolver = null,                               // Disable external resolution
+            MaxCharactersInDocument = _options.MaxXmlSizeBytes,
+            MaxCharactersFromEntities = 0,                    // No entity expansion
+            CheckCharacters = true,                           // Validate XML characters
+            ConformanceLevel = ConformanceLevel.Document,
+            IgnoreWhitespace = false,                         // Preserve for roundtrip
+            IgnoreComments = false,                           // Preserve comments
+            IgnoreProcessingInstructions = false,             // Preserve PIs
+            CloseInput = true,
+            Async = true                                      // Enable async operations
+        };
+
+        var stringReader = new StringReader(xml);
+        return XmlReader.Create(stringReader, settings);
+    }
+
+    /// <summary>
+    /// Monitors parsing operation with timeout and memory limits.
+    /// </summary>
+    public async Task<T> ExecuteWithResourceLimitsAsync<T>(
+        Func<CancellationToken, Task<T>> parseOperation,
+        CancellationToken cancellationToken = default)
+    {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(_options.ParseTimeout);
+
+        var initialMemory = GC.GetTotalMemory(false);
+        
+        try
+        {
+            var result = await parseOperation(timeoutCts.Token);
+            
+            // Check memory usage after parsing
+            var finalMemory = GC.GetTotalMemory(false);
+            var memoryUsed = finalMemory - initialMemory;
+            
+            if (memoryUsed > _options.MaxMemoryUsageBytes)
+            {
+                throw new SecurityException(
+                    $"Parse operation exceeded memory limit. Used: {memoryUsed:N0} bytes, Limit: {_options.MaxMemoryUsageBytes:N0} bytes");
+            }
+            
+            return result;
+        }
+        catch (OperationCanceledException) when (timeoutCts.Token.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            throw new SecurityException($"Parse operation exceeded timeout limit of {_options.ParseTimeout.TotalSeconds:F1} seconds");
+        }
+    }
+
+    private ValidationResult ValidateXmlStructure(string xml)
+    {
+        var result = new ValidationResult { IsValid = true };
+        
+        try
+        {
+            var settings = new XmlReaderSettings
+            {
+                DtdProcessing = DtdProcessing.Prohibit,
+                XmlResolver = null,
+                MaxCharactersInDocument = _options.MaxXmlSizeBytes,
+                MaxCharactersFromEntities = 0,
+                Async = false
+            };
+
+            using var stringReader = new StringReader(xml);
+            using var reader = XmlReader.Create(stringReader, settings);
+            while (reader.Read())
+            {
+                if (reader.NodeType != XmlNodeType.Element) continue;
+
+                var depth = reader.Depth + 1;
+                if (depth > _options.MaxXmlDepth)
+                {
+                    result.IsValid = false;
+                    result.Violations.Add($"XML nesting depth {depth} exceeds limit of {_options.MaxXmlDepth}");
+                    break;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            result.IsValid = false;
+            result.Violations.Add($"XML structure validation failed: {ex.Message}");
+        }
+        
+        return result;
+    }
+
+    private static int EstimateElementCount(string xml)
+    {
+        // Quick estimate by counting '<' characters (excluding comments/CDATA)
+        int count = 0;
+        bool inComment = false;
+        bool inCdata = false;
+        
+        for (int i = 0; i < xml.Length - 3; i++)
+        {
+            if (!inComment && !inCdata && xml[i] == '<')
+            {
+                // Check for comment start
+                if (i + 3 < xml.Length && xml.Substring(i, 4) == "<!--")
+                {
+                    inComment = true;
+                    continue;
+                }
+                
+                // Check for CDATA start
+                if (i + 8 < xml.Length && xml.Substring(i, 9) == "<![CDATA[")
+                {
+                    inCdata = true;
+                    continue;
+                }
+                
+                // Regular element
+                count++;
+            }
+            else if (inComment && i + 2 < xml.Length && xml.Substring(i, 3) == "-->")
+            {
+                inComment = false;
+            }
+            else if (inCdata && i + 2 < xml.Length && xml.Substring(i, 3) == "]]>")
+            {
+                inCdata = false;
+            }
+        }
+        
+        return count;
+    }
+}

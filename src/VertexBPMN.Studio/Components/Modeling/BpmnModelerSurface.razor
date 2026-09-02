@@ -1,0 +1,139 @@
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+
+<div class="bpmn-io-shell" data-testid="bpmn-modeler-shell">
+    <div id="@_canvasId" class="bpmn-io-canvas"><div class="bpmn-io-canvas-placeholder">BPMN modeler canvas</div></div>
+    <div id="@_propertiesPanelId" class="bpmn-io-properties-panel" aria-label="BPMN properties panel">
+        <MudText Typo="Typo.subtitle2">Properties Panel</MudText>
+        <MudText Typo="Typo.caption">Select an element to edit its BPMN metadata.</MudText>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Xml { get; set; } = string.Empty;
+    [Parameter] public IReadOnlyList<StudioConnectorTemplate> ConnectorTemplates { get; set; } = [];
+    [Parameter] public IReadOnlyList<StudioDecisionOption> DecisionOptions { get; set; } = [];
+
+    private readonly string _canvasId = $"bpmn-modeler-{Guid.NewGuid():N}";
+    private readonly string _propertiesPanelId = $"bpmn-properties-{Guid.NewGuid():N}";
+    private IJSObjectReference? _module;
+    private IJSObjectReference? _modeler;
+    private string _loadedXml = string.Empty;
+    private bool _initialized;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        _module = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/bpmn-modeler.js");
+        _modeler = await _module.InvokeAsync<IJSObjectReference>("BpmnModelerInterop.createModeler", _canvasId, Xml, _propertiesPanelId);
+        _loadedXml = Xml;
+        _initialized = true;
+        await ConfigureQuickInsertAsync(ConnectorTemplates);
+        await ConfigureDecisionPickerAsync(DecisionOptions);
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_initialized && _module is not null && _modeler is not null && Xml != _loadedXml)
+        {
+            await _module.InvokeVoidAsync("BpmnModelerInterop.loadXml", _modeler, Xml);
+            _loadedXml = Xml;
+        }
+
+        if (_initialized)
+        {
+            await ConfigureQuickInsertAsync(ConnectorTemplates);
+            await ConfigureDecisionPickerAsync(DecisionOptions);
+        }
+    }
+
+    public async Task InsertConnectorTemplateAsync(StudioConnectorTemplate template, IReadOnlyDictionary<string, string>? values = null)
+    {
+        if (_module is null || _modeler is null)
+            return;
+
+        await _module.InvokeVoidAsync("BpmnModelerInterop.insertConnectorTemplate", _modeler, template, values);
+        _loadedXml = await GetXmlAsync();
+    }
+
+    public async Task InsertLowCodeNodeAsync(string nodeKind)
+    {
+        if (_module is null || _modeler is null)
+            return;
+
+        await _module.InvokeVoidAsync("BpmnModelerInterop.insertLowCodeNode", _modeler, nodeKind);
+        _loadedXml = await GetXmlAsync();
+    }
+
+    public async Task InsertLowCodePatternAsync(string patternId)
+    {
+        if (_module is null || _modeler is null)
+            return;
+
+        await _module.InvokeVoidAsync("BpmnModelerInterop.insertLowCodePattern", _modeler, patternId);
+        _loadedXml = await GetXmlAsync();
+    }
+
+    public async Task ConfigureQuickInsertAsync(IReadOnlyList<StudioConnectorTemplate> templates)
+    {
+        if (_module is null || _modeler is null)
+            return;
+
+        await _module.InvokeVoidAsync("BpmnModelerInterop.configureQuickInsert", _modeler, templates);
+    }
+
+    public async Task ConfigureDecisionPickerAsync(IReadOnlyList<StudioDecisionOption> decisions)
+    {
+        if (_module is null)
+            return;
+
+        await _module.InvokeVoidAsync("BpmnModelerInterop.configureDecisionPicker", decisions);
+    }
+
+    public async Task<string> GetXmlAsync()
+    {
+        if (_module is null || _modeler is null)
+            return Xml;
+
+        var xml = await _module.InvokeAsync<string>("BpmnModelerInterop.getXml", _modeler);
+        _loadedXml = xml;
+        return xml;
+    }
+
+    public async Task<IReadOnlyList<StudioValidationIssue>> GetValidationIssuesAsync()
+    {
+        if (_module is null || _modeler is null)
+            return [];
+
+        return await _module.InvokeAsync<StudioValidationIssue[]>("BpmnModelerInterop.getValidationIssues", _modeler);
+    }
+
+    public Task StartSimulationAsync() => InvokeSimulationActionAsync("BpmnModelerInterop.startSimulation");
+
+    public Task PauseSimulationAsync() => InvokeSimulationActionAsync("BpmnModelerInterop.pauseSimulation");
+
+    public Task ResetSimulationAsync() => InvokeSimulationActionAsync("BpmnModelerInterop.resetSimulation");
+
+    private async Task InvokeSimulationActionAsync(string identifier)
+    {
+        if (_module is not null && _modeler is not null)
+            await _module.InvokeVoidAsync(identifier, _modeler);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_module is not null && _modeler is not null)
+                await _module.InvokeVoidAsync("BpmnModelerInterop.destroy", _modeler);
+            if (_module is not null)
+                await _module.DisposeAsync();
+        }
+        catch
+        {
+            // Ignore browser-disconnect cleanup errors.
+        }
+    }
+}

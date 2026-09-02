@@ -1,0 +1,15 @@
+name: VertexBPMN
+version: 1.0.0
+description: APM project for VertexBPMN
+author: yovanny-rodriguez_adessose
+# Which agent platforms to deploy to.
+# Resolution order: --target flag > this field > auto-detect from filesystem.
+# Accepted values: agent-skills, antigravity, claude, codex, copilot, cursor, gemini, grok-build, kiro, opencode, windsurf
+targets:
+  - codex
+dependencies:
+  apm:
+    - matthiasnissen/arc42agentic-packages/arc42agenticwrite
+  mcp: []
+includes: auto
+scripts: {}

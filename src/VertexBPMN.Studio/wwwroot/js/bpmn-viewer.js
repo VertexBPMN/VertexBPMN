@@ -1,0 +1,157 @@
+function getElement(containerId) {
+    return document.getElementById(containerId);
+}
+
+function getConstructor(names) {
+    for (const name of names) {
+        const value = name.split('.').reduce((target, part) => target ? target[part] : undefined, window);
+        if (typeof value === 'function') {
+            return value;
+        }
+    }
+
+    return null;
+}
+
+function renderFallback(containerId, title, payload) {
+    const container = getElement(containerId);
+    if (!container) {
+        return;
+    }
+
+    container.innerHTML = '';
+    const wrapper = document.createElement('div');
+    wrapper.className = 'bpmn-io-fallback';
+
+    const heading = document.createElement('strong');
+    heading.textContent = title;
+    wrapper.appendChild(heading);
+
+    const note = document.createElement('p');
+    note.textContent = 'Toolkit bundle not available in this environment. The Studio shell remains usable and preserves the artifact source.';
+    wrapper.appendChild(note);
+
+    const pre = document.createElement('pre');
+    pre.textContent = payload || '';
+    wrapper.appendChild(pre);
+
+    container.appendChild(wrapper);
+}
+
+function fallbackInstance(kind, containerId, payload) {
+    renderFallback(containerId, `bpmn.io ${kind} fallback`, payload);
+    return {
+        __vertexFallback: true,
+        kind,
+        containerId,
+        payload
+    };
+}
+
+async function importArtifact(instance, payload, fallbackTitle) {
+    if (!instance || instance.__vertexFallback) {
+        if (instance) {
+            instance.payload = payload;
+            renderFallback(instance.containerId, fallbackTitle, payload);
+        }
+        return;
+    }
+
+    if (typeof instance.importXML === 'function') {
+        await instance.importXML(payload);
+    }
+
+    const canvas = typeof instance.get === 'function' ? instance.get('canvas') : null;
+    if (canvas && typeof canvas.zoom === 'function') {
+        canvas.zoom('fit-viewport');
+    }
+}
+
+async function exportXml(instance) {
+    if (!instance) {
+        return '';
+    }
+
+    if (instance.__vertexFallback) {
+        return instance.payload || '';
+    }
+
+    if (typeof instance.saveXML === 'function') {
+        const result = await instance.saveXML({ format: true });
+        return result.xml || '';
+    }
+
+    return '';
+}
+
+function destroyInstance(instance) {
+    if (instance && !instance.__vertexFallback && typeof instance.destroy === 'function') {
+        instance.destroy();
+    }
+}
+
+const runtimeMarkerClasses = [
+    "vertex-runtime-active",
+    "vertex-runtime-completed",
+    "vertex-runtime-failed",
+    "vertex-runtime-waiting",
+    "vertex-runtime-retry",
+    "vertex-runtime-replay"
+];
+
+function applyMarkers(viewer, ids, marker) {
+    if (!viewer || viewer.__vertexFallback || !Array.isArray(ids)) {
+        return;
+    }
+
+    const canvas = viewer.get("canvas");
+    const elementRegistry = viewer.get("elementRegistry");
+    ids.filter(Boolean).forEach(id => {
+        if (elementRegistry.get(id)) {
+            canvas.addMarker(id, marker);
+        }
+    });
+}
+
+function setRuntimeState(viewer, state) {
+    if (!viewer || viewer.__vertexFallback) {
+        return;
+    }
+
+    const canvas = viewer.get("canvas");
+    const elementRegistry = viewer.get("elementRegistry");
+    elementRegistry.getAll().forEach(element => {
+        runtimeMarkerClasses.forEach(marker => canvas.removeMarker(element, marker));
+    });
+
+    applyMarkers(viewer, state?.active, "vertex-runtime-active");
+    applyMarkers(viewer, state?.completed, "vertex-runtime-completed");
+    applyMarkers(viewer, state?.failed, "vertex-runtime-failed");
+    applyMarkers(viewer, state?.waiting, "vertex-runtime-waiting");
+    applyMarkers(viewer, state?.retry, "vertex-runtime-retry");
+    applyMarkers(viewer, state?.replay, "vertex-runtime-replay");
+}
+
+export const BpmnViewerInterop = {
+    createViewer: function (containerId, bpmnXml) {
+        const ctor = getConstructor(['BpmnNavigatedViewer', 'BpmnViewer', 'BpmnJS']);
+        if (!ctor) {
+            return fallbackInstance('BPMN Viewer', containerId, bpmnXml);
+        }
+
+        const viewer = new ctor({ container: `#${containerId}` });
+        importArtifact(viewer, bpmnXml, 'bpmn.io BPMN Viewer fallback').catch(err => console.error('BPMN viewer import failed', err));
+        return viewer;
+    },
+    loadXml: async function (viewer, bpmnXml) {
+        await importArtifact(viewer, bpmnXml, 'bpmn.io BPMN Viewer fallback');
+    },
+    setRuntimeState: function (viewer, state) {
+        setRuntimeState(viewer, state);
+    },
+    destroy: function (viewer) {
+        destroyInstance(viewer);
+    }
+};
+
+window.BpmnViewerInterop = BpmnViewerInterop;

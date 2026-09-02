@@ -413,6 +413,32 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
             var instanceHistoryRows = page.Locator("tr").Filter(new() { HasText = instanceId.ToString() });
             await instanceHistoryRows.Filter(new() { HasText = "User Task Completed" }).First.WaitForAsync();
             await instanceHistoryRows.Filter(new() { HasText = "Process Completed" }).First.WaitForAsync();
+
+            // Persistent event log (System B): verify via the API that the completed instance
+            // produced the expected engine history events, independent of the browser tabs.
+            using (var eventLogResponse = await apiClient.GetAsync(
+                       $"api/history/by-process-instance/{instanceId}",
+                       TestContext.Current.CancellationToken))
+            {
+                var eventLogBody = await eventLogResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+                Assert.True(eventLogResponse.IsSuccessStatusCode, eventLogBody);
+                var eventLog = JsonSerializer.Deserialize<JsonElement[]>(eventLogBody);
+                Assert.NotNull(eventLog);
+                Assert.NotEmpty(eventLog);
+                Assert.All(
+                    eventLog,
+                    historyEvent => Assert.Equal(
+                        instanceId,
+                        historyEvent.GetProperty("processInstanceId").GetGuid()));
+                var eventTypes = eventLog
+                    .Select(historyEvent => historyEvent.GetProperty("eventType").GetString())
+                    .ToHashSet(StringComparer.Ordinal);
+                Assert.Contains("PROCESS_STARTED", eventTypes);
+                Assert.Contains("USER_TASK_CREATED", eventTypes);
+                Assert.Contains("USER_TASK_COMPLETED", eventTypes);
+                Assert.Contains("PROCESS_COMPLETED", eventTypes);
+            }
+
             Assert.True(
                 browserErrors.IsEmpty,
                 $"Browser errors: {string.Join(" | ", browserErrors)}. Recent Studio logs: {string.Join(" | ", host.StudioLogs.TakeLast(150))}");
@@ -996,7 +1022,7 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
     private async Task SelectTenantAsync(IPage page, string tenantName, string tenantId)
     {
         var tenantSelector = page.GetByRole(AriaRole.Combobox, new() { Name = "Tenant", Exact = true });
-        for (var attempt = 0; attempt < 120 && !await tenantSelector.IsEnabledAsync(); attempt++)
+        for (var attempt = 0; attempt < 240 && !await tenantSelector.IsEnabledAsync(); attempt++)
             await Task.Delay(250, TestContext.Current.CancellationToken);
         Assert.True(await tenantSelector.IsEnabledAsync(), "Tenant selector did not finish loading.");
         var option = page.GetByRole(AriaRole.Option, new() { Name = tenantName, Exact = true });

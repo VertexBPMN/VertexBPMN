@@ -1,5 +1,6 @@
 @page "/cmmn-modeler"
 @using System.Text
+@using Microsoft.AspNetCore.Components.Forms
 @inject MudBlazor.ISnackbar Snackbar
 @inject IHttpClientFactory HttpClientFactory
 @inject ICaseManagementService CaseManagementService
@@ -17,22 +18,31 @@
 
     <MudPaper Class="pa-4">
         <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
-            <MudTextField Label="Case ID" @bind-Value="_caseId" Required="true" />
+            <MudTextField Label="Case ID" @bind-Value="_caseId" Required="true" Immediate="true" />
             <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RegisterCmmnXml" StartIcon="@Icons.Material.Filled.CloudUpload">Register case model</MudButton>
+            <label class="mud-button-root mud-button mud-button-outlined mud-button-outlined-primary mud-button-outlined-size-medium mud-ripple" for="cmmn-import-file">
+                <MudIcon Icon="@Icons.Material.Filled.UploadFile" Size="Size.Small" Class="me-2" />
+                Import CMMN
+            </label>
+            <InputFile id="cmmn-import-file" data-testid="cmmn-import-file" OnChange="ImportCmmnAsync" accept=".cmmn,.xml,application/xml,text/xml" style="display:none" />
             <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="ExportCmmnXml" StartIcon="@Icons.Material.Filled.Download">Export CMMN</MudButton>
             <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="ExecuteCase" StartIcon="@Icons.Material.Filled.PlayArrow">Execute case</MudButton>
             <MudButton Variant="Variant.Outlined" OnClick="LoadHistory">Load history</MudButton>
             <MudButton Variant="Variant.Outlined" OnClick="@(() => LoadCmmnXml())">Load template</MudButton>
+        </MudStack>
+        <MudStack Row="true" Spacing="2" Class="mt-3" AlignItems="AlignItems.Center">
+            <MudTextField Label="New task name" @bind-Value="_newTaskName" Immediate="true" />
+            <MudButton Variant="Variant.Outlined" OnClick="AddHumanTaskAsync" Disabled="@string.IsNullOrWhiteSpace(_newTaskName)">Add human task</MudButton>
         </MudStack>
     </MudPaper>
 
     <MudPaper Class="pa-4">
         <MudText Typo="Typo.h6" GutterBottom="true">Case actions</MudText>
         <MudStack Row="true" Spacing="2">
-            <MudTextField Label="User event id" @bind-Value="_eventId" />
+            <MudTextField Label="User event id" @bind-Value="_eventId" Immediate="true" />
             <MudButton Variant="Variant.Outlined" OnClick="TriggerUserEvent">Trigger user event</MudButton>
-            <MudTextField Label="Case-file item id" @bind-Value="_caseFileItemId" />
-            <MudTextField Label="Value" @bind-Value="_caseFileValue" />
+            <MudTextField Label="Case-file item id" @bind-Value="_caseFileItemId" Immediate="true" />
+            <MudTextField Label="Value" @bind-Value="_caseFileValue" Immediate="true" />
             <MudButton Variant="Variant.Outlined" OnClick="UpdateCaseFile">Update case file</MudButton>
             <MudButton Variant="Variant.Outlined" OnClick="GenerateAdHoc">Generate ad-hoc subprocess</MudButton>
         </MudStack>
@@ -81,12 +91,12 @@
 
     <MudPaper Class="pa-4">
         <MudText Typo="Typo.h6" GutterBottom="true">Case Modeler</MudText>
-        <CmmnModelerSurface @ref="_modeler" Xml="_cmmnXml" />
+        <CmmnModelerSurface @ref="_modeler" Xml="@_cmmnXml" />
     </MudPaper>
 
     <MudPaper Class="pa-4">
         <MudText Typo="Typo.h6" GutterBottom="true">Viewer</MudText>
-        <CmmnViewerSurface Xml="_cmmnXml" />
+        <CmmnViewerSurface Xml="@_cmmnXml" />
     </MudPaper>
 </MudStack>
 
@@ -103,6 +113,17 @@
     private string _eventId = string.Empty;
     private string _caseFileItemId = string.Empty;
     private string _caseFileValue = string.Empty;
+    private string _newTaskName = string.Empty;
+
+    private async Task AddHumanTaskAsync()
+    {
+        if (_modeler is null || string.IsNullOrWhiteSpace(_newTaskName))
+            return;
+
+        await _modeler.AddHumanTaskAsync(_newTaskName.Trim());
+        _cmmnXml = await _modeler.GetXmlAsync();
+        Snackbar.Add("Human task added to the case model.", Severity.Success);
+    }
 
     private const string FallbackCmmn = """
 <?xml version="1.0" encoding="UTF-8"?>
@@ -140,6 +161,23 @@
         Snackbar.Add("CMMN XML exported.", Severity.Success);
     }
 
+    private async Task ImportCmmnAsync(InputFileChangeEventArgs args)
+    {
+        var file = args.File;
+        if (file.Size > 10 * 1024 * 1024)
+        {
+            Snackbar.Add("CMMN file exceeds the 10 MB limit.", Severity.Error);
+            return;
+        }
+
+        await using var stream = file.OpenReadStream(10 * 1024 * 1024);
+        using var reader = new StreamReader(stream);
+        _cmmnXml = await reader.ReadToEndAsync();
+        if (_modeler is not null)
+            await _modeler.LoadXmlAsync(_cmmnXml);
+        Snackbar.Add($"Imported {file.Name}.", Severity.Success);
+    }
+
     private async Task ExecuteCase()
     {
         try
@@ -169,11 +207,12 @@
 
     private void UpdateRuntimeStatus()
     {
-        _completedPlanItems = _trace.Where(line => line.StartsWith("PlanItemCompleted:", StringComparison.Ordinal))
-            .Select(line => line["PlanItemCompleted:".Length..].Trim()).Distinct().ToArray();
-        _userEvents = _trace.Where(line => line.Contains("UserEvent", StringComparison.OrdinalIgnoreCase) || line.Contains("eventListener", StringComparison.OrdinalIgnoreCase))
+        const string completedPrefix = "PLAN_ITEM_COMPLETED:";
+        _completedPlanItems = _trace.Where(line => line.StartsWith(completedPrefix, StringComparison.Ordinal))
+            .Select(line => line[completedPrefix.Length..].Split(':', 2)[0].Trim()).Distinct().ToArray();
+        _userEvents = _trace.Where(line => line.Contains("USER_EVENT", StringComparison.OrdinalIgnoreCase) || line.Contains("eventListener", StringComparison.OrdinalIgnoreCase))
             .Distinct().ToArray();
-        _milestones = _trace.Where(line => line.Contains("Milestone", StringComparison.OrdinalIgnoreCase))
+        _milestones = _trace.Where(line => line.Contains(":milestone", StringComparison.OrdinalIgnoreCase))
             .Distinct().ToArray();
     }
 

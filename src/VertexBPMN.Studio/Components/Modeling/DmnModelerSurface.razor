@@ -44,6 +44,18 @@
         return xml;
     }
 
+    /// <summary>
+    /// Adds a decision rule to the active decision table.
+    /// </summary>
+    public async Task AddDecisionRuleAsync()
+    {
+        if (_module is null || _modeler is null)
+            return;
+
+        await _module.InvokeVoidAsync("DmnModelerInterop.addDecisionRule", _modeler);
+        _loadedXml = await GetXmlAsync();
+    }
+
     public async ValueTask DisposeAsync()
     {
         try

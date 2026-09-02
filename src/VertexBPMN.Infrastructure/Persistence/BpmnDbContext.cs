@@ -416,6 +416,16 @@ public class BpmnDbContext : DbContext
                 value => JsonSerializer.Serialize(value, (JsonSerializerOptions)null!),
                 value => JsonSerializer.Deserialize<Dictionary<string, object>>(value, (JsonSerializerOptions)null!)
                          ?? new Dictionary<string, object>());
+        entity.Property(e => e.CandidateUsers)
+            .HasConversion(
+                value => JsonSerializer.Serialize(value, (JsonSerializerOptions)null!),
+                value => JsonSerializer.Deserialize<List<string>>(value, (JsonSerializerOptions)null!)
+                         ?? new List<string>());
+        entity.Property(e => e.RequiredFields)
+            .HasConversion(
+                value => JsonSerializer.Serialize(value, (JsonSerializerOptions)null!),
+                value => JsonSerializer.Deserialize<List<string>>(value, (JsonSerializerOptions)null!)
+                         ?? new List<string>());
 
         // FK -> ProcessInstance
         entity.HasOne<ProcessInstance>()

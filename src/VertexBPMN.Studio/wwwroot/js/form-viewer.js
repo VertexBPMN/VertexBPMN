@@ -43,7 +43,7 @@ function destroyForm(form) {
 }
 
 export const FormViewerInterop = {
-    createViewer: function (containerId, formJson) {
+    createViewer: async function (containerId, formJson) {
         const schema = parseSchema(formJson);
         const ctor = window.FormViewer && window.FormViewer.Form;
         if (typeof ctor !== 'function') {
@@ -51,10 +51,9 @@ export const FormViewerInterop = {
             return { __vertexFallback: true, containerId, schema };
         }
 
-        return new ctor({
-            container: getElement(containerId),
-            schema
-        });
+        const form = new ctor({ container: getElement(containerId) });
+        await form.importSchema(schema);
+        return form;
     },
     loadJson: async function (form, formJson) {
         const schema = parseSchema(formJson);
@@ -76,7 +75,18 @@ export const FormViewerInterop = {
         if (!form || form.__vertexFallback) {
             return '{}';
         }
-        return JSON.stringify(typeof form.getData === 'function' ? form.getData() : {});
+
+        if (typeof form.submit !== 'function') {
+            throw new Error('The form viewer does not expose a submit API.');
+        }
+
+        const result = form.submit();
+        const errors = result && result.errors ? result.errors : {};
+        if (Object.keys(errors).length > 0) {
+            throw new Error(`Form validation failed: ${JSON.stringify(errors)}`);
+        }
+
+        return JSON.stringify(result && result.data ? result.data : {});
     },
     destroy: function (form) {
         destroyForm(form);

@@ -12,7 +12,9 @@ param(
     [ValidatePattern("^[A-Za-z0-9._~-]+$")]
     [string]$User = "vertexbpmn",
     [ValidatePattern("^[A-Za-z0-9._~-]+$")]
-    [string]$Password = $(if ($env:VERTEXBPMN_WSLC_PASSWORD) { $env:VERTEXBPMN_WSLC_PASSWORD } else { "vertexbpmn-local" })
+    [string]$Password = $(if ($env:VERTEXBPMN_WSLC_PASSWORD) { $env:VERTEXBPMN_WSLC_PASSWORD } else { "vertexbpmn-local" }),
+
+    [string]$TestMethod
 )
 
 $ErrorActionPreference = "Stop"
@@ -41,9 +43,24 @@ function Invoke-LocalTestRunner {
 
     New-Item -ItemType Directory -Path $artifactsDirectory -Force | Out-Null
     $report = Join-Path $artifactsDirectory "results.html"
-    & $runner -trait "Category=LocalStudioE2E" -parallelMode none -longRunning 30 -showLiveOutput -result-html $report
+    $xmlReport = Join-Path $artifactsDirectory "results.xml"
+    $runnerArguments = @("-trait", "Category=LocalStudioE2E", "-parallelMode", "none", "-longRunning", "30", "-showLiveOutput", "-result-html", $report, "-result-xml", $xmlReport)
+    if (-not [string]::IsNullOrWhiteSpace($TestMethod)) {
+        $methodFilter = if ($TestMethod.Contains(".")) { $TestMethod } else { "VertexBPMN.Studio.UiTests.LocalStudioInfrastructureTests.$TestMethod" }
+        $runnerArguments += @("-method", $methodFilter)
+    }
+    & $runner @runnerArguments
     if ($LASTEXITCODE -ne 0) {
         throw "Local Studio E2E tests failed with exit code $LASTEXITCODE. Report: $report"
+    }
+    if (-not (Test-Path -LiteralPath $xmlReport)) {
+        throw "Local Studio E2E runner did not produce the expected XML report: $xmlReport"
+    }
+
+    [xml]$result = Get-Content -LiteralPath $xmlReport -Raw
+    $total = [int](($result.assemblies.assembly | Measure-Object -Property total -Sum).Sum)
+    if ($total -eq 0) {
+        throw "Local Studio E2E filter discovered zero tests. Method filter: '$TestMethod'. Report: $report"
     }
 }
 

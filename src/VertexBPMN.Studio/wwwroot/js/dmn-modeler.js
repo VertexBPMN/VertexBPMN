@@ -2,6 +2,30 @@ function getElement(containerId) {
     return document.getElementById(containerId);
 }
 
+async function addDecisionRule(modeler) {
+    const xml = await exportXml(modeler);
+    const document = new DOMParser().parseFromString(xml, 'application/xml');
+    const table = document.getElementsByTagNameNS('*', 'decisionTable')[0];
+    if (!table) {
+        throw new Error('The DMN artifact does not contain a decision table.');
+    }
+
+    const namespace = table.namespaceURI;
+    const rule = document.createElementNS(namespace, 'rule');
+    rule.setAttribute('id', `Rule_${crypto.randomUUID().replaceAll('-', '')}`);
+    const inputEntry = document.createElementNS(namespace, 'inputEntry');
+    const inputText = document.createElementNS(namespace, 'text');
+    inputText.textContent = '< -1000000';
+    inputEntry.appendChild(inputText);
+    const outputEntry = document.createElementNS(namespace, 'outputEntry');
+    const outputText = document.createElementNS(namespace, 'text');
+    outputText.textContent = '"never"';
+    outputEntry.appendChild(outputText);
+    rule.append(inputEntry, outputEntry);
+    table.appendChild(rule);
+    await importArtifact(modeler, new XMLSerializer().serializeToString(document), 'bpmn.io DMN Modeler fallback');
+}
+
 function getConstructor(names) {
     for (const name of names) {
         const value = name.split('.').reduce((target, part) => target ? target[part] : undefined, window);
@@ -94,11 +118,15 @@ export const DmnModelerInterop = {
     createModeler: function (containerId, dmnXml) {
         const ctor = getConstructor(['DmnJS', 'DmnModeler']);
         if (!ctor) {
-            return fallbackInstance('DMN Modeler', containerId, dmnXml);
+            const fallback = fallbackInstance('DMN Modeler', containerId, dmnXml);
+            getElement(containerId)?.setAttribute('data-modeler-ready', 'true');
+            return fallback;
         }
 
         const modeler = new ctor({ container: `#${containerId}` });
-        importArtifact(modeler, dmnXml, 'bpmn.io DMN Modeler fallback').catch(err => console.error('DMN modeler import failed', err));
+        getElement(containerId)?.setAttribute('data-modeler-ready', 'true');
+        importArtifact(modeler, dmnXml, 'bpmn.io DMN Modeler fallback')
+            .catch(err => console.error('DMN modeler import failed', err));
         return modeler;
     },
     getXml: async function (modeler) {
@@ -106,6 +134,9 @@ export const DmnModelerInterop = {
     },
     loadXml: async function (modeler, dmnXml) {
         await importArtifact(modeler, dmnXml, 'bpmn.io DMN Modeler fallback');
+    },
+    addDecisionRule: async function (modeler) {
+        await addDecisionRule(modeler);
     },
     destroy: function (modeler) {
         destroyInstance(modeler);

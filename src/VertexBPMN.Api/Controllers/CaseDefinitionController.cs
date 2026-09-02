@@ -55,6 +55,18 @@ public sealed class CaseDefinitionController(ICaseExecutionRuntime cases) : Cont
         return instance is null ? NotFound() : Ok(instance);
     }
 
+    [HttpGet("instances/{caseInstanceId:guid}/history")]
+    public async Task<ActionResult<IReadOnlyList<CaseHistoryEntry>>> GetHistory(
+        Guid caseInstanceId,
+        [FromQuery] string? tenantId,
+        CancellationToken cancellationToken)
+    {
+        var tenant = Tenant(tenantId); if (tenant is null) return Forbid();
+        var instance = await cases.GetInstanceAsync(caseInstanceId, tenant, cancellationToken);
+        if (instance is null) return NotFound();
+        return Ok(await cases.GetHistoryAsync(caseInstanceId, tenant, cancellationToken));
+    }
+
     [HttpPost("instances/{caseInstanceId:guid}/plan-items/{planItemId}/complete")]
     [Authorize(Policy = "ProcessManager")]
     public async Task<ActionResult<CaseRunResponse>> CompletePlanItem(Guid caseInstanceId, string planItemId, [FromBody] CompletePlanItemRequest request, CancellationToken cancellationToken)

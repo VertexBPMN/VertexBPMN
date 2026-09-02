@@ -178,9 +178,10 @@
             <MudSelect T="string" Label="Deployed process version" @bind-Value="_selectedVersionId" Dense="true" Style="min-width: 280px" data-testid="bpmn-version-select">
                 @foreach (var definition in _deployedDefinitions.OrderByDescending(definition => definition.CreatedAt))
                 {
-                    <MudSelectItem T="string" Value="@definition.Id.ToString()">@definition.Name (v@definition.Version, @definition.Key)</MudSelectItem>
+                    <MudSelectItem T="string" Value="@definition.Id.ToString()">@($"{definition.Name} (v{definition.Version}, {definition.Key})")</MudSelectItem>
                 }
             </MudSelect>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@string.IsNullOrWhiteSpace(_selectedVersionId)" OnClick="LoadSelectedVersionAsync" data-testid="bpmn-version-load-action">Load version</MudButton>
             <MudButton Variant="Variant.Outlined" Disabled="@string.IsNullOrWhiteSpace(_selectedVersionId)" OnClick="CompareSelectedVersionAsync" data-testid="bpmn-version-compare-action">Compare</MudButton>
             <MudButton Variant="Variant.Text" OnClick="LoadDeployedDefinitionsAsync">Refresh versions</MudButton>
         </MudStack>
@@ -539,6 +540,31 @@
             : $"Compared with deployed version: {added} changed/added line(s), {removed} removed line(s).";
     }
 
+    private async Task LoadSelectedVersionAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_selectedVersionId))
+            return;
+
+        try
+        {
+            var deployedXml = await RepositoryService.GetProcessDefinitionXmlAsync(
+                _selectedVersionId,
+                TenantContext.CurrentTenantId);
+            if (string.IsNullOrWhiteSpace(deployedXml))
+                throw new InvalidOperationException("The deployed version contains no BPMN XML.");
+
+            _bpmnXml = deployedXml;
+            _xmlPreview = deployedXml;
+            _validationIssues = [];
+            _versionDiff = null;
+            Snackbar.Add("Deployed BPMN version loaded into the editor.", Severity.Success);
+        }
+        catch (Exception exception)
+        {
+            Snackbar.Add($"BPMN version could not be loaded: {exception.Message}", Severity.Error);
+        }
+    }
+
     private static string[] NormalizeLines(string xml) => xml
         .Replace("\r\n", "\n", StringComparison.Ordinal)
         .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -549,6 +575,7 @@
         try
         {
             await RepositoryService.DeployXmlAsync(xml, "studio-model.bpmn", TenantContext.CurrentTenantId);
+            await LoadDeployedDefinitionsAsync();
             Snackbar.Add("BPMN deployed successfully.", Severity.Success);
         }
         catch (Exception ex)

@@ -1271,6 +1271,14 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         CancellationToken cancellationToken)
     {
         var token = CreateWaitingToken(instance, node);
+        var formKey = node.Attributes.GetValueOrDefault("formRef")
+                      ?? node.Attributes.GetValueOrDefault("formKey");
+        var formSchema = string.IsNullOrWhiteSpace(formKey)
+            ? null
+            : await _db.FormDefinitions.AsNoTracking()
+                .Where(form => form.TenantId == instance.TenantId && form.Key == formKey)
+                .Select(form => form.Schema)
+                .SingleOrDefaultAsync(cancellationToken);
         var task = new UserTask
         {
             Id = Guid.NewGuid(),
@@ -1283,6 +1291,8 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
             LastModified = DateTime.UtcNow,
             Status = UserTaskStatus.Pending,
             Revision = 1,
+            FormKey = formKey,
+            FormSchema = formSchema,
             MultiInstanceExecutionId = pending.MultiInstanceExecutionId,
             MultiInstanceIndex = pending.MultiInstanceIndex,
             LocalVariables = pending.LocalVariables is null
@@ -2895,6 +2905,8 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                     attributes["activationCondition"] = activationCondition;
                 if (element.Name.LocalName == "businessRuleTask")
                     ReadDecisionBinding(element, attributes);
+                if (element.Name.LocalName == "userTask")
+                    ReadUserTaskBinding(element, attributes);
                 var multiInstance = element.Elements().FirstOrDefault(child =>
                     child.Name.LocalName == "multiInstanceLoopCharacteristics");
                 var loopCardinality = multiInstance?.Elements().FirstOrDefault(child =>
@@ -3002,6 +3014,17 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
 
             if (!string.IsNullOrWhiteSpace(decisionRef)) attributes["decisionRef"] = decisionRef;
             if (!string.IsNullOrWhiteSpace(resultVariable)) attributes["resultVariable"] = resultVariable;
+        }
+
+        private static void ReadUserTaskBinding(XElement task, IDictionary<string, string> attributes)
+        {
+            var form = task.Descendants().FirstOrDefault(element => element.Name.LocalName == "form");
+            var formRef = form?.Attributes().FirstOrDefault(attribute =>
+                              attribute.Name.LocalName is "formRef" or "formKey")?.Value
+                          ?? task.Attributes().FirstOrDefault(attribute =>
+                              attribute.Name.LocalName is "formRef" or "formKey")?.Value;
+            if (!string.IsNullOrWhiteSpace(formRef))
+                attributes["formRef"] = formRef;
         }
 
         private static string? ReadHeader(XElement task, string key) =>

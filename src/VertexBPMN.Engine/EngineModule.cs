@@ -29,11 +29,12 @@ public static class EngineModule
         services.AddScoped<IWorkerNodeManager, PersistentWorkerNodeManager>();
         services.AddScoped<ProcessEngine>();
         services.AddScoped<DistributedProcessEngine>();
-        services.AddScoped<IDistributedProcessEngine, DistributedProcessEngine>();
+        services.AddScoped<IDistributedProcessEngine>(provider =>
+            provider.GetRequiredService<DistributedProcessEngine>());
         services.AddScoped<ICaseExecutionRuntime, PersistentCaseExecutionRuntime>();
         services.AddScoped<IProcessExecutionRuntime, PersistentProcessExecutionRuntime>();
         services.AddScoped<ISimulationService, DeterministicSimulationService>();
-        services.AddSingleton<IProcessEngine>(provider =>
+        services.AddScoped<IProcessEngine>(provider =>
             ProcessEngineFactory.CreateFromConfiguration(provider));
         return services;
     }

@@ -132,13 +132,17 @@ else
     protected override async Task OnInitializedAsync()
     {
         ActiveEngineService.OnChange += StateHasChanged;
+        TenantContext.Changed += OnTenantChanged;
         await LoadProcessInstances();
     }
 
     public void Dispose()
     {
         ActiveEngineService.OnChange -= StateHasChanged;
+        TenantContext.Changed -= OnTenantChanged;
     }
+
+    private void OnTenantChanged() => _ = InvokeAsync(LoadProcessInstances);
 
     private async Task LoadProcessInstances()
     {

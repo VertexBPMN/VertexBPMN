@@ -80,7 +80,7 @@
 </MudDialog>
 
 @code {
-    [CascadingParameter] public MudBlazor.IDialogReference Dialog { get; set; } = default!;
+    [CascadingParameter] public MudBlazor.IMudDialogInstance Dialog { get; set; } = default!;
     [Parameter] public Guid ProcessInstanceId { get; set; }
 
     private List<HistoryEvent> _historyEvents = new();

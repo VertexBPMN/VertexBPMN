@@ -1,5 +1,7 @@
 @page "/form-builder"
 @using System.Text
+@using System.Text.Json
+@using Microsoft.AspNetCore.Components.Forms
 @inject MudBlazor.ISnackbar Snackbar
 @inject IHttpClientFactory HttpClientFactory
 @inject IJSRuntime JSRuntime
@@ -18,23 +20,34 @@
 
     <MudPaper Class="pa-4">
         <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
-            <MudTextField Label="Form key" @bind-Value="_formKey" Required="true" />
-            <MudTextField Label="Form name" @bind-Value="_formName" Required="true" />
+            <MudTextField Label="Form key" @bind-Value="_formKey" Required="true" Immediate="true" />
+            <MudTextField Label="Form name" @bind-Value="_formName" Required="true" Immediate="true" />
             <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveFormJson" StartIcon="@Icons.Material.Filled.Save">Save form</MudButton>
+            <label class="mud-button-root mud-button mud-button-outlined mud-button-outlined-primary mud-button-outlined-size-medium mud-ripple" for="form-import-file">
+                <MudIcon Icon="@Icons.Material.Filled.UploadFile" Size="Size.Small" Class="me-2" />
+                Import JSON
+            </label>
+            <InputFile id="form-import-file" data-testid="form-import-file" OnChange="ImportFormJsonAsync" accept=".json,.form,application/json" style="display:none" />
             <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="ExportFormJson" StartIcon="@Icons.Material.Filled.Download">Export JSON</MudButton>
+            <MudButton Variant="Variant.Outlined" OnClick="LoadSavedFormJson" StartIcon="@Icons.Material.Filled.CloudDownload">Load saved form</MudButton>
             <MudButton Variant="Variant.Outlined" OnClick="@(() => LoadFormJson())" StartIcon="@Icons.Material.Filled.Refresh">Load JSON</MudButton>
             <MudChip T="string" Color="Color.Info" Variant="Variant.Outlined">Tenant: @(TenantContext.CurrentTenantId ?? "select tenant")</MudChip>
+        </MudStack>
+        <MudStack Row="true" Spacing="2" Class="mt-3" AlignItems="AlignItems.Center">
+            <MudTextField Label="New field key" @bind-Value="_newFieldKey" Immediate="true" />
+            <MudTextField Label="New field label" @bind-Value="_newFieldLabel" Immediate="true" />
+            <MudButton Variant="Variant.Outlined" OnClick="AddTextFieldAsync" Disabled="@(string.IsNullOrWhiteSpace(_newFieldKey) || string.IsNullOrWhiteSpace(_newFieldLabel))">Add text field</MudButton>
         </MudStack>
     </MudPaper>
 
     <MudPaper Class="pa-4">
         <MudText Typo="Typo.h6" GutterBottom="true">Builder</MudText>
-        <FormBuilderSurface @ref="_builder" Json="_formJson" />
+        <FormBuilderSurface @ref="_builder" Json="@_formJson" />
     </MudPaper>
 
     <MudPaper Class="pa-4">
         <MudText Typo="Typo.h6" GutterBottom="true">Runtime Viewer</MudText>
-        <FormViewerSurface Json="_savedFormJson" />
+        <FormViewerSurface Json="@_savedFormJson" />
     </MudPaper>
 </MudStack>
 
@@ -46,6 +59,8 @@
     private string _formKey = "invoice-approval";
     private string _formName = "Invoice approval";
     private string? _formId;
+    private string _newFieldKey = string.Empty;
+    private string _newFieldLabel = string.Empty;
 
     private const string FallbackFormJson = """
 {
@@ -74,6 +89,67 @@
         var request = new StudioFormWriteRequest(TenantContext.CurrentTenantId, _formKey, _formName, _formJson);
         if (_formId is null) _formId = (await FormService.CreateAsync(request)).Id; else await FormService.UpdateAsync(_formId, request);
         Snackbar.Add("Form saved in the registry and refreshed in the Runtime Viewer.", Severity.Success);
+    }
+
+    private async Task AddTextFieldAsync()
+    {
+        if (_builder is null || string.IsNullOrWhiteSpace(_newFieldKey) || string.IsNullOrWhiteSpace(_newFieldLabel))
+            return;
+
+        await _builder.AddTextFieldAsync(_newFieldKey.Trim(), _newFieldLabel.Trim());
+        _formJson = await _builder.GetJsonAsync();
+        Snackbar.Add("Text field added to the form.", Severity.Success);
+    }
+
+    private async Task ImportFormJsonAsync(InputFileChangeEventArgs args)
+    {
+        var file = args.File;
+        if (file.Size > 10 * 1024 * 1024)
+        {
+            Snackbar.Add("Form JSON exceeds the 10 MB limit.", Severity.Error);
+            return;
+        }
+
+        await using var stream = file.OpenReadStream(10 * 1024 * 1024);
+        using var reader = new StreamReader(stream);
+        var json = await reader.ReadToEndAsync();
+        try
+        {
+            using var _ = JsonDocument.Parse(json);
+            _formJson = json;
+            _savedFormJson = json;
+            _formId = null;
+            Snackbar.Add($"Imported {file.Name}.", Severity.Success);
+        }
+        catch (JsonException exception)
+        {
+            Snackbar.Add($"Form import failed: {exception.Message}", Severity.Error);
+        }
+    }
+
+    private async Task LoadSavedFormJson()
+    {
+        if (string.IsNullOrWhiteSpace(TenantContext.CurrentTenantId))
+        {
+            Snackbar.Add("Select a tenant before loading a saved form.", Severity.Warning);
+            return;
+        }
+
+        var definition = (await FormService.ListAsync(TenantContext.CurrentTenantId))
+            .Where(candidate => candidate.Key.Equals(_formKey, StringComparison.Ordinal))
+            .OrderByDescending(candidate => candidate.Version)
+            .FirstOrDefault();
+        if (definition is null)
+        {
+            Snackbar.Add($"No saved form found for '{_formKey}'.", Severity.Warning);
+            return;
+        }
+
+        _formId = definition.Id;
+        _formName = definition.Name;
+        _formJson = definition.Schema;
+        _savedFormJson = definition.Schema;
+        Snackbar.Add("Saved form loaded from the registry.", Severity.Success);
     }
 
     private async Task ExportFormJson()

@@ -1,7 +1,12 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
 using Microsoft.Playwright;
+using Npgsql;
 using Xunit;
 
 namespace VertexBPMN.Studio.UiTests;
@@ -17,10 +22,15 @@ public sealed class LocalStudioE2ETestHost : IAsyncLifetime
 
     private readonly ConcurrentQueue<string> _apiLogs = new();
     private readonly ConcurrentQueue<string> _studioLogs = new();
+    private readonly ConcurrentDictionary<IPage, BrowserArtifactSession> _browserArtifactSessions = new();
+    private readonly ConcurrentStack<ApiCleanupRequest> _cleanupRequests = new();
+    private readonly ConcurrentStack<ProcessDefinitionCleanup> _processDefinitionCleanups = new();
+    private readonly List<IsolatedDatabase> _isolatedDatabases = [];
     private Process? _apiProcess;
     private Process? _studioProcess;
     private IPlaywright? _playwright;
     private string? _workingDirectory;
+    private string? _apiKey;
 
     public static bool IsEnabled =>
         string.Equals(
@@ -35,6 +45,111 @@ public sealed class LocalStudioE2ETestHost : IAsyncLifetime
     public IBrowser Browser { get; private set; } = null!;
     public IReadOnlyList<string> ApiLogs => _apiLogs.ToArray();
     public IReadOnlyList<string> StudioLogs => _studioLogs.ToArray();
+
+    /// <summary>
+    /// Gets the PostgreSQL databases created exclusively for the current test run.
+    /// </summary>
+    public IReadOnlyList<string> IsolatedDatabaseNames => _isolatedDatabases.Select(database => database.Name).ToArray();
+
+    /// <summary>
+    /// Creates an isolated browser page with tracing and diagnostic collection enabled.
+    /// </summary>
+    public async Task<IPage> CreatePageAsync([CallerMemberName] string scenarioName = "")
+    {
+        var context = await Browser.NewContextAsync();
+        await context.Tracing.StartAsync(new()
+        {
+            Screenshots = true,
+            Snapshots = true,
+            Sources = true
+        });
+
+        var page = await context.NewPageAsync();
+        var session = new BrowserArtifactSession(scenarioName, context);
+        page.PageError += (_, error) => session.BrowserConsole.Enqueue($"page-error: {error}");
+        page.Console += (_, message) => session.BrowserConsole.Enqueue($"{message.Type}: {message.Text}");
+        page.RequestFailed += (_, request) => session.FailedRequests.Enqueue(
+            $"{request.Method} {request.Url}: {request.Failure}");
+        _browserArtifactSessions[page] = session;
+        return page;
+    }
+
+    /// <summary>
+    /// Saves browser and server diagnostics before closing an isolated test page.
+    /// </summary>
+    public async Task ClosePageAsync(IPage page)
+    {
+        if (!_browserArtifactSessions.TryRemove(page, out var session))
+        {
+            await page.CloseAsync();
+            return;
+        }
+
+        var artifactDirectory = GetScenarioArtifactDirectory(session.ScenarioName);
+        Directory.CreateDirectory(artifactDirectory);
+        var diagnosticErrors = new List<string>();
+
+        try
+        {
+            await page.ScreenshotAsync(new()
+            {
+                Path = Path.Combine(artifactDirectory, "final-page.png"),
+                FullPage = true
+            });
+        }
+        catch (PlaywrightException exception)
+        {
+            diagnosticErrors.Add($"Screenshot: {exception.Message}");
+        }
+
+        try
+        {
+            await session.Context.Tracing.StopAsync(new()
+            {
+                Path = Path.Combine(artifactDirectory, "playwright-trace.zip")
+            });
+        }
+        catch (PlaywrightException exception)
+        {
+            diagnosticErrors.Add($"Trace: {exception.Message}");
+        }
+
+        await File.WriteAllLinesAsync(
+            Path.Combine(artifactDirectory, "browser-console.log"),
+            session.BrowserConsole);
+        await File.WriteAllLinesAsync(
+            Path.Combine(artifactDirectory, "failed-requests.log"),
+            session.FailedRequests);
+        await File.WriteAllLinesAsync(Path.Combine(artifactDirectory, "api.log"), ApiLogs);
+        await File.WriteAllLinesAsync(Path.Combine(artifactDirectory, "studio.log"), StudioLogs);
+        if (diagnosticErrors.Count > 0)
+            await File.WriteAllLinesAsync(Path.Combine(artifactDirectory, "artifact-errors.log"), diagnosticErrors);
+
+        await session.Context.CloseAsync();
+    }
+
+    /// <summary>
+    /// Registers an API request that is executed during fixture teardown in reverse order.
+    /// </summary>
+    public void RegisterApiCleanup(HttpMethod method, string relativeUri, string? tenantId = null) =>
+        _cleanupRequests.Push(new(method, relativeUri, tenantId));
+
+    /// <summary>
+    /// Registers all versions of a process key for fixture teardown.
+    /// </summary>
+    public void RegisterProcessDefinitionCleanup(string processKey, string? tenantId = null) =>
+        _processDefinitionCleanups.Push(new(processKey, tenantId));
+
+    public HttpClient CreateApiClient()
+    {
+        if (string.IsNullOrWhiteSpace(_apiKey))
+            throw new InvalidOperationException("The local Studio E2E host has not been initialized.");
+
+        var client = new HttpClient { BaseAddress = ApiBaseAddress };
+        client.DefaultRequestHeaders.Add("X-API-Key", _apiKey);
+        client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        return client;
+    }
 
     public async ValueTask InitializeAsync()
     {
@@ -63,10 +178,16 @@ public sealed class LocalStudioE2ETestHost : IAsyncLifetime
         var configuration = new DirectoryInfo(AppContext.BaseDirectory).Parent?.Name ?? "Release";
         var apiProject = Path.Combine(repositoryRoot, "src", "VertexBPMN.Api", "VertexBPMN.Api.csproj");
         var studioProject = Path.Combine(repositoryRoot, "src", "VertexBPMN.Studio", "VertexBPMN.Studio.csproj");
-        var apiKey = $"local-studio-e2e-{RunId}";
+        _apiKey = $"local-studio-e2e-{RunId}";
 
         ApiBaseAddress = new Uri($"http://127.0.0.1:{GetFreePort()}/");
         StudioBaseAddress = new Uri($"http://127.0.0.1:{GetFreePort()}/");
+
+        var bpmnConnection = await CreateIsolatedDatabaseAsync(RequiredEnvironment("VERTEXBPMN_E2E_BPMN_CONNECTION"));
+        var tenantConnection = await CreateIsolatedDatabaseAsync(RequiredEnvironment("VERTEXBPMN_E2E_TENANT_CONNECTION"));
+        var simulationConnection = await CreateIsolatedDatabaseAsync(RequiredEnvironment("VERTEXBPMN_E2E_SIMULATION_CONNECTION"));
+        var eventsConnection = await CreateIsolatedDatabaseAsync(RequiredEnvironment("VERTEXBPMN_E2E_EVENTS_CONNECTION"));
+        var decisionConnection = await CreateIsolatedDatabaseAsync(RequiredEnvironment("VERTEXBPMN_E2E_DECISION_CONNECTION"));
 
         var apiEnvironment = new Dictionary<string, string?>
         {
@@ -75,11 +196,11 @@ public sealed class LocalStudioE2ETestHost : IAsyncLifetime
             ["OperationalMode"] = "Development",
             ["PathBase"] = string.Empty,
             ["Database__ApplyMigrationsOnStartup"] = "true",
-            ["ConnectionStrings__BpmnDbContext"] = RequiredEnvironment("VERTEXBPMN_E2E_BPMN_CONNECTION"),
-            ["ConnectionStrings__TenantDbContext"] = RequiredEnvironment("VERTEXBPMN_E2E_TENANT_CONNECTION"),
-            ["ConnectionStrings__SimulationScenarioDbContext"] = RequiredEnvironment("VERTEXBPMN_E2E_SIMULATION_CONNECTION"),
-            ["ConnectionStrings__ProcessMiningEvents"] = RequiredEnvironment("VERTEXBPMN_E2E_EVENTS_CONNECTION"),
-            ["ConnectionStrings__DecisionDbContext"] = RequiredEnvironment("VERTEXBPMN_E2E_DECISION_CONNECTION"),
+            ["ConnectionStrings__BpmnDbContext"] = bpmnConnection,
+            ["ConnectionStrings__TenantDbContext"] = tenantConnection,
+            ["ConnectionStrings__SimulationScenarioDbContext"] = simulationConnection,
+            ["ConnectionStrings__ProcessMiningEvents"] = eventsConnection,
+            ["ConnectionStrings__DecisionDbContext"] = decisionConnection,
             ["ConnectionStrings__DependencyRegistry"] = $"Data Source={Path.Combine(_workingDirectory, "dependencies.db")}",
             ["ConnectionStrings__messaging"] = RequiredEnvironment("VERTEXBPMN_E2E_RABBITMQ_CONNECTION"),
             ["Runtime__Outbox__Enabled"] = "true",
@@ -94,7 +215,10 @@ public sealed class LocalStudioE2ETestHost : IAsyncLifetime
             ["AdvancedFeatures__CmmnExecution"] = "true",
             ["Jwt__Audience"] = "vertexbpmn-api",
             ["Jwt__UseDevelopmentApiKey"] = "true",
-            ["ApiKeys__0"] = apiKey
+            ["ApiKeys__0"] = _apiKey,
+            ["ApiKeyAuthentication__DevelopmentRoles__0"] = "Admin",
+            ["ApiKeyAuthentication__DevelopmentRoles__1"] = "ProcessManager",
+            ["ApiKeyAuthentication__DevelopmentRoles__2"] = "ReadOnly"
         };
 
         _apiProcess = StartProject(apiProject, configuration, ApiBaseAddress, apiEnvironment, _apiLogs);
@@ -110,7 +234,7 @@ public sealed class LocalStudioE2ETestHost : IAsyncLifetime
             ["DOTNET_ENVIRONMENT"] = "Development",
             ["ApiBaseUrl"] = ApiBaseAddress.ToString(),
             ["StudioAuthentication__LocalDevelopmentEnabled"] = "true",
-            ["StudioAuthentication__DevelopmentApiKey"] = apiKey,
+            ["StudioAuthentication__DevelopmentApiKey"] = _apiKey,
             ["StudioHttpsRedirection__Enabled"] = "false",
             ["Logging__EventLog__LogLevel__Default"] = "None"
         };
@@ -135,8 +259,14 @@ public sealed class LocalStudioE2ETestHost : IAsyncLifetime
 
     public async ValueTask DisposeAsync()
     {
+        Exception? databaseCleanupFailure = null;
         try
         {
+            foreach (var page in _browserArtifactSessions.Keys)
+                await ClosePageAsync(page);
+
+            await ExecuteCleanupRequestsAsync();
+
             if (Browser is not null)
                 await Browser.CloseAsync();
         }
@@ -146,9 +276,153 @@ public sealed class LocalStudioE2ETestHost : IAsyncLifetime
             await StopProcessAsync(_studioProcess);
             await StopProcessAsync(_apiProcess);
 
+            try
+            {
+                await DropIsolatedDatabasesAsync();
+            }
+            catch (Exception exception) when (exception is NpgsqlException or InvalidOperationException)
+            {
+                databaseCleanupFailure = exception;
+            }
+
             if (!string.IsNullOrWhiteSpace(_workingDirectory) && Directory.Exists(_workingDirectory))
                 await TryDeleteWorkingDirectoryAsync(_workingDirectory);
         }
+
+        if (databaseCleanupFailure is not null)
+            throw new InvalidOperationException("Persistent Real-E2E database cleanup failed.", databaseCleanupFailure);
+    }
+
+    private async Task<string> CreateIsolatedDatabaseAsync(string sourceConnectionString)
+    {
+        var source = new NpgsqlConnectionStringBuilder(sourceConnectionString);
+        if (string.IsNullOrWhiteSpace(source.Database))
+            throw new InvalidOperationException("Every local Real-E2E PostgreSQL connection must specify a database.");
+
+        var databaseName = $"{source.Database}_e2e_{RunId}";
+        if (databaseName.Length > 63)
+            throw new InvalidOperationException($"The isolated PostgreSQL database name '{databaseName}' exceeds 63 characters.");
+        if (databaseName.Any(character => !char.IsAsciiLetterOrDigit(character) && character != '_'))
+            throw new InvalidOperationException($"The isolated PostgreSQL database name '{databaseName}' contains unsupported characters.");
+
+        var maintenance = new NpgsqlConnectionStringBuilder(sourceConnectionString)
+        {
+            Database = "postgres",
+            Pooling = false
+        };
+        await using var connection = new NpgsqlConnection(maintenance.ConnectionString);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"CREATE DATABASE \"{databaseName}\"";
+        try
+        {
+            await command.ExecuteNonQueryAsync();
+        }
+        catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.InsufficientPrivilege)
+        {
+            throw new InvalidOperationException(
+                $"PostgreSQL user '{source.Username}' needs CREATEDB permission for isolated local Real-E2E databases.",
+                exception);
+        }
+
+        _isolatedDatabases.Add(new(databaseName, maintenance.ConnectionString));
+        source.Database = databaseName;
+        return source.ConnectionString;
+    }
+
+    private async Task DropIsolatedDatabasesAsync()
+    {
+        if (_isolatedDatabases.Count == 0)
+            return;
+
+        NpgsqlConnection.ClearAllPools();
+        var cleanupLog = new List<string>();
+        foreach (var database in _isolatedDatabases.AsEnumerable().Reverse())
+        {
+            await using var connection = new NpgsqlConnection(database.MaintenanceConnectionString);
+            await connection.OpenAsync();
+            await using (var drop = connection.CreateCommand())
+            {
+                drop.CommandText = $"DROP DATABASE IF EXISTS \"{database.Name}\" WITH (FORCE)";
+                await drop.ExecuteNonQueryAsync();
+            }
+
+            await using var verify = connection.CreateCommand();
+            verify.CommandText = "SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = @name)";
+            verify.Parameters.AddWithValue("name", database.Name);
+            var stillExists = (bool)(await verify.ExecuteScalarAsync() ?? true);
+            if (stillExists)
+                throw new InvalidOperationException($"Isolated PostgreSQL database '{database.Name}' still exists after cleanup.");
+            cleanupLog.Add($"Dropped and verified absent: {database.Name}");
+        }
+
+        var artifactRoot = Environment.GetEnvironmentVariable("VERTEXBPMN_STUDIO_E2E_ARTIFACTS")
+                           ?? Path.Combine(_workingDirectory!, "artifacts");
+        Directory.CreateDirectory(artifactRoot);
+        await File.WriteAllLinesAsync(Path.Combine(artifactRoot, "database-cleanup.log"), cleanupLog);
+        _isolatedDatabases.Clear();
+    }
+
+    private async Task ExecuteCleanupRequestsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_apiKey) || ApiBaseAddress is null)
+            return;
+
+        using var client = CreateApiClient();
+        while (_processDefinitionCleanups.TryPop(out var processCleanup))
+        {
+            var query = $"api/repository?key={Uri.EscapeDataString(processCleanup.ProcessKey)}";
+            if (!string.IsNullOrWhiteSpace(processCleanup.TenantId))
+                query += $"&tenantId={Uri.EscapeDataString(processCleanup.TenantId)}";
+
+            try
+            {
+                var definitions = await client.GetFromJsonAsync<JsonElement[]>(query) ?? [];
+                foreach (var definition in definitions)
+                {
+                    var id = definition.GetProperty("id").GetGuid();
+                    var deleteUri = $"api/repository/{id}";
+                    if (!string.IsNullOrWhiteSpace(processCleanup.TenantId))
+                        deleteUri += $"?tenantId={Uri.EscapeDataString(processCleanup.TenantId)}";
+                    using var response = await client.DeleteAsync(deleteUri);
+                    if (!response.IsSuccessStatusCode && response.StatusCode != HttpStatusCode.NotFound)
+                        _apiLogs.Enqueue($"Cleanup DELETE {deleteUri} returned HTTP {(int)response.StatusCode}.");
+                }
+            }
+            catch (HttpRequestException exception)
+            {
+                _apiLogs.Enqueue($"Cleanup process {processCleanup.ProcessKey} failed: {exception.Message}");
+            }
+        }
+
+        while (_cleanupRequests.TryPop(out var cleanup))
+        {
+            using var request = new HttpRequestMessage(cleanup.Method, cleanup.RelativeUri);
+            if (!string.IsNullOrWhiteSpace(cleanup.TenantId))
+                request.Headers.Add("X-Tenant-Id", cleanup.TenantId);
+
+            try
+            {
+                using var response = await client.SendAsync(request);
+                if (!response.IsSuccessStatusCode && response.StatusCode != HttpStatusCode.NotFound)
+                    _apiLogs.Enqueue(
+                        $"Cleanup {cleanup.Method} {cleanup.RelativeUri} returned HTTP {(int)response.StatusCode}.");
+            }
+            catch (HttpRequestException exception)
+            {
+                _apiLogs.Enqueue($"Cleanup {cleanup.Method} {cleanup.RelativeUri} failed: {exception.Message}");
+            }
+        }
+    }
+
+    private string GetScenarioArtifactDirectory(string scenarioName)
+    {
+        var root = Environment.GetEnvironmentVariable("VERTEXBPMN_STUDIO_E2E_ARTIFACTS")
+                   ?? Path.Combine(_workingDirectory!, "artifacts");
+        var invalidCharacters = Path.GetInvalidFileNameChars();
+        var safeName = new string(scenarioName.Select(character =>
+            invalidCharacters.Contains(character) ? '-' : character).ToArray());
+        return Path.Combine(root, safeName);
     }
 
     private Process StartProject(
@@ -299,4 +573,17 @@ public sealed class LocalStudioE2ETestHost : IAsyncLifetime
         listener.Start();
         return ((IPEndPoint)listener.LocalEndpoint).Port;
     }
+
+    private sealed record BrowserArtifactSession(string ScenarioName, IBrowserContext Context)
+    {
+        public ConcurrentQueue<string> BrowserConsole { get; } = new();
+
+        public ConcurrentQueue<string> FailedRequests { get; } = new();
+    }
+
+    private sealed record ApiCleanupRequest(HttpMethod Method, string RelativeUri, string? TenantId);
+
+    private sealed record ProcessDefinitionCleanup(string ProcessKey, string? TenantId);
+
+    private sealed record IsolatedDatabase(string Name, string MaintenanceConnectionString);
 }

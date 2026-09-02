@@ -44,6 +44,18 @@
         return json;
     }
 
+    /// <summary>
+    /// Adds a text field to the active form schema.
+    /// </summary>
+    public async Task AddTextFieldAsync(string key, string label)
+    {
+        if (_module is null || _form is null)
+            return;
+
+        await _module.InvokeVoidAsync("FormBuilderInterop.addTextField", _form, key, label);
+        _loadedJson = await GetJsonAsync();
+    }
+
     public async ValueTask DisposeAsync()
     {
         try

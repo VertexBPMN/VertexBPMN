@@ -18,7 +18,7 @@
 else
 {
     <MudDataGrid T="ProcessDefinition" 
-                 Items="@_processDefinitions" 
+                 Items="@FilteredDefinitions" 
                  Filterable="true"
                  Groupable="true"
                  Hover="true"
@@ -27,6 +27,7 @@ else
         <ToolBarContent>
             <MudText Typo="Typo.h6">Process Definitions</MudText>
             <MudSpacer />
+            <MudTextField @bind-Value="_search" Immediate="true" Placeholder="Search definitions" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" data-testid="process-definition-search" />
             <MudButton Variant="Variant.Filled" 
                       Color="Color.Primary" 
                       StartIcon="@Icons.Material.Filled.Refresh"
@@ -35,7 +36,7 @@ else
             </MudButton>
         </ToolBarContent>
         <Columns>
-            <PropertyColumn Property="x => x.Key" Title="Key" Grouping />
+            <PropertyColumn Property="x => x.Key" Title="Key" />
             <PropertyColumn Property="x => x.Name" Title="Name" />
             <PropertyColumn Property="x => x.Version" Title="Version" />
             <TemplateColumn Title="Deployment" Sortable="false">
@@ -101,17 +102,29 @@ else
     private List<ProcessDefinition> _processDefinitions = new();
     private bool _isLoading = true;
     private string? _error;
+    private string _search = string.Empty;
+
+    private IEnumerable<ProcessDefinition> FilteredDefinitions =>
+        string.IsNullOrWhiteSpace(_search)
+            ? _processDefinitions
+            : _processDefinitions.Where(definition =>
+                definition.Key.Contains(_search, StringComparison.OrdinalIgnoreCase)
+                || definition.Name.Contains(_search, StringComparison.OrdinalIgnoreCase));
 
     protected override async Task OnInitializedAsync()
     {
         ActiveEngineService.OnChange += StateHasChanged;
+        TenantContext.Changed += OnTenantChanged;
         await LoadProcessDefinitions();
     }
 
     public void Dispose()
     {
         ActiveEngineService.OnChange -= StateHasChanged;
+        TenantContext.Changed -= OnTenantChanged;
     }
+
+    private void OnTenantChanged() => _ = InvokeAsync(LoadProcessDefinitions);
 
     private async Task LoadProcessDefinitions()
     {

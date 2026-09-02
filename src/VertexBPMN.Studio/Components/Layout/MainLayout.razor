@@ -21,7 +21,7 @@
         <MudText Typo="Typo.h5" Class="ml-3">VertexBPMN Studio</MudText>
         <MudSpacer />
 
-        <MudSelect T="string" Label="Tenant" Value="TenantContext.CurrentTenantId" ValueChanged="SelectTenant" Variant="Variant.Outlined" Dense="true" Class="mr-4">
+        <MudSelect T="string" Label="Tenant" Value="TenantContext.CurrentTenantId" ValueChanged="SelectTenant" Variant="Variant.Outlined" Dense="true" Class="mr-4" Disabled="!_tenantsLoaded">
             <MudSelectItem Value="@((string?)null)">Default</MudSelectItem>
             @foreach (var tenant in _tenants)
             {
@@ -82,17 +82,21 @@
     private bool _drawerOpen = true;
     private List<VertexBPMN.Studio.Services.EngineConnection> _engineConnections = new();
     private IReadOnlyList<VertexBPMN.Studio.Services.StudioTenant> _tenants = Array.Empty<VertexBPMN.Studio.Services.StudioTenant>();
+    private bool _tenantsLoaded;
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            await LoadEngineConnections();
             _tenants = await IdentityService.ListTenantsAsync();
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Failed to initialize MainLayout");
+            Logger.LogError(ex, "Failed to load tenants in MainLayout");
+        }
+        finally
+        {
+            _tenantsLoaded = true;
         }
     }
 
@@ -122,7 +126,11 @@
 
     private void DrawerToggle() => _drawerOpen = !_drawerOpen;
 
-    private void SelectTenant(string? tenantId) => TenantContext.SetTenant(tenantId);
+    private void SelectTenant(string? tenantId)
+    {
+        TenantContext.SetTenant(tenantId);
+        StateHasChanged();
+    }
 
     public void Dispose()
     {

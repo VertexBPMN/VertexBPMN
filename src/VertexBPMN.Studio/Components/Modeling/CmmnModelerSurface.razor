@@ -44,6 +44,27 @@
         return xml;
     }
 
+    public async Task LoadXmlAsync(string xml)
+    {
+        if (_module is null || _modeler is null)
+            return;
+
+        await _module.InvokeVoidAsync("CmmnModelerInterop.loadXml", _modeler, xml);
+        _loadedXml = xml;
+    }
+
+    /// <summary>
+    /// Adds a human task to the active case plan model.
+    /// </summary>
+    public async Task AddHumanTaskAsync(string name)
+    {
+        if (_module is null || _modeler is null)
+            return;
+
+        await _module.InvokeVoidAsync("CmmnModelerInterop.addHumanTask", _modeler, name);
+        _loadedXml = await GetXmlAsync();
+    }
+
     public async ValueTask DisposeAsync()
     {
         try

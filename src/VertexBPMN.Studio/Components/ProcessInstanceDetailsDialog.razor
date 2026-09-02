@@ -13,7 +13,7 @@
         </MudText>
     </TitleContent>
     <DialogContent>
-        <MudContainer Style="max-width: none !important; height: 70vh; overflow-y: auto;">
+        <MudContainer Style="max-width: none !important;">
             @if (_isLoading)
             {
                 <div class="d-flex justify-center align-center" style="height: 200px;">
@@ -35,7 +35,7 @@
             }
             else
             {
-                <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" Class="pa-6">
+                <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" Class="pa-6 process-instance-tabs">
                     <!-- Overview Tab -->
                     <MudTabPanel Text="Overview" Icon="@Icons.Material.Filled.Dashboard">
                         <MudGrid>
@@ -313,7 +313,7 @@
 </MudDialog>
 
 @code {
-    [CascadingParameter] public MudBlazor.IDialogReference Dialog { get; set; } = default!;
+    [CascadingParameter] public MudBlazor.IMudDialogInstance Dialog { get; set; } = default!;
     [Parameter] public ProcessInstance ProcessInstance { get; set; } = default!;
 
     private ProcessDefinition? _processDefinition;

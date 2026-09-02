@@ -18,14 +18,14 @@ public sealed class EngineController : ControllerBase
     {
         var isDistributed = _engine is IDistributedProcessEngine;
         return Ok(new EngineCapabilities(
-            isDistributed ? ProcessEngineType.Distributed : ProcessEngineType.Simple,
+            (isDistributed ? ProcessEngineType.Distributed : ProcessEngineType.Simple).ToString(),
             SupportsCmmn: true,
             SupportsWorkers: isDistributed,
             SupportsDurablePersistence: isDistributed));
     }
 
     public sealed record EngineCapabilities(
-        ProcessEngineType EngineType,
+        string EngineType,
         bool SupportsCmmn,
         bool SupportsWorkers,
         bool SupportsDurablePersistence);

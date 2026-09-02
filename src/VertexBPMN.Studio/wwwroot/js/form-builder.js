@@ -48,13 +48,16 @@ export const FormBuilderInterop = {
         const ctor = window.FormEditor && window.FormEditor.FormEditor;
         if (typeof ctor !== 'function') {
             renderFormFallback(containerId, 'bpmn.io form-js Builder fallback', schema);
+            getElement(containerId)?.setAttribute('data-modeler-ready', 'true');
             return { __vertexFallback: true, containerId, schema };
         }
 
-        return new ctor({
+        const form = new ctor({
             container: getElement(containerId),
             schema
         });
+        getElement(containerId)?.setAttribute('data-modeler-ready', 'true');
+        return form;
     },
     getJson: async function (form) {
         if (!form) {
@@ -86,6 +89,20 @@ export const FormBuilderInterop = {
         if (typeof form.importSchema === 'function') {
             await form.importSchema(schema);
         }
+    },
+    addTextField: async function (form, key, label) {
+        const schema = parseSchema(await FormBuilderInterop.getJson(form));
+        schema.components = Array.isArray(schema.components) ? schema.components : [];
+        if (schema.components.some(component => component.key === key)) {
+            throw new Error(`A form field with key '${key}' already exists.`);
+        }
+        schema.components.push({
+            type: 'textfield',
+            key,
+            label,
+            id: `Field_${crypto.randomUUID().replaceAll('-', '')}`
+        });
+        await FormBuilderInterop.loadJson(form, JSON.stringify(schema));
     },
     destroy: function (form) {
         destroyForm(form);

@@ -1,6 +1,7 @@
 @page "/dmn-modeler"
 @using System.Text
 @using System.Text.Json
+@using Microsoft.AspNetCore.Components.Forms
 @inject MudBlazor.ISnackbar Snackbar
 @inject IDmnService DmnService
 @inject StudioTenantContext TenantContext
@@ -18,19 +19,25 @@
 
     <MudPaper Class="pa-4">
         <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
-            <MudTextField Label="Decision key" @bind-Value="_decisionKey" Required="true" />
-            <MudTextField Label="Name" @bind-Value="_decisionName" Required="true" />
+            <MudTextField Label="Decision key" @bind-Value="_decisionKey" Required="true" Immediate="true" />
+            <MudTextField Label="Name" @bind-Value="_decisionName" Required="true" Immediate="true" />
             <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="DeployDmnXml" StartIcon="@Icons.Material.Filled.CloudUpload">Deploy DMN</MudButton>
+            <label class="mud-button-root mud-button mud-button-outlined mud-button-outlined-primary mud-button-outlined-size-medium mud-ripple" for="dmn-import-file">
+                <MudIcon Icon="@Icons.Material.Filled.UploadFile" Size="Size.Small" Class="me-2" />
+                Import DMN
+            </label>
+            <InputFile id="dmn-import-file" data-testid="dmn-import-file" OnChange="ImportDmnAsync" accept=".dmn,.xml,application/xml,text/xml" style="display:none" />
             <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="ExportDmnXml" StartIcon="@Icons.Material.Filled.Download">Export DMN</MudButton>
             <MudButton Variant="Variant.Outlined" OnClick="LoadDmnXml" StartIcon="@Icons.Material.Filled.CloudDownload">Load from API</MudButton>
+            <MudButton Variant="Variant.Outlined" OnClick="AddDecisionRuleAsync" StartIcon="@Icons.Material.Filled.Add">Add decision rule</MudButton>
         </MudStack>
     </MudPaper>
 
     <MudPaper Class="pa-4">
         <MudText Typo="Typo.h6">Evaluate decision</MudText>
         <MudStack Row="true" Spacing="2" Class="mt-2">
-            <MudTextField Label="Input name" @bind-Value="_inputName" />
-            <MudTextField Label="Input value" @bind-Value="_inputValue" />
+            <MudTextField Label="Input name" @bind-Value="_inputName" Immediate="true" />
+            <MudTextField Label="Input value" @bind-Value="_inputValue" Immediate="true" />
             <MudButton Variant="Variant.Outlined" OnClick="EvaluateDecision">Evaluate</MudButton>
             <MudButton Variant="Variant.Outlined" OnClick="LoadDecisionOverview">Load definitions and instances</MudButton>
         </MudStack>
@@ -54,12 +61,12 @@
 
     <MudPaper Class="pa-4">
         <MudText Typo="Typo.h6" GutterBottom="true">Decision Table Editor</MudText>
-        <DmnModelerSurface @ref="_modeler" Xml="_dmnXml" />
+        <DmnModelerSurface @ref="_modeler" Xml="@_dmnXml" />
     </MudPaper>
 
     <MudPaper Class="pa-4">
         <MudText Typo="Typo.h6" GutterBottom="true">Viewer</MudText>
-        <DmnViewerSurface Xml="_dmnXml" />
+        <DmnViewerSurface Xml="@_dmnXml" />
     </MudPaper>
 </MudStack>
 
@@ -76,13 +83,18 @@
 
     private const string FallbackDmn = """
 <?xml version="1.0" encoding="UTF-8"?>
-<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="Defs_Fallback" name="Fallback" namespace="http://vertexbpmn.io/dmn">
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/" xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/" id="Defs_Fallback" name="Fallback" namespace="http://vertexbpmn.io/dmn">
   <decision id="Decision_Fallback" name="FallbackDecision">
     <decisionTable id="DecisionTable_1">
       <input id="InputClause_1"><inputExpression id="InputExpression_1" typeRef="number"><text>amount</text></inputExpression></input>
       <output id="OutputClause_1" name="result" typeRef="string" />
     </decisionTable>
   </decision>
+  <dmndi:DMNDI>
+    <dmndi:DMNDiagram id="DMNDiagram_Fallback">
+      <dmndi:DMNShape id="DMNShape_Fallback" dmnElementRef="Decision_Fallback"><dc:Bounds x="160" y="80" width="180" height="80" /></dmndi:DMNShape>
+    </dmndi:DMNDiagram>
+  </dmndi:DMNDI>
 </definitions>
 """;
 
@@ -106,11 +118,36 @@
         }
     }
 
+    private async Task AddDecisionRuleAsync()
+    {
+        if (_modeler is null)
+            return;
+
+        await _modeler.AddDecisionRuleAsync();
+        _dmnXml = await _modeler.GetXmlAsync();
+        Snackbar.Add("Decision rule added.", Severity.Success);
+    }
+
     private async Task ExportDmnXml()
     {
         _dmnXml = await CaptureDmnXml();
         await DownloadTextAsync($"{_decisionKey}.dmn", _dmnXml, "application/xml");
         Snackbar.Add("DMN XML exported.", Severity.Success);
+    }
+
+    private async Task ImportDmnAsync(InputFileChangeEventArgs args)
+    {
+        var file = args.File;
+        if (file.Size > 10 * 1024 * 1024)
+        {
+            Snackbar.Add("DMN file exceeds the 10 MB limit.", Severity.Error);
+            return;
+        }
+
+        await using var stream = file.OpenReadStream(10 * 1024 * 1024);
+        using var reader = new StreamReader(stream);
+        _dmnXml = await reader.ReadToEndAsync();
+        Snackbar.Add($"Imported {file.Name}.", Severity.Success);
     }
 
     private async Task LoadDmnXml()

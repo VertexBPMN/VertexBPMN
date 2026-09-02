@@ -62,11 +62,11 @@
         TenantContext.Changed -= OnTenantChanged;
     }
 
-    private async void OnTenantChanged()
+    private void OnTenantChanged() => _ = InvokeAsync(async () =>
     {
         await LoadTasks();
-        await InvokeAsync(StateHasChanged);
-    }
+        StateHasChanged();
+    });
 
     private async Task LoadTasks()
     {

@@ -48,5 +48,8 @@ public sealed class N8nWorkflowImporterTests
         Assert.Contains(result.Report, item => item.Disposition == N8nImportDisposition.Migrated && item.NodeName == "Check");
         Assert.Contains(result.Report, item => item.Disposition == N8nImportDisposition.Unsupported);
         Assert.Contains("sequenceFlow", result.BpmnXml, StringComparison.Ordinal);
+        Assert.Contains("BPMNDiagram", result.BpmnXml, StringComparison.Ordinal);
+        Assert.Contains("BPMNShape", result.BpmnXml, StringComparison.Ordinal);
+        Assert.Contains("BPMNEdge", result.BpmnXml, StringComparison.Ordinal);
     }
 }

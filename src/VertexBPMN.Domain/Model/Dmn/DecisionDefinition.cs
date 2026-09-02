@@ -1,5 +1,7 @@
 ﻿using System.ComponentModel.DataAnnotations.Schema;
 
+using System.Text.Json.Serialization;
+
 namespace VertexBPMN.Domain.Model.Dmn;
 
 /// <summary>
@@ -40,6 +42,7 @@ public class DecisionDefinition
     /// Accessing this property will parse the DMN XML once and cache the result until <see cref="DmnXml"/> changes.
     /// </summary>
     [NotMapped]
+    [JsonIgnore]
     public DmnDecisionTable? DecisionTable
     {
         get

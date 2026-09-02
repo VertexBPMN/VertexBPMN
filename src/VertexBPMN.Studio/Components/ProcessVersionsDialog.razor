@@ -66,7 +66,7 @@
 </MudDialog>
 
 @code {
-    [CascadingParameter] public MudBlazor.IDialogReference Dialog { get; set; } = default!;
+    [CascadingParameter] public MudBlazor.IMudDialogInstance Dialog { get; set; } = default!;
     [Parameter] public string ProcessKey { get; set; } = string.Empty;
     [Parameter] public List<ProcessDefinition> Versions { get; set; } = new();
 

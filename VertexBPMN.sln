@@ -39,6 +39,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "6 - Client", "6 - Client", 
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docs", "docs", "{3C3F275F-E7DF-4E08-8742-C0A16A0270C3}"
 	ProjectSection(SolutionItems) = preProject
+		docs\reviews\2026-09-01_Lokaler_GUI_E2E_Testplan.md = docs\reviews\2026-09-01_Lokaler_GUI_E2E_Testplan.md
 		docs\BPMN-Standard-Support-Implementation-plan.md = docs\BPMN-Standard-Support-Implementation-plan.md
 		docs\BpmnParser implementations.md = docs\BpmnParser implementations.md
 		docs\Kompakter Umsetzungsplan -Fortsetzung nach Unified Parser.md = docs\Kompakter Umsetzungsplan -Fortsetzung nach Unified Parser.md

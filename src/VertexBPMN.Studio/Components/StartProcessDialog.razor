@@ -114,7 +114,7 @@
 </MudDialog>
 
 @code {
-    [CascadingParameter] public MudBlazor.IDialogReference Dialog { get; set; } = default!;
+    [CascadingParameter] public MudBlazor.IMudDialogInstance Dialog { get; set; } = default!;
     [Parameter] public ProcessDefinition? ProcessDefinition { get; set; }
 
     private string _businessKey = string.Empty;

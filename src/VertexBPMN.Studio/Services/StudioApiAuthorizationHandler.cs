@@ -22,7 +22,8 @@ public sealed class StudioApiAuthorizationHandler(
             else
             {
                 var developmentApiKey = configuration["StudioAuthentication:DevelopmentApiKey"];
-                if (!string.IsNullOrWhiteSpace(developmentApiKey))
+                if (!string.IsNullOrWhiteSpace(developmentApiKey)
+                    && !request.Headers.Contains("X-API-Key"))
                     request.Headers.TryAddWithoutValidation("X-API-Key", developmentApiKey);
             }
         }

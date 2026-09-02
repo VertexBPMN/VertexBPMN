@@ -139,11 +139,30 @@ public class ApiKeyAuthenticationHandler : AuthenticationHandler<AuthenticationS
             return Task.FromResult(AuthenticateResult.Fail("Invalid API Key"));
         }
 
-        var claims = new[]
+        var claims = new List<Claim>
         {
-            new Claim(ClaimTypes.Name, "ApiUser"),
-            new Claim(ClaimTypes.Role, "ApiAccess")
+            new(ClaimTypes.Name, "ApiUser"),
+            new(ClaimTypes.Role, "ApiAccess")
         };
+
+        var isDevelopment = string.Equals(
+                                _configuration["OperationalMode"],
+                                "Development",
+                                StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(
+                                _configuration["ASPNETCORE_ENVIRONMENT"],
+                                "Development",
+                                StringComparison.OrdinalIgnoreCase);
+        if (isDevelopment)
+        {
+            foreach (var role in _configuration
+                         .GetSection("ApiKeyAuthentication:DevelopmentRoles")
+                         .Get<string[]>() ?? Array.Empty<string>())
+            {
+                if (!string.IsNullOrWhiteSpace(role))
+                    claims.Add(new Claim(ClaimTypes.Role, role.Trim()));
+            }
+        }
 
         var identity = new ClaimsIdentity(claims, Scheme.Name);
         var principal = new ClaimsPrincipal(identity);

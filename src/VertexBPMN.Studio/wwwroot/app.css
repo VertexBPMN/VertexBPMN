@@ -160,3 +160,7 @@ h1:focus {
     stroke-width: 5px !important;
 }
 
+.process-instance-tabs > .mud-tabs-tabbar {
+    z-index: 1;
+}
+

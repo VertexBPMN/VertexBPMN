@@ -2,6 +2,27 @@ function getElement(containerId) {
     return document.getElementById(containerId);
 }
 
+async function addHumanTask(modeler, name) {
+    const xml = await exportXml(modeler);
+    const document = new DOMParser().parseFromString(xml, 'application/xml');
+    const plan = document.getElementsByTagNameNS('*', 'casePlanModel')[0];
+    if (!plan) {
+        throw new Error('The CMMN artifact does not contain a case plan model.');
+    }
+
+    const namespace = plan.namespaceURI;
+    const suffix = crypto.randomUUID().replaceAll('-', '');
+    const definitionId = `HumanTask_${suffix}`;
+    const planItem = document.createElementNS(namespace, 'cmmn:planItem');
+    planItem.setAttribute('id', `PlanItem_${suffix}`);
+    planItem.setAttribute('definitionRef', definitionId);
+    const humanTask = document.createElementNS(namespace, 'cmmn:humanTask');
+    humanTask.setAttribute('id', definitionId);
+    humanTask.setAttribute('name', name);
+    plan.append(planItem, humanTask);
+    await importArtifact(modeler, new XMLSerializer().serializeToString(document), 'bpmn.io CMMN Modeler fallback');
+}
+
 function getConstructor(names) {
     for (const name of names) {
         const value = name.split('.').reduce((target, part) => target ? target[part] : undefined, window);
@@ -58,7 +79,19 @@ async function importArtifact(instance, payload, fallbackTitle) {
     }
 
     if (typeof instance.importXML === 'function') {
-        await instance.importXML(payload);
+        if (instance.importXML.length >= 2) {
+            await new Promise((resolve, reject) => {
+                instance.importXML(payload, (error, warnings) => {
+                    if (error) {
+                        reject(error);
+                        return;
+                    }
+                    resolve({ warnings: warnings || [] });
+                });
+            });
+        } else {
+            await instance.importXML(payload);
+        }
     }
 
     const canvas = typeof instance.get === 'function' ? instance.get('canvas') : null;
@@ -77,6 +110,18 @@ async function exportXml(instance) {
     }
 
     if (typeof instance.saveXML === 'function') {
+        if (instance.saveXML.length >= 2) {
+            return await new Promise((resolve, reject) => {
+                instance.saveXML({ format: true }, (error, xml) => {
+                    if (error) {
+                        reject(error);
+                        return;
+                    }
+                    resolve(xml || '');
+                });
+            });
+        }
+
         const result = await instance.saveXML({ format: true });
         return result.xml || '';
     }
@@ -91,14 +136,17 @@ function destroyInstance(instance) {
 }
 
 export const CmmnModelerInterop = {
-    createModeler: function (containerId, cmmnXml) {
+    createModeler: async function (containerId, cmmnXml) {
         const ctor = getConstructor(['CmmnJS', 'CmmnModeler']);
         if (!ctor) {
-            return fallbackInstance('CMMN Modeler', containerId, cmmnXml);
+            const fallback = fallbackInstance('CMMN Modeler', containerId, cmmnXml);
+            getElement(containerId)?.setAttribute('data-modeler-ready', 'true');
+            return fallback;
         }
 
         const modeler = new ctor({ container: `#${containerId}` });
-        importArtifact(modeler, cmmnXml, 'bpmn.io CMMN Modeler fallback').catch(err => console.error('CMMN modeler import failed', err));
+        await importArtifact(modeler, cmmnXml, 'bpmn.io CMMN Modeler fallback');
+        getElement(containerId)?.setAttribute('data-modeler-ready', 'true');
         return modeler;
     },
     getXml: async function (modeler) {
@@ -106,6 +154,9 @@ export const CmmnModelerInterop = {
     },
     loadXml: async function (modeler, cmmnXml) {
         await importArtifact(modeler, cmmnXml, 'bpmn.io CMMN Modeler fallback');
+    },
+    addHumanTask: async function (modeler, name) {
+        await addHumanTask(modeler, name);
     },
     destroy: function (modeler) {
         destroyInstance(modeler);

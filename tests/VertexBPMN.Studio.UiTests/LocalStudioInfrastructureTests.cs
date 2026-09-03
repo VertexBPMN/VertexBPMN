@@ -2130,27 +2130,37 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
 
             // Correlate a NON-matching message first; the instance must stay waiting (not complete).
             await page.GotoAsync($"{host.StudioBaseAddress}messages-signals");
-            await SetBoundInputFastAsync(page.GetByLabel("Message name", new() { Exact = true }), $"wrong-{messageName}");
-            await SetBoundInputFastAsync(page.GetByLabel("Process instance id (optional)", new() { Exact = true }), messageInstanceId.ToString());
-            var msgNameValue = await page.GetByLabel("Message name", new() { Exact = true }).InputValueAsync();
+            await FillBoundInputAndVerifyAsync(page.GetByLabel("Message name", new() { Exact = true }), $"wrong-{messageName}");
+            await FillBoundInputAndVerifyAsync(page.GetByLabel("Process instance id (optional)", new() { Exact = true }), messageInstanceId.ToString());
+            var msgNameInput = page.GetByLabel("Message name", new() { Exact = true });
             var correlateButton = page.GetByRole(AriaRole.Button, new() { Name = "Correlate message (ProcessManager)", Exact = true });
-            var correlateDisabled = await correlateButton.IsDisabledAsync();
-            if (correlateDisabled)
+            var enabled = false;
+            for (var attempt = 0; attempt < 20; attempt++)
             {
+                if (await correlateButton.IsEnabledAsync()) { enabled = true; break; }
+                await Task.Delay(250, TestContext.Current.CancellationToken);
+            }
+            if (!enabled)
+            {
+                var msgNameValue = await msgNameInput.InputValueAsync();
+                var msgNameHtml = await msgNameInput.EvaluateAsync("el => el.tagName + '|' + (el.id||'') + '|' + (el.getAttribute('class')||'')");
+                var allInputs = await page.EvaluateAsync(
+                    "() => Array.from(document.querySelectorAll('input, textarea')).map(e => ({tag:e.tagName, id:e.id||'', name:e.name||'', type:e.type||'', placeholder:e.placeholder||'', value:e.value, cls:e.className||''}))");
+                var dump = JsonSerializer.Serialize(allInputs);
                 throw new InvalidOperationException(
-                    $"Correlate button stayed disabled. Field 'Message name' DOM value='{msgNameValue}' (expected 'wrong-{messageName}'). Isolated run id: {host.RunId}");
+                    $"Correlate button stayed disabled. Field 'Message name' DOM value='{msgNameValue}' (expected 'wrong-{messageName}'). Element: {msgNameHtml}. ALL INPUTS: {dump}");
             }
             await correlateButton.ClickAsync();
             await page.GetByText("not_found", new() { Exact = false }).First.WaitForAsync();
             Assert.Equal(parkedState, await GetInstanceStateAsync(messageInstanceId));
 
             // Correlate the MATCHING message; the instance must complete.
-            await SetBoundInputFastAsync(page.GetByLabel("Message name", new() { Exact = true }), messageName);
+            await FillBoundInputAndVerifyAsync(page.GetByLabel("Message name", new() { Exact = true }), messageName);
             await correlateButton.ClickAsync();
             await WaitForInstanceStateAsync(messageInstanceId, "Completed");
 
             // Broadcast the signal; both parked instances must complete.
-            await SetBoundInputFastAsync(page.GetByLabel("Signal name", new() { Exact = true }), signalName);
+            await FillBoundInputAndVerifyAsync(page.GetByLabel("Signal name", new() { Exact = true }), signalName);
             var broadcastButton = page.GetByRole(AriaRole.Button, new() { Name = "Broadcast signal (ProcessManager)", Exact = true });
             await broadcastButton.ClickAsync();
             foreach (var id in signalInstanceIds)
@@ -2371,6 +2381,27 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
     }
 
     /// <summary>
+    /// Fills a bound Mud text field and verifies the value actually landed, retrying when a Blazor
+    /// re-render races the fill and wipes the field (seen on fields bound with @bind-Value that gate
+    /// a button's Disabled state immediately after page navigation).
+    /// </summary>
+    private static async Task FillBoundInputAndVerifyAsync(ILocator input, string value)
+    {
+        for (var attempt = 0; attempt < 10; attempt++)
+        {
+            await FillBoundInputAsync(input, value);
+            var landed = await input.InputValueAsync();
+            if (string.Equals(landed, value, StringComparison.Ordinal))
+                return;
+            await Task.Delay(300, TestContext.Current.CancellationToken);
+        }
+
+        var final = await input.InputValueAsync();
+        throw new InvalidOperationException(
+            $"Could not set field to '{value}'; final DOM value was '{final}' after 10 attempts.");
+    }
+
+    /// <summary>
     /// Sets a large value on a bound Mud text field instantly via JS (plus an input event so Blazor's
     /// @bind fires). Used where char-by-char typing would exceed the Playwright action timeout, e.g.
     /// pasting a full multi-KB simulation result into the compare boxes.
@@ -2378,9 +2409,11 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
     private static async Task SetBoundInputFastAsync(ILocator input, string value)
     {
         await input.ScrollIntoViewIfNeededAsync();
-        await input.FillAsync(value);
+        await input.EvaluateAsync(
+            "(el, v) => { const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set ?? Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set; if (setter) setter.call(el, v); el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }",
+            value);
         await input.BlurAsync();
-        await Task.Delay(300, TestContext.Current.CancellationToken);
+        await Task.Delay(500, TestContext.Current.CancellationToken);
     }
 
     private async Task SelectTenantAsync(IPage page, string tenantName, string tenantId)

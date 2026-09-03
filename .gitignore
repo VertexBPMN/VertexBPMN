@@ -343,6 +343,6 @@ ASALocalRun/
 
 # APM dependencies
 apm_modules/
-
 # logs
 api-log-*.txt
+src/VertexBPMN.Api/Logs/

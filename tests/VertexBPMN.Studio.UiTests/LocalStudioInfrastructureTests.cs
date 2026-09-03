@@ -2021,6 +2021,182 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
         }
     }
 
+    [Fact(DisplayName = "Phase 4 - Messages & Signals: correlate a pending message and broadcast a signal through the GUI")]
+    public async Task MessagesSignals_CorrelatesMessageAndBroadcastsSignal_ThroughTheRealEngine()
+    {
+        using var apiClient = host.CreateApiClient();
+        var browserErrors = new ConcurrentQueue<string>();
+        var page = await host.CreatePageAsync();
+        page.PageError += (_, error) => browserErrors.Enqueue(error);
+        page.Console += (_, message) =>
+        {
+            if (message.Type.Equals("error", StringComparison.OrdinalIgnoreCase))
+                browserErrors.Enqueue($"console: {message.Text}");
+        };
+
+        var messageName = $"payment-{host.RunId}";
+        var signalName = $"release-{host.RunId}";
+        var messageProcessKey = $"msg-{Guid.NewGuid():N}"[..20];
+        var signalProcessKey = $"sig-{Guid.NewGuid():N}"[..20];
+
+        // The Messages & Signals page sends no tenant id (the development API key is Admin, so the
+        // API resolves tenant to null). Correlating therefore only reaches instances started with a
+        // null tenant, so start these test instances WITHOUT a tenant.
+        var messageBpmn = $$"""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                         targetNamespace="https://vertexbpmn.dev/e2e">
+              <message id="payment-message" name="{{messageName}}" />
+              <process id="{{messageProcessKey}}" isExecutable="true">
+                <startEvent id="start" />
+                <sequenceFlow id="to-message" sourceRef="start" targetRef="await-message" />
+                <intermediateCatchEvent id="await-message" name="Await payment">
+                  <messageEventDefinition messageRef="payment-message" />
+                </intermediateCatchEvent>
+                <sequenceFlow id="to-end" sourceRef="await-message" targetRef="end" />
+                <endEvent id="end" />
+              </process>
+            </definitions>
+            """;
+        var signalBpmn = $$"""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                         targetNamespace="https://vertexbpmn.dev/e2e">
+              <signal id="release-signal" name="{{signalName}}" />
+              <process id="{{signalProcessKey}}" isExecutable="true">
+                <startEvent id="start" />
+                <sequenceFlow id="to-signal" sourceRef="start" targetRef="await-signal" />
+                <intermediateCatchEvent id="await-signal" name="Await release">
+                  <signalEventDefinition signalRef="release-signal" />
+                </intermediateCatchEvent>
+                <sequenceFlow id="to-end" sourceRef="await-signal" targetRef="end" />
+                <endEvent id="end" />
+              </process>
+            </definitions>
+            """;
+
+        try
+        {
+            host.RegisterProcessDefinitionCleanup(messageProcessKey, null);
+            host.RegisterProcessDefinitionCleanup(signalProcessKey, null);
+
+            // Deploy both definitions via the real API (fast, avoids the modeler) and park instances
+            // on their catching events with a null tenant so the GUI correlation can reach them.
+            using (var messageDeploy = await apiClient.PostAsJsonAsync(
+                       "api/repository",
+                       new { bpmnXml = messageBpmn, name = $"{messageProcessKey}.bpmn", tenantId = (string?)null },
+                       TestContext.Current.CancellationToken))
+            {
+                var body = await messageDeploy.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+                Assert.True(messageDeploy.IsSuccessStatusCode, body);
+            }
+            using (var signalDeploy = await apiClient.PostAsJsonAsync(
+                       "api/repository",
+                       new { bpmnXml = signalBpmn, name = $"{signalProcessKey}.bpmn", tenantId = (string?)null },
+                       TestContext.Current.CancellationToken))
+            {
+                var body = await signalDeploy.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+                Assert.True(signalDeploy.IsSuccessStatusCode, body);
+            }
+
+            Guid messageInstanceId;
+            using (var start = await apiClient.PostAsJsonAsync(
+                       "api/runtime/start",
+                       new { processDefinitionKey = messageProcessKey, businessKey = $"msg-{host.RunId}", variables = new Dictionary<string, object>(), tenantId = (string?)null },
+                       TestContext.Current.CancellationToken))
+            {
+                var body = await start.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+                Assert.True(start.IsSuccessStatusCode, body);
+                messageInstanceId = JsonDocument.Parse(body).RootElement.GetProperty("id").GetGuid();
+            }
+            var signalInstanceIds = new List<Guid>();
+            for (var i = 0; i < 2; i++)
+            {
+                using var start = await apiClient.PostAsJsonAsync(
+                    "api/runtime/start",
+                    new { processDefinitionKey = signalProcessKey, businessKey = $"sig-{host.RunId}-{i}", variables = new Dictionary<string, object> { ["instance"] = i.ToString() }, tenantId = (string?)null },
+                    TestContext.Current.CancellationToken);
+                var body = await start.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+                Assert.True(start.IsSuccessStatusCode, body);
+                signalInstanceIds.Add(JsonDocument.Parse(body).RootElement.GetProperty("id").GetGuid());
+            }
+
+            // Confirm all three instances are parked on their catching events (waiting to resume).
+            // The engine reports catch-event waits as either "Running" or "Waiting", so accept either.
+            await WaitForInstanceStateNotAsync(messageInstanceId, "Completed");
+            foreach (var id in signalInstanceIds)
+                await WaitForInstanceStateNotAsync(id, "Completed");
+            var parkedState = await GetInstanceStateAsync(messageInstanceId);
+
+            // Correlate a NON-matching message first; the instance must stay waiting (not complete).
+            await page.GotoAsync($"{host.StudioBaseAddress}messages-signals");
+            await SetBoundInputFastAsync(page.GetByLabel("Message name", new() { Exact = true }), $"wrong-{messageName}");
+            await SetBoundInputFastAsync(page.GetByLabel("Process instance id (optional)", new() { Exact = true }), messageInstanceId.ToString());
+            var msgNameValue = await page.GetByLabel("Message name", new() { Exact = true }).InputValueAsync();
+            var correlateButton = page.GetByRole(AriaRole.Button, new() { Name = "Correlate message (ProcessManager)", Exact = true });
+            var correlateDisabled = await correlateButton.IsDisabledAsync();
+            if (correlateDisabled)
+            {
+                throw new InvalidOperationException(
+                    $"Correlate button stayed disabled. Field 'Message name' DOM value='{msgNameValue}' (expected 'wrong-{messageName}'). Isolated run id: {host.RunId}");
+            }
+            await correlateButton.ClickAsync();
+            await page.GetByText("not_found", new() { Exact = false }).First.WaitForAsync();
+            Assert.Equal(parkedState, await GetInstanceStateAsync(messageInstanceId));
+
+            // Correlate the MATCHING message; the instance must complete.
+            await SetBoundInputFastAsync(page.GetByLabel("Message name", new() { Exact = true }), messageName);
+            await correlateButton.ClickAsync();
+            await WaitForInstanceStateAsync(messageInstanceId, "Completed");
+
+            // Broadcast the signal; both parked instances must complete.
+            await SetBoundInputFastAsync(page.GetByLabel("Signal name", new() { Exact = true }), signalName);
+            var broadcastButton = page.GetByRole(AriaRole.Button, new() { Name = "Broadcast signal (ProcessManager)", Exact = true });
+            await broadcastButton.ClickAsync();
+            foreach (var id in signalInstanceIds)
+                await WaitForInstanceStateAsync(id, "Completed");
+
+            Assert.Empty(browserErrors);
+        }
+        finally
+        {
+            await host.ClosePageAsync(page);
+        }
+    }
+
+    private async Task WaitForInstanceStateAsync(Guid instanceId, string expected)
+    {
+        for (var attempt = 0; attempt < 60; attempt++)
+        {
+            if (string.Equals(await GetInstanceStateAsync(instanceId), expected, StringComparison.OrdinalIgnoreCase))
+                return;
+            await Task.Delay(250, TestContext.Current.CancellationToken);
+        }
+
+        throw new TimeoutException($"Instance {instanceId} did not reach state '{expected}'.");
+    }
+
+    private async Task WaitForInstanceStateNotAsync(Guid instanceId, string forbidden)
+    {
+        for (var attempt = 0; attempt < 60; attempt++)
+        {
+            if (!string.Equals(await GetInstanceStateAsync(instanceId), forbidden, StringComparison.OrdinalIgnoreCase))
+                return;
+            await Task.Delay(250, TestContext.Current.CancellationToken);
+        }
+
+        throw new TimeoutException($"Instance {instanceId} stayed in state '{forbidden}'.");
+    }
+
+    private async Task<string> GetInstanceStateAsync(Guid instanceId)
+    {
+        using var client = host.CreateApiClient();
+        using var response = await client.GetAsync($"api/runtime/{instanceId}", TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.True(response.IsSuccessStatusCode, body);
+        return JsonDocument.Parse(body).RootElement.GetProperty("state").GetString() ?? "";
+    }
+
     private async Task<HttpResponseMessage> apiClientPostSimulation(string processKey, string bpmnXml, string? tenantId, bool variablesNull = false, string? processDefinitionId = null, int? maxSteps = 50)
     {
         using var shortLived = host.CreateApiClient();

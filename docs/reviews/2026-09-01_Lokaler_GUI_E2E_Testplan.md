@@ -55,6 +55,11 @@ noch fehlschlägt oder der im Plan geforderte Use Case nur teilweise abgedeckt i
 - ✅ Linux/Docker-Lauf `935a5f4270f14a9da1ad46025fcb9993`: 8 erfolgreich, 0 fehlgeschlagen, 0 übersprungen (PostgreSQL + RabbitMQ als Container). Enthält die neue Event-Log-Assertion im BPMN-Runtime-Test.
 - ✅ Der Tenant-Selector-Flake im Suite-Verbund wurde durch eine Verlängerung der Readiness-Wartezeit auf 60 s stabilisiert; danach ist der volle 8-Test-Lauf unter Last grün.
 - ✅ Der Lauf `935a5f42` hinterließ keine der fünf run-spezifischen Datenbanken (Abwesenheit direkt in PostgreSQL verifiziert).
+- ✅ **Phase 4 vollständig (Sommer 2026, Container-Stack)**: Die komplette Local-Studio-Suite mit **20 Real-E2E-Tests** (Phasen 1–4) ist auf einer sauberen Datenbank zweimal in Folge grün:
+  - Lauf `2c27743e19ff422592e82f62cc3e7739`: **20 erfolgreich, 0 fehlgeschlagen, 0 übersprungen** (`RUN_EXIT 0`).
+  - Lauf `d7301acba7ac4eaebb2cc517b91a849b`: **20 erfolgreich, 0 fehlgeschlagen, 0 übersprungen** (`RUN_EXIT 0`).
+  - Enthalten sind Simulation, Messages/Signals, Debugging und Migration (Phase 4) sowie die Phasen 1–3.
+- ✅ Unter voller Suite-Last wurden zwei Last-Flakes behoben: der Textarea-`Value`-Setter von `MudTextField` `Lines>=5` (die aufrufende JavaScript-Funktion wählte den Setter nicht anhand des Element-Tags) sowie transiente API-Hänger beim Instanz-Start (Retry-Helper).
 
 ### Behobene Lücke: Suspend/Resume/Löschen von Process Instances
 

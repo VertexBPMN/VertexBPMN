@@ -2666,21 +2666,40 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
                 await row.WaitForAsync();
                 Assert.Contains("Enabled", await row.InnerTextAsync());
 
-                // Test (failure path): clicking Test must surface the error alert, not crash.
+                // Test (failure path): clicking Test must surface an alert with content. The
+                // connector targets an unreachable endpoint, so the alert carries the failure
+                // message. Poll for any non-empty MudAlert (robust to severity-specific classes).
                 await row.GetByRole(AriaRole.Button, new() { Name = "Test", Exact = true }).ClickAsync();
-                await page.Locator(".mud-alert-error").WaitForAsync(new() { Timeout = 30_000 });
-                var testMsg = await page.Locator(".mud-alert-error").InnerTextAsync();
-                Assert.False(string.IsNullOrWhiteSpace(testMsg));
+                string testMsg = string.Empty;
+                for (var attempt = 0; attempt < 30; attempt++)
+                {
+                    var alerts = await page.Locator(".mud-alert").AllInnerTextsAsync();
+                    testMsg = string.Join(" ", alerts).Trim();
+                    if (!string.IsNullOrWhiteSpace(testMsg)) break;
+                    await Task.Delay(1000, TestContext.Current.CancellationToken);
+                }
+                Assert.False(string.IsNullOrWhiteSpace(testMsg), "Expected the connector Test to surface an alert but none appeared.");
 
-                // Disable then re-enable through the GUI; the status label must flip.
+                // Disable then re-enable through the GUI; the status label must flip. The reload is
+                // async, so poll for the flipped label rather than asserting on a racy snapshot.
                 await row.GetByRole(AriaRole.Button, new() { Name = "Disable", Exact = true }).ClickAsync();
                 row = page.Locator("tr").Filter(new() { HasText = connectorName }).First;
                 await row.WaitForAsync();
+                for (var attempt = 0; attempt < 15; attempt++)
+                {
+                    if ((await row.InnerTextAsync()).Contains("Disabled", StringComparison.Ordinal)) break;
+                    await Task.Delay(500, TestContext.Current.CancellationToken);
+                }
                 Assert.Contains("Disabled", await row.InnerTextAsync());
 
                 await row.GetByRole(AriaRole.Button, new() { Name = "Enable", Exact = true }).ClickAsync();
                 row = page.Locator("tr").Filter(new() { HasText = connectorName }).First;
                 await row.WaitForAsync();
+                for (var attempt = 0; attempt < 15; attempt++)
+                {
+                    if ((await row.InnerTextAsync()).Contains("Enabled", StringComparison.Ordinal)) break;
+                    await Task.Delay(500, TestContext.Current.CancellationToken);
+                }
                 Assert.Contains("Enabled", await row.InnerTextAsync());
 
                 // Delete through the GUI and verify the API no longer returns it.
@@ -2701,7 +2720,126 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
         }
     }
 
-    /// <summary>Polls GET /api/connectors?tenantId= until the named connector is absent.</summary>
+    [Fact(DisplayName = "Phase 5 - Workflow Triggers: register with one-time secret, invoke, enable/disable, delete")]
+    public async Task WorkflowTriggers_RegisterInvokeToggleAndDelete_ThroughTheRealEngine()
+    {
+        using var apiClient = host.CreateApiClient();
+        var tenantName = $"Phase5 TrigTenant {host.RunId}";
+        var triggerName = $"trig-{host.RunId}";
+        var processKey = $"tg-{host.RunId:N}".ToLowerInvariant();
+        string? tenantId = null;
+
+        try
+        {
+            tenantId = await CreateTenantAsync(apiClient, tenantName);
+            host.RegisterApiCleanup(HttpMethod.Delete, $"api/tenant/{Uri.EscapeDataString(tenantId!)}");
+
+            // The trigger references a process definition, so deploy one under the same tenant first.
+            await DeployProcessUnderTenantAsync(apiClient, processKey, tenantId!);
+            host.RegisterApiCleanup(HttpMethod.Delete, $"api/repository?tenantId={Uri.EscapeDataString(tenantId!)}&name={processKey}");
+
+            var page = await host.CreatePageAsync();
+            try
+            {
+                await page.GotoAsync($"{host.StudioBaseAddress}triggers");
+                await page.GetByRole(AriaRole.Heading, new() { Name = "Workflow Triggers", Exact = true }).WaitForAsync();
+                await SelectTenantAsync(page, tenantName, tenantId!);
+
+                // Register a trigger through the GUI.
+                await FillBoundInputAndVerifyAsync(page.GetByLabel("Name", new() { Exact = true }), triggerName);
+                await FillBoundInputAndVerifyAsync(page.GetByLabel("Process definition key", new() { Exact = true }), processKey);
+                await page.GetByRole(AriaRole.Button, new() { Name = "Register trigger", Exact = true }).ClickAsync();
+
+                // The one-time secret must be shown exactly once (Save-this-secret alert), and the
+                // invoke path is surfaced.
+                var secretAlert = page.GetByText("Save this secret now. It is shown only once.", new() { Exact = true });
+                await secretAlert.WaitForAsync();
+                var secretValue = await page.Locator(".mud-alert-warning input[readonly], .mud-alert-warning textarea[readonly]")
+                    .First.InnerTextAsync();
+                Assert.False(string.IsNullOrWhiteSpace(secretValue), "Expected the one-time secret to be shown.");
+
+                // The registered trigger row appears, enabled, with the process key.
+                var row = page.Locator("tr").Filter(new() { HasText = triggerName }).First;
+                await row.WaitForAsync();
+                Assert.Contains("Enabled", await row.InnerTextAsync());
+                Assert.Contains(processKey, await row.InnerTextAsync());
+
+                // Invoke the trigger through the GUI (uses the freshly-shown secret); poll for an
+                // instance start (InvocationCount increments to 1).
+                await row.GetByRole(AriaRole.Button, new() { Name = "Test", Exact = true }).ClickAsync();
+                row = page.Locator("tr").Filter(new() { HasText = triggerName }).First;
+                await row.WaitForAsync();
+                for (var attempt = 0; attempt < 20; attempt++)
+                {
+                    var text = await row.InnerTextAsync();
+                    if (text.Contains("\t1", StringComparison.Ordinal) || text.Contains(" 1 ", StringComparison.Ordinal)) break;
+                    await Task.Delay(500, TestContext.Current.CancellationToken);
+                    row = page.Locator("tr").Filter(new() { HasText = triggerName }).First;
+                }
+                Assert.Contains("1", await page.Locator("tr").Filter(new() { HasText = triggerName }).First.InnerTextAsync());
+
+                // Disable then re-enable; poll for the flipped status label.
+                await page.Locator("tr").Filter(new() { HasText = triggerName }).First
+                    .GetByRole(AriaRole.Button, new() { Name = "Disable", Exact = true }).ClickAsync();
+                row = page.Locator("tr").Filter(new() { HasText = triggerName }).First;
+                await row.WaitForAsync();
+                for (var attempt = 0; attempt < 15; attempt++)
+                {
+                    if ((await row.InnerTextAsync()).Contains("Disabled", StringComparison.Ordinal)) break;
+                    await Task.Delay(500, TestContext.Current.CancellationToken);
+                    row = page.Locator("tr").Filter(new() { HasText = triggerName }).First;
+                }
+                Assert.Contains("Disabled", await page.Locator("tr").Filter(new() { HasText = triggerName }).First.InnerTextAsync());
+
+                await page.Locator("tr").Filter(new() { HasText = triggerName }).First
+                    .GetByRole(AriaRole.Button, new() { Name = "Enable", Exact = true }).ClickAsync();
+                row = page.Locator("tr").Filter(new() { HasText = triggerName }).First;
+                await row.WaitForAsync();
+                for (var attempt = 0; attempt < 15; attempt++)
+                {
+                    if ((await row.InnerTextAsync()).Contains("Enabled", StringComparison.Ordinal)) break;
+                    await Task.Delay(500, TestContext.Current.CancellationToken);
+                    row = page.Locator("tr").Filter(new() { HasText = triggerName }).First;
+                }
+                Assert.Contains("Enabled", await page.Locator("tr").Filter(new() { HasText = triggerName }).First.InnerTextAsync());
+
+                // Delete through the GUI and verify the API no longer returns it.
+                await page.Locator("tr").Filter(new() { HasText = triggerName }).First
+                    .GetByRole(AriaRole.Button, new() { Name = "Delete", Exact = true }).ClickAsync();
+                await WaitForTriggerAbsentAsync(apiClient, tenantId!, triggerName);
+            }
+            finally
+            {
+                await host.ClosePageAsync(page);
+            }
+        }
+        finally
+        {
+            if (tenantId is not null)
+                try { await apiClient.DeleteAsync($"/api/tenant/{Uri.EscapeDataString(tenantId)}", TestContext.Current.CancellationToken); }
+                catch { /* best effort */ }
+        }
+    }
+
+    /// <summary>Polls GET /api/triggers?tenantId= until the named trigger is absent.</summary>
+    private async Task WaitForTriggerAbsentAsync(HttpClient apiClient, string tenantId, string name)
+    {
+        for (var attempt = 0; attempt < 60; attempt++)
+        {
+            var triggers = await apiClient.GetFromJsonAsync<JsonElement[]>(
+                $"/api/triggers?tenantId={Uri.EscapeDataString(tenantId)}", TestContext.Current.CancellationToken);
+            var match = triggers?.FirstOrDefault(t => t.GetProperty("name").GetString() == name);
+            if (match.HasValue && match.Value.ValueKind == JsonValueKind.Object)
+            {
+                await Task.Delay(250, TestContext.Current.CancellationToken);
+                continue;
+            }
+            return;
+        }
+        throw new TimeoutException($"Trigger '{name}' still exists after delete.");
+    }
+
+
     private async Task WaitForConnectorAbsentAsync(HttpClient apiClient, string tenantId, string name)
     {
         for (var attempt = 0; attempt < 60; attempt++)

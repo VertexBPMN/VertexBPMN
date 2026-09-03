@@ -8,7 +8,7 @@ namespace VertexBPMN.Tests.Integration.Studio;
 public sealed class HttpExecutionDetailsServiceTests
 {
     [Fact]
-    public async Task GetVariablesAsync_UsesProcessInstanceQuery()
+    public async Task GetVariablesAsync_UsesProcessInstanceRoute()
     {
         var requests = new List<HttpRequestMessage>();
         var response = new HttpResponseMessage(HttpStatusCode.OK)
@@ -26,7 +26,7 @@ public sealed class HttpExecutionDetailsServiceTests
         Assert.True(result.GetProperty("approved").GetBoolean());
         var request = Assert.Single(requests);
         Assert.Equal(HttpMethod.Get, request.Method);
-        Assert.Equal($"http://api.test/api/vertex/variable?processInstanceId={processInstanceId}", request.RequestUri!.ToString());
+        Assert.Equal($"http://api.test/api/vertex/variable/{processInstanceId}", request.RequestUri!.ToString());
     }
 
     [Fact]
@@ -42,7 +42,7 @@ public sealed class HttpExecutionDetailsServiceTests
         factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
         var service = new HttpExecutionDetailsService(factory.Object);
 
-        await service.GetJobsAsync(TestContext.Current.CancellationToken);
+        await service.GetJobsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         var request = Assert.Single(requests);
         Assert.Equal("http://api.test/api/vertex/job", request.RequestUri!.ToString());

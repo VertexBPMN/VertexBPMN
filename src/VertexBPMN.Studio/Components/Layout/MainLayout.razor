@@ -86,18 +86,30 @@
 
     protected override async Task OnInitializedAsync()
     {
-        try
+        for (var attempt = 1; attempt <= 3; attempt++)
         {
-            _tenants = await IdentityService.ListTenantsAsync();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            try
+            {
+                _tenants = await IdentityService.ListTenantsAsync(timeout.Token);
+                _tenantsLoaded = true;
+                return;
+            }
+            catch (OperationCanceledException) when (timeout.IsCancellationRequested && attempt < 3)
+            {
+                Logger.LogWarning("Loading tenants timed out on attempt {Attempt}; retrying", attempt);
+            }
+            catch (Exception exception) when (attempt < 3)
+            {
+                Logger.LogWarning(exception, "Loading tenants failed on attempt {Attempt}; retrying", attempt);
+            }
+
+            if (attempt < 3)
+                await Task.Delay(TimeSpan.FromSeconds(1));
         }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Failed to load tenants in MainLayout");
-        }
-        finally
-        {
-            _tenantsLoaded = true;
-        }
+
+        Logger.LogError("Failed to load tenants in MainLayout after three attempts");
+        _tenantsLoaded = true;
     }
 
     private async Task LoadEngineConnections()

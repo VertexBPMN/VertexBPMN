@@ -60,7 +60,8 @@ else if (_error != null)
                   Value="_metrics.TotalProcessDefinitions"
                   Icon="@Icons.Material.Filled.List"
                   Color="Color.Info"
-                  IsLoading="_isLoading" />
+                  IsLoading="_isLoading"
+                  TestId="dashboard-process-definitions-value" />
     </MudItem>
 </MudGrid>
 
@@ -140,6 +141,7 @@ else if (_error != null)
     protected override async Task OnInitializedAsync()
     {
         ActiveEngineService.OnEngineChanged += OnEngineChanged;
+        TenantContext.Changed += OnTenantChanged;
         await LoadDashboardData();
         StartAutoRefresh();
     }
@@ -148,6 +150,8 @@ else if (_error != null)
     {
         await InvokeAsync(async () => await LoadDashboardData());
     }
+
+    private void OnTenantChanged() => _ = InvokeAsync(LoadDashboardData);
 
     private async Task LoadDashboardData()
     {

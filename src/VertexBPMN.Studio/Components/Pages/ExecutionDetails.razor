@@ -1,6 +1,7 @@
 @page "/execution-details"
 @using System.Text.Json
 @inject IExecutionDetailsService ExecutionDetailsService
+@inject StudioTenantContext TenantContext
 
 <PageTitle>Execution Details</PageTitle>
 
@@ -23,7 +24,7 @@
 }
 else if (_result is not null)
 {
-    <MudPaper Class="pa-4" Elevation="1">
+    <MudPaper Class="pa-4" Elevation="1" data-testid="execution-details-result">
         <MudText Typo="Typo.h6">@_resultTitle</MudText>
         <pre>@Format(_result.Value)</pre>
     </MudPaper>
@@ -36,9 +37,9 @@ else if (_result is not null)
     private string? _error;
     private bool _isLoading;
 
-    private Task LoadJobsAsync() => LoadAsync("Jobs", () => ExecutionDetailsService.GetJobsAsync());
+    private Task LoadJobsAsync() => LoadAsync("Jobs", () => ExecutionDetailsService.GetJobsAsync(TenantContext.CurrentTenantId));
 
-    private Task LoadIncidentsAsync() => LoadAsync("Incidents", () => ExecutionDetailsService.GetIncidentsAsync());
+    private Task LoadIncidentsAsync() => LoadAsync("Incidents", () => ExecutionDetailsService.GetIncidentsAsync(TenantContext.CurrentTenantId));
 
     private Task LoadVariablesAsync()
     {

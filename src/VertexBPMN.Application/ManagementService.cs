@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Domain.Interfaces.Repositories;
 
 namespace VertexBPMN.Application;
 
@@ -18,43 +19,57 @@ public class ManagementService : IManagementService
         _metricsReader = metricsReader;
     }
 
-    public ValueTask SuspendProcessInstanceAsync(Guid processInstanceId, string? tenantId = null, CancellationToken cancellationToken = default)
+    public async ValueTask SuspendProcessInstanceAsync(Guid processInstanceId, string? tenantId = null, CancellationToken cancellationToken = default)
     {
-        var eventSink = _serviceProvider.GetRequiredService<IProcessMiningEventSink>();
-        eventSink.EmitAsync(new ProcessMiningEvent {
-            EventType = "ProcessSuspended",
-            ProcessInstanceId = processInstanceId.ToString(),
-            Timestamp = DateTimeOffset.UtcNow
-        }, cancellationToken);
-        return ValueTask.CompletedTask;
+        var runtimeService = _serviceProvider.GetRequiredService<IRuntimeService>();
+        var instance = await runtimeService.GetByIdAsync(processInstanceId, cancellationToken);
+        EnsureTenantAccess(instance, tenantId);
+        if (instance is not null)
+            await runtimeService.SuspendAsync(processInstanceId, cancellationToken);
     }
 
-    public ValueTask ResumeProcessInstanceAsync(Guid processInstanceId, string? tenantId = null, CancellationToken cancellationToken = default)
+    public async ValueTask ResumeProcessInstanceAsync(Guid processInstanceId, string? tenantId = null, CancellationToken cancellationToken = default)
     {
-        var eventSink = _serviceProvider.GetRequiredService<IProcessMiningEventSink>();
-        eventSink.EmitAsync(new ProcessMiningEvent {
-            EventType = "ProcessResumed",
-            ProcessInstanceId = processInstanceId.ToString(),
-            Timestamp = DateTimeOffset.UtcNow
-        }, cancellationToken);
-        return ValueTask.CompletedTask;
+        var runtimeService = _serviceProvider.GetRequiredService<IRuntimeService>();
+        var instance = await runtimeService.GetByIdAsync(processInstanceId, cancellationToken);
+        EnsureTenantAccess(instance, tenantId);
+        if (instance is not null)
+            await runtimeService.ResumeAsync(processInstanceId, cancellationToken);
     }
 
-    public ValueTask DeleteProcessInstanceAsync(Guid processInstanceId, string? tenantId = null, CancellationToken cancellationToken = default)
+    public async ValueTask DeleteProcessInstanceAsync(Guid processInstanceId, string? tenantId = null, CancellationToken cancellationToken = default)
     {
+        var repository = _serviceProvider.GetRequiredService<IProcessInstanceRepository>();
+        var instance = await repository.GetByIdAsync(processInstanceId, cancellationToken);
+        EnsureTenantAccess(instance, tenantId);
+        if (instance is null)
+            return;
+
+        await repository.DeleteAsync(processInstanceId, cancellationToken);
         var eventSink = _serviceProvider.GetRequiredService<IProcessMiningEventSink>();
-        eventSink.EmitAsync(new ProcessMiningEvent {
+        await eventSink.EmitAsync(new ProcessMiningEvent {
             EventType = "ProcessDeleted",
             ProcessInstanceId = processInstanceId.ToString(),
+            TenantId = instance.TenantId,
             Timestamp = DateTimeOffset.UtcNow
         }, cancellationToken);
-        return ValueTask.CompletedTask;
     }
 
     public ValueTask ExecuteJobAsync(Guid jobId, CancellationToken cancellationToken = default)
         => ValueTask.CompletedTask;
 
     private static readonly DateTime _startTime = DateTime.UtcNow;
+
+    private static void EnsureTenantAccess(ProcessInstance? instance, string? tenantId)
+    {
+        if (instance is not null
+            && tenantId is not null
+            && !string.Equals(instance.TenantId, tenantId, StringComparison.Ordinal))
+        {
+            throw new UnauthorizedAccessException("The process instance belongs to another tenant.");
+        }
+    }
+
     public async ValueTask<IDictionary<string, object>> GetMetricsAsync(CancellationToken cancellationToken = default)
     {
         var persisted = await _metricsReader.ReadAsync(cancellationToken);

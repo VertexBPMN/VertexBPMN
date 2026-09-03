@@ -63,8 +63,8 @@ else
                 <MudText Typo="Typo.body2">@(context.BusinessKey ?? "N/A")</MudText>
             </MudTd>
             <MudTd DataLabel="State">
-                <MudChip T="string" Color="GetStateColor(context.State)" Size="Size.Small" Variant="Variant.Filled">
-                    @context.State
+                <MudChip T="string" Color="GetStateColor(context.Status)" Size="Size.Small" Variant="Variant.Filled">
+                    @context.Status
                 </MudChip>
             </MudTd>
             <MudTd DataLabel="Started At">
@@ -88,14 +88,14 @@ else
                                   Size="Size.Small" 
                                   OnClick="@(() => ViewDetails(context))" 
                                   aria-label="View Details" />
-                    @if (context.State == "Active")
+                    @if (context.Status == ProcessInstanceStatus.Running)
                     {
                         <MudIconButton Icon="@Icons.Material.Filled.Pause" 
                                       Size="Size.Small" 
                                       OnClick="@(() => SuspendInstance(context.Id))" 
                                       aria-label="Suspend Instance" />
                     }
-                    else if (context.State == "Suspended")
+                    else if (context.Status == ProcessInstanceStatus.Suspended)
                     {
                         <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" 
                                       Size="Size.Small" 
@@ -181,15 +181,15 @@ else
         return (instance.InstanceId?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
                (instance.ProcessId?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
                (instance.BusinessKey?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
-               (instance.State?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false);
+               instance.Status.ToString().Contains(_searchString, StringComparison.OrdinalIgnoreCase);
     }
 
-    private Color GetStateColor(string state) => state?.ToLower() switch
+    private static Color GetStateColor(ProcessInstanceStatus status) => status switch
     {
-        "active" => Color.Success,
-        "suspended" => Color.Warning,
-        "completed" => Color.Info,
-        "terminated" => Color.Error,
+        ProcessInstanceStatus.Running => Color.Success,
+        ProcessInstanceStatus.Suspended => Color.Warning,
+        ProcessInstanceStatus.Completed => Color.Info,
+        ProcessInstanceStatus.Terminated => Color.Error,
         _ => Color.Default
     };
 

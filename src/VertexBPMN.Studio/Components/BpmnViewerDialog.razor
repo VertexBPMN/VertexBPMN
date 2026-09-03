@@ -1,4 +1,5 @@
 @inject IJSRuntime JSRuntime
+@inject ILogger<BpmnViewerDialog> Logger
 @implements IDisposable
 
 <MudDialog>
@@ -21,6 +22,15 @@
                 <div id="@_viewerContainerId" style="width: 100%; height: 100%; border: 1px solid #ccc; border-radius: 4px;"></div>
             }
         </div>
+        @if (!string.IsNullOrEmpty(BpmnXml))
+        {
+            <MudTextField Value="@BpmnXml"
+                          Label="BPMN XML"
+                          ReadOnly="true"
+                          Lines="8"
+                          data-testid="bpmn-definition-xml"
+                          Class="mt-4" />
+        }
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="@(() => Dialog.Close())" Color="Color.Primary">
@@ -53,7 +63,7 @@
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error initializing BPMN viewer: {ex.Message}");
+                Logger.LogError(ex, "Error initializing BPMN viewer");
             }
         }
     }
@@ -73,7 +83,7 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error downloading XML: {ex.Message}");
+            Logger.LogError(ex, "Error downloading BPMN XML");
         }
     }
 

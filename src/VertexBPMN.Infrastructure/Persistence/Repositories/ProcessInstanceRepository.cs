@@ -36,7 +36,11 @@ public class ProcessInstanceRepository : IProcessInstanceRepository
     public async ValueTask DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var entity = await _db.ProcessInstances.FindAsync(new object[] { id }, cancellationToken);
-        if (entity != null) _db.ProcessInstances.Remove(entity);
+        if (entity != null)
+        {
+            _db.ProcessInstances.Remove(entity);
+            await _db.SaveChangesAsync(cancellationToken);
+        }
     }
 
     /// <summary>

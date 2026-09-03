@@ -23,7 +23,7 @@ noch fehlschlägt oder der im Plan geforderte Use Case nur teilweise abgedeckt i
 | CMMN Modeler | ✅ | Import, grafisches Hinzufügen eines Human Tasks, Registrierung, Case-Start, User Event, Case-File-Update, discretionary/ad-hoc Aktivierung, History sowie Export und Re-Import sind lokal erfolgreich nachgewiesen. | — |
 | Form Builder | ✅ | Import, grafisches Hinzufügen eines Formularfelds, Speichern, Reload aus Registry, Update unter Beibehaltung der Formular-ID, Runtime Viewer sowie JSON-Export und Re-Import sind lokal erfolgreich nachgewiesen. | — |
 | n8n-Import | ✅ | Reales n8n-JSON mit Webhook und HTTP-Node wird im Browser importiert; Mapping-Bericht und fehlende Credential als `NeedsReview` werden geprüft. Das erzeugte BPMN enthält Diagrammdaten, wird validiert, deployt, aus dem Repository neu geladen und exportiert. | — |
-| Phase 3: Prozessverwaltung | 🟡 | Dashboard-Smoke-Test sowie Teilpfade für Process Definitions, Process Instances, Tasks und History sind vorhanden. | Pagination, Löschen, Suspend/Resume, Fehlerzustände, Deployments, Jobs, Incidents, Event Log und vollständige Korrelation. |
+| Phase 3: Prozessverwaltung | 🟡 | Deployments (Upload gültig/ungültig), Process Definitions (View BPMN, Versionsdialog, Löschen mit Reload-Persistenz), Process Instances (Auflisten, Suchen, Details) und Execution Details (Jobs, Incidents, Variablen) sind lokal grün nachgewiesen. | Suspend/Resume und Löschen von Process Instances sowie die Korrelation für den Instanz-Status sind als **bekannte Lücke** dokumentiert (siehe unten), Pagination. |
 | Phase 4: Erweiterte Runtime-Funktionen | 🟡 | Start/Pause/Reset der lokalen BPMN-Simulation und `Deploy and run test` sind grün nachgewiesen. | Simulation Summary/Variable Trace, Szenarien, Messages/Signals, Debugging und Migration. |
 | Phase 5: Administration und Integrationen | ⬜ | Tenant-Auswahl wird in einzelnen Kernabläufen benutzt. | Eigenständige Tenant-CRUD-/Isolationstests sowie Credentials, Connectors, Trigger und alle weiteren Administrationsseiten. |
 | Phase 6: Fehler-, Navigation- und Qualitätsfälle | 🟡 | Browserfehler werden in den vorhandenen Real-E2E-Tests gesammelt; der Runner erzeugt einen HTML-Bericht, einzelne Fehlerpfade erzeugen Screenshots und Diagnoseausgaben. | Systematische HTTP-/Timeout-/Mehrfachklick-/Reload-Fehlerfälle, alle Routen, kleiner Viewport, vollständige Traces/Request- und Log-Artefakte. |
@@ -51,9 +51,37 @@ noch fehlschlägt oder der im Plan geforderte Use Case nur teilweise abgedeckt i
 - ✅ Der Tenant-Selector-Flake im Suite-Verbund wurde durch eine Verlängerung der Readiness-Wartezeit auf 60 s stabilisiert; danach ist der volle 8-Test-Lauf unter Last grün.
 - ✅ Der Lauf `935a5f42` hinterließ keine der fünf run-spezifischen Datenbanken (Abwesenheit direkt in PostgreSQL verifiziert).
 
+### Bekannte Lücke: Suspend/Resume/Löschen von Process Instances
+
+Die Phase-3-E2E-Prüfung hat ergeben, dass **Suspend/Resume und Löschen von Process Instances
+nicht als persistente Funktion umgesetzt sind** — dies wurde bewusst als bekannte Lücke
+dokumentiert, nicht durch Umgehung im Test kaschiert:
+
+- `ManagementService.Suspend/Resume/DeleteProcessInstanceAsync` erzeugen lediglich ein
+  `ProcessMiningEvent` („ProcessSuspended/Resumed/Deleted“) und verändern **nicht** den
+  persistierten Zustand der Process-Instance und löschen diese auch nicht.
+- Die Studio-Seite `ProcessInstances.razor` zeigt den **Suspend**-Button nur bei
+  `State == "Active"` an; BPMN-Instanzen werden jedoch mit `State == "Running"` erzeugt —
+  der Button ist daher für einen normal laufenden Prozess gar nicht sichtbar.
+
+Der E2E-Test `ProcessInstances_ListsSearchesAndShowsDetails_ForARealRunningInstance`
+verifiziert den real funktionierenden Lesepfad (Auflisten, Suchen, Details), ohne die
+nicht vorhandene Persistenz der Verwaltungsaktionen zu behaupten.
+
+### Laufnachweis Phase 3 (Prozessverwaltung)
+
+- ✅ Datei-`Deploy` über die `Deployments`-Seite mit gültigem BPMN (Persistenz über die
+  `api/repository`-Schnittstelle verifiziert) sowie ablehnende Behandlung eines ungültigen Uploads.
+- ✅ Process Definitions: BPMN-Viewer, Versionsdialog (mehrere Versionen), Löschen über die UI
+  mit anschließender Dauerhaftigkeit über Reload und API.
+- ✅ Execution Details: Jobs, Incidents und Variablen für eine reale, laufende Instanz.
+- ✅ Fehlerpfad und Event-Log-Oberfläche lokal auf dem realen Backend.
+- ✅ Ausgerollt in `LocalStudioInfrastructureTests.cs`: **15 Tests, 0 Fehler, 0 übersprungen**
+  auf sauberer Datenbank, zweimal in Folge grün bestätigt.
+
 ### Gesamtstatus
 
-🟡 **Der lokale GUI-E2E-Plan ist noch nicht abgeschlossen.** Die kritischen Modellierungs- und Runtime-Use-Cases der Phase 2 (BPMN Modeler und Runtime inkl. persistentem Event-Log, DMN, CMMN, Form Builder, n8n-Import) sind vollständig grün nachgewiesen. Offen bleiben große Teile der Prozessverwaltung (Phase 3), erweiterte Runtime-Funktionen (Phase 4), Administration und Integrationen (Phase 5) sowie die systematische Fehler- und Routenabdeckung (Phase 6).
+🟡 **Der lokale GUI-E2E-Plan ist noch nicht abgeschlossen.** Die kritischen Modellierungs- und Runtime-Use-Cases der Phase 2 (BPMN Modeler und Runtime inkl. persistentem Event-Log, DMN, CMMN, Form Builder, n8n-Import) sind vollständig grün nachgewiesen. Die **Phase 3 (Prozessverwaltung)** wurde mit Deployments, Process Definitions, Process Instances (Lesepfad) und Execution Details erweitert und ist über den realen Backend-Pfad grün (15 Tests, 0 Fehler, zweimal in Folge), mit einer dokumentierten bekannten Lücke bei Suspend/Resume/Löschen von Process Instances. Offen bleiben große Teile der erweiterten Runtime-Funktionen (Phase 4), Administration und Integrationen (Phase 5) sowie die systematische Fehler- und Routenabdeckung (Phase 6).
 
 ## Ziel
 

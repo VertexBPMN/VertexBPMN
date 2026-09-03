@@ -118,6 +118,20 @@ public class InMemoryRuntimeService : IRuntimeService
         return ValueTask.CompletedTask;
     }
 
+    public ValueTask DeleteAsync(Guid processInstanceId, CancellationToken cancellationToken = default)
+    {
+        if (_instances.TryRemove(processInstanceId, out var inst))
+        {
+            _eventSink.EmitAsync(new ProcessMiningEvent {
+                EventType = "ProcessDeleted",
+                ProcessInstanceId = inst.Id.ToString(),
+                TenantId = inst.TenantId,
+                Timestamp = DateTimeOffset.UtcNow
+            }, cancellationToken);
+        }
+        return ValueTask.CompletedTask;
+    }
+
     // Emits a process end event (for demo, call this when removing from _instances)
     public ValueTask EndProcessAsync(Guid processInstanceId, CancellationToken cancellationToken = default)
     {

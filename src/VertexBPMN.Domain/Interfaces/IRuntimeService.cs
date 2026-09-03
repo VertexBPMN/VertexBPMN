@@ -24,5 +24,6 @@ public interface IRuntimeService
     ValueTask SignalAsync(Guid processInstanceId, string signalName, object? payload = null, CancellationToken cancellationToken = default);
     ValueTask SuspendAsync(Guid processInstanceId, CancellationToken cancellationToken = default);
     ValueTask ResumeAsync(Guid processInstanceId, CancellationToken cancellationToken = default);
+    ValueTask DeleteAsync(Guid processInstanceId, CancellationToken cancellationToken = default);
 }
 

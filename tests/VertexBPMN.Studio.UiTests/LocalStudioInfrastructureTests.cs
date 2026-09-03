@@ -1455,6 +1455,98 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
     }
 
     [Fact]
+    public async Task ProcessInstances_SuspendResumeAndDelete_PersistThroughUiAndApi()
+    {
+        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
+
+        var tenantName = $"Instances Mgt {host.RunId}";
+        var processKey = $"StudioE2E_InstMgt_{host.RunId}";
+        var formKey = $"studio-e2e-instmgt-form-{host.RunId}";
+        var businessKey = $"business-instmgt-{host.RunId}";
+        string? tenantId = null;
+        string? formId = null;
+        using var apiClient = host.CreateApiClient();
+        var browserErrors = new ConcurrentQueue<string>();
+        var page = await host.CreatePageAsync();
+        page.PageError += (_, error) => browserErrors.Enqueue(error);
+        page.Console += (_, message) =>
+        {
+            if (message.Type.Equals("error", StringComparison.OrdinalIgnoreCase))
+                browserErrors.Enqueue($"console: {message.Text}");
+        };
+
+        try
+        {
+            using (var tenantResponse = await apiClient.PostAsJsonAsync("api/tenant", new { name = tenantName, description = "Process instances suspend/resume/delete E2E" }, TestContext.Current.CancellationToken))
+            {
+                var tenantBody = await tenantResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+                Assert.True(tenantResponse.IsSuccessStatusCode, tenantBody);
+                tenantId = JsonDocument.Parse(tenantBody).RootElement.GetProperty("id").GetString();
+                host.RegisterApiCleanup(HttpMethod.Delete, $"api/tenant/{Uri.EscapeDataString(tenantId!)}");
+            }
+            host.RegisterProcessDefinitionCleanup(processKey, tenantId);
+            using (var formResponse = await apiClient.PostAsJsonAsync("api/forms", new { tenantId, key = formKey, name = "Instance mgmt approval form", schema = CreateFormJson(host.RunId) }, TestContext.Current.CancellationToken))
+            {
+                var formBody = await formResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+                Assert.True(formResponse.IsSuccessStatusCode, formBody);
+                formId = JsonDocument.Parse(formBody).RootElement.GetProperty("id").GetString();
+            }
+
+            await OpenBpmnModelerAsync(page);
+            await SelectTenantAsync(page, tenantName, tenantId!);
+            await ImportBpmnAsync(page, CreateUserTaskBpmn(processKey, formKey));
+            await page.GetByRole(AriaRole.Button, new() { Name = "Deploy BPMN", Exact = true }).ClickAsync();
+            await page.GetByText("BPMN deployed successfully.", new() { Exact = true }).WaitForAsync();
+
+            Guid instanceId;
+            using (var startResponse = await apiClient.PostAsJsonAsync("api/runtime/start", new { ProcessDefinitionKey = processKey, BusinessKey = businessKey, TenantId = tenantId }, TestContext.Current.CancellationToken))
+            {
+                var startBody = await startResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+                Assert.True(startResponse.IsSuccessStatusCode, startBody);
+                using var started = JsonDocument.Parse(startBody);
+                instanceId = started.RootElement.GetProperty("id").GetGuid();
+            }
+
+            await page.GotoAsync($"{host.StudioBaseAddress}process-instances");
+            await SelectTenantAsync(page, tenantName, tenantId!);
+            await FillBoundInputAsync(page.GetByPlaceholder("Search instances..."), businessKey);
+            var instanceRow = page.Locator("tr").Filter(new() { HasText = businessKey }).First;
+            await instanceRow.WaitForAsync();
+
+            // While waiting on the user task the instance is Running/Suspended-capable, so a Suspend
+            // button is rendered. Suspend it through the UI...
+            await instanceRow.GetByRole(AriaRole.Button, new() { Name = "Suspend Instance", Exact = true }).ClickAsync();
+            await page.GetByText("Process instance suspended", new() { Exact = false }).WaitForAsync();
+            // ...and verify the persisted state is now Suspended via the authoritative API.
+            var suspended = await apiClient.GetFromJsonAsync<JsonElement>($"api/runtime/{instanceId}", TestContext.Current.CancellationToken);
+            Assert.Equal("Suspended", suspended.GetProperty("state").GetString());
+
+            // Resume it through the UI and verify the persisted state flips back to Running.
+            await instanceRow.GetByRole(AriaRole.Button, new() { Name = "Resume Instance", Exact = true }).ClickAsync();
+            await page.GetByText("Process instance resumed", new() { Exact = false }).WaitForAsync();
+            var resumed = await apiClient.GetFromJsonAsync<JsonElement>($"api/runtime/{instanceId}", TestContext.Current.CancellationToken);
+            Assert.Equal("Waiting", resumed.GetProperty("state").GetString());
+
+            // Delete it through the UI (confirm dialog), then verify the instance is gone via the API.
+            await instanceRow.GetByRole(AriaRole.Button, new() { Name = "Delete Instance", Exact = true }).ClickAsync();
+            var confirmDialog = page.GetByRole(AriaRole.Dialog);
+            await confirmDialog.GetByRole(AriaRole.Button, new() { Name = "Delete", Exact = true }).ClickAsync();
+            await page.GetByText("Process instance deleted", new() { Exact = false }).WaitForAsync();
+
+            var afterDelete = await apiClient.GetFromJsonAsync<JsonElement[]>($"api/runtime?tenantId={Uri.EscapeDataString(tenantId!)}", TestContext.Current.CancellationToken);
+            Assert.DoesNotContain(afterDelete ?? [], candidate => candidate.GetProperty("id").GetGuid() == instanceId);
+
+            Assert.Empty(browserErrors);
+        }
+        finally
+        {
+            await host.ClosePageAsync(page);
+            if (!string.IsNullOrWhiteSpace(formId) && !string.IsNullOrWhiteSpace(tenantId))
+                await apiClient.DeleteAsync($"api/forms/{Uri.EscapeDataString(formId)}?tenantId={Uri.EscapeDataString(tenantId)}", TestContext.Current.CancellationToken);
+        }
+    }
+
+    [Fact]
     public async Task Deployments_UploadValidRejectsInvalid_AndFindsDefinitionInProcessDefinitions()
     {
         Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");

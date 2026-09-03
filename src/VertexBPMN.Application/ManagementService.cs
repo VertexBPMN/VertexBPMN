@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
-using VertexBPMN.Domain.Interfaces.Repositories;
 
 namespace VertexBPMN.Application;
 
@@ -39,27 +38,17 @@ public class ManagementService : IManagementService
 
     public async ValueTask DeleteProcessInstanceAsync(Guid processInstanceId, string? tenantId = null, CancellationToken cancellationToken = default)
     {
-        var repository = _serviceProvider.GetRequiredService<IProcessInstanceRepository>();
-        var instance = await repository.GetByIdAsync(processInstanceId, cancellationToken);
+        var runtimeService = _serviceProvider.GetRequiredService<IRuntimeService>();
+        var instance = await runtimeService.GetByIdAsync(processInstanceId, cancellationToken);
         EnsureTenantAccess(instance, tenantId);
-        if (instance is null)
-            return;
-
-        await repository.DeleteAsync(processInstanceId, cancellationToken);
-        var eventSink = _serviceProvider.GetRequiredService<IProcessMiningEventSink>();
-        await eventSink.EmitAsync(new ProcessMiningEvent {
-            EventType = "ProcessDeleted",
-            ProcessInstanceId = processInstanceId.ToString(),
-            TenantId = instance.TenantId,
-            Timestamp = DateTimeOffset.UtcNow
-        }, cancellationToken);
+        if (instance is not null)
+            await runtimeService.DeleteAsync(processInstanceId, cancellationToken);
     }
 
     public ValueTask ExecuteJobAsync(Guid jobId, CancellationToken cancellationToken = default)
         => ValueTask.CompletedTask;
 
     private static readonly DateTime _startTime = DateTime.UtcNow;
-
     private static void EnsureTenantAccess(ProcessInstance? instance, string? tenantId)
     {
         if (instance is not null

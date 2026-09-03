@@ -2892,6 +2892,33 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
         }
     }
 
+    [Fact(DisplayName = "Phase 5 - Administration: remaining status pages render (extensions, sso, health, performance, analytics, compliance)")]
+    public async Task Administration_RemainingStatusPagesRender_ThroughTheRealEngine()
+    {
+        var page = await host.CreatePageAsync();
+        try
+        {
+            var routes = new[]
+            {
+                ("extensions", "Extensions"),
+                ("sso", "Single Sign-On (SSO)"),
+                ("health", "Health and Operations"),
+                ("performance", "Performance"),
+                ("analytics", "Process Analytics"),
+                ("compliance", "Compliance Evidence"),
+            };
+            foreach (var (route, heading) in routes)
+            {
+                await page.GotoAsync($"{host.StudioBaseAddress}{route}");
+                await page.GetByRole(AriaRole.Heading, new() { Name = heading, Exact = true }).WaitForAsync();
+            }
+        }
+        finally
+        {
+            await host.ClosePageAsync(page);
+        }
+    }
+
     [Fact(DisplayName = "Phase 5 - Administration: engine management + configuration load read-only")]
     public async Task Administration_ReadOnlyStatusPagesRender_ThroughTheRealEngine()
     {

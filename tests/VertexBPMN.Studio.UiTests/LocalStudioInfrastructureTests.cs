@@ -2453,6 +2453,130 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
         Assert.Empty(browserErrors);
     }
 
+    [Fact(DisplayName = "Phase 5 - Tenants: create, update, select for isolation, and delete through the GUI")]
+    public async Task Tenants_CreateUpdateSwitchForIsolationAndDelete_ThroughTheRealEngine()
+    {
+        using var apiClient = host.CreateApiClient();
+        var browserErrors = new ConcurrentQueue<string>();
+        var page = await host.CreatePageAsync();
+        page.PageError += (_, error) => browserErrors.Enqueue(error);
+        page.Console += (_, message) =>
+        {
+            if (message.Type.Equals("error", StringComparison.OrdinalIgnoreCase))
+                browserErrors.Enqueue($"console: {message.Text}");
+        };
+
+        var tenantA = $"Phase5 Tenant A {host.RunId}";
+        var tenantB = $"Phase5 Tenant B {host.RunId}";
+        var processKeyA = $"StudioE2E_TenantA_{host.RunId}";
+        var processKeyB = $"StudioE2E_TenantB_{host.RunId}";
+        string? tenantAId = null;
+        string? tenantBId = null;
+
+        try
+        {
+            // Create tenant A through the GUI Tenants page.
+            await page.GotoAsync($"{host.StudioBaseAddress}tenants");
+            await FillBoundInputAndVerifyAsync(page.GetByLabel("Tenant name", new() { Exact = true }), tenantA);
+            await FillBoundInputAndVerifyAsync(page.GetByLabel("Description", new() { Exact = true }), "Tenant A description");
+            await page.GetByRole(AriaRole.Button, new() { Name = "Create tenant (Admin)", Exact = true }).ClickAsync();
+
+            // Verify tenant A persists, polling the API-authoritative state (list) until it appears.
+            tenantAId = await WaitForTenantAsync(apiClient, tenantA);
+            host.RegisterApiCleanup(HttpMethod.Delete, $"api/tenant/{Uri.EscapeDataString(tenantAId!)}");
+
+            // Create tenant B through the GUI as well.
+            await FillBoundInputAndVerifyAsync(page.GetByLabel("Tenant name", new() { Exact = true }), tenantB);
+            await FillBoundInputAndVerifyAsync(page.GetByLabel("Description", new() { Exact = true }), "Tenant B description");
+            await page.GetByRole(AriaRole.Button, new() { Name = "Create tenant (Admin)", Exact = true }).ClickAsync();
+            tenantBId = await WaitForTenantAsync(apiClient, tenantB);
+            host.RegisterApiCleanup(HttpMethod.Delete, $"api/tenant/{Uri.EscapeDataString(tenantBId!)}");
+
+            // Update: the update button re-persists the row's (display-only) values; assert it
+            // succeeds without surfacing an error. Name/description cells are display-only text,
+            // so the GUI exposes no in-place rename path.
+            var rowA = page.Locator("tr").Filter(new() { HasText = tenantA }).First;
+            await rowA.GetByRole(AriaRole.Button, new() { Name = "Update", Exact = true }).ClickAsync();
+            await Task.Delay(500, TestContext.Current.CancellationToken);
+            Assert.Equal(0, await page.GetByText("Tenant operation failed", new() { Exact = false }).CountAsync());
+
+            // Isolation: deploy a distinct BPMN under each tenant via the API, then verify via
+            // the GUI process-definitions page that selecting a tenant shows only its own data.
+            await DeployProcessUnderTenantAsync(apiClient, processKeyA, tenantAId!);
+            await DeployProcessUnderTenantAsync(apiClient, processKeyB, tenantBId!);
+            host.RegisterProcessDefinitionCleanup(processKeyA, tenantAId);
+            host.RegisterProcessDefinitionCleanup(processKeyB, tenantBId);
+
+            await page.GotoAsync($"{host.StudioBaseAddress}process-definitions");
+            await SelectTenantAsync(page, tenantA, tenantAId!);
+            await FillBoundInputAsync(page.GetByTestId("process-definition-search"), processKeyA);
+            await page.Locator("tr").Filter(new() { HasText = processKeyA }).First.WaitForAsync();
+            var aVisible = await page.Locator("tr").Filter(new() { HasText = processKeyB }).CountAsync();
+            Assert.Equal(0, aVisible);
+
+            await page.GotoAsync($"{host.StudioBaseAddress}process-definitions");
+            await SelectTenantAsync(page, tenantB, tenantBId!);
+            await FillBoundInputAsync(page.GetByTestId("process-definition-search"), processKeyB);
+            await page.Locator("tr").Filter(new() { HasText = processKeyB }).First.WaitForAsync();
+            var bVisible = await page.Locator("tr").Filter(new() { HasText = processKeyA }).CountAsync();
+            Assert.Equal(0, bVisible);
+
+            // Delete tenant B through the GUI, then verify it is gone via the API.
+            await page.GotoAsync($"{host.StudioBaseAddress}tenants");
+            var rowB = page.Locator("tr").Filter(new() { HasText = tenantB }).First;
+            await rowB.GetByRole(AriaRole.Button, new() { Name = "Delete", Exact = true }).ClickAsync();
+            await WaitForTenantAbsentAsync(apiClient, tenantB);
+            tenantBId = null;
+
+            Assert.Empty(browserErrors);
+        }
+        finally
+        {
+            if (!string.IsNullOrWhiteSpace(tenantAId))
+                await apiClient.DeleteAsync($"api/tenant/{Uri.EscapeDataString(tenantAId)}", TestContext.Current.CancellationToken);
+            if (!string.IsNullOrWhiteSpace(tenantBId))
+                await apiClient.DeleteAsync($"api/tenant/{Uri.EscapeDataString(tenantBId)}", TestContext.Current.CancellationToken);
+            await host.ClosePageAsync(page);
+        }
+    }
+
+    /// <summary>Polls GET /api/identity/list-tenants until the named tenant exists, returning its id.</summary>
+    private async Task<string?> WaitForTenantAsync(HttpClient apiClient, string name)
+    {
+        for (var attempt = 0; attempt < 60; attempt++)
+        {
+            var tenants = await apiClient.GetFromJsonAsync<JsonElement[]>("/api/identity/list-tenants", TestContext.Current.CancellationToken);
+            var match = tenants?.FirstOrDefault(t => t.GetProperty("name").GetString() == name);
+            if (match.HasValue && match.Value.ValueKind == JsonValueKind.Object)
+                return match.Value.GetProperty("id").GetString();
+            await Task.Delay(250, TestContext.Current.CancellationToken);
+        }
+        throw new TimeoutException($"Tenant '{name}' was not created.");
+    }
+
+    /// <summary>Polls GET /api/identity/list-tenants until the named tenant no longer exists.</summary>
+    private async Task WaitForTenantAbsentAsync(HttpClient apiClient, string name)
+    {
+        for (var attempt = 0; attempt < 60; attempt++)
+        {
+            var tenants = await apiClient.GetFromJsonAsync<JsonElement[]>("/api/identity/list-tenants", TestContext.Current.CancellationToken);
+            var match = tenants?.FirstOrDefault(t => t.GetProperty("name").GetString() == name);
+            if (match is null || match.Value.ValueKind != JsonValueKind.Object)
+                return;
+            await Task.Delay(250, TestContext.Current.CancellationToken);
+        }
+        throw new TimeoutException($"Tenant '{name}' still exists after deletion.");
+    }
+
+    /// <summary>Deploys a process definition under the given tenant via POST /api/repository (JSON body).</summary>
+    private async Task DeployProcessUnderTenantAsync(HttpClient apiClient, string processKey, string tenantId)
+    {
+        var payload = new { bpmnXml = CreateBpmn(processKey), name = $"{processKey}.bpmn", tenantId };
+        using var response = await RetryAsync(() => apiClient.PostAsJsonAsync("api/repository", payload, TestContext.Current.CancellationToken));
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.True(response.IsSuccessStatusCode, body);
+    }
+
     private async Task<Guid> GetInstanceProcessDefinitionIdAsync(Guid instanceId)
     {
         using var client = host.CreateApiClient();

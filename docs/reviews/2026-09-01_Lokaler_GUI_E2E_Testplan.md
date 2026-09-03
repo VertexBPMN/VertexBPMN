@@ -25,7 +25,7 @@ noch fehlschlägt oder der im Plan geforderte Use Case nur teilweise abgedeckt i
 | n8n-Import | ✅ | Reales n8n-JSON mit Webhook und HTTP-Node wird im Browser importiert; Mapping-Bericht und fehlende Credential als `NeedsReview` werden geprüft. Das erzeugte BPMN enthält Diagrammdaten, wird validiert, deployt, aus dem Repository neu geladen und exportiert. | — |
 | Phase 3: Prozessverwaltung | 🟢 | Deployments (Upload gültig/ungültig), Process Definitions (View BPMN, Versionsdialog, Löschen mit Reload-Persistenz), Process Instances (Auflisten, Suchen, Details, Suspend/Resume/Löschen mit Persistenz), Execution Details (Jobs, Incidents, Variablen) und Fehler-/Event-Log-Pfade sind lokal grün nachgewiesen. | Pagination. |
 | Phase 4: Erweiterte Runtime-Funktionen | 🟢 | Simulation (Run, Summary, Variable Trace, Szenario-CRUD, Vergleichen), Messages/Signals (Korrelation, Broadcast), Debugging (Session, Breakpoint, Step Over, Continue, Variablen, Visualisierung, Timeline-Replay) und Migration (Preview, Execute, Status, Snapshot/Restore, Rollback, Ablehnung unzulässiger Migration) sind lokal grün nachgewiesen. | — |
-| Phase 5: Administration und Integrationen | 🟢 | Tenants (CRUD + Isolation), Credentials (Secret nie ausgegeben, Rotation, Löschen), Connectors (Create/Test/Toggle/Delete), Workflow Triggers (One-Time-Secret, Auslösen, Toggle, Löschen), Feature Flags (Toggle persistiert) sowie Engine Management/Configuration (schreibgeschützt) sind lokal grün nachgewiesen. | Weitere Admin-Seiten: Extensions/Plugin-Lifecycle, SSO, Health/Performance/Analytics/Compliance, Analytics-Training. |
+| Phase 5: Administration und Integrationen | 🟢 | Tenants (CRUD + Isolation), Credentials (Secret nie ausgegeben, Rotation, Löschen), Connectors (Create/Test/Toggle/Delete), Workflow Triggers (One-Time-Secret, Auslösen, Toggle, Löschen), Feature Flags (Toggle persistiert) sowie Engine Management/Configuration und Extensions/SSO/Health/Performance/Analytics/Compliance (laden fehlerfrei) sind lokal grün nachgewiesen. | Analytics-Training/Export, SSO-/Extensions-Konfiguration (mutierende Aktionen). |
 | Phase 6: Fehler-, Navigation- und Qualitätsfälle | 🟡 | Browserfehler werden in den vorhandenen Real-E2E-Tests gesammelt; der Runner erzeugt einen HTML-Bericht, einzelne Fehlerpfade erzeugen Screenshots und Diagnoseausgaben. | Systematische HTTP-/Timeout-/Mehrfachklick-/Reload-Fehlerfälle, alle Routen, kleiner Viewport, vollständige Traces/Request- und Log-Artefakte. |
 
 ### Bereits grün bestätigte Real-E2E-Szenarien
@@ -306,14 +306,13 @@ Für alle persistierenden Use Cases gilt: Ein erfolgreicher HTTP-Aufruf reicht n
 - Trigger registrieren (One-Time-Secret-Alert), auslösen (Invocationszähler), aktivieren/deaktivieren und löschen.
 - Secret-Prüfung und ungültige Requests testen.
 
-### Weitere Administrationsseiten — 🟡 teilweise erfasst
+### Weitere Administrationsseiten — 🟢 Seiten laden fehlerfrei, mutierende Aktionen teils offen
 
-- Engine Management (schreibgeschützter Status) und Configuration (Capabilities) — ✅ laden fehlerfrei.
+- Engine Management (schreibgeschützter Status), Configuration (Capabilities), Extensions, SSO, Health, Performance, Analytics und Compliance — ✅ alle Seiten laden fehlerfrei (Headings rendern, keine Abstürze).
 - Feature Flags — ✅ Umschalten über die GUI persistiert über die API und wird zurückgesetzt.
-- Extensions und Plugin-Lifecycle: laden, aktivieren, deaktivieren und entladen — ⬜ offen.
-- SSO-Konfiguration beziehungsweise klarer nicht-konfigurierter Zustand — ⬜ offen.
-- Health, Performance, Analytics und Compliance — ⬜ offen.
-- Analytics-Training und Export der Trainingsdaten — ⬜ offen.
+- Extensions und Plugin-Lifecycle: laden, aktivieren, deaktivieren und entladen — 🟡 laden geprüft, Lifecycle-Aktionen offen.
+- SSO-Konfiguration beziehungsweise klarer nicht-konfigurierter Zustand — 🟡 Seite rendert, Konfiguration offen.
+- Analytics-Training und Export der Trainingsdaten — ⬜ offen (benötigt abgeschlossene Prozessinstanzen).
 
 ## Phase 6: Fehler-, Navigations- und Qualitätsfälle — 🟡 begonnen
 

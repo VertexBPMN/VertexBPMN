@@ -78,7 +78,10 @@ public static class SecurityConfiguration
             options.AddPolicy("ProcessManager", policy => 
                 policy.RequireClaim(ClaimTypes.Role, "Admin", "ProcessManager"));
             
-            options.AddPolicy("ReadOnly", policy => 
+            options.AddPolicy("ReadOnly", policy =>
+                policy.RequireClaim(ClaimTypes.Role, "Admin", "ProcessManager", "ReadOnly"));
+
+            options.AddPolicy("ProcessViewer", policy =>
                 policy.RequireClaim(ClaimTypes.Role, "Admin", "ProcessManager", "ReadOnly"));
 
             options.AddPolicy("ApiKeyRequired", policy =>

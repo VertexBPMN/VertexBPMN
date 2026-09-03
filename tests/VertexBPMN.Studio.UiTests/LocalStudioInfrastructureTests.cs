@@ -2309,6 +2309,193 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
         }
     }
 
+    [Fact(DisplayName = "Phase 4 - Migration: preview, execute + status, snapshot/restore, rollback, and reject invalid migration")]
+    public async Task Migration_PreviewExecuteStatusSnapshotRestoreRollback_ThroughTheRealEngine()
+    {
+        using var apiClient = host.CreateApiClient();
+        var browserErrors = new ConcurrentQueue<string>();
+        var page = await host.CreatePageAsync();
+        page.PageError += (_, error) => browserErrors.Enqueue(error);
+        page.Console += (_, message) =>
+        {
+            if (message.Type.Equals("error", StringComparison.OrdinalIgnoreCase))
+                browserErrors.Enqueue($"console: {message.Text}");
+        };
+        page.Dialog += (_, dialog) => dialog.AcceptAsync();
+
+        // Deploy a source and a target definition of the "same" process (compatible: the mapped
+        // user task keeps the same activity id, only the task name differs). The GUI preview and
+        // execute drive the real, durable migration engine.
+        var sourceKey = $"mig-src-{host.RunId}";
+        var targetKey = $"mig-tgt-{host.RunId}";
+
+        async Task<Guid> DeployAsync(string key, string taskId, string taskName)
+        {
+            var bpmn = $$"""
+                <?xml version="1.0" encoding="UTF-8"?>
+                <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                             targetNamespace="https://vertexbpmn.dev/e2e">
+                  <process id="{{key}}" isExecutable="true">
+                    <startEvent id="start" />
+                    <sequenceFlow id="to-task" sourceRef="start" targetRef="{{taskId}}" />
+                    <userTask id="{{taskId}}" name="{{taskName}}" />
+                    <sequenceFlow id="to-end" sourceRef="{{taskId}}" targetRef="end" />
+                    <endEvent id="end" />
+                  </process>
+                </definitions>
+                """;
+            using var response = await apiClient.PostAsJsonAsync(
+                "api/repository",
+                new { bpmnXml = bpmn, name = $"{key}.bpmn", tenantId = (string?)null },
+                TestContext.Current.CancellationToken);
+            var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+            Assert.True(response.IsSuccessStatusCode, body);
+            return JsonDocument.Parse(body).RootElement.GetProperty("id").GetGuid();
+        }
+
+        var sourceId = await DeployAsync(sourceKey, "review-v1", "Review order");
+        var targetId = await DeployAsync(targetKey, "review-v2", "Review order");
+
+        // Two instances on the source; each parks on the user task review-v1 (review-1).
+        // Instance A is migrated by the GUI execute (step C); instance B is started AFTER
+        // that execute so it remains the only source instance for a separate API execution
+        // (step D) whose snapshot rollback (step F) we can observe durably.
+        Guid instanceA;
+        using (var start = await apiClient.PostAsJsonAsync(
+                   "api/runtime/start",
+                   new { processDefinitionKey = sourceKey, businessKey = $"mig-a-{host.RunId}", variables = new Dictionary<string, object>(), tenantId = (string?)null },
+                   TestContext.Current.CancellationToken))
+        {
+            var body = await start.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+            Assert.True(start.IsSuccessStatusCode, body);
+            instanceA = JsonDocument.Parse(body).RootElement.GetProperty("id").GetGuid();
+        }
+        await WaitForTaskActivityAsync(instanceA, "review-v1");
+
+        await page.GotoAsync($"{host.StudioBaseAddress}migration");
+
+        // A) Unzulässige Migration: non-GUID source/target ids must be rejected with a clear
+        //    user-facing error, not a crash.
+        await FillBoundInputAndVerifyAsync(page.GetByLabel("Source process definition id", new() { Exact = true }), "not-a-guid");
+        await FillBoundInputAndVerifyAsync(page.GetByLabel("Target process definition id", new() { Exact = true }), "also-not-a-guid");
+        await page.GetByRole(AriaRole.Button, new() { Name = "Preview migration", Exact = true }).ClickAsync();
+        await page.GetByText("Migration preview failed", new() { Exact = false }).WaitForAsync();
+
+        // B) Valid preview: fill the real source/target ids and preview -> shows the plan.
+        await FillBoundInputAndVerifyAsync(page.GetByLabel("Source process definition id", new() { Exact = true }), sourceId.ToString());
+        await FillBoundInputAndVerifyAsync(page.GetByLabel("Target process definition id", new() { Exact = true }), targetId.ToString());
+        await page.GetByRole(AriaRole.Button, new() { Name = "Preview migration", Exact = true }).ClickAsync();
+        await WaitForTextInPageAsync(page, "Migration preview");
+        await WaitForTextInPageAsync(page, "qualifiedPlanId");
+
+        // C) Execute through the GUI (confirm dialog accepted). Instance A must move to the
+        //    target activity and bind to the target definition.
+        await page.GetByRole(AriaRole.Button, new() { Name = "Execute migration (ProcessManager)", Exact = true }).ClickAsync();
+        await WaitForTaskActivityAsync(instanceA, "review-v2");
+        Assert.Equal(targetId, await GetInstanceProcessDefinitionIdAsync(instanceA));
+
+        // D) Status abrufen: create an execution via the API for instance B (started now,
+        //    still on the source after the GUI execute above) and query its status
+        //    through the GUI Get status button.
+        Guid instanceB;
+        using (var startB = await apiClient.PostAsJsonAsync(
+                   "api/runtime/start",
+                   new { processDefinitionKey = sourceKey, businessKey = $"mig-b-{host.RunId}", variables = new Dictionary<string, object>(), tenantId = (string?)null },
+                   TestContext.Current.CancellationToken))
+        {
+            var body = await startB.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+            Assert.True(startB.IsSuccessStatusCode, body);
+            instanceB = JsonDocument.Parse(body).RootElement.GetProperty("id").GetGuid();
+        }
+        await WaitForTaskActivityAsync(instanceB, "review-v1");
+
+        Guid executionId;
+        using (var planResponse = await apiClient.PostAsJsonAsync(
+                   "api/migration/plan",
+                   new { fromProcessKey = sourceKey, toProcessKey = targetKey, options = new { } },
+                   TestContext.Current.CancellationToken))
+        {
+            var planBody = await planResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+            Assert.True(planResponse.IsSuccessStatusCode, planBody);
+            var planId = JsonDocument.Parse(planBody).RootElement.GetProperty("id").GetGuid();
+            using var execResponse = await apiClient.PostAsync(
+                $"api/migration/execute/{planId}", null, TestContext.Current.CancellationToken);
+            var execBody = await execResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+            Assert.True(execResponse.IsSuccessStatusCode, execBody);
+            executionId = JsonDocument.Parse(execBody).RootElement.GetProperty("id").GetGuid();
+        }
+        await WaitForTaskActivityAsync(instanceB, "review-v2");
+
+        await FillBoundInputAndVerifyAsync(page.GetByLabel("Migration id", new() { Exact = true }), executionId.ToString());
+        await page.GetByRole(AriaRole.Button, new() { Name = "Get status", Exact = true }).ClickAsync();
+        await WaitForTextInPageAsync(page, "Live migration result");
+        await WaitForTextInPageAsync(page, "\"status\"");
+
+        // E) Snapshot + Restore: create a snapshot of the migrated instance A through the GUI,
+        //    then restore it.
+        await FillBoundInputAndVerifyAsync(page.GetByLabel("Process instance id", new() { Exact = true }), instanceA.ToString());
+        await page.GetByRole(AriaRole.Button, new() { Name = "Create snapshot", Exact = true }).ClickAsync();
+        await Task.Delay(500, TestContext.Current.CancellationToken);
+        await WaitForTextInPageAsync(page, "Live migration result");
+        var snapshotId = await ReadSnapshotIdFromLastPreAsync(page);
+        Assert.NotEqual(Guid.Empty, snapshotId);
+
+        await FillBoundInputAndVerifyAsync(page.GetByLabel("Snapshot id", new() { Exact = true }), snapshotId.ToString());
+        await page.GetByRole(AriaRole.Button, new() { Name = "Restore snapshot (ProcessManager)", Exact = true }).ClickAsync();
+        await WaitForTextInPageAsync(page, "restored");
+
+        // F) Rollback: roll the execution back through the GUI; instance B returns to review-1.
+        await FillBoundInputAndVerifyAsync(page.GetByLabel("Migration id", new() { Exact = true }), executionId.ToString());
+        await page.GetByRole(AriaRole.Button, new() { Name = "Rollback (ProcessManager)", Exact = true }).ClickAsync();
+        await WaitForTextInPageAsync(page, "rollback");
+        await WaitForTaskActivityAsync(instanceB, "review-v1");
+
+        Assert.Empty(browserErrors);
+    }
+
+    private async Task<Guid> GetInstanceProcessDefinitionIdAsync(Guid instanceId)
+    {
+        using var client = host.CreateApiClient();
+        using var response = await client.GetAsync($"api/runtime/{instanceId}", TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.True(response.IsSuccessStatusCode, body);
+        return JsonDocument.Parse(body).RootElement.GetProperty("processDefinitionId").GetGuid();
+    }
+
+    private async Task WaitForTaskActivityAsync(Guid instanceId, string expectedActivityId)
+    {
+        for (var attempt = 0; attempt < 60; attempt++)
+        {
+            if (string.Equals(await GetTaskActivityAsync(instanceId), expectedActivityId, StringComparison.OrdinalIgnoreCase))
+                return;
+            await Task.Delay(250, TestContext.Current.CancellationToken);
+        }
+
+        throw new TimeoutException($"Instance {instanceId} did not reach task activity '{expectedActivityId}'.");
+    }
+
+    private async Task<string?> GetTaskActivityAsync(Guid instanceId)
+    {
+        using var client = host.CreateApiClient();
+        using var response = await client.GetAsync(
+            $"api/task?processInstanceId={instanceId}", TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.True(response.IsSuccessStatusCode, body);
+        var tasks = JsonDocument.Parse(body).RootElement;
+        if (tasks.ValueKind != JsonValueKind.Array || tasks.GetArrayLength() == 0)
+            return null;
+        if (tasks[0].TryGetProperty("activityId", out var activity))
+            return activity.GetString();
+        return null;
+    }
+
+    private async Task<Guid> ReadSnapshotIdFromLastPreAsync(IPage page)
+    {
+        var text = await page.Locator("pre").Last.InnerTextAsync();
+        using var doc = JsonDocument.Parse(text);
+        return doc.RootElement.GetProperty("id").GetGuid();
+    }
+
     private async Task<string> ReadFilledValueAsync(ILocator input)
     {
         for (var attempt = 0; attempt < 20; attempt++)

@@ -1861,7 +1861,7 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
 
             await FillBoundInputAsync(page.GetByLabel("Process definition id", new() { Exact = true }), processKey);
             await FillBoundInputAsync(page.GetByLabel("Maximum steps", new() { Exact = true }), "50");
-            await FillBoundInputAsync(page.GetByLabel("BPMN XML", new() { Exact = true }), CreateBpmn(processKey));
+            await SetBoundInputFastAsync(page.GetByLabel("BPMN XML", new() { Exact = true }), CreateBpmn(processKey));
 
             // Verify the bound inputs actually registered their values before submitting the GUI.
             Assert.Equal(processKey, await page.GetByLabel("Process definition id", new() { Exact = true }).InputValueAsync());
@@ -2398,10 +2398,10 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
         //    still on the source after the GUI execute above) and query its status
         //    through the GUI Get status button.
         Guid instanceB;
-        using (var startB = await apiClient.PostAsJsonAsync(
+        using (var startB = await RetryAsync(() => apiClient.PostAsJsonAsync(
                    "api/runtime/start",
                    new { processDefinitionKey = sourceKey, businessKey = $"mig-b-{host.RunId}", variables = new Dictionary<string, object>(), tenantId = (string?)null },
-                   TestContext.Current.CancellationToken))
+                   TestContext.Current.CancellationToken)))
         {
             var body = await startB.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
             Assert.True(startB.IsSuccessStatusCode, body);
@@ -2748,26 +2748,46 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
     /// </summary>
     private static async Task SetBoundInputFastAsync(ILocator input, string value)
     {
-        await input.ScrollIntoViewIfNeededAsync();
-        await input.EvaluateAsync(
-            "(el, v) => { const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set ?? Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set; if (setter) setter.call(el, v); el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }",
-            value);
-        await input.BlurAsync();
-        await Task.Delay(500, TestContext.Current.CancellationToken);
+        for (var attempt = 0; attempt < 40; attempt++)
+        {
+            try
+            {
+                await input.ScrollIntoViewIfNeededAsync();
+                await input.EvaluateAsync(
+                    "(el, v) => { const proto = el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype; const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set; if (setter) setter.call(el, v); el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }",
+                    value);
+
+                // Confirm the value actually landed; under load the Blazor re-render can reset it.
+                if (string.Equals(await input.InputValueAsync(), value, StringComparison.Ordinal))
+                    return;
+            }
+            catch (PlaywrightException)
+            {
+                // The element was detached/re-created mid-fill; the locator re-resolves on retry.
+            }
+
+            await Task.Delay(300, TestContext.Current.CancellationToken);
+        }
+
+        throw new InvalidOperationException(
+            $"Could not set large bound field to a value of length {value.Length} after 40 attempts.");
     }
 
     private async Task SelectTenantAsync(IPage page, string tenantName, string tenantId)
     {
         var tenantSelector = page.GetByRole(AriaRole.Combobox, new() { Name = "Tenant", Exact = true });
-        for (var loadAttempt = 0; loadAttempt < 2 && !await tenantSelector.IsEnabledAsync(); loadAttempt++)
+        var enabled = await tenantSelector.IsEnabledAsync();
+        for (var attempt = 0; attempt < 480 && !enabled; attempt++)
         {
-            for (var attempt = 0; attempt < 240 && !await tenantSelector.IsEnabledAsync(); attempt++)
-                await Task.Delay(250, TestContext.Current.CancellationToken);
-
-            if (!await tenantSelector.IsEnabledAsync() && loadAttempt == 0)
-                await page.ReloadAsync(new() { WaitUntil = WaitUntilState.DOMContentLoaded });
+            await Task.Delay(250, TestContext.Current.CancellationToken);
+            enabled = await tenantSelector.IsEnabledAsync();
         }
-        Assert.True(await tenantSelector.IsEnabledAsync(), "Tenant selector did not finish loading.");
+        if (!enabled)
+        {
+            var bodyText = await page.Locator("body").InnerTextAsync();
+            throw new InvalidOperationException(
+                $"Tenant selector did not finish loading. Page text: {bodyText[..Math.Min(bodyText.Length, 1200)]}");
+        }
         var option = page.GetByRole(AriaRole.Option, new() { Name = tenantName, Exact = true });
         for (var attempt = 0; attempt < 30; attempt++)
         {
@@ -2794,6 +2814,31 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
             $"Available options: {string.Join(" | ", options)}. " +
             $"Recent API logs: {string.Join(" | ", host.ApiLogs.TakeLast(100))}. " +
             $"Recent Studio logs: {string.Join(" | ", host.StudioLogs.TakeLast(100))}");
+    }
+
+    /// <summary>Retries a transient HTTP operation, tolerating connection hiccups under full-suite load.</summary>
+    private static async Task<HttpResponseMessage> RetryAsync(
+        Func<Task<HttpResponseMessage>> operation, int attempts = 6)
+    {
+        for (var attempt = 1; attempt <= attempts; attempt++)
+        {
+            try
+            {
+                var response = await operation();
+                if (!response.IsSuccessStatusCode && attempt < attempts)
+                {
+                    await Task.Delay(500, TestContext.Current.CancellationToken);
+                    continue;
+                }
+                return response;
+            }
+            catch (HttpRequestException) when (attempt < attempts)
+            {
+                await Task.Delay(500, TestContext.Current.CancellationToken);
+            }
+        }
+
+        throw new InvalidOperationException("RetryAsync exhausted without a successful response.");
     }
 
     private static string CreateBpmn(string processKey) => $$"""

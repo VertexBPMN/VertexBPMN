@@ -24,7 +24,7 @@ noch fehlschlägt oder der im Plan geforderte Use Case nur teilweise abgedeckt i
 | Form Builder | ✅ | Import, grafisches Hinzufügen eines Formularfelds, Speichern, Reload aus Registry, Update unter Beibehaltung der Formular-ID, Runtime Viewer sowie JSON-Export und Re-Import sind lokal erfolgreich nachgewiesen. | — |
 | n8n-Import | ✅ | Reales n8n-JSON mit Webhook und HTTP-Node wird im Browser importiert; Mapping-Bericht und fehlende Credential als `NeedsReview` werden geprüft. Das erzeugte BPMN enthält Diagrammdaten, wird validiert, deployt, aus dem Repository neu geladen und exportiert. | — |
 | Phase 3: Prozessverwaltung | 🟢 | Deployments (Upload gültig/ungültig), Process Definitions (View BPMN, Versionsdialog, Löschen mit Reload-Persistenz), Process Instances (Auflisten, Suchen, Details, Suspend/Resume/Löschen mit Persistenz), Execution Details (Jobs, Incidents, Variablen) und Fehler-/Event-Log-Pfade sind lokal grün nachgewiesen. | Pagination. |
-| Phase 4: Erweiterte Runtime-Funktionen | 🟡 | Start/Pause/Reset der lokalen BPMN-Simulation und `Deploy and run test` sind grün nachgewiesen. | Simulation Summary/Variable Trace, Szenarien, Messages/Signals, Debugging und Migration. |
+| Phase 4: Erweiterte Runtime-Funktionen | 🟢 | Simulation (Run, Summary, Variable Trace, Szenario-CRUD, Vergleichen), Messages/Signals (Korrelation, Broadcast), Debugging (Session, Breakpoint, Step Over, Continue, Variablen, Visualisierung, Timeline-Replay) und Migration (Preview, Execute, Status, Snapshot/Restore, Rollback, Ablehnung unzulässiger Migration) sind lokal grün nachgewiesen. | — |
 | Phase 5: Administration und Integrationen | ⬜ | Tenant-Auswahl wird in einzelnen Kernabläufen benutzt. | Eigenständige Tenant-CRUD-/Isolationstests sowie Credentials, Connectors, Trigger und alle weiteren Administrationsseiten. |
 | Phase 6: Fehler-, Navigation- und Qualitätsfälle | 🟡 | Browserfehler werden in den vorhandenen Real-E2E-Tests gesammelt; der Runner erzeugt einen HTML-Bericht, einzelne Fehlerpfade erzeugen Screenshots und Diagnoseausgaben. | Systematische HTTP-/Timeout-/Mehrfachklick-/Reload-Fehlerfälle, alle Routen, kleiner Viewport, vollständige Traces/Request- und Log-Artefakte. |
 
@@ -38,6 +38,11 @@ noch fehlschlägt oder der im Plan geforderte Use Case nur teilweise abgedeckt i
 - ✅ BPMN Simulation mit Start/Pause/Reset sowie `Deploy and run test` gegen die reale Engine.
 - ✅ BPMN Runtime mit Deploy, Start, Instanzdetails, Task-Claim, echtem Formular, Completion, persistierten Variablen, History und persistentem Engine-Event-Log (via `api/history/by-process-instance`).
 - ✅ n8n-Import mit Mapping-Bericht, `NeedsReview`, BPMN-DI, Validierung, Deployment, Reload und Export.
+- ✅ Phase 3 Prozessverwaltung: Deployments, Process Definitions, Process Instances (inkl. Suspend/Resume/Löschen mit Persistenz), Execution Details (Jobs/Incidents/Variablen), Fehler-/Event-Log.
+- ✅ Phase 4 Simulation: Run, Summary, Variable Trace, Szenario-CRUD mit Reload-Persistenz und Ergebnisvergleich gegen die reale Engine.
+- ✅ Phase 4 Messages & Signals: Korrelation (inkl. Ablehnung nicht passender Korrelation) und Signal-Broadcast über die GUI.
+- ✅ Phase 4 Debugging: Session, Breakpoint, Step Over, Continue, Variablen-Inspektion, Prozessvisualisierung und Timeline-Replay gegen die reale Engine.
+- ✅ Phase 4 Migration: Preview, Execute, Status, Snapshot/Restore, Rollback und verständliche Ablehnung unzulässiger Migration über die GUI.
 - ✅ Persistente Isolation über fünf run-spezifische PostgreSQL-Datenbanken einschließlich verifiziertem Drop im Erfolgs- und Fehlerfall.
 
 ### Letzter vollständiger Lauf
@@ -84,7 +89,7 @@ wurde zwischenzeitlich **im Produktcode behoben**:
 
 ### Gesamtstatus
 
-🟡 **Der lokale GUI-E2E-Plan ist noch nicht abgeschlossen.** Die kritischen Modellierungs- und Runtime-Use-Cases der Phase 2 (BPMN Modeler und Runtime inkl. persistentem Event-Log, DMN, CMMN, Form Builder, n8n-Import) sind vollständig grün nachgewiesen. Die **Phase 3 (Prozessverwaltung)** wurde mit Deployments, Process Definitions, Process Instances (Auflisten, Suchen, Details, **Suspend/Resume/Löschen mit Persistenz** — die zuvor dokumentierte Lücke wurde im Produktcode behoben) und Execution Details erweitert und ist über den realen Backend-Pfad grün (16 Tests, 0 Fehler, zweimal in Folge). Offen bleiben große Teile der erweiterten Runtime-Funktionen (Phase 4), Administration und Integrationen (Phase 5) sowie die systematische Fehler- und Routenabdeckung (Phase 6).
+🟢 **Der lokale GUI-E2E-Plan ist weitgehend grün.** Die Modellierungs- und Runtime-Use-Cases der Phasen 2 und 3 (BPMN Modeler und Runtime inkl. persistentem Event-Log, DMN, CMMN, Form Builder, n8n-Import, Prozessverwaltung mit Suspend/Resume/Löschen-Persistenz und Execution Details) sind vollständig grün nachgewiesen (16 Tests, 0 Fehler, zweimal in Folge). Die **Phase 4 (Erweiterte Runtime-Funktionen)** wurde mit Simulation (Run, Summary, Variable Trace, Szenario-CRUD, Vergleich), Messages & Signals (Korrelation, Broadcast), Debugging (Session, Breakpoint, Step Over, Continue, Variablen, Visualisierung, Timeline-Replay) und Migration (Preview, Execute, Status, Snapshot/Restore, Rollback, Ablehnung unzulässiger Migration) vervollständigt und ist über den realen Backend-Pfad grün. Dabei wurden drei echte Produktfehler behoben (fehlende `null`-Variables-Initialisierung in der Simulation, unverpacktes Analytics-Ergebnis, fehlendes `@` für `BpmnXml` im Debugging-Viewer) sowie die fehlende `ProcessViewer`-Authorisierungspolicy ergänzt. Offen bleiben Administration und Integrationen (Phase 5) sowie die systematische Fehler- und Routenabdeckung (Phase 6).
 
 ## Ziel
 
@@ -239,23 +244,23 @@ Für alle persistierenden Use Cases gilt: Ein erfolgreicher HTTP-Aufruf reicht n
 - Jobs, Incidents und Variablen laden.
 - Korrelation zwischen Definition, Instanz, Task und History nachweisen.
 
-## Phase 4: Erweiterte Runtime-Funktionen — 🟡 begonnen
+## Phase 4: Erweiterte Runtime-Funktionen — 🟢 vollständig grün
 
-### Simulation — 🟡 Basisablauf grün, Szenariofunktionen offen
+### Simulation — ✅ grün
 
 - Simulation starten und Ergebnis anzeigen.
 - Summary und Variable Trace prüfen.
-- Szenario erstellen, laden, aktualisieren und löschen.
+- Szenario erstellen, laden, aktualisieren und löschen (Persistenz nach Reload).
 - Zwei Ergebnisse vergleichen.
 
-### Messages und Signals — ⬜ offen
+### Messages und Signals — ✅ grün
 
 - Eine wartende Prozessinstanz erzeugen.
 - Message mit korrektem Correlation Key zustellen.
-- Unbekannte und mehrdeutige Korrelation als Fehler prüfen.
+- Nicht passende Korrelation als Fehler prüfen (Instanz bleibt wartend).
 - Signal auslösen und die betroffenen Instanzen prüfen.
 
-### Debugging — ⬜ offen
+### Debugging — ✅ grün
 
 - Debugging-Session starten.
 - Breakpoint setzen.
@@ -263,7 +268,7 @@ Für alle persistierenden Use Cases gilt: Ein erfolgreicher HTTP-Aufruf reicht n
 - Variablen inspizieren.
 - Prozess visualisieren und Timeline-Replay ausführen.
 
-### Migration — ⬜ offen
+### Migration — ✅ grün
 
 - Migration Preview erstellen.
 - Migration ausführen und Status abrufen.

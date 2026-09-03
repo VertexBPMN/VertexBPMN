@@ -1793,6 +1793,264 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
         }
     }
 
+    [Fact]
+    public async Task Simulation_RunsAndShowsResult_ThenPersistsScenarios_ThroughTheLiveSimulationEngine()
+    {
+        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
+
+        var processKey = $"StudioE2E_Sim_{host.RunId}";
+        var tenantName = $"Simulation E2E {host.RunId}";
+        var scenarioName = $"Sim scenario {host.RunId}";
+        string? scenarioId = null;
+        string? tenantId = null;
+        var browserErrors = new ConcurrentQueue<string>();
+        var page = await host.CreatePageAsync();
+        page.PageError += (_, error) => browserErrors.Enqueue(error);
+        page.Console += (_, message) =>
+        {
+            if (message.Type.Equals("error", StringComparison.OrdinalIgnoreCase))
+                browserErrors.Enqueue($"console: {message.Text}");
+        };
+        var simulationResponses = new ConcurrentQueue<string>();
+        page.Response += async (_, response) =>
+        {
+            if (response.Url.Contains("/api/simulation") && response.Request.Method == "POST")
+            {
+                try
+                {
+                    var body = await response.TextAsync();
+                    var posted = response.Request.PostDataBuffer is null
+                        ? "<no-json>"
+                        : System.Text.Encoding.UTF8.GetString(response.Request.PostDataBuffer);
+                    simulationResponses.Enqueue($"{(int)response.Status} {posted} => {body}");
+                }
+                catch
+                {
+                    // Best effort only.
+                }
+            }
+        };
+        using var apiClient = host.CreateApiClient();
+
+        try
+        {
+            // The live simulation engine requires a tenant context. Create one up front.
+            using (var tenantResponse = await apiClient.PostAsJsonAsync("api/tenant", new { name = tenantName, description = "Simulation E2E" }, TestContext.Current.CancellationToken))
+            {
+                var tenantBody = await tenantResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+                Assert.True(tenantResponse.IsSuccessStatusCode, tenantBody);
+                using var tenant = JsonDocument.Parse(tenantBody);
+                tenantId = tenant.RootElement.GetProperty("id").GetString();
+                Assert.False(string.IsNullOrWhiteSpace(tenantId));
+                host.RegisterApiCleanup(HttpMethod.Delete, $"api/tenant/{Uri.EscapeDataString(tenantId!)}");
+            }
+
+            // Probe the live simulation engine directly to capture the exact request/response
+            // contract before driving the GUI (isolates UI-fill issues from engine behavior).
+            using (var probeResponse = await apiClientPostSimulation(processKey, CreateBpmn(processKey), tenantId!))
+            {
+                var probeBody = await probeResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+                Assert.True(probeResponse.IsSuccessStatusCode,
+                    $"Direct simulation probe failed HTTP {(int)probeResponse.StatusCode}: {probeBody}");
+            }
+
+            var response = await page.GotoAsync($"{host.StudioBaseAddress}simulation");
+            Assert.NotNull(response);
+            Assert.True(response.Ok, $"Studio returned HTTP {response.Status}.");
+            await SelectTenantAsync(page, tenantName, tenantId!);
+
+            await FillBoundInputAsync(page.GetByLabel("Process definition id", new() { Exact = true }), processKey);
+            await FillBoundInputAsync(page.GetByLabel("Maximum steps", new() { Exact = true }), "50");
+            await FillBoundInputAsync(page.GetByLabel("BPMN XML", new() { Exact = true }), CreateBpmn(processKey));
+
+            // Verify the bound inputs actually registered their values before submitting the GUI.
+            Assert.Equal(processKey, await page.GetByLabel("Process definition id", new() { Exact = true }).InputValueAsync());
+            var filledBpmn = await page.GetByLabel("BPMN XML", new() { Exact = true }).InputValueAsync();
+            Assert.Contains("startEvent", filledBpmn, StringComparison.Ordinal);
+            Assert.Contains("endEvent", filledBpmn, StringComparison.Ordinal);
+            var tenantFieldValue = await page.GetByLabel("Tenant id", new() { Exact = true }).InputValueAsync();
+            Assert.Equal(tenantId, tenantFieldValue);
+
+            await page.GetByRole(AriaRole.Button, new() { Name = "Run simulation", Exact = true }).ClickAsync();
+
+            var resultPre = page.GetByText("Result", new() { Exact = true }).Locator("..").Locator("pre").First;
+            try
+            {
+                await resultPre.WaitForAsync();
+            }
+            catch (TimeoutException)
+            {
+                var bodyText = await page.Locator("body").InnerTextAsync();
+                var notifications = await page.Locator(".mud-snackbar").AllTextContentsAsync();
+                throw new InvalidOperationException(
+                    $"Simulation did not render a result. Page text: {bodyText} | " +
+                    $"Simulation HTTP round-trips: {string.Join(" || ", simulationResponses)} | " +
+                    $"Notifications: {string.Join(" | ", notifications)} | " +
+                    $"Recent API logs: {string.Join(" | ", host.ApiLogs.TakeLast(150))} | " +
+                    $"Recent Studio logs: {string.Join(" | ", host.StudioLogs.TakeLast(150))}");
+            }
+            var resultJson = await resultPre.InnerTextAsync();
+            Assert.Contains(processKey, resultJson, StringComparison.Ordinal);
+            using (var result = JsonDocument.Parse(resultJson))
+            {
+                var simulation = result.RootElement.GetProperty("simulation");
+                Assert.Equal(processKey, simulation.GetProperty("processDefinitionId").GetString());
+                Assert.True(simulation.GetProperty("completed").GetBoolean(), "The start-to-end process must simulate to completion.");
+                Assert.True(simulation.GetProperty("steps").GetArrayLength() >= 2, "Expected at least start + end simulation steps.");
+            }
+
+            // Summary and Variable Trace through the GUI "Analyze result" button.
+            await page.GetByRole(AriaRole.Button, new() { Name = "Analyze result", Exact = true }).ClickAsync();
+            var analyticsPre = page.GetByText("Analytics", new() { Exact = true }).Locator("xpath=following-sibling::pre[1]");
+            try
+            {
+                await analyticsPre.WaitForAsync();
+            }
+            catch (TimeoutException)
+            {
+                var bodyText = await page.Locator("body").InnerTextAsync();
+                throw new InvalidOperationException(
+                    $"Analysis did not render. Page text: {bodyText} | " +
+                    $"Recent API logs: {string.Join(" | ", host.ApiLogs.TakeLast(120))}");
+            }
+            var summaryJson = await analyticsPre.InnerTextAsync();
+            using (var summary = JsonDocument.Parse(summaryJson))
+            {
+                Assert.True(summary.RootElement.TryGetProperty("summary", out var summaryRoot),
+                    $"Analytics response had no 'summary' property. Raw: {summaryJson}");
+                Assert.Equal(processKey, summaryRoot.GetProperty("processDefinitionId").GetString());
+                Assert.True(summaryRoot.GetProperty("stepCount").GetInt32() >= 2);
+                Assert.True(summaryRoot.GetProperty("completed").GetBoolean());
+            }
+
+            // Compare two runs of the same deterministic process through the GUI "Compare" button.
+            await SetBoundInputFastAsync(page.GetByLabel("Result A JSON", new() { Exact = true }), resultJson);
+            await SetBoundInputFastAsync(page.GetByLabel("Result B JSON", new() { Exact = true }), resultJson);
+            await page.GetByRole(AriaRole.Button, new() { Name = "Compare", Exact = true }).ClickAsync();
+            var comparisonPre = page.GetByText("Compare simulation results", new() { Exact = true }).Locator("..").Locator("pre").First;
+            try
+            {
+                await comparisonPre.WaitForAsync();
+            }
+            catch (TimeoutException)
+            {
+                var bodyText = await page.Locator("body").InnerTextAsync();
+                throw new InvalidOperationException(
+                    $"Comparison did not render. Page text: {bodyText} | " +
+                    $"Recent API logs: {string.Join(" | ", host.ApiLogs.TakeLast(150))}");
+            }
+            var comparisonJson = await comparisonPre.InnerTextAsync();
+            Assert.True(comparisonJson.Trim().Length > 0, "Comparison of identical runs must produce a non-empty result.");
+
+            // Save the simulation parameters as a repeatable scenario through the GUI.
+            await FillBoundInputAsync(page.GetByLabel("Scenario name", new() { Exact = true }), scenarioName);
+            await page.GetByRole(AriaRole.Button, new() { Name = "Save scenario", Exact = true }).ClickAsync();
+
+            // Poll the live backend until the scenario persists (save is async; a concurrent render
+            // can also close the button popover). Assert on the API-authoritative state, not UI text.
+            JsonElement[] scenarios = [];
+            JsonElement? saved = null;
+            for (var attempt = 0; attempt < 40 && saved is null; attempt++)
+            {
+                scenarios = await apiClient.GetFromJsonAsync<JsonElement[]>($"api/simulation-scenario?tenantId={Uri.EscapeDataString(tenantId!)}", TestContext.Current.CancellationToken)
+                    ?? [];
+                var match = scenarios.FirstOrDefault(candidate => candidate.GetProperty("name").GetString() == scenarioName);
+                saved = match.ValueKind == JsonValueKind.Undefined ? null : match;
+                if (saved is null)
+                    await Task.Delay(250, TestContext.Current.CancellationToken);
+            }
+            if (saved is null)
+            {
+                var allScenarios = await apiClient.GetFromJsonAsync<JsonElement[]>("api/simulation-scenario", TestContext.Current.CancellationToken);
+                var bodyText = await page.Locator("body").InnerTextAsync();
+                var received = string.Join(" | ", scenarios.Select(s => s.GetProperty("name").GetString()));
+                var all = string.Join(" | ", (allScenarios ?? []).Select(s => $"{s.GetProperty("name").GetString()} (tenant={s.GetProperty("tenantId").GetString()})"));
+                throw new InvalidOperationException(
+                    $"Scenario '{scenarioName}' was not persisted. Received: {received} | " +
+                    $"All (unfiltered): {all} | Page text: {bodyText} | " +
+                    $"Recent API logs: {string.Join(" | ", host.ApiLogs.TakeLast(120))}");
+            }
+            scenarioId = saved!.Value.GetProperty("id").GetString();
+            Assert.Equal(processKey, saved!.Value.GetProperty("processDefinitionId").GetString());
+            Assert.Equal(50, saved!.Value.GetProperty("maxSteps").GetInt32());
+
+            // Reload the page and confirm the scenario is still listed via the live backend (persistence check).
+            // The API poll after Save already proves persistence across HTTP round-trips; a full page reload
+            // resets the Blazor tenant circuit, so the UI re-read here is skipped as redundant/brittle.
+
+            // Update the scenario name through the GUI and verify it persists.
+            var updatedName = $"{scenarioName} v2";
+            await FillBoundInputAsync(page.GetByLabel("Scenario name", new() { Exact = true }), updatedName);
+            await FillBoundInputAsync(page.GetByLabel("Scenario id for update/delete", new() { Exact = true }), scenarioId!);
+            await page.GetByRole(AriaRole.Button, new() { Name = "Update scenario", Exact = true }).ClickAsync();
+            JsonElement? updated = null;
+            for (var attempt = 0; attempt < 40 && updated is null; attempt++)
+            {
+                scenarios = await apiClient.GetFromJsonAsync<JsonElement[]>($"api/simulation-scenario?tenantId={Uri.EscapeDataString(tenantId!)}", TestContext.Current.CancellationToken)
+                    ?? [];
+                var match = scenarios.FirstOrDefault(candidate => candidate.GetProperty("id").GetString() == scenarioId);
+                if (match.ValueKind != JsonValueKind.Undefined && match.GetProperty("name").GetString() == updatedName)
+                    updated = match;
+                if (updated is null)
+                    await Task.Delay(250, TestContext.Current.CancellationToken);
+            }
+            Assert.NotNull(updated);
+            Assert.Equal(updatedName, updated!.Value.GetProperty("name").GetString());
+
+            // Delete the scenario through the GUI and confirm it is gone from the live backend.
+            await FillBoundInputAsync(page.GetByLabel("Scenario id for update/delete", new() { Exact = true }), scenarioId!);
+            await page.GetByRole(AriaRole.Button, new() { Name = "Delete scenario", Exact = true }).ClickAsync();
+            var stillPresent = true;
+            for (var attempt = 0; attempt < 40 && stillPresent; attempt++)
+            {
+                scenarios = await apiClient.GetFromJsonAsync<JsonElement[]>($"api/simulation-scenario?tenantId={Uri.EscapeDataString(tenantId!)}", TestContext.Current.CancellationToken)
+                    ?? [];
+                stillPresent = scenarios.Any(candidate => candidate.ValueKind != JsonValueKind.Undefined && candidate.GetProperty("id").GetString() == scenarioId);
+                if (stillPresent)
+                    await Task.Delay(250, TestContext.Current.CancellationToken);
+            }
+            Assert.False(stillPresent, $"Scenario '{scenarioId}' was still present after delete.");
+
+            Assert.Empty(browserErrors);
+        }
+        finally
+        {
+            if (scenarioId is not null)
+                host.RegisterApiCleanup(HttpMethod.Delete, $"api/simulation-scenario/{Uri.EscapeDataString(scenarioId)}");
+            await host.ClosePageAsync(page);
+        }
+    }
+
+    private async Task<HttpResponseMessage> apiClientPostSimulation(string processKey, string bpmnXml, string? tenantId, bool variablesNull = false, string? processDefinitionId = null, int? maxSteps = 50)
+    {
+        using var shortLived = host.CreateApiClient();
+        if (variablesNull)
+        {
+            return await shortLived.PostAsJsonAsync(
+                "api/simulation",
+                new
+                {
+                    bpmnXml,
+                    processDefinitionId = processDefinitionId ?? processKey,
+                    variables = (object?)null,
+                    maxSteps,
+                    tenantId
+                },
+                TestContext.Current.CancellationToken);
+        }
+        return await shortLived.PostAsJsonAsync(
+            "api/simulation",
+            new
+            {
+                bpmnXml,
+                processDefinitionId = processDefinitionId ?? processKey,
+                variables = new Dictionary<string, object>(),
+                maxSteps,
+                tenantId
+            },
+            TestContext.Current.CancellationToken);
+    }
+
     private async Task OpenBpmnModelerAsync(IPage page)
     {
         var response = await page.GotoAsync($"{host.StudioBaseAddress}bpmn-modeler");
@@ -1931,9 +2189,22 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
     {
         await input.ClickAsync();
         await input.PressAsync("ControlOrMeta+A");
-        await input.PressSequentiallyAsync(value, new() { Delay = 5 });
+        await input.PressSequentiallyAsync(value, new() { Delay = 1 });
         await input.BlurAsync();
         await Task.Delay(500, TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// Sets a large value on a bound Mud text field instantly via JS (plus an input event so Blazor's
+    /// @bind fires). Used where char-by-char typing would exceed the Playwright action timeout, e.g.
+    /// pasting a full multi-KB simulation result into the compare boxes.
+    /// </summary>
+    private static async Task SetBoundInputFastAsync(ILocator input, string value)
+    {
+        await input.ScrollIntoViewIfNeededAsync();
+        await input.FillAsync(value);
+        await input.BlurAsync();
+        await Task.Delay(300, TestContext.Current.CancellationToken);
     }
 
     private async Task SelectTenantAsync(IPage page, string tenantName, string tenantId)

@@ -20,7 +20,9 @@ public sealed class HttpSimulationService(IHttpClientFactory httpClientFactory) 
             {
                 bpmnXml,
                 processDefinitionId,
-                variables,
+                // The API treats Variables as a required, non-nullable member; never send null
+                // or the request fails model validation with 400 "The Variables field is required."
+                variables = variables ?? (object)new Dictionary<string, object>(),
                 maxSteps,
                 tenantId
             },

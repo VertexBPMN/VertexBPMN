@@ -127,9 +127,13 @@
         _error = null;
         try
         {
+            // The /api/simulation response is wrapped as { simulation, diagnostics }, but the
+            // analytics endpoints require the engine-produced inner SimulationResult. Unwrap it
+            // here so Summary and Variable Trace work from the GUI.
+            var simulation = ExtractEngineResult(_result.Value);
             _analysis = string.IsNullOrWhiteSpace(_variableName)
-                ? await SimulationService.GetSummaryAsync(_result.Value)
-                : await SimulationService.GetVariableTraceAsync(_result.Value, _variableName);
+                ? await SimulationService.GetSummaryAsync(simulation)
+                : await SimulationService.GetVariableTraceAsync(simulation, _variableName);
         }
         catch (Exception exception)
         {
@@ -254,7 +258,9 @@
         {
             using var resultA = JsonDocument.Parse(_comparisonA);
             using var resultB = JsonDocument.Parse(_comparisonB);
-            _comparison = await SimulationService.CompareAsync(resultA.RootElement, resultB.RootElement);
+            _comparison = await SimulationService.CompareAsync(
+                ExtractEngineResult(resultA.RootElement),
+                ExtractEngineResult(resultB.RootElement));
         }
         catch (Exception exception)
         {
@@ -268,4 +274,17 @@
 
     private static string Format(JsonElement value) =>
         JsonSerializer.Serialize(value, new JsonSerializerOptions { WriteIndented = true });
+
+    /// <summary>
+    /// The /api/simulation response is wrapped as { simulation, diagnostics }; analytics and
+    /// comparison endpoints require the engine-produced inner SimulationResult. If the given
+    /// element is that wrapped shape, return the inner "simulation" element; otherwise return it
+    /// unchanged (a raw, already-unwrapped engine result pasted by the user).
+    /// </summary>
+    private static JsonElement ExtractEngineResult(JsonElement value)
+    {
+        if (value.ValueKind == JsonValueKind.Object && value.TryGetProperty("simulation", out var simulation))
+            return simulation;
+        return value;
+    }
 }

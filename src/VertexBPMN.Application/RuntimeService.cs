@@ -146,4 +146,20 @@ public class RuntimeService : IRuntimeService
             }, cancellationToken);
         }
     }
+
+    public async ValueTask DeleteAsync(Guid processInstanceId, CancellationToken cancellationToken = default)
+    {
+        var inst = await _repo.GetByIdAsync(processInstanceId, cancellationToken);
+        if (inst != null)
+        {
+            await _repo.DeleteAsync(processInstanceId, cancellationToken);
+            await _eventSink.EmitAsync(new ProcessMiningEvent
+            {
+                EventType = "ProcessDeleted",
+                ProcessInstanceId = inst.Id.ToString(),
+                TenantId = inst.TenantId,
+                Timestamp = DateTimeOffset.UtcNow
+            }, cancellationToken);
+        }
+    }
 }

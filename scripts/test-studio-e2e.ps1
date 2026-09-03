@@ -125,6 +125,7 @@ $settings = [ordered]@{
     VERTEXBPMN_E2E_EVENTS_CONNECTION = "$postgresBase;Database=vertexbpmn_events"
     VERTEXBPMN_E2E_DECISION_CONNECTION = "$postgresBase;Database=vertexbpmn_decision"
     VERTEXBPMN_E2E_RABBITMQ_CONNECTION = "amqp://$User`:$Password@$RabbitMqHost`:$RabbitMqPort/"
+    VERTEXBPMN_STUDIO_E2E_WSLC_POSTGRES_CONTAINER = $(if ($effectiveInfrastructure -eq "Wslc") { "vertexbpmn-postgres" } else { "" })
 }
 $previousSettings = @{}
 

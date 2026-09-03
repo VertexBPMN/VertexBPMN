@@ -10,10 +10,20 @@
 
 <PageTitle>Dashboard - VertexBPMN Studio</PageTitle>
 
-<MudText Typo="Typo.h3" Class="mb-6">
-    <MudIcon Icon="@Icons.Material.Filled.Dashboard" Class="mr-3" />
-    Dashboard
-</MudText>
+<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-6">
+    <MudText Typo="Typo.h3">
+        <MudIcon Icon="@Icons.Material.Filled.Dashboard" Class="mr-3" />
+        Dashboard
+    </MudText>
+    <MudButton Variant="Variant.Outlined"
+               Color="Color.Primary"
+               StartIcon="@Icons.Material.Filled.Refresh"
+               Disabled="_isLoading"
+               OnClick="RefreshData"
+               data-testid="dashboard-refresh">
+        Refresh
+    </MudButton>
+</MudStack>
 
 @if (_isLoading)
 {
@@ -39,21 +49,24 @@ else if (_error != null)
                   Value="_metrics.TotalProcessInstances"
                   Icon="@Icons.Material.Filled.PlayArrow"
                   Color="Color.Primary"
-                  IsLoading="_isLoading" />
+                  IsLoading="_isLoading"
+                  TestId="dashboard-process-instances-value" />
     </MudItem>
     <MudItem xs="12" sm="6" md="3">
         <StatsCard Title="Active Instances"
                   Value="_metrics.ActiveProcessInstances"
                   Icon="@Icons.Material.Filled.PlayCircleOutline"
                   Color="Color.Success"
-                  IsLoading="_isLoading" />
+                  IsLoading="_isLoading"
+                  TestId="dashboard-active-instances-value" />
     </MudItem>
     <MudItem xs="12" sm="6" md="3">
         <StatsCard Title="Pending Tasks"
                   Value="_metrics.PendingTasks"
                   Icon="@Icons.Material.Filled.Assignment"
                   Color="Color.Warning"
-                  IsLoading="_isLoading" />
+                  IsLoading="_isLoading"
+                  TestId="dashboard-pending-tasks-value" />
     </MudItem>
     <MudItem xs="12" sm="6" md="3">
         <StatsCard Title="Process Definitions"
@@ -174,7 +187,7 @@ else if (_error != null)
             _metrics = new DashboardMetrics
             {
                 TotalProcessInstances = allInstances.Count(),
-                ActiveProcessInstances = allInstances.Count(i => i.State == "Active"),
+                ActiveProcessInstances = allInstances.Count(i => i.Status == ProcessInstanceStatus.Running),
                 PendingTasks = allTasks.Count(t => string.IsNullOrEmpty(t.Assignee)),
                 TotalProcessDefinitions = allDefinitions.Count()
             };

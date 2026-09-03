@@ -138,8 +138,12 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
 
             await page.GotoAsync($"{host.StudioBaseAddress}process-definitions");
             await FillBoundInputAsync(page.GetByTestId("process-definition-search"), ProcessKey);
-            var processGridText = await page.Locator("table").InnerTextAsync();
-            Assert.Contains(ProcessKey, processGridText, StringComparison.Ordinal);
+            var persistedDefinitionRow = page.GetByTestId("process-definitions-grid")
+                .Locator("tbody tr")
+                .Filter(new() { HasText = ProcessKey })
+                .First;
+            await persistedDefinitionRow.WaitForAsync();
+            Assert.Contains(ProcessKey, await persistedDefinitionRow.InnerTextAsync(), StringComparison.Ordinal);
             await OpenBpmnModelerAsync(page);
 
             await page.GetByRole(AriaRole.Combobox, new() { Name = "Deployed process version", Exact = true }).ClickAsync();
@@ -263,6 +267,7 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
 
         var tenantName = $"Runtime E2E {host.RunId}";
         var processKey = $"StudioE2E_Task_{host.RunId}";
+        var timerProcessKey = $"StudioE2E_Timer_{host.RunId}";
         var formKey = $"studio-e2e-task-form-{host.RunId}";
         var businessKey = $"business-{host.RunId}";
         string? tenantId = null;
@@ -290,6 +295,7 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
             }
 
             host.RegisterProcessDefinitionCleanup(processKey, tenantId);
+            host.RegisterProcessDefinitionCleanup(timerProcessKey, tenantId);
 
             using (var formResponse = await apiClient.PostAsJsonAsync("api/forms", new { tenantId, key = formKey, name = "Runtime approval form", schema = CreateFormJson(host.RunId) }, TestContext.Current.CancellationToken))
             {
@@ -304,6 +310,18 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
             await ImportBpmnAsync(page, CreateUserTaskBpmn(processKey, formKey));
             await page.GetByRole(AriaRole.Button, new() { Name = "Deploy BPMN", Exact = true }).ClickAsync();
             await page.GetByText("BPMN deployed successfully.", new() { Exact = true }).WaitForAsync();
+
+            await DeployProcessAsync(
+                apiClient,
+                timerProcessKey,
+                tenantId!,
+                "Runtime timer",
+                CreateTimerBpmn(timerProcessKey));
+            var timerInstanceId = await StartProcessAsync(
+                apiClient,
+                timerProcessKey,
+                tenantId!,
+                $"timer-{host.RunId}");
 
             await page.GotoAsync($"{host.StudioBaseAddress}process-definitions");
             await SelectTenantAsync(page, tenantName, tenantId!);
@@ -449,7 +467,10 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
             await page.GotoAsync($"{host.StudioBaseAddress}execution-details");
             await SelectTenantAsync(page, tenantName, tenantId!);
             await page.GetByRole(AriaRole.Button, new() { Name = "Load jobs", Exact = true }).ClickAsync();
-            await page.GetByTestId("execution-details-result").GetByText("Jobs", new() { Exact = true }).WaitForAsync();
+            var jobsResult = page.GetByTestId("execution-details-result");
+            await jobsResult.GetByText("Jobs", new() { Exact = true }).WaitForAsync();
+            await jobsResult.GetByText(timerInstanceId.ToString(), new() { Exact = false }).WaitForAsync();
+            await jobsResult.GetByText("timer", new() { Exact = false }).WaitForAsync();
             await page.GetByRole(AriaRole.Button, new() { Name = "Load incidents", Exact = true }).ClickAsync();
             await page.GetByTestId("execution-details-result").GetByText("Incidents", new() { Exact = true }).WaitForAsync();
             await FillBoundInputAsync(
@@ -494,8 +515,8 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
             host.RegisterApiCleanup(HttpMethod.Delete, $"api/tenant/{Uri.EscapeDataString(populatedTenantId)}");
             host.RegisterApiCleanup(HttpMethod.Delete, $"api/tenant/{Uri.EscapeDataString(emptyTenantId)}");
 
-            await DeployProcessAsync(apiClient, primaryProcessKey, populatedTenantId, "Management v1");
-            await DeployProcessAsync(apiClient, primaryProcessKey, populatedTenantId, "Management v2");
+            var dashboardProcess = CreateUserTaskBpmn(primaryProcessKey, $"dashboard-form-{host.RunId}");
+            await DeployProcessAsync(apiClient, primaryProcessKey, populatedTenantId, "Management v1", dashboardProcess);
             host.RegisterProcessDefinitionCleanup(primaryProcessKey, populatedTenantId);
 
             foreach (var index in Enumerable.Range(1, 10))
@@ -505,30 +526,60 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
                 host.RegisterProcessDefinitionCleanup(processKey, populatedTenantId);
             }
 
+            await StartProcessAsync(
+                apiClient,
+                primaryProcessKey,
+                populatedTenantId,
+                $"dashboard-first-{host.RunId}");
+
             await page.GotoAsync(host.StudioBaseAddress.ToString());
             await SelectTenantAsync(page, populatedTenantName, populatedTenantId);
+            await page.GetByTestId("dashboard-process-definitions-value").GetByText("11", new() { Exact = true }).WaitForAsync();
+            await page.GetByTestId("dashboard-process-instances-value").GetByText("1", new() { Exact = true }).WaitForAsync();
+            await page.GetByTestId("dashboard-active-instances-value").GetByText("1", new() { Exact = true }).WaitForAsync();
+            await page.GetByTestId("dashboard-pending-tasks-value").GetByText("1", new() { Exact = true }).WaitForAsync();
+
+            await StartProcessAsync(
+                apiClient,
+                primaryProcessKey,
+                populatedTenantId,
+                $"dashboard-second-{host.RunId}");
+            await DeployProcessAsync(apiClient, primaryProcessKey, populatedTenantId, "Management v2", dashboardProcess);
+            await page.GetByTestId("dashboard-refresh").ClickAsync();
             await page.GetByTestId("dashboard-process-definitions-value").GetByText("12", new() { Exact = true }).WaitForAsync();
+            await page.GetByTestId("dashboard-process-instances-value").GetByText("2", new() { Exact = true }).WaitForAsync();
+            await page.GetByTestId("dashboard-active-instances-value").GetByText("2", new() { Exact = true }).WaitForAsync();
+            await page.GetByTestId("dashboard-pending-tasks-value").GetByText("2", new() { Exact = true }).WaitForAsync();
 
             await SelectTenantAsync(page, emptyTenantName, emptyTenantId);
             await page.GetByTestId("dashboard-process-definitions-value").GetByText("0", new() { Exact = true }).WaitForAsync();
+            await page.GetByTestId("dashboard-process-instances-value").GetByText("0", new() { Exact = true }).WaitForAsync();
+            await page.GetByTestId("dashboard-active-instances-value").GetByText("0", new() { Exact = true }).WaitForAsync();
+            await page.GetByTestId("dashboard-pending-tasks-value").GetByText("0", new() { Exact = true }).WaitForAsync();
             await page.GetByRole(AriaRole.Link, new() { Name = "Process Definitions", Exact = true }).ClickAsync();
-            await page.GetByRole(AriaRole.Heading, new() { Name = "Process Definitions", Exact = true }).WaitForAsync();
+            await page.GetByRole(AriaRole.Heading, new() { Name = "Process Definitions", Exact = true }).First.WaitForAsync();
 
             await SelectTenantAsync(page, populatedTenantName, populatedTenantId);
             var definitionsGrid = page.GetByTestId("process-definitions-grid");
             await definitionsGrid.Locator("tbody tr").First.WaitForAsync();
             Assert.Equal(10, await definitionsGrid.Locator("tbody tr").CountAsync());
+            var firstPageRows = await definitionsGrid.Locator("tbody tr").AllInnerTextsAsync();
+            Assert.Equal(10, firstPageRows.Distinct(StringComparer.Ordinal).Count());
             await definitionsGrid.Locator(".mud-table-pagination-actions button:not([disabled])").Last.ClickAsync();
-            await definitionsGrid.GetByText($"{primaryProcessKey}_09", new() { Exact = true }).WaitForAsync();
+            await definitionsGrid.Locator("tbody tr").Nth(2).WaitForAsync(new() { State = WaitForSelectorState.Detached });
+            Assert.Equal(2, await definitionsGrid.Locator("tbody tr").CountAsync());
+            var secondPageRows = await definitionsGrid.Locator("tbody tr").AllInnerTextsAsync();
+            Assert.Equal(2, secondPageRows.Distinct(StringComparer.Ordinal).Count());
+            Assert.Empty(firstPageRows.Intersect(secondPageRows, StringComparer.Ordinal));
 
-            await FillBoundInputAsync(page.GetByTestId("process-definition-search"), primaryProcessKey);
+            await FillBoundInputAsync(page.GetByTestId("process-definition-search"), "Management v2");
             var definitionRow = definitionsGrid.Locator("tbody tr").Filter(new() { HasText = "Management v2" }).First;
             await definitionRow.GetByRole(AriaRole.Button, new() { Name = "View BPMN", Exact = true }).ClickAsync();
             var viewerDialog = page.GetByRole(AriaRole.Dialog);
             await viewerDialog.GetByTestId("bpmn-definition-xml").WaitForAsync();
             Assert.Contains(
                 primaryProcessKey,
-                await viewerDialog.GetByTestId("bpmn-definition-xml").GetByRole(AriaRole.Textbox).InputValueAsync(),
+                await viewerDialog.GetByTestId("bpmn-definition-xml").InputValueAsync(),
                 StringComparison.Ordinal);
             await viewerDialog.GetByRole(AriaRole.Button, new() { Name = "Close", Exact = true }).ClickAsync();
 
@@ -543,7 +594,7 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
             await confirmation.GetByRole(AriaRole.Button, new() { Name = "Delete", Exact = true }).ClickAsync();
             await page.GetByText("Process definition 'Management v2' deleted.", new() { Exact = true }).WaitForAsync();
             await page.ReloadAsync();
-            await FillBoundInputAsync(page.GetByTestId("process-definition-search"), primaryProcessKey);
+            await FillBoundInputAsync(page.GetByTestId("process-definition-search"), "Management v");
             Assert.Equal(1, await definitionsGrid.Locator("tbody tr").Filter(new() { HasText = primaryProcessKey }).CountAsync());
             Assert.Empty(browserErrors);
         }
@@ -560,6 +611,7 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
 
         var tenantName = $"Management runtime {host.RunId}";
         var processKey = $"Management_Runtime_{host.RunId}";
+        var failingProcessKey = $"Management_Failure_{host.RunId}";
         using var apiClient = host.CreateApiClient();
         var browserErrors = new ConcurrentQueue<string>();
         var page = await host.CreatePageAsync();
@@ -570,17 +622,26 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
             var tenantId = await CreateTenantAsync(apiClient, tenantName);
             host.RegisterApiCleanup(HttpMethod.Delete, $"api/tenant/{Uri.EscapeDataString(tenantId)}");
             host.RegisterProcessDefinitionCleanup(processKey, tenantId);
+            host.RegisterProcessDefinitionCleanup(failingProcessKey, tenantId);
             await DeployProcessAsync(
                 apiClient,
                 processKey,
                 tenantId,
                 "Management runtime",
                 CreateUserTaskBpmn(processKey, $"unused-form-{host.RunId}"));
+            await DeployProcessAsync(
+                apiClient,
+                failingProcessKey,
+                tenantId,
+                "Management failure",
+                CreateFailingServiceTaskBpmn(failingProcessKey));
 
             var lifecycleBusinessKey = $"lifecycle-{host.RunId}";
             var deletionBusinessKey = $"deletion-{host.RunId}";
+            var failureBusinessKey = $"failure-{host.RunId}";
             var lifecycleInstanceId = await StartProcessAsync(apiClient, processKey, tenantId, lifecycleBusinessKey);
             var deletionInstanceId = await StartProcessAsync(apiClient, processKey, tenantId, deletionBusinessKey);
+            var failedInstanceId = await StartProcessAsync(apiClient, failingProcessKey, tenantId, failureBusinessKey);
 
             await page.GotoAsync($"{host.StudioBaseAddress}process-instances");
             await SelectTenantAsync(page, tenantName, tenantId);
@@ -603,6 +664,29 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
             await page.ReloadAsync();
             await FillBoundInputAsync(page.GetByPlaceholder("Search instances..."), deletionBusinessKey);
             Assert.Equal(0, await page.Locator("tr").Filter(new() { HasText = deletionInstanceId.ToString() }).CountAsync());
+
+            await FillBoundInputAsync(page.GetByPlaceholder("Search instances..."), failureBusinessKey);
+            var failureRow = page.Locator("tr").Filter(new() { HasText = failureBusinessKey }).First;
+            await failureRow.GetByText("Incident", new() { Exact = true }).WaitForAsync();
+            Assert.Equal(0, await failureRow.GetByRole(AriaRole.Button, new() { Name = "Resume Instance", Exact = true }).CountAsync());
+            using var incidentsResponse = await apiClient.GetAsync(
+                $"api/vertex/incident?tenantId={Uri.EscapeDataString(tenantId)}",
+                TestContext.Current.CancellationToken);
+            var incidentsBody = await incidentsResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+            Assert.True(incidentsResponse.IsSuccessStatusCode, incidentsBody);
+            var incidents = JsonSerializer.Deserialize<JsonElement[]>(incidentsBody);
+            Assert.Contains(
+                incidents ?? [],
+                incident => incident.GetProperty("processInstanceId").GetString() == failedInstanceId.ToString()
+                            && incident.GetProperty("incidentType").GetString() == "ExecutionFailure");
+
+            await page.GotoAsync($"{host.StudioBaseAddress}execution-details");
+            await SelectTenantAsync(page, tenantName, tenantId);
+            await page.GetByRole(AriaRole.Button, new() { Name = "Load incidents", Exact = true }).ClickAsync();
+            var incidentsResult = page.GetByTestId("execution-details-result");
+            await incidentsResult.GetByText("Incidents", new() { Exact = true }).WaitForAsync();
+            await incidentsResult.GetByText(failedInstanceId.ToString(), new() { Exact = false }).WaitForAsync();
+            await incidentsResult.GetByText("ExecutionFailure", new() { Exact = false }).WaitForAsync();
 
             using var tasksResponse = await apiClient.GetAsync(
                 $"api/task?tenantId={Uri.EscapeDataString(tenantId)}",
@@ -1412,6 +1496,34 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
               <bpmndi:BPMNEdge id="Flow_End_{{processKey}}_di" bpmnElement="Flow_End_{{processKey}}"><di:waypoint x="330" y="138" /><di:waypoint x="410" y="138" /></bpmndi:BPMNEdge>
             </bpmndi:BPMNPlane>
           </bpmndi:BPMNDiagram>
+        </bpmn:definitions>
+        """;
+
+    private static string CreateFailingServiceTaskBpmn(string processKey) => $$"""
+        <?xml version="1.0" encoding="UTF-8"?>
+        <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_{{processKey}}" targetNamespace="https://vertexbpmn.io/local-e2e">
+          <bpmn:process id="{{processKey}}" name="Local Studio failure E2E" isExecutable="true">
+            <bpmn:startEvent id="Start_{{processKey}}" />
+            <bpmn:sequenceFlow id="Flow_Service_{{processKey}}" sourceRef="Start_{{processKey}}" targetRef="Fail_{{processKey}}" />
+            <bpmn:serviceTask id="Fail_{{processKey}}" name="Unavailable integration" implementation="local-e2e:missing-handler" />
+            <bpmn:sequenceFlow id="Flow_End_{{processKey}}" sourceRef="Fail_{{processKey}}" targetRef="End_{{processKey}}" />
+            <bpmn:endEvent id="End_{{processKey}}" />
+          </bpmn:process>
+        </bpmn:definitions>
+        """;
+
+    private static string CreateTimerBpmn(string processKey) => $$"""
+        <?xml version="1.0" encoding="UTF-8"?>
+        <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_{{processKey}}" targetNamespace="https://vertexbpmn.io/local-e2e">
+          <bpmn:process id="{{processKey}}" name="Local Studio timer E2E" isExecutable="true">
+            <bpmn:startEvent id="Start_{{processKey}}" />
+            <bpmn:sequenceFlow id="Flow_Timer_{{processKey}}" sourceRef="Start_{{processKey}}" targetRef="Timer_{{processKey}}" />
+            <bpmn:intermediateCatchEvent id="Timer_{{processKey}}" name="Wait one hour">
+              <bpmn:timerEventDefinition><bpmn:timeDuration>PT1H</bpmn:timeDuration></bpmn:timerEventDefinition>
+            </bpmn:intermediateCatchEvent>
+            <bpmn:sequenceFlow id="Flow_End_{{processKey}}" sourceRef="Timer_{{processKey}}" targetRef="End_{{processKey}}" />
+            <bpmn:endEvent id="End_{{processKey}}" />
+          </bpmn:process>
         </bpmn:definitions>
         """;
 

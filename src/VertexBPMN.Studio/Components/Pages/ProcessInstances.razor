@@ -63,8 +63,8 @@ else
                 <MudText Typo="Typo.body2">@(context.BusinessKey ?? "N/A")</MudText>
             </MudTd>
             <MudTd DataLabel="State">
-                <MudChip T="string" Color="GetStateColor(context.Status)" Size="Size.Small" Variant="Variant.Filled">
-                    @context.Status
+                <MudChip T="string" Color="GetStateColor(context)" Size="Size.Small" Variant="Variant.Filled">
+                    @GetDisplayState(context)
                 </MudChip>
             </MudTd>
             <MudTd DataLabel="Started At">
@@ -95,7 +95,7 @@ else
                                       OnClick="@(() => SuspendInstance(context.Id))" 
                                       aria-label="Suspend Instance" />
                     }
-                    else if (context.Status == ProcessInstanceStatus.Suspended)
+                    else if (context.Status == ProcessInstanceStatus.Suspended && !HasIncident(context))
                     {
                         <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" 
                                       Size="Size.Small" 
@@ -181,11 +181,19 @@ else
         return (instance.InstanceId?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
                (instance.ProcessId?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
                (instance.BusinessKey?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
-               instance.Status.ToString().Contains(_searchString, StringComparison.OrdinalIgnoreCase);
+               instance.Status.ToString().Contains(_searchString, StringComparison.OrdinalIgnoreCase) ||
+               instance.State.Contains(_searchString, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static Color GetStateColor(ProcessInstanceStatus status) => status switch
+    private static bool HasIncident(ProcessInstance instance) =>
+        string.Equals(instance.State, "Incident", StringComparison.OrdinalIgnoreCase);
+
+    private static string GetDisplayState(ProcessInstance instance) =>
+        HasIncident(instance) ? "Incident" : instance.Status.ToString();
+
+    private static Color GetStateColor(ProcessInstance instance) => instance.Status switch
     {
+        _ when HasIncident(instance) => Color.Error,
         ProcessInstanceStatus.Running => Color.Success,
         ProcessInstanceStatus.Suspended => Color.Warning,
         ProcessInstanceStatus.Completed => Color.Info,

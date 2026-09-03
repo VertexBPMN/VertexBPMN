@@ -210,6 +210,7 @@ public sealed class LocalStudioE2ETestHost : IAsyncLifetime
             ["Dependencies__Plugins__Enabled"] = "false",
             ["Dependencies__Ai__Enabled"] = "false",
             ["Dependencies__Mcp__Enabled"] = "false",
+            ["RateLimiting__PermitLimit"] = "10000",
             ["AdvancedFeatures__SimulationExecution"] = "true",
             ["AdvancedFeatures__LiveProcessMigration"] = "true",
             ["AdvancedFeatures__CmmnExecution"] = "true",
@@ -275,6 +276,7 @@ public sealed class LocalStudioE2ETestHost : IAsyncLifetime
             _playwright?.Dispose();
             await StopProcessAsync(_studioProcess);
             await StopProcessAsync(_apiProcess);
+            await Task.Delay(TimeSpan.FromSeconds(2));
 
             try
             {
@@ -304,28 +306,40 @@ public sealed class LocalStudioE2ETestHost : IAsyncLifetime
             throw new InvalidOperationException($"The isolated PostgreSQL database name '{databaseName}' exceeds 63 characters.");
         if (databaseName.Any(character => !char.IsAsciiLetterOrDigit(character) && character != '_'))
             throw new InvalidOperationException($"The isolated PostgreSQL database name '{databaseName}' contains unsupported characters.");
+        if (string.IsNullOrWhiteSpace(source.Username))
+            throw new InvalidOperationException("Every local Real-E2E PostgreSQL connection must specify a username.");
+        var username = source.Username;
 
         var maintenance = new NpgsqlConnectionStringBuilder(sourceConnectionString)
         {
             Database = "postgres",
-            Pooling = false
+            Pooling = false,
+            Timeout = 30
         };
-        await using var connection = new NpgsqlConnection(maintenance.ConnectionString);
-        await connection.OpenAsync();
-        await using var command = connection.CreateCommand();
-        command.CommandText = $"CREATE DATABASE \"{databaseName}\"";
-        try
+        var wslcContainer = Environment.GetEnvironmentVariable("VERTEXBPMN_STUDIO_E2E_WSLC_POSTGRES_CONTAINER");
+        if (!string.IsNullOrWhiteSpace(wslcContainer))
         {
-            await command.ExecuteNonQueryAsync();
+            await RunWslcAsync("exec", wslcContainer!, "createdb", "-U", username, databaseName);
         }
-        catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.InsufficientPrivilege)
+        else
         {
-            throw new InvalidOperationException(
-                $"PostgreSQL user '{source.Username}' needs CREATEDB permission for isolated local Real-E2E databases.",
-                exception);
+            await using var connection = new NpgsqlConnection(maintenance.ConnectionString);
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = $"CREATE DATABASE \"{databaseName}\"";
+            try
+            {
+                await command.ExecuteNonQueryAsync();
+            }
+            catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.InsufficientPrivilege)
+            {
+                throw new InvalidOperationException(
+                    $"PostgreSQL user '{source.Username}' needs CREATEDB permission for isolated local Real-E2E databases.",
+                    exception);
+            }
         }
 
-        _isolatedDatabases.Add(new(databaseName, maintenance.ConnectionString));
+        _isolatedDatabases.Add(new(databaseName, maintenance.ConnectionString, username));
         source.Database = databaseName;
         return source.ConnectionString;
     }
@@ -339,21 +353,32 @@ public sealed class LocalStudioE2ETestHost : IAsyncLifetime
         var cleanupLog = new List<string>();
         foreach (var database in _isolatedDatabases.AsEnumerable().Reverse())
         {
-            await using var connection = new NpgsqlConnection(database.MaintenanceConnectionString);
-            await connection.OpenAsync();
-            await using (var drop = connection.CreateCommand())
+            Exception? lastFailure = null;
+            for (var attempt = 1; attempt <= 3; attempt++)
             {
-                drop.CommandText = $"DROP DATABASE IF EXISTS \"{database.Name}\" WITH (FORCE)";
-                await drop.ExecuteNonQueryAsync();
+                try
+                {
+                    await DropAndVerifyDatabaseAsync(database);
+                    cleanupLog.Add($"Dropped and verified absent: {database.Name} (attempt {attempt})");
+                    lastFailure = null;
+                    await Task.Delay(TimeSpan.FromMilliseconds(500));
+                    break;
+                }
+                catch (Exception exception) when (exception is NpgsqlException or InvalidOperationException)
+                {
+                    lastFailure = exception;
+                    if (attempt < 3)
+                    {
+                        NpgsqlConnection.ClearAllPools();
+                        await Task.Delay(TimeSpan.FromSeconds(attempt));
+                    }
+                }
             }
 
-            await using var verify = connection.CreateCommand();
-            verify.CommandText = "SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = @name)";
-            verify.Parameters.AddWithValue("name", database.Name);
-            var stillExists = (bool)(await verify.ExecuteScalarAsync() ?? true);
-            if (stillExists)
-                throw new InvalidOperationException($"Isolated PostgreSQL database '{database.Name}' still exists after cleanup.");
-            cleanupLog.Add($"Dropped and verified absent: {database.Name}");
+            if (lastFailure is not null)
+                throw new InvalidOperationException(
+                    $"Could not clean up isolated PostgreSQL database '{database.Name}' after three attempts.",
+                    lastFailure);
         }
 
         var artifactRoot = Environment.GetEnvironmentVariable("VERTEXBPMN_STUDIO_E2E_ARTIFACTS")
@@ -361,6 +386,73 @@ public sealed class LocalStudioE2ETestHost : IAsyncLifetime
         Directory.CreateDirectory(artifactRoot);
         await File.WriteAllLinesAsync(Path.Combine(artifactRoot, "database-cleanup.log"), cleanupLog);
         _isolatedDatabases.Clear();
+    }
+
+    private static async Task DropAndVerifyDatabaseAsync(IsolatedDatabase database)
+    {
+        var wslcContainer = Environment.GetEnvironmentVariable("VERTEXBPMN_STUDIO_E2E_WSLC_POSTGRES_CONTAINER");
+        if (!string.IsNullOrWhiteSpace(wslcContainer))
+        {
+            await RunWslcAsync(
+                "exec", wslcContainer!, "dropdb", "-U", database.Username,
+                "--if-exists", "--force", database.Name);
+            var exists = await RunWslcAsync(
+                "exec", wslcContainer!, "psql", "-U", database.Username, "-d", "postgres",
+                "-tAc", $"SELECT 1 FROM pg_database WHERE datname='{database.Name}'");
+            if (string.Equals(exists.Trim(), "1", StringComparison.Ordinal))
+                throw new InvalidOperationException($"Isolated PostgreSQL database '{database.Name}' still exists after cleanup.");
+            return;
+        }
+
+        await using var connection = new NpgsqlConnection(database.MaintenanceConnectionString);
+        await connection.OpenAsync();
+        await using (var drop = connection.CreateCommand())
+        {
+            drop.CommandText = $"DROP DATABASE IF EXISTS \"{database.Name}\" WITH (FORCE)";
+            await drop.ExecuteNonQueryAsync();
+        }
+
+        await using var verify = connection.CreateCommand();
+        verify.CommandText = "SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = @name)";
+        verify.Parameters.AddWithValue("name", database.Name);
+        var stillExists = (bool)(await verify.ExecuteScalarAsync() ?? true);
+        if (stillExists)
+            throw new InvalidOperationException($"Isolated PostgreSQL database '{database.Name}' still exists after cleanup.");
+    }
+
+    private static async Task<string> RunWslcAsync(params string[] arguments)
+    {
+        var startInfo = new ProcessStartInfo("wslc.exe")
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true
+        };
+        foreach (var argument in arguments)
+            startInfo.ArgumentList.Add(argument);
+
+        using var process = Process.Start(startInfo)
+                            ?? throw new InvalidOperationException("Could not start wslc.exe for PostgreSQL test-database management.");
+        var standardOutput = process.StandardOutput.ReadToEndAsync();
+        var standardError = process.StandardError.ReadToEndAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+            throw new InvalidOperationException("wslc.exe timed out while managing an isolated PostgreSQL database.");
+        }
+
+        var output = await standardOutput;
+        var error = await standardError;
+        if (process.ExitCode != 0)
+            throw new InvalidOperationException(
+                $"wslc.exe exited with code {process.ExitCode}: {string.Join(' ', arguments)}. {error}".Trim());
+        return output;
     }
 
     private async Task ExecuteCleanupRequestsAsync()
@@ -585,5 +677,5 @@ public sealed class LocalStudioE2ETestHost : IAsyncLifetime
 
     private sealed record ProcessDefinitionCleanup(string ProcessKey, string? TenantId);
 
-    private sealed record IsolatedDatabase(string Name, string MaintenanceConnectionString);
+    private sealed record IsolatedDatabase(string Name, string MaintenanceConnectionString, string Username);
 }

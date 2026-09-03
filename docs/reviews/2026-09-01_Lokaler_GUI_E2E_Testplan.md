@@ -17,9 +17,9 @@ noch fehlschlägt oder der im Plan geforderte Use Case nur teilweise abgedeckt i
 | Phase / Bereich | Status | Nachgewiesener Stand | Noch offen |
 |---|---|---|---|
 | Phase 1: Real-E2E-Infrastruktur | ✅ | Echter API- und Studio-Prozess, echtes Chromium, PostgreSQL/RabbitMQ über WSLC, Modi `Auto`/`Wslc`/`Existing`, dynamische Ports, Readiness, lokaler Runner, Kategorie `LocalStudioE2E` sowie HTML-/XML-Berichte sind umgesetzt. Jeder Lauf verwendet fünf eigene PostgreSQL-Datenbanken. Deren Löschen und anschließende Abwesenheit wurden im Erfolgs- und Fehlerfall nachgewiesen. Zwei vollständige WSLC-Läufe mit jeweils 8/8 Tests sind grün. | — |
-| BPMN Modeler | 🟡 | Import, grafisches Auftrennen eines Sequence Flows durch einen Service Task, HTTP-Connector, Validierung, Deploy v1/v2, Reload aus Repository, Versionsvergleich, Export, semantischer Re-Import, Start/Pause/Reset der Simulation und `Deploy and run test` sind lokal erfolgreich nachgewiesen. | Vollständige Properties-Änderungen einschließlich Credential/Form/Decision Reference. |
-| BPMN Runtime | 🟡 | Deploy, Start mit Variablen, Instanzsuche, Task/Form-Auflösung, Claim, Formulareingabe, Completion, persistierte Variablen und History sind im realen Browserpfad grün nachgewiesen. | Event Log noch separat prüfen. |
-| DMN Modeler | 🟡 | Import, Deploy, Reload, High-/Low-/No-Match-Auswertung sowie Export und Re-Import sind lokal erfolgreich nachgewiesen. | Decision Table direkt über den grafischen Modeler verändern. |
+| BPMN Modeler | ✅ | Import, grafisches Auftrennen eines Sequence Flows durch einen Service Task, HTTP-Connector, Properties-Änderungen einschließlich Credential-Ref, Form-Ref und Decision-Ref, Validierung, Deploy v1/v2, Reload aus Repository, Versionsvergleich, Export, semantischer Re-Import, Start/Pause/Reset der Simulation und `Deploy and run test` sind lokal erfolgreich nachgewiesen. | — |
+| BPMN Runtime | ✅ | Deploy, Start mit Variablen, Instanzsuche, Task/Form-Auflösung, Claim, Formulareingabe, Completion, persistierte Variablen, History und der persistente Engine-Event-Log sind im realen Browserpfad sowie über die History-API nachgewiesen. | — |
+| DMN Modeler | ✅ | Import, grafisches Hinzufügen einer Decision Rule über den Modeler, Deploy, Reload, High-/Low-/No-Match-Auswertung sowie Export und Re-Import sind lokal erfolgreich nachgewiesen. | — |
 | CMMN Modeler | ✅ | Import, grafisches Hinzufügen eines Human Tasks, Registrierung, Case-Start, User Event, Case-File-Update, discretionary/ad-hoc Aktivierung, History sowie Export und Re-Import sind lokal erfolgreich nachgewiesen. | — |
 | Form Builder | ✅ | Import, grafisches Hinzufügen eines Formularfelds, Speichern, Reload aus Registry, Update unter Beibehaltung der Formular-ID, Runtime Viewer sowie JSON-Export und Re-Import sind lokal erfolgreich nachgewiesen. | — |
 | n8n-Import | ✅ | Reales n8n-JSON mit Webhook und HTTP-Node wird im Browser importiert; Mapping-Bericht und fehlende Credential als `NeedsReview` werden geprüft. Das erzeugte BPMN enthält Diagrammdaten, wird validiert, deployt, aus dem Repository neu geladen und exportiert. | — |
@@ -36,7 +36,7 @@ noch fehlschlägt oder der im Plan geforderte Use Case nur teilweise abgedeckt i
 - ✅ Form-Import, Persistenz, Reload, Update, Runtime Viewer, Export und Roundtrip.
 - ✅ CMMN Import, Registrierung, Ausführung, Case-File-/Event-/Ad-hoc-Aktionen, History, Export und Roundtrip.
 - ✅ BPMN Simulation mit Start/Pause/Reset sowie `Deploy and run test` gegen die reale Engine.
-- ✅ BPMN Runtime mit Deploy, Start, Instanzdetails, Task-Claim, echtem Formular, Completion, persistierten Variablen und History.
+- ✅ BPMN Runtime mit Deploy, Start, Instanzdetails, Task-Claim, echtem Formular, Completion, persistierten Variablen, History und persistentem Engine-Event-Log (via `api/history/by-process-instance`).
 - ✅ n8n-Import mit Mapping-Bericht, `NeedsReview`, BPMN-DI, Validierung, Deployment, Reload und Export.
 - ✅ Persistente Isolation über fünf run-spezifische PostgreSQL-Datenbanken einschließlich verifiziertem Drop im Erfolgs- und Fehlerfall.
 
@@ -47,13 +47,13 @@ noch fehlschlägt oder der im Plan geforderte Use Case nur teilweise abgedeckt i
 - ✅ Für beide Läufe bestätigt `database-cleanup.log` den Drop und die anschließende Abwesenheit aller fünf Datenbanken; eine direkte Abfrage der WSLC-PostgreSQL-Instanz lieferte jeweils keine Restdatenbank.
 - ✅ Der Fehlerlauf `6ba7a24f24e34708b05b67aa0fc25e5d` mit vier fehlgeschlagenen Szenarien hinterließ ebenfalls keine der fünf run-spezifischen Datenbanken.
 - ✅ Die Suite ist zweimal hintereinander mit isolierten Run-IDs und sauberer persistenter Ausgangslage erfolgreich durchgelaufen.
+- ✅ Linux/Docker-Lauf `935a5f4270f14a9da1ad46025fcb9993`: 8 erfolgreich, 0 fehlgeschlagen, 0 übersprungen (PostgreSQL + RabbitMQ als Container). Enthält die neue Event-Log-Assertion im BPMN-Runtime-Test.
+- ✅ Der Tenant-Selector-Flake im Suite-Verbund wurde durch eine Verlängerung der Readiness-Wartezeit auf 60 s stabilisiert; danach ist der volle 8-Test-Lauf unter Last grün.
+- ✅ Der Lauf `935a5f42` hinterließ keine der fünf run-spezifischen Datenbanken (Abwesenheit direkt in PostgreSQL verifiziert).
 
 ### Gesamtstatus
 
-🟡 **Der lokale GUI-E2E-Plan ist noch nicht abgeschlossen.** Acht reale
-End-to-End-Szenarien einschließlich des zentralen Runtime-Workflows sind grün
-nachgewiesen. n8n, große Teile der Prozessverwaltung, erweiterte Runtime-Funktionen,
-Administration sowie die systematische Fehler- und Routenabdeckung fehlen noch.
+🟡 **Der lokale GUI-E2E-Plan ist noch nicht abgeschlossen.** Die kritischen Modellierungs- und Runtime-Use-Cases der Phase 2 (BPMN Modeler und Runtime inkl. persistentem Event-Log, DMN, CMMN, Form Builder, n8n-Import) sind vollständig grün nachgewiesen. Offen bleiben große Teile der Prozessverwaltung (Phase 3), erweiterte Runtime-Funktionen (Phase 4), Administration und Integrationen (Phase 5) sowie die systematische Fehler- und Routenabdeckung (Phase 6).
 
 ## Ziel
 

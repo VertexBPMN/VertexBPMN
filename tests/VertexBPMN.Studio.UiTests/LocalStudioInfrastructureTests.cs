@@ -2750,12 +2750,12 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
                 await FillBoundInputAndVerifyAsync(page.GetByLabel("Process definition key", new() { Exact = true }), processKey);
                 await page.GetByRole(AriaRole.Button, new() { Name = "Register trigger", Exact = true }).ClickAsync();
 
-                // The one-time secret must be shown exactly once (Save-this-secret alert), and the
-                // invoke path is surfaced.
+                // The one-time secret must be shown exactly once (Save-this-secret alert). Read the
+                // readonly MudTextField's value (an <input>'s value is not its innerText).
                 var secretAlert = page.GetByText("Save this secret now. It is shown only once.", new() { Exact = true });
                 await secretAlert.WaitForAsync();
-                var secretValue = await page.Locator(".mud-alert-warning input[readonly], .mud-alert-warning textarea[readonly]")
-                    .First.InnerTextAsync();
+                var alertRoot = page.Locator(".mud-alert").Filter(new() { Has = secretAlert }).First;
+                var secretValue = await alertRoot.Locator("input, textarea").First.InputValueAsync();
                 Assert.False(string.IsNullOrWhiteSpace(secretValue), "Expected the one-time secret to be shown.");
 
                 // The registered trigger row appears, enabled, with the process key.
@@ -2837,6 +2837,79 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
             return;
         }
         throw new TimeoutException($"Trigger '{name}' still exists after delete.");
+    }
+
+    [Fact(DisplayName = "Phase 5 - Administration: feature flags toggle persists via API")]
+    public async Task FeatureFlags_ToggleFlagAndVerifyViaApi_ThroughTheRealEngine()
+    {
+        using var apiClient = host.CreateApiClient();
+
+        var page = await host.CreatePageAsync();
+        try
+        {
+            await page.GotoAsync($"{host.StudioBaseAddress}feature-flags");
+            await page.GetByRole(AriaRole.Heading, new() { Name = "Feature Flags", Exact = true }).WaitForAsync();
+
+            // pick a seeded disabled flag to flip deterministically; capture its initial state.
+            var flagName = "predictiveanalytics";
+            var initial = await apiClient.GetFromJsonAsync<Dictionary<string, bool>>("api/feature-flags", TestContext.Current.CancellationToken);
+            Assert.NotNull(initial);
+            Assert.Contains(flagName, initial.Keys);
+            var originalState = initial![flagName];
+
+            var row = page.Locator("tr").Filter(new() { HasText = flagName }).First;
+            await row.WaitForAsync();
+            var switchInput = row.Locator("input[type=checkbox]").First;
+            var initialStateChip = await row.InnerTextAsync();
+            Assert.Contains(originalState ? "Enabled" : "Disabled", initialStateChip);
+
+            // Flip the flag via the GUI switch (drive the checkbox input); the API must reflect it.
+            // The switch is briefly disabled during initial load, so retry the click until the new
+            // state is observed (idempotent: we re-check the API between clicks).
+            var target = !originalState;
+            var flipped = false;
+            for (var attempt = 0; attempt < 8 && !flipped; attempt++)
+            {
+                var before = await apiClient.GetFromJsonAsync<Dictionary<string, bool>>("api/feature-flags", TestContext.Current.CancellationToken);
+                if (before is not null && before.TryGetValue(flagName, out var b) && b == target) { flipped = true; break; }
+                await switchInput.ClickAsync();
+                for (var w = 0; w < 10 && !flipped; w++)
+                {
+                    await Task.Delay(500, TestContext.Current.CancellationToken);
+                    var cur = await apiClient.GetFromJsonAsync<Dictionary<string, bool>>("api/feature-flags", TestContext.Current.CancellationToken);
+                    if (cur is not null && cur.TryGetValue(flagName, out var v) && v == target) flipped = true;
+                }
+            }
+            Assert.True(flipped, $"Expected flag '{flagName}' to become {target} after GUI toggle.");
+
+            // restore original state so the suite remains deterministic.
+            if (target != originalState)
+                await apiClient.PutAsJsonAsync($"api/feature-flags/{flagName}", originalState, TestContext.Current.CancellationToken);
+        }
+        finally
+        {
+            await host.ClosePageAsync(page);
+        }
+    }
+
+    [Fact(DisplayName = "Phase 5 - Administration: engine management + configuration load read-only")]
+    public async Task Administration_ReadOnlyStatusPagesRender_ThroughTheRealEngine()
+    {
+        var page = await host.CreatePageAsync();
+        try
+        {
+            // Engine Management: read-only info surface (no mutating controls).
+            await page.GotoAsync($"{host.StudioBaseAddress}engine-management");
+            await page.GetByRole(AriaRole.Heading, new() { Name = "Engine Management", Exact = true }).WaitForAsync();
+
+            // Configuration: capability list from the engine capabilities endpoint.
+            await page.GotoAsync($"{host.StudioBaseAddress}configuration");
+            await page.GetByRole(AriaRole.Heading, new() { Name = "Configuration", Exact = true }).WaitForAsync();
+        }
+        finally
+        {
+            await host.ClosePageAsync(page);
+        }
     }
 
 

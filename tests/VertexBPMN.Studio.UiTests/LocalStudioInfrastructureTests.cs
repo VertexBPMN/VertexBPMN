@@ -2174,6 +2174,159 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
         }
     }
 
+    [Fact(DisplayName = "Phase 4 - Debugging: run a trace, then drive a visual debug session (breakpoint, step over, continue, visualize, variables)")]
+    public async Task Debugging_RunsTraceAndDrivesVisualDebugSession_ThroughTheRealEngine()
+    {
+        using var apiClient = host.CreateApiClient();
+        var browserErrors = new ConcurrentQueue<string>();
+        var page = await host.CreatePageAsync();
+        page.PageError += (_, error) => browserErrors.Enqueue(error);
+        page.Console += (_, message) =>
+        {
+            if (message.Type.Equals("error", StringComparison.OrdinalIgnoreCase))
+                browserErrors.Enqueue($"console: {message.Text}");
+        };
+
+        var debugProcessKey = $"dbg-{Guid.NewGuid():N}"[..20];
+        var messageName = $"dbg-msg-{host.RunId}";
+
+        // A linear process that starts, parks on an intermediate catch event (so the engine leaves it
+        // running rather than completing it), then has two sequential tasks before the end. The visual
+        // debug step service advances the persisted token one sequence flow at a time, so this gives us
+        // a meaningful step-over -> step-over -> continue path.
+        var debugBpmn = $$"""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                         xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                         xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                         xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                         targetNamespace="https://vertexbpmn.dev/e2e" id="Definitions_{{debugProcessKey}}">
+              <message id="dbg-msg" name="{{messageName}}" />
+              <process id="{{debugProcessKey}}" isExecutable="true">
+                <startEvent id="start" />
+                <sequenceFlow id="f-start" sourceRef="start" targetRef="await" />
+                <intermediateCatchEvent id="await" name="Await debug message">
+                  <messageEventDefinition messageRef="dbg-msg" />
+                </intermediateCatchEvent>
+                <sequenceFlow id="f-await" sourceRef="await" targetRef="task1" />
+                <task id="task1" name="First task" />
+                <sequenceFlow id="f-1" sourceRef="task1" targetRef="task2" />
+                <task id="task2" name="Second task" />
+                <sequenceFlow id="f-2" sourceRef="task2" targetRef="end" />
+                <endEvent id="end" />
+              </process>
+              <bpmndi:BPMNDiagram id="Diagram_{{debugProcessKey}}">
+                <bpmndi:BPMNPlane id="Plane_{{debugProcessKey}}" bpmnElement="{{debugProcessKey}}">
+                  <bpmndi:BPMNShape id="start_di" bpmnElement="start"><dc:Bounds x="100" y="100" width="36" height="36" /></bpmndi:BPMNShape>
+                  <bpmndi:BPMNShape id="await_di" bpmnElement="await"><dc:Bounds x="220" y="100" width="36" height="36" /></bpmndi:BPMNShape>
+                  <bpmndi:BPMNShape id="task1_di" bpmnElement="task1"><dc:Bounds x="340" y="93" width="100" height="50" /></bpmndi:BPMNShape>
+                  <bpmndi:BPMNShape id="task2_di" bpmnElement="task2"><dc:Bounds x="520" y="93" width="100" height="50" /></bpmndi:BPMNShape>
+                  <bpmndi:BPMNShape id="end_di" bpmnElement="end"><dc:Bounds x="700" y="100" width="36" height="36" /></bpmndi:BPMNShape>
+                  <bpmndi:BPMNEdge id="f-start_di" bpmnElement="f-start"><di:waypoint x="136" y="118" /><di:waypoint x="220" y="118" /></bpmndi:BPMNEdge>
+                  <bpmndi:BPMNEdge id="f-await_di" bpmnElement="f-await"><di:waypoint x="256" y="118" /><di:waypoint x="340" y="118" /></bpmndi:BPMNEdge>
+                  <bpmndi:BPMNEdge id="f-1_di" bpmnElement="f-1"><di:waypoint x="440" y="118" /><di:waypoint x="520" y="118" /></bpmndi:BPMNEdge>
+                  <bpmndi:BPMNEdge id="f-2_di" bpmnElement="f-2"><di:waypoint x="620" y="118" /><di:waypoint x="700" y="118" /></bpmndi:BPMNEdge>
+                </bpmndi:BPMNPlane>
+              </bpmndi:BPMNDiagram>
+            </definitions>
+            """;
+
+        try
+        {
+            host.RegisterProcessDefinitionCleanup(debugProcessKey, null);
+            using (var deploy = await apiClient.PostAsJsonAsync(
+                       "api/repository",
+                       new { bpmnXml = debugBpmn, name = $"{debugProcessKey}.bpmn", tenantId = (string?)null },
+                       TestContext.Current.CancellationToken))
+            {
+                var body = await deploy.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+                Assert.True(deploy.IsSuccessStatusCode, body);
+            }
+
+            Guid instanceId;
+            using (var start = await apiClient.PostAsJsonAsync(
+                       "api/runtime/start",
+                       new { processDefinitionKey = debugProcessKey, businessKey = $"dbg-{host.RunId}", variables = new Dictionary<string, object>(), tenantId = (string?)null },
+                       TestContext.Current.CancellationToken))
+            {
+                var body = await start.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+                Assert.True(start.IsSuccessStatusCode, body);
+                instanceId = JsonDocument.Parse(body).RootElement.GetProperty("id").GetGuid();
+            }
+
+            // Instance must be parked (not completed) on the catch event so we can debug-stepping it.
+            await WaitForInstanceStateNotAsync(instanceId, "Completed");
+
+            // 1) Run trace: the page posts the XML to /api/debug/trace and renders the result in <pre>.
+            await page.GotoAsync($"{host.StudioBaseAddress}debugging");
+            await FillBoundInputAndVerifyAsync(page.GetByLabel("BPMN XML", new() { Exact = true }), debugBpmn);
+            await page.GetByRole(AriaRole.Button, new() { Name = "Run trace", Exact = true }).ClickAsync();
+            await WaitForTextInPageAsync(page, "StartEvent");
+            await WaitForTextInPageAsync(page, "EndEvent");
+
+            // 2) Start a visual debug session for the real running instance.
+            await FillBoundInputAndVerifyAsync(page.GetByLabel("Process instance id", new() { Exact = true }), instanceId.ToString());
+            await page.GetByRole(AriaRole.Button, new() { Name = "Start session", Exact = true }).ClickAsync();
+            var sessionId = await ReadFilledValueAsync(page.GetByLabel("Session id", new() { Exact = true }));
+            Assert.False(string.IsNullOrWhiteSpace(sessionId), "Start session should populate the session id field.");
+            Assert.True(Guid.TryParse(sessionId, out _), $"Session id '{sessionId}' is not a GUID.");
+
+            // 3) Set a breakpoint at the second task.
+            await FillBoundInputAndVerifyAsync(page.GetByLabel("Breakpoint activity id", new() { Exact = true }), "task2");
+            await page.GetByRole(AriaRole.Button, new() { Name = "Set breakpoint", Exact = true }).ClickAsync();
+            await WaitForTextInPageAsync(page, "Breakpoint set at activity");
+
+            // 4) Step over once: await -> task1 (instance still running, persisted token advanced).
+            await page.GetByRole(AriaRole.Button, new() { Name = "Step over", Exact = true }).ClickAsync();
+            await WaitForTextInPageAsync(page, "\"endActivity\"");
+            await WaitForInstanceStateAsync(instanceId, "task1");
+
+            // 5) Step over again: task1 -> task2.
+            await page.GetByRole(AriaRole.Button, new() { Name = "Step over", Exact = true }).ClickAsync();
+            await WaitForTextInPageAsync(page, "\"endActivity\"");
+            await WaitForInstanceStateAsync(instanceId, "task2");
+
+            // 6) Inspect session variables (before Continue, since Continue completes and closes the session).
+            await page.GetByRole(AriaRole.Button, new() { Name = "Inspect variables", Exact = true }).ClickAsync();
+            await WaitForTextInPageAsync(page, "\"var1\"");
+
+            // 7) Continue: the session advances (mock path drives to completion in this implementation).
+            await page.GetByRole(AriaRole.Button, new() { Name = "Continue", Exact = true }).ClickAsync();
+            await WaitForTextInPageAsync(page, "\"processCompleted\"");
+
+            // 8) Visualize the process: renders the BPMN viewer plus the runtime timeline + replay.
+            await page.GetByRole(AriaRole.Button, new() { Name = "Visualize process", Exact = true }).ClickAsync();
+            var timeline = page.GetByTestId("runtime-timeline");
+            await timeline.WaitForAsync();
+            await page.GetByRole(AriaRole.Button, new() { Name = "Replay", Exact = true }).First.WaitForAsync();
+            await page.GetByText("Process visualization", new() { Exact = false }).First.WaitForAsync();
+
+            Assert.Empty(browserErrors);
+        }
+        finally
+        {
+            await host.ClosePageAsync(page);
+        }
+    }
+
+    private async Task<string> ReadFilledValueAsync(ILocator input)
+    {
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            var value = await input.InputValueAsync();
+            if (!string.IsNullOrWhiteSpace(value))
+                return value;
+            await Task.Delay(250, TestContext.Current.CancellationToken);
+        }
+
+        return await input.InputValueAsync();
+    }
+
+    private async Task WaitForTextInPageAsync(IPage page, string text)
+    {
+        await page.GetByText(text, new() { Exact = false }).First.WaitForAsync(new() { Timeout = 15000 });
+    }
+
     private async Task WaitForInstanceStateAsync(Guid instanceId, string expected)
     {
         for (var attempt = 0; attempt < 60; attempt++)

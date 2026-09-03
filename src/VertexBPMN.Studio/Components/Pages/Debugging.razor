@@ -44,7 +44,7 @@
         <MudText Typo="Typo.body2" Color="Color.Tertiary" Class="mb-2">
             Active tokens: @_visualizationActiveTokenCount · Completed activities: @_visualizationCompletedActivityCount
         </MudText>
-        <BpmnViewerComponent BpmnXml="_visualizationBpmnXml"
+        <BpmnViewerComponent BpmnXml="@_visualizationBpmnXml"
                              ActiveElementIds="_activeElementIds"
                              CompletedElementIds="_completedElementIds"
                              FailedElementIds="_failedElementIds"

@@ -2540,6 +2540,213 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
         }
     }
 
+    [Fact(DisplayName = "Phase 5 - Credentials: create, verify secret is never re-displayed, rotate, delete")]
+    public async Task Credentials_CreateSecretNeverEchoedRotateDelete_ThroughTheRealEngine()
+    {
+        using var apiClient = host.CreateApiClient();
+        var browserErrors = new ConcurrentQueue<string>();
+        var page = await host.CreatePageAsync();
+        page.PageError += (_, error) => browserErrors.Enqueue(error);
+        page.Console += (_, message) =>
+        {
+            if (message.Type.Equals("error", StringComparison.OrdinalIgnoreCase))
+                browserErrors.Enqueue($"console: {message.Text}");
+        };
+
+        var tenantName = $"Phase5 CredTenant {host.RunId}";
+        var credentialName = $"cred-{host.RunId}";
+        string? tenantId = null;
+        string? credId = null;
+        var originalSecret = $"phase5-original-{Guid.NewGuid():N}";
+        var rotatedSecret = $"phase5-rotated-{Guid.NewGuid():N}";
+
+        try
+        {
+            // Bootstrap a tenant via the API (established pattern), then select it in the GUI.
+            using (var tenantResponse = await apiClient.PostAsJsonAsync(
+                       "api/tenant",
+                       new { name = tenantName, description = "Phase 5 credential tenant" },
+                       TestContext.Current.CancellationToken))
+            {
+                var tenantBody = await tenantResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+                Assert.True(tenantResponse.IsSuccessStatusCode, tenantBody);
+                tenantId = JsonDocument.Parse(tenantBody).RootElement.GetProperty("id").GetString();
+                Assert.False(string.IsNullOrWhiteSpace(tenantId));
+                host.RegisterApiCleanup(HttpMethod.Delete, $"api/tenant/{Uri.EscapeDataString(tenantId)}");
+            }
+
+            await page.GotoAsync($"{host.StudioBaseAddress}credentials");
+            await page.GetByRole(AriaRole.Heading, new() { Name = "Credentials", Exact = true }).WaitForAsync();
+            await SelectTenantAsync(page, tenantName, tenantId!);
+
+            // Create credential with a unique secret value.
+            await FillBoundInputAndVerifyAsync(page.GetByLabel("Name", new() { Exact = true }), credentialName);
+            await FillBoundInputAndVerifyAsync(page.GetByLabel("Type", new() { Exact = true }), "api-key");
+            await FillBoundInputAndVerifyAsync(page.GetByLabel("Description", new() { Exact = true }), "Phase 5 credential");
+            await FillBoundInputAndVerifyAsync(page.GetByLabel("Secret key", new() { Exact = true }), "value");
+            await FillBoundInputAndVerifyAsync(page.GetByLabel("Secret value", new() { Exact = true }), originalSecret);
+            await page.GetByRole(AriaRole.Button, new() { Name = "Create credential", Exact = true }).ClickAsync();
+
+            // The credential row appears with its secret-key NAME but the secret VALUE must never
+            // be rendered by the GUI.
+            var row = page.Locator("tr").Filter(new() { HasText = credentialName }).First;
+            await row.WaitForAsync();
+            Assert.Equal(1, await page.Locator("tr").Filter(new() { HasText = credentialName }).CountAsync());
+            Assert.Equal(0, await page.GetByText(originalSecret, new() { Exact = true }).CountAsync());
+            await AssertSecretNotInDomAsync(page, originalSecret);
+
+            // The API list response must not leak the secret value.
+            var listed = await apiClient.GetFromJsonAsync<JsonElement[]>($"/api/credentials?tenantId={Uri.EscapeDataString(tenantId)}", TestContext.Current.CancellationToken);
+            var listJson = JsonSerializer.Serialize(listed ?? []);
+            Assert.DoesNotContain(originalSecret, listJson);
+            Assert.Single(listed ?? []);
+            credId = (listed ?? [])[0].GetProperty("id").GetString();
+
+            // Rotate the secret via the row action; only the new value must be stored and the old
+            // value must remain undisclosed.
+            await FillBoundInputAndVerifyAsync(page.GetByLabel("Secret value", new() { Exact = true }), rotatedSecret);
+            await row.GetByRole(AriaRole.Button, new() { Name = "Rotate", Exact = true }).ClickAsync();
+            await Task.Delay(1000, TestContext.Current.CancellationToken);
+            Assert.Equal(0, await page.GetByText(originalSecret, new() { Exact = true }).CountAsync());
+            Assert.Equal(0, await page.GetByText(rotatedSecret, new() { Exact = true }).CountAsync());
+            await AssertSecretNotInDomAsync(page, rotatedSecret);
+
+            // Delete via the GUI; the row disappears and the API list becomes empty.
+            await row.GetByRole(AriaRole.Button, new() { Name = "Delete", Exact = true }).ClickAsync();
+            await WaitForCredentialAbsentAsync(apiClient, tenantId!, credentialName);
+            credId = null;
+
+            Assert.Empty(browserErrors);
+        }
+        finally
+        {
+            if (!string.IsNullOrWhiteSpace(credId) && !string.IsNullOrWhiteSpace(tenantId))
+                await apiClient.DeleteAsync($"/api/credentials/{Uri.EscapeDataString(credId)}?tenantId={Uri.EscapeDataString(tenantId)}", TestContext.Current.CancellationToken);
+            if (!string.IsNullOrWhiteSpace(tenantId))
+                await apiClient.DeleteAsync($"api/tenant/{Uri.EscapeDataString(tenantId)}", TestContext.Current.CancellationToken);
+            await host.ClosePageAsync(page);
+        }
+    }
+
+    /// <summary>Asserts that a secret string never appears anywhere in the rendered DOM text.</summary>
+    private async Task AssertSecretNotInDomAsync(IPage page, string secret)
+    {
+        var bodyText = await page.Locator("body").InnerTextAsync();
+        Assert.DoesNotContain(secret, bodyText);
+    }
+
+    [Fact(DisplayName = "Phase 5 - Connectors: create, test (failure path), enable/disable, delete")]
+    public async Task Connectors_CreateTestToggleAndDelete_ThroughTheRealEngine()
+    {
+        using var apiClient = host.CreateApiClient();
+        var tenantName = $"Phase5 ConnTenant {host.RunId}";
+        var connectorName = $"conn-{host.RunId}";
+        string? tenantId = null;
+
+        try
+        {
+            tenantId = await CreateTenantAsync(apiClient, tenantName);
+            host.RegisterApiCleanup(HttpMethod.Delete, $"api/tenant/{Uri.EscapeDataString(tenantId!)}");
+
+            var page = await host.CreatePageAsync();
+            try
+            {
+                await page.GotoAsync($"{host.StudioBaseAddress}connectors");
+                await page.GetByRole(AriaRole.Heading, new() { Name = "Connectors", Exact = true }).WaitForAsync();
+                await SelectTenantAsync(page, tenantName, tenantId!);
+
+                // Create a connector through the GUI, bound to an unreachable endpoint so "Test"
+                // deterministically exercises the failure path.
+                await FillBoundInputAndVerifyAsync(page.GetByLabel("Name", new() { Exact = true }), connectorName);
+                await FillBoundInputAndVerifyAsync(page.GetByLabel("Type", new() { Exact = true }), "http");
+                await FillBoundInputAndVerifyAsync(page.GetByLabel("Endpoint (optional)", new() { Exact = true }), "http://127.0.0.1:9/");
+                await page.GetByRole(AriaRole.Button, new() { Name = "Create", Exact = true }).ClickAsync();
+
+                var row = page.Locator("tr").Filter(new() { HasText = connectorName }).First;
+                await row.WaitForAsync();
+                Assert.Contains("Enabled", await row.InnerTextAsync());
+
+                // Test (failure path): clicking Test must surface the error alert, not crash.
+                await row.GetByRole(AriaRole.Button, new() { Name = "Test", Exact = true }).ClickAsync();
+                await page.Locator(".mud-alert-error").WaitForAsync(new() { Timeout = 30_000 });
+                var testMsg = await page.Locator(".mud-alert-error").InnerTextAsync();
+                Assert.False(string.IsNullOrWhiteSpace(testMsg));
+
+                // Disable then re-enable through the GUI; the status label must flip.
+                await row.GetByRole(AriaRole.Button, new() { Name = "Disable", Exact = true }).ClickAsync();
+                row = page.Locator("tr").Filter(new() { HasText = connectorName }).First;
+                await row.WaitForAsync();
+                Assert.Contains("Disabled", await row.InnerTextAsync());
+
+                await row.GetByRole(AriaRole.Button, new() { Name = "Enable", Exact = true }).ClickAsync();
+                row = page.Locator("tr").Filter(new() { HasText = connectorName }).First;
+                await row.WaitForAsync();
+                Assert.Contains("Enabled", await row.InnerTextAsync());
+
+                // Delete through the GUI and verify the API no longer returns it.
+                await page.Locator("tr").Filter(new() { HasText = connectorName }).First
+                    .GetByRole(AriaRole.Button, new() { Name = "Delete", Exact = true }).ClickAsync();
+                await WaitForConnectorAbsentAsync(apiClient, tenantId!, connectorName);
+            }
+            finally
+            {
+                await host.ClosePageAsync(page);
+            }
+        }
+        finally
+        {
+            if (tenantId is not null)
+                try { await apiClient.DeleteAsync($"/api/tenant/{Uri.EscapeDataString(tenantId)}", TestContext.Current.CancellationToken); }
+                catch { /* best effort */ }
+        }
+    }
+
+    /// <summary>Polls GET /api/connectors?tenantId= until the named connector is absent.</summary>
+    private async Task WaitForConnectorAbsentAsync(HttpClient apiClient, string tenantId, string name)
+    {
+        for (var attempt = 0; attempt < 60; attempt++)
+        {
+            var connectors = await apiClient.GetFromJsonAsync<JsonElement[]>(
+                $"/api/connectors?tenantId={Uri.EscapeDataString(tenantId)}", TestContext.Current.CancellationToken);
+            var match = connectors?.FirstOrDefault(c => c.GetProperty("name").GetString() == name);
+            if (match.HasValue && match.Value.ValueKind == JsonValueKind.Object)
+            {
+                await Task.Delay(250, TestContext.Current.CancellationToken);
+                continue;
+            }
+            return;
+        }
+        throw new TimeoutException($"Connector '{name}' still exists after delete.");
+    }
+
+    /// <summary>Polls GET /api/credentials?tenantId= until the named credential is absent.</summary>
+    private async Task WaitForCredentialAbsentAsync(HttpClient apiClient, string tenantId, string name)
+    {
+        for (var attempt = 0; attempt < 60; attempt++)
+        {
+            var creds = await apiClient.GetFromJsonAsync<JsonElement[]>($"/api/credentials?tenantId={Uri.EscapeDataString(tenantId)}", TestContext.Current.CancellationToken);
+            var match = (creds ?? []).FirstOrDefault(c => c.GetProperty("name").GetString() == name);
+            if (match.ValueKind != JsonValueKind.Object)
+                return;
+            await Task.Delay(250, TestContext.Current.CancellationToken);
+        }
+        throw new TimeoutException($"Credential '{name}' still exists after delete.");
+    }
+
+    /// <summary>Creates a tenant via POST /api/tenant and returns its id.</summary>
+    private async Task<string?> CreateTenantAsync(HttpClient apiClient, string name)
+    {
+        using var tenantResponse = await apiClient.PostAsJsonAsync(
+            "api/tenant",
+            new { name, description = "Phase 5 tenant" },
+            TestContext.Current.CancellationToken);
+        var tenantBody = await tenantResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.True(tenantResponse.IsSuccessStatusCode, tenantBody);
+        var tenantId = JsonDocument.Parse(tenantBody).RootElement.GetProperty("id").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(tenantId));
+        return tenantId;
+    }
+
     /// <summary>Polls GET /api/identity/list-tenants until the named tenant exists, returning its id.</summary>
     private async Task<string?> WaitForTenantAsync(HttpClient apiClient, string name)
     {

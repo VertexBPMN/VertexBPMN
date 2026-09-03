@@ -19,7 +19,7 @@ internal sealed class UiTestAuthenticationHandler(
         [
             new Claim(ClaimTypes.NameIdentifier, "ui-test-user"),
             new Claim(ClaimTypes.Name, "UI Test User"),
-            new Claim(ClaimTypes.Role, "admin")
+            new Claim(ClaimTypes.Role, "Admin")
         ], Scheme);
 
         var principal = new ClaimsPrincipal(identity);

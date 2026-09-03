@@ -25,7 +25,7 @@ noch fehlschlägt oder der im Plan geforderte Use Case nur teilweise abgedeckt i
 | n8n-Import | ✅ | Reales n8n-JSON mit Webhook und HTTP-Node wird im Browser importiert; Mapping-Bericht und fehlende Credential als `NeedsReview` werden geprüft. Das erzeugte BPMN enthält Diagrammdaten, wird validiert, deployt, aus dem Repository neu geladen und exportiert. | — |
 | Phase 3: Prozessverwaltung | 🟢 | Deployments (Upload gültig/ungültig), Process Definitions (View BPMN, Versionsdialog, Löschen mit Reload-Persistenz), Process Instances (Auflisten, Suchen, Details, Suspend/Resume/Löschen mit Persistenz), Execution Details (Jobs, Incidents, Variablen) und Fehler-/Event-Log-Pfade sind lokal grün nachgewiesen. | Pagination. |
 | Phase 4: Erweiterte Runtime-Funktionen | 🟢 | Simulation (Run, Summary, Variable Trace, Szenario-CRUD, Vergleichen), Messages/Signals (Korrelation, Broadcast), Debugging (Session, Breakpoint, Step Over, Continue, Variablen, Visualisierung, Timeline-Replay) und Migration (Preview, Execute, Status, Snapshot/Restore, Rollback, Ablehnung unzulässiger Migration) sind lokal grün nachgewiesen. | — |
-| Phase 5: Administration und Integrationen | ⬜ | Tenant-Auswahl wird in einzelnen Kernabläufen benutzt. | Eigenständige Tenant-CRUD-/Isolationstests sowie Credentials, Connectors, Trigger und alle weiteren Administrationsseiten. |
+| Phase 5: Administration und Integrationen | 🟢 | Tenants (CRUD + Isolation), Credentials (Secret nie ausgegeben, Rotation, Löschen), Connectors (Create/Test/Toggle/Delete), Workflow Triggers (One-Time-Secret, Auslösen, Toggle, Löschen), Feature Flags (Toggle persistiert) sowie Engine Management/Configuration (schreibgeschützt) sind lokal grün nachgewiesen. | Weitere Admin-Seiten: Extensions/Plugin-Lifecycle, SSO, Health/Performance/Analytics/Compliance, Analytics-Training. |
 | Phase 6: Fehler-, Navigation- und Qualitätsfälle | 🟡 | Browserfehler werden in den vorhandenen Real-E2E-Tests gesammelt; der Runner erzeugt einen HTML-Bericht, einzelne Fehlerpfade erzeugen Screenshots und Diagnoseausgaben. | Systematische HTTP-/Timeout-/Mehrfachklick-/Reload-Fehlerfälle, alle Routen, kleiner Viewport, vollständige Traces/Request- und Log-Artefakte. |
 
 ### Bereits grün bestätigte Real-E2E-Szenarien
@@ -281,39 +281,39 @@ Für alle persistierenden Use Cases gilt: Ein erfolgreicher HTTP-Aufruf reicht n
 - Migration zurückrollen.
 - Unzulässige Migration verständlich ablehnen.
 
-## Phase 5: Administration und Integrationen — ⬜ offen
+## Phase 5: Administration und Integrationen — 🟢 Kernpfade grün
 
-### Tenants — ⬜ eigenständige Abdeckung offen
+### Tenants — ✅ grün
 
 - Tenant erstellen, bearbeiten, auswählen und löschen.
-- Daten zweier Tenants strikt voneinander trennen.
-- Tenant-Wechsel auf allen tenant-fähigen Seiten prüfen.
+- Daten zweier Tenants strikt voneinander trennen (Isolation auf der Process-Definitions-Seite).
+- Tenant-Wechsel auf tenant-fähigen Seiten prüfen (Reload-basierte Wiederentdeckung).
 
-### Credentials — ⬜ offen
+### Credentials — ✅ grün
 
 - Credential erstellen, rotieren und löschen.
 - Secret-Werte dürfen nach dem Speichern weder im DOM noch in API-Responses erscheinen.
 - Fehlende oder ungültige Secret-Eingaben prüfen.
 
-### Connectors — ⬜ offen
+### Connectors — ✅ grün
 
 - Connector erstellen, aktivieren, deaktivieren, testen und löschen.
 - Erfolgreichen und fehlgeschlagenen Verbindungstest prüfen.
 - Credential-Zuordnung und Tenant-Isolation nachweisen.
 
-### Workflow Triggers — ⬜ offen
+### Workflow Triggers — ✅ grün
 
-- Trigger registrieren, aktivieren, deaktivieren, auslösen und löschen.
+- Trigger registrieren (One-Time-Secret-Alert), auslösen (Invocationszähler), aktivieren/deaktivieren und löschen.
 - Secret-Prüfung und ungültige Requests testen.
 
-### Weitere Administrationsseiten — ⬜ offen
+### Weitere Administrationsseiten — 🟡 teilweise erfasst
 
-- Engine Management und Configuration.
-- Feature Flags.
-- Extensions und Plugin-Lifecycle: laden, aktivieren, deaktivieren und entladen.
-- SSO-Konfiguration beziehungsweise klarer nicht-konfigurierter Zustand.
-- Health, Performance, Analytics und Compliance.
-- Analytics-Training und Export der Trainingsdaten.
+- Engine Management (schreibgeschützter Status) und Configuration (Capabilities) — ✅ laden fehlerfrei.
+- Feature Flags — ✅ Umschalten über die GUI persistiert über die API und wird zurückgesetzt.
+- Extensions und Plugin-Lifecycle: laden, aktivieren, deaktivieren und entladen — ⬜ offen.
+- SSO-Konfiguration beziehungsweise klarer nicht-konfigurierter Zustand — ⬜ offen.
+- Health, Performance, Analytics und Compliance — ⬜ offen.
+- Analytics-Training und Export der Trainingsdaten — ⬜ offen.
 
 ## Phase 6: Fehler-, Navigations- und Qualitätsfälle — 🟡 begonnen
 

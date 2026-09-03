@@ -343,3 +343,6 @@ ASALocalRun/
 
 # APM dependencies
 apm_modules/
+
+# logs
+api-log-*.txt

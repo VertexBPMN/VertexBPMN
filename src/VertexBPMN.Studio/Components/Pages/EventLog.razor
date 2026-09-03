@@ -30,7 +30,7 @@
         <MudTd DataLabel="Event">@FormatEventType(context.EventType)</MudTd>
         <MudTd DataLabel="Process instance">@context.ProcessInstanceId</MudTd>
         <MudTd DataLabel="Element">@context.ElementId</MudTd>
-        <MudTd DataLabel="Details">@context.Details</MudTd>
+        <MudTd DataLabel="Details">@(context.Details ?? context.Data)</MudTd>
     </RowTemplate>
     <NoRecordsContent>
         <MudText Class="pa-4">No persisted engine events found for the active tenant.</MudText>

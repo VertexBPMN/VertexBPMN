@@ -17,17 +17,19 @@
 }
 else
 {
-    <MudDataGrid T="ProcessDefinition" 
+    <MudDataGrid T="ProcessDefinition"
+                 @ref="_dataGrid"
                  Items="@FilteredDefinitions" 
                  Filterable="true"
                  Groupable="true"
                  Hover="true"
                  Dense="true"
+                 data-testid="process-definitions-grid"
                  Class="mt-4">
         <ToolBarContent>
             <MudText Typo="Typo.h6">Process Definitions</MudText>
             <MudSpacer />
-            <MudTextField @bind-Value="_search" Immediate="true" Placeholder="Search definitions" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" data-testid="process-definition-search" />
+            <MudTextField Value="_search" ValueChanged="OnSearchChanged" Immediate="true" Placeholder="Search definitions" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" data-testid="process-definition-search" />
             <MudButton Variant="Variant.Filled" 
                       Color="Color.Primary" 
                       StartIcon="@Icons.Material.Filled.Refresh"
@@ -100,6 +102,7 @@ else
 
 @code {
     private List<ProcessDefinition> _processDefinitions = new();
+    private MudDataGrid<ProcessDefinition>? _dataGrid;
     private bool _isLoading = true;
     private string? _error;
     private string _search = string.Empty;
@@ -125,6 +128,13 @@ else
     }
 
     private void OnTenantChanged() => _ = InvokeAsync(LoadProcessDefinitions);
+
+    private async Task OnSearchChanged(string search)
+    {
+        _search = search;
+        if (_dataGrid is not null)
+            await _dataGrid.SetPageAsync(0);
+    }
 
     private async Task LoadProcessDefinitions()
     {

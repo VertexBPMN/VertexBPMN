@@ -4,13 +4,19 @@
 @inject VertexBPMN.Studio.Services.ActiveEngineService ActiveEngineService
 @inject VertexBPMN.Studio.Services.StudioTenantContext TenantContext
 @inject ILogger<Deployments> Logger
+@using System.Xml.Linq
 @implements IDisposable
 
 <PageTitle>Deployments</PageTitle>
 
 <MudText Typo="Typo.h4" GutterBottom="true">Deployments</MudText>
 
-<InputFile id="fileUpload" OnChange="UploadFiles" hidden />
+<InputFile id="fileUpload"
+           OnChange="UploadFiles"
+           accept=".bpmn,.xml,application/xml,text/xml"
+           multiple
+           data-testid="deployment-upload"
+           hidden />
 <MudButton HtmlTag="label"
            Variant="Variant.Filled"
            Color="Color.Primary"
@@ -25,7 +31,7 @@
     <MudText>Deploying...</MudText>
 }
 
-<MudTable Items="@_deployments" Hover="true" Striped="true" Class="mt-4">
+<MudTable Items="@_deployments" Hover="true" Striped="true" Class="mt-4" data-testid="deployments-table">
     <HeaderContent>
         <MudTh>Id</MudTh>
         <MudTh>Name</MudTh>
@@ -40,6 +46,8 @@
 
 @code {
     private IEnumerable<VertexBPMN.Studio.Services.Deployment> _deployments = new List<VertexBPMN.Studio.Services.Deployment>();
+    private const long MaximumUploadSize = 10 * 1024 * 1024;
+    private const int MaximumFileCount = 10;
     private bool _isLoading = false;
 
     protected override async Task OnInitializedAsync()
@@ -68,27 +76,74 @@
 
     private async Task UploadFiles(InputFileChangeEventArgs args)
     {
-        var file = args.File;
-        if (file != null)
+        IReadOnlyList<IBrowserFile> files;
+        try
         {
-            _isLoading = true;
-            StateHasChanged();
+            files = args.GetMultipleFiles(MaximumFileCount);
+        }
+        catch (InvalidOperationException)
+        {
+            Snackbar.Add($"Select no more than {MaximumFileCount} BPMN files.", Severity.Error);
+            return;
+        }
 
-            try
+        _isLoading = true;
+        StateHasChanged();
+        var deployedCount = 0;
+
+        try
+        {
+            foreach (var file in files)
             {
-                await RepositoryService.DeployAsync(file, TenantContext.CurrentTenantId);
-                Snackbar.Add($"File {file.Name} deployed successfully!", Severity.Success);
+                if (file.Size > MaximumUploadSize)
+                {
+                    Snackbar.Add($"{file.Name} exceeds the 10 MB upload limit.", Severity.Error);
+                    continue;
+                }
+
+                if (!await IsValidBpmnAsync(file))
+                {
+                    Snackbar.Add($"{file.Name} is not valid BPMN XML.", Severity.Error);
+                    continue;
+                }
+
+                try
+                {
+                    await RepositoryService.DeployAsync(file, TenantContext.CurrentTenantId);
+                    deployedCount++;
+                    if (files.Count == 1)
+                        Snackbar.Add($"File {file.Name} deployed successfully!", Severity.Success);
+                }
+                catch (Exception exception)
+                {
+                    Logger.LogError(exception, "Failed to deploy BPMN file {FileName}", file.Name);
+                    Snackbar.Add($"Error deploying file {file.Name}: {exception.Message}", Severity.Error);
+                }
             }
-            catch (Exception ex)
-            {
-                Snackbar.Add($"Error deploying file {file.Name}: {ex.Message}", Severity.Error);
-            }
-            finally
-            {
-                _isLoading = false;
-                await LoadDeployments();
-                StateHasChanged();
-            }
+
+            if (files.Count > 1 && deployedCount > 0)
+                Snackbar.Add($"{deployedCount} BPMN files deployed successfully!", Severity.Success);
+        }
+        finally
+        {
+            _isLoading = false;
+            await LoadDeployments();
+            StateHasChanged();
+        }
+    }
+
+    private static async Task<bool> IsValidBpmnAsync(IBrowserFile file)
+    {
+        try
+        {
+            await using var stream = file.OpenReadStream(MaximumUploadSize);
+            var document = await XDocument.LoadAsync(stream, LoadOptions.None, CancellationToken.None);
+            return document.Root?.Name.LocalName == "definitions"
+                && document.Descendants().Any(element => element.Name.LocalName == "process");
+        }
+        catch (Exception exception) when (exception is System.Xml.XmlException or InvalidDataException or IOException)
+        {
+            return false;
         }
     }
 }

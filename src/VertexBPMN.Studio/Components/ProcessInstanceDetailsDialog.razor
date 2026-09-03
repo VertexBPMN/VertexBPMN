@@ -61,10 +61,10 @@
                                     
                                     <MudField Label="State" Variant="Variant.Text">
                                         <MudChip T="string" 
-                                                Color="GetStateColor(ProcessInstance.State)" 
+                                                Color="GetStateColor(ProcessInstance.Status.ToString())" 
                                                 Size="Size.Small" 
                                                 Variant="Variant.Filled">
-                                            @ProcessInstance.State
+                                            @ProcessInstance.Status
                                         </MudChip>
                                     </MudField>
                                 </MudPaper>

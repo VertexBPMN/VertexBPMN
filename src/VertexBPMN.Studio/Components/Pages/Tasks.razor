@@ -2,8 +2,10 @@
 @inject VertexBPMN.Studio.Services.ITaskService TaskService
 @inject VertexBPMN.Studio.Services.ActiveEngineService ActiveEngineService
 @inject VertexBPMN.Studio.Services.StudioTenantContext TenantContext
+@inject AuthenticationStateProvider AuthenticationStateProvider
 @inject MudBlazor.IDialogService DialogService
 @inject MudBlazor.ISnackbar Snackbar
+@implements IDisposable
 
 <PageTitle>Tasks</PageTitle>
 
@@ -36,7 +38,7 @@
             {
                 <MudIconButton Icon="@Icons.Material.Filled.PersonAdd" Size="Size.Small" OnClick="@(() => ClaimTask(context.Id))" aria-label="Claim Task" />
             }
-            else if (context.Assignee == "John Doe") // Assuming "John Doe" is the current user
+            else if (context.Assignee == _currentUserName)
             {
                 <MudIconButton Icon="@Icons.Material.Filled.Check" Size="Size.Small" OnClick="@(() => CompleteTask(context.Id))" aria-label="Complete Task" />
             }
@@ -48,9 +50,13 @@
 @code {
     private IEnumerable<UserTask> _tasks = new List<UserTask>();
     private string _searchString = "";
+    private string? _currentUserName;
 
     protected override async Task OnInitializedAsync()
     {
+        var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        _currentUserName = authenticationState.User.Identity?.Name
+            ?? authenticationState.User.FindFirstValue(ClaimTypes.NameIdentifier);
         ActiveEngineService.OnChange += StateHasChanged; // Subscribe to state changes
         TenantContext.Changed += OnTenantChanged;
         await LoadTasks();
@@ -90,9 +96,15 @@
 
     private async Task ClaimTask(Guid taskId)
     {
+        if (string.IsNullOrWhiteSpace(_currentUserName))
+        {
+            Snackbar.Add("The current user could not be determined.", Severity.Error);
+            return;
+        }
+
         try
         {
-            await TaskService.ClaimTaskAsync(taskId, "John Doe", TenantContext.CurrentTenantId);
+            await TaskService.ClaimTaskAsync(taskId, _currentUserName, TenantContext.CurrentTenantId);
             Snackbar.Add($"Task {taskId} claimed!", Severity.Success);
             await LoadTasks();
         }

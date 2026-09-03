@@ -1,34 +1,88 @@
 @page "/event-log"
 @inject VertexBPMN.Studio.Services.IEngineEventService EngineEventService
+@inject VertexBPMN.Studio.Services.IHistoryService HistoryService
+@inject VertexBPMN.Studio.Services.StudioTenantContext TenantContext
 @implements IDisposable
 
 <PageTitle>Event Log</PageTitle>
 
 <MudText Typo="Typo.h4" GutterBottom="true">Event Log</MudText>
 
-<MudList T="string">
-    @foreach (var logEntry in _eventLog.AsEnumerable().Reverse())
-    {
-        <MudListItem T="string" Icon="@Icons.Material.Filled.Event">@logEntry</MudListItem>
-    }
-</MudList>
+<MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync" Disabled="_isLoading" Class="mb-4">
+    Refresh
+</MudButton>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+}
+
+<MudTable Items="_events" Hover="true" Dense="true" Loading="_isLoading" data-testid="persistent-event-log-table">
+    <HeaderContent>
+        <MudTh>Timestamp</MudTh>
+        <MudTh>Event</MudTh>
+        <MudTh>Process instance</MudTh>
+        <MudTh>Element</MudTh>
+        <MudTh>Details</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Timestamp">@context.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</MudTd>
+        <MudTd DataLabel="Event">@FormatEventType(context.EventType)</MudTd>
+        <MudTd DataLabel="Process instance">@context.ProcessInstanceId</MudTd>
+        <MudTd DataLabel="Element">@context.ElementId</MudTd>
+        <MudTd DataLabel="Details">@context.Details</MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <MudText Class="pa-4">No persisted engine events found for the active tenant.</MudText>
+    </NoRecordsContent>
+</MudTable>
 
 @code {
-    private List<string> _eventLog = new List<string>();
+    private readonly List<HistoryEvent> _events = [];
+    private bool _isLoading;
+    private string? _error;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         EngineEventService.OnEventEmitted += HandleEventEmitted;
+        TenantContext.Changed += OnTenantChanged;
+        await LoadAsync();
     }
 
     public void Dispose()
     {
         EngineEventService.OnEventEmitted -= HandleEventEmitted;
+        TenantContext.Changed -= OnTenantChanged;
     }
 
-    private void HandleEventEmitted(string eventMessage)
+    private void OnTenantChanged() => _ = InvokeAsync(LoadAsync);
+
+    private async void HandleEventEmitted(string eventMessage)
     {
-        _eventLog.Add($"{DateTime.Now} [Source: Studio]: {eventMessage}");
-        StateHasChanged();
+        await InvokeAsync(LoadAsync);
     }
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        _error = null;
+        try
+        {
+            var events = await HistoryService.GetHistoryAsync(TenantContext.CurrentTenantId);
+            _events.Clear();
+            _events.AddRange(events.OrderByDescending(historyEvent => historyEvent.Timestamp));
+        }
+        catch (Exception exception)
+        {
+            _events.Clear();
+            _error = $"Event log could not be loaded: {exception.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private static string FormatEventType(string eventType) =>
+        eventType.Replace('_', ' ').ToTitleCase();
 }

@@ -3,6 +3,8 @@
 @inject IJSRuntime JSRuntime
 @inject VertexBPMN.Studio.Services.ITaskService TaskService
 @inject VertexBPMN.Studio.Services.StudioTenantContext TenantContext
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ILogger<TaskDetailsDialog> Logger
 @implements IAsyncDisposable
 
 <MudDialog>
@@ -29,7 +31,7 @@
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="@(() => Dialog.Close())">Cancel</MudButton>
-        @if (Task.Assignee == "John Doe") // Assuming "John Doe" is the current user
+        @if (Task.Assignee == _currentUserName)
         {
             <MudButton Color="Color.Primary" OnClick="CompleteTask">Complete</MudButton>
         }
@@ -48,9 +50,14 @@
     private IJSObjectReference? _module;
     private IJSObjectReference? _formInstance;
     private bool _formInitialized;
+    private string? _currentUserName;
 
     protected override async Task OnInitializedAsync()
     {
+        var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        _currentUserName = authenticationState.User.Identity?.Name
+            ?? authenticationState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
         if (!string.IsNullOrEmpty(Task.FormKey))
         {
             try
@@ -126,6 +133,9 @@
                 await _module.DisposeAsync();
             }
         }
-        catch { }
+        catch (Exception exception)
+        {
+            Logger.LogWarning(exception, "Failed to dispose the task form viewer");
+        }
     }
 }

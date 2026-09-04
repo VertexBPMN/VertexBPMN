@@ -336,6 +336,10 @@ Stand (2026-09-04):
   `ErrorPath_ExecutionDetails_NonexistentInstanceId_ShowsFriendlyServerError` — wohlgeformte, aber
   nicht existente Instanz-GUID passiert die Client-Validierung, `/api/vertex/variable/{id}` liefert
   404, GUI zeigt freundliches Fehler-Alert statt Absturz; Seite bleibt interaktiv, kein JS-Fehler.
+- 🟡 Reload-Robustheit: `Reload_ProcessInstances_AfterFilteredSearch_RehydratesWithoutErrors` —
+  Reload nach interaktiver Suche rehydriert einen sauberen Circuit (Heading + Suchfeld erneut
+  vorhanden), kein JS-/Seiten-/Netzwerkfehler. Hinweis: ein echtes *Server-Timeout* ist ohne
+  Stub/Slow-Endpoint deterministisch nicht reproduzierbar und bleibt hier ausgeklammert.
 
 
 Für jede mutierende Kernfunktion werden mindestens folgende Fälle automatisiert:

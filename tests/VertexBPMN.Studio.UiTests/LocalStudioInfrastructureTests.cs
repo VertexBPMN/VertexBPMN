@@ -3166,6 +3166,44 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
         }
     }
 
+    [Fact(DisplayName = "Phase 6 - Process Instances: reload after an interactive search rehydrates cleanly without JS errors")]
+    public async Task Reload_ProcessInstances_AfterFilteredSearch_RehydratesWithoutErrors()
+    {
+        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
+
+        var browserErrors = new ConcurrentQueue<string>();
+        var page = await host.CreatePageAsync();
+        page.PageError += (_, error) => browserErrors.Enqueue(error);
+        page.Console += (_, message) =>
+        {
+            if (message.Type.Equals("error", StringComparison.OrdinalIgnoreCase))
+                browserErrors.Enqueue($"console: {message.Text}");
+        };
+
+        try
+        {
+            await page.GotoAsync($"{host.StudioBaseAddress}process-instances");
+            await EnsureSmokeTenantAsync();
+            await SelectTenantAsync(page, s_smokeTenantName!, s_smokeTenantId!);
+
+            // Put the page into a filtered interactive state first.
+            await FillBoundInputAsync(page.GetByPlaceholder("Search instances..."), $"no-such-key-{host.RunId}");
+            await page.GetByText("No matching records found", new() { Exact = true }).WaitForAsync();
+
+            // Reloading mid-state must rehydrate a clean, uncorrupted Blazor circuit: heading and
+            // search box present again, no JS/page/network errors, no stuck loading indicator.
+            await page.ReloadAsync();
+            await page.GetByRole(AriaRole.Heading, new() { Name = "Process Instances", Exact = true }).WaitForAsync();
+            await page.GetByPlaceholder("Search instances...").WaitForAsync();
+
+            Assert.Empty(browserErrors);
+        }
+        finally
+        {
+            await host.ClosePageAsync(page);
+        }
+    }
+
     [Fact(DisplayName = "Phase 6 - key Studio routes render cleanly at a small (mobile) viewport")]
     public async Task SmallViewport_KeyRoutes_RenderWithoutBrowserErrors()
     {

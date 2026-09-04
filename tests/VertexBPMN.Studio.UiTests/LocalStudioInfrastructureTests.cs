@@ -2939,6 +2939,125 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
         }
     }
 
+    private static string? s_smokeTenantName;
+    private static string? s_smokeTenantId;
+
+    /// <summary>Creates a single tenant for the all-routes smoke test, reused across theory cases.</summary>
+    private async Task EnsureSmokeTenantAsync()
+    {
+        if (s_smokeTenantId is not null)
+            return;
+        s_smokeTenantName = $"Smoke {host.RunId}";
+        using var apiClient = host.CreateApiClient();
+        s_smokeTenantId = await CreateTenantAsync(apiClient, s_smokeTenantName);
+    }
+
+    [Theory(DisplayName = "Phase 6 - every Studio route renders its heading on direct navigation and after reload")]
+    [InlineData("/", "Dashboard")]
+    [InlineData("/analytics", "Process Analytics")]
+    [InlineData("/bpmn-modeler", "BPMN Modeler")]
+    [InlineData("/cmmn-modeler", "CMMN Modeler")]
+    [InlineData("/compliance", "Compliance Evidence")]
+    [InlineData("/configuration", "Configuration")]
+    [InlineData("/connectors", "Connectors")]
+    [InlineData("/counter", "Counter")]
+    [InlineData("/credentials", "Credentials")]
+    [InlineData("/debugging", "Debugging Trace")]
+    [InlineData("/deployments", "Deployments")]
+    [InlineData("/dmn-modeler", "DMN Modeler")]
+    [InlineData("/engine-management", "Engine Management")]
+    [InlineData("/event-log", "Event Log")]
+    [InlineData("/execution-details", "Execution Details")]
+    [InlineData("/extensions", "Extensions")]
+    [InlineData("/feature-flags", "Feature Flags")]
+    [InlineData("/form-builder", "Form Builder")]
+    [InlineData("/health", "Health and Operations")]
+    [InlineData("/history", "History")]
+    [InlineData("/messages-signals", "Messages & Signals")]
+    [InlineData("/migration", "Process Migration")]
+    [InlineData("/performance", "Performance")]
+    [InlineData("/process-definitions", "Process Definitions")]
+    [InlineData("/process-instances", "Process Instances")]
+    [InlineData("/simulation", "Simulation")]
+    [InlineData("/sso", "Single Sign-On (SSO)")]
+    [InlineData("/tasks", "Tasks")]
+    [InlineData("/tenants", "Tenants")]
+    [InlineData("/triggers", "Workflow Triggers")]
+    public async Task AllStudioRoutes_DirectNavigationAndReload_RenderTheirHeading(string route, string expectedHeading)
+    {
+        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
+
+        var browserErrors = new ConcurrentQueue<string>();
+        var failedRequests = new ConcurrentQueue<string>();
+        var page = await host.CreatePageAsync();
+        page.PageError += (_, error) => browserErrors.Enqueue(error);
+        page.Console += (_, message) =>
+        {
+            if (message.Type.Equals("error", StringComparison.OrdinalIgnoreCase))
+                browserErrors.Enqueue($"console: {message.Text}");
+        };
+        page.RequestFailed += (_, request) => failedRequests.Enqueue($"{request.Method} {request.Url}: {request.Failure}");
+
+        try
+        {
+            // Direct navigation: the SPA fallback answers every route with HTTP 200.
+            var response = await page.GotoAsync($"{host.StudioBaseAddress}{route.TrimStart('/')}");
+            Assert.NotNull(response);
+            Assert.True(response.Ok, $"{route} returned HTTP {response.Status}.");
+
+            // Tenant-fenced pages (connectors, credentials, deployments, ...) render their real
+            // content only with an active tenant; ensure one is selected up front.
+            await EnsureSmokeTenantAsync();
+            await SelectTenantAsync(page, s_smokeTenantName!, s_smokeTenantId!);
+
+            await page.GetByRole(AriaRole.Heading, new() { Name = expectedHeading, Exact = true }).WaitForAsync();
+
+            // Browser reload must render the same page again (navigation persistence).
+            await page.ReloadAsync();
+            await page.GetByRole(AriaRole.Heading, new() { Name = expectedHeading, Exact = true }).WaitForAsync();
+
+            // No unresolved JS/page errors or failed HTTP requests.
+            await Task.Delay(400, TestContext.Current.CancellationToken);
+            Assert.Empty(browserErrors);
+            Assert.Empty(failedRequests);
+        }
+        finally
+        {
+            await host.ClosePageAsync(page);
+        }
+    }
+
+    [Fact(DisplayName = "Phase 6 - an unknown Studio route shows the Blazor 404 message without errors")]
+    public async Task UnknownStudioRoute_ShowsNotFoundWithoutBrowserErrors()
+    {
+        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
+
+        var browserErrors = new ConcurrentQueue<string>();
+        var page = await host.CreatePageAsync();
+        page.PageError += (_, error) => browserErrors.Enqueue(error);
+        page.Console += (_, message) =>
+        {
+            if (message.Type.Equals("error", StringComparison.OrdinalIgnoreCase))
+                browserErrors.Enqueue($"console: {message.Text}");
+        };
+
+        try
+        {
+            var response = await page.GotoAsync($"{host.StudioBaseAddress}route-that-does-not-exist-e2e");
+            Assert.NotNull(response);
+            Assert.True(response.Ok, $"Unknown route returned HTTP {response.Status}.");
+
+            await page.GetByText("Sorry, there's nothing at this address.", new() { Exact = true }).WaitForAsync();
+
+            await Task.Delay(400, TestContext.Current.CancellationToken);
+            Assert.Empty(browserErrors);
+        }
+        finally
+        {
+            await host.ClosePageAsync(page);
+        }
+    }
+
 
     private async Task WaitForConnectorAbsentAsync(HttpClient apiClient, string tenantId, string name)
     {

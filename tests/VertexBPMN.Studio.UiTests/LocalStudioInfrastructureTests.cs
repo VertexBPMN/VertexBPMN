@@ -3206,6 +3206,46 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
         }
     }
 
+    [Fact(DisplayName = "Phase 6 - Analytics: training-data export gives clear feedback and never crashes, regardless of ML availability")]
+    public async Task Analytics_ExportTrainingData_ShowsFeedbackWithoutCrash()
+    {
+        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
+
+        var browserErrors = new ConcurrentQueue<string>();
+        var page = await host.CreatePageAsync();
+        page.PageError += (_, error) => browserErrors.Enqueue(error);
+        page.Console += (_, message) =>
+        {
+            if (message.Type.Equals("error", StringComparison.OrdinalIgnoreCase))
+                browserErrors.Enqueue($"console: {message.Text}");
+        };
+
+        try
+        {
+            await page.GotoAsync($"{host.StudioBaseAddress}analytics");
+            await EnsureSmokeTenantAsync();
+            await SelectTenantAsync(page, s_smokeTenantName!, s_smokeTenantId!);
+
+            await page.GetByRole(AriaRole.Heading, new() { Name = "Process Analytics", Exact = true }).WaitForAsync();
+
+            // The export is either a success or a graceful, clearly-worded failure depending on ML
+            // availability in the test backend - both are acceptable friendly outcomes. What must NOT
+            // happen is a crash or a JS error.
+            var feedback = page.GetByText("Trainingsdaten wurden exportiert.", new() { Exact = true })
+                               .Or(page.GetByText("Export fehlgeschlagen", new() { Exact = false }));
+            await page.GetByRole(AriaRole.Button, new() { Name = "Trainingsdaten exportieren", Exact = true }).ClickAsync();
+            await feedback.First.WaitForAsync();
+
+            // Page stays interactive after the feedback appears.
+            await page.GetByRole(AriaRole.Button, new() { Name = "Trainingsdaten exportieren", Exact = true }).WaitForAsync();
+            Assert.Empty(browserErrors);
+        }
+        finally
+        {
+            await host.ClosePageAsync(page);
+        }
+    }
+
     [Fact(DisplayName = "Phase 6 - Process Instances: reload after an interactive search rehydrates cleanly without JS errors")]
     public async Task Reload_ProcessInstances_AfterFilteredSearch_RehydratesWithoutErrors()
     {

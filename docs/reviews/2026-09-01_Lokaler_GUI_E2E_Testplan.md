@@ -344,6 +344,11 @@ Stand (2026-09-04):
   `DoubleClick_ExecutionDetails_NonexistentId_RepeatsConsistentFriendlyError` — wiederholte
   Ausführung der 404-Aktion reproduziert exakt dieselbe freundliche Meldung (kein zweiter Banner,
   kein Absturz), Seite bleibt interaktiv.
+- 🟡 Phase-5-Rest (nicht mutierend, ML-neutral):
+  `Analytics_ExportTrainingData_ShowsFeedbackWithoutCrash` — der Trainingsdaten-Export erzeugt je
+  nach ML-Verfügbarkeit Erfolgs- oder sauber formulierte Fehlermeldung, stürzt nie ab und löst keine
+  JS-Fehler aus. „Modelle trainieren" sowie SSO-/Extensions-Konfiguration (mutierende Aktionen)
+  sind bewusst ausgeklammert (nur am lokalen Runner sinnvoll abzunehmen).
 
 
 Für jede mutierende Kernfunktion werden mindestens folgende Fälle automatisiert:

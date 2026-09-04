@@ -3058,6 +3058,77 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
         }
     }
 
+    [Fact(DisplayName = "Phase 6 - Process Instances: an unknown search shows a friendly empty state, not an error banner or crash")]
+    public async Task ErrorPath_ProcessInstances_UnknownSearchShowsEmptyStateWithoutError()
+    {
+        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
+
+        var browserErrors = new ConcurrentQueue<string>();
+        var page = await host.CreatePageAsync();
+        page.PageError += (_, error) => browserErrors.Enqueue(error);
+        page.Console += (_, message) =>
+        {
+            if (message.Type.Equals("error", StringComparison.OrdinalIgnoreCase))
+                browserErrors.Enqueue($"console: {message.Text}");
+        };
+
+        try
+        {
+            await page.GotoAsync($"{host.StudioBaseAddress}process-instances");
+            await EnsureSmokeTenantAsync();
+            await SelectTenantAsync(page, s_smokeTenantName!, s_smokeTenantId!);
+
+            // A search that matches nothing must degrade to the table's friendly empty state rather
+            // than an 'Error loading process instances' banner or a crashed page.
+            await FillBoundInputAsync(page.GetByPlaceholder("Search instances..."), $"no-such-key-{host.RunId}");
+            await page.GetByText("No matching records found", new() { Exact = true }).WaitForAsync();
+
+            Assert.Equal(0, await page.GetByText("Error loading process instances", new() { Exact = false }).CountAsync());
+            Assert.Empty(browserErrors);
+        }
+        finally
+        {
+            await host.ClosePageAsync(page);
+        }
+    }
+
+    [Fact(DisplayName = "Phase 6 - Execution Details: repeating an invalid load stays a single clear validation error (double-click robustness)")]
+    public async Task DoubleClick_ExecutionDetails_InvalidId_RemainsSingleClearValidationError()
+    {
+        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
+
+        var browserErrors = new ConcurrentQueue<string>();
+        var page = await host.CreatePageAsync();
+        page.PageError += (_, error) => browserErrors.Enqueue(error);
+        page.Console += (_, message) =>
+        {
+            if (message.Type.Equals("error", StringComparison.OrdinalIgnoreCase))
+                browserErrors.Enqueue($"console: {message.Text}");
+        };
+
+        try
+        {
+            await page.GotoAsync($"{host.StudioBaseAddress}execution-details");
+            await FillBoundInputAsync(page.GetByLabel("Process instance id for variables", new() { Exact = true }), "not-a-guid");
+
+            var loadButton = page.GetByRole(AriaRole.Button, new() { Name = "Load variables", Exact = true });
+            // First click surfaces the client-side validation error.
+            await loadButton.ClickAsync();
+            await page.GetByText("Enter a valid process instance id.", new() { Exact = true }).WaitForAsync();
+
+            // A repeated click on the same invalid input must reproduce the same single clear
+            // validation error without a crash, a second different banner, or JS errors.
+            await loadButton.ClickAsync();
+            await page.GetByText("Enter a valid process instance id.", new() { Exact = true }).WaitForAsync();
+
+            Assert.Empty(browserErrors);
+        }
+        finally
+        {
+            await host.ClosePageAsync(page);
+        }
+    }
+
 
     private async Task WaitForConnectorAbsentAsync(HttpClient apiClient, string tenantId, string name)
     {

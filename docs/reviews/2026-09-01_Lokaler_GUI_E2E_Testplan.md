@@ -332,6 +332,10 @@ Stand (2026-09-04):
 - 🟡 Zusätzlich (Viewport-Smoke): `SmallViewport_KeyRoutes_RenderWithoutBrowserErrors` —
   repräsentative Routen (Dashboard, Process Instances, Tasks, BPMN Modeler) bei 390×844, kein
   JS-/Seiten-/Netzwerkfehler.
+- 🟡 HTTP-Fehlerfall (echter Server-404 ohne Stub):
+  `ErrorPath_ExecutionDetails_NonexistentInstanceId_ShowsFriendlyServerError` — wohlgeformte, aber
+  nicht existente Instanz-GUID passiert die Client-Validierung, `/api/vertex/variable/{id}` liefert
+  404, GUI zeigt freundliches Fehler-Alert statt Absturz; Seite bleibt interaktiv, kein JS-Fehler.
 
 
 Für jede mutierende Kernfunktion werden mindestens folgende Fälle automatisiert:

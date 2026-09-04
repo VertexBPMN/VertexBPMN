@@ -3129,6 +3129,43 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
         }
     }
 
+    [Fact(DisplayName = "Phase 6 - Execution Details: a well-formed but non-existent process instance id surfaces a friendly server error (404), no crash")]
+    public async Task ErrorPath_ExecutionDetails_NonexistentInstanceId_ShowsFriendlyServerError()
+    {
+        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
+
+        var browserErrors = new ConcurrentQueue<string>();
+        var page = await host.CreatePageAsync();
+        page.PageError += (_, error) => browserErrors.Enqueue(error);
+        page.Console += (_, message) =>
+        {
+            if (message.Type.Equals("error", StringComparison.OrdinalIgnoreCase))
+                browserErrors.Enqueue($"console: {message.Text}");
+        };
+
+        try
+        {
+            await page.GotoAsync($"{host.StudioBaseAddress}execution-details");
+
+            // A well-formed GUID that (virtually certainly) does not exist passes the client-side
+            // format check, so the real /api/vertex/variable/{id} call returns 404. The GUI must
+            // surface a friendly error alert instead of an unhandled error or a crashed page.
+            var nonexistentId = Guid.NewGuid().ToString();
+            await FillBoundInputAsync(page.GetByLabel("Process instance id for variables", new() { Exact = true }), nonexistentId);
+            await page.GetByRole(AriaRole.Button, new() { Name = "Load variables", Exact = true }).ClickAsync();
+
+            await page.GetByText("Variables could not be loaded", new() { Exact = false }).WaitForAsync();
+
+            // Page must still be interactive (input + buttons present), not a white screen or crash.
+            await page.GetByLabel("Process instance id for variables", new() { Exact = true }).WaitForAsync();
+            Assert.Empty(browserErrors);
+        }
+        finally
+        {
+            await host.ClosePageAsync(page);
+        }
+    }
+
     [Fact(DisplayName = "Phase 6 - key Studio routes render cleanly at a small (mobile) viewport")]
     public async Task SmallViewport_KeyRoutes_RenderWithoutBrowserErrors()
     {

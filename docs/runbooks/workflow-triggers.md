@@ -51,6 +51,38 @@ Ein BPMN-Workflow kann vor der Trigger-Registrierung dauerhaft bereitgestellt we
 
 Im SDK steht dafür DeployProcessAsync(bpmnXml, name, tenantId) zur Verfügung. Die API verwendet POST /api/repository; Studio nutzt die vorhandene Upload-Seite Deployments.
 
+
+## Webhooks aus dem BPMN-Modell
+
+Ein Start-Event mit `vertex:webhook` (Path, Method, Auth Mode, ggf. HMAC-Credential-Ref,
+Payload-Schema, Correlation Key) wird bei jedem Deploy
+(`POST /api/repository` -> `SynchronizeBpmnWebhooksAsync`) als Trigger registriert bzw. aktualisiert.
+Der externe Aufruf laeuft ueber den eingebauten Ingress statt ueber `/api/triggers/{id}/invoke`
+und erlaubt GET, POST, PUT, PATCH und DELETE:
+
+```http
+POST /api/webhooks{path}
+# hmac-sha256: Body mit dem Secret der referenzierten Credential signieren
+X-VertexBPMN-Signature: <hmac>
+# trigger-secret: Secret direkt im Header
+X-VertexBPMN-Trigger-Secret: <secret>
+Content-Type: application/json
+
+{ ...payload... }
+```
+
+Auth-Modi:
+
+- `hmac-sha256` – Secret kommt aus einer referenzierten Credential; kein Einzelsecret noetig.
+- `trigger-secret` – das Secret wird beim Deploy serverseitig erzeugt und nur als Hash abgelegt.
+  Fuer **neu** erzeugte Trigger liefert die Deploy-Antwort das Klartext-Secret **einmalig** im
+  Response-Header `X-VertexBPMN-Created-Webhooks` (JSON-Array mit `Path`, `Method`, `Secret`,
+  `InvokePath`). Der Studio-BPMN-Modeler zeigt es nach dem Deploy in einer ausblendbaren Warnbox
+  samt curl-Beispiel; danach ist nur noch der Hash verfuegbar.
+
+Antworten (bei Start-Event, kein Correlation Key): `201 Created` mit der gestarteten
+Prozessinstanz; falsches Secret bzw. ungueltige Signatur `401`; unbekannter Pfad oder deaktivierter
+Trigger `404`; Payload verletzt das deklarierte Schema `400`; Prozessdefinition fehlt `422`.
 ## CLI
 
 ```text

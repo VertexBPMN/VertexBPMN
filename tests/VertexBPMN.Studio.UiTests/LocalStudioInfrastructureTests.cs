@@ -3129,6 +3129,60 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
         }
     }
 
+    [Fact(DisplayName = "Phase 6 - key Studio routes render cleanly at a small (mobile) viewport")]
+    public async Task SmallViewport_KeyRoutes_RenderWithoutBrowserErrors()
+    {
+        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
+
+        var routes = new[]
+        {
+            ("", "Dashboard"),
+            ("process-instances", "Process Instances"),
+            ("tasks", "Tasks"),
+            ("bpmn-modeler", "BPMN Modeler"),
+        };
+
+        var browserErrors = new ConcurrentQueue<string>();
+        var page = await host.CreatePageAsync();
+        page.PageError += (_, error) => browserErrors.Enqueue(error);
+        page.Console += (_, message) =>
+        {
+            if (message.Type.Equals("error", StringComparison.OrdinalIgnoreCase))
+                browserErrors.Enqueue($"console: {message.Text}");
+        };
+        page.RequestFailed += (_, request) => browserErrors.Enqueue($"{request.Method} {request.Url}: {request.Failure}");
+
+        try
+        {
+            await page.SetViewportSizeAsync(390, 844); // common mobile viewport
+
+            foreach (var (route, heading) in routes)
+            {
+                var response = await page.GotoAsync($"{host.StudioBaseAddress}{route}");
+                Assert.NotNull(response);
+                Assert.True(response.Ok, $"/{route} returned HTTP {response.Status}.");
+
+                if (route == "")
+                {
+                    await page.GetByRole(AriaRole.Heading, new() { Name = heading, Exact = true }).WaitForAsync();
+                }
+                else
+                {
+                    await EnsureSmokeTenantAsync();
+                    await SelectTenantAsync(page, s_smokeTenantName!, s_smokeTenantId!);
+                    await page.GetByRole(AriaRole.Heading, new() { Name = heading, Exact = true }).WaitForAsync();
+                }
+            }
+
+            // A small viewport must not produce JS/page/network errors on these representative routes.
+            Assert.Empty(browserErrors);
+        }
+        finally
+        {
+            await host.ClosePageAsync(page);
+        }
+    }
+
 
     private async Task WaitForConnectorAbsentAsync(HttpClient apiClient, string tenantId, string name)
     {

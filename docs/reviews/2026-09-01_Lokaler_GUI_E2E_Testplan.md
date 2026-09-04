@@ -329,6 +329,9 @@ Stand (2026-09-04):
   freundlicher Leerzustand statt Fehlerbanner/Absturz) und
   `DoubleClick_ExecutionDetails_InvalidId_RemainsSingleClearValidationError` (wiederholte ungültige
   Aktion bleibt ein klarer Validierungsfehler ohne Browserfehler).
+- 🟡 Zusätzlich (Viewport-Smoke): `SmallViewport_KeyRoutes_RenderWithoutBrowserErrors` —
+  repräsentative Routen (Dashboard, Process Instances, Tasks, BPMN Modeler) bei 390×844, kein
+  JS-/Seiten-/Netzwerkfehler.
 
 
 Für jede mutierende Kernfunktion werden mindestens folgende Fälle automatisiert:

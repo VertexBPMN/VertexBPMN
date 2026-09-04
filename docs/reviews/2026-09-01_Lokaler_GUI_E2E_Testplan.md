@@ -314,7 +314,17 @@ Für alle persistierenden Use Cases gilt: Ein erfolgreicher HTTP-Aufruf reicht n
 - SSO-Konfiguration beziehungsweise klarer nicht-konfigurierter Zustand — 🟡 Seite rendert, Konfiguration offen.
 - Analytics-Training und Export der Trainingsdaten — ⬜ offen (benötigt abgeschlossene Prozessinstanzen).
 
-## Phase 6: Fehler-, Navigations- und Qualitätsfälle — 🟡 begonnen
+## Phase 6: Fehler-, Navigations- und Qualitätsfälle — 🟡 in Arbeit
+
+Stand (2026-09-04):
+
+- 🟡 Neu angelegt in `LocalStudioInfrastructureTests.cs` (Abnahmekriterium 1, Route-Smoke):
+  `AllStudioRoutes_DirectNavigationAndReload_RenderTheirHeading` (30 Routen als Direkt-Smoke mit
+  HTTP 200, Heading, Reload und Abwesenheit von JS-/Netzwerkfehlern) sowie
+  `UnknownStudioRoute_ShowsNotFoundWithoutBrowserErrors`.
+- ⬜ Lokale Grün-Abnahme des neuen Route-Smokes steht aus (läuft ausschließlich über den lokalen
+  Runner `scripts/test-studio-e2e.ps1`).
+
 
 Für jede mutierende Kernfunktion werden mindestens folgende Fälle automatisiert:
 

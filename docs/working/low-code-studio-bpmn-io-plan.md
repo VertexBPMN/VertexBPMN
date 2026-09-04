@@ -1,7 +1,7 @@
 # VertexBPMN Low-Code Studio mit bpmn.io Toolkits
 
 Status: Abgeschlossen; Release-Haertung und produktionsreifer Importausbau laufen fort.
-Letzte Aktualisierung: 2026-08-20
+Letzte Aktualisierung: 2026-09-04
 Ausgangspunkt: `docs/archive/n8n-bpmn-camunda-parity.md`, `docs/archive/n8n-like-gui-for-vertex.md`
 
 ## Ziel
@@ -335,6 +335,18 @@ Akzeptanzkriterien:
 - Webhook-Start kann im BPMN-Editor angelegt werden.
 - Deploy registriert oder aktualisiert passende Trigger-Konfiguration.
 - Externer Invoke startet Prozess mit Variablen.
+
+Status: ✅ abgeschlossen (2026-09-04).
+
+- Webhook-Start ist im BPMN-Editor als Start-Event mit `vertex:webhook` anlegbar (Palette + Properties:
+  Path, Method, Auth Mode, Credential/Secret-Ref, Payload-Schema, Correlation Key).
+- Deploy (`POST /api/repository`) registriert bzw. aktualisiert die Trigger-Konfiguration ueber
+  `SynchronizeBpmnWebhooksAsync` (API-Integrationstest gruen).
+- Externer Invoke startet den Prozess ueber `POST /api/webhooks/{path}` mit Secret-/HMAC-Pruefung,
+  Payload-Validierung und Correlation-Key (-> BusinessKey); das Ergebnis ist `201 Created`.
+- Luecke geschlossen: Bei `authMode=trigger-secret` wird das serverseitig erzeugte Secret fuer neu
+  registrierte Trigger jetzt einmalig ausgegeben ueber den Deploy-Response-Header
+  `X-VertexBPMN-Created-Webhooks` bzw. die Studio-BPMN-Modeler-Warnbox samt curl-Beispiel.
 
 ## Phase 7: DMN Decision Tables mit `dmn-js`
 

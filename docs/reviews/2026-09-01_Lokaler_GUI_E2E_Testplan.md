@@ -340,6 +340,10 @@ Stand (2026-09-04):
   Reload nach interaktiver Suche rehydriert einen sauberen Circuit (Heading + Suchfeld erneut
   vorhanden), kein JS-/Seiten-/Netzwerkfehler. Hinweis: ein echtes *Server-Timeout* ist ohne
   Stub/Slow-Endpoint deterministisch nicht reproduzierbar und bleibt hier ausgeklammert.
+- 🟡 Mehrfachklick-Robustheit mit Serverfehler:
+  `DoubleClick_ExecutionDetails_NonexistentId_RepeatsConsistentFriendlyError` — wiederholte
+  Ausführung der 404-Aktion reproduziert exakt dieselbe freundliche Meldung (kein zweiter Banner,
+  kein Absturz), Seite bleibt interaktiv.
 
 
 Für jede mutierende Kernfunktion werden mindestens folgende Fälle automatisiert:

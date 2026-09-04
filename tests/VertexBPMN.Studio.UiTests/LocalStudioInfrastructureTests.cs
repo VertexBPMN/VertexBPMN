@@ -3166,6 +3166,46 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
         }
     }
 
+    [Fact(DisplayName = "Phase 6 - Execution Details: repeating a failing load (Mehrfachklick) stays a consistent single friendly error, no crash")]
+    public async Task DoubleClick_ExecutionDetails_NonexistentId_RepeatsConsistentFriendlyError()
+    {
+        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
+
+        var browserErrors = new ConcurrentQueue<string>();
+        var page = await host.CreatePageAsync();
+        page.PageError += (_, error) => browserErrors.Enqueue(error);
+        page.Console += (_, message) =>
+        {
+            if (message.Type.Equals("error", StringComparison.OrdinalIgnoreCase))
+                browserErrors.Enqueue($"console: {message.Text}");
+        };
+
+        try
+        {
+            await page.GotoAsync($"{host.StudioBaseAddress}execution-details");
+
+            var nonexistentId = Guid.NewGuid().ToString();
+            await FillBoundInputAsync(page.GetByLabel("Process instance id for variables", new() { Exact = true }), nonexistentId);
+            var loadButton = page.GetByRole(AriaRole.Button, new() { Name = "Load variables", Exact = true });
+
+            // First execution -> server 404 surfaced as a friendly error alert.
+            await loadButton.ClickAsync();
+            await page.GetByText("Variables could not be loaded", new() { Exact = false }).WaitForAsync();
+
+            // Repeating the same failing action must reproduce the same single clear error (not a
+            // second different banner, not an accumulated crash), and the page stays interactive.
+            await loadButton.ClickAsync();
+            await page.GetByText("Variables could not be loaded", new() { Exact = false }).WaitForAsync();
+            await page.GetByLabel("Process instance id for variables", new() { Exact = true }).WaitForAsync();
+
+            Assert.Empty(browserErrors);
+        }
+        finally
+        {
+            await host.ClosePageAsync(page);
+        }
+    }
+
     [Fact(DisplayName = "Phase 6 - Process Instances: reload after an interactive search rehydrates cleanly without JS errors")]
     public async Task Reload_ProcessInstances_AfterFilteredSearch_RehydratesWithoutErrors()
     {

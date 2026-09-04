@@ -324,6 +324,11 @@ Stand (2026-09-04):
   `UnknownStudioRoute_ShowsNotFoundWithoutBrowserErrors`.
 - ⬜ Lokale Grün-Abnahme des neuen Route-Smokes steht aus (läuft ausschließlich über den lokalen
   Runner `scripts/test-studio-e2e.ps1`).
+- 🟡 Ebenso neu angelegt (Fehler-/Qualitätspfade ohne Stub-API):
+  `ErrorPath_ProcessInstances_UnknownSearchShowsEmptyStateWithoutError` (unbekannte Suche →
+  freundlicher Leerzustand statt Fehlerbanner/Absturz) und
+  `DoubleClick_ExecutionDetails_InvalidId_RemainsSingleClearValidationError` (wiederholte ungültige
+  Aktion bleibt ein klarer Validierungsfehler ohne Browserfehler).
 
 
 Für jede mutierende Kernfunktion werden mindestens folgende Fälle automatisiert:

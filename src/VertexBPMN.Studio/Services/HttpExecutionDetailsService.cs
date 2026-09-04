@@ -12,13 +12,11 @@ public sealed class HttpExecutionDetailsService(IHttpClientFactory httpClientFac
 
     public Task<JsonElement> GetVariablesAsync(Guid processInstanceId, CancellationToken cancellationToken = default) =>
         GetAsync($"/api/vertex/variable/{processInstanceId}", cancellationToken);
-<<<<<<< HEAD
 
     private static string BuildUri(string path, string? tenantId) =>
         string.IsNullOrWhiteSpace(tenantId)
             ? path
             : $"{path}?tenantId={Uri.EscapeDataString(tenantId)}";
-=======
 
     private async Task<JsonElement> GetAsync(string uri, CancellationToken cancellationToken)
     {

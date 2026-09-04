@@ -2972,7 +2972,7 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
     }
 
     /// <summary>Creates a tenant via POST /api/tenant and returns its id.</summary>
-    private async Task<string?> CreateTenantAsync(HttpClient apiClient, string name)
+    private async Task<string> CreateTenantAsync(HttpClient apiClient, string name)
     {
         using var tenantResponse = await apiClient.PostAsJsonAsync(
             "api/tenant",
@@ -2982,7 +2982,7 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
         Assert.True(tenantResponse.IsSuccessStatusCode, tenantBody);
         var tenantId = JsonDocument.Parse(tenantBody).RootElement.GetProperty("id").GetString();
         Assert.False(string.IsNullOrWhiteSpace(tenantId));
-        return tenantId;
+        return tenantId!;
     }
 
     /// <summary>Polls GET /api/identity/list-tenants until the named tenant exists, returning its id.</summary>
@@ -3163,20 +3163,6 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
         throw new InvalidOperationException(
             $"The real BPMN modeler did not initialize. API logs: {string.Join(" | ", host.ApiLogs)}. " +
             $"Studio logs: {string.Join(" | ", host.StudioLogs)}. Shell: {await shell.InnerHTMLAsync()}");
-    }
-
-    private static async Task<string> CreateTenantAsync(HttpClient apiClient, string tenantName)
-    {
-        using var response = await apiClient.PostAsJsonAsync(
-            "api/tenant",
-            new { name = tenantName, description = "Phase 3 process-management E2E" },
-            TestContext.Current.CancellationToken);
-        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-        Assert.True(response.IsSuccessStatusCode, body);
-        using var tenant = JsonDocument.Parse(body);
-        var tenantId = tenant.RootElement.GetProperty("id").GetString();
-        Assert.False(string.IsNullOrWhiteSpace(tenantId));
-        return tenantId;
     }
 
     private static async Task DeployProcessAsync(

@@ -12,6 +12,7 @@
 @inject VertexBPMN.Studio.Services.IDmnService DmnService
 @inject VertexBPMN.Studio.Services.StudioTenantContext TenantContext
 @inject MudBlazor.ISnackbar Snackbar
+@inject NavigationManager Navigation
 @inject VertexBPMN.Studio.Services.ActiveEngineService ActiveEngineService
 @inject IJSRuntime JSRuntime
 @inject IWebHostEnvironment HostEnvironment
@@ -48,6 +49,24 @@
             <MudChip T="string" Color="Color.Info" Variant="Variant.Outlined">Tenant: @(TenantContext.CurrentTenantId ?? "default")</MudChip>
         </MudStack>
     </MudPaper>
+
+    @if (_createdWebhooks.Count > 0)
+    {
+        <MudPaper Class="pa-4 mb-4" data-testid="bpmn-created-webhooks">
+            <MudText Typo="Typo.h6" GutterBottom="true">Webhook trigger(s) created</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" GutterBottom="true">The secret is shown only once. Store it now; it is required to call the endpoint.</MudText>
+            @foreach (var hook in _createdWebhooks)
+            {
+                <MudAlert Severity="Severity.Warning" Class="mb-3">
+                    <MudText Typo="Typo.subtitle2">@(hook.Method ?? "POST") @(hook.Path)</MudText>
+                    <MudText Typo="Typo.caption">Invoke: @(Navigation.BaseUri.TrimEnd('/'))@hook.InvokePath</MudText>
+                    <MudTextField Value="@hook.Secret" ReadOnly="true" Variant="Variant.Outlined" Label="Secret" Class="mt-2" />
+                    <MudText Typo="Typo.caption">curl -X @(hook.Method ?? "POST") '@(Navigation.BaseUri.TrimEnd('/'))@hook.InvokePath' -H 'X-VertexBPMN-Trigger-Secret: @hook.Secret' -H 'Content-Type: application/json' -d '{}'</MudText>
+                </MudAlert>
+            }
+            <MudButton Variant="Variant.Text" OnClick="@(() => _createdWebhooks = [])">Dismiss</MudButton>
+        </MudPaper>
+    }
 
     @if (_n8nImportReport.Count > 0)
     {
@@ -214,6 +233,7 @@
     private string _testVariablesJson = "{}";
     private bool _isRunningEngineTest;
     private Guid? _testRunInstanceId;
+    private IReadOnlyList<StudioCreatedWebhook> _createdWebhooks = [];
     private string? _testRunOutcome;
 
     private async Task RunEngineTestAsync()
@@ -226,7 +246,7 @@
             var variables = ParseTestVariables(_testVariablesJson);
             var xml = await CaptureBpmnXml();
             var deployed = await RepositoryService.DeployXmlAsync(xml, "studio-test-run.bpmn", TenantContext.CurrentTenantId);
-            var instance = await WorkflowService.StartProcessAsync(deployed.Key, variables, $"studio-test-{Guid.NewGuid():N}", TenantContext.CurrentTenantId);
+            var instance = await WorkflowService.StartProcessAsync(deployed.Definition.Key, variables, $"studio-test-{Guid.NewGuid():N}", TenantContext.CurrentTenantId);
             var isCompleted = instance.Status == ProcessInstanceStatus.Completed;
             var isWaiting = instance.Status == ProcessInstanceStatus.Running
                 && (instance.State.Equals("Waiting", StringComparison.OrdinalIgnoreCase)
@@ -574,9 +594,13 @@
         var xml = await CaptureBpmnXml();
         try
         {
-            await RepositoryService.DeployXmlAsync(xml, "studio-model.bpmn", TenantContext.CurrentTenantId);
+            var deployed = await RepositoryService.DeployXmlAsync(xml, "studio-model.bpmn", TenantContext.CurrentTenantId);
+            _createdWebhooks = deployed.CreatedWebhooks;
             await LoadDeployedDefinitionsAsync();
-            Snackbar.Add("BPMN deployed successfully.", Severity.Success);
+            if (_createdWebhooks.Count > 0)
+                Snackbar.Add($"{_createdWebhooks.Count} webhook trigger(s) created. Save the shown secrets now.", Severity.Warning);
+            else
+                Snackbar.Add("BPMN deployed successfully.", Severity.Success);
         }
         catch (Exception ex)
         {

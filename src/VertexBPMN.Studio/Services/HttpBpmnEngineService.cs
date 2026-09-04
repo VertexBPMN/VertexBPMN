@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components.Forms;
+using System.Text.Json;
 using VertexBPMN.Domain.Entities;
 
 namespace VertexBPMN.Studio.Services;
@@ -57,14 +58,21 @@ public class HttpBpmnEngineService : IBpmnEngineService
         }
     }
 
-    public async Task<ProcessDefinition> DeployXmlAsync(string xml, string name, string? tenantId = null)
+    public async Task<StudioDeployResult> DeployXmlAsync(string xml, string name, string? tenantId = null)
     {
         var response = await _httpClient.PostAsJsonAsync(
             "api/repository",
             new RepositoryDeployRequest(xml, name, tenantId));
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<ProcessDefinition>()
+        var definition = await response.Content.ReadFromJsonAsync<ProcessDefinition>()
             ?? throw new InvalidOperationException("The API returned no deployed process definition.");
+        var createdWebhooks = new List<StudioCreatedWebhook>();
+        if (response.Headers.TryGetValues("X-VertexBPMN-Created-Webhooks", out var values)
+            && values.FirstOrDefault() is { Length: > 0 } header)
+        {
+            createdWebhooks = JsonSerializer.Deserialize<List<StudioCreatedWebhook>>(header) ?? [];
+        }
+        return new StudioDeployResult(definition, createdWebhooks);
     }
 
     public async Task<IEnumerable<ProcessDefinition>> GetProcessDefinitionsAsync(string? tenantId = null)

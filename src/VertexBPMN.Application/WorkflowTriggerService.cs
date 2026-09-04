@@ -101,11 +101,12 @@ public sealed class WorkflowTriggerService(
         return new(WorkflowTriggerInvocationStatus.Started, instance);
     }
 
-    public async Task SynchronizeBpmnWebhooksAsync(string bpmnXml, string processDefinitionKey, string? tenantId = null, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<WorkflowTriggerCreated>> SynchronizeBpmnWebhooksAsync(string bpmnXml, string processDefinitionKey, string? tenantId = null, CancellationToken cancellationToken = default)
     {
         var document = XDocument.Parse(bpmnXml, LoadOptions.None);
         var vertex = XNamespace.Get("https://vertexbpmn.io/schema/bpmn/1.0");
         var bpmn = XNamespace.Get("http://www.omg.org/spec/BPMN/20100524/MODEL");
+        var created = new List<WorkflowTriggerCreated>();
         foreach (var startEvent in document.Descendants(bpmn + "startEvent"))
         {
             var sourceElementId = (string?)startEvent.Attribute("id");
@@ -119,9 +120,21 @@ public sealed class WorkflowTriggerService(
             var name = ((string?)trigger?.Attribute("name"))?.Trim();
             var authenticationMode = NormalizeAuthenticationMode((string?)webhook.Attribute("authMode"), (string?)webhook.Attribute("credentialRef") ?? (string?)webhook.Attribute("secretRef"));
             var credentialId = NormalizeOptional((string?)webhook.Attribute("credentialRef") ?? (string?)webhook.Attribute("secretRef"), 128);
-            var existing = await triggerRepository.GetBySourceElementAsync(processDefinitionKey, sourceElementId, tenantId, cancellationToken);
-            var isNew = existing is null;
-            existing ??= new WorkflowTrigger { Id = Guid.NewGuid(), SecretHash = HashSecret(CreateSecret()), CreatedAt = DateTime.UtcNow };
+            var found = await triggerRepository.GetBySourceElementAsync(processDefinitionKey, sourceElementId, tenantId, cancellationToken);
+            WorkflowTrigger existing;
+            string? oneTimeSecret = null;
+            bool isNew;
+            if (found is null)
+            {
+                isNew = true;
+                oneTimeSecret = CreateSecret();
+                existing = new WorkflowTrigger { Id = Guid.NewGuid(), SecretHash = HashSecret(oneTimeSecret), CreatedAt = DateTime.UtcNow };
+            }
+            else
+            {
+                isNew = false;
+                existing = found;
+            }
             var endpointOwner = await triggerRepository.GetByEndpointAsync(path, method, null, cancellationToken);
             if (endpointOwner is not null && endpointOwner.Id != existing.Id)
                 throw new WorkflowTriggerConflictException($"Webhook endpoint '{method} {path}' is already registered.");
@@ -140,10 +153,19 @@ public sealed class WorkflowTriggerService(
             existing.Enabled = true;
             existing.LastModified = DateTime.UtcNow;
             if (isNew)
+            {
                 await triggerRepository.AddAsync(existing, cancellationToken);
+                // Reveal the one-time secret only for trigger-secret webhooks (HMAC
+                // webhooks authenticate with the referenced credential secret instead).
+                if (string.Equals(existing.AuthenticationMode, "trigger-secret", StringComparison.OrdinalIgnoreCase))
+                    created.Add(new WorkflowTriggerCreated(ToInfo(existing), oneTimeSecret!, $"/api/webhooks{path}"));
+            }
             else
+            {
                 await triggerRepository.SaveAsync(existing, cancellationToken);
+            }
         }
+        return created;
     }
 
     public async Task<WorkflowTriggerInvocationResult> InvokeWebhookAsync(string path, string method, string? triggerSecret, string? signature, ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default)

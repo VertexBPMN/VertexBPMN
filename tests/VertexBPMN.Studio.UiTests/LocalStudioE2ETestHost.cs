@@ -216,6 +216,11 @@ public sealed class LocalStudioE2ETestHost : IAsyncLifetime
             ["AdvancedFeatures__CmmnExecution"] = "true",
             ["Jwt__Audience"] = "vertexbpmn-api",
             ["Jwt__UseDevelopmentApiKey"] = "true",
+            // The E2E suite runs ~27 tests from 127.0.0.1 in quick succession; the built-in global
+            // rate limiter (PermitLimit 120/60s per IP) would 429 legitimate test traffic, so it is
+            // effectively disabled for the test host.
+            ["RateLimiting__PermitLimit"] = "100000",
+            ["RateLimiting__WindowSeconds"] = "3600",
             ["ApiKeys__0"] = _apiKey,
             ["ApiKeyAuthentication__DevelopmentRoles__0"] = "Admin",
             ["ApiKeyAuthentication__DevelopmentRoles__1"] = "ProcessManager",

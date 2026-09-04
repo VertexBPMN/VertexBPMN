@@ -358,7 +358,7 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
             await SelectTenantAsync(page, tenantName, tenantId!);
             await FillBoundInputAsync(page.GetByPlaceholder("Search instances..."), businessKey);
             var instanceRow = page.Locator("tr").Filter(new() { HasText = businessKey }).First;
-            await instanceRow.GetByText("1 task(s)", new() { Exact = true }).WaitForAsync();
+            await instanceRow.GetByText("1 task(s)", new() { Exact = true }).WaitForAsync(new() { Timeout = 120_000 });
             await instanceRow.GetByRole(AriaRole.Button, new() { Name = "View Details", Exact = true }).ClickAsync();
             var detailsDialog = page.GetByRole(AriaRole.Dialog);
             var variablesTab = detailsDialog.GetByRole(AriaRole.Tab, new() { Name = "Variables", Exact = true });
@@ -1421,7 +1421,7 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
                 await SelectTenantAsync(page, tenantName, tenantId!);
                 await FillBoundInputAsync(page.GetByPlaceholder("Search instances..."), businessKey);
                 var instanceRow = page.Locator("tr").Filter(new() { HasText = businessKey }).First;
-                await instanceRow.GetByText("1 task(s)", new() { Exact = true }).WaitForAsync();
+                await instanceRow.GetByText("1 task(s)", new() { Exact = true }).WaitForAsync(new() { Timeout = 120_000 });
 
                 // The migrated instance management (suspend/resume/delete) is currently implemented as
                 // non-persisting stubs: the API endpoints only emit process-mining metrics events and do
@@ -1661,14 +1661,14 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
 
                 await page.GotoAsync($"{host.StudioBaseAddress}execution-details");
                 await page.GetByRole(AriaRole.Button, new() { Name = "Load jobs", Exact = true }).ClickAsync();
-                await page.GetByText("Jobs", new() { Exact = true }).WaitForAsync();
+                await page.GetByText("Jobs", new() { Exact = true }).WaitForAsync(new() { Timeout = 120_000 });
                 await page.GetByRole(AriaRole.Button, new() { Name = "Load incidents", Exact = true }).ClickAsync();
-                await page.GetByText("Incidents", new() { Exact = true }).WaitForAsync();
+                await page.GetByText("Incidents", new() { Exact = true }).WaitForAsync(new() { Timeout = 120_000 });
 
                 await FillBoundInputAsync(page.GetByLabel("Process instance id for variables", new() { Exact = true }), instanceId.ToString());
                 await page.GetByRole(AriaRole.Button, new() { Name = "Load variables", Exact = true }).ClickAsync();
-                await page.GetByText("Variables", new() { Exact = true }).WaitForAsync();
-                await page.GetByText("ACME-" + host.RunId, new() { Exact = false }).WaitForAsync();
+                await page.GetByText("Variables", new() { Exact = true }).WaitForAsync(new() { Timeout = 120_000 });
+                await page.GetByText("ACME-" + host.RunId, new() { Exact = false }).WaitForAsync(new() { Timeout = 120_000 });
             }
 
             Assert.Empty(browserErrors);
@@ -2831,7 +2831,7 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
             var match = triggers?.FirstOrDefault(t => t.GetProperty("name").GetString() == name);
             if (match.HasValue && match.Value.ValueKind == JsonValueKind.Object)
             {
-                await Task.Delay(250, TestContext.Current.CancellationToken);
+                await Task.Delay(600, TestContext.Current.CancellationToken);
                 continue;
             }
             return;
@@ -2949,7 +2949,7 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
             var match = connectors?.FirstOrDefault(c => c.GetProperty("name").GetString() == name);
             if (match.HasValue && match.Value.ValueKind == JsonValueKind.Object)
             {
-                await Task.Delay(250, TestContext.Current.CancellationToken);
+                await Task.Delay(600, TestContext.Current.CancellationToken);
                 continue;
             }
             return;

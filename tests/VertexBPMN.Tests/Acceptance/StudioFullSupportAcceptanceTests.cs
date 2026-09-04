@@ -59,7 +59,7 @@ public sealed class StudioFullSupportAcceptanceTests
 
         var definition = await repository.DeployXmlAsync(bpmn, "studio-full-support.bpmn");
         var started = await workflow.StartProcessAsync(
-            definition.Key,
+            definition.Definition.Key,
             new Dictionary<string, object?> { ["source"] = "studio" },
             $"studio-{Guid.NewGuid():N}");
 

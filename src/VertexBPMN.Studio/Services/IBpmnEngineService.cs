@@ -6,7 +6,7 @@ namespace VertexBPMN.Studio.Services
     public interface IBpmnEngineService
     {
         Task DeployAsync(IBrowserFile file, string? tenantId = null);
-        Task<ProcessDefinition> DeployXmlAsync(string xml, string name, string? tenantId = null);
+        Task<StudioDeployResult> DeployXmlAsync(string xml, string name, string? tenantId = null);
         Task<IEnumerable<Deployment>> GetDeploymentsAsync(string? tenantId = null);
         Task<IEnumerable<ProcessDefinition>> GetProcessDefinitionsAsync(string? tenantId = null);
         Task<IEnumerable<ProcessInstance>> GetProcessInstancesAsync(string? tenantId = null);

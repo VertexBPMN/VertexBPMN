@@ -23,7 +23,7 @@ public sealed class HttpBpmnEngineServiceTests
 
         var result = await service.DeployXmlAsync("<definitions />", "invoice.bpmn", "tenant-a");
 
-        Assert.Equal(definition.Id, result.Id);
+        Assert.Equal(definition.Id, result.Definition.Id);
         var request = Assert.Single(requests);
         Assert.Equal(HttpMethod.Post, request.Method);
         Assert.Equal("http://api.test/api/repository", request.RequestUri!.ToString());
@@ -31,6 +31,25 @@ public sealed class HttpBpmnEngineServiceTests
         Assert.Equal("<definitions />", body.GetProperty("bpmnXml").GetString());
         Assert.Equal("invoice.bpmn", body.GetProperty("name").GetString());
         Assert.Equal("tenant-a", body.GetProperty("tenantId").GetString());
+    }
+
+    [Fact]
+    public async Task DeployXmlAsync_ParsesOneTimeWebhookSecretHeader()
+    {
+        var definition = new ProcessDefinition { Id = Guid.NewGuid(), Key = "WebhookProcess", Name = "webhook.bpmn" };
+        var created = new[] { new { Path = "/orders", Method = "POST", Secret = "s3cr3t", InvokePath = "/api/webhooks/orders" } };
+        var response = JsonResponse(definition, HttpStatusCode.Created);
+        response.Headers.Add("X-VertexBPMN-Created-Webhooks", JsonSerializer.Serialize(created));
+        var (service, _) = CreateService(response);
+
+        var result = await service.DeployXmlAsync("<definitions />", "webhook.bpmn", "tenant-a");
+
+        var hook = Assert.Single(result.CreatedWebhooks);
+        Assert.Equal("/orders", hook.Path);
+        Assert.Equal("POST", hook.Method);
+        Assert.Equal("s3cr3t", hook.Secret);
+        Assert.Equal("/api/webhooks/orders", hook.InvokePath);
+        Assert.Equal(definition.Id, result.Definition.Id);
     }
 
     [Fact]

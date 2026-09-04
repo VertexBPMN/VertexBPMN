@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using VertexBPMN.Tests.Infrastructure;
 
 namespace VertexBPMN.Tests.Integration.Api;
@@ -124,6 +125,37 @@ public sealed class WorkflowTriggerApiTests
     }
 
     [Fact]
+    public async Task BpmnTriggerSecretWebhook_ExposesOneTimeSecretInDeployHeader_AndCanBeInvoked()
+    {
+        var tenantId = $"ts-webhook-{Guid.NewGuid():N}";
+        var processKey = $"ts-webhook-process-{Guid.NewGuid():N}";
+        var path = $"/ts-orders/{Guid.NewGuid():N}";
+
+        var xml = $"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL' xmlns:vertex='https://vertexbpmn.io/schema/bpmn/1.0'><process id='{processKey}'><startEvent id='webhookStart'><extensionElements><vertex:webhook path='{path}' method='POST' authMode='trigger-secret'/><vertex:trigger type='webhook' name='TS order ingress' processDefinitionKey='{processKey}'/></extensionElements></startEvent><endEvent id='end'/><sequenceFlow id='f' sourceRef='webhookStart' targetRef='end'/></process></definitions>";
+        using var deployResponse = await _client.PostAsJsonAsync("/api/repository", new { bpmnXml = xml, name = "ts-webhook.bpmn", tenantId }, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Created, deployResponse.StatusCode);
+
+        Assert.True(deployResponse.Headers.TryGetValues("X-VertexBPMN-Created-Webhooks", out var values), "Deploy response should carry the one-time webhook secret header.");
+        var header = Assert.Single(values);
+        var created = JsonSerializer.Deserialize<List<CreatedWebhook>>(header) ?? [];
+        var hook = Assert.Single(created);
+        Assert.Equal(path, hook.Path);
+        Assert.Equal("POST", hook.Method);
+        Assert.False(string.IsNullOrWhiteSpace(hook.Secret));
+        Assert.Equal($"/api/webhooks{path}", hook.InvokePath);
+
+        using var wrongRequest = new HttpRequestMessage(HttpMethod.Post, $"/api/webhooks{path}") { Content = new StringContent("{}", Encoding.UTF8, "application/json") };
+        wrongRequest.Headers.Add("X-VertexBPMN-Trigger-Secret", "wrong-secret");
+        var wrong = await _client.SendAsync(wrongRequest, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Unauthorized, wrong.StatusCode);
+
+        using var okRequest = new HttpRequestMessage(HttpMethod.Post, $"/api/webhooks{path}") { Content = new StringContent("{}", Encoding.UTF8, "application/json") };
+        okRequest.Headers.Add("X-VertexBPMN-Trigger-Secret", hook.Secret);
+        var ok = await _client.SendAsync(okRequest, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Created, ok.StatusCode);
+    }
+
+    [Fact]
     public async Task MessageCorrelation_UpdatesAnActiveProcessInstance()
     {
         var key = $"message-process-{Guid.NewGuid():N}";
@@ -165,6 +197,7 @@ public sealed class WorkflowTriggerApiTests
     }
 
     private sealed record TriggerCreated(TriggerInfo Trigger, string Secret, string InvokePath);
+    private sealed record CreatedWebhook(string? Path, string? Method, string Secret, string InvokePath);
     private sealed record TriggerInfo(Guid Id, string Name, string ProcessDefinitionKey, string? Path, string? Method, string AuthenticationMode, string? CredentialId);
     private sealed record ProcessInstance(Guid Id, string ProcessId);
     private sealed record ProcessInstanceDetails(Guid Id, Dictionary<string, object> Variables);

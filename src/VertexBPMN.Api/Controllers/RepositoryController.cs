@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
+using System.Text.Json;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 
@@ -68,7 +69,12 @@ public class RepositoryController : ControllerBase
         if (effectiveTenantId is null && !User.IsInRole("Admin")) return Forbid();
 
         var def = await _repositoryService.DeployAsync(request.BpmnXml, request.Name, effectiveTenantId);
-        await _workflowTriggerService.SynchronizeBpmnWebhooksAsync(request.BpmnXml, def.Key, effectiveTenantId);
+        var createdWebhooks = await _workflowTriggerService.SynchronizeBpmnWebhooksAsync(request.BpmnXml, def.Key, effectiveTenantId);
+        if (createdWebhooks.Count > 0)
+        {
+            var headerValue = JsonSerializer.Serialize(createdWebhooks.Select(c => new { c.Trigger.Path, c.Trigger.Method, c.Secret, c.InvokePath }));
+            Response.Headers.Append("X-VertexBPMN-Created-Webhooks", headerValue);
+        }
         return CreatedAtAction(nameof(GetById), new { id = def.Id }, def);
     }
 

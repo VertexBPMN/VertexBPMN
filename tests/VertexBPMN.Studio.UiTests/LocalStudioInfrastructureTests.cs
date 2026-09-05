@@ -3165,7 +3165,7 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
             // format check, so the real /api/vertex/variable/{id} call returns 404. The GUI must
             // surface a friendly error alert instead of an unhandled error or a crashed page.
             var nonexistentId = Guid.NewGuid().ToString();
-            await FillBoundInputAsync(page.GetByLabel("Process instance id for variables", new() { Exact = true }), nonexistentId);
+            await FillBoundInputAndVerifyAsync(page.GetByLabel("Process instance id for variables", new() { Exact = true }), nonexistentId);
             await page.GetByRole(AriaRole.Button, new() { Name = "Load variables", Exact = true }).ClickAsync();
 
             await page.GetByText("Variables could not be loaded", new() { Exact = false }).WaitForAsync();
@@ -3199,7 +3199,7 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
             await page.GotoAsync($"{host.StudioBaseAddress}execution-details");
 
             var nonexistentId = Guid.NewGuid().ToString();
-            await FillBoundInputAsync(page.GetByLabel("Process instance id for variables", new() { Exact = true }), nonexistentId);
+            await FillBoundInputAndVerifyAsync(page.GetByLabel("Process instance id for variables", new() { Exact = true }), nonexistentId);
             var loadButton = page.GetByRole(AriaRole.Button, new() { Name = "Load variables", Exact = true });
 
             // First execution -> server 404 surfaced as a friendly error alert.
@@ -3688,11 +3688,6 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
         await Task.Delay(500, TestContext.Current.CancellationToken);
     }
 
-    /// <summary>
-    /// Fills a bound Mud text field and verifies the value actually landed, retrying when a Blazor
-    /// re-render races the fill and wipes the field (seen on fields bound with @bind-Value that gate
-    /// a button's Disabled state immediately after page navigation).
-    /// </summary>
     private static async Task FillBoundInputAndVerifyAsync(ILocator input, string value)
     {
         for (var attempt = 0; attempt < 10; attempt++)

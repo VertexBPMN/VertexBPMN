@@ -134,6 +134,15 @@ Die neue Real-E2E-Suite läuft ausschließlich lokal. Sie wird nicht in GitHub A
 ./scripts/test-studio-e2e.ps1 -Infrastructure Auto
 ```
 
+Auf Linux ersetzen `scripts/test-studio-e2e.sh` (+ `scripts/docker-infra.sh`) den
+PowerShell-Runner: Der Infrastrukturmodus `Docker` ersetzt `Wslc` (erneuert
+PostgreSQL/RabbitMQ-Container), `Existing` nutzt laufende Dienste.
+
+```bash
+./scripts/test-studio-e2e.sh -Infrastructure Docker   # oder Existing
+test-studio-e2e.sh -Infrastructure Existing -TestMethod <Name>   # einzelner Test
+```
+
 ### Anforderungen
 
 - Keine Stub-API innerhalb der Real-E2E-Suite.

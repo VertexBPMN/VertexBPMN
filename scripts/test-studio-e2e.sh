@@ -124,8 +124,8 @@ if [[ -n "$TEST_METHOD" ]]; then
 fi
 
 echo "Running local real Studio E2E infrastructure tests (run $run_id)..."
-# Password in the AMQP URI is masked (***) exactly like the PowerShell version to
-# keep connection-string handling identical between the two runners.
+# The AMQP URI uses the real password (unlike the PowerShell variant's literal '***',
+# which makes RabbitMQ auth fail). $PASSWORD defaults to 'vertexbpmn-local'.
 env \
     VERTEXBPMN_STUDIO_E2E_ENABLED=true \
     VERTEXBPMN_STUDIO_E2E_RUN_ID="$run_id" \
@@ -135,7 +135,7 @@ env \
     VERTEXBPMN_E2E_SIMULATION_CONNECTION="$postgres_base;Database=vertexbpmn_simulation" \
     VERTEXBPMN_E2E_EVENTS_CONNECTION="$postgres_base;Database=vertexbpmn_events" \
     VERTEXBPMN_E2E_DECISION_CONNECTION="$postgres_base;Database=vertexbpmn_decision" \
-    VERTEXBPMN_E2E_RABBITMQ_CONNECTION="amqp://$USER:***@$RABBITMQ_HOST:$RABBITMQ_PORT/" \
+    VERTEXBPMN_E2E_RABBITMQ_CONNECTION="amqp://$USER:$PASSWORD@$RABBITMQ_HOST:$RABBITMQ_PORT/" \
     "$runner" "${runner_args[@]}"
 
 if [[ ! -f "$xml_report" ]]; then

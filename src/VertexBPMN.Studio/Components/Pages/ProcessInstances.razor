@@ -26,6 +26,9 @@ else
               Filter="new Func<ProcessInstance, bool>(FilterFunc)"
               Loading="_isLoading"
               LoadingProgressColor="Color.Info">
+        <NoRecordsContent>
+            <MudText>No matching records found</MudText>
+        </NoRecordsContent>
         <ToolBarContent>
             <MudTextField @bind-Value="_searchString" 
                          Placeholder="Search instances..." 

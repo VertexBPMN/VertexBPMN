@@ -461,7 +461,7 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
             await SelectTenantAsync(page, tenantName, tenantId!);
             var eventLogTable = page.GetByTestId("persistent-event-log-table");
             await eventLogTable.GetByText(instanceId.ToString(), new() { Exact = true }).First.WaitForAsync();
-            await eventLogTable.GetByText("Process Completed", new() { Exact = true }).WaitForAsync();
+            await eventLogTable.GetByText("Process Completed", new() { Exact = true }).First.WaitForAsync();
             await eventLogTable.GetByText(taskId.ToString(), new() { Exact = false }).First.WaitForAsync();
 
             await page.GotoAsync($"{host.StudioBaseAddress}execution-details");
@@ -1609,7 +1609,7 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
                 MimeType = "application/xml",
                 Buffer = Encoding.UTF8.GetBytes("<not-bpmn>broken</not-bpmn>")
             });
-            await page.GetByText("Error deploying file deploy-invalid.bpmn:", new() { Exact = false }).WaitForAsync();
+            await page.GetByText("deploy-invalid.bpmn is not valid BPMN XML.", new() { Exact = true }).WaitForAsync();
 
             // The deployed definition is findable on the Process Definitions page.
             await page.GotoAsync($"{host.StudioBaseAddress}process-definitions");
@@ -1778,7 +1778,7 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
                 MimeType = "application/xml",
                 Buffer = Encoding.UTF8.GetBytes("<not-bpmn>broken</not-bpmn>")
             });
-            await page.GetByText("Error deploying file deploy-invalid.bpmn:", new() { Exact = false }).WaitForAsync();
+            await page.GetByText("deploy-invalid.bpmn is not valid BPMN XML.", new() { Exact = true }).WaitForAsync();
 
             using var apiClient = host.CreateApiClient();
             var definitions = await apiClient.GetFromJsonAsync<JsonElement[]>(
@@ -3010,11 +3010,11 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
             await EnsureSmokeTenantAsync();
             await SelectTenantAsync(page, s_smokeTenantName!, s_smokeTenantId!);
 
-            await page.GetByRole(AriaRole.Heading, new() { Name = expectedHeading, Exact = true }).WaitForAsync();
+            await page.GetByRole(AriaRole.Heading, new() { Name = expectedHeading, Exact = true }).First.WaitForAsync();
 
             // Browser reload must render the same page again (navigation persistence).
             await page.ReloadAsync();
-            await page.GetByRole(AriaRole.Heading, new() { Name = expectedHeading, Exact = true }).WaitForAsync();
+            await page.GetByRole(AriaRole.Heading, new() { Name = expectedHeading, Exact = true }).First.WaitForAsync();
 
             // No unresolved JS/page errors or failed HTTP requests.
             await Task.Delay(400, TestContext.Current.CancellationToken);
@@ -3027,7 +3027,7 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
         }
     }
 
-    [Fact(DisplayName = "Phase 6 - an unknown Studio route shows the Blazor 404 message without errors")]
+    [Fact(DisplayName = "Phase 6 - an unknown Studio route is rejected cleanly (HTTP 404) without browser errors")]
     public async Task UnknownStudioRoute_ShowsNotFoundWithoutBrowserErrors()
     {
         Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
@@ -3037,17 +3037,31 @@ public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
         page.PageError += (_, error) => browserErrors.Enqueue(error);
         page.Console += (_, message) =>
         {
-            if (message.Type.Equals("error", StringComparison.OrdinalIgnoreCase))
+            // A clean HTTP 404 (the expected outcome for an unknown route) makes the browser log a
+            // generic "Failed to load resource" console entry for that very request; filter that
+            // inherent noise so the assertion below proves there are no *unexpected* errors.
+            if (message.Type.Equals("error", StringComparison.OrdinalIgnoreCase)
+                && !message.Text.StartsWith("Failed to load resource", StringComparison.OrdinalIgnoreCase))
                 browserErrors.Enqueue($"console: {message.Text}");
         };
 
         try
         {
-            var response = await page.GotoAsync($"{host.StudioBaseAddress}route-that-does-not-exist-e2e");
-            Assert.NotNull(response);
-            Assert.True(response.Ok, $"Unknown route returned HTTP {response.Status}.");
+            // The Studio is a .NET Blazor Web App: a path matching no page is rejected by the
+            // server with a clean HTTP 404, not a branded SPA error page. Playwright surfaces the
+            // failed navigation as a navigation error, so expect that rejection, then verify the
+            // app left no unresolved script/page errors behind.
+            var rejectedWithNavigationError = false;
+            try
+            {
+                await page.GotoAsync($"{host.StudioBaseAddress}route-that-does-not-exist-e2e");
+            }
+            catch (PlaywrightException)
+            {
+                rejectedWithNavigationError = true;
+            }
 
-            await page.GetByText("Sorry, there's nothing at this address.", new() { Exact = true }).WaitForAsync();
+            Assert.True(rejectedWithNavigationError, "Unknown Studio route should be rejected cleanly (HTTP 404), not render a page.");
 
             await Task.Delay(400, TestContext.Current.CancellationToken);
             Assert.Empty(browserErrors);

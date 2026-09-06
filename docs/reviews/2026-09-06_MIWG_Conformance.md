@@ -62,6 +62,17 @@ Vom 2026-09-06 an gilt:
 Dadurch ist **C.9.0** (Risiko/Variablenprozess) jetzt eingabelos vollständig durchlaufend — +1 auf Completed
 (18/21). Die Entscheidungsauswertung selbst bleibt für den echten DMN-Fall auf der Roadmap (siehe unten).
 
+## Feature: DMN-Decision-Ausführung im BusinessRuleTask (resultVariable-Binding)
+
+Seit 2026-09-06 löst der `BusinessRuleTask` den gebundenen Entscheidungs-Key vorrangig aus
+`zeebe:calledDecision.decisionId` (Fallback `decisionRef`, sonst Task-Id) und bindet das
+Entscheidungs-Output-Dict unter **`zeebe:calledDecision.resultVariable`** (Default `result`).
+Damit lösen Output-Mappings wie `= if result != null then result.riskLevel else ...` den
+**echten Decision-Output** auf (statt nur des null-Seed-Fallbacks). Belegt durch
+`DmnResultVariableBindingTests` (Decision evaluiert via `calledDecision`-Binding; `riskLevels='red'`
+statt `["green"]`-Fallback). Voraussetzung: eine DMN-Decision wird via `RegisterDmnModelAsync`
+bereitgestellt — bei C.8.0/C.8.1 fehlen dafür die `.dmn`-Artefakte in den Referenzdaten.
+
 ## Interaktive Modelle (verbleibende 3 Pending → mit Input ausführbar)
 
 Die verbleibenden Pending-Modelle sind **interaktiv** (User-Task-/DMN-getrieben), keine Engine-Defekte.

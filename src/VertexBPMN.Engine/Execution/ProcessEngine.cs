@@ -841,12 +841,27 @@ public partial class ProcessEngine : IProcessEngine
         // BusinessRuleTask variable production (simulation or local/remote DMN)
         if (task.Type == "businessRuleTask")
         {
+            // Decision reference: prefer the Zeebe calledDecision binding
+            // (zeebe:calledDecision.decisionId), then decisionRef, else the task id.
             var decisionKey =
                 (task.Attributes != null &&
-                 task.Attributes.TryGetValue("decisionRef", out var refKey) &&
-                 !string.IsNullOrWhiteSpace(refKey))
-                    ? refKey
-                    : task.Id;
+                 task.Attributes.TryGetValue("zeebe:calledDecision.decisionId", out var calledId) &&
+                 !string.IsNullOrWhiteSpace(calledId))
+                    ? calledId
+                    : (task.Attributes != null &&
+                       task.Attributes.TryGetValue("decisionRef", out var refKey) &&
+                       !string.IsNullOrWhiteSpace(refKey))
+                        ? refKey
+                        : task.Id;
+
+            // Zeebe decision-output convention: full result is bound under this
+            // variable so output mappings can reference e.g. `result.riskLevel`.
+            var resultVariable =
+                (task.Attributes != null &&
+                 task.Attributes.TryGetValue("zeebe:calledDecision.resultVariable", out var rv) &&
+                 !string.IsNullOrWhiteSpace(rv))
+                    ? rv
+                    : "result";
 
             try
             {
@@ -860,6 +875,7 @@ public partial class ProcessEngine : IProcessEngine
                     {
                         foreach (var kv in result.Variables)
                             varsRef[kv.Key] = kv.Value!;
+                        varsRef[resultVariable] = result.Variables;
                     }
                     trace.Add($"DecisionEvaluated: {decisionKey}");
                 }
@@ -871,6 +887,7 @@ public partial class ProcessEngine : IProcessEngine
 
                     foreach (var kv in result)
                         varsRef[kv.Key] = kv.Value;
+                    varsRef[resultVariable] = result;
                     trace.Add($"DecisionEvaluated: {decisionKey} (local)");
                 }
                 else

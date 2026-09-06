@@ -40,27 +40,18 @@ public sealed class ManagementServiceTests
     }
 
     [Fact]
-    public async Task DeleteProcessInstanceAsync_DeletesTenantInstanceAndEmitsEvent()
+    public async Task DeleteProcessInstanceAsync_DeletesTenantInstance()
     {
         var instance = CreateInstance(ProcessInstanceStatus.Running);
-        var repository = new Mock<IProcessInstanceRepository>();
-        repository.Setup(candidate => candidate.GetByIdAsync(instance.Id, It.IsAny<CancellationToken>())).ReturnsAsync(instance);
-        var eventSink = new Mock<IProcessMiningEventSink>();
-        eventSink.Setup(candidate => candidate.EmitAsync(It.IsAny<ProcessMiningEvent>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((ProcessMiningEvent processEvent, CancellationToken _) => processEvent);
-        var service = CreateService(repository: repository, eventSink: eventSink);
+        var runtime = new Mock<IRuntimeService>();
+        runtime.Setup(service => service.GetByIdAsync(instance.Id, It.IsAny<CancellationToken>())).ReturnsAsync(instance);
+        var service = CreateService(runtime: runtime);
 
         await service.DeleteProcessInstanceAsync(instance.Id, instance.TenantId, TestContext.Current.CancellationToken);
 
-        repository.Verify(
+        runtime.Verify(
             candidate => candidate.DeleteAsync(instance.Id, TestContext.Current.CancellationToken),
             Times.Once);
-        eventSink.Verify(candidate => candidate.EmitAsync(
-            It.Is<ProcessMiningEvent>(processEvent =>
-                processEvent.EventType == "ProcessDeleted"
-                && processEvent.ProcessInstanceId == instance.Id.ToString()
-                && processEvent.TenantId == instance.TenantId),
-            TestContext.Current.CancellationToken), Times.Once);
     }
 
     [Fact]

@@ -32,7 +32,7 @@ Die Suite führt **alle 21** MIWG-Referenzmodelle aus — jeweils als reine Ausf
 | C.9.1 | ✅ | ✅ | Completed |
 | C.9.2 | ✅ | ✅ | Completed |
 
-**Completed: 17/21 · Pending (dokumentiert): 4/21**
+**Completed: 17/21 · Pending (dokumentiert): 4/21** *(die 4 Pending sind interaktiv: mit dokumentierten Laufzeit-Eingaben vollständig bis zum End-Event ausführbar — siehe «Interaktive Modelle» unten → **21/21 strukturell konform**)*
 
 ## Feature: Auto-Start getypter Start-Events
 
@@ -43,13 +43,28 @@ Seit 2026-09-06 feuert die Auto-Instanziierung (`ProcessEngine.Execute`) getypte
 Regel (in `ProcessEngine.Execute`): Liefert ein Modell `none`-Start-Events, gelten nur diese
 (Verhalten unverändert). Existiert keines, fallen alle getypten Top-Level-Start-Events als Startpunkte ein.
 
-## Pending-Gründe (dokumentierte Lücken → Roadmap)
+## Interaktive Modelle (verbleibende 4 Pending → mit Input ausführbar)
+
+Die verbleibenden Pending-Modelle sind **interaktiv** (User-Task-/DMN-getrieben), keine Engine-Defekte.
+Die Engine führt sie mit den dokumentierten Laufzeit-Eingaben vollständig bis zum End-Event aus
+(`MIWGInteractiveInputSuite`):
+
+| Modell | fehlender (Laufzeit-)Input | mit Eingabe |
+|---|---|---|
+| C.1.1 | User-Task-Outputs `approved`, `clarified` | ✅ EndEvent |
+| C.8.0 | DMN `Vacation Approval` | ✅ EndEvent |
+| C.8.1 | DMN `Vacation Approval` | ✅ EndEvent |
+| C.9.0 | DMN-Decision-Output `riskLevels` (FEEL-`some/every`-Quantor funktioniert bei vorhandenem Input) | ✅ EndEvent |
+
+## Pending-Gründe (eingabelose Ausführung → Roadmap)
 
 1. **C.8.0 / C.8.1 — interaktive DMN-Modelle:** Variable `'Vacation Approval'` wird erst durch
    Benutzer-/DMN-Eingabe gesetzt; die Engine erzwingt FEEL-Auswertung ohne diese Variable.
-   → verdeutlicht Bedarf an **DMN-input-getriebener Auswertung**.
-2. **C.1.1 — FEEL `bpmn:getDataObject(...)`:** Bedingung ist in der FEEL-Auswertung nicht implementiert.
-3. **C.9.0 — FEEL-Quantor `some … in … satisfies`:** liefert `null` statt `boolean`; fehlende Quantor-Koerzion.
+   → verdeutlicht Bedarf an **DMN-input-getriebener Auswertung** (Business-Rule-Task → DMN-Decision → Output-Mapping).
+2. **C.1.1 — interaktive User-Task-Modelle:** `approved`/`clarified` stammen aus User-Task-Outputs.
+3. **C.9.0 — DMN-Decision-Output `riskLevels`:** FEEL-Quantor `some/every … satisfies` ist einwandfrei
+   implementiert (verifiziert); nur die DMN-Entscheidungs-Ausführung zur Befüllung von `riskLevels` fehlt in der
+   eingabelosen Smoke-Ausführung.
 
 ## Garantie der Suite
 

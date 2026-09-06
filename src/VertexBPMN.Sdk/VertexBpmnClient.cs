@@ -1,12 +1,19 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace VertexBPMN.Sdk;
 
 public sealed class VertexBpmnClient
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions JsonOptions;
+
+    static VertexBpmnClient()
+    {
+        JsonOptions = new(JsonSerializerDefaults.Web);
+        JsonOptions.Converters.Add(new JsonStringEnumConverter());
+    }
     private readonly HttpClient httpClient;
     private readonly VertexBpmnClientOptions options;
 

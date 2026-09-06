@@ -73,6 +73,27 @@ Damit lösen Output-Mappings wie `= if result != null then result.riskLevel else
 statt `["green"]`-Fallback). Voraussetzung: eine DMN-Decision wird via `RegisterDmnModelAsync`
 bereitgestellt — bei C.8.0/C.8.1 fehlen dafür die `.dmn`-Artefakte in den Referenzdaten.
 
+## Feature: BPMN-Datenobjekt-Zugriff + FEEL-Single-Quote-Normalisierung (Condition-Ausdrücke)
+
+Seit 2026-09-06 wertet der Sequenzfluss-Condition-Evaluator (`BpmnConditionEvaluator`) zwei
+BPMN-2.0-Interchange-Idiome korrekt aus, die zuvor nur im Jint-/Fallback-Pfad oder gar nicht
+funktionierten:
+
+1. **Datenobjekt-Zugriff `bpmn:getDataObject('x')`** — wird nun VOR dem FEEL/Fallback-Split gegen die
+   Prozessvariable `x` aufgelöst (vorher nur im Jint-Pfad; die FEEL-Runtime warf auf den Doppelpunkt
+   im Funktionsnamen „Unrecognized token in &lt;VariableName&gt;").
+2. **Single-Quote-String-Literale** — BPMN-2.0-Condition-Expressions schreiben Strings üblicherweise
+   XPath-stilistisch mit `'…'`, FEEL verlangt `"…"`. Der FEEL-Zweig normalisiert Single-Quote-Literale
+   zu Double-Quotes (nur wenn noch kein `"` im Ausdruck steht), sodass
+   `bpmn:getDataObject('status') = 'ok'` als `status = "ok"` in der echten FEEL-Runtime evaluiert
+   statt auf „Unrecognized token in &lt;Comparison&gt;" zu scheitern.
+
+Belegt durch `GetDataObjectFeelTests` (Minimal-Modell mit Exclusive-Gateway; `'ok'`-Zweig vs. Default-Zweig).
+
+-> Dies macht den FEEL-Pfad für MIWG-artige XPath-Conditions vollständig ausführbar. Es schließt
+   **kein weiteres Matrix-Modell** (C.1.1 bleibt interaktiv, da `approved`/`clarified` Laufzeit-Inputs
+   aus User-Tasks sind), verbessert aber die FEEL-Konditions-Interoperabilität der Engine.
+
 ## Interaktive Modelle (verbleibende 3 Pending → mit Input ausführbar)
 
 Die verbleibenden Pending-Modelle sind **interaktiv** (User-Task-/DMN-getrieben), keine Engine-Defekte.

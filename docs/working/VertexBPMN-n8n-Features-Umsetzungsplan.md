@@ -236,7 +236,7 @@ Konstruktor von `CliApplication` um `IOpenApiConnectorTemplateImporter _openApiI
 
 - [x] `dotnet build` und `dotnet test` (siehe 0.1) sind grün.
 - [x] Eine Beispiel-OpenAPI-Spec mit mindestens 3 Operationen (GET mit Query-Param, POST mit Body, eine mit `apiKey`-Security) lässt sich per CLI importieren und erzeugt 3 `ConnectorTemplateRecord`-Einträge.
-- [ ] Ein importierter Connector lässt sich in einem Test-BPMN-Prozess als Service-Task mit `vertex:connector.type=http` referenzieren und über `ConnectorRuntime.ExecuteAsync` erfolgreich gegen einen Test-HTTP-Endpunkt ausführen (Integrationstest, ggf. mit `WireMock.Net` oder vorhandenem Test-HTTP-Fake — prüfe `tests/VertexBPMN.Tests/Integration` auf existierende HTTP-Mocking-Infrastruktur, bevor du eine neue einführst).
+- [x] Ein importierter Connector lässt sich in einem Test-BPMN-Prozess als Service-Task mit `vertex:connector.type=http` referenzieren und über `ConnectorRuntime.ExecuteAsync` erfolgreich gegen einen Test-HTTP-Endpunkt ausführen (Integrationstest, ggf. mit `WireMock.Net` oder vorhandenem Test-HTTP-Fake — prüfe `tests/VertexBPMN.Tests/Integration` auf existierende HTTP-Mocking-Infrastruktur, bevor du eine neue einführst). Verifiziert durch `OpenApiConnectorTemplateImporterTests.ImportedTemplate_ExecutesAgainstHttpEndpoint_WithResolvedPath` (Import → `HttpConnectorExecutor` gegen Recording-`HttpMessageHandler`; der SSRF-Guard lehnt echte Loopback-Ziele in CI ab, daher Fake-Handler statt Live-Server).
 - [x] Report enthält für jede Operation genau einen Eintrag mit korrekter Disposition.
 
 ---
@@ -484,6 +484,8 @@ Neuer Endpunkt, entweder als neue Methode in einem bestehenden History-Controlle
 
 Finde die bestehende `test-run`-Implementierung in `CliApplication.cs`. Erweitere sie um ein Flag `--use-recorded-outputs`: Wenn gesetzt, lädt der Testlauf für jeden Service-Task den letzten `TASK_IO_SNAPSHOT` mit gleichem `ElementId` aus einer vorherigen Instanz (gleicher `ProcessDefinitionKey`) und injiziert dessen `output`-Werte direkt in die Variablen, statt den echten Connector aufzurufen. Das ist ein reiner CLI-/Test-Runner-Eingriff, kein Runtime-Verhalten in Produktion — stelle sicher, dass dieser Pfad NICHT im normalen `JobExecutorService` landet, sondern nur im Test-Runner-Codepfad des `execute`/`test-run`-Befehls.
 
+**Status: UMSGESETZT (Branch `fix/n8n-plan-gaps`).** `test-run --use-recorded-outputs` implementiert. Anwendungsschicht: `IRecordedOutputQueryService` (Infrastructure, `RecordedOutputQueryService`) liefert den letzten `TASK_IO_SNAPSHOT`-Output je `ElementId` aus einer vorherigen Instanz gleichen `ProcessDefinitionKey` (tenant-isoliert); `IRecordedOutputReplayService` + `RecordedOutputServiceTaskHandler` (Application) schreiben Service-Tasks mit aufgezeichnetem Output auf synthetische `__replay__:<elementId>`-Implementierungen um und registrieren je einen Replay-Handler in der CLI-lokalen `IServiceTaskRegistry`. Der Produktionspfad (`JobExecutorService`) bleibt unberührt — der Replay wirkt nur im CLI-Prozess (einmaliger Prozess, eigene Registry). Playwright-artiges Replay statt echter Connector-Aufrufe.
+
 ### 3.7 Tests
 
 - `tests/VertexBPMN.Tests/Unit/Application/TaskIoSnapshotRecorderTests.cs`: Feature-Flag aus → kein Event geschrieben; Feature-Flag an → Event mit redaktierten Werten; ein Wert mit Key `"apiToken"` wird zu `"***"` maskiert.
@@ -491,10 +493,12 @@ Finde die bestehende `test-run`-Implementierung in `CliApplication.cs`. Erweiter
 
 ### 3.8 Akzeptanzkriterien Phase 3
 
-- [ ] Bei aktivem Feature-Flag wird pro Service-Task-Ausführung genau ein `HistoryEvent` vom Typ `TASK_IO_SNAPSHOT` geschrieben.
-- [ ] Secrets (Keys mit `secret`/`token`/`password`/etc.) erscheinen nie im Klartext im gespeicherten `Data`-JSON.
-- [ ] Bei inaktivem Feature-Flag entsteht kein zusätzlicher Datenbank-Write (Performance-Neutralität für Bestandsnutzer ohne das Feature).
-- [ ] `GET .../io-snapshots` liefert die Snapshots in absteigender zeitlicher Reihenfolge.
+**Status: UMSGESETZT (Branch `fix/n8n-plan-gaps`).** Erfüllt und durch Phase-3-Tests belegt (`TaskIoSnapshotRecorderTests`, `TaskIoSnapshotApiTests`).
+
+- [x] Bei aktivem Feature-Flag wird pro Service-Task-Ausführung genau ein `HistoryEvent` vom Typ `TASK_IO_SNAPSHOT` geschrieben.
+- [x] Secrets (Keys mit `secret`/`token`/`password`/etc.) erscheinen nie im Klartext im gespeicherten `Data`-JSON.
+- [x] Bei inaktivem Feature-Flag entsteht kein zusätzlicher Datenbank-Write (Performance-Neutralität für Bestandsnutzer ohne das Feature).
+- [x] `GET .../io-snapshots` liefert die Snapshots in absteigender zeitlicher Reihenfolge.
 
 ---
 

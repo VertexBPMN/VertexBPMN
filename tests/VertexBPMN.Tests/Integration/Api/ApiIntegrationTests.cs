@@ -98,7 +98,7 @@ public class ApiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     [Fact]
     public async Task Management_Suspend_Resume_Delete_Works()
     {
-        const string bpmn = "<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='ManagementApiProcess'><startEvent id='start1'/><endEvent id='end1'/><sequenceFlow id='flow1' sourceRef='start1' targetRef='end1'/></process></definitions>";
+        const string bpmn = "<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='ManagementApiProcess'><startEvent id='start1'/><userTask id='userTask1' name='Approve'/><endEvent id='end1'/><sequenceFlow id='flow1' sourceRef='start1' targetRef='userTask1'/><sequenceFlow id='flow2' sourceRef='userTask1' targetRef='end1'/></process></definitions>";
         var deploy = new { BpmnXml = bpmn, Name = "ManagementTestProcess", TenantId = (string?)null };
         var deployResponse = await _client.PostAsJsonAsync("/api/repository", deploy, cancellationToken: TestContext.Current.CancellationToken);
         deployResponse.EnsureSuccessStatusCode();
@@ -126,7 +126,7 @@ public class ApiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     [Fact]
     public async Task Management_RejectsWrongTenantAndAcceptsMatchingTenant()
     {
-        const string bpmn = "<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='TenantManagementApiProcess'><startEvent id='start1'/><endEvent id='end1'/><sequenceFlow id='flow1' sourceRef='start1' targetRef='end1'/></process></definitions>";
+        const string bpmn = "<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='TenantManagementApiProcess'><startEvent id='start1'/><userTask id='userTask1' name='Approve'/><endEvent id='end1'/><sequenceFlow id='flow1' sourceRef='start1' targetRef='userTask1'/><sequenceFlow id='flow2' sourceRef='userTask1' targetRef='end1'/></process></definitions>";
         var deploy = new { BpmnXml = bpmn, Name = "TenantManagementTestProcess", TenantId = "tenant-a" };
         var deployResponse = await _client.PostAsJsonAsync("/api/repository", deploy, cancellationToken: TestContext.Current.CancellationToken);
         deployResponse.EnsureSuccessStatusCode();

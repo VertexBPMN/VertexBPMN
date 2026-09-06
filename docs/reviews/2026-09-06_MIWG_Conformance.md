@@ -90,6 +90,10 @@ funktionierten:
 
 Belegt durch `GetDataObjectFeelTests` (Minimal-Modell mit Exclusive-Gateway; `'ok'`-Zweig vs. Default-Zweig).
 
+Zusätzlich wird im Jint-„Kompatibilitäts"-Pfad die Funktions-Negation **`not(...)`** → `!(...)`
+übersetzt (bislang nur `not x` mit Leerzeichen) — belegt durch `NotFunctionConditionTests`
+(Minimal-Gateway, `not(bpmn:getDataObject('blocked'))` → `!blocked`).
+
 -> Dies macht den FEEL-Pfad für MIWG-artige XPath-Conditions vollständig ausführbar. Es schließt
    **kein weiteres Matrix-Modell** (C.1.1 bleibt interaktiv, da `approved`/`clarified` Laufzeit-Inputs
    aus User-Tasks sind), verbessert aber die FEEL-Konditions-Interoperabilität der Engine.

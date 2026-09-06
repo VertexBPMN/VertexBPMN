@@ -40,6 +40,8 @@ public class BpmnDbContext : DbContext
     public DbSet<FormDefinitionRecord> FormDefinitions => Set<FormDefinitionRecord>();
     public DbSet<CaseDefinitionRecord> CaseDefinitions => Set<CaseDefinitionRecord>();
     public DbSet<CaseInstanceRecord> CaseInstances => Set<CaseInstanceRecord>();
+    public DbSet<PollingTriggerRecord> PollingTriggers => Set<PollingTriggerRecord>();
+    public DbSet<OAuth2FlowStateRecord> OAuth2FlowStates => Set<OAuth2FlowStateRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -65,6 +67,8 @@ public class BpmnDbContext : DbContext
         ConfigureConnectors(modelBuilder);
         ConfigureConnectorTemplates(modelBuilder);
         ConfigureWorkflowTriggers(modelBuilder);
+        ConfigurePollingTriggers(modelBuilder);
+        ConfigureOAuth2FlowStates(modelBuilder);
         ConfigureFormDefinitions(modelBuilder);
         ConfigureCaseDefinitions(modelBuilder);
 
@@ -186,7 +190,8 @@ public class BpmnDbContext : DbContext
         modelBuilder.Entity<FeatureFlagRecord>().HasData(
             new FeatureFlagRecord { Name = "liveinspector", Enabled = true },
             new FeatureFlagRecord { Name = "predictiveanalytics", Enabled = false },
-            new FeatureFlagRecord { Name = "processminingapi", Enabled = false });
+            new FeatureFlagRecord { Name = "processminingapi", Enabled = false },
+            new FeatureFlagRecord { Name = "task-io-snapshots", Enabled = false });
     }
 
     private static void ConfigureIdentity(ModelBuilder modelBuilder)
@@ -439,6 +444,36 @@ public class BpmnDbContext : DbContext
         entity.HasIndex(e => e.Assignee);
         entity.HasIndex(e => e.MultiInstanceExecutionId);
         entity.HasIndex(e => new { e.ProcessInstanceId, e.ActivityId, e.Status });
+    }
+
+
+    private static void ConfigurePollingTriggers(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<PollingTriggerRecord>();
+        entity.HasKey(e => e.Id);
+        entity.Property(e => e.TenantId).IsRequired().HasMaxLength(64);
+        entity.Property(e => e.Name).IsRequired().HasMaxLength(256);
+        entity.Property(e => e.ProcessDefinitionKey).IsRequired().HasMaxLength(256);
+        entity.Property(e => e.ConnectorType).IsRequired().HasMaxLength(64);
+        entity.Property(e => e.ConnectorAttributesJson).IsRequired();
+        entity.Property(e => e.CredentialId).HasMaxLength(128);
+        entity.Property(e => e.CursorStateJson).IsRequired();
+        entity.Property(e => e.LockOwner).HasMaxLength(128);
+        entity.HasIndex(e => new { e.TenantId, e.Enabled, e.NextDueAt });
+    }
+
+    private static void ConfigureOAuth2FlowStates(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<OAuth2FlowStateRecord>();
+        entity.HasKey(e => e.State);
+        entity.Property(e => e.TenantId).IsRequired().HasMaxLength(64);
+        entity.Property(e => e.CredentialId).IsRequired().HasMaxLength(128);
+        entity.Property(e => e.AuthorizationUrl).IsRequired().HasMaxLength(2048);
+        entity.Property(e => e.TokenUrl).IsRequired().HasMaxLength(2048);
+        entity.Property(e => e.ClientId).HasMaxLength(512);
+        entity.Property(e => e.RedirectUri).HasMaxLength(2048);
+        entity.Property(e => e.Scopes).HasMaxLength(1024);
+        entity.HasIndex(e => new { e.TenantId, e.ExpiresAt });
     }
 
     private static void ConfigureFormDefinitions(ModelBuilder modelBuilder)

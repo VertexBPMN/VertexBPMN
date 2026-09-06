@@ -102,7 +102,34 @@ public class JobExecutorService : BackgroundService
                         throw new InvalidOperationException($"No service task handler registered for job type '{job.Type}'.");
 
                     var payload = ParsePayload(job.Payload);
-                    await handler.ExecuteAsync(payload.Attributes, payload.Variables, stoppingToken);
+                    var inputSnapshot = new Dictionary<string, object>(payload.Variables);
+                    Exception? executionError = null;
+                    var snapshotRecorder = scope.ServiceProvider.GetService<ITaskIoSnapshotRecorder>();
+                    try
+                    {
+                        await handler.ExecuteAsync(payload.Attributes, payload.Variables, stoppingToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        executionError = ex;
+                        throw;
+                    }
+                    finally
+                    {
+                        if (snapshotRecorder != null)
+                        {
+                            var outputSnapshot = new Dictionary<string, object>(payload.Variables);
+                            await snapshotRecorder.RecordAsync(
+                                job.ProcessInstanceId,
+                                job.ActivityId,
+                                job.TenantId ?? "default",
+                                inputSnapshot,
+                                outputSnapshot,
+                                executionError is null,
+                                executionError?.Message,
+                                stoppingToken);
+                        }
+                    }
                     await jobRepo.DeleteAsync(job.Id, stoppingToken);
 
                     if (eventSink != null)

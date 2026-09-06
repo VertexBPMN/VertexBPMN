@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using VertexBPMN.Application.Configuration;
 using VertexBPMN.Application.Messaging;
+using VertexBPMN.Application;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Domain.Interfaces.Repositories;
 using VertexBPMN.Infrastructure.Persistence;
@@ -43,6 +44,8 @@ public static class InfrastructureModule
         services.AddSingleton<RuntimeMetricsState>();
         if (mode != "Test" && configuration.GetValue("Operational:Metrics:Enabled", true))
             services.AddHostedService<RuntimeMetricsCollectorService>();
+        if (mode != "Test")
+            services.AddHostedService<PollingSchedulerService>();
         ConfigureRuntimeOutbox(services, configuration, mode);
         services.AddScoped<IProcessDefinitionRepository, ProcessDefinitionRepository>();
         services.AddScoped<IWorkflowTriggerRepository, WorkflowTriggerRepository>();
@@ -51,6 +54,7 @@ public static class InfrastructureModule
         services.AddScoped<IExecutionTokenRepository, ExecutionTokenRepository>();
         services.AddScoped<IVariableRepository, VariableRepository>();
         services.AddScoped<IJobRepository, JobRepository>();
+        services.AddScoped<IPollingTriggerRepository, PollingTriggerRepository>();
         services.AddScoped<ITaskRepository, TaskRepository>();
         services.AddScoped<IHistoryEventRepository, HistoryEventRepository>();
         services.AddScoped<IIncidentRepository, IncidentRepository>();
@@ -70,6 +74,10 @@ public static class InfrastructureModule
         services.AddScoped<IConnectorService, PersistentConnectorService>();
         services.AddScoped<IConnectorTemplateService, PersistentConnectorTemplateService>();
         services.AddScoped<IFormDefinitionService, PersistentFormDefinitionService>();
+        services.AddScoped<ITaskIoSnapshotRecorder, TaskIoSnapshotRecorder>();
+        services.AddScoped<IOAuth2CredentialFlowService, OAuth2CredentialFlowService>();
+        if (mode != "Test")
+            services.AddHostedService<OAuth2FlowStateCleanupService>();
         return services;
     }
 

@@ -331,6 +331,13 @@ public sealed class VertexConnectorServiceTaskHandler(
             throw new ServiceTaskExecutionException($"Credential transmission to host '{destinationHost}' is not allowed.");
         await using var scope = scopeFactory.CreateAsyncScope();
         var credentialService = scope.ServiceProvider.GetRequiredService<ICredentialService>();
+        var credential = await credentialService.GetAsync(tenantId, credentialId, ct);
+        if (credential?.Type.Equals("oauth2", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            var flowService = scope.ServiceProvider.GetRequiredService<IOAuth2CredentialFlowService>();
+            return await flowService.ResolveValidAccessTokenAsync(tenantId, credentialId, ct)
+                ?? throw new ServiceTaskExecutionException("The OAuth2 credential has no valid access token; re-authorization is required.");
+        }
         return await credentialService.ResolveSecretAsync(tenantId, credentialId, secretKey, ct)
             ?? throw new ServiceTaskExecutionException("The configured credential or secret key was not found.");
     }

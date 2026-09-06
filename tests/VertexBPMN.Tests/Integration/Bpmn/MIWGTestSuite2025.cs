@@ -16,7 +16,7 @@ namespace VertexBPMN.Tests.Integration.Bpmn
             Console.WriteLine($"MIWG BPMN test dir: {dir}");
 
             if (!Directory.Exists(dir)) yield break;
-            foreach (var file in Directory.GetFiles(dir, "*.bpmn").Take(1))
+            foreach (var file in Directory.GetFiles(dir, "*.bpmn").OrderBy(f => f).Take(1))
             {
                 yield return new object[] { file };
             }

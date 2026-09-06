@@ -739,6 +739,25 @@ public partial class BpmnParser : IBpmnParser
             }
 
         }
+        var compensatableActivities = events
+            .Where(e => e.Type == "boundaryEvent"
+                        && e.Definitions.OfType<CompensationEventDefinition>().Any())
+            .Select(e => e.AttachedToRef)
+            .Where(a => !string.IsNullOrEmpty(a))
+            .ToHashSet(StringComparer.Ordinal);
+
+        foreach (var ev in events)
+        {
+            foreach (var comp in ev.Definitions.OfType<CompensationEventDefinition>())
+            {
+                if (string.IsNullOrEmpty(comp.ActivityRef)) continue;
+                if (!flowNodeIds.Contains(comp.ActivityRef))
+                    diagnostics.Add($"compensateEventDefinition activityRef {comp.ActivityRef} references missing activity (event {ev.Id})");
+                else if (!compensatableActivities.Contains(comp.ActivityRef))
+                    diagnostics.Add($"compensateEventDefinition activityRef {comp.ActivityRef} is not compensatable (no compensation boundary event attached; event {ev.Id})");
+            }
+        }
+
         foreach (var bev in events.Where(e =>
                      e.Type == "boundaryEvent" && e.Definitions.OfType<EscalationEventDefinition>().Any()))
         {
@@ -1170,6 +1189,9 @@ public partial class BpmnParser : IBpmnParser
             attributes["resultVariable"] = resultVariable;
         if (element.Attribute("calledElement")?.Value is { } calledElement)
             attributes["calledElement"] = calledElement;
+
+        if (element.Attribute("decisionRef")?.Value is { } decisionRef)
+            attributes["decisionRef"] = decisionRef;
 
         return attributes.Count == 0 ? null : attributes;
     }

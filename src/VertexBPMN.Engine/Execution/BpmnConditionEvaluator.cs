@@ -37,10 +37,33 @@ internal static class BpmnConditionEvaluator
             variable => NormalizeJsonValue(variable.Value)!,
             StringComparer.Ordinal);
 
+        // Several BPMN 2.0 interchange fixtures declare XPath globally but use
+        // Signavio's data-object accessor syntax in the actual formal expression.
+        // Resolve that accessor against the process-variable context before the
+        // FEEL / fallback split, so both the FEEL runtime and the compatibility
+        // evaluator see it as a plain variable reference.
+        expression = Regex.Replace(
+            expression,
+            "(?:[A-Za-z_][\\w.-]*:)?getDataObject\\(\\s*(['\"])(?<name>[^'\"]+)\\1\\s*\\)",
+            match => match.Groups["name"].Value,
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
         if (IsFeel(expressionLanguage, expression))
         {
             if (expression.StartsWith('=') && !expression.StartsWith("==", StringComparison.Ordinal))
                 expression = expression[1..].Trim();
+
+            // BPMN 2.0 interchange conditions are commonly XPath-flavoured and quote
+            // string literals with single quotes, whereas FEEL strings require double
+            // quotes. Normalize single-quoted literals so such conditions evaluate in
+            // the FEEL runtime instead of failing on an unrecognized token.
+            if (expression.Contains('\'') && !expression.Contains('\"'))
+            {
+                expression = Regex.Replace(
+                    expression,
+                    "'(?<lit>[^']*)'",
+                    match => "\"" + match.Groups["lit"].Value + "\"");
+            }
 
             var result = FeelExpressionRuntime.Evaluate(expression, context);
             return result is bool boolean
@@ -48,16 +71,6 @@ internal static class BpmnConditionEvaluator
                 : throw new InvalidOperationException(
                     $"FEEL condition '{rawExpression}' returned '{result?.GetType().Name ?? "null"}' instead of boolean.");
         }
-
-        // Several BPMN 2.0 interchange fixtures declare XPath globally but use
-        // Signavio's data-object accessor syntax in the actual formal expression.
-        // Resolve that accessor against the process-variable context before the
-        // sandboxed compatibility evaluator runs.
-        expression = Regex.Replace(
-            expression,
-            "(?:[A-Za-z_][\\w.-]*:)?getDataObject\\(\\s*(['\"])(?<name>[^'\"]+)\\1\\s*\\)",
-            match => match.Groups["name"].Value,
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
         expression = Regex.Replace(
             expression,

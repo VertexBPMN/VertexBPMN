@@ -447,13 +447,20 @@ public partial class ProcessEngine : IProcessEngine
             ? model.Events.Where(e =>
                 e.Type == "startEvent"
                 && e.SubprocessId is null
-                && e.Definitions is not { Count: > 0 }
                 && (string.IsNullOrWhiteSpace(e.ProcessId)
                     || string.Equals(e.ProcessId, model.ProcessId, StringComparison.Ordinal))).ToList()
             : model.Events.Where(e =>
                 e.Type == "startEvent"
                 && (allowEventSubprocessStarts || e.SubprocessId is null)
                 && requestedStartEventIds.Contains(e.Id)).ToList();
+        // Auto-instantiation uses 'none' start events when present. If a process defines ONLY
+        // typed start events (message/timer/signal/...), auto-fire them so the model is executable
+        // without an external trigger (default auto-start semantics for typed starts).
+        if (requestedStartEventIds is null && startEvents.Count > 0)
+        {
+            var noneStarts = startEvents.Where(e => e.Definitions is not { Count: > 0 }).ToList();
+            startEvents = noneStarts.Count > 0 ? noneStarts : startEvents;
+        }
         if (startEvents.Count == 0)
             throw new InvalidOperationException(requestedStartEventIds is null
                 ? "No none Start Event exists for automatic process instantiation. Trigger a typed Start Event explicitly."

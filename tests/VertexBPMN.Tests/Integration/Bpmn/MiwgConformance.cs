@@ -17,8 +17,8 @@ namespace VertexBPMN.Tests.Integration.Bpmn
     /// und jede Aenderung in die eine oder andere Richtung wird sichtbar erzwungen.
     ///
     /// Stand: 2026-09-06, gemessen gegen Engine (Release, net10.0).
-    /// Durchlaufend (Completed=true): 17/21
-    /// Dokumentiert offen (Completed=false): 4/21
+    /// Durchlaufend (Completed=true): 18/21
+    /// Dokumentiert offen (Completed=false): 3/21
     /// </summary>
     public static class MiwgBaseline
     {
@@ -45,7 +45,7 @@ namespace VertexBPMN.Tests.Integration.Bpmn
                 ["C.7.0.bpmn"] = new("C.7.0.bpmn", true,  "'Advertise a job vacancy' (Kollaboration mit Ressourcen) - laeuft nach Parser-Hack-Fix durch."),
                 ["C.8.0.bpmn"] = new("C.8.0.bpmn", false, "PENDING (interaktiv): DMN-Variable 'Vacation Approval' erst durch Benutzer-/DMN-Eingabe. Mit Input vollstaendig ausfuehrbar - siehe MIWGInteractiveInputSuite."),
                 ["C.8.1.bpmn"] = new("C.8.1.bpmn", false, "PENDING (interaktiv): DMN-Variable 'Vacation Approval' - siehe C.8.0, MIWGInteractiveInputSuite."),
-                ["C.9.0.bpmn"] = new("C.9.0.bpmn", false, "PENDING (interaktiv): DMN-Decision-Output 'riskLevels' fehlt in eingabeloser Ausfuehrung (FEEL-Quantor funktioniert bei vorhandenem Input). Mit Input ausfuehrbar - siehe MIWGInteractiveInputSuite."),
+                ["C.9.0.bpmn"] = new("C.9.0.bpmn", true, "Completed: Zeebe-Output-Mappings (mehrere <zeebe:output>) bleiben erhalten und werden per FEEL ausgewertet; ohne DMN-Entscheidung wird 'result' null geseedet -> Autoren-Fallback (riskLevels=[green]) greift. Siehe Docs 2026-09-06."),
                 ["C.9.1.bpmn"] = new("C.9.1.bpmn", true,  "Risiko/Variablenprozess - Variante."),
                 ["C.9.2.bpmn"] = new("C.9.2.bpmn", true,  "Risiko/Variablenprozess - Variante."),
             };

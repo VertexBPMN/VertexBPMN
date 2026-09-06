@@ -1408,41 +1408,80 @@ partial class ProcessEngine
     private void ApplyZeebeIoMapping(BpmnTask task, IDictionary<string, object> vars, List<string> trace)
     {
         if (task.Attributes == null) return;
-        if (!task.Attributes.TryGetValue("zeebe:ioMapping", out var raw) || string.IsNullOrWhiteSpace(raw))
-            return;
 
-        try
+        // Output mappings arrive in two shapes:
+        //   (1) legacy JSON dict       "zeebe:ioMapping": { "target": "source", ... }
+        //   (2) per-key attributes    "zeebe:ioMapping.output.{target}" = source   (Zeebe extension format)
+        var mappings = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (task.Attributes.TryGetValue("zeebe:ioMapping", out var raw) && !string.IsNullOrWhiteSpace(raw))
         {
-            // Expect JSON: { "targetVar": "literal or =expression", ... }
-            var map = JsonSerializer.Deserialize<Dictionary<string, string>>(raw);
-            if (map == null || map.Count == 0) return;
-
-            foreach (var (target, source) in map)
+            try
             {
-                if (string.IsNullOrWhiteSpace(target)) continue;
-                if (string.IsNullOrWhiteSpace(source))
-                {
-                    vars[target] = null!;
-                    continue;
-                }
+                var map = JsonSerializer.Deserialize<Dictionary<string, string>>(raw);
+                if (map != null)
+                    foreach (var (t, s) in map) mappings[t] = s;
+            }
+            catch (Exception) { /* ignore malformed legacy dict */ }
+        }
 
-                if (source.StartsWith("="))
+        const string outputPrefix = "zeebe:ioMapping.output.";
+        foreach (var (key, value) in task.Attributes)
+        {
+            if (key.StartsWith(outputPrefix, StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(value))
+                mappings[key.Substring(outputPrefix.Length)] = value;
+        }
+        if (mappings.Count == 0) return;
+
+        foreach (var (target, source) in mappings)
+        {
+            if (string.IsNullOrWhiteSpace(target)) continue;
+            if (string.IsNullOrWhiteSpace(source))
+            {
+                vars[target] = null!;
+                continue;
+            }
+
+            if (source.StartsWith("="))
+            {
+                var expression = source[1..].Trim();
+                try
                 {
-                    vars[target] = EvaluateSimpleExpression(source[1..].Trim(), vars);
-                    trace.Add($"ZeebeIOMappingExpr: {task.Id} {target}='{vars[target]}'");
+                    // Zeebe decision-output convention: `result` holds the DMN
+                    // decision output. If no decision was evaluated (bare run /
+                    // no registered decision) seed it as null so an author's
+                    // `if result != null then ... else <fallback>` resolves to the
+                    // intended fallback instead of a hard "Variable 'result' not found".
+                    var context = vars.ToDictionary(
+                        kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
+                    if (!context.ContainsKey("result"))
+                        context["result"] = null!;
+
+                    var value = FeelExpressionRuntime.Evaluate(expression, context);
+                    if (value != null)
+                    {
+                        // Never clobber a process variable that was already provided
+                        // (e.g. seeded as a previously produced decision output).
+                        vars.TryAdd(target, value);
+                        trace.Add($"ZeebeIOMappingFeel: {task.Id} {target}='{value}'");
+                    }
+                    else
+                    {
+                        trace.Add($"ZeebeIOMappingExpr: {task.Id} {target}=null");
+                    }
                 }
-                else
+                catch (Exception ex)
                 {
-                    vars[target] = source;
-                    trace.Add($"ZeebeIOMappingSet: {task.Id} {target}='{source}'");
+                    trace.Add($"ZeebeIOMappingError: {task.Id} {target} {ex.Message}");
+                    vars[target] = EvaluateSimpleExpression(expression, vars);
                 }
             }
-            trace.Add($"ZeebeIOMappingApplied: {task.Id}");
+            else
+            {
+                vars[target] = source;
+                trace.Add($"ZeebeIOMappingSet: {task.Id} {target}='{source}'");
+            }
         }
-        catch (Exception ex)
-        {
-            trace.Add($"ZeebeIOMappingError: {task.Id} {ex.Message}");
-        }
+        trace.Add($"ZeebeIOMappingApplied: {task.Id}");
     }
 
     // Step 6: minimal evaluator: variable reference or string/number literal, simple concatenation with +

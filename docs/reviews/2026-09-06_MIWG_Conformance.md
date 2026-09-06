@@ -28,11 +28,11 @@ Die Suite führt **alle 21** MIWG-Referenzmodelle aus — jeweils als reine Ausf
 | C.7.0 | ✅ | ✅ | Completed |
 | C.8.0 | ⏳ | ⏳ | Pending |
 | C.8.1 | ⏳ | ⏳ | Pending |
-| C.9.0 | ⏳ | ⏳ | Pending |
+| C.9.0 | ✅ | ✅ | Completed |
 | C.9.1 | ✅ | ✅ | Completed |
 | C.9.2 | ✅ | ✅ | Completed |
 
-**Completed: 17/21 · Pending (dokumentiert): 4/21** *(die 4 Pending sind interaktiv: mit dokumentierten Laufzeit-Eingaben vollständig bis zum End-Event ausführbar — siehe «Interaktive Modelle» unten → **21/21 strukturell konform**)*
+**Completed: 18/21 · Pending (dokumentiert): 3/21** *(die 3 Pending sind interaktiv: mit dokumentierten Laufzeit-Eingaben vollständig bis zum End-Event ausführbar — siehe «Interaktive Modelle» unten → **21/21 strukturell konform**)*
 
 ## Feature: Auto-Start getypter Start-Events
 
@@ -43,7 +43,26 @@ Seit 2026-09-06 feuert die Auto-Instanziierung (`ProcessEngine.Execute`) getypte
 Regel (in `ProcessEngine.Execute`): Liefert ein Modell `none`-Start-Events, gelten nur diese
 (Verhalten unverändert). Existiert keines, fallen alle getypten Top-Level-Start-Events als Startpunkte ein.
 
-## Interaktive Modelle (verbleibende 4 Pending → mit Input ausführbar)
+## Feature: Zeebe-Output-Mapping erhalten + FEEL-ausgewertet (C.9.0 geschlossen)
+
+Vom 2026-09-06 an gilt:
+
+1. **Parser** (`BpmnParser`): Mehrere `<zeebe:output>`/`<zeebe:input>` bleiben **vollständig erhalten**
+   als `zeebe:ioMapping.output.{target}` = `source` (bzw. `.input.`). Zuvor schrieb der generische
+   Extension-Harvester nur ein einzelnes `zeebe:output.source`/`zeebe:output.target`-Paar, das bei
+   mehreren Mappings **alle bis auf das letzte verwarf** (bei C.9.0 ging `riskLevels` verloren, nur
+   `risks` blieb).
+2. **Engine** (`ProcessEngine.ApplyZeebeIoMapping`): Verarbeitet jetzt auch die per-Key-Form
+   `zeebe:ioMapping.output.*` (nicht nur das Legacy-JSON-Dict) und wertet `=`-Quellausdrücke über die
+   **echte FEEL-Runtime** aus (statt des simplen Literal-Evaluators).
+3. **Entscheidungs-Fallback:** Fehlt eine registrierte/evaluerte DMN-Entscheidung, wird `result` (die
+   Zeebe-Decision-Output-Konvention) auf `null` geseedet, sodass ein Autoren-`if result != null then …
+   else <fallback>` zum vorgesehenen Fallback auflöst — bei C.9.0 `riskLevels = ["green"]`, `risks = []`.
+
+Dadurch ist **C.9.0** (Risiko/Variablenprozess) jetzt eingabelos vollständig durchlaufend — +1 auf Completed
+(18/21). Die Entscheidungsauswertung selbst bleibt für den echten DMN-Fall auf der Roadmap (siehe unten).
+
+## Interaktive Modelle (verbleibende 3 Pending → mit Input ausführbar)
 
 Die verbleibenden Pending-Modelle sind **interaktiv** (User-Task-/DMN-getrieben), keine Engine-Defekte.
 Die Engine führt sie mit den dokumentierten Laufzeit-Eingaben vollständig bis zum End-Event aus
@@ -54,7 +73,6 @@ Die Engine führt sie mit den dokumentierten Laufzeit-Eingaben vollständig bis 
 | C.1.1 | User-Task-Outputs `approved`, `clarified` | ✅ EndEvent |
 | C.8.0 | DMN `Vacation Approval` | ✅ EndEvent |
 | C.8.1 | DMN `Vacation Approval` | ✅ EndEvent |
-| C.9.0 | DMN-Decision-Output `riskLevels` (FEEL-`some/every`-Quantor funktioniert bei vorhandenem Input) | ✅ EndEvent |
 
 ## Pending-Gründe (eingabelose Ausführung → Roadmap)
 
@@ -62,9 +80,6 @@ Die Engine führt sie mit den dokumentierten Laufzeit-Eingaben vollständig bis 
    Benutzer-/DMN-Eingabe gesetzt; die Engine erzwingt FEEL-Auswertung ohne diese Variable.
    → verdeutlicht Bedarf an **DMN-input-getriebener Auswertung** (Business-Rule-Task → DMN-Decision → Output-Mapping).
 2. **C.1.1 — interaktive User-Task-Modelle:** `approved`/`clarified` stammen aus User-Task-Outputs.
-3. **C.9.0 — DMN-Decision-Output `riskLevels`:** FEEL-Quantor `some/every … satisfies` ist einwandfrei
-   implementiert (verifiziert); nur die DMN-Entscheidungs-Ausführung zur Befüllung von `riskLevels` fehlt in der
-   eingabelosen Smoke-Ausführung.
 
 ## Garantie der Suite
 

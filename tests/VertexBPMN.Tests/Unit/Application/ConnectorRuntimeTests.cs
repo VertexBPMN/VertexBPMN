@@ -148,6 +148,30 @@ public sealed class ConnectorRuntimeTests
 
     private static ConnectorExecutionContext Context(ConnectorRetryPolicy retry) => new("tenant-a", "test", "test.execute", null, new Dictionary<string, string> { ["vertex:connector.requestsPerSecond"] = "1000" }, new Dictionary<string, object>(), retry);
 
+    [Fact]
+    public async Task HttpExecutor_ResolvesPathPlaceholdersFromVariables()
+    {
+        Uri? captured = null;
+        using var httpClient = new HttpClient(new RecordingHandler(r => captured = r.RequestUri));
+        var executor = new HttpConnectorExecutor(httpClient);
+        var context = new ConnectorExecutionContext(
+            "tenant-a", "http", "get.user", new Uri("http://example.test/users/{id}"),
+            new Dictionary<string, string> { ["vertex:connector.method"] = "GET" },
+            new Dictionary<string, object> { ["id"] = 42 },
+            new ConnectorRetryPolicy(0, TimeSpan.Zero, TimeSpan.Zero));
+        await executor.ExecuteAsync(context, TestContext.Current.CancellationToken);
+        Assert.Equal("http://example.test/users/42", captured!.ToString());
+    }
+
+    private sealed class RecordingHandler(Action<HttpRequestMessage> onRequest) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            onRequest(request);
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK));
+        }
+    }
+
     private sealed class DelayingExecutor : IConnectorExecutor
     {
         public string Type => "test";

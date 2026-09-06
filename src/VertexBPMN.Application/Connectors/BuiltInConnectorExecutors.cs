@@ -17,7 +17,8 @@ public class HttpConnectorExecutor(HttpClient client) : IConnectorExecutor
             throw new ServiceTaskExecutionException($"{Type} connector requires an absolute HTTP(S) endpoint.");
 
         var method = context.Attributes.TryGetValue("vertex:connector.method", out var configured) ? configured : HttpMethod.Post.Method;
-        using var request = new HttpRequestMessage(new HttpMethod(method), context.Endpoint);
+        var endpoint = ResolveEndpoint(context.Endpoint, context.Variables);
+        using var request = new HttpRequestMessage(new HttpMethod(method), endpoint);
         if (context.Attributes.TryGetValue("vertex:connector.body", out var body))
             request.Content = new StringContent(body, Encoding.UTF8, context.Attributes.TryGetValue("vertex:connector.contentType", out var contentType) ? contentType : "application/json");
         if (!string.IsNullOrEmpty(context.CredentialSecret))
@@ -32,6 +33,15 @@ public class HttpConnectorExecutor(HttpClient client) : IConnectorExecutor
             (int)response.StatusCode,
             new Dictionary<string, object> { ["httpStatus"] = (int)response.StatusCode },
             response.IsSuccessStatusCode ? null : MapHttpError(response.StatusCode));
+    }
+
+
+    private static Uri ResolveEndpoint(Uri template, IDictionary<string, object> variables)
+    {
+        var path = template.ToString();
+        foreach (var pair in variables)
+            path = path.Replace("{" + pair.Key + "}", Uri.EscapeDataString(Convert.ToString(pair.Value) ?? string.Empty));
+        return new Uri(path);
     }
 
     private static string MapHttpError(HttpStatusCode status) => status switch

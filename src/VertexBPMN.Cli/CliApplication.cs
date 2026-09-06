@@ -28,6 +28,8 @@ internal sealed class CliApplication
     private readonly IDecisionService _decisionService;
     private readonly ISemanticValidationService _validationService;
     private readonly IN8nWorkflowImporter _n8nImporter;
+    private readonly IOpenApiConnectorTemplateImporter _openApiImporter;
+    private readonly IPollingTriggerService _pollingTriggerService;
     private readonly DashboardLauncher _dashboardLauncher;
 
     public CliApplication(IServiceProvider services, TextWriter output, TextWriter error)
@@ -49,6 +51,8 @@ internal sealed class CliApplication
         _decisionService = services.GetRequiredService<IDecisionService>();
         _validationService = services.GetRequiredService<ISemanticValidationService>();
         _n8nImporter = services.GetRequiredService<IN8nWorkflowImporter>();
+        _openApiImporter = services.GetRequiredService<IOpenApiConnectorTemplateImporter>();
+        _pollingTriggerService = services.GetRequiredService<IPollingTriggerService>();
         _dashboardLauncher = services.GetRequiredService<DashboardLauncher>();
     }
 
@@ -124,6 +128,9 @@ internal sealed class CliApplication
                     return 0;
                 case "connector":
                     await ExecuteConnectorCommandAsync(args, cancellationToken);
+                    return 0;
+                case "polling-trigger":
+                    await ExecutePollingTriggerCommandAsync(args, cancellationToken);
                     return 0;
                 case "template":
                     await ExecuteTemplateCommandAsync(args, cancellationToken);
@@ -327,6 +334,48 @@ internal sealed class CliApplication
         }
     }
 
+    private async Task ExecutePollingTriggerCommandAsync(string[] args, CancellationToken cancellationToken)
+    {
+        RequireArguments(args, 2);
+        switch (args[1].ToLowerInvariant())
+        {
+            case "create":
+                RequireArguments(args, 6);
+                var attributesJson = args.Length > 5 ? args[5] : "{}";
+                var attributes = JsonSerializer.Deserialize<Dictionary<string, string>>(attributesJson) ?? throw new CliUsageException("ConnectorAttributes must be a JSON object.");
+                var interval = args.Length > 6 && int.TryParse(args[6], out var parsedInterval) ? parsedInterval : 60;
+                var createdTrigger = await _pollingTriggerService.CreateAsync(
+                    new PollingTriggerWriteRequest(args[2], args[3], args[4], JsonSerializer.Serialize(attributes), null, interval),
+                    TenantAt(args, 7), cancellationToken);
+                await _output.WriteLineAsync($"Polling trigger created: {createdTrigger.Trigger.Id}");
+                break;
+            case "list":
+                foreach (var trigger in await _pollingTriggerService.ListAsync(TenantAt(args, 2), cancellationToken))
+                    await _output.WriteLineAsync($"{trigger.Id}  {trigger.Name}  {trigger.ProcessDefinitionKey}  {trigger.ConnectorType}  {(trigger.Enabled ? "enabled" : "disabled")}  failures={trigger.ConsecutiveFailures}");
+                break;
+            case "enable":
+            case "disable":
+                RequireArguments(args, 3);
+                if (!await _pollingTriggerService.UpdateAsync(ParseGuid(args[2]), null, args[1].Equals("enable", StringComparison.OrdinalIgnoreCase), TenantAt(args, 3), cancellationToken))
+                    throw new CliUsageException("Polling trigger not found.");
+                await _output.WriteLineAsync($"Polling trigger {args[1].ToLowerInvariant()}d: {args[2]}");
+                break;
+            case "delete":
+                RequireArguments(args, 3);
+                if (!await _pollingTriggerService.DeleteAsync(ParseGuid(args[2]), TenantAt(args, 3), cancellationToken))
+                    throw new CliUsageException("Polling trigger not found.");
+                await _output.WriteLineAsync($"Polling trigger deleted: {args[2]}");
+                break;
+            case "poll-now":
+                RequireArguments(args, 3);
+                var polledTrigger = await _pollingTriggerService.PollNowAsync(ParseGuid(args[2]), TenantAt(args, 3), cancellationToken) ?? throw new CliUsageException("Polling trigger not found.");
+                await _output.WriteLineAsync($"Polled: NextDueAt={polledTrigger.NextDueAt} failures={polledTrigger.ConsecutiveFailures}");
+                break;
+            default:
+                throw new CliUsageException("Usage: polling-trigger create <name> <process-key> <connector-type> [attributes-json] [interval] [tenant] | list [tenant] | enable|disable <id> [tenant] | delete <id> [tenant] | poll-now <id> [tenant]");
+        }
+    }
+
     private async Task ExecuteCredentialCommandAsync(string[] args, CancellationToken cancellationToken)
     {
         RequireArguments(args, 2);
@@ -371,7 +420,16 @@ internal sealed class CliApplication
                 var result = await _connectorService.TestAsync(TenantAt(args, 3), args[2], cancellationToken) ?? throw new CliUsageException("Connector not found.");
                 await _output.WriteLineAsync($"Connector test: {(result.Success ? "success" : "failed")} - {result.Message}");
                 break;
-            default: throw new CliUsageException("Usage: connector list [tenant] | create <name> <type> [endpoint] [credential-id] [template-id] [tenant] | test <id> [tenant]");
+            case "import-openapi":
+                RequireArguments(args, 3);
+                var importTenant = TenantAt(args, 3);
+                var openApiResult = _openApiImporter.Import(await ReadFileAsync(args[2]), importTenant);
+                foreach (var template in openApiResult.Templates)
+                    await _connectorTemplateService.CreateAsync(importTenant, template, cancellationToken);
+                foreach (var item in openApiResult.Report)
+                    await _output.WriteLineAsync($"{item.Disposition}: {item.OperationId} - {item.Message}");
+                break;
+            default: throw new CliUsageException("Usage: connector list [tenant] | create <name> <type> [endpoint] [credential-id] [template-id] [tenant] | test <id> [tenant] | import-openapi <spec.json> [tenant]");
         }
     }
 

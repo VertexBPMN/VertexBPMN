@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/"
+             xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/"
+             xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/"
+             xmlns:di="http://www.omg.org/spec/DMN/20180521/DI/"
+             xmlns:camunda="http://camunda.org/schema/1.0/dmn"
+             id="vacationApproval" name="Vacation Approval"
+             namespace="http://camunda.org/schema/1.0/dmn">
+  <decision id="_9ba1b7b0-c84d-484f-9203-3792edc6dcbd" name="Vacation Approval" camunda:historyTimeToLive="P180D">
+    <decisionTable hitPolicy="UNIQUE">
+      <input id="InputClause_vac_days" label="Number of requested vacation days">
+        <inputExpression id="LiteralExpression_vac_days" typeRef="integer">
+          <text>numDays</text>
+        </inputExpression>
+      </input>
+      <output id="OutputClause_vac_approval" label="Approval status" name="approvalStatus" typeRef="string" />
+      <rule id="vac-rule-1">
+        <inputEntry id="vac-entry-1">
+          <text>numDays &lt;= 10</text>
+        </inputEntry>
+        <outputEntry id="vac-output-1">
+          <text>"Approved"</text>
+        </outputEntry>
+      </rule>
+      <rule id="vac-rule-2">
+        <inputEntry id="vac-entry-2">
+          <text>numDays &gt; 10</text>
+        </inputEntry>
+        <outputEntry id="vac-output-2">
+          <text>"Refused"</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+</definitions>

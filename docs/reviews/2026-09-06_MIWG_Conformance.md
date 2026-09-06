@@ -98,6 +98,34 @@ Zusätzlich wird im Jint-„Kompatibilitäts"-Pfad die Funktions-Negation **`not
    **kein weiteres Matrix-Modell** (C.1.1 bleibt interaktiv, da `approved`/`clarified` Laufzeit-Inputs
    aus User-Tasks sind), verbessert aber die FEEL-Konditions-Interoperabilität der Engine.
 
+## Feature: DMN-Decision über `decisionRef` auflösen (C.8-Referenzmechanismus echt)
+
+Der `decisionRef`-Fallback in `ProcessEngine` war **toter Code**: Der Parser hat das
+`decisionRef`-Attribut von `businessRuleTask` nie in `task.Attributes` überführt, sodass der
+Fallback nie greifen konnte. Jetzt wird `decisionRef` in `BuildTaskAttributes` erfasst
+(`decisionRef` → `Attributes["decisionRef"]`).
+
+Mit `tests/.../TestData/VacationApproval.dmn` (Decision-id **=** der C.8-GUID
+`_9ba1b7b0-c84d-484f-9203-3792edc6dcbd`, DMN-1.3) und echten Komponenten
+(`DmnParser` + `DmnEngine` + `DmnDecisionGraph`) belegt `VacationApprovalDecisionTests`,
+dass ein BusinessRuleTask seine Entscheidung über `decisionRef`→GUID auflöst, die Entscheidung
+per Graph-FEEL evaluiert und das **echte Output** (`approvalStatus`) bindet, auf dem das
+folgende Gateway routet (`numDays<=10`→`Approved`→`eApproved`; sonst→`eRefused`).
+
+> Für den Graph-Pfad ist der **DMN‑1.3‑Namespace** (`https://www.omg.org/spec/DMN/20191111/MODEL/`)
+> erforderlich; DMN 1.1 (`…/20151101/dmn.xsd`) ist nicht unterstützt.
+
+## Feature: Compensation-Validierung (Kompensations-Grenzen)
+
+`compensateEventDefinition.activityRef` wurde weder auf Existenz noch auf Kompensierbarkeit
+geprüft. Neu validiert der Parser:
+- **missing activity:** `activityRef` zeigt auf keinen Flow-Node → Diagnostic.
+- **not compensatable:** `activityRef` existiert, hat aber **kein** Compensation-Boundary-Event
+  (kein Kompensations-Handler) → Diagnostic.
+
+Kein MIWG-Modell setzt `activityRef` (C.6.0 nur self-closed), daher bleibt die Conformance-Baseline
+unverändert. Belegt durch `CompensationValidationTests`.
+
 ## Interaktive Modelle (verbleibende 3 Pending → mit Input ausführbar)
 
 Die verbleibenden Pending-Modelle sind **interaktiv** (User-Task-/DMN-getrieben), keine Engine-Defekte.
@@ -113,8 +141,10 @@ Die Engine führt sie mit den dokumentierten Laufzeit-Eingaben vollständig bis 
 ## Pending-Gründe (eingabelose Ausführung → Roadmap)
 
 1. **C.8.0 / C.8.1 — interaktive DMN-Modelle:** Variable `'Vacation Approval'` wird erst durch
-   Benutzer-/DMN-Eingabe gesetzt; die Engine erzwingt FEEL-Auswertung ohne diese Variable.
-   → verdeutlicht Bedarf an **DMN-input-getriebener Auswertung** (Business-Rule-Task → DMN-Decision → Output-Mapping).
+   Benutzer-/DMN-Eingabe gesetzt; die Modelle enthalten zudem User-Send-/Email-Tasks, die ohne
+   Laufzeit-Service nicht enden. Die **DMN-input-getriebene Auswertung selbst ist jetzt real**
+   (Business-Rule-Task → `decisionRef` → DMN-Decision → Output-Bindung, s. Feature oben);
+   C.8 bleibt nur wegen seines interaktiven Treibers Pending.
 2. **C.1.1 — interaktive User-Task-Modelle:** `approved`/`clarified` stammen aus User-Task-Outputs.
 
 ## Garantie der Suite

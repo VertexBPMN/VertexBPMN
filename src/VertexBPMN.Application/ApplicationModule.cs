@@ -53,6 +53,7 @@ public static class ApplicationModule
         services.AddSingleton<IN8nWorkflowImporter, N8nWorkflowImporter>();
 services.AddSingleton<IOpenApiConnectorTemplateImporter, OpenApiConnectorTemplateImporter>();
         services.AddScoped<IPollingTriggerService, PollingTriggerService>();
+        services.AddScoped<IRecordedOutputReplayService, RecordedOutputReplayService>();
         services.AddScoped<PollingTriggerPoller>();
 services.AddScoped<IPollingTriggerService, PollingTriggerService>();
 services.AddScoped<PollingTriggerPoller>();

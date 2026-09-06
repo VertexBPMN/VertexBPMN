@@ -38,4 +38,21 @@ public sealed class HttpCredentialService(IHttpClientFactory httpClientFactory) 
         using var response = await client.DeleteAsync($"/api/credentials/{Uri.EscapeDataString(id)}?tenantId={Uri.EscapeDataString(tenantId)}", cancellationToken);
         response.EnsureSuccessStatusCode();
     }
+
+    public async Task<string> StartOAuth2AuthorizationAsync(string tenantId, string credentialId, OAuth2ConnectConfig config, CancellationToken cancellationToken = default)
+    {
+        var client = httpClientFactory.CreateClient("VertexBPMN.Api");
+        using var response = await client.PostAsJsonAsync("/api/oauth2/authorize", new
+        {
+            tenantId,
+            credentialId,
+            config = new { config.AuthorizationUrl, config.TokenUrl, config.ClientId, config.RedirectUri, config.Scopes }
+        }, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        var start = await response.Content.ReadFromJsonAsync<OAuth2AuthorizationStartDto>(cancellationToken)
+            ?? throw new InvalidOperationException("The API returned no OAuth2 authorization start.");
+        return start.RedirectUrl;
+    }
+
+    private sealed record OAuth2AuthorizationStartDto(string RedirectUrl, string State);
 }

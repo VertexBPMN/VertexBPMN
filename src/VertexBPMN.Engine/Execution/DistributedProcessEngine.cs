@@ -289,66 +289,6 @@ namespace VertexBPMN.Engine.Execution
             }
         }
 
-        //public async Task DistributeTokenAsync(ExecutionToken token, CancellationToken cancellationToken = default)
-        //{
-        //    try
-        //    {
-        //        if (token == null)
-        //        {
-        //            throw new ArgumentNullException(nameof(token));
-        //        }
-
-        //        if (string.Equals(
-        //                token.State,
-        //                CompletedTokenState,
-        //                StringComparison.OrdinalIgnoreCase))
-        //        {
-        //            throw new DistributedTokenException(
-        //                $"Completed token '{token.Id}' cannot be distributed.");
-        //        }
-
-        //        if (string.Equals(
-        //                token.State,
-        //                FailedTokenState,
-        //                StringComparison.OrdinalIgnoreCase))
-        //        {
-        //            throw new DistributedTokenException(
-        //                $"Failed token '{token.Id}' cannot be distributed.");
-        //        }
-        //        var bestWorker = await FindBestWorkerAsync(token.NodeType);
-        //        var assignedToken = new ExecutionToken
-        //        {
-        //            Id = token.Id,
-        //            ProcessInstanceId = token.ProcessInstanceId,
-        //            CurrentNodeId = token.CurrentNodeId,
-        //            NodeType = token.NodeType,
-        //            Variables = token.Variables != null ? new Dictionary<string, object>(token.Variables) : new Dictionary<string, object>(),
-        //            CreatedAt = token.CreatedAt,
-        //            AssignedWorker = bestWorker?.Id,
-        //            AssignedAt = DateTime.UtcNow,
-        //            RetryCount = token.RetryCount,
-        //            State = PendingTokenState
-        //        };
-
-        //        await _store.SaveTokenAsync(assignedToken);
-        //        await _messageDispatcher.PublishTokenAsync(assignedToken, cancellationToken);
-        //        _logger.LogInformation(
-        //            "Token {TokenId} assigned to worker {WorkerId} with state {State}",
-        //            assignedToken.Id,
-        //            bestWorker?.Id ?? "none",
-        //            assignedToken.State);
-        //    }
-        //    catch (DistributedTokenException)
-        //    {
-        //        throw;
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        _logger.LogError(ex, "Failed to distribute token {TokenId}", token.Id);
-        //        throw new DistributedTokenException($"Failed to distribute token {token.Id}", ex);
-        //    }
-        //}
-
         public async Task DistributeCaseTokenAsync(CaseToken token, CancellationToken cancellationToken = default)
         {
             try

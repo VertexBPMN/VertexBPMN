@@ -41,6 +41,7 @@ public class BpmnDbContext : DbContext
     public DbSet<CaseDefinitionRecord> CaseDefinitions => Set<CaseDefinitionRecord>();
     public DbSet<CaseInstanceRecord> CaseInstances => Set<CaseInstanceRecord>();
     public DbSet<PollingTriggerRecord> PollingTriggers => Set<PollingTriggerRecord>();
+    public DbSet<OAuth2FlowStateRecord> OAuth2FlowStates => Set<OAuth2FlowStateRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -67,6 +68,7 @@ public class BpmnDbContext : DbContext
         ConfigureConnectorTemplates(modelBuilder);
         ConfigureWorkflowTriggers(modelBuilder);
         ConfigurePollingTriggers(modelBuilder);
+        ConfigureOAuth2FlowStates(modelBuilder);
         ConfigureFormDefinitions(modelBuilder);
         ConfigureCaseDefinitions(modelBuilder);
 
@@ -458,6 +460,20 @@ public class BpmnDbContext : DbContext
         entity.Property(e => e.CursorStateJson).IsRequired();
         entity.Property(e => e.LockOwner).HasMaxLength(128);
         entity.HasIndex(e => new { e.TenantId, e.Enabled, e.NextDueAt });
+    }
+
+    private static void ConfigureOAuth2FlowStates(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<OAuth2FlowStateRecord>();
+        entity.HasKey(e => e.State);
+        entity.Property(e => e.TenantId).IsRequired().HasMaxLength(64);
+        entity.Property(e => e.CredentialId).IsRequired().HasMaxLength(128);
+        entity.Property(e => e.AuthorizationUrl).IsRequired().HasMaxLength(2048);
+        entity.Property(e => e.TokenUrl).IsRequired().HasMaxLength(2048);
+        entity.Property(e => e.ClientId).HasMaxLength(512);
+        entity.Property(e => e.RedirectUri).HasMaxLength(2048);
+        entity.Property(e => e.Scopes).HasMaxLength(1024);
+        entity.HasIndex(e => new { e.TenantId, e.ExpiresAt });
     }
 
     private static void ConfigureFormDefinitions(ModelBuilder modelBuilder)

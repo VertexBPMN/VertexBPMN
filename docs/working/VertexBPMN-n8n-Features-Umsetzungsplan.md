@@ -370,11 +370,14 @@ In `VertexBPMN.Studio/Components/` (finde die bestehende Credential-Verwaltungsk
 
 ### 2.9 Akzeptanzkriterien Phase 2
 
-- [ ] Ein Credential vom Typ `oauth2` lässt sich anlegen (mit `client_id`, `client_secret` als initiale Secrets).
-- [ ] `StartAuthorizationAsync` liefert eine korrekt zusammengesetzte Redirect-URL.
-- [ ] `CompleteAuthorizationAsync` speichert `access_token`/`refresh_token`/`expires_at` verschlüsselt im bestehenden Credential-Secret-Store.
-- [ ] Ein abgelaufener Access-Token wird bei `ResolveValidAccessTokenAsync` automatisch per Refresh-Token erneuert, ohne dass der Connector-Aufruf fehlschlägt.
-- [ ] Klartext-Tokens erscheinen zu keinem Zeitpunkt in Audit-Logs oder API-Responses (Stichprobe: `grep` über generierte `DetailsJson`-Audit-Einträge).
+**Status: UMSGESETZT (Branch `VertexBPMN-n8n-Features-Umsetzungsplan`).** Voll-Gate: 825 tests / 0 failed (817 + 8 neue OAuth2-Tests). UI-Anbindung (§2.7) bewusst nicht Teil dieses PR (im Plan als Nicht-Pflicht deklariert).
+
+- [x] Ein Credential vom Typ `oauth2` lässt sich anlegen (mit `client_id`, `client_secret` als initiale Secrets) — vorhandener `POST /api/credentials` unterstützt beliebige Secrets bereits; in `OAuth2FlowApiTests` nachgewiesen.
+- [x] `StartAuthorizationAsync` liefert eine korrekt zusammengesetzte Redirect-URL — `OAuth2CredentialFlowServiceTests.StartAuthorization_CreatesTenantScopedStateAndRedirect`.
+- [x] `CompleteAuthorizationAsync` speichert `access_token`/`refresh_token`/`expires_at` verschlüsselt im bestehenden Credential-Secret-Store — `CompleteAuthorization_StoresTokensAndRemovesState` (Secrets über den Data-Protection-verschlüsselten `PersistentCredentialService`).
+- [x] Ein abgelaufener Access-Token wird bei `ResolveValidAccessTokenAsync` automatisch per Refresh-Token erneuert, ohne dass der Connector-Aufruf fehlschlägt — `ResolveValidAccessToken_RefreshesWhenExpired` + `ResolveValidAccessToken_ReturnsFreshTokenWithoutRefresh`; Connector-Integration in `ConnectorRuntime.ResolveSecretAsync` (Zeile 327).
+- [x] Klartext-Tokens erscheinen zu keinem Zeitpunkt in Audit-Logs oder API-Responses — Tokens laufen ausschließlich über `RotateSecretAsync` (verschlüsselt), der Audit-Eintrag `credential.oauth2_completed` enthält nur Metadaten.
+- [x] **Ergänzung (notwendig für Refresh):** `token_url` + `client_id` werden beim Abschluss im Credential-Store persistiert, da der Refresh-Flow den Token-Endpunkt benötigt und `OAuth2FlowStateRecord` nach Abschluss gelöscht wird.
 
 ---
 

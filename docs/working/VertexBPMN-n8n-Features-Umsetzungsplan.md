@@ -363,6 +363,8 @@ In `Application/Connectors/ConnectorRuntime.cs`, Methode `ResolveSecretAsync` (Z
 
 In `VertexBPMN.Studio/Components/` (finde die bestehende Credential-Verwaltungskomponente, vermutlich unter `Components/Modeling/` oder einem `Credentials`-Unterordner) einen "Connect"-Button für Credentials vom Typ `oauth2` ergänzen, der `POST /api/credentials/{id}/oauth2/authorize` aufruft und `window.open(redirectUrl)` ausführt (JS-Interop, siehe bestehende Verwendung von `IJSRuntime` im Studio-Projekt als Vorbild).
 
+**Status: UMSGESETZT (Branch `feat/phase2-studio-oauth2-connect`).** In `Credentials.razor` ein "Connect"-Button für `oauth2`-Credentials + Inline-Formular (Authorization-URL, Token-URL, Client-ID, Redirect-URI, Scopes). Ruft den tatsächlich implementierten Endpoint `POST /api/oauth2/authorize` (Signal: `IOAuth2CredentialFlowService.StartAuthorizationAsync`, AdminOnly) über `ICredentialService.StartOAuth2AuthorizationAsync` auf und öffnet den `RedirectUrl` per `window.open` (JS-Interop). Getestet in `HttpCredentialServiceTests.StartOAuth2Authorization_PostsAuthorizeEndpointAndReturnsRedirectUrl`.
+
 ### 2.8 Tests
 
 - `tests/VertexBPMN.Tests/Unit/Infrastructure/OAuth2CredentialFlowServiceTests.cs`: State-Erzeugung, State-Ablauf, erfolgreicher Code-Tausch (HTTP-Aufruf mocken), Refresh-Logik (Token kurz vor Ablauf → Refresh wird ausgelöst; Token noch lange gültig → kein Refresh-Call).

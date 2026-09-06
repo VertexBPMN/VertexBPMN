@@ -1214,6 +1214,21 @@ public partial class BpmnParser : IBpmnParser
             var elemQName = FormatQualifiedName(node, elemPrefix);
             var nonNamespaceAttributes = node.Attributes().Where(attr => !attr.IsNamespaceDeclaration).ToList();
 
+            // Zeebe I/O mappings: preserve EVERY <zeebe:output>/<zeebe:input>
+            // as a per-target entry (zeebe:ioMapping.output.{target} = source)
+            // instead of the generic single {elem}.source/{elem}.target pair,
+            // which silently drops all but the last mapping when several exist.
+            if ((node.Name.LocalName == "output" || node.Name.LocalName == "input")
+                && node.Name.Namespace?.NamespaceName.Contains("zeebe", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                var src = node.Attribute("source")?.Value;
+                var tgt = node.Attribute("target")?.Value;
+                if (!string.IsNullOrEmpty(src) && !string.IsNullOrEmpty(tgt))
+                    dict[$"zeebe:ioMapping.{node.Name.LocalName}.{tgt}"] = src;
+                // fall through: generic harvester also surfaces the (lossy, last-wins)
+                // {elem}.source/{elem}.target values for backward compatibility.
+            }
+
             foreach (var attr in nonNamespaceAttributes)
             {
                 // Attribute qualified name (attributes can also be namespaced).

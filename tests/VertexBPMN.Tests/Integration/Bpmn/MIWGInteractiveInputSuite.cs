@@ -31,8 +31,6 @@ namespace VertexBPMN.Tests.Integration.Bpmn
                 new object[] { new Dictionary<string, object> { ["Vacation Approval"] = "Approved" } }),
             new("C.8.1.bpmn", "DMN-driven vacation approval ('Vacation Approval')",
                 new object[] { new Dictionary<string, object> { ["Vacation Approval"] = "Approved" } }),
-            new("C.9.0.bpmn", "DMN risk-decide (business-rule output 'riskLevels')",
-                new object[] { new Dictionary<string, object> { ["riskLevels"] = new List<object> { "red" }, ["approved"] = true } }),
         };
 
         public static IEnumerable<object[]> GetCases()

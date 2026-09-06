@@ -186,7 +186,8 @@ public class BpmnDbContext : DbContext
         modelBuilder.Entity<FeatureFlagRecord>().HasData(
             new FeatureFlagRecord { Name = "liveinspector", Enabled = true },
             new FeatureFlagRecord { Name = "predictiveanalytics", Enabled = false },
-            new FeatureFlagRecord { Name = "processminingapi", Enabled = false });
+            new FeatureFlagRecord { Name = "processminingapi", Enabled = false },
+            new FeatureFlagRecord { Name = "task-io-snapshots", Enabled = false });
     }
 
     private static void ConfigureIdentity(ModelBuilder modelBuilder)

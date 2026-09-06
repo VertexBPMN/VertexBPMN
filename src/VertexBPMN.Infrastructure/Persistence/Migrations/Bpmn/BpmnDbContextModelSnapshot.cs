@@ -1439,6 +1439,11 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                         {
                             Name = "processminingapi",
                             Enabled = false
+                        },
+                        new
+                        {
+                            Name = "task-io-snapshots",
+                            Enabled = false
                         });
                 });
 

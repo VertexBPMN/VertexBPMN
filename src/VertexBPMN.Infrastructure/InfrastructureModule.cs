@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using VertexBPMN.Application.Configuration;
 using VertexBPMN.Application.Messaging;
+using VertexBPMN.Application;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Domain.Interfaces.Repositories;
 using VertexBPMN.Infrastructure.Persistence;
@@ -70,6 +71,7 @@ public static class InfrastructureModule
         services.AddScoped<IConnectorService, PersistentConnectorService>();
         services.AddScoped<IConnectorTemplateService, PersistentConnectorTemplateService>();
         services.AddScoped<IFormDefinitionService, PersistentFormDefinitionService>();
+        services.AddScoped<ITaskIoSnapshotRecorder, TaskIoSnapshotRecorder>();
         return services;
     }
 

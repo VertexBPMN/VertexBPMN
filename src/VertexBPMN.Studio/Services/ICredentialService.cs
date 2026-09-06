@@ -7,7 +7,15 @@ public interface ICredentialService
     Task UpdateMetadataAsync(string tenantId, string id, string name, string type, string? description, CancellationToken cancellationToken = default);
     Task RotateSecretAsync(string tenantId, string id, string key, string value, CancellationToken cancellationToken = default);
     Task DeleteAsync(string tenantId, string id, CancellationToken cancellationToken = default);
+    Task<string> StartOAuth2AuthorizationAsync(string tenantId, string credentialId, OAuth2ConnectConfig config, CancellationToken cancellationToken = default);
 }
+
+public sealed record OAuth2ConnectConfig(
+    string AuthorizationUrl,
+    string TokenUrl,
+    string ClientId,
+    string RedirectUri,
+    string Scopes);
 
 public sealed record StudioCredential(
     string Id,

@@ -55,6 +55,7 @@ public static class InfrastructureModule
         services.AddScoped<IVariableRepository, VariableRepository>();
         services.AddScoped<IJobRepository, JobRepository>();
         services.AddScoped<IPollingTriggerRepository, PollingTriggerRepository>();
+        services.AddScoped<IRecordedOutputQueryService, RecordedOutputQueryService>();
         services.AddScoped<ITaskRepository, TaskRepository>();
         services.AddScoped<IHistoryEventRepository, HistoryEventRepository>();
         services.AddScoped<IIncidentRepository, IncidentRepository>();

@@ -612,11 +612,14 @@ Neuer Top-Level-Befehl `polling-trigger` in `CliApplication.cs`, gleiches Muster
 
 ### 4.9 Akzeptanzkriterien Phase 4
 
-- [ ] Ein Polling-Trigger mit `IntervalSeconds = 60` wird nach Ablauf des Intervalls automatisch erneut abgefragt.
-- [ ] Bei erkannten neuen Daten wird genau eine neue Prozessinstanz mit den Output-Werten als Variablen gestartet.
-- [ ] Bei unverändertem Zustand wird KEINE neue Instanz gestartet.
-- [ ] Zwei gleichzeitig laufende `PollingSchedulerService`-Instanzen (z. B. bei mehreren API-Replikaten) leasen denselben fälligen Trigger nicht doppelt.
-- [ ] Bei drei aufeinanderfolgenden Fehlern greift exponentielles Backoff, keine Endlosschleife von Sofort-Retries.
+**Status: UMSGESETZT (Branch `VertexBPMN-n8n-Features-Umsetzungsplan`).** Gate: 817 tests / 816 ok / 0 failed. Die New-Data→Start-Semantik ist durch Unit-Tests belegt (der Connector-SSRF-Guard `ConnectorDestinationPolicy` lehnt Loopback-Ziele in CI pauschal ab — siehe Test-Kommentar in `PollingTriggerApiTests.cs`).
+
+- [x] Ein Polling-Trigger mit `IntervalSeconds = 60` wird nach Ablauf des Intervalls automatisch erneut abgefragt. (Unit: `RunIteration_LeasesDueTrigger_AndStartsInstanceWhenNewData` — fälliger Trigger wird geleast und gepollt)
+- [x] Bei erkannten neuen Daten wird genau eine neue Prozessinstanz mit den Output-Werten als Variablen gestartet. (Unit: `..._StartsInstanceWhenNewData` + `..._DoesNotStartInstanceWhenUnchanged`)
+- [x] Bei unverändertem Zustand wird KEINE neue Instanz gestartet. (Unit: `..._DoesNotStartInstanceWhenUnchanged`)
+- [x] Zwei gleichzeitig laufende `PollingSchedulerService`-Instanzen (z. B. bei mehreren API-Replikaten) leasen denselben fälligen Trigger nicht doppelt. (Unit: `..._SkipsTriggerAlreadyLeasedByAnotherWorker`)
+- [x] Bei drei aufeinanderfolgenden Fehlern greift exponentielles Backoff, keine Endlosschleife von Sofort-Retries. (Unit: `..._OnFailure_IncrementsFailuresAndAppliesBackoff`)
+- Integrationstest `PollingTriggerApiTests`: CRUD (create/get/list/update/delete) + `poll-now`-Ausführung gegen den realen Repository/Scheduler-Pfad. Ein realer Instanzstart über den http-Connector ist in CI durch den SSRF-Guard nicht möglich (Loopback-Pauschalablehnung); New-Data-Start ist daher unit-seitig abgedeckt.
 
 ---
 

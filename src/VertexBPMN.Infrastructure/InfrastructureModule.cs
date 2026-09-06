@@ -43,7 +43,11 @@ public static class InfrastructureModule
         services.AddScoped<IRuntimeMetricsReader, RuntimeMetricsReader>();
         services.AddSingleton<RuntimeMetricsState>();
         if (mode != "Test" && configuration.GetValue("Operational:Metrics:Enabled", true))
+        if (mode != "Test")
+            services.AddHostedService<PollingSchedulerService>();
             services.AddHostedService<RuntimeMetricsCollectorService>();
+            if (mode != "Test")
+                services.AddHostedService<PollingSchedulerService>();
         ConfigureRuntimeOutbox(services, configuration, mode);
         services.AddScoped<IProcessDefinitionRepository, ProcessDefinitionRepository>();
         services.AddScoped<IWorkflowTriggerRepository, WorkflowTriggerRepository>();
@@ -52,6 +56,8 @@ public static class InfrastructureModule
         services.AddScoped<IExecutionTokenRepository, ExecutionTokenRepository>();
         services.AddScoped<IVariableRepository, VariableRepository>();
         services.AddScoped<IJobRepository, JobRepository>();
+            services.AddScoped<IPollingTriggerRepository, PollingTriggerRepository>();
+        services.AddScoped<IPollingTriggerRepository, PollingTriggerRepository>();
         services.AddScoped<ITaskRepository, TaskRepository>();
         services.AddScoped<IHistoryEventRepository, HistoryEventRepository>();
         services.AddScoped<IIncidentRepository, IncidentRepository>();

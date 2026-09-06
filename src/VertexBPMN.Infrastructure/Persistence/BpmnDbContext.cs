@@ -40,6 +40,7 @@ public class BpmnDbContext : DbContext
     public DbSet<FormDefinitionRecord> FormDefinitions => Set<FormDefinitionRecord>();
     public DbSet<CaseDefinitionRecord> CaseDefinitions => Set<CaseDefinitionRecord>();
     public DbSet<CaseInstanceRecord> CaseInstances => Set<CaseInstanceRecord>();
+    public DbSet<PollingTriggerRecord> PollingTriggers => Set<PollingTriggerRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -65,6 +66,7 @@ public class BpmnDbContext : DbContext
         ConfigureConnectors(modelBuilder);
         ConfigureConnectorTemplates(modelBuilder);
         ConfigureWorkflowTriggers(modelBuilder);
+        ConfigurePollingTriggers(modelBuilder);
         ConfigureFormDefinitions(modelBuilder);
         ConfigureCaseDefinitions(modelBuilder);
 
@@ -440,6 +442,22 @@ public class BpmnDbContext : DbContext
         entity.HasIndex(e => e.Assignee);
         entity.HasIndex(e => e.MultiInstanceExecutionId);
         entity.HasIndex(e => new { e.ProcessInstanceId, e.ActivityId, e.Status });
+    }
+
+
+    private static void ConfigurePollingTriggers(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<PollingTriggerRecord>();
+        entity.HasKey(e => e.Id);
+        entity.Property(e => e.TenantId).IsRequired().HasMaxLength(64);
+        entity.Property(e => e.Name).IsRequired().HasMaxLength(256);
+        entity.Property(e => e.ProcessDefinitionKey).IsRequired().HasMaxLength(256);
+        entity.Property(e => e.ConnectorType).IsRequired().HasMaxLength(64);
+        entity.Property(e => e.ConnectorAttributesJson).IsRequired();
+        entity.Property(e => e.CredentialId).HasMaxLength(128);
+        entity.Property(e => e.CursorStateJson).IsRequired();
+        entity.Property(e => e.LockOwner).HasMaxLength(128);
+        entity.HasIndex(e => new { e.TenantId, e.Enabled, e.NextDueAt });
     }
 
     private static void ConfigureFormDefinitions(ModelBuilder modelBuilder)

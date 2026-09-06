@@ -104,6 +104,7 @@ public sealed class CliApplicationTests
         services.AddSingleton(Mock.Of<ISemanticValidationService>());
         services.AddSingleton<IN8nWorkflowImporter, N8nWorkflowImporter>();
         services.AddSingleton<IOpenApiConnectorTemplateImporter, OpenApiConnectorTemplateImporter>();
+            services.AddSingleton(Mock.Of<IPollingTriggerService>());
         services.AddSingleton(repositoryService);
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
         services.AddSingleton(DashboardLauncherFactory);

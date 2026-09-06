@@ -52,6 +52,10 @@ public static class ApplicationModule
         services.AddScoped<IProcessMigrationService, ProcessMigrationService>();
         services.AddSingleton<IN8nWorkflowImporter, N8nWorkflowImporter>();
 services.AddSingleton<IOpenApiConnectorTemplateImporter, OpenApiConnectorTemplateImporter>();
+        services.AddScoped<IPollingTriggerService, PollingTriggerService>();
+        services.AddScoped<PollingTriggerPoller>();
+services.AddScoped<IPollingTriggerService, PollingTriggerService>();
+services.AddScoped<PollingTriggerPoller>();
         //services.AddHttpClient<IAiDecisionService, XAiDecisionService>();
         if (dependencies.Mcp.Enabled && dependencies.Interfaces.McpAgentService)
             services.AddHttpClient<IMcpAgentService, McpAgentService>();

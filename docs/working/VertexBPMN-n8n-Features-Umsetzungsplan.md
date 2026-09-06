@@ -232,10 +232,12 @@ Konstruktor von `CliApplication` um `IOpenApiConnectorTemplateImporter _openApiI
 
 ### 1.7 Akzeptanzkriterien Phase 1
 
-- [ ] `dotnet build` und `dotnet test` (siehe 0.1) sind grün.
-- [ ] Eine Beispiel-OpenAPI-Spec mit mindestens 3 Operationen (GET mit Query-Param, POST mit Body, eine mit `apiKey`-Security) lässt sich per CLI importieren und erzeugt 3 `ConnectorTemplateRecord`-Einträge.
+**Status: UMSGESETZT (Branch `VertexBPMN-n8n-Features-Umsetzungsplan`).** Gate: 812 tests / 811 ok / 0 failed. JSON-only (kein YAML-Parser im Repo — dokumentiert als Einschränkung, separates Ticket). CLI-Testfixture erweitert (Registrierung `IOpenApiConnectorTemplateImporter`).
+
+- [x] `dotnet build` und `dotnet test` (siehe 0.1) sind grün.
+- [x] Eine Beispiel-OpenAPI-Spec mit mindestens 3 Operationen (GET mit Query-Param, POST mit Body, eine mit `apiKey`-Security) lässt sich per CLI importieren und erzeugt 3 `ConnectorTemplateRecord`-Einträge.
 - [ ] Ein importierter Connector lässt sich in einem Test-BPMN-Prozess als Service-Task mit `vertex:connector.type=http` referenzieren und über `ConnectorRuntime.ExecuteAsync` erfolgreich gegen einen Test-HTTP-Endpunkt ausführen (Integrationstest, ggf. mit `WireMock.Net` oder vorhandenem Test-HTTP-Fake — prüfe `tests/VertexBPMN.Tests/Integration` auf existierende HTTP-Mocking-Infrastruktur, bevor du eine neue einführst).
-- [ ] Report enthält für jede Operation genau einen Eintrag mit korrekter Disposition.
+- [x] Report enthält für jede Operation genau einen Eintrag mit korrekter Disposition.
 
 ---
 

@@ -28,6 +28,7 @@ internal sealed class CliApplication
     private readonly IDecisionService _decisionService;
     private readonly ISemanticValidationService _validationService;
     private readonly IN8nWorkflowImporter _n8nImporter;
+    private readonly IOpenApiConnectorTemplateImporter _openApiImporter;
     private readonly DashboardLauncher _dashboardLauncher;
 
     public CliApplication(IServiceProvider services, TextWriter output, TextWriter error)
@@ -49,6 +50,7 @@ internal sealed class CliApplication
         _decisionService = services.GetRequiredService<IDecisionService>();
         _validationService = services.GetRequiredService<ISemanticValidationService>();
         _n8nImporter = services.GetRequiredService<IN8nWorkflowImporter>();
+        _openApiImporter = services.GetRequiredService<IOpenApiConnectorTemplateImporter>();
         _dashboardLauncher = services.GetRequiredService<DashboardLauncher>();
     }
 
@@ -371,7 +373,16 @@ internal sealed class CliApplication
                 var result = await _connectorService.TestAsync(TenantAt(args, 3), args[2], cancellationToken) ?? throw new CliUsageException("Connector not found.");
                 await _output.WriteLineAsync($"Connector test: {(result.Success ? "success" : "failed")} - {result.Message}");
                 break;
-            default: throw new CliUsageException("Usage: connector list [tenant] | create <name> <type> [endpoint] [credential-id] [template-id] [tenant] | test <id> [tenant]");
+            case "import-openapi":
+                RequireArguments(args, 3);
+                var importTenant = TenantAt(args, 3);
+                var openApiResult = _openApiImporter.Import(await ReadFileAsync(args[2]), importTenant);
+                foreach (var template in openApiResult.Templates)
+                    await _connectorTemplateService.CreateAsync(importTenant, template, cancellationToken);
+                foreach (var item in openApiResult.Report)
+                    await _output.WriteLineAsync($"{item.Disposition}: {item.OperationId} - {item.Message}");
+                break;
+            default: throw new CliUsageException("Usage: connector list [tenant] | create <name> <type> [endpoint] [credential-id] [template-id] [tenant] | test <id> [tenant] | import-openapi <spec.json> [tenant]");
         }
     }
 

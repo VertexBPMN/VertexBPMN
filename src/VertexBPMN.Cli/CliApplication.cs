@@ -2,6 +2,8 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using VertexBPMN.Application.Configuration;
+using VertexBPMN.Application;
+using VertexBPMN.Application.Configuration;
 using VertexBPMN.Application.Import;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Engine.Configuration;
@@ -31,6 +33,7 @@ internal sealed class CliApplication
     private readonly IOpenApiConnectorTemplateImporter _openApiImporter;
     private readonly IPollingTriggerService _pollingTriggerService;
     private readonly DashboardLauncher _dashboardLauncher;
+    private readonly IRecordedOutputReplayService _recordedOutputReplayService;
 
     public CliApplication(IServiceProvider services, TextWriter output, TextWriter error)
     {
@@ -54,6 +57,8 @@ internal sealed class CliApplication
         _openApiImporter = services.GetRequiredService<IOpenApiConnectorTemplateImporter>();
         _pollingTriggerService = services.GetRequiredService<IPollingTriggerService>();
         _dashboardLauncher = services.GetRequiredService<DashboardLauncher>();
+        _dashboardLauncher = services.GetRequiredService<DashboardLauncher>();
+        _recordedOutputReplayService = services.GetRequiredService<IRecordedOutputReplayService>();
     }
 
     public async Task<int> RunAsync(string[] args, CancellationToken cancellationToken)
@@ -183,12 +188,26 @@ internal sealed class CliApplication
                     await _output.WriteLineAsync($"Form deployed: {form.Key} ({form.Id})");
                     return 0;
                 case "test-run":
-                    RequireArguments(args, 3);
-                    var testPath = args[1];
-                    var testDefinition = await _repositoryService.DeployAsync(await ReadFileAsync(testPath), Path.GetFileName(testPath), args.Length > 3 ? args[3] : null, cancellationToken);
-                    var variables = JsonSerializer.Deserialize<Dictionary<string, object>>(await ReadFileAsync(args[2])) ?? throw new CliUsageException("Variables must be a JSON object.");
-                    var instance = await _runtimeService.StartProcessByKeyAsync(testDefinition.Key, variables, $"cli-test-{Guid.NewGuid():N}", args.Length > 3 ? args[3] : null, cancellationToken);
-                    await _output.WriteLineAsync($"Test run started: {instance.Id} ({testDefinition.Key})");
+                    var useRecordedOutputs = args.Any(a => a == "--use-recorded-outputs");
+                    var cmdArgs = args.Where(a => a != "--use-recorded-outputs").ToArray();
+                    RequireArguments(cmdArgs, 3);
+                    var tenant = args.Length > 3 ? args[3] : null;
+                    var testPath = cmdArgs[1];
+                    var testDefinition = await _repositoryService.DeployAsync(await ReadFileAsync(testPath), Path.GetFileName(testPath), tenant, cancellationToken);
+                    var variables = JsonSerializer.Deserialize<Dictionary<string, object>>(await ReadFileAsync(cmdArgs[2])) ?? throw new CliUsageException("Variables must be a JSON object.");
+                    if (useRecordedOutputs)
+                    {
+                        var parsedModel = await _bpmnParser.ParseAsync(await ReadFileAsync(testPath), cancellationToken);
+                        var replayModel = await _recordedOutputReplayService.RewriteForReplayAsync(tenant ?? "default", testDefinition.Key, parsedModel, cancellationToken);
+                        var trace = await _engine.ExecuteAsync(replayModel, cancellationToken);
+                        await _output.WriteLineAsync($"Test run (recorded-output replay) {testDefinition.Key}:");
+                        foreach (var line in trace) await _output.WriteLineAsync("  " + line);
+                    }
+                    else
+                    {
+                        var instance = await _runtimeService.StartProcessByKeyAsync(testDefinition.Key, variables, $"cli-test-{Guid.NewGuid():N}", tenant, cancellationToken);
+                        await _output.WriteLineAsync($"Test run started: {instance.Id} ({testDefinition.Key})");
+                    }
                     return 0;
                 case "register-bpmn":
                     RequireArguments(args, 3);

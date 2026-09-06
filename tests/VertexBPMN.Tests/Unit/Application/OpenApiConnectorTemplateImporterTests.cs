@@ -1,3 +1,5 @@
+using System.Net;
+using VertexBPMN.Application.Connectors;
 using VertexBPMN.Application.Import;
 
 namespace VertexBPMN.Tests.Unit.Application;
@@ -91,5 +93,39 @@ public sealed class OpenApiConnectorTemplateImporterTests
     {
         var exception = Assert.Throws<ArgumentException>(() => _importer.Import("openapi: 3.0.0\npaths: {}", "tenant-a"));
         Assert.Contains("JSON", exception.Message);
+    }
+
+    [Fact]
+    public async Task ImportedTemplate_ExecutesAgainstHttpEndpoint_WithResolvedPath()
+    {
+        // Phase 1 §1.7: an imported connector template must be runnable end-to-end.
+        // SSRF-Guard blocks real loopback, so we drive HttpConnectorExecutor through a
+        // recording HttpMessageHandler and assert the rendered URL + method from the import.
+        var user = _importer.Import(Spec, "tenant-a").Templates.Single(t => t.Name == "getUserById");
+        var method = user.Properties.Single(p => p.Key == "vertex:connector.method").DefaultValue!;
+        var endpoint = user.Properties.Single(p => p.Key == "vertex:connector.endpoint").DefaultValue!;
+
+        Uri? captured = null;
+        using var httpClient = new HttpClient(new RecordingHandler(r => captured = r.RequestUri));
+        var executor = new HttpConnectorExecutor(httpClient);
+        var context = new ConnectorExecutionContext(
+            "tenant-a", "http", user.Name, new Uri(endpoint),
+            new Dictionary<string, string> { ["vertex:connector.method"] = method },
+            new Dictionary<string, object> { ["id"] = 42 },
+            new ConnectorRetryPolicy(0, TimeSpan.Zero, TimeSpan.Zero));
+
+        var result = await executor.ExecuteAsync(context, TestContext.Current.CancellationToken);
+
+        Assert.True(result.Success);
+        Assert.Equal("https://api.example.com/v1/users/42", captured!.ToString());
+    }
+
+    private sealed class RecordingHandler(Action<HttpRequestMessage> onRequest) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            onRequest(request);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
+        }
     }
 }

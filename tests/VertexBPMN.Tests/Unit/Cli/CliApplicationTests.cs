@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using VertexBPMN.Application;
 using VertexBPMN.Application.Configuration;
 using VertexBPMN.Application.Import;
 using VertexBPMN.Cli;
@@ -105,6 +106,7 @@ public sealed class CliApplicationTests
         services.AddSingleton<IN8nWorkflowImporter, N8nWorkflowImporter>();
         services.AddSingleton<IOpenApiConnectorTemplateImporter, OpenApiConnectorTemplateImporter>();
             services.AddSingleton(Mock.Of<IPollingTriggerService>());
+        services.AddSingleton(Mock.Of<IRecordedOutputReplayService>());
         services.AddSingleton(repositoryService);
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
         services.AddSingleton(DashboardLauncherFactory);

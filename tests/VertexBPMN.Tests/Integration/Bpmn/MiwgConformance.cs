@@ -17,8 +17,8 @@ namespace VertexBPMN.Tests.Integration.Bpmn
     /// und jede Aenderung in die eine oder andere Richtung wird sichtbar erzwungen.
     ///
     /// Stand: 2026-09-06, gemessen gegen Engine (Release, net10.0).
-    /// Durchlaufend (Completed=true): 13/21
-    /// Dokumentiert offen (Completed=false): 8/21
+    /// Durchlaufend (Completed=true): 17/21
+    /// Dokumentiert offen (Completed=false): 4/21
     /// </summary>
     public static class MiwgBaseline
     {
@@ -35,13 +35,13 @@ namespace VertexBPMN.Tests.Integration.Bpmn
                 ["A.4.1.bpmn"] = new("A.4.1.bpmn", true,  "Basisprozess - Variante."),
                 ["B.1.0.bpmn"] = new("B.1.0.bpmn", true,  "Multi-Instance/Branchensteuerung."),
                 ["B.2.0.bpmn"] = new("B.2.0.bpmn", true,  "Fehlerbehandlung/Endereignisse."),
-                ["C.1.0.bpmn"] = new("C.1.0.bpmn", false, "PENDING: Modell startet ueber getyptes (Message-)Start-Event; Auto-Instanziierung erfordert ein none-Start-Event. Braucht externe Trigger-/Intention-Unterstuetzung."),
+                ["C.1.0.bpmn"] = new("C.1.0.bpmn", true,  "Start ueber getyptes Start-Event; Auto-Start feuert getypte Starts, wenn kein none-Start existiert."),
                 ["C.1.1.bpmn"] = new("C.1.1.bpmn", false, "PENDING: FEEL 'bpmn:getDataObject(...)' ist in der Bedingungsauswertung nicht implementiert."),
-                ["C.2.0.bpmn"] = new("C.2.0.bpmn", false, "PENDING: getyptes Start-Event (kein none-Start) - siehe C.1.0."),
-                ["C.3.0.bpmn"] = new("C.3.0.bpmn", false, "PENDING: getyptes Start-Event (kein none-Start) - siehe C.1.0."),
+                ["C.2.0.bpmn"] = new("C.2.0.bpmn", true,  "Getyptes Start-Event; Auto-Start feuert getypte Starts (kein none-Start)."),
+                ["C.3.0.bpmn"] = new("C.3.0.bpmn", true,  "Getyptes Start-Event; Auto-Start feuert getypte Starts (kein none-Start)."),
                 ["C.4.0.bpmn"] = new("C.4.0.bpmn", true,  "Erweiterte Flusssteuerung/Subprozess."),
                 ["C.5.0.bpmn"] = new("C.5.0.bpmn", true,  "Weitere Prozessvariante."),
-                ["C.6.0.bpmn"] = new("C.6.0.bpmn", false, "PENDING: getyptes Start-Event (kein none-Start) - siehe C.1.0."),
+                ["C.6.0.bpmn"] = new("C.6.0.bpmn", true,  "Getyptes Start-Event; Auto-Start feuert getypte Starts (kein none-Start)."),
                 ["C.7.0.bpmn"] = new("C.7.0.bpmn", true,  "'Advertise a job vacancy' (Kollaboration mit Ressourcen) - laeuft nach Parser-Hack-Fix durch."),
                 ["C.8.0.bpmn"] = new("C.8.0.bpmn", false, "PENDING: interaktives DMN-Modell; Variable 'Vacation Approval' wird erst durch Benutzer-/DMN-Eingabe gesetzt."),
                 ["C.8.1.bpmn"] = new("C.8.1.bpmn", false, "PENDING: interaktives DMN-Modell; Variable 'Vacation Approval' siehe C.8.0."),

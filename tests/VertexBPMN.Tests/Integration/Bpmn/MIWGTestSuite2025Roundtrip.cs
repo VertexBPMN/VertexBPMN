@@ -67,7 +67,8 @@ namespace VertexBPMN.Tests.Integration.Bpmn
                     return (false, "EMPTY_EXPORT");
 
                 var modelRoundtrip = await parser.ParseAsync(xmlExported, TestContext.Current.CancellationToken);
-                bool ok = modelRoundtrip != null
+                bool ok = model.Activities != null
+                          && modelRoundtrip != null
                           && modelRoundtrip.Activities != null
                           && model.ProcessId == modelRoundtrip.ProcessId
                           && model.Activities.Count() == modelRoundtrip.Activities.Count()

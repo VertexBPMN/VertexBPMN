@@ -92,6 +92,14 @@ internal static class BpmnConditionEvaluator
             @"\bnot\s+",
             "!",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        // Also convert the XPath/FEEL function-call negation not(...) -> !(...);
+        // the whitespace form above only covers 'not x'. The '(' disambiguates a
+        // function call, so quoted prose containing the word "not" is unaffected.
+        expression = Regex.Replace(
+            expression,
+            @"\bnot\s*\(",
+            "!(",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
         var engine = new Jint.Engine(options => options
             .TimeoutInterval(TimeSpan.FromMilliseconds(100))

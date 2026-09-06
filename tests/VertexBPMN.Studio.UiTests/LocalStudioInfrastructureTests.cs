@@ -9,7 +9,7 @@ using Xunit;
 namespace VertexBPMN.Studio.UiTests;
 
 [Trait("Category", "LocalStudioE2E")]
-public sealed class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
+public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHost host)
     : IClassFixture<LocalStudioE2ETestHost>
 {
     private string ProcessKey => $"StudioE2E_{host.RunId}";

@@ -65,7 +65,48 @@ public sealed partial class LocalStudioInfrastructureTests
         Assert.Contains(history, e => EventHasElementId(e, "scr") && IsEventType(e, "SCRIPT_TASK_COMPLETED"));
     }
 
+    [Fact]
+    [Trait("Category", "LocalStudioE2E")]
+    public async Task Tasks_ScriptTask_DefaultsToJavaScript()
+    {
+        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
+        using var apiClient = host.CreateApiClient();
+        var processKey = $"StudioE2E_ScriptJS_{host.RunId}";
+
+        // No <scriptFormat> -> the runtime defaults to JavaScript (Jint), not C#.
+        await DeployUnderTestAsync(apiClient, processKey, BuildJavaScriptScriptTaskBpmn(processKey));
+        host.RegisterProcessDefinitionCleanup(processKey);
+
+        var instanceId = await StartProcessAsync(apiClient, processKey, null, $"scriptjs-{host.RunId}");
+
+        await WaitForInstanceStateAsync(instanceId, "Completed");
+
+        var history = await GetHistoryAsync(instanceId);
+        Assert.Contains(history, e => EventHasElementId(e, "scr") && IsEventType(e, "SCRIPT_TASK_COMPLETED"));
+    }
+
     // ---- helpers ----
+
+    private static string BuildJavaScriptScriptTaskBpmn(string processKey)
+    {
+        return $$"""
+            <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                         xmlns:vertex="http://vertexbpmn.dev/schema"
+                         targetNamespace="urn:vertex:test">
+              <process id="{{processKey}}" isExecutable="true">
+                <startEvent id="start" />
+                <sequenceFlow id="to-scr" sourceRef="start" targetRef="scr" />
+                <scriptTask id="scr" name="Apply discount">
+                  <script><![CDATA[40 + 2]]></script>
+                  <resultVariable>scriptResult</resultVariable>
+                </scriptTask>
+                <sequenceFlow id="scr-to-end" sourceRef="scr" targetRef="end" />
+                <endEvent id="end" />
+              </process>
+            </definitions>
+            """;
+    }
 
     private static string BuildScriptTaskBpmn(string processKey)
     {

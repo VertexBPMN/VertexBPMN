@@ -34,19 +34,21 @@ public static class ScriptTaskExecution
         if (string.IsNullOrWhiteSpace(script))
             throw new InvalidOperationException($"ScriptTask '{task.Id}' hat kein Script (attributes['script']).");
 
-        var format = "C#";
+        var format = "JavaScript";
         if (task.Attributes.TryGetValue("scriptFormat", out var fmt) && !string.IsNullOrWhiteSpace(fmt))
             format = fmt;
 
         object? result;
-        if (format.Equals("JavaScript", StringComparison.OrdinalIgnoreCase))
+        if (format.Equals("C#", StringComparison.OrdinalIgnoreCase)
+            || format.Equals("CSharp", StringComparison.OrdinalIgnoreCase))
         {
-            result = ExecuteJavaScript(script!, processVariables);
+            // Explicit C# (Roslyn) remains supported; not the default.
+            result = await ExecuteCSharpAsync(script!, processVariables, ct).ConfigureAwait(false);
         }
         else
         {
-            // Default: C#
-            result = await ExecuteCSharpAsync(script!, processVariables, ct).ConfigureAwait(false);
+            // Default: JavaScript (Jint, resource-bounded).
+            result = ExecuteJavaScript(script!, processVariables);
         }
 
         if (task.Attributes.TryGetValue("resultVariable", out var rv) && !string.IsNullOrWhiteSpace(rv))

@@ -9,8 +9,8 @@
   },
   "dependencies": {
     "@bpmn-io/form-js": "1.25.0",
-    "@bpmn-io/properties-panel": "3.52.0",
-    "bpmn-js": "18.25.1",
+    "@bpmn-io/properties-panel": "3.54.0",
+    "bpmn-js": "18.27.1",
     "bpmn-js-properties-panel": "5.65.0",
     "bpmn-js-token-simulation": "0.40.0",
     "cmmn-js": "0.20.0",

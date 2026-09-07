@@ -350,6 +350,11 @@ public partial class BpmnParser : IBpmnParser
                     case "adHocSubProcess":
                         var isEvent = el.Attribute("triggeredByEvent")?.Value == "true";
                         var isTx = el.Attribute("transaction")?.Value == "true" || local == "transaction";
+                        if (el.Attribute("isForCompensation")?.Value is { } subprocessCompensation)
+                        {
+                            ext ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                            ext["isForCompensation"] = subprocessCompensation;
+                        }
                         if (el.Attribute("name")?.Value is { } subprocessName)
                         {
                             ext ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -1192,6 +1197,10 @@ public partial class BpmnParser : IBpmnParser
 
         if (element.Attribute("decisionRef")?.Value is { } decisionRef)
             attributes["decisionRef"] = decisionRef;
+
+        // Standard execution semantics must survive runtime projection, not only strict XML roundtrips.
+        if (element.Attribute("isForCompensation")?.Value is { } compensation)
+            attributes["isForCompensation"] = compensation;
 
         return attributes.Count == 0 ? null : attributes;
     }

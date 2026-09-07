@@ -4,6 +4,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Domain.Model.Bpmn;
 
 namespace VertexBPMN.Api.Controllers;
 
@@ -68,7 +69,21 @@ public class RepositoryController : ControllerBase
         var effectiveTenantId = ResolveTenantId(request.TenantId);
         if (effectiveTenantId is null && !User.IsInRole("Admin")) return Forbid();
 
-        var def = await _repositoryService.DeployAsync(request.BpmnXml, request.Name, effectiveTenantId);
+        ProcessDefinition def;
+        try
+        {
+            def = await _repositoryService.DeployAsync(request.BpmnXml, request.Name, effectiveTenantId);
+        }
+        catch (BpmnDeploymentValidationException exception)
+        {
+            return BadRequest(new { message = exception.Message, diagnostics = exception.Diagnostics });
+        }
+        catch (Exception exception) when (exception is System.Xml.XmlException
+            or VertexBPMN.Domain.Exceptions.BpmnParseException or VertexBPMN.Domain.Exceptions.BpmnValidationException
+            or VertexBPMN.Domain.Exceptions.SecurityException)
+        {
+            return BadRequest(new { message = exception.Message });
+        }
         var createdWebhooks = await _workflowTriggerService.SynchronizeBpmnWebhooksAsync(request.BpmnXml, def.Key, effectiveTenantId);
         if (createdWebhooks.Count > 0)
         {

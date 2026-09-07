@@ -16,9 +16,9 @@ namespace VertexBPMN.Api.Controllers
         }
 
         [HttpPost("bpmn")]
-        public ActionResult<SemanticValidationResult> ValidateBpmn([FromBody] string bpmnXml)
+        public async Task<ActionResult<SemanticValidationResult>> ValidateBpmn([FromBody] string bpmnXml)
         {
-            var result = _validationService.ValidateBpmn(bpmnXml);
+            var result = await _validationService.ValidateBpmnAsync(bpmnXml, HttpContext.RequestAborted);
             return Ok(result);
         }
 

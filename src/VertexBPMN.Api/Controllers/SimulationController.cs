@@ -37,7 +37,7 @@ namespace VertexBPMN.Api.Controllers
             var scenario = await _scenarioService.GetByIdAsync(scenarioId);
             if (scenario == null) return NotFound();
             // Validate BPMN before simulation (assume scenario contains BPMN XML)
-            var diagnostics = _validationService.ValidateBpmn(scenario.BpmnXml ?? "");
+            var diagnostics = await _validationService.ValidateBpmnAsync(scenario.BpmnXml ?? "", HttpContext.RequestAborted);
             var request = new SimulationRequest
             {
                 BpmnXml = scenario.BpmnXml ?? string.Empty,
@@ -69,7 +69,7 @@ namespace VertexBPMN.Api.Controllers
                 CalledProcessDefinitions = request.CalledProcessDefinitions
             };
             // Validate BPMN before simulation (assume request contains BPMN XML)
-            var diagnostics = _validationService.ValidateBpmn(request.BpmnXml ?? "");
+            var diagnostics = await _validationService.ValidateBpmnAsync(request.BpmnXml ?? "", HttpContext.RequestAborted);
             return await SimulateValidated(domainRequest, diagnostics);
         }
 

@@ -175,17 +175,26 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
                 editedDocument.Descendants().Count(element => element.Name.LocalName == "sequenceFlow"),
                 roundtripDocument.Descendants().Count(element => element.Name.LocalName == "sequenceFlow"));
 
+            await page.GetByTestId("bpmn-modeler-shell").Locator(".djs-connection .djs-hit").First.ClickAsync(new() { Force = true });
             await page.GetByRole(AriaRole.Button, new() { Name = "Add node", Exact = true }).ClickAsync();
             var catalog = page.GetByTestId("low-code-node-catalog");
             await catalog.GetByLabel("Search nodes").FillAsync("Decision");
             await catalog.GetByRole(AriaRole.Button, new() { Name = "Decision table", Exact = true }).ClickAsync();
             await WaitForPreviewXmlAsync(page, "businessRuleTask");
+            await page.GetByTestId("bpmn-modeler-shell").Locator(".djs-connection .djs-hit").First.ClickAsync(new() { Force = true });
             await page.GetByRole(AriaRole.Button, new() { Name = "Add node", Exact = true }).ClickAsync();
             catalog = page.GetByTestId("low-code-node-catalog");
             await catalog.GetByLabel("Search nodes").FillAsync("User approval form");
             await catalog.GetByRole(AriaRole.Button, new() { Name = "User approval form", Exact = true }).ClickAsync();
             var configuredXml = await WaitForPreviewXmlAsync(page, "formRef=\"approval-form\"");
             Assert.Contains("decisionRef=\"decision-table\"", configuredXml, StringComparison.Ordinal);
+            var configuredDocument = XDocument.Parse(configuredXml);
+            foreach (var task in configuredDocument.Descendants().Where(e => e.Name.LocalName is "userTask" or "businessRuleTask"))
+            {
+                var id = (string?)task.Attribute("id");
+                Assert.Contains(configuredDocument.Descendants(), e => e.Name.LocalName == "sequenceFlow" && (string?)e.Attribute("sourceRef") == id);
+                Assert.Contains(configuredDocument.Descendants(), e => e.Name.LocalName == "sequenceFlow" && (string?)e.Attribute("targetRef") == id);
+            }
             await page.GetByRole(AriaRole.Button, new() { Name = "Deploy BPMN", Exact = true }).ClickAsync();
             await page.GetByText("BPMN deployed successfully.", new() { Exact = true }).Last.WaitForAsync();
 

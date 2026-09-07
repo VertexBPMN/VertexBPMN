@@ -71,7 +71,7 @@ services.AddScoped<PollingTriggerPoller>();
             else
                 services.AddSingleton<IAiDecisionService, FakeAiDecisionService>();
         }
-        services.AddSingleton<ISemanticValidationService, SemanticValidationService>();
+        services.AddScoped<ISemanticValidationService, SemanticValidationService>();
         services.AddSingleton<IIdentityService, IdentityService>();
         services.AddSingleton<IHostedService, JobExecutorService>();
         services.AddServiceTaskHandlers(configuration);

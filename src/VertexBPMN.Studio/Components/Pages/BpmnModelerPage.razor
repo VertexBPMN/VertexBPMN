@@ -114,7 +114,7 @@
                     <MudSpacer />
                     <MudIconButton Icon="@Icons.Material.Filled.Close" aria-label="Close node catalog" OnClick="@(() => _showNodeCatalog = false)" />
                 </MudStack>
-                <MudText Typo="Typo.caption" Color="Color.Secondary">Choose a low-code building block. The generated artifact remains valid BPMN with Vertex extensions where configuration is required.</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Select a sequence flow in the diagram, then choose a node to insert into that path. Configure the highlighted condition after inserting IF. Use patterns or the BPMN palette for start events and event subprocesses.</MudText>
                 <MudTextField @bind-Value="_nodeSearch" Label="Search nodes" Immediate="true" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
                 @foreach (var category in FilteredNodes.GroupBy(node => node.Category).OrderBy(group => group.Key))
                 {
@@ -244,6 +244,7 @@
         try
         {
             var variables = ParseTestVariables(_testVariablesJson);
+            if (!await ValidateForDeploymentAsync()) return;
             var xml = await CaptureBpmnXml();
             var deployed = await RepositoryService.DeployXmlAsync(xml, "studio-test-run.bpmn", TenantContext.CurrentTenantId);
             var instance = await WorkflowService.StartProcessAsync(deployed.Definition.Key, variables, $"studio-test-{Guid.NewGuid():N}", TenantContext.CurrentTenantId);
@@ -465,6 +466,7 @@
 
         _validationIssues = (await _modeler.GetValidationIssuesAsync()).ToList();
         _xmlPreview = await _modeler.GetXmlAsync();
+        await _modeler.FocusElementAsync(_validationIssues.FirstOrDefault(issue => issue.Severity.Equals("error", StringComparison.OrdinalIgnoreCase))?.ElementId);
         Snackbar.Add(_validationIssues.Count == 0 ? "BPMN validation completed without issues." : $"BPMN validation found {_validationIssues.Count} issue(s).", _validationIssues.Count == 0 ? Severity.Success : Severity.Warning);
     }
 
@@ -560,6 +562,21 @@
             : $"Compared with deployed version: {added} changed/added line(s), {removed} removed line(s).";
     }
 
+    private async Task<bool> ValidateForDeploymentAsync()
+    {
+        if (_modeler is null)
+        {
+            Snackbar.Add("The modeler is still loading.", Severity.Warning);
+            return false;
+        }
+        _validationIssues = (await _modeler.GetValidationIssuesAsync()).ToList();
+        if (!_validationIssues.Any(issue => issue.Severity.Equals("error", StringComparison.OrdinalIgnoreCase)))
+            return true;
+        Snackbar.Add("Deployment blocked. Correct the BPMN validation errors first.", Severity.Error);
+        await _modeler.FocusElementAsync(_validationIssues.First(issue => issue.Severity.Equals("error", StringComparison.OrdinalIgnoreCase)).ElementId);
+        return false;
+    }
+
     private async Task LoadSelectedVersionAsync()
     {
         if (string.IsNullOrWhiteSpace(_selectedVersionId))
@@ -591,6 +608,7 @@
 
     private async Task DeployBpmnXml()
     {
+        if (!await ValidateForDeploymentAsync()) return;
         var xml = await CaptureBpmnXml();
         try
         {

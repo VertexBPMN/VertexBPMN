@@ -1,4 +1,5 @@
 import { getBusinessObject } from 'bpmn-js/lib/util/ModelUtil';
+import { validateFlowScopes, moddleFlowScopes } from './flow-validation.js';
 
 const VERTEX_NS = 'https://vertexbpmn.io/schema/bpmn/1.0';
 const VERTEX_NS_ALIASES = new Set([
@@ -102,7 +103,7 @@ function collectFromExtensions(ownerId, values) {
 }
 
 function collectFromRegistry(elementRegistry) {
-  const issues = [];
+  const issues = validateFlowScopes(moddleFlowScopes(elementRegistry.getAll()));
   for (const element of elementRegistry.getAll()) {
     if (!element || element.id === '__implicitroot__') {
       continue;
@@ -133,6 +134,25 @@ function collectFromXml(xml) {
     return [{ code: 'VEN-VERTEX-XML-INVALID', severity: 'error', elementId: null, message: parseError.textContent }];
   }
   const all = doc.getElementsByTagName('*');
+  const bpmnNs = 'http://www.omg.org/spec/BPMN/20100524/MODEL';
+  const flowTypes = new Set(['startEvent', 'endEvent', 'intermediateCatchEvent', 'intermediateThrowEvent', 'boundaryEvent',
+    'task', 'userTask', 'serviceTask', 'scriptTask', 'manualTask', 'sendTask', 'receiveTask', 'businessRuleTask',
+    'callActivity', 'subProcess', 'transaction', 'adHocSubProcess', 'exclusiveGateway', 'inclusiveGateway',
+    'parallelGateway', 'complexGateway', 'eventBasedGateway', 'sequenceFlow']);
+  const scopes = new Map();
+  for (const node of all) {
+    if (node.namespaceURI !== bpmnNs || !flowTypes.has(localName(node))) continue;
+    if (!scopes.has(node.parentNode)) scopes.set(node.parentNode, []);
+    const children = [...node.children];
+    scopes.get(node.parentNode).push({
+      id: xmlAttr(node, 'id'), type: localName(node), source: xmlAttr(node, 'sourceRef'), target: xmlAttr(node, 'targetRef'),
+      default: xmlAttr(node, 'default'), attachedTo: xmlAttr(node, 'attachedToRef'),
+      independent: ['true', '1'].includes(xmlAttr(node, 'isForCompensation')) || ['true', '1'].includes(xmlAttr(node, 'triggeredByEvent')),
+      condition: children.find(c => c.namespaceURI === bpmnNs && localName(c) === 'conditionExpression')?.textContent,
+      link: children.find(c => c.namespaceURI === bpmnNs && localName(c) === 'linkEventDefinition')?.getAttribute('name')
+    });
+  }
+  issues.push(...validateFlowScopes([...scopes.values()]));
   for (const node of all) {
     if (!isVertexNode(node)) {
       continue;

@@ -462,7 +462,7 @@ internal sealed class CliApplication
 
     private async Task PrintValidationAsync(string bpmnXml)
     {
-        var validation = _validationService.ValidateBpmn(bpmnXml);
+        var validation = await _validationService.ValidateBpmnAsync(bpmnXml);
         await _output.WriteLineAsync(validation.IsValid ? "BPMN is valid." : "BPMN is invalid.");
         foreach (var error in validation.Errors ?? []) await _output.WriteLineAsync($"Error: {error}");
         foreach (var warning in validation.Warnings ?? []) await _output.WriteLineAsync($"Warning: {warning}");

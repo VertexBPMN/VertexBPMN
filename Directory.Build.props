@@ -4,7 +4,7 @@
          prevents MSBuild from treating **/*.resx as a literal file after Roslyn's
          BuildHost creates Windows-separator output directories on Linux/WSL. -->
     <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
-    <DefaultItemExcludes>$(DefaultItemExcludes);bin/**;obj/**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);bin/**;obj/**;bin-editor-fix/**;obj-editor-fix/**</DefaultItemExcludes>
     <!-- Roslyn Workspaces build-host targets concatenate output paths verbatim.
          Forward-slash bases prevent literal `bin\Debug` directories on Linux/WSL. -->
     <BaseOutputPath>bin/</BaseOutputPath>

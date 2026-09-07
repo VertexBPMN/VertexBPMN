@@ -1,25 +1,34 @@
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Domain.Model.Bpmn;
+using VertexBPMN.Domain.Exceptions;
+using System.Xml;
 
 namespace VertexBPMN.Application
 {
-    public class SemanticValidationService : ISemanticValidationService
+    public class SemanticValidationService(IBpmnParser parser) : ISemanticValidationService
     {
-        public SemanticValidationResult ValidateBpmn(string bpmnXml)
+        public async Task<SemanticValidationResult> ValidateBpmnAsync(string bpmnXml, CancellationToken cancellationToken = default)
         {
             var errors = new List<string>();
             var warnings = new List<string>();
             var suggestions = new List<string>();
-            bool hasStartEvent = bpmnXml.Contains("<startEvent");
-            bool hasEndEvent = bpmnXml.Contains("<endEvent");
-            if (!hasStartEvent) errors.Add("No start event found.");
-            if (!hasEndEvent) errors.Add("No end event found.");
-            if (bpmnXml.Contains("<exclusiveGateway") && !bpmnXml.Contains("<sequenceFlow"))
-                errors.Add("Exclusive gateway without sequence flows.");
-            if (bpmnXml.Contains("<userTask") && !bpmnXml.Contains("<formKey"))
-                warnings.Add("User task without formKey.");
-            if (bpmnXml.Contains("<serviceTask") && !bpmnXml.Contains("<implementation"))
-                suggestions.Add("Service task should specify implementation.");
+            try
+            {
+                var model = await parser.ParseAsync(bpmnXml, cancellationToken).ConfigureAwait(false);
+                if (string.IsNullOrWhiteSpace(model.ProcessId)) errors.Add("The BPMN model does not contain a process id.");
+                foreach (var diagnostic in (model.ValidationDiagnostics ?? []).Concat(BpmnDeploymentValidator.Validate(model)))
+                {
+                    var message = $"{diagnostic.Code}: {diagnostic.Message}";
+                    if (diagnostic.Severity >= ValidationSeverity.Error) errors.Add(message);
+                    else if (diagnostic.Severity == ValidationSeverity.Warning) warnings.Add(message);
+                    else suggestions.Add(message);
+                }
+            }
+            catch (Exception exception) when (exception is XmlException or BpmnParseException or BpmnValidationException or SecurityException or ArgumentException)
+            {
+                errors.Add(exception.Message);
+            }
             bool isValid = errors.Count == 0;
             return new SemanticValidationResult
             {

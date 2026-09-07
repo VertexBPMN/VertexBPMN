@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3.mtp-v2" Version="4.0.0" />
+    <Using Include="Xunit" />
+    <ProjectReference Include="../../src/VertexBPMN.Engine/VertexBPMN.Engine.csproj" />
+    <ProjectReference Include="../../src/VertexBPMN.Application/VertexBPMN.Application.csproj" />
+    <Compile Include="../VertexBPMN.Tests/Parsing/Validation/BpmnDeploymentValidatorTests.cs" Link="BpmnDeploymentValidatorTests.cs" />
+    <None Include="../VertexBPMN.Tests/TestData/editor-validation-cases.json" Link="TestData/editor-validation-cases.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

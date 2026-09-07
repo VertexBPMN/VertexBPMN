@@ -132,6 +132,8 @@ function createTemplateShape(modeler, template, values, position, parent) {
 }
 
 function insertQuickTemplate(modeler, template, target) {
+    target = insertionFlow(modeler, target);
+    if (!modeler.__vertexCompoundActive) return compoundInsertion(modeler, () => insertQuickTemplate(modeler, template, target));
     const canvas = modeler.get("canvas");
     const position = target.type === "bpmn:SequenceFlow"
         ? { x: (target.waypoints[0].x + target.waypoints[target.waypoints.length - 1].x) / 2, y: (target.waypoints[0].y + target.waypoints[target.waypoints.length - 1].y) / 2 }
@@ -147,9 +149,48 @@ function connectQuickInsert(modeler, target, created) {
     const modeling = modeler.get("modeling");
     const source = target.source;
     const destination = target.target;
+    const properties = target.businessObject;
+    const wasDefault = source.businessObject.default === properties;
     modeling.removeConnection(target);
-    modeling.connect(source, created, { type: "bpmn:SequenceFlow" });
+    const incoming = modeling.connect(source, created, { type: "bpmn:SequenceFlow" });
+    modeling.updateProperties(incoming, {
+        name: properties.name,
+        conditionExpression: properties.conditionExpression,
+        extensionElements: properties.extensionElements,
+        documentation: properties.documentation
+    });
+    if (wasDefault) modeling.updateProperties(source, { default: incoming.businessObject });
     modeling.connect(created, destination, { type: "bpmn:SequenceFlow" });
+}
+
+function insertionFlow(modeler, target) {
+    const selected = target || modeler.get("selection").get()[0];
+    if (!selected || selected.type !== "bpmn:SequenceFlow" || !selected.source || !selected.target) {
+        throw new Error("Select a sequence flow before inserting a node.");
+    }
+    if (selected.source.type === "bpmn:EventBasedGateway") {
+        throw new Error("Use the BPMN palette to configure the event targets of an event-based gateway.");
+    }
+    return selected;
+}
+
+function compoundInsertion(modeler, action) {
+    const stack = modeler.get("commandStack");
+    if (!modeler.__vertexCompoundRegistered) {
+        stack.registerHandler("vertex.insert", class {
+            preExecute(context) {
+                modeler.__vertexCompoundActive = true;
+                try { context.result = context.action(); }
+                finally { modeler.__vertexCompoundActive = false; }
+            }
+            execute() {}
+            revert() {}
+        });
+        modeler.__vertexCompoundRegistered = true;
+    }
+    const context = { action };
+    stack.execute("vertex.insert", context);
+    return context.result;
 }
 
 function rootProcessKey(modeler) {
@@ -218,6 +259,16 @@ function insertLowCodeNode(modeler, kind, target, positionOverride) {
     const canvas = modeler.get("canvas");
     const bpmnFactory = modeler.get("bpmnFactory");
     const definition = lowCodeDefinition(modeler, kind);
+    // Patterns create their complete graph explicitly; individual catalog actions need an insertion context.
+    if (!positionOverride) {
+        if (["webhook", "timer", "start", "end", "error"].includes(kind)) {
+            throw new Error("Use a complete pattern or the BPMN palette to configure start, end and event-subprocess nodes.");
+        }
+        target = insertionFlow(modeler, target);
+    }
+    if (!positionOverride && !modeler.__vertexCompoundActive) {
+        return compoundInsertion(modeler, () => insertLowCodeNode(modeler, kind, target));
+    }
     const businessObject = bpmnFactory.create(definition.type, {
         name: definition.name,
         calledElement: definition.calledElement,
@@ -236,6 +287,33 @@ function insertLowCodeNode(modeler, kind, target, positionOverride) {
     const shape = elementFactory.createShape({ type: definition.type, businessObject });
     const created = modeling.createShape(shape, position, target && target.parent ? target.parent : canvas.getRootElement());
     connectQuickInsert(modeler, target, created);
+    if (kind === "if" && !positionOverride) {
+        const outgoing = created.outgoing.find(flow => flow.type === "bpmn:SequenceFlow");
+        const destination = outgoing.target;
+        if (destination.x > position.x && destination.x < position.x + 430) {
+            const following = created.parent.children.filter(element => !element.waypoints && !element.labelTarget && element.x >= destination.x);
+            modeling.moveElements(following, { x: position.x + 430 - destination.x, y: 0 });
+        }
+        modeling.removeConnection(outgoing);
+        const merge = modeling.createShape(elementFactory.createShape({ type: "bpmn:ExclusiveGateway" }),
+            { x: position.x + 300, y: position.y }, created.parent);
+        const thenTask = modeling.createShape(elementFactory.createShape({ type: "bpmn:Task" }),
+            { x: position.x + 150, y: position.y + 160 }, created.parent);
+        modeling.updateProperties(thenTask, { name: "Then" });
+        const otherwise = modeling.connect(created, merge, { type: "bpmn:SequenceFlow" });
+        modeling.updateProperties(otherwise, { name: "Otherwise" });
+        modeling.updateProperties(created, { default: otherwise.businessObject });
+        const conditional = modeling.connect(created, thenTask, { type: "bpmn:SequenceFlow" });
+        modeling.updateProperties(conditional, {
+            name: "If",
+            conditionExpression: bpmnFactory.create("bpmn:FormalExpression", { body: "" })
+        });
+        modeling.connect(thenTask, merge, { type: "bpmn:SequenceFlow" });
+        modeling.connect(merge, destination, { type: "bpmn:SequenceFlow" });
+        modeler.get("selection").select(conditional);
+    } else if (!positionOverride) {
+        modeler.get("selection").select(created);
+    }
     canvas.scrollToElement(created);
 
     if (kind === "error") {
@@ -271,11 +349,13 @@ function insertLowCodePattern(modeler, patternId) {
         "webhook-if-http": ["webhook", "if", "http", "end"],
         "cron-batch-db": ["timer", "batch", "database", "end"],
         "user-approval": ["start", "form", "end"],
-        "decision-routing": ["start", "decision", "if", "end"],
+        "decision-routing": ["start", "decision", "if", "form", "end"],
         "case-start": ["start", "case", "end"]
     };
     const kinds = patterns[patternId];
     if (!kinds) throw new Error(`Unsupported low-code pattern '${patternId}'.`);
+    if (!modeler || modeler.__vertexFallback) throw new Error("Patterns require the bpmn.io modeler bundle.");
+    if (!modeler.__vertexCompoundActive) return compoundInsertion(modeler, () => insertLowCodePattern(modeler, patternId));
 
     const canvas = modeler.get("canvas");
     const modeling = modeler.get("modeling");
@@ -283,12 +363,33 @@ function insertLowCodePattern(modeler, patternId) {
     const y = viewbox.y + viewbox.height * 0.72;
     let previous = null;
     let retryTarget = null;
+    let branchGateway = null;
     kinds.forEach((kind, index) => {
         const created = insertLowCodeNode(modeler, kind, null, { x: viewbox.x + 90 + index * 180, y });
         if (previous) modeling.connect(previous, created, { type: "bpmn:SequenceFlow" });
         previous = created;
         if (kind === "http" && patternId === "http-retry") retryTarget = created;
+        if (kind === "if") branchGateway = created;
     });
+    if (branchGateway) {
+        const conditional = branchGateway.outgoing.find(flow => flow.type === "bpmn:SequenceFlow");
+        modeling.updateProperties(conditional, {
+            name: "If",
+            conditionExpression: modeler.get("bpmnFactory").create("bpmn:FormalExpression", { body: "" })
+        });
+        const otherwise = modeling.connect(branchGateway, previous, { type: "bpmn:SequenceFlow" });
+        const branchX = branchGateway.x + branchGateway.width / 2;
+        const endX = previous.x + previous.width / 2;
+        modeling.updateWaypoints(otherwise, [
+            { x: branchX, y: branchGateway.y + branchGateway.height },
+            { x: branchX, y: y + 140 },
+            { x: endX, y: y + 140 },
+            { x: endX, y: previous.y + previous.height }
+        ]);
+        modeling.updateLabel(otherwise, "Otherwise", { x: (branchX + endX) / 2 - 40, y: y + 145, width: 80, height: 20 });
+        modeling.updateProperties(branchGateway, { default: otherwise.businessObject });
+        modeler.get("selection").select(conditional);
+    }
     if (retryTarget) addRetryPolicy(modeler, retryTarget);
     if (previous) canvas.scrollToElement(previous);
 }
@@ -305,7 +406,7 @@ function configureQuickInsert(modeler, templates) {
 
     const render = element => {
         overlays.remove({ type: "vertex-quick-insert" });
-        if (!element || !element.businessObject || element.businessObject.$type === "bpmn:Process") {
+        if (!element || element.type !== "bpmn:SequenceFlow" || element.source?.type === "bpmn:EventBasedGateway") {
             return;
         }
 
@@ -387,18 +488,37 @@ export const BpmnModelerInterop = {
         return await exportXml(modeler);
     },
     getValidationIssues: function (modeler) {
-        return typeof window.VertexValidateBpmn === "function" ? window.VertexValidateBpmn(modeler) || [] : [];
+        if (!modeler || modeler.__vertexFallback || typeof window.VertexValidateBpmn !== "function") {
+            return [{ code: "DEP-VALIDATOR-UNAVAILABLE", severity: "error", elementId: null, message: "The BPMN editor and validator must finish loading before deployment." }];
+        }
+        return window.VertexValidateBpmn(modeler) || [];
+    },
+    focusElement: function (modeler, elementId) {
+        if (!modeler || modeler.__vertexFallback || !elementId) return;
+        let element = modeler.get("elementRegistry").get(elementId);
+        if (!element) return;
+        // Collapsed subprocess contents cannot be selected until the containing scope is shown.
+        while (element.parent && element.parent.collapsed) element = element.parent;
+        modeler.get("selection").select(element);
+        modeler.get("canvas").scrollToElement(element);
     },
     loadXml: async function (modeler, bpmnXml) {
         await importArtifact(modeler, bpmnXml, 'bpmn.io BPMN Modeler fallback');
     },
-    insertConnectorTemplate: async function (modeler, template, values) {
+    insertConnectorTemplate: function (modeler, template, values) {
         if (!modeler || modeler.__vertexFallback) {
             throw new Error("Connector templates require the bpmn.io modeler bundle.");
         }
+        if (templateElementType(template) === "bpmn:StartEvent") {
+            throw new Error("Use a complete trigger pattern to configure a start event.");
+        }
+        const target = insertionFlow(modeler);
+        if (!modeler.__vertexCompoundActive) return compoundInsertion(modeler, () => BpmnModelerInterop.insertConnectorTemplate(modeler, template, values));
         const canvas = modeler.get("canvas");
-        const viewbox = canvas.viewbox();
-        const created = createTemplateShape(modeler, template, values, { x: viewbox.x + viewbox.width / 2, y: viewbox.y + viewbox.height / 2 }, canvas.getRootElement());
+        const created = createTemplateShape(modeler, template, values,
+            { x: (target.waypoints[0].x + target.waypoints.at(-1).x) / 2, y: (target.waypoints[0].y + target.waypoints.at(-1).y) / 2 }, target.parent);
+        connectQuickInsert(modeler, target, created);
+        modeler.get("selection").select(created);
         canvas.scrollToElement(created);
     },
     insertLowCodeNode: function (modeler, nodeKind) {

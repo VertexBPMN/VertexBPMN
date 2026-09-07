@@ -20,7 +20,7 @@ namespace VertexBPMN.Api.Controllers
         /// Compares two simulation results and returns differences in steps, variables, and outcomes.
         /// </summary>
         [HttpPost("compare")]
-        public ActionResult<SimulationComparisonDto> CompareScenarios([FromBody] SimulationComparisonRequestDto request)
+        public async Task<ActionResult<SimulationComparisonDto>> CompareScenarios([FromBody] SimulationComparisonRequestDto request)
         {
             var resultA = request.ResultA;
             var resultB = request.ResultB;
@@ -44,15 +44,15 @@ namespace VertexBPMN.Api.Controllers
                 VariableDifferences = variableDiff,
                 CompletedDifference = completedDiff
             };
-            var diagnosticsA = _validationService.ValidateBpmn(resultA?.BpmnXml ?? "");
-            var diagnosticsB = _validationService.ValidateBpmn(resultB?.BpmnXml ?? "");
+            var diagnosticsA = await _validationService.ValidateBpmnAsync(resultA?.BpmnXml ?? "", HttpContext.RequestAborted);
+            var diagnosticsB = await _validationService.ValidateBpmnAsync(resultB?.BpmnXml ?? "", HttpContext.RequestAborted);
             return Ok(new { Comparison = dto, DiagnosticsA = diagnosticsA, DiagnosticsB = diagnosticsB });
         }
         /// <summary>
         /// Returns the trace of a specific variable across all simulation steps.
         /// </summary>
         [HttpPost("variable-trace/{variableName}")]
-        public ActionResult<List<VariableTraceDto>> GetVariableTrace([FromBody] SimulationResult result, string variableName)
+        public async Task<ActionResult<List<VariableTraceDto>>> GetVariableTrace([FromBody] SimulationResult result, string variableName)
         {
             if (!IsEngineResult(result)) return InvalidSimulationResult();
             var trace = result.Steps?.Select(s => new VariableTraceDto
@@ -61,14 +61,14 @@ namespace VertexBPMN.Api.Controllers
                 ActivityId = s.ActivityId,
                 Value = s.Variables != null && s.Variables.ContainsKey(variableName) ? s.Variables[variableName] : null
             }).ToList() ?? new List<VariableTraceDto>();
-            var diagnostics = _validationService.ValidateBpmn(result.BpmnXml ?? "");
+            var diagnostics = await _validationService.ValidateBpmnAsync(result.BpmnXml ?? "", HttpContext.RequestAborted);
             return Ok(new { Trace = trace, Diagnostics = diagnostics });
         }
         /// <summary>
         /// Returns a breakdown of each step in a simulation result.
         /// </summary>
         [HttpPost("steps")]
-        public ActionResult<List<SimulationStepAnalyticsDto>> GetStepBreakdown([FromBody] SimulationResult result)
+        public async Task<ActionResult<List<SimulationStepAnalyticsDto>>> GetStepBreakdown([FromBody] SimulationResult result)
         {
             if (!IsEngineResult(result)) return InvalidSimulationResult();
             var steps = result.Steps?.Select(s => new SimulationStepAnalyticsDto
@@ -79,7 +79,7 @@ namespace VertexBPMN.Api.Controllers
                 Variables = s.Variables,
                 Timestamp = s.Timestamp
             }).ToList() ?? new List<SimulationStepAnalyticsDto>();
-            var diagnostics = _validationService.ValidateBpmn(result.BpmnXml ?? "");
+            var diagnostics = await _validationService.ValidateBpmnAsync(result.BpmnXml ?? "", HttpContext.RequestAborted);
             return Ok(new { Steps = steps, Diagnostics = diagnostics });
         }
 
@@ -87,7 +87,7 @@ namespace VertexBPMN.Api.Controllers
         /// Returns summary statistics for a simulation result.
         /// </summary>
         [HttpPost("summary")]
-        public ActionResult<SimulationAnalyticsSummaryDto> GetSummary([FromBody] SimulationResult result)
+        public async Task<ActionResult<SimulationAnalyticsSummaryDto>> GetSummary([FromBody] SimulationResult result)
         {
             if (!IsEngineResult(result)) return InvalidSimulationResult();
             var summary = new SimulationAnalyticsSummaryDto
@@ -98,7 +98,7 @@ namespace VertexBPMN.Api.Controllers
                 Completed = result.Completed,
                 Variables = result.Steps?.LastOrDefault()?.Variables ?? new Dictionary<string, object>()
             };
-            var diagnostics = _validationService.ValidateBpmn(result.BpmnXml ?? "");
+            var diagnostics = await _validationService.ValidateBpmnAsync(result.BpmnXml ?? "", HttpContext.RequestAborted);
             return Ok(new { Summary = summary, Diagnostics = diagnostics });
         }
 

@@ -35,12 +35,12 @@ public class RepositoryService : IRepositoryService
         if (string.IsNullOrWhiteSpace(model.ProcessId))
             throw new InvalidOperationException("The BPMN model does not contain a process id.");
 
-        var errors = model.ValidationDiagnostics?
+        var errors = (model.ValidationDiagnostics ?? [])
+            .Concat(BpmnDeploymentValidator.Validate(model))
             .Where(diagnostic => diagnostic.Severity >= ValidationSeverity.Error)
-            .Select(diagnostic => diagnostic.Message)
-            .ToArray() ?? [];
+            .ToArray();
         if (errors.Length > 0)
-            throw new InvalidOperationException($"The BPMN model is not executable: {string.Join("; ", errors)}");
+            throw new BpmnDeploymentValidationException(errors);
 
         if (!_scriptsEnabled && model.Tasks.Any(task => task.Type.Equals("scriptTask", StringComparison.OrdinalIgnoreCase)))
             throw new InvalidOperationException("BPMN script tasks are disabled for the in-process production runtime.");

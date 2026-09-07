@@ -1,0 +1,22 @@
+[
+  {
+    "name": "implicit-start",
+    "xml": "<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL' targetNamespace='urn:test'><process id='p'><task id='a'/><endEvent id='e'/><sequenceFlow id='f' sourceRef='a' targetRef='e'/></process></definitions>",
+    "codes": []
+  },
+  {
+    "name": "nested-scope",
+    "xml": "<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL' targetNamespace='urn:test'><process id='p'><startEvent id='s'/><subProcess id='sub'><startEvent id='ss'/><task id='t'/><endEvent id='se'/><sequenceFlow id='sf' sourceRef='ss' targetRef='t'/><sequenceFlow id='sg' sourceRef='t' targetRef='se'/></subProcess><endEvent id='e'/><sequenceFlow id='f' sourceRef='s' targetRef='sub'/><sequenceFlow id='g' sourceRef='sub' targetRef='e'/></process></definitions>",
+    "codes": []
+  },
+  {
+    "name": "two-processes",
+    "xml": "<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL' targetNamespace='urn:test'><process id='p'><startEvent id='s'/><endEvent id='e'/><sequenceFlow id='f' sourceRef='s' targetRef='e'/></process><process id='q'><startEvent id='qs'/><endEvent id='qe'/><sequenceFlow id='qf' sourceRef='qs' targetRef='qe'/></process></definitions>",
+    "codes": []
+  },
+  {
+    "name": "nested-orphan",
+    "xml": "<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL' targetNamespace='urn:test'><process id='p'><startEvent id='s'/><subProcess id='sub'><startEvent id='ss'/><task id='orphan'/><endEvent id='se'/><sequenceFlow id='sf' sourceRef='ss' targetRef='se'/></subProcess><endEvent id='e'/><sequenceFlow id='f' sourceRef='s' targetRef='sub'/><sequenceFlow id='g' sourceRef='sub' targetRef='e'/></process></definitions>",
+    "codes": ["DEP-UNREACHABLE-NODE"]
+  }
+]

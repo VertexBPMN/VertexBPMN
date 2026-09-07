@@ -8,7 +8,9 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Domain.Model.Bpmn;
 using VertexBPMN.Infrastructure.Persistence;
+using VertexBPMN.Infrastructure.Scripting;
 
 namespace VertexBPMN.Engine.Execution;
 
@@ -150,6 +152,26 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
             .FirstOrDefaultAsync(cancellationToken);
         if (subscription is null)
         {
+            // No waiting subscription: a message-start process (matching message name) auto-instantiates
+            // a new instance when no explicit target instance was supplied.
+            if (!processInstanceId.HasValue)
+            {
+                var (startDefinition, startNodeId) = await FindDefinitionWithStartEventAsync(
+                    "Message", messageName, tenantId, cancellationToken);
+                if (startDefinition is not null)
+                {
+                    var started = await CreateAndStartFromStartEventAsync(
+                        startDefinition, startNodeId!, variables, tenantId, cancellationToken);
+                    var startCorrelated = new MessageCorrelationResult(
+                        "correlated", startNodeId!, started.Id.ToString(), started.ProcessDefinitionId.ToString());
+                    CompleteInbox(inbox, JsonSerializer.Serialize(startCorrelated));
+                    AddOutbox(started, "MessageCorrelated", new { messageName, ActivityId = startNodeId });
+                    await _db.SaveChangesAsync(cancellationToken);
+                    if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+                    return startCorrelated;
+                }
+            }
+
             var notFound = new MessageCorrelationResult(
                 "not_found", "", processInstanceId?.ToString() ?? "", "");
             CompleteInbox(inbox, JsonSerializer.Serialize(notFound));
@@ -213,6 +235,17 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
             AddOutbox(instance, "SignalCorrelated", new { signalName });
         }
 
+        // In addition to delivered catches, a signal-start process (matching signal name) is
+        // auto-instantiated on broadcast, per BPMN signal semantics.
+        var (startDefinition, startNodeId) = await FindDefinitionWithStartEventAsync(
+            "Signal", signalName, tenantId, cancellationToken);
+        if (startDefinition is not null)
+        {
+            var started = await CreateAndStartFromStartEventAsync(
+                startDefinition, startNodeId!, variables, tenantId, cancellationToken);
+            AddOutbox(started, "SignalCorrelated", new { signalName });
+        }
+
         CompleteInbox(inbox, subscriptions.Count.ToString(CultureInfo.InvariantCulture));
         await _db.SaveChangesAsync(cancellationToken);
         if (transaction is not null) await transaction.CommitAsync(cancellationToken);
@@ -251,6 +284,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         MergeVariables(instance, variables);
         await CompleteWaitingTaskTokenAsync(instance.Id, task, cancellationToken);
         await CancelBoundaryJobsAsync(instance.Id, task.Id, cancellationToken);
+        await CancelBoundarySubscriptionsAsync(instance.Id, model, task.ActivityId, cancellationToken);
         if (model.Nodes.TryGetValue(task.ActivityId, out var completedNode))
             await RegisterCompensationAsync(instance, completedNode, model, cancellationToken);
         AddHistory(instance, "USER_TASK_COMPLETED", task.ActivityId, new { task.Id });
@@ -469,6 +503,15 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         token.State = ExecutionToken.CompletedState;
         token.Revision++;
         await PrepareEventSubprocessTriggerAsync(instance, token, model, cancellationToken);
+        model.Nodes.TryGetValue(subscription.ActivityId, out var boundaryNode);
+        if (boundaryNode?.Kind == "boundaryEvent"
+            && !string.IsNullOrWhiteSpace(boundaryNode.AttachedToRef)
+            && IsBoundaryInterrupting(boundaryNode))
+        {
+            // Interrupting boundary: cancel the attached activity's waiting token(s) and any open user task.
+            await CompleteWaitingTokenAsync(instance.Id, boundaryNode.AttachedToRef, cancellationToken);
+            await CancelAttachedUserTaskAsync(instance.Id, boundaryNode.AttachedToRef, cancellationToken);
+        }
         AddHistory(instance, $"{subscription.EventType.ToUpperInvariant()}_CORRELATED", subscription.ActivityId,
             new { subscription.EventName });
         var context = ExecutionContextFromToken(token);
@@ -757,7 +800,13 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                     break;
 
                 case "scriptTask":
-                    throw new InvalidOperationException("In-process script task execution is disabled.");
+                    await ExecuteScriptTaskAsync(instance, node, pending, model, queue, cancellationToken);
+                    if (instance.Status == ProcessInstanceStatus.Running)
+                    {
+                        await RegisterCompensationAsync(instance, node, model, cancellationToken);
+                        await CompleteActivityAsync(instance, node, pending, model, queue, cancellationToken);
+                    }
+                    break;
 
                 default:
                     throw new NotSupportedException($"Flow node type '{node.Kind}' is not supported by the production subset.");
@@ -790,6 +839,45 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
             instance.Variables = new Dictionary<string, object>(instance.Variables, StringComparer.Ordinal);
             AddHistory(instance, "SERVICE_TASK_COMPLETED", node.Id, new { node.Implementation });
             AddOutbox(instance, "ServiceTaskCompleted", new { node.Id, node.Implementation });
+        }
+        catch (Exception exception)
+        {
+            await SuspendWithIncidentAsync(instance, node.Id, exception.Message, cancellationToken);
+        }
+    }
+
+    private async Task ExecuteScriptTaskAsync(
+        ProcessInstance instance,
+        ExecutionNode node,
+        PendingNode pending,
+        ExecutionModel model,
+        Queue<PendingNode> queue,
+        CancellationToken cancellationToken)
+    {
+        if (!node.Attributes.TryGetValue("script", out var script) || string.IsNullOrWhiteSpace(script))
+        {
+            await SuspendWithIncidentAsync(
+                instance,
+                node.Id,
+                $"ScriptTask '{node.Id}' does not define a <script>.",
+                cancellationToken);
+            return;
+        }
+
+        try
+        {
+            var variables = CreateActivityVariables(instance.Variables, pending.LocalVariables);
+            var taskDescriptor = new BpmnTask(
+                node.Id,
+                "scriptTask",
+                node.Name,
+                new Dictionary<string, string>(node.Attributes, StringComparer.Ordinal),
+                null);
+            await ScriptTaskExecution.TryHandleScriptTaskAsync(taskDescriptor, variables, cancellationToken);
+            MergeActivityOutputs(instance.Variables, variables, pending.LocalVariables);
+            instance.Variables = new Dictionary<string, object>(instance.Variables, StringComparer.Ordinal);
+            AddHistory(instance, "SCRIPT_TASK_COMPLETED", node.Id, new { });
+            AddOutbox(instance, "ScriptTaskCompleted", new { node.Id });
         }
         catch (Exception exception)
         {
@@ -1313,28 +1401,57 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
 
         foreach (var boundary in model.BoundaryEvents(node.Id))
         {
-            if (boundary.EventType != "Timer") continue;
-            _db.Jobs.Add(new Job
+            switch (boundary.EventType)
             {
-                Id = Guid.NewGuid(),
-                ProcessInstanceId = instance.Id,
-                ActivityId = boundary.Id,
-                Type = "timer",
-                State = ScheduledJob,
-                DueDate = ResolveDueDate(boundary),
-                Retries = 0,
-                TenantId = instance.TenantId,
-                CreatedAt = DateTime.UtcNow,
-                Revision = 1,
-                Payload = JsonSerializer.Serialize(new TimerPayload
+                case "Timer":
+                    _db.Jobs.Add(new Job
+                    {
+                        Id = Guid.NewGuid(),
+                        ProcessInstanceId = instance.Id,
+                        ActivityId = boundary.Id,
+                        Type = "timer",
+                        State = ScheduledJob,
+                        DueDate = ResolveDueDate(boundary),
+                        Retries = 0,
+                        TenantId = instance.TenantId,
+                        CreatedAt = DateTime.UtcNow,
+                        Revision = 1,
+                        Payload = JsonSerializer.Serialize(new TimerPayload
+                        {
+                            Kind = "boundary",
+                            TaskId = task.Id,
+                            AttachedActivityId = node.Id,
+                            Interrupting = !boundary.Attributes.TryGetValue("cancelActivity", out var cancelActivity)
+                                           || !string.Equals(cancelActivity, "false", StringComparison.OrdinalIgnoreCase)
+                        })
+                    });
+                    break;
+
+                case "Message":
+                case "Signal":
                 {
-                    Kind = "boundary",
-                    TaskId = task.Id,
-                    AttachedActivityId = node.Id,
-                    Interrupting = !boundary.Attributes.TryGetValue("cancelActivity", out var cancelActivity)
-                                   || !string.Equals(cancelActivity, "false", StringComparison.OrdinalIgnoreCase)
-                })
-            });
+                    // Durable wait for a message/signal boundary. Owning token's CurrentNodeId is the
+                    // boundary id; interrupting semantics are resolved at consume time from the model.
+                    var boundaryToken = CreateWaitingToken(instance, boundary);
+                    StoreExecutionContext(boundaryToken, new PendingNode(boundary.Id, node.Id));
+                    _db.EventSubscriptions.Add(new EventSubscription
+                    {
+                        Id = Guid.NewGuid(),
+                        ProcessInstanceId = instance.Id,
+                        ExecutionTokenId = boundaryToken.Id,
+                        ActivityId = boundary.Id,
+                        EventType = boundary.EventType,
+                        EventName = boundary.EventName
+                                    ?? throw new InvalidOperationException($"{boundary.EventType} boundary '{boundary.Id}' has no name."),
+                        TenantId = instance.TenantId,
+                        State = ActiveSubscription,
+                        ActiveKey = ActiveSubscriptionKey(instance.Id, boundary.Id),
+                        CreatedAt = DateTime.UtcNow,
+                        Revision = 1
+                    });
+                    break;
+                }
+            }
         }
         await Task.CompletedTask;
     }
@@ -2293,6 +2410,124 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         }
     }
 
+    private static bool IsBoundaryInterrupting(ExecutionNode boundary)
+        => !boundary.Attributes.TryGetValue("cancelActivity", out var cancelActivity)
+           || !string.Equals(cancelActivity, "false", StringComparison.OrdinalIgnoreCase);
+
+    private async Task CancelAttachedUserTaskAsync(
+        Guid processInstanceId,
+        string activityId,
+        CancellationToken cancellationToken)
+    {
+        var tasks = await _db.Tasks
+            .Where(task => task.ProcessInstanceId == processInstanceId
+                           && task.ActivityId == activityId
+                           && (task.Status == UserTaskStatus.Pending || task.Status == UserTaskStatus.Delegated))
+            .ToListAsync(cancellationToken);
+        var now = DateTime.UtcNow;
+        foreach (var task in tasks)
+        {
+            task.Status = UserTaskStatus.Cancelled;
+            task.CompletedAt = now;
+            task.LastModified = now;
+            task.Revision++;
+        }
+    }
+
+    private async Task CancelBoundarySubscriptionsAsync(
+        Guid processInstanceId,
+        ExecutionModel model,
+        string attachedActivityId,
+        CancellationToken cancellationToken)
+    {
+        var boundaryIds = model.BoundaryEvents(attachedActivityId)
+            .Where(boundary => boundary.EventType is "Message" or "Signal")
+            .Select(boundary => boundary.Id)
+            .ToArray();
+        if (boundaryIds.Length == 0) return;
+
+        var subscriptions = await _db.EventSubscriptions
+            .Where(subscription => subscription.ProcessInstanceId == processInstanceId
+                                   && subscription.State == ActiveSubscription
+                                   && boundaryIds.Contains(subscription.ActivityId))
+            .ToListAsync(cancellationToken);
+        foreach (var subscription in subscriptions)
+        {
+            subscription.State = "Cancelled";
+            subscription.ActiveKey = null;
+            subscription.ConsumedAt = DateTime.UtcNow;
+            subscription.Revision++;
+            // The boundary's own waiting token must leave the active set too.
+            await CompleteWaitingTokenAsync(processInstanceId, subscription.ActivityId, cancellationToken);
+        }
+    }
+
+    private async Task<(ProcessDefinition? Definition, string? StartNodeId)> FindDefinitionWithStartEventAsync(
+        string eventType,
+        string eventName,
+        string? tenantId,
+        CancellationToken cancellationToken)
+    {
+        var candidates = await _db.ProcessDefinitions.AsNoTracking()
+            .Where(definition => definition.TenantId == tenantId)
+            .OrderByDescending(definition => definition.CreatedAt)
+            .ThenByDescending(definition => definition.Version)
+            .ToListAsync(cancellationToken);
+
+        foreach (var definition in candidates)
+        {
+            var model = ExecutionModel.Parse(definition.BpmnXml, definition.Key);
+            var match = model.Nodes.Values.FirstOrDefault(node =>
+                node.Kind == "startEvent"
+                && string.IsNullOrEmpty(node.ParentSubprocessId)
+                && node.EventType == eventType
+                && string.Equals(node.EventName, eventName, StringComparison.Ordinal));
+            if (match is not null)
+                return (definition, match.Id);
+        }
+
+        return (null, null);
+    }
+
+    private async Task<ProcessInstance> CreateAndStartFromStartEventAsync(
+        ProcessDefinition definition,
+        string startNodeId,
+        IDictionary<string, object>? variables,
+        string? tenantId,
+        CancellationToken cancellationToken)
+    {
+        // Mirrors StartAsync's instance creation but fires ONLY the given (typed) start event, so a
+        // message/signal start can instantiate without also auto-firing any none-start. Runs in the
+        // caller's transaction (no nested BeginTransaction).
+        var now = DateTime.UtcNow;
+        var instance = new ProcessInstance
+        {
+            Id = Guid.NewGuid(),
+            ProcessDefinitionId = definition.Id,
+            ProcessId = definition.Key,
+            TenantId = tenantId,
+            StartedAt = now,
+            CreatedAt = now,
+            LastModified = now,
+            State = "Running",
+            Status = ProcessInstanceStatus.Running,
+            Variables = variables is null
+                ? []
+                : new Dictionary<string, object>(variables, StringComparer.Ordinal),
+            Revision = 1
+        };
+
+        _db.ProcessInstances.Add(instance);
+        AddHistory(instance, "PROCESS_STARTED", startNodeId, new { definition.Key, definition.Version, startNodeId });
+        AddOutbox(instance, "ProcessStarted", new { definition.Key, definition.Version, startNodeId });
+
+        var model = ExecutionModel.Parse(definition.BpmnXml, definition.Key);
+        await AdvanceAsync(instance, model, [new PendingNode(startNodeId, null)], cancellationToken);
+        await ActivateEventSubprocessesAsync(instance, model, null, cancellationToken);
+        await FinalizeTransitionAsync(instance, cancellationToken);
+        return instance;
+    }
+
     private async Task FinalizeTransitionAsync(ProcessInstance instance, CancellationToken cancellationToken)
     {
         await _db.SaveChangesAsync(cancellationToken);
@@ -2932,6 +3167,18 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                     attributes["multiInstanceOutputCollection"] = outputCollection;
                 if (!string.IsNullOrWhiteSpace(completionCondition))
                     attributes["multiInstanceCompletionCondition"] = completionCondition;
+                if (element.Name.LocalName == "scriptTask")
+                {
+                    var scriptFormat = element.Elements().FirstOrDefault(child =>
+                        child.Name.LocalName == "scriptFormat")?.Value;
+                    var scriptBody = element.Elements().FirstOrDefault(child =>
+                        child.Name.LocalName == "script")?.Value;
+                    var resultVariable = element.Elements().FirstOrDefault(child =>
+                        child.Name.LocalName == "resultVariable")?.Value;
+                    if (!string.IsNullOrWhiteSpace(scriptFormat)) attributes["scriptFormat"] = scriptFormat;
+                    if (!string.IsNullOrWhiteSpace(scriptBody)) attributes["script"] = scriptBody;
+                    if (!string.IsNullOrWhiteSpace(resultVariable)) attributes["resultVariable"] = resultVariable;
+                }
                 nodes[id] = new ExecutionNode(
                     id,
                     element.Name.LocalName,

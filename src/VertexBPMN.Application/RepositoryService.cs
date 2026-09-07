@@ -22,7 +22,7 @@ public class RepositoryService : IRepositoryService
     {
         _repo = repo;
         _parser = parser;
-        _scriptsEnabled = configuration.GetValue("Runtime:Scripts:Enabled", false);
+        _scriptsEnabled = configuration.GetValue("Runtime:Scripts:Enabled", true);
     }
 
     public async ValueTask<ProcessDefinition> DeployAsync(string bpmnXml, string name, string? tenantId = null, CancellationToken cancellationToken = default)

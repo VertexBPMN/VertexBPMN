@@ -43,31 +43,71 @@ public sealed partial class LocalStudioInfrastructureTests
 
     [Fact]
     [Trait("Category", "LocalStudioE2E")]
-    public void BoundaryEvents_MessageBoundaryInterrupting_CoverageLimitation()
+    public async Task BoundaryEvents_MessageBoundaryInterrupting_CancelsTaskAndContinues()
     {
         Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
-        // Engine limitation (PersistentProcessExecutionRuntime, CreateUserNodeAsync ~line 1314): when a
-        // user task becomes active only TIMER boundaries are wired up; Message/Signal boundaries attached
-        // to a task receive NO EventSubscription, so POST api/vertex/message always returns "not_found".
-        // Verified empirically (message on the boundary never correlates even with retries). Covered as a
-        // documented limitation rather than a forced red test (Matrix 2.5).
-        Assert.Skip("Message boundary not wired for correlation by the API runtime — only Timer boundaries are registered for attached tasks (Engine CreateUserNodeAsync). Documented coverage limitation (Matrix 2.5).");
+        using var apiClient = host.CreateApiClient();
+        var processKey = $"StudioE2E_MsgBndI_{host.RunId}";
+        var messageName = $"refund-{host.RunId}";
+
+        await DeployUnderTestAsync(apiClient, processKey, BuildMessageBoundaryBpmn(processKey, messageName, interrupting: true));
+        host.RegisterProcessDefinitionCleanup(processKey);
+
+        var instanceId = await StartProcessAsync(apiClient, processKey, null, $"mbndi-{host.RunId}");
+
+        await CorrelateMessageUntilCompletedAsync(apiClient, messageName, instanceId);
+
+        var history = await GetHistoryAsync(instanceId);
+        // Message boundary fired (MESSAGE_CORRELATED on the boundary element) ...
+        Assert.Contains(history, e => EventHasElementId(e, "boundary") && IsCorrelated(e, "MESSAGE"));
+        // ... and the attached approval task was interrupted, NOT completed by a user action.
+        Assert.DoesNotContain(history, e => EventHasElementId(e, "wait") && IsUserTaskCompleted(e));
     }
 
     [Fact]
     [Trait("Category", "LocalStudioE2E")]
-    public void BoundaryEvents_MessageBoundaryNonInterrupting_CoverageLimitation()
+    public async Task BoundaryEvents_MessageBoundaryNonInterrupting_KeepsTaskAndEscalatesAlongside()
     {
         Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
-        Assert.Skip("Non-interrupting Message boundary not wired for correlation by the API runtime — only Timer boundaries are registered for attached tasks. Documented coverage limitation (Matrix 2.5).");
+        using var apiClient = host.CreateApiClient();
+        var processKey = $"StudioE2E_MsgBndN_{host.RunId}";
+        var messageName = $"note-{host.RunId}";
+
+        await DeployUnderTestAsync(apiClient, processKey, BuildMessageBoundaryBpmn(processKey, messageName, interrupting: false));
+        host.RegisterProcessDefinitionCleanup(processKey);
+
+        var instanceId = await StartProcessAsync(apiClient, processKey, null, $"mbndn-{host.RunId}");
+
+        await CorrelateMessageUntilCorrelatedAsync(apiClient, messageName, instanceId);
+
+        // Original task is STILL open (non-interrupting runs recovery alongside it).
+        await WaitForOpenTaskCountAsync(instanceId, 1);
+        Assert.NotEqual("Completed", await GetInstanceStateAsync(instanceId));
+
+        var open = await GetOpenTasksAsync(instanceId);
+        await CompleteTaskAsync(open[0].GetProperty("id").GetGuid());
+        await WaitForInstanceStateAsync(instanceId, "Completed");
     }
 
     [Fact]
     [Trait("Category", "LocalStudioE2E")]
-    public void BoundaryEvents_SignalBoundaryInterrupting_CoverageLimitation()
+    public async Task BoundaryEvents_SignalBoundaryInterrupting_CancelsTaskAndContinues()
     {
         Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
-        Assert.Skip("Signal boundary not wired for correlation by the API runtime — only Timer boundaries are registered for attached tasks. Documented coverage limitation (Matrix 2.5).");
+        using var apiClient = host.CreateApiClient();
+        var processKey = $"StudioE2E_SigBndI_{host.RunId}";
+        var signalName = $"cancel-{host.RunId}";
+
+        await DeployUnderTestAsync(apiClient, processKey, BuildSignalBoundaryBpmn(processKey, signalName, interrupting: true));
+        host.RegisterProcessDefinitionCleanup(processKey);
+
+        var instanceId = await StartProcessAsync(apiClient, processKey, null, $"sbndi-{host.RunId}");
+
+        await BroadcastSignalUntilAsync(apiClient, signalName, instanceId);
+
+        var history = await GetHistoryAsync(instanceId);
+        Assert.Contains(history, e => EventHasElementId(e, "boundary") && IsCorrelated(e, "SIGNAL"));
+        Assert.DoesNotContain(history, e => EventHasElementId(e, "wait") && IsUserTaskCompleted(e));
     }
 
     [Fact]
@@ -100,6 +140,10 @@ public sealed partial class LocalStudioInfrastructureTests
     private static bool IsUserTaskCompleted(JsonElement e)
         => e.TryGetProperty("eventType", out var et) && et.GetString() == "USER_TASK_COMPLETED";
 
+    private static bool IsCorrelated(JsonElement e, string kind)
+        => e.TryGetProperty("eventType", out var et)
+           && string.Equals(et.GetString(), $"{kind}_CORRELATED", StringComparison.OrdinalIgnoreCase);
+
     private async Task WaitForOpenTaskCountAsync(Guid instanceId, int expected)
     {
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(20);
@@ -124,6 +168,19 @@ public sealed partial class LocalStudioInfrastructureTests
             await Task.Delay(500, TestContext.Current.CancellationToken);
         }
         throw new TimeoutException($"Signal boundary '{signalName}' never completed instance {instanceId}.");
+    }
+
+    private async Task CorrelateMessageUntilCompletedAsync(HttpClient apiClient, string messageName, Guid instanceId)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(20);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (string.Equals(await GetInstanceStateAsync(instanceId), "Completed", StringComparison.OrdinalIgnoreCase))
+                return;
+            await CorrelateMessageAsync(apiClient, messageName, instanceId);
+            await Task.Delay(500, TestContext.Current.CancellationToken);
+        }
+        throw new TimeoutException($"Message boundary '{messageName}' never completed instance {instanceId}.");
     }
 
     // UC 6 / Matrix 2.5: interrupting timer boundary (fixed PT2S duration) on the approval task.
@@ -176,6 +233,61 @@ public sealed partial class LocalStudioInfrastructureTests
                 <task id="recovery" name="Recovery" />
                 <sequenceFlow id="rec-to-end" sourceRef="recovery" targetRef="end" />
                 <sequenceFlow id="wait-to-end" sourceRef="wait" targetRef="end" />
+                <endEvent id="end" />
+              </process>
+            </definitions>
+            """;
+    }
+
+    private static string BuildMessageBoundaryBpmn(string processKey, string messageName, bool interrupting)
+    {
+        var cancelActivity = interrupting ? "true" : "false";
+        return $$"""
+            <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                         xmlns:vertex="http://vertexbpmn.dev/schema"
+                         targetNamespace="urn:vertex:test">
+              <message id="msg1" name="{{messageName}}" />
+              <process id="{{processKey}}" isExecutable="true">
+                <startEvent id="start" />
+                <sequenceFlow id="to-wait" sourceRef="start" targetRef="wait" />
+                <userTask id="wait" name="Wait for approval">
+                  <extensionElements><vertex:assignee>yova</vertex:assignee></extensionElements>
+                </userTask>
+                <boundaryEvent id="boundary" attachedToRef="wait" cancelActivity="{{cancelActivity}}">
+                  <messageEventDefinition messageRef="msg1" />
+                </boundaryEvent>
+                <sequenceFlow id="b-to-rec" sourceRef="boundary" targetRef="recovery" />
+                <task id="recovery" name="Recovery" />
+                <sequenceFlow id="rec-to-end" sourceRef="recovery" targetRef="end" />
+                <sequenceFlow id="wait-to-end" sourceRef="wait" targetRef="end" />
+                <endEvent id="end" />
+              </process>
+            </definitions>
+            """;
+    }
+
+    private static string BuildSignalBoundaryBpmn(string processKey, string signalName, bool interrupting)
+    {
+        var cancelActivity = interrupting ? "true" : "false";
+        return $$"""
+            <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                         xmlns:vertex="http://vertexbpmn.dev/schema"
+                         targetNamespace="urn:vertex:test">
+              <signal id="sig1" name="{{signalName}}" />
+              <process id="{{processKey}}" isExecutable="true">
+                <startEvent id="start" />
+                <sequenceFlow id="to-wait" sourceRef="start" targetRef="wait" />
+                <userTask id="wait" name="Wait for approval">
+                  <extensionElements><vertex:assignee>yova</vertex:assignee></extensionElements>
+                </userTask>
+                <boundaryEvent id="boundary" attachedToRef="wait" cancelActivity="{{cancelActivity}}">
+                  <signalEventDefinition signalRef="sig1" />
+                </boundaryEvent>
+                <sequenceFlow id="b-to-rec" sourceRef="boundary" targetRef="recovery" />
+                <task id="recovery" name="Recovery" />
+                <sequenceFlow id="rec-to-end" sourceRef="recovery" targetRef="end" />
                 <endEvent id="end" />
               </process>
             </definitions>

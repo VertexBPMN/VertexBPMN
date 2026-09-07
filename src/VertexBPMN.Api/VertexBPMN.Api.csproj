@@ -20,7 +20,7 @@
     <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
   </PackageReference>
   <PackageReference Include="Microsoft.ML" Version="5.0.0" />
-  <PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />
+  <PackageReference Include="Microsoft.OpenApi" Version="3.10.2" />
   <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.18.0" />
   <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.18.0" />
   <PackageReference Include="Serilog.Extensions.Logging.File" Version="3.0.0" />
@@ -29,7 +29,7 @@
   <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.11" />
   <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="10.0.11" />
   <PackageReference Include="Grpc.AspNetCore" Version="2.83.0" />
-  <PackageReference Include="Google.Protobuf" Version="3.36.0" />
+  <PackageReference Include="Google.Protobuf" Version="3.36.1" />
   <PackageReference Include="Grpc.Tools" Version="2.83.0" PrivateAssets="All" />
   <!-- OpenTelemetry packages (aligned rc versions) -->
   <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.18.0" />

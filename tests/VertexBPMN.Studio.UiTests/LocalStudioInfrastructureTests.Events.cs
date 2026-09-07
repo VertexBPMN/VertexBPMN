@@ -82,24 +82,49 @@ public sealed partial class LocalStudioInfrastructureTests
 
     [Fact]
     [Trait("Category", "LocalStudioE2E")]
-    public void Events_MessageStartEvent_CoverageLimitation()
+    public async Task Events_MessageStartEvent_CorrelatingAutoInstantiates()
     {
         Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
-        // The API runtime has no auto-instantiation path for message-start processes: correlating
-        // POST api/vertex/message without a target instance returns resultType "not_found" and
-        // creates no instance (verified empirically). Covered as a documented limitation rather
-        // than a forced (false-red) test.
-        Assert.Skip("Message-start auto-instantiation not exposed by API runtime — documented coverage limitation (Matrix 2.1).");
+        using var apiClient = host.CreateApiClient();
+        var processKey = $"StudioE2E_MsgStart_{host.RunId}";
+        var messageName = $"kickoff-{host.RunId}";
+
+        await DeployUnderTestAsync(apiClient, processKey, BuildStartBpmn(processKey, messageName: messageName, signalName: null));
+        host.RegisterProcessDefinitionCleanup(processKey);
+
+        // Correlate WITHOUT a target instance -> the message-start process auto-instantiates.
+        var result = await CorrelateMessageAsync(apiClient, messageName);
+        Assert.Equal("correlated", result.GetProperty("resultType").GetString());
+
+        var instanceId = Guid.Parse(result.GetProperty("processInstanceId").GetString()!);
+        await WaitForInstanceStateAsync(instanceId, "Completed");
+
+        var history = await GetHistoryAsync(instanceId);
+        Assert.Contains(history, e => EventHasElementId(e, "end") && IsEndEventReached(e));
     }
 
     [Fact]
     [Trait("Category", "LocalStudioE2E")]
-    public void Events_SignalStartEvent_CoverageLimitation()
+    public async Task Events_SignalStartEvent_BroadcastAutoInstantiates()
     {
         Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
-        // Similarly, POST api/vertex/signal with no waiting instance creates no instance for a
-        // signal-start process. Documented limitation (Matrix 2.1).
-        Assert.Skip("Signal-start auto-instantiation not exposed by API runtime — documented coverage limitation (Matrix 2.1).");
+        using var apiClient = host.CreateApiClient();
+        var processKey = $"StudioE2E_SigStart_{host.RunId}";
+        var signalName = $"launch-{host.RunId}";
+
+        await DeployUnderTestAsync(apiClient, processKey, BuildStartBpmn(processKey, messageName: null, signalName));
+        host.RegisterProcessDefinitionCleanup(processKey);
+
+        var definitionId = await GetProcessDefinitionIdByKeyAsync(apiClient, processKey);
+
+        await BroadcastSignalAsync(apiClient, signalName);
+
+        // Broadcast returns void, so locate the newly auto-started instance via the definition filter.
+        var instanceId = await WaitForProcessInstanceByDefinitionAsync(apiClient, definitionId);
+        await WaitForInstanceStateAsync(instanceId, "Completed");
+
+        var history = await GetHistoryAsync(instanceId);
+        Assert.Contains(history, e => EventHasElementId(e, "end") && IsEndEventReached(e));
     }
 
     // ---- helpers ----
@@ -122,6 +147,39 @@ public sealed partial class LocalStudioInfrastructureTests
             await Task.Delay(300, TestContext.Current.CancellationToken);
         }
         throw new TimeoutException($"Message catch '{messageName}' on instance {instanceId} never correlated.");
+    }
+
+    /// <summary>Resolves a deployed process definition's id by key (GET api/vertex/process-definition?key=).</summary>
+    private static async Task<Guid> GetProcessDefinitionIdByKeyAsync(HttpClient apiClient, string processKey)
+    {
+        using var response = await apiClient.GetAsync(
+            $"api/vertex/process-definition?key={Uri.EscapeDataString(processKey)}",
+            TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.True(response.IsSuccessStatusCode, body);
+        using var doc = JsonDocument.Parse(body);
+        var first = doc.RootElement.EnumerateArray().First();
+        return Guid.Parse(first.GetProperty("id").GetString()!);
+    }
+
+    /// <summary>Polls GET api/vertex/process-instance?processDefinitionId= until the auto-started instance appears.</summary>
+    private static async Task<Guid> WaitForProcessInstanceByDefinitionAsync(HttpClient apiClient, Guid definitionId)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(20);
+        while (DateTime.UtcNow < deadline)
+        {
+            using var response = await apiClient.GetAsync(
+                $"api/vertex/process-instance?processDefinitionId={definitionId}",
+                TestContext.Current.CancellationToken);
+            var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+            Assert.True(response.IsSuccessStatusCode, body);
+            using var doc = JsonDocument.Parse(body);
+            var instances = doc.RootElement.EnumerateArray().ToArray();
+            if (instances.Length > 0)
+                return Guid.Parse(instances[^1].GetProperty("id").GetString()!);
+            await Task.Delay(300, TestContext.Current.CancellationToken);
+        }
+        throw new TimeoutException($"No auto-started instance for process definition {definitionId} appeared after broadcast.");
     }
 
     // Builds: Start -> intermediate catch (message OR signal) -> end.
@@ -148,6 +206,35 @@ public sealed partial class LocalStudioInfrastructureTests
                   {{eventDef}}
                 </intermediateCatchEvent>
                 <sequenceFlow id="catch-to-end" sourceRef="catch" targetRef="end" />
+                <endEvent id="end" />
+              </process>
+            </definitions>
+            """;
+    }
+
+    // Builds a process whose ONLY top-level start event is a message OR signal start, auto-instantiated
+    // by correlating/broadcasting the matching event. start -> end (completes immediately).
+    private static string BuildStartBpmn(string processKey, string? messageName, string? signalName)
+    {
+        string definition =
+            !string.IsNullOrWhiteSpace(messageName)
+                ? $"""<message id="st-msg" name="{messageName}" />"""
+                : $"""<signal id="st-sig" name="{signalName}" />""";
+        string startDef =
+            !string.IsNullOrWhiteSpace(messageName)
+                ? """<messageEventDefinition messageRef="st-msg" />"""
+                : """<signalEventDefinition signalRef="st-sig" />""";
+        return $$"""
+            <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                         xmlns:vertex="http://vertexbpmn.dev/schema"
+                         targetNamespace="urn:vertex:test">
+              {{definition}}
+              <process id="{{processKey}}" isExecutable="true">
+                <startEvent id="start">
+                  {{startDef}}
+                </startEvent>
+                <sequenceFlow id="start-to-end" sourceRef="start" targetRef="end" />
                 <endEvent id="end" />
               </process>
             </definitions>

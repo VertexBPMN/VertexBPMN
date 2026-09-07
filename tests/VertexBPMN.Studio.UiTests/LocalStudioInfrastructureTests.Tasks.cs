@@ -46,15 +46,48 @@ public sealed partial class LocalStudioInfrastructureTests
 
     [Fact]
     [Trait("Category", "LocalStudioE2E")]
-    public void Tasks_ScriptTask_CoverageLimitation()
+    public async Task Tasks_ScriptTask_ExecutesAndCompletes()
     {
         Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
-        // PersistentProcessExecutionRuntime rejects scriptTask: "In-process script task execution is
-        // disabled." Documented coverage limitation rather than forcing a red test (Matrix 2.9).
-        Assert.Skip("scriptTask execution is disabled in the production runtime — documented coverage limitation (Matrix 2.9).");
+        using var apiClient = host.CreateApiClient();
+        var processKey = $"StudioE2E_ScriptT_{host.RunId}";
+
+        await DeployUnderTestAsync(apiClient, processKey, BuildScriptTaskBpmn(processKey));
+        host.RegisterProcessDefinitionCleanup(processKey);
+
+        var instanceId = await StartProcessWithVariablesAsync(
+            apiClient, processKey, tenantId: null, businessKey: $"script-{host.RunId}",
+            new Dictionary<string, object> { ["amount"] = 21 });
+
+        await WaitForInstanceStateAsync(instanceId, "Completed");
+
+        var history = await GetHistoryAsync(instanceId);
+        Assert.Contains(history, e => EventHasElementId(e, "scr") && IsEventType(e, "SCRIPT_TASK_COMPLETED"));
     }
 
     // ---- helpers ----
+
+    private static string BuildScriptTaskBpmn(string processKey)
+    {
+        return $$"""
+            <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                         xmlns:vertex="http://vertexbpmn.dev/schema"
+                         targetNamespace="urn:vertex:test">
+              <process id="{{processKey}}" isExecutable="true">
+                <startEvent id="start" />
+                <sequenceFlow id="to-scr" sourceRef="start" targetRef="scr" />
+                <scriptTask id="scr" name="Apply discount">
+                  <scriptFormat>C#</scriptFormat>
+                  <script><![CDATA[variables["doubled"] = int.Parse(variables["amount"].ToString()!) * 2;]]></script>
+                  <resultVariable>doubled</resultVariable>
+                </scriptTask>
+                <sequenceFlow id="scr-to-end" sourceRef="scr" targetRef="end" />
+                <endEvent id="end" />
+              </process>
+            </definitions>
+            """;
+    }
 
     private static string BuildServiceTaskBpmn(string processKey)
     {

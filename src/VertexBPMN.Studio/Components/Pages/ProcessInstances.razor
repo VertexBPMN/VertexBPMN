@@ -9,25 +9,41 @@
 
 <PageTitle>Process Instances</PageTitle>
 
-<MudText Typo="Typo.h4" GutterBottom="true">Process Instances</MudText>
+<StudioPageHeader Title="Process Instances"
+                  Eyebrow="Work"
+                  Description="Inspect runtime state, resolve incidents and control active process instances." />
 
 @if (_isLoading)
 {
-    <MudProgressLinear Indeterminate="true" Class="my-4" />
-    <MudText>Loading process instances...</MudText>
+    <StudioStatePanel Title="Loading process instances"
+                      Description="Reading runtime state for the active tenant."
+                      Icon="@Icons.Material.Outlined.HourglassTop" />
+}
+else if (_error != null)
+{
+    <StudioStatePanel Title="Process instances could not be loaded"
+                      Description="@_error"
+                      Icon="@Icons.Material.Outlined.ErrorOutline">
+        <Action>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadProcessInstances">Retry</MudButton>
+        </Action>
+    </StudioStatePanel>
 }
 else
 {
-    <MudTable Items="@_processInstances" 
+    <MudPaper Class="studio-data-card" Elevation="0">
+    <MudTable Items="@_processInstances"
               Hover="true" 
-              Striped="true" 
               Dense="true"
-              Class="mt-4" 
+              Breakpoint="Breakpoint.Md"
+              Class="studio-data-table"
               Filter="new Func<ProcessInstance, bool>(FilterFunc)"
               Loading="_isLoading"
               LoadingProgressColor="Color.Info">
         <NoRecordsContent>
-            <MudText>No matching records found</MudText>
+            <StudioStatePanel Title="No process instances found"
+                              Description="Adjust the search or start a process from Process Definitions."
+                              Icon="@Icons.Material.Outlined.PlayCircleOutline" />
         </NoRecordsContent>
         <ToolBarContent>
             <MudTextField @bind-Value="_searchString" 
@@ -35,10 +51,10 @@ else
                          Adornment="Adornment.Start" 
                          AdornmentIcon="@Icons.Material.Filled.Search" 
                          IconSize="Size.Medium" 
-                         Class="mt-0"
+                         Class="studio-table-search"
                          Clearable="true"/>
             <MudSpacer />
-            <MudButton Variant="Variant.Filled" 
+            <MudButton Variant="Variant.Outlined"
                       Color="Color.Primary" 
                       StartIcon="@Icons.Material.Filled.Refresh"
                       OnClick="RefreshData">
@@ -57,7 +73,7 @@ else
         </HeaderContent>
         <RowTemplate>
             <MudTd DataLabel="Instance ID">
-                <MudText Typo="Typo.body2" Class="font-monospace">@context.InstanceId</MudText>
+                <MudText Typo="Typo.caption" Class="studio-technical-id">@context.InstanceId</MudText>
             </MudTd>
             <MudTd DataLabel="Process ID">
                 <MudText Typo="Typo.body2">@context.ProcessId</MudText>
@@ -118,13 +134,7 @@ else
             <MudTablePager PageSizeOptions="new int[]{10, 25, 50, 100}" />
         </PagerContent>
     </MudTable>
-}
-
-@if (_error != null)
-{
-    <MudAlert Severity="Severity.Error" Class="mt-4">
-        <MudText>Error loading process instances: @_error</MudText>
-    </MudAlert>
+    </MudPaper>
 }
 
 @code {

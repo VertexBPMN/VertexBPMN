@@ -2,22 +2,18 @@
 @using System.Text
 @using Microsoft.AspNetCore.Components.Forms
 @inject MudBlazor.ISnackbar Snackbar
-@inject IHttpClientFactory HttpClientFactory
 @inject ICaseManagementService CaseManagementService
 @inject IJSRuntime JSRuntime
+@inject IWebHostEnvironment HostEnvironment
 
 <PageTitle>CMMN Modeler</PageTitle>
 
-<MudStack Spacing="3">
-    <div>
-        <MudText Typo="Typo.h4" GutterBottom="true">CMMN Modeler</MudText>
-        <MudText Typo="Typo.body2" Color="Color.Secondary">
-            cmmn-js Shell fuer Case-Modelle mit getrenntem Modeler, Viewer und vorhandenen Register-/Run-Flows.
-        </MudText>
-    </div>
+<MudStack Spacing="3" Class="studio-editor-page">
+    <StudioPageHeader Title="CMMN Modeler"
+                      Eyebrow="Model"
+                      Description="Design, register and execute adaptive case models." />
 
-    <MudPaper Class="pa-4">
-        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+    <StudioToolbar AriaLabel="CMMN model actions" Class="studio-editor-toolbar">
             <MudTextField Label="Case ID" @bind-Value="_caseId" Required="true" Immediate="true" />
             <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RegisterCmmnXml" StartIcon="@Icons.Material.Filled.CloudUpload">Register case model</MudButton>
             <label class="mud-button-root mud-button mud-button-outlined mud-button-outlined-primary mud-button-outlined-size-medium mud-ripple" for="cmmn-import-file">
@@ -29,80 +25,94 @@
             <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="ExecuteCase" StartIcon="@Icons.Material.Filled.PlayArrow">Execute case</MudButton>
             <MudButton Variant="Variant.Outlined" OnClick="LoadHistory">Load history</MudButton>
             <MudButton Variant="Variant.Outlined" OnClick="@(() => LoadCmmnXml())">Load template</MudButton>
-        </MudStack>
-        <MudStack Row="true" Spacing="2" Class="mt-3" AlignItems="AlignItems.Center">
             <MudTextField Label="New task name" @bind-Value="_newTaskName" Immediate="true" />
             <MudButton Variant="Variant.Outlined" OnClick="AddHumanTaskAsync" Disabled="@string.IsNullOrWhiteSpace(_newTaskName)">Add human task</MudButton>
-        </MudStack>
-    </MudPaper>
+    </StudioToolbar>
 
-    <MudPaper Class="pa-4">
-        <MudText Typo="Typo.h6" GutterBottom="true">Case actions</MudText>
-        <MudStack Row="true" Spacing="2">
-            <MudTextField Label="User event id" @bind-Value="_eventId" Immediate="true" />
-            <MudButton Variant="Variant.Outlined" OnClick="TriggerUserEvent">Trigger user event</MudButton>
-            <MudTextField Label="Case-file item id" @bind-Value="_caseFileItemId" Immediate="true" />
-            <MudTextField Label="Value" @bind-Value="_caseFileValue" Immediate="true" />
-            <MudButton Variant="Variant.Outlined" OnClick="UpdateCaseFile">Update case file</MudButton>
-            <MudButton Variant="Variant.Outlined" OnClick="GenerateAdHoc">Generate ad-hoc subprocess</MudButton>
-        </MudStack>
-    </MudPaper>
-
-    @if (_trace.Count > 0)
-    {
-        <MudPaper Class="pa-4">
-            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                <MudText Typo="Typo.h6">Case runtime status</MudText>
-                <MudChip T="string" Color="Color.Success" Variant="Variant.Outlined">Completed: @_completedPlanItems.Count</MudChip>
-                <MudChip T="string" Color="Color.Info" Variant="Variant.Outlined">User events: @_userEvents.Count</MudChip>
-                <MudChip T="string" Color="Color.Secondary" Variant="Variant.Outlined">Milestones: @_milestones.Count</MudChip>
-            </MudStack>
-            @if (_completedPlanItems.Count > 0 || _userEvents.Count > 0 || _milestones.Count > 0)
-            {
-                <MudGrid Class="mt-2">
-                    <MudItem xs="12" md="4"><MudText Typo="Typo.subtitle2">Completed plan items</MudText><MudText>@(_completedPlanItems.Count == 0 ? "None" : string.Join(", ", _completedPlanItems))</MudText></MudItem>
-                    <MudItem xs="12" md="4"><MudText Typo="Typo.subtitle2">User events</MudText><MudText>@(_userEvents.Count == 0 ? "None" : string.Join(", ", _userEvents))</MudText></MudItem>
-                    <MudItem xs="12" md="4"><MudText Typo="Typo.subtitle2">Milestones</MudText><MudText>@(_milestones.Count == 0 ? "None" : string.Join(", ", _milestones))</MudText></MudItem>
-                </MudGrid>
-            }
-            <MudList T="string">
-                @foreach (var line in _trace)
-                {
-                    <MudListItem T="string">@line</MudListItem>
-                }
-            </MudList>
-        </MudPaper>
-    }
-
-    @if (_history.Count > 0)
-    {
-        <MudPaper Class="pa-4">
-            <MudText Typo="Typo.h6">Case history timeline</MudText>
-            @foreach (var snapshot in _history)
-            {
-                <MudPaper Class="pa-2 mt-2" Outlined="true">
-                    <MudText Typo="Typo.subtitle2">@snapshot.Timestamp.ToUniversalTime().ToString("O")</MudText>
-                    <MudText>Completed plan items: @(snapshot.CompletedPlanItems.Count == 0 ? "None" : string.Join(", ", snapshot.CompletedPlanItems))</MudText>
-                    <MudText>Case-file values: @(snapshot.CaseFile.Count == 0 ? "None" : string.Join(", ", snapshot.CaseFile.Select(value => $"{value.Key}={value.Value}")))</MudText>
-                </MudPaper>
-            }
-        </MudPaper>
-    }
-
-    <MudPaper Class="pa-4">
-        <MudText Typo="Typo.h6" GutterBottom="true">Case Modeler</MudText>
+    <MudPaper Class="studio-modeler-card" Elevation="0">
+        <div class="studio-modeler-card__header">
+            <div>
+                <MudText Typo="Typo.h6">Case model</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Edit plan items, events and discretionary work.</MudText>
+            </div>
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.Edit">Editing</MudChip>
+        </div>
         <CmmnModelerSurface @ref="_modeler" Xml="@_cmmnXml" />
     </MudPaper>
 
-    <MudPaper Class="pa-4">
-        <MudText Typo="Typo.h6" GutterBottom="true">Viewer</MudText>
-        <CmmnViewerSurface Xml="@_cmmnXml" />
-    </MudPaper>
+    <div class="studio-bpmn-tools studio-editor-tools">
+        <div class="studio-bpmn-tools__tabs" role="tablist" aria-label="CMMN tools">
+            <button type="button" role="tab" aria-selected="@AriaSelected(0)" class="studio-bpmn-tools__tab @ToolTabClass(0)" @onclick="@(() => _activeToolTab = 0)"><MudIcon Icon="@Icons.Material.Outlined.PlayCircle" Size="Size.Small" />Runtime</button>
+            <button type="button" role="tab" aria-selected="@AriaSelected(1)" class="studio-bpmn-tools__tab @ToolTabClass(1)" @onclick="@(() => _activeToolTab = 1)"><MudIcon Icon="@Icons.Material.Outlined.Visibility" Size="Size.Small" />Viewer</button>
+        </div>
+        <div class="studio-bpmn-tools__panels">
+            <section role="tabpanel" hidden="@(_activeToolTab != 0)">
+                <MudStack Spacing="3" Class="studio-bpmn-tool-panel">
+                    <div>
+                        <MudText Typo="Typo.h6">Case actions</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Drive user events and case-file updates for the registered case.</MudText>
+                    </div>
+                    <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2">
+                        <MudTextField Label="User event id" @bind-Value="_eventId" Immediate="true" />
+                        <MudButton Variant="Variant.Outlined" OnClick="TriggerUserEvent">Trigger user event</MudButton>
+                        <MudTextField Label="Case-file item id" @bind-Value="_caseFileItemId" Immediate="true" />
+                        <MudTextField Label="Value" @bind-Value="_caseFileValue" Immediate="true" />
+                        <MudButton Variant="Variant.Outlined" OnClick="UpdateCaseFile">Update case file</MudButton>
+                        <MudButton Variant="Variant.Outlined" OnClick="GenerateAdHoc">Generate ad-hoc subprocess</MudButton>
+                    </MudStack>
+                    @if (_trace.Count > 0)
+                    {
+                        <MudDivider />
+                        <MudStack Row="true" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudText Typo="Typo.h6">Case runtime status</MudText>
+                            <MudChip T="string" Color="Color.Success" Variant="Variant.Outlined">Completed: @_completedPlanItems.Count</MudChip>
+                            <MudChip T="string" Color="Color.Info" Variant="Variant.Outlined">User events: @_userEvents.Count</MudChip>
+                            <MudChip T="string" Color="Color.Secondary" Variant="Variant.Outlined">Milestones: @_milestones.Count</MudChip>
+                        </MudStack>
+                        @if (_completedPlanItems.Count > 0 || _userEvents.Count > 0 || _milestones.Count > 0)
+                        {
+                            <MudGrid>
+                                <MudItem xs="12" md="4"><MudText Typo="Typo.subtitle2">Completed plan items</MudText><MudText>@(_completedPlanItems.Count == 0 ? "None" : string.Join(", ", _completedPlanItems))</MudText></MudItem>
+                                <MudItem xs="12" md="4"><MudText Typo="Typo.subtitle2">User events</MudText><MudText>@(_userEvents.Count == 0 ? "None" : string.Join(", ", _userEvents))</MudText></MudItem>
+                                <MudItem xs="12" md="4"><MudText Typo="Typo.subtitle2">Milestones</MudText><MudText>@(_milestones.Count == 0 ? "None" : string.Join(", ", _milestones))</MudText></MudItem>
+                            </MudGrid>
+                        }
+                        <MudList T="string">
+                            @foreach (var line in _trace)
+                            {
+                                <MudListItem T="string">@line</MudListItem>
+                            }
+                        </MudList>
+                    }
+                    @if (_history.Count > 0)
+                    {
+                        <MudDivider />
+                        <MudText Typo="Typo.h6">Case history timeline</MudText>
+                        @foreach (var snapshot in _history)
+                        {
+                            <MudPaper Class="pa-2" Outlined="true">
+                                <MudText Typo="Typo.subtitle2">@snapshot.Timestamp.ToUniversalTime().ToString("O")</MudText>
+                                <MudText>Completed plan items: @(snapshot.CompletedPlanItems.Count == 0 ? "None" : string.Join(", ", snapshot.CompletedPlanItems))</MudText>
+                                <MudText>Case-file values: @(snapshot.CaseFile.Count == 0 ? "None" : string.Join(", ", snapshot.CaseFile.Select(value => $"{value.Key}={value.Value}")))</MudText>
+                            </MudPaper>
+                        }
+                    }
+                </MudStack>
+            </section>
+            <section role="tabpanel" hidden="@(_activeToolTab != 1)">
+                <div class="studio-bpmn-tool-panel studio-bpmn-tool-panel--viewer">
+                    @if (_activeToolTab == 1)
+                    {
+                        <CmmnViewerSurface Xml="@_cmmnXml" />
+                    }
+                </div>
+            </section>
+        </div>
+    </div>
 </MudStack>
 
 @code {
     private string _cmmnXml = FallbackCmmn;
-    private HttpClient? _httpClient;
     private CmmnModelerSurface? _modeler;
     private string _caseId = "studio-case";
     private List<string> _trace = new();
@@ -114,6 +124,11 @@
     private string _caseFileItemId = string.Empty;
     private string _caseFileValue = string.Empty;
     private string _newTaskName = string.Empty;
+    private int _activeToolTab;
+
+    private string? ToolTabClass(int index) => _activeToolTab == index ? "studio-bpmn-tools__tab--active" : null;
+
+    private string AriaSelected(int index) => _activeToolTab == index ? "true" : "false";
 
     private async Task AddHumanTaskAsync()
     {
@@ -136,7 +151,6 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _httpClient = HttpClientFactory.CreateClient("Default");
         await LoadCmmnXml(showNotification: false);
     }
 
@@ -259,7 +273,8 @@
     {
         try
         {
-            _cmmnXml = await (_httpClient ?? throw new InvalidOperationException("HTTP client is not initialized.")).GetStringAsync("data/DefaultCmmn.xml");
+            var templatePath = Path.Combine(HostEnvironment.WebRootPath, "data", "DefaultCmmn.xml");
+            _cmmnXml = await File.ReadAllTextAsync(templatePath);
             if (showNotification)
                 Snackbar.Add("CMMN template loaded.", Severity.Info);
         }

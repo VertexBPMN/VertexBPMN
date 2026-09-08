@@ -3,83 +3,100 @@
 @inject VertexBPMN.Studio.Services.ActiveEngineService ActiveEngineService
 @inject VertexBPMN.Studio.Services.IIdentityService IdentityService
 @inject VertexBPMN.Studio.Services.StudioTenantContext TenantContext
+@inject NavigationManager Navigation
 @inject ILogger<MainLayout> Logger
-@implements IDisposable
 
 <MudThemeProvider Theme="_theme" />
 <MudDialogProvider />
 <MudSnackbarProvider />
-<MudPopoverProvider /> <!-- Added to fix Missing <MudPopoverProvider /> exception -->
+<MudPopoverProvider />
 
-<MudLayout>
-    <MudAppBar Elevation="1">
-        <MudIconButton Icon="@Icons.Material.Filled.Menu" 
-                      Color="Color.Inherit" 
-                      Edge="Edge.Start" 
-                      OnClick="DrawerToggle" />
-        
-        <MudText Typo="Typo.h5" Class="ml-3">VertexBPMN Studio</MudText>
+<MudLayout Class="studio-layout" data-interactive-ready="@_interactiveReady.ToString().ToLowerInvariant()">
+    <MudAppBar Elevation="0" Class="studio-appbar" Dense="true">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu"
+                       Color="Color.Inherit"
+                       Edge="Edge.Start"
+                       Class="studio-menu-button"
+                       aria-label="Toggle navigation"
+                       OnClick="DrawerToggle" />
+
+        <a href="/" class="studio-brand" aria-label="VertexBPMN Studio home">
+            <span class="studio-brand__mark" aria-hidden="true">V</span>
+            <span class="studio-brand__copy">
+                <span class="studio-brand__name">VertexBPMN</span>
+                <span class="studio-brand__product">Studio</span>
+            </span>
+        </a>
         <MudSpacer />
 
-        <MudSelect T="string" Label="Tenant" Value="TenantContext.CurrentTenantId" ValueChanged="SelectTenant" Variant="Variant.Outlined" Dense="true" Class="mr-4" Disabled="!_tenantsLoaded">
-            <MudSelectItem Value="@((string?)null)">Default</MudSelectItem>
-            @foreach (var tenant in _tenants)
-            {
-                <MudSelectItem Value="@tenant.Id">@tenant.Name</MudSelectItem>
-            }
-        </MudSelect>
+        <div class="studio-context" aria-label="Runtime context">
+            <MudSelect T="string"
+                       Label="Tenant"
+                       Value="TenantContext.CurrentTenantId"
+                       ValueChanged="SelectTenant"
+                       Variant="Variant.Outlined"
+                       Margin="Margin.Dense"
+                       Class="studio-context__select studio-context__tenant"
+                       Disabled="!_tenantsLoaded">
+                <MudSelectItem Value="@((string?)null)">Default</MudSelectItem>
+                @foreach (var tenant in _tenants)
+                {
+                    <MudSelectItem Value="@tenant.Id">@tenant.Name</MudSelectItem>
+                }
+            </MudSelect>
 
-        <!-- Connection Status -->
-        <MudChip T="string" 
-                Color="@(ActiveEngineService.IsConnected ? Color.Success : Color.Error)" 
-                Size="Size.Small" 
-                Icon="@(ActiveEngineService.IsConnected ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Error)"
-                Class="mr-2">
-            @(ActiveEngineService.IsConnected ? "Connected" : "Disconnected")
-        </MudChip>
+            <MudSelect T="string"
+                       Label="Engine"
+                       @bind-Value="ActiveEngineService.ActiveEngineId"
+                       Variant="Variant.Outlined"
+                       Margin="Margin.Dense"
+                       Class="studio-context__select studio-context__engine">
+                @foreach (var engine in _engineConnections)
+                {
+                    <MudSelectItem Value="@engine.Id">@engine.Name</MudSelectItem>
+                }
+            </MudSelect>
 
-        <!-- Engine Selector -->
-        <MudSelect T="string" 
-                  Label="Engine" 
-                  @bind-Value="ActiveEngineService.ActiveEngineId" 
-                  Variant="Variant.Outlined"
-                  Dense="true"
-                  Class="mr-4">
-            @foreach (var engine in _engineConnections)
-            {
-                <MudSelectItem Value="@engine.Id">
-                    @engine.Name
-                </MudSelectItem>
-            }
-        </MudSelect>
+            <MudChip T="string"
+                     Color="@(ActiveEngineService.IsConnected ? Color.Success : Color.Error)"
+                     Variant="Variant.Outlined"
+                     Size="Size.Small"
+                     Icon="@(ActiveEngineService.IsConnected ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Error)"
+                     Class="studio-connection-status">
+                @(ActiveEngineService.IsConnected ? "Connected" : "Disconnected")
+            </MudChip>
 
-        <MudIconButton Icon="@Icons.Material.Filled.Refresh" 
-                      Color="Color.Inherit" 
-                      OnClick="RefreshEngines" />
-        
-        <MudIconButton Icon="@Icons.Material.Filled.MoreVert" 
-                      Color="Color.Inherit" 
-                      Edge="Edge.End" />
+            <MudIconButton Icon="@Icons.Material.Filled.Refresh"
+                           Color="Color.Inherit"
+                           Class="studio-context__refresh"
+                           aria-label="Refresh engines"
+                           OnClick="RefreshEngines" />
+        </div>
     </MudAppBar>
 
-    <MudDrawer @bind-Open="_drawerOpen" Elevation="2">
-        <MudDrawerHeader>
-            <MudText Typo="Typo.h6" Class="px-4">VertexBPMN Studio</MudText>
+    <MudDrawer @bind-Open="_drawerOpen"
+               Elevation="0"
+               Variant="DrawerVariant.Responsive"
+               Breakpoint="Breakpoint.Md"
+               Class="studio-drawer">
+        <MudDrawerHeader Class="studio-drawer__header">
+            <MudText Typo="Typo.overline">Workspace</MudText>
         </MudDrawerHeader>
         <NavMenu />
     </MudDrawer>
 
-    <MudMainContent>
-        <MudContainer MaxWidth="MaxWidth.Large" Class="my-16 pt-16">
+    <MudMainContent Class="studio-main">
+        <main class="@ContentClass" id="main-content">
             @Body
-        </MudContainer>
+        </main>
     </MudMainContent>
 </MudLayout>
 
 @code {
-    private static readonly MudTheme _theme = new();
+    private static readonly MudTheme _theme = VertexBPMN.Studio.Styling.StudioTheme.Default;
 
     private bool _drawerOpen = true;
+    private bool _interactiveReady;
     private List<VertexBPMN.Studio.Services.EngineConnection> _engineConnections = new();
     private IReadOnlyList<VertexBPMN.Studio.Services.StudioTenant> _tenants = Array.Empty<VertexBPMN.Studio.Services.StudioTenant>();
     private bool _tenantsLoaded;
@@ -112,12 +129,20 @@
         _tenantsLoaded = true;
     }
 
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        _interactiveReady = true;
+        StateHasChanged();
+    }
+
     private async Task LoadEngineConnections()
     {
         try
         {
             StateHasChanged();
-
             var connections = await EngineAdministrationService.GetEngineConnectionsAsync();
             _engineConnections = connections.ToList();
         }
@@ -131,10 +156,7 @@
         }
     }
 
-    private async Task RefreshEngines()
-    {
-        await LoadEngineConnections();
-    }
+    private Task RefreshEngines() => LoadEngineConnections();
 
     private void DrawerToggle() => _drawerOpen = !_drawerOpen;
 
@@ -144,8 +166,14 @@
         StateHasChanged();
     }
 
-    public void Dispose()
+    private string ContentClass => IsWorkspaceRoute()
+        ? "studio-content studio-content--workspace"
+        : "studio-content";
+
+    private bool IsWorkspaceRoute()
     {
-        // Clean up resources
+        var path = Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].TrimEnd('/');
+        return path is "bpmn-modeler" or "dmn-modeler" or "cmmn-modeler" or "form-builder";
     }
+
 }

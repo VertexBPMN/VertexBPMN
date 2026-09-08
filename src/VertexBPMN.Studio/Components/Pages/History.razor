@@ -5,30 +5,35 @@
 
 <PageTitle>History</PageTitle>
 
-<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
-    <div>
-        <MudText Typo="Typo.h4">History</MudText>
-        <MudText Typo="Typo.body2" Color="Color.Tertiary">
-            Persisted process and task events for the active tenant.
-        </MudText>
-    </div>
-    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync" Disabled="_isLoading">
-        Refresh
-    </MudButton>
-</MudStack>
+<StudioPageHeader Title="History"
+                  Eyebrow="Analyze"
+                  Description="Review persisted process and task events for the active tenant.">
+    <Actions>
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync" Disabled="_isLoading">
+            Refresh
+        </MudButton>
+    </Actions>
+</StudioPageHeader>
 
 @if (_error is not null)
 {
-    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+    <StudioStatePanel Title="History could not be loaded"
+                      Description="@_error"
+                      Icon="@Icons.Material.Outlined.ErrorOutline">
+        <Action>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadAsync">Retry</MudButton>
+        </Action>
+    </StudioStatePanel>
 }
-
-<MudPaper Elevation="1" Class="pa-4">
+else
+{
+<MudPaper Elevation="0" Class="studio-data-card">
     @if (_isLoading)
     {
         <MudProgressLinear Indeterminate="true" Class="mb-4" />
     }
 
-    <MudTable Items="_events" Hover="true" Dense="true" Loading="_isLoading" Breakpoint="Breakpoint.Sm">
+    <MudTable Items="_events" Hover="true" Dense="true" Loading="_isLoading" Breakpoint="Breakpoint.Md" Class="studio-data-table">
         <HeaderContent>
             <MudTh>Timestamp</MudTh>
             <MudTh>Event</MudTh>
@@ -39,15 +44,18 @@
         <RowTemplate>
             <MudTd DataLabel="Timestamp">@context.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</MudTd>
             <MudTd DataLabel="Event">@FormatEventType(context.EventType)</MudTd>
-            <MudTd DataLabel="Process instance"><MudText Typo="Typo.body2">@context.ProcessInstanceId</MudText></MudTd>
+            <MudTd DataLabel="Process instance"><MudText Typo="Typo.caption" Class="studio-technical-id">@context.ProcessInstanceId</MudText></MudTd>
             <MudTd DataLabel="Element">@context.ElementId</MudTd>
             <MudTd DataLabel="Details">@context.Details</MudTd>
         </RowTemplate>
         <NoRecordsContent>
-            <MudText Class="pa-4">No persisted history events found for the active tenant.</MudText>
+            <StudioStatePanel Title="No history events found"
+                              Description="Persisted runtime events for the active tenant will appear here."
+                              Icon="@Icons.Material.Outlined.History" />
         </NoRecordsContent>
     </MudTable>
 </MudPaper>
+}
 
 @code {
     private readonly List<HistoryEvent> _events = [];

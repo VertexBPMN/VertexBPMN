@@ -84,11 +84,19 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
                 .Locator($".djs-element[data-element-id='{originalFlowId}']");
             await originalFlow.Locator(".djs-hit").ClickAsync(new() { Force = true });
             await page.GetByTitle("Insert HTTP", new() { Exact = true }).ClickAsync();
+
+            var propertiesPanel = page.GetByLabel("BPMN properties panel", new() { Exact = true });
+            await propertiesPanel.GetByText("Vertex", new() { Exact = true }).ClickAsync();
+            await FillBoundInputAsync(
+                propertiesPanel.GetByRole(AriaRole.Textbox, new() { Name = "Credential ref", Exact = true }),
+                $"credential-{host.RunId}");
+
+            await OpenBpmnToolTabAsync(page, "XML");
             await page.GetByTestId("bpmn-xml-preview")
                 .GetByRole(AriaRole.Button, new() { Name = "Refresh", Exact = true })
                 .ClickAsync();
 
-            var editedXml = await WaitForPreviewXmlAsync(page, "serviceTask");
+            var editedXml = await WaitForPreviewXmlAsync(page, $"credential-{host.RunId}");
             var editedDocument = XDocument.Parse(editedXml);
             Assert.Contains(
                 editedDocument.Descendants(),
@@ -104,24 +112,6 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
                 editedDocument.Descendants(),
                 element => element.Name.LocalName == "connector"
                            && (string?)element.Attribute("type") == "http");
-
-            var serviceTaskId = editedDocument.Descendants()
-                .Single(element => element.Name.LocalName == "serviceTask")
-                .Attribute("id")?.Value;
-            Assert.False(string.IsNullOrWhiteSpace(serviceTaskId));
-            await page.GetByTestId("bpmn-modeler-shell")
-                .Locator($".djs-element[data-element-id='{serviceTaskId}'] .djs-hit")
-                .ClickAsync(new() { Force = true });
-            var propertiesPanel = page.GetByLabel("BPMN properties panel", new() { Exact = true });
-            await propertiesPanel.GetByText("Vertex", new() { Exact = true }).ClickAsync();
-            await FillBoundInputAsync(
-                propertiesPanel.GetByRole(AriaRole.Textbox, new() { Name = "Credential ref", Exact = true }),
-                $"credential-{host.RunId}");
-            await page.GetByTestId("bpmn-xml-preview")
-                .GetByRole(AriaRole.Button, new() { Name = "Refresh", Exact = true })
-                .ClickAsync();
-            editedXml = await WaitForPreviewXmlAsync(page, $"credential-{host.RunId}");
-            editedDocument = XDocument.Parse(editedXml);
 
             await page.GetByRole(AriaRole.Button, new() { Name = "Validate", Exact = true }).ClickAsync();
             await page.GetByText("No issues", new() { Exact = true }).WaitForAsync();
@@ -146,6 +136,7 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
             Assert.Contains(ProcessKey, await persistedDefinitionRow.InnerTextAsync(), StringComparison.Ordinal);
             await OpenBpmnModelerAsync(page);
 
+            await OpenBpmnToolTabAsync(page, "Versions");
             await page.GetByRole(AriaRole.Combobox, new() { Name = "Deployed process version", Exact = true }).ClickAsync();
             await page.GetByRole(AriaRole.Option).Filter(new() { HasText = ProcessKey }).First.ClickAsync();
             await page.GetByTestId("bpmn-version-load-action").ClickAsync();
@@ -203,6 +194,7 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
                 TestContext.Current.CancellationToken);
             Assert.Equal([1, 2], (versions ?? []).Select(version => version.GetProperty("version").GetInt32()).Order().ToArray());
 
+            await OpenBpmnToolTabAsync(page, "Versions");
             await page.GetByRole(AriaRole.Combobox, new() { Name = "Deployed process version", Exact = true }).ClickAsync();
             await page.GetByRole(AriaRole.Option).Filter(new() { HasText = $"v1, {ProcessKey}" }).ClickAsync();
             await page.GetByTestId("bpmn-version-compare-action").ClickAsync();
@@ -212,6 +204,7 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
             var versionOneXml = await WaitForPreviewXmlWithoutAsync(page, ProcessKey, "businessRuleTask");
             Assert.DoesNotContain("businessRuleTask", versionOneXml, StringComparison.Ordinal);
 
+            await OpenBpmnToolTabAsync(page, "Versions");
             await page.GetByRole(AriaRole.Combobox, new() { Name = "Deployed process version", Exact = true }).ClickAsync();
             await page.GetByRole(AriaRole.Option).Filter(new() { HasText = $"v2, {ProcessKey}" }).ClickAsync();
             await page.GetByTestId("bpmn-version-load-action").ClickAsync();
@@ -245,6 +238,7 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
         {
             await OpenBpmnModelerAsync(page);
             await ImportBpmnAsync(page, CreateBpmn(processKey));
+            await OpenBpmnToolTabAsync(page, "Test runs");
             await page.GetByRole(AriaRole.Button, new() { Name = "Start simulation", Exact = true }).ClickAsync();
             await page.GetByText("Local token simulation started.", new() { Exact = true }).WaitForAsync();
             await page.GetByRole(AriaRole.Button, new() { Name = "Pause simulation", Exact = true }).ClickAsync();
@@ -871,6 +865,7 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
             Assert.Single(definitions ?? []);
 
             await OpenBpmnModelerAsync(page);
+            await OpenBpmnToolTabAsync(page, "Versions");
             await page.GetByRole(AriaRole.Combobox, new() { Name = "Deployed process version", Exact = true }).ClickAsync();
             await page.GetByRole(AriaRole.Option).Filter(new() { HasText = processKey }).First.ClickAsync();
             await page.GetByTestId("bpmn-version-load-action").ClickAsync();
@@ -2033,6 +2028,8 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
     [Fact(DisplayName = "Phase 4 - Messages & Signals: correlate a pending message and broadcast a signal through the GUI")]
     public async Task MessagesSignals_CorrelatesMessageAndBroadcastsSignal_ThroughTheRealEngine()
     {
+        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
+
         using var apiClient = host.CreateApiClient();
         var browserErrors = new ConcurrentQueue<string>();
         var page = await host.CreatePageAsync();
@@ -2186,6 +2183,8 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
     [Fact(DisplayName = "Phase 4 - Debugging: run a trace, then drive a visual debug session (breakpoint, step over, continue, visualize, variables)")]
     public async Task Debugging_RunsTraceAndDrivesVisualDebugSession_ThroughTheRealEngine()
     {
+        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
+
         using var apiClient = host.CreateApiClient();
         var browserErrors = new ConcurrentQueue<string>();
         var page = await host.CreatePageAsync();
@@ -2321,6 +2320,8 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
     [Fact(DisplayName = "Phase 4 - Migration: preview, execute + status, snapshot/restore, rollback, and reject invalid migration")]
     public async Task Migration_PreviewExecuteStatusSnapshotRestoreRollback_ThroughTheRealEngine()
     {
+        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
+
         using var apiClient = host.CreateApiClient();
         var browserErrors = new ConcurrentQueue<string>();
         var page = await host.CreatePageAsync();
@@ -2465,6 +2466,8 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
     [Fact(DisplayName = "Phase 5 - Tenants: create, update, select for isolation, and delete through the GUI")]
     public async Task Tenants_CreateUpdateSwitchForIsolationAndDelete_ThroughTheRealEngine()
     {
+        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
+
         using var apiClient = host.CreateApiClient();
         var browserErrors = new ConcurrentQueue<string>();
         var page = await host.CreatePageAsync();
@@ -2552,6 +2555,8 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
     [Fact(DisplayName = "Phase 5 - Credentials: create, verify secret is never re-displayed, rotate, delete")]
     public async Task Credentials_CreateSecretNeverEchoedRotateDelete_ThroughTheRealEngine()
     {
+        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
+
         using var apiClient = host.CreateApiClient();
         var browserErrors = new ConcurrentQueue<string>();
         var page = await host.CreatePageAsync();
@@ -2647,6 +2652,8 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
     [Fact(DisplayName = "Phase 5 - Connectors: create, test (failure path), enable/disable, delete")]
     public async Task Connectors_CreateTestToggleAndDelete_ThroughTheRealEngine()
     {
+        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
+
         using var apiClient = host.CreateApiClient();
         var tenantName = $"Phase5 ConnTenant {host.RunId}";
         var connectorName = $"conn-{host.RunId}";
@@ -2732,6 +2739,8 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
     [Fact(DisplayName = "Phase 5 - Workflow Triggers: register with one-time secret, invoke, enable/disable, delete")]
     public async Task WorkflowTriggers_RegisterInvokeToggleAndDelete_ThroughTheRealEngine()
     {
+        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
+
         using var apiClient = host.CreateApiClient();
         var tenantName = $"Phase5 TrigTenant {host.RunId}";
         var triggerName = $"trig-{host.RunId}";
@@ -2851,6 +2860,8 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
     [Fact(DisplayName = "Phase 5 - Administration: feature flags toggle persists via API")]
     public async Task FeatureFlags_ToggleFlagAndVerifyViaApi_ThroughTheRealEngine()
     {
+        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
+
         using var apiClient = host.CreateApiClient();
 
         var page = await host.CreatePageAsync();
@@ -2904,6 +2915,8 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
     [Fact(DisplayName = "Phase 5 - Administration: remaining status pages render (extensions, sso, health, performance, analytics, compliance)")]
     public async Task Administration_RemainingStatusPagesRender_ThroughTheRealEngine()
     {
+        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
+
         var page = await host.CreatePageAsync();
         try
         {
@@ -2931,6 +2944,8 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
     [Fact(DisplayName = "Phase 5 - Administration: engine management + configuration load read-only")]
     public async Task Administration_ReadOnlyStatusPagesRender_ThroughTheRealEngine()
     {
+        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
+
         var page = await host.CreatePageAsync();
         try
         {
@@ -3312,6 +3327,8 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
     {
         Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
 
+        await EnsureSmokeTenantAsync();
+
         var routes = new[]
         {
             ("", "Dashboard"),
@@ -3346,7 +3363,6 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
                 }
                 else
                 {
-                    await EnsureSmokeTenantAsync();
                     await SelectTenantAsync(page, s_smokeTenantName!, s_smokeTenantId!);
                     await page.GetByRole(AriaRole.Heading, new() { Name = heading, Exact = true }).WaitForAsync();
                 }
@@ -3631,6 +3647,7 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
 
     private static async Task<string> WaitForPreviewXmlAsync(IPage page, string expectedToken)
     {
+        await OpenBpmnToolTabAsync(page, "XML");
         var preview = page.GetByTestId("bpmn-xml-preview").GetByRole(AriaRole.Textbox);
         var lastXml = string.Empty;
         for (var attempt = 0; attempt < 120; attempt++)
@@ -3649,6 +3666,7 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
         string expectedToken,
         string forbiddenToken)
     {
+        await OpenBpmnToolTabAsync(page, "XML");
         var preview = page.GetByTestId("bpmn-xml-preview").GetByRole(AriaRole.Textbox);
         var lastXml = string.Empty;
         for (var attempt = 0; attempt < 120; attempt++)
@@ -3662,6 +3680,15 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
 
         throw new TimeoutException(
             $"The BPMN XML preview did not converge to a document containing '{expectedToken}' without '{forbiddenToken}'. Last XML: {lastXml}");
+    }
+
+    private static async Task OpenBpmnToolTabAsync(IPage page, string name)
+    {
+        var tab = page.GetByRole(AriaRole.Tab, new() { Name = name, Exact = true });
+        await tab.ClickAsync();
+        await page.WaitForFunctionAsync(
+            "name => [...document.querySelectorAll('[role=tab]')].some(element => element.textContent?.trim() === name && element.getAttribute('aria-selected') === 'true')",
+            name);
     }
 
     private async Task WaitForTextWithDiagnosticsAsync(
@@ -3690,6 +3717,7 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
 
     private static async Task FillBoundInputAsync(ILocator input, string value)
     {
+        value = NormalizeBrowserText(value);
         await input.ClickAsync();
         await input.PressAsync("ControlOrMeta+A");
         await input.PressSequentiallyAsync(value, new() { Delay = 1 });
@@ -3699,6 +3727,7 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
 
     private static async Task FillBoundInputAndVerifyAsync(ILocator input, string value)
     {
+        value = NormalizeBrowserText(value);
         for (var attempt = 0; attempt < 10; attempt++)
         {
             await FillBoundInputAsync(input, value);
@@ -3720,6 +3749,7 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
     /// </summary>
     private static async Task SetBoundInputFastAsync(ILocator input, string value)
     {
+        value = NormalizeBrowserText(value);
         for (var attempt = 0; attempt < 40; attempt++)
         {
             try
@@ -3744,6 +3774,9 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
         throw new InvalidOperationException(
             $"Could not set large bound field to a value of length {value.Length} after 40 attempts.");
     }
+
+    private static string NormalizeBrowserText(string value) =>
+        value.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
 
     private async Task SelectTenantAsync(IPage page, string tenantName, string tenantId)
     {

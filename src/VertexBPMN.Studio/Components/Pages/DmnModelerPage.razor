@@ -9,16 +9,12 @@
 
 <PageTitle>DMN Modeler</PageTitle>
 
-<MudStack Spacing="3">
-    <div>
-        <MudText Typo="Typo.h4" GutterBottom="true">DMN Modeler</MudText>
-        <MudText Typo="Typo.body2" Color="Color.Secondary">
-            dmn-js Shell fuer Decision Tables mit getrenntem Editor und read-only Viewer.
-        </MudText>
-    </div>
+<MudStack Spacing="3" Class="studio-editor-page">
+    <StudioPageHeader Title="DMN Modeler"
+                      Eyebrow="Model"
+                      Description="Design, evaluate and deploy executable decisions." />
 
-    <MudPaper Class="pa-4">
-        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+    <StudioToolbar AriaLabel="DMN model actions" Class="studio-editor-toolbar">
             <MudTextField Label="Decision key" @bind-Value="_decisionKey" Required="true" Immediate="true" />
             <MudTextField Label="Name" @bind-Value="_decisionName" Required="true" Immediate="true" />
             <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="DeployDmnXml" StartIcon="@Icons.Material.Filled.CloudUpload">Deploy DMN</MudButton>
@@ -30,44 +26,65 @@
             <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="ExportDmnXml" StartIcon="@Icons.Material.Filled.Download">Export DMN</MudButton>
             <MudButton Variant="Variant.Outlined" OnClick="LoadDmnXml" StartIcon="@Icons.Material.Filled.CloudDownload">Load from API</MudButton>
             <MudButton Variant="Variant.Outlined" OnClick="AddDecisionRuleAsync" StartIcon="@Icons.Material.Filled.Add">Add decision rule</MudButton>
-        </MudStack>
-    </MudPaper>
+    </StudioToolbar>
 
-    <MudPaper Class="pa-4">
-        <MudText Typo="Typo.h6">Evaluate decision</MudText>
-        <MudStack Row="true" Spacing="2" Class="mt-2">
-            <MudTextField Label="Input name" @bind-Value="_inputName" Immediate="true" />
-            <MudTextField Label="Input value" @bind-Value="_inputValue" Immediate="true" />
-            <MudButton Variant="Variant.Outlined" OnClick="EvaluateDecision">Evaluate</MudButton>
-            <MudButton Variant="Variant.Outlined" OnClick="LoadDecisionOverview">Load definitions and instances</MudButton>
-        </MudStack>
-        @if (_evaluationResult.Count > 0)
-        {
-            <MudList T="string" Class="mt-2">
-                @foreach (var result in _evaluationResult)
-                {
-                    <MudListItem T="string">@result.Key: @result.Value</MudListItem>
-                }
-            </MudList>
-        }
-        @if (_definitions is not null || _instances is not null)
-        {
-            <MudGrid Class="mt-2">
-                <MudItem xs="12" md="6"><pre>@Format(_definitions)</pre></MudItem>
-                <MudItem xs="12" md="6"><pre>@Format(_instances)</pre></MudItem>
-            </MudGrid>
-        }
-    </MudPaper>
-
-    <MudPaper Class="pa-4">
-        <MudText Typo="Typo.h6" GutterBottom="true">Decision Table Editor</MudText>
+    <MudPaper Class="studio-modeler-card" Elevation="0">
+        <div class="studio-modeler-card__header">
+            <div>
+                <MudText Typo="Typo.h6">Decision table</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Edit the active DMN decision and its rules.</MudText>
+            </div>
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.Edit">Editing</MudChip>
+        </div>
         <DmnModelerSurface @ref="_modeler" Xml="@_dmnXml" />
     </MudPaper>
 
-    <MudPaper Class="pa-4">
-        <MudText Typo="Typo.h6" GutterBottom="true">Viewer</MudText>
-        <DmnViewerSurface Xml="@_dmnXml" />
-    </MudPaper>
+    <div class="studio-bpmn-tools studio-editor-tools">
+        <div class="studio-bpmn-tools__tabs" role="tablist" aria-label="DMN tools">
+            <button type="button" role="tab" aria-selected="@AriaSelected(0)" class="studio-bpmn-tools__tab @ToolTabClass(0)" @onclick="@(() => _activeToolTab = 0)"><MudIcon Icon="@Icons.Material.Outlined.Science" Size="Size.Small" />Evaluate</button>
+            <button type="button" role="tab" aria-selected="@AriaSelected(1)" class="studio-bpmn-tools__tab @ToolTabClass(1)" @onclick="@(() => _activeToolTab = 1)"><MudIcon Icon="@Icons.Material.Outlined.Visibility" Size="Size.Small" />Viewer</button>
+        </div>
+        <div class="studio-bpmn-tools__panels">
+            <section role="tabpanel" hidden="@(_activeToolTab != 0)">
+                <MudStack Spacing="3" Class="studio-bpmn-tool-panel">
+                    <div>
+                        <MudText Typo="Typo.h6">Evaluate decision</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Run the deployed decision with a concrete input and inspect definitions or instances.</MudText>
+                    </div>
+                    <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2">
+                        <MudTextField Label="Input name" @bind-Value="_inputName" Immediate="true" />
+                        <MudTextField Label="Input value" @bind-Value="_inputValue" Immediate="true" />
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="EvaluateDecision">Evaluate</MudButton>
+                        <MudButton Variant="Variant.Outlined" OnClick="LoadDecisionOverview">Load definitions and instances</MudButton>
+                    </MudStack>
+                    @if (_evaluationResult.Count > 0)
+                    {
+                        <MudList T="string">
+                            @foreach (var result in _evaluationResult)
+                            {
+                                <MudListItem T="string">@result.Key: @result.Value</MudListItem>
+                            }
+                        </MudList>
+                    }
+                    @if (_definitions is not null || _instances is not null)
+                    {
+                        <MudGrid>
+                            <MudItem xs="12" md="6"><pre>@Format(_definitions)</pre></MudItem>
+                            <MudItem xs="12" md="6"><pre>@Format(_instances)</pre></MudItem>
+                        </MudGrid>
+                    }
+                </MudStack>
+            </section>
+            <section role="tabpanel" hidden="@(_activeToolTab != 1)">
+                <div class="studio-bpmn-tool-panel studio-bpmn-tool-panel--viewer">
+                    @if (_activeToolTab == 1)
+                    {
+                        <DmnViewerSurface Xml="@_dmnXml" />
+                    }
+                </div>
+            </section>
+        </div>
+    </div>
 </MudStack>
 
 @code {
@@ -80,6 +97,11 @@
     private IDictionary<string, object> _evaluationResult = new Dictionary<string, object>();
     private JsonElement? _definitions;
     private JsonElement? _instances;
+    private int _activeToolTab;
+
+    private string? ToolTabClass(int index) => _activeToolTab == index ? "studio-bpmn-tools__tab--active" : null;
+
+    private string AriaSelected(int index) => _activeToolTab == index ? "true" : "false";
 
     private const string FallbackDmn = """
 <?xml version="1.0" encoding="UTF-8"?>

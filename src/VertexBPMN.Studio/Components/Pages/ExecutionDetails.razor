@@ -5,29 +5,46 @@
 
 <PageTitle>Execution Details</PageTitle>
 
-<MudText Typo="Typo.h4" GutterBottom="true">Execution Details</MudText>
-<MudText Typo="Typo.body2" Color="Color.Tertiary" Class="mb-4">
-    Read-only jobs, incidents and process variables from the execution API.
-</MudText>
+<StudioPageHeader Title="Execution Details"
+                  Eyebrow="Analyze"
+                  Description="Inspect read-only jobs, incidents and process variables from the execution API." />
 
-<MudStack Row="true" Spacing="2" Class="mb-4">
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadJobsAsync" Disabled="_isLoading">Load jobs</MudButton>
-    <MudButton Variant="Variant.Outlined" OnClick="LoadIncidentsAsync" Disabled="_isLoading">Load incidents</MudButton>
-</MudStack>
+<StudioToolbar AriaLabel="Execution detail queries" Class="studio-query-toolbar">
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Outlined.WorkHistory" OnClick="LoadJobsAsync" Disabled="_isLoading">Load jobs</MudButton>
+    <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Outlined.WarningAmber" OnClick="LoadIncidentsAsync" Disabled="_isLoading">Load incidents</MudButton>
+    <MudDivider Vertical="true" FlexItem="true" Class="studio-toolbar-divider" />
+    <MudTextField @bind-Value="_processInstanceIdText" Label="Process instance id for variables" Variant="Variant.Outlined" Margin="Margin.Dense" Class="studio-query-field" />
+    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.DataObject" OnClick="LoadVariablesAsync" Disabled="_isLoading">Load variables</MudButton>
+</StudioToolbar>
 
-<MudTextField @bind-Value="_processInstanceIdText" Label="Process instance id for variables" Variant="Variant.Outlined" Class="mb-2" />
-<MudButton Variant="Variant.Outlined" OnClick="LoadVariablesAsync" Disabled="_isLoading" Class="mb-4">Load variables</MudButton>
+@if (_isLoading)
+{
+    <MudProgressLinear Indeterminate="true" Class="my-4" />
+}
 
 @if (_error is not null)
 {
-    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+    <StudioStatePanel Title="Execution details could not be loaded"
+                      Description="@_error"
+                      Icon="@Icons.Material.Outlined.ErrorOutline" />
 }
 else if (_result is not null)
 {
-    <MudPaper Class="pa-4" Elevation="1" data-testid="execution-details-result">
-        <MudText Typo="Typo.h6">@_resultTitle</MudText>
-        <pre>@Format(_result.Value)</pre>
+    <MudPaper Class="studio-result-card" Elevation="0" data-testid="execution-details-result">
+        <div class="studio-content-card__header">
+            <div>
+                <MudText Typo="Typo.overline" Color="Color.Secondary">Query result</MudText>
+                <MudText Typo="Typo.h6">@_resultTitle</MudText>
+            </div>
+        </div>
+        <pre class="studio-json-result">@Format(_result.Value)</pre>
     </MudPaper>
+}
+else
+{
+    <StudioStatePanel Title="Choose an execution query"
+                      Description="Load current jobs or incidents, or enter a process instance ID to inspect its variables."
+                      Icon="@Icons.Material.Outlined.ManageSearch" />
 }
 
 @code {

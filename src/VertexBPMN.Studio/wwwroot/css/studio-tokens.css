@@ -1,0 +1,39 @@
+:root {
+    color-scheme: light;
+    --vertex-color-app: #f6f8fb;
+    --vertex-color-surface: #ffffff;
+    --vertex-color-surface-subtle: #f8fafc;
+    --vertex-color-surface-active: #eff6ff;
+    --vertex-color-text: #172033;
+    --vertex-color-text-muted: #627187;
+    --vertex-color-border: #dce3ec;
+    --vertex-color-border-strong: #cbd5e1;
+    --vertex-color-accent: #2563eb;
+    --vertex-color-accent-strong: #1d4ed8;
+    --vertex-color-focus: #2563eb;
+    --vertex-color-success: #15803d;
+    --vertex-color-warning: #b45309;
+    --vertex-color-error: #b91c1c;
+    --vertex-space-1: 0.25rem;
+    --vertex-space-2: 0.5rem;
+    --vertex-space-3: 0.75rem;
+    --vertex-space-4: 1rem;
+    --vertex-space-5: 1.25rem;
+    --vertex-space-6: 1.5rem;
+    --vertex-space-8: 2rem;
+    --vertex-radius-sm: 6px;
+    --vertex-radius-md: 8px;
+    --vertex-radius-lg: 12px;
+    --vertex-shadow-sm: 0 1px 2px rgb(15 23 42 / 0.06);
+    --vertex-shadow-md: 0 10px 30px rgb(15 23 42 / 0.08);
+    --vertex-appbar-height: 64px;
+    --vertex-drawer-width: 264px;
+    --vertex-content-max: 1480px;
+    --vertex-transition-fast: 140ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :root {
+        --vertex-transition-fast: 0ms;
+    }
+}

@@ -2,10 +2,12 @@
 
 <PageTitle>Single Sign-On</PageTitle>
 
-<MudText Typo="Typo.h4" GutterBottom="true">Single Sign-On (SSO)</MudText>
+<StudioPageHeader Title="Single Sign-On (SSO)" Eyebrow="Manage" Description="Supported identity-provider integration targets for Studio authentication." />
 
+<MudPaper Class="studio-content-card" Elevation="0">
 <MudList T="string">
     <MudListItem T="string" Icon="@Icons.Material.Filled.Security">Azure Active Directory Integration</MudListItem>
     <MudListItem T="string" Icon="@Icons.Material.Filled.Security">Okta Integration</MudListItem>
     <MudListItem T="string" Icon="@Icons.Material.Filled.Security">Keycloak Integration</MudListItem>
 </MudList>
+</MudPaper>

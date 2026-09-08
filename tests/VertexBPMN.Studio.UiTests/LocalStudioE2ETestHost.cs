@@ -160,9 +160,19 @@ public sealed class LocalStudioE2ETestHost : IAsyncLifetime
         {
             await InitializeCoreAsync();
         }
-        catch
+        catch (Exception startupFailure)
         {
-            await DisposeAsync();
+            try
+            {
+                await DisposeAsync();
+            }
+            catch (Exception cleanupFailure)
+            {
+                // A broken database connection can also break cleanup. Preserve the
+                // original startup failure instead of replacing the actionable cause.
+                throw new AggregateException(
+                    "Local Studio E2E startup and cleanup both failed.", startupFailure, cleanupFailure);
+            }
             throw;
         }
     }

@@ -14,7 +14,7 @@ param(
     [ValidatePattern("^[A-Za-z0-9._~-]+$")]
     [string]$Password = $(if ($env:VERTEXBPMN_WSLC_PASSWORD) { $env:VERTEXBPMN_WSLC_PASSWORD } else { "vertexbpmn-local" }),
 
-    [string]$TestMethod,
+    [string[]]$TestMethod,
     [string]$ResultsDirectory,
     [switch]$SkipBuild
 )
@@ -48,8 +48,9 @@ function Invoke-LocalTestRunner {
     $report = Join-Path $artifactsDirectory "results.html"
     $xmlReport = Join-Path $artifactsDirectory "results.xml"
     $runnerArguments = @("-trait", "Category=LocalStudioE2E", "-parallelMode", "none", "-longRunning", "30", "-showLiveOutput", "-result-html", $report, "-result-xml", $xmlReport)
-    if (-not [string]::IsNullOrWhiteSpace($TestMethod)) {
-        $methodFilter = if ($TestMethod.Contains(".")) { $TestMethod } else { "VertexBPMN.Studio.UiTests.LocalStudioInfrastructureTests.$TestMethod" }
+    foreach ($method in $TestMethod) {
+        if ([string]::IsNullOrWhiteSpace($method)) { throw 'Test method filters must not be empty.' }
+        $methodFilter = if ($method.Contains(".")) { $method } else { "VertexBPMN.Studio.UiTests.LocalStudioInfrastructureTests.$method" }
         $runnerArguments += @("-method", $methodFilter)
     }
     & $runner @runnerArguments

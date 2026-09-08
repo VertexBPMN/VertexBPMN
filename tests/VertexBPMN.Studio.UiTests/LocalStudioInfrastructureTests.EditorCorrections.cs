@@ -31,6 +31,7 @@ public sealed partial class LocalStudioInfrastructureTests
             await OpenBpmnModelerAsync(page);
             await ImportBpmnAsync(page, CreateBpmn(key));
             await InsertCatalogNodeIntoFirstFlowAsync(page, "User approval form");
+            await OpenBpmnToolTabAsync(page, "Test runs");
             await page.GetByTestId("bpmn-engine-test-run").GetByRole(AriaRole.Button, new() { Name = "Deploy and run test", Exact = true }).ClickAsync();
             await page.GetByText("Engine test run verified: a persistent wait state.", new() { Exact = true }).WaitForAsync();
             var instances = await client.GetFromJsonAsync<JsonElement[]>("api/runtime", TestContext.Current.CancellationToken);

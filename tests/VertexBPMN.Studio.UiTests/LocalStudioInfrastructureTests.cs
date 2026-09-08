@@ -1302,6 +1302,11 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
             await ImportBpmnAsync(page, CreateBpmn(processKey));
             await page.GetByRole(AriaRole.Button, new() { Name = "Deploy BPMN", Exact = true }).ClickAsync();
             await page.GetByText("BPMN deployed successfully.", new() { Exact = true }).WaitForAsync();
+            // Catalog insertion requires an explicitly selected path, as stated in
+            // the UI. Select the real diagram edge before requesting the new node.
+            await page.GetByTestId("bpmn-modeler-shell")
+                .Locator($".djs-element[data-element-id='Flow_{processKey}'] .djs-hit")
+                .ClickAsync(new() { Force = true });
             await page.GetByRole(AriaRole.Button, new() { Name = "Add node", Exact = true }).ClickAsync();
             var catalog = page.GetByTestId("low-code-node-catalog");
             await catalog.GetByLabel("Search nodes").FillAsync("Decision");
@@ -1571,34 +1576,29 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
             await page.GotoAsync($"{host.StudioBaseAddress}deployments");
             await page.GetByRole(AriaRole.Heading, new() { Name = "Deployments", Exact = true }).WaitForAsync();
 
-            // Upload a valid BPMN file through the Deployments page (click the visible button; the
-            // hidden #fileUpload input is driven via the browser file chooser). Retry a few times:
-            // the upload occasionally drops on a cold render, so re-drive it until it persists.
+            // Upload exactly once after hydration. Retrying the upload itself could
+            // conceal a lost user action; only poll for its persisted result.
             var validXml = CreateBpmn(processKey);
             using var apiClient = host.CreateApiClient();
             JsonElement[]? deployed = null;
-            for (var uploadAttempt = 0; uploadAttempt < 3 && deployed is not { Length: > 0 }; uploadAttempt++)
+            await page.Locator("[data-interactive-ready='true']").WaitForAsync();
+            var chooser = page.WaitForFileChooserAsync();
+            await page.GetByText("Upload BPMN files", new() { Exact = true }).ClickAsync();
+            await (await chooser).SetFilesAsync(new FilePayload
             {
-                var chooser = page.WaitForFileChooserAsync();
-                await page.GetByText("Upload BPMN File", new() { Exact = true }).ClickAsync();
-                await (await chooser).SetFilesAsync(new FilePayload
-                {
-                    Name = "deploy-valid.bpmn",
-                    MimeType = "application/xml",
-                    Buffer = Encoding.UTF8.GetBytes(validXml)
-                });
+                Name = "deploy-valid.bpmn",
+                MimeType = "application/xml",
+                Buffer = Encoding.UTF8.GetBytes(validXml)
+            });
 
-                // Confirm the deployment persisted through the real API (authoritative). The success
-                // snackbar is transient, so persist-first.
-                for (var poll = 0; poll < 40 && deployed is not { Length: > 0 }; poll++)
-                {
-                    deployed = await apiClient.GetFromJsonAsync<JsonElement[]>(
-                        $"api/repository?key={Uri.EscapeDataString(processKey)}",
-                        TestContext.Current.CancellationToken);
-                    if (deployed is { Length: > 0 })
-                        break;
-                    await Task.Delay(250, TestContext.Current.CancellationToken);
-                }
+            for (var poll = 0; poll < 40 && deployed is not { Length: > 0 }; poll++)
+            {
+                deployed = await apiClient.GetFromJsonAsync<JsonElement[]>(
+                    $"api/repository?key={Uri.EscapeDataString(processKey)}",
+                    TestContext.Current.CancellationToken);
+                if (deployed is { Length: > 0 })
+                    break;
+                await Task.Delay(250, TestContext.Current.CancellationToken);
             }
             Assert.NotNull(deployed);
             Assert.True(deployed!.Length > 0, "Valid BPMN upload did not produce a persisted definition.");
@@ -1606,7 +1606,7 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
 
             // Upload an invalid file and verify a comprehensible error, not a crash or empty success.
             var invalidChooser = page.WaitForFileChooserAsync();
-            await page.GetByText("Upload BPMN File", new() { Exact = true }).ClickAsync();
+            await page.GetByText("Upload BPMN files", new() { Exact = true }).ClickAsync();
             await (await invalidChooser).SetFilesAsync(new FilePayload
             {
                 Name = "deploy-invalid.bpmn",
@@ -1775,7 +1775,8 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
             // An invalid (non-BPMN) upload must surface a comprehensible error and must NOT be
             // persisted as a deployable definition.
             var invalidChooser = page.WaitForFileChooserAsync();
-            await page.GetByText("Upload BPMN File", new() { Exact = true }).ClickAsync();
+            await page.Locator("[data-interactive-ready='true']").WaitForAsync();
+            await page.GetByText("Upload BPMN files", new() { Exact = true }).ClickAsync();
             await (await invalidChooser).SetFilesAsync(new FilePayload
             {
                 Name = "deploy-invalid.bpmn",
@@ -3025,13 +3026,14 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
         try
         {
             // Direct navigation: the SPA fallback answers every route with HTTP 200.
+            // Seed before the layout loads its tenant list, independently of test order.
+            await EnsureSmokeTenantAsync();
             var response = await page.GotoAsync($"{host.StudioBaseAddress}{route.TrimStart('/')}");
             Assert.NotNull(response);
             Assert.True(response.Ok, $"{route} returned HTTP {response.Status}.");
 
             // Tenant-fenced pages (connectors, credentials, deployments, ...) render their real
             // content only with an active tenant; ensure one is selected up front.
-            await EnsureSmokeTenantAsync();
             await SelectTenantAsync(page, s_smokeTenantName!, s_smokeTenantId!);
 
             await page.GetByRole(AriaRole.Heading, new() { Name = expectedHeading, Exact = true }).First.WaitForAsync();
@@ -3112,14 +3114,14 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
 
         try
         {
-            await page.GotoAsync($"{host.StudioBaseAddress}process-instances");
             await EnsureSmokeTenantAsync();
+            await page.GotoAsync($"{host.StudioBaseAddress}process-instances");
             await SelectTenantAsync(page, s_smokeTenantName!, s_smokeTenantId!);
 
             // A search that matches nothing must degrade to the table's friendly empty state rather
             // than an 'Error loading process instances' banner or a crashed page.
             await FillBoundInputAsync(page.GetByPlaceholder("Search instances..."), $"no-such-key-{host.RunId}");
-            await page.GetByText("No matching records found", new() { Exact = true }).WaitForAsync();
+            await page.GetByText("No process instances found", new() { Exact = true }).WaitForAsync();
 
             Assert.Equal(0, await page.GetByText("Error loading process instances", new() { Exact = false }).CountAsync());
             Assert.Empty(browserErrors);
@@ -3260,8 +3262,8 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
 
         try
         {
-            await page.GotoAsync($"{host.StudioBaseAddress}analytics");
             await EnsureSmokeTenantAsync();
+            await page.GotoAsync($"{host.StudioBaseAddress}analytics");
             await SelectTenantAsync(page, s_smokeTenantName!, s_smokeTenantId!);
 
             await page.GetByRole(AriaRole.Heading, new() { Name = "Process Analytics", Exact = true }).WaitForAsync();
@@ -3300,13 +3302,13 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
 
         try
         {
-            await page.GotoAsync($"{host.StudioBaseAddress}process-instances");
             await EnsureSmokeTenantAsync();
+            await page.GotoAsync($"{host.StudioBaseAddress}process-instances");
             await SelectTenantAsync(page, s_smokeTenantName!, s_smokeTenantId!);
 
             // Put the page into a filtered interactive state first.
             await FillBoundInputAsync(page.GetByPlaceholder("Search instances..."), $"no-such-key-{host.RunId}");
-            await page.GetByText("No matching records found", new() { Exact = true }).WaitForAsync();
+            await page.GetByText("No process instances found", new() { Exact = true }).WaitForAsync();
 
             // Reloading mid-state must rehydrate a clean, uncorrupted Blazor circuit: heading and
             // search box present again, no JS/page/network errors, no stuck loading indicator.

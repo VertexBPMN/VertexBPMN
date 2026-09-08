@@ -167,7 +167,7 @@ public sealed class CompensationSemanticsAcceptanceTests : IDisposable
                    "/api/repository",
                    new { bpmnXml = bpmn, name = $"{key}.bpmn", tenantId = (string?)null },
                    TestContext.Current.CancellationToken))
-            deployment.EnsureSuccessStatusCode();
+            Assert.True(deployment.IsSuccessStatusCode, await deployment.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         using var start = await _client.PostAsJsonAsync(
             "/api/runtime/start",
             new { processDefinitionKey = key, variables = new { }, tenantId = (string?)null },

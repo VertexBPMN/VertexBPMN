@@ -14,7 +14,9 @@ param(
     [ValidatePattern("^[A-Za-z0-9._~-]+$")]
     [string]$Password = $(if ($env:VERTEXBPMN_WSLC_PASSWORD) { $env:VERTEXBPMN_WSLC_PASSWORD } else { "vertexbpmn-local" }),
 
-    [string]$TestMethod
+    [string]$TestMethod,
+    [string]$ResultsDirectory,
+    [switch]$SkipBuild
 )
 
 $ErrorActionPreference = "Stop"
@@ -24,6 +26,7 @@ $apiProject = Join-Path $repositoryRoot "src/VertexBPMN.Api/VertexBPMN.Api.cspro
 $wslcScript = Join-Path $PSScriptRoot "wslc-apphost.ps1"
 $runId = [Guid]::NewGuid().ToString("N")
 $artifactsDirectory = Join-Path $repositoryRoot "tests/VertexBPMN.Studio.UiTests/TestResults/studio-e2e/$runId"
+if ($ResultsDirectory) { $artifactsDirectory = [IO.Path]::GetFullPath($ResultsDirectory) }
 
 function Invoke-DotNet {
     param([Parameter(Mandatory)][string[]]$Arguments)
@@ -62,6 +65,8 @@ function Invoke-LocalTestRunner {
     if ($total -eq 0) {
         throw "Local Studio E2E filter discovered zero tests. Method filter: '$TestMethod'. Report: $report"
     }
+    $skipped = [int](($result.assemblies.assembly | Measure-Object -Property skipped -Sum).Sum)
+    if ($skipped -gt 0) { throw "Local real E2E run skipped $skipped required tests. Report: $xmlReport" }
 }
 
 function Test-TcpEndpoint {
@@ -92,9 +97,11 @@ if ($effectiveInfrastructure -eq "Auto") {
     $effectiveInfrastructure = if (Get-Command wslc.exe -ErrorAction SilentlyContinue) { "Wslc" } else { "Existing" }
 }
 
+if (-not $SkipBuild) {
 Write-Host "Building the real API, Studio and local browser test host before infrastructure startup..."
 Invoke-DotNet -Arguments @("build", $apiProject, "--configuration", "Release", "--nologo", "--disable-build-servers", "--maxcpucount:1")
 Invoke-DotNet -Arguments @("build", $testProject, "--configuration", "Release", "--nologo", "--disable-build-servers", "--maxcpucount:1")
+}
 
 if ($effectiveInfrastructure -eq "Wslc") {
     if (-not (Get-Command wslc.exe -ErrorAction SilentlyContinue)) {

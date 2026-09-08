@@ -6,6 +6,29 @@ namespace VertexBPMN.Tests.Parsing.Validation;
 public class BpmnDeploymentValidatorTests
 {
     [Fact]
+    public async Task TransactionPreservesScopeAndCancelBoundaryReachability()
+    {
+        var model = await new BpmnParser().ParseAsync("""
+            <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
+              <process id="p">
+                <startEvent id="s"/><sequenceFlow id="a" sourceRef="s" targetRef="tx"/>
+                <transaction id="tx">
+                  <startEvent id="ts"/><sequenceFlow id="b" sourceRef="ts" targetRef="cancel"/>
+                  <endEvent id="cancel"><cancelEventDefinition/></endEvent>
+                </transaction>
+                <boundaryEvent id="catch" attachedToRef="tx"><cancelEventDefinition/></boundaryEvent>
+                <sequenceFlow id="c" sourceRef="catch" targetRef="e"/><endEvent id="e"/>
+              </process>
+            </definitions>
+            """, TestContext.Current.CancellationToken);
+        var transaction = Assert.Single(model.Subprocesses);
+        Assert.True(transaction.IsTransaction);
+        Assert.Equal("tx", transaction.Id);
+        Assert.Equal("tx", Assert.Single(model.Events, e => e.Id == "cancel").SubprocessId);
+        Assert.Empty(BpmnDeploymentValidator.Validate(model));
+    }
+
+    [Fact]
     public async Task SemanticValidationReportsMalformedXmlWithoutThrowing()
     {
         var result = await new VertexBPMN.Application.SemanticValidationService(new BpmnParser())

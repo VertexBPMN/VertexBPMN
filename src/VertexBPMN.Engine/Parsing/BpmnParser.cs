@@ -348,6 +348,7 @@ public partial class BpmnParser : IBpmnParser
                 {
                     case "subProcess":
                     case "adHocSubProcess":
+                    case "transaction":
                         var isEvent = el.Attribute("triggeredByEvent")?.Value == "true";
                         var isTx = el.Attribute("transaction")?.Value == "true" || local == "transaction";
                         if (el.Attribute("isForCompensation")?.Value is { } subprocessCompensation)

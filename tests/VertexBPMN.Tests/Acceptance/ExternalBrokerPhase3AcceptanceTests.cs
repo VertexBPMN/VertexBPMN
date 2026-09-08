@@ -16,11 +16,12 @@ namespace VertexBPMN.Tests.Acceptance;
 
 public sealed class ExternalBrokerPhase3AcceptanceTests
 {
-    [Fact(Skip ="Run only when testing against a real RabbitMQ instance")]
+    [Fact]
     [Trait("Category", "Phase3ExternalAcceptance")]
     public async Task P3_EXT_01_RabbitMq_health_publish_and_consume_roundtrip()
     {
         var connectionString = Environment.GetEnvironmentVariable("VERTEXBPMN_TEST_RABBITMQ");
+        Assert.SkipUnless(!string.IsNullOrWhiteSpace(connectionString), "Local RabbitMQ connection required.");
         Assert.False(string.IsNullOrWhiteSpace(connectionString),
             "VERTEXBPMN_TEST_RABBITMQ must point to the CI RabbitMQ service.");
 
@@ -80,11 +81,12 @@ public sealed class ExternalBrokerPhase3AcceptanceTests
         Assert.Contains("42", envelope, StringComparison.Ordinal);
     }
 
-    [Fact(Skip = "Run only when testing against a real PostgreSQL instance")]
+    [Fact]
     [Trait("Category", "Phase3ExternalAcceptance")]
     public async Task P3_EXT_02_All_EF_migrations_apply_to_real_PostgreSql_databases()
     {
         var adminConnectionString = Environment.GetEnvironmentVariable("VERTEXBPMN_TEST_POSTGRES_ADMIN");
+        Assert.SkipUnless(!string.IsNullOrWhiteSpace(adminConnectionString), "Local PostgreSQL connection required.");
         Assert.False(string.IsNullOrWhiteSpace(adminConnectionString),
             "VERTEXBPMN_TEST_POSTGRES_ADMIN must point to the CI PostgreSQL service.");
 
@@ -127,11 +129,12 @@ public sealed class ExternalBrokerPhase3AcceptanceTests
         }
     }
 
-    [Fact(Skip = "Run only when testing against a real PostgreSQL instance")]
+    [Fact]
     [Trait("Category", "Phase3ExternalAcceptance")]
     public async Task P3_EXT_03_Two_isolated_publishers_share_PostgreSql_without_duplicate_leases()
     {
         var adminConnectionString = Environment.GetEnvironmentVariable("VERTEXBPMN_TEST_POSTGRES_ADMIN");
+        Assert.SkipUnless(!string.IsNullOrWhiteSpace(adminConnectionString), "Local PostgreSQL connection required.");
         Assert.False(string.IsNullOrWhiteSpace(adminConnectionString),
             "VERTEXBPMN_TEST_POSTGRES_ADMIN must point to the CI PostgreSQL service.");
 
@@ -198,11 +201,12 @@ public sealed class ExternalBrokerPhase3AcceptanceTests
         }
     }
 
-    [Fact(Skip = "Run only when testing against a real RabbitMQ instance")]
+    [Fact]
     [Trait("Category", "Phase3ExternalAcceptance")]
     public async Task P3_EXT_04_RabbitMq_rejects_unroutable_mandatory_delivery()
     {
         var connectionString = Environment.GetEnvironmentVariable("VERTEXBPMN_TEST_RABBITMQ");
+        Assert.SkipUnless(!string.IsNullOrWhiteSpace(connectionString), "Local RabbitMQ connection required.");
         Assert.False(string.IsNullOrWhiteSpace(connectionString),
             "VERTEXBPMN_TEST_RABBITMQ must point to the CI RabbitMQ service.");
 

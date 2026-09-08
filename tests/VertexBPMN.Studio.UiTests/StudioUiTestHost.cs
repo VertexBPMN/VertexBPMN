@@ -296,6 +296,11 @@ public sealed class StudioUiTestHost : IAsyncLifetime
         }));
         app.MapGet("/api/engine/connections", () => Results.Json(Array.Empty<object>()));
         app.MapGet("/api/history", () => Results.Json(Array.Empty<object>()));
+        app.MapGet("/api/feature-flags", () => Results.Json(new
+        {
+            cmmn = true,
+            predictiveAnalytics = true
+        }));
         app.MapGet("/api/visual-debug/visualize/{id}", (string id) => Results.Json(new
         {
             processInstanceId = id,

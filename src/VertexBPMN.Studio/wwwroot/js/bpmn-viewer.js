@@ -62,8 +62,29 @@ async function importArtifact(instance, payload, fallbackTitle) {
     }
 
     const canvas = typeof instance.get === 'function' ? instance.get('canvas') : null;
-    if (canvas && typeof canvas.zoom === 'function') {
-        canvas.zoom('fit-viewport');
+    fitViewport(instance, canvas);
+}
+
+function fitViewport(instance, canvas = null) {
+    if (!instance || instance.__vertexFallback) {
+        return;
+    }
+
+    const container = getElement(instance.__vertexContainerId);
+    if (!container || container.clientWidth <= 0 || container.clientHeight <= 0) {
+        return;
+    }
+
+    const targetCanvas = canvas ?? (typeof instance.get === 'function' ? instance.get('canvas') : null);
+    if (!targetCanvas) {
+        return;
+    }
+
+    if (typeof targetCanvas.resized === 'function') {
+        targetCanvas.resized();
+    }
+    if (typeof targetCanvas.zoom === 'function') {
+        targetCanvas.zoom('fit-viewport');
     }
 }
 
@@ -140,6 +161,7 @@ export const BpmnViewerInterop = {
         }
 
         const viewer = new ctor({ container: `#${containerId}` });
+        viewer.__vertexContainerId = containerId;
         importArtifact(viewer, bpmnXml, 'bpmn.io BPMN Viewer fallback').catch(err => console.error('BPMN viewer import failed', err));
         return viewer;
     },
@@ -148,6 +170,9 @@ export const BpmnViewerInterop = {
     },
     setRuntimeState: function (viewer, state) {
         setRuntimeState(viewer, state);
+    },
+    resize: function (viewer) {
+        fitViewport(viewer);
     },
     destroy: function (viewer) {
         destroyInstance(viewer);

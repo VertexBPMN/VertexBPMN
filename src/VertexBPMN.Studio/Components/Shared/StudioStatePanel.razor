@@ -1,0 +1,19 @@
+<MudPaper Class="studio-state-panel" Elevation="0" role="status">
+    <MudIcon Icon="@Icon" Size="Size.Large" Class="studio-state-panel__icon" aria-hidden="true" />
+    <MudText Typo="Typo.h5">@Title</MudText>
+    @if (!string.IsNullOrWhiteSpace(Description))
+    {
+        <MudText Typo="Typo.body2" Class="studio-state-panel__description">@Description</MudText>
+    }
+    @if (Action is not null)
+    {
+        <div class="studio-state-panel__action">@Action</div>
+    }
+</MudPaper>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+    [Parameter] public string? Description { get; set; }
+    [Parameter] public string Icon { get; set; } = Icons.Material.Outlined.Info;
+    [Parameter] public RenderFragment? Action { get; set; }
+}

@@ -1,6 +1,6 @@
 <MudDialog>
     <TitleContent>
-        <MudText Typo="Typo.h6">
+        <MudText Typo="Typo.h6" Class="studio-dialog-title">
             <MudIcon Icon="@Icons.Material.Filled.History" Class="mr-3"/>
             Process Versions: @ProcessKey
         </MudText>
@@ -8,8 +8,9 @@
     <DialogContent>
         <MudTable Items="@Versions" 
                   Hover="true" 
-                  Dense="true" 
-                  Striped="true">
+                  Dense="true"
+                  Breakpoint="Breakpoint.Md"
+                  Class="studio-data-table">
             <HeaderContent>
                 <MudTh><MudTableSortLabel SortBy="new Func<ProcessDefinition, object>(x => x.Version)">Version</MudTableSortLabel></MudTh>
                 <MudTh><MudTableSortLabel SortBy="new Func<ProcessDefinition, object>(x => x.Name)">Name</MudTableSortLabel></MudTh>
@@ -33,7 +34,7 @@
                 <MudTd DataLabel="Deployment">
                     @if (context.DeploymentId != Guid.Empty)
                     {
-                        <MudText Typo="Typo.body2" Class="font-monospace">
+                        <MudText Typo="Typo.caption" Class="studio-technical-id">
                             @context.DeploymentId.ToString("N")[..8]...
                         </MudText>
                     }
@@ -56,6 +57,9 @@
                     </MudButtonGroup>
                 </MudTd>
             </RowTemplate>
+            <NoRecordsContent>
+                <StudioStatePanel Title="No versions found" Description="This process key has no persisted versions." Icon="@Icons.Material.Outlined.History" />
+            </NoRecordsContent>
         </MudTable>
     </DialogContent>
     <DialogActions>

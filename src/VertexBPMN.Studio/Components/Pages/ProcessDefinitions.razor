@@ -8,15 +8,31 @@
 
 <PageTitle>Process Definitions</PageTitle>
 
-<MudText Typo="Typo.h4" GutterBottom="true">Process Definitions</MudText>
+<StudioPageHeader Title="Process Definitions"
+                  Eyebrow="Work"
+                  Description="Browse deployed process versions, inspect their BPMN and start new instances." />
 
 @if (_isLoading)
 {
-    <MudProgressLinear Indeterminate="true" Class="my-4" />
-    <MudText>Loading process definitions...</MudText>
+    <StudioStatePanel Title="Loading process definitions"
+                      Description="Reading deployed definitions for the active tenant."
+                      Icon="@Icons.Material.Outlined.HourglassTop" />
 }
 else
 {
+    @if (_error != null)
+    {
+        <StudioStatePanel Title="Process definitions could not be loaded"
+                          Description="@_error"
+                          Icon="@Icons.Material.Outlined.ErrorOutline">
+            <Action>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadProcessDefinitions">Retry</MudButton>
+            </Action>
+        </StudioStatePanel>
+    }
+    else
+    {
+    <MudPaper Class="studio-data-card" Elevation="0">
     <MudDataGrid T="ProcessDefinition"
                  Items="@FilteredDefinitions"
                  @bind-CurrentPage="_currentPage"
@@ -25,13 +41,12 @@ else
                  Hover="true"
                  Dense="true"
                  data-testid="process-definitions-grid"
-                 Class="mt-4">
+                 Class="studio-data-table">
         <ToolBarContent>
-            <MudText Typo="Typo.h6">Process Definitions</MudText>
+            <MudTextField T="string" Value="@_search" ValueChanged="OnSearchChanged" Immediate="true" Placeholder="Search definitions" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Clearable="true" Class="studio-table-search" data-testid="process-definition-search" />
             <MudSpacer />
-            <MudTextField T="string" Value="@_search" ValueChanged="OnSearchChanged" Immediate="true" Placeholder="Search definitions" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" data-testid="process-definition-search" />
-            <MudButton Variant="Variant.Filled" 
-                      Color="Color.Primary" 
+            <MudButton Variant="Variant.Outlined"
+                      Color="Color.Primary"
                       StartIcon="@Icons.Material.Filled.Refresh"
                       OnClick="RefreshData">
                 Refresh
@@ -45,7 +60,7 @@ else
                 <CellTemplate>
                     @if (context.Item.DeploymentId != Guid.Empty)
                     {
-                        <MudText Typo="Typo.body2" Class="font-monospace">
+                        <MudText Typo="Typo.caption" Class="studio-technical-id">
                             @context.Item.DeploymentId.ToString("N")[..8]...
                         </MudText>
                     }
@@ -90,14 +105,14 @@ else
         <PagerContent>
             <MudDataGridPager T="ProcessDefinition" />
         </PagerContent>
+        <NoRecordsContent>
+            <StudioStatePanel Title="No process definitions found"
+                              Description="Deploy a BPMN file or adjust the current search and filters."
+                              Icon="@Icons.Material.Outlined.AccountTree" />
+        </NoRecordsContent>
     </MudDataGrid>
-}
-
-@if (_error != null)
-{
-    <MudAlert Severity="Severity.Error" Class="mt-4">
-        Error loading process definitions: @_error
-    </MudAlert>
+    </MudPaper>
+    }
 }
 
 @code {

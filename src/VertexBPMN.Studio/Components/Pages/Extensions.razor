@@ -5,14 +5,13 @@
 
 <PageTitle>Extensions</PageTitle>
 
-<MudText Typo="Typo.h4" GutterBottom="true">Extensions</MudText>
-<MudStack Row="true" Spacing="2" Class="mb-4">
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadAsync" Disabled="@_busy" StartIcon="@Icons.Material.Filled.Refresh">Refresh</MudButton>
-</MudStack>
+<StudioPageHeader Title="Extensions" Eyebrow="Manage" Description="Inspect installed plugins and extension points, and manage plugins when authorized.">
+    <Actions><MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadAsync" Disabled="@_busy" StartIcon="@Icons.Material.Filled.Refresh">Refresh</MudButton></Actions>
+</StudioPageHeader>
 
 <AuthorizeView Roles="Admin">
     <Authorized>
-        <MudPaper Class="pa-4 mb-4">
+        <MudPaper Class="studio-content-card mb-4" Elevation="0">
             <MudText Typo="Typo.h6">Load plugin</MudText>
             <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
                 <MudTextField @bind-Value="_pluginPath" Label="Plugin DLL path" Variant="Variant.Outlined" Class="flex-grow-1" />
@@ -24,19 +23,19 @@
 
 @if (!string.IsNullOrWhiteSpace(_error))
 {
-    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+    <StudioStatePanel Title="Extensions could not be loaded" Description="@_error" Icon="@Icons.Material.Outlined.ErrorOutline" />
 }
 else if (_plugins is null)
 {
-    <MudAlert Severity="Severity.Info">Loading installed plugins and extension points...</MudAlert>
+    <StudioStatePanel Title="Loading extensions" Description="Reading installed plugins and extension points." Icon="@Icons.Material.Outlined.HourglassTop" />
 }
 else
 {
     <MudGrid>
         <MudItem xs="12" md="8">
-            <MudPaper Class="pa-4">
-                <MudText Typo="Typo.h6" GutterBottom="true">Installed plugins</MudText>
-                <MudTable Items="@AsArray(_plugins)" Dense="true" Hover="true">
+            <MudPaper Class="studio-data-card" Elevation="0">
+                <div class="studio-data-card__heading"><MudText Typo="Typo.h6">Installed plugins</MudText></div>
+                <MudTable Items="@AsArray(_plugins)" Dense="true" Hover="true" Breakpoint="Breakpoint.Md" Class="studio-data-table">
                     <HeaderContent>
                         <MudTh>Name</MudTh>
                         <MudTh>Version</MudTh>
@@ -63,11 +62,12 @@ else
                             </AuthorizeView>
                         </MudTd>
                     </RowTemplate>
+                    <NoRecordsContent><StudioStatePanel Title="No plugins installed" Description="Loaded plugins will appear here." Icon="@Icons.Material.Outlined.Extension" /></NoRecordsContent>
                 </MudTable>
             </MudPaper>
         </MudItem>
         <MudItem xs="12" md="4">
-            <MudPaper Class="pa-4">
+            <MudPaper Class="studio-content-card" Elevation="0">
                 <MudText Typo="Typo.h6" GutterBottom="true">Extension points</MudText>
                 <MudList T="JsonElement" Dense="true">
                     @foreach (var extensionPoint in AsArray(_extensionPoints))

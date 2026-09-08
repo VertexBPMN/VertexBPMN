@@ -4,36 +4,39 @@
 
 <PageTitle>Debugging</PageTitle>
 
-<MudText Typo="Typo.h4" GutterBottom="true">Debugging Trace</MudText>
-<MudText Typo="Typo.body2" Color="Color.Tertiary" Class="mb-4">
-    Execute a BPMN trace through the debug API.
-</MudText>
+<StudioPageHeader Title="Debugging Trace" Eyebrow="Analyze" Description="Trace BPMN execution and inspect a live visual debug session." />
 
+<MudPaper Class="studio-content-card mb-4" Elevation="0">
+<MudText Typo="Typo.h6" Class="mb-3">Trace BPMN XML</MudText>
 <MudTextField @bind-Value="_bpmnXml" Label="BPMN XML" Lines="16" Variant="Variant.Outlined" />
 <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="TraceAsync" Disabled="_isRunning" Class="mt-3 mb-4">
     Run trace
 </MudButton>
+</MudPaper>
 
-<MudDivider Class="my-4" />
+<MudPaper Class="studio-content-card mb-4" Elevation="0">
 <MudText Typo="Typo.h6">Visual debug session</MudText>
 <MudTextField @bind-Value="_processInstanceIdText" Label="Process instance id" Variant="Variant.Outlined" Immediate="true" Class="mb-3" />
 <MudTextField @bind-Value="_sessionIdText" Label="Session id" Variant="Variant.Outlined" Immediate="true" Class="mb-3" />
 <MudTextField @bind-Value="_activityId" Label="Breakpoint activity id" Variant="Variant.Outlined" Immediate="true" Class="mb-3" />
-<MudButton Variant="Variant.Outlined" OnClick="StartSessionAsync" Disabled="_isRunning">Start session</MudButton>
-<MudButton Variant="Variant.Outlined" OnClick="StepOverAsync" Disabled="_isRunning" Class="ml-2">Step over</MudButton>
-<MudButton Variant="Variant.Outlined" OnClick="ContinueAsync" Disabled="_isRunning" Class="ml-2">Continue</MudButton>
-<MudButton Variant="Variant.Outlined" OnClick="SetBreakpointAsync" Disabled="_isRunning" Class="ml-2">Set breakpoint</MudButton>
-<MudButton Variant="Variant.Outlined" OnClick="VisualizeAsync" Disabled="_isRunning" Class="ml-2">Visualize process</MudButton>
-<MudButton Variant="Variant.Outlined" OnClick="InspectVariablesAsync" Disabled="_isRunning" Class="ml-2">Inspect variables</MudButton>
+<StudioToolbar AriaLabel="Debug session actions">
+<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="StartSessionAsync" Disabled="_isRunning">Start session</MudButton>
+<MudButton Variant="Variant.Outlined" OnClick="StepOverAsync" Disabled="_isRunning">Step over</MudButton>
+<MudButton Variant="Variant.Outlined" OnClick="ContinueAsync" Disabled="_isRunning">Continue</MudButton>
+<MudButton Variant="Variant.Outlined" OnClick="SetBreakpointAsync" Disabled="_isRunning">Set breakpoint</MudButton>
+<MudButton Variant="Variant.Outlined" OnClick="VisualizeAsync" Disabled="_isRunning">Visualize process</MudButton>
+<MudButton Variant="Variant.Outlined" OnClick="InspectVariablesAsync" Disabled="_isRunning">Inspect variables</MudButton>
+</StudioToolbar>
+</MudPaper>
 
 @if (_error is not null)
 {
-    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+    <StudioStatePanel Title="Debug operation failed" Description="@_error" Icon="@Icons.Material.Outlined.ErrorOutline" />
 }
 
 @if (_visualizationBpmnXml is not null)
 {
-    <MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudPaper Class="studio-content-card mb-4" Elevation="0">
         <MudStack Row="true" AlignItems="AlignItems.Center">
             <MudText Typo="Typo.h6">Process visualization</MudText>
             <MudSpacer />
@@ -56,7 +59,7 @@
 
 @if (_timeline.Count > 0)
 {
-    <MudPaper Class="pa-4 mb-4" Elevation="1" data-testid="runtime-timeline">
+    <MudPaper Class="studio-content-card mb-4" Elevation="0" data-testid="runtime-timeline">
         <MudText Typo="Typo.h6">Runtime timeline and replay</MudText>
         <MudText Typo="Typo.caption" Color="Color.Secondary">Select an event to replay its diagram position. Runtime colors remain derived from persisted execution tokens and history.</MudText>
         <MudTimeline Class="mt-3">
@@ -83,8 +86,8 @@
 
 @if (_trace is not null)
 {
-    <MudPaper Class="pa-4" Elevation="1">
-        <pre>@Format(_trace.Value)</pre>
+    <MudPaper Class="studio-result-card" Elevation="0">
+        <pre class="studio-json-result">@Format(_trace.Value)</pre>
     </MudPaper>
 }
 

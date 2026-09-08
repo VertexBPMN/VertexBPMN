@@ -3,7 +3,7 @@
 
 <PageTitle>Configuration</PageTitle>
 
-<MudText Typo="Typo.h4" GutterBottom="true">Configuration</MudText>
+<StudioPageHeader Title="Configuration" Eyebrow="Manage" Description="Inspect read-only runtime capabilities reported by the active engine." />
 
 <MudAlert Severity="Severity.Info" Class="mb-4">
     Runtime configuration is read-only in Studio until the API exposes a configuration management contract.
@@ -11,10 +11,11 @@
 
 @if (_error is not null)
 {
-    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+    <StudioStatePanel Title="Configuration could not be loaded" Description="@_error" Icon="@Icons.Material.Outlined.ErrorOutline" />
 }
-
-<MudPaper Class="pa-4">
+else
+{
+<MudPaper Class="studio-content-card" Elevation="0">
     <MudText Typo="Typo.h6">Engine capabilities</MudText>
     @if (_capabilities is null)
     {
@@ -30,6 +31,7 @@
         </MudList>
     }
 </MudPaper>
+}
 
 @code {
     private VertexBPMN.Studio.Services.EngineCapabilities? _capabilities;

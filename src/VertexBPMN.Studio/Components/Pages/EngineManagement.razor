@@ -1,11 +1,10 @@
 @page "/engine-management"
 <PageTitle>Engine Management</PageTitle>
 
-<MudText Typo="Typo.h4" GutterBottom="true">Engine Management</MudText>
-<MudAlert Severity="Severity.Info">
-    Multi-engine connection management is not exposed by the current API contract.
-    The CLI dashboard launcher owns the configured API endpoint for this deployment.
-</MudAlert>
+<StudioPageHeader Title="Engine Management" Eyebrow="Manage" Description="Understand how this Studio instance obtains its active engine connection." />
+<StudioStatePanel Title="Connection management is external"
+                  Description="Multi-engine connection management is not exposed by the current API contract. The CLI dashboard launcher owns the configured API endpoint for this deployment."
+                  Icon="@Icons.Material.Outlined.Hub" />
 
 @code {
 }

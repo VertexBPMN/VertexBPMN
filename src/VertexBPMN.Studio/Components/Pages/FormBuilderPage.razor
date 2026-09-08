@@ -3,23 +3,19 @@
 @using System.Text.Json
 @using Microsoft.AspNetCore.Components.Forms
 @inject MudBlazor.ISnackbar Snackbar
-@inject IHttpClientFactory HttpClientFactory
 @inject IJSRuntime JSRuntime
 @inject IFormDefinitionService FormService
 @inject StudioTenantContext TenantContext
+@inject IWebHostEnvironment HostEnvironment
 
 <PageTitle>Form Builder</PageTitle>
 
-<MudStack Spacing="3">
-    <div>
-        <MudText Typo="Typo.h4" GutterBottom="true">Form Builder</MudText>
-        <MudText Typo="Typo.body2" Color="Color.Secondary">
-            form-js Builder fuer User-Task-Formulare mit Runtime Viewer fuer Vorschau und Ausfuehrung.
-        </MudText>
-    </div>
+<MudStack Spacing="3" Class="studio-editor-page">
+    <StudioPageHeader Title="Form Builder"
+                      Eyebrow="Model"
+                      Description="Build, preview and publish forms for user tasks." />
 
-    <MudPaper Class="pa-4">
-        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+    <StudioToolbar AriaLabel="Form model actions" Class="studio-editor-toolbar">
             <MudTextField Label="Form key" @bind-Value="_formKey" Required="true" Immediate="true" />
             <MudTextField Label="Form name" @bind-Value="_formName" Required="true" Immediate="true" />
             <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveFormJson" StartIcon="@Icons.Material.Filled.Save">Save form</MudButton>
@@ -32,35 +28,64 @@
             <MudButton Variant="Variant.Outlined" OnClick="LoadSavedFormJson" StartIcon="@Icons.Material.Filled.CloudDownload">Load saved form</MudButton>
             <MudButton Variant="Variant.Outlined" OnClick="@(() => LoadFormJson())" StartIcon="@Icons.Material.Filled.Refresh">Load JSON</MudButton>
             <MudChip T="string" Color="Color.Info" Variant="Variant.Outlined">Tenant: @(TenantContext.CurrentTenantId ?? "select tenant")</MudChip>
-        </MudStack>
-        <MudStack Row="true" Spacing="2" Class="mt-3" AlignItems="AlignItems.Center">
-            <MudTextField Label="New field key" @bind-Value="_newFieldKey" Immediate="true" />
-            <MudTextField Label="New field label" @bind-Value="_newFieldLabel" Immediate="true" />
-            <MudButton Variant="Variant.Outlined" OnClick="AddTextFieldAsync" Disabled="@(string.IsNullOrWhiteSpace(_newFieldKey) || string.IsNullOrWhiteSpace(_newFieldLabel))">Add text field</MudButton>
-        </MudStack>
-    </MudPaper>
+    </StudioToolbar>
 
-    <MudPaper Class="pa-4">
-        <MudText Typo="Typo.h6" GutterBottom="true">Builder</MudText>
+    <MudPaper Class="studio-modeler-card" Elevation="0">
+        <div class="studio-modeler-card__header">
+            <div>
+                <MudText Typo="Typo.h6">Form canvas</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Arrange fields and edit their form-js configuration.</MudText>
+            </div>
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.Edit">Editing</MudChip>
+        </div>
         <FormBuilderSurface @ref="_builder" Json="@_formJson" />
     </MudPaper>
 
-    <MudPaper Class="pa-4">
-        <MudText Typo="Typo.h6" GutterBottom="true">Runtime Viewer</MudText>
-        <FormViewerSurface Json="@_savedFormJson" />
-    </MudPaper>
+    <div class="studio-bpmn-tools studio-editor-tools">
+        <div class="studio-bpmn-tools__tabs" role="tablist" aria-label="Form tools">
+            <button type="button" role="tab" aria-selected="@AriaSelected(0)" class="studio-bpmn-tools__tab @ToolTabClass(0)" @onclick="@(() => _activeToolTab = 0)"><MudIcon Icon="@Icons.Material.Outlined.AddBox" Size="Size.Small" />Field tools</button>
+            <button type="button" role="tab" aria-selected="@AriaSelected(1)" class="studio-bpmn-tools__tab @ToolTabClass(1)" @onclick="@(() => _activeToolTab = 1)"><MudIcon Icon="@Icons.Material.Outlined.Visibility" Size="Size.Small" />Runtime Viewer</button>
+        </div>
+        <div class="studio-bpmn-tools__panels">
+            <section role="tabpanel" hidden="@(_activeToolTab != 0)">
+                <MudStack Spacing="3" Class="studio-bpmn-tool-panel">
+                    <div>
+                        <MudText Typo="Typo.h6">Add text field</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Create a bound field with a stable schema key and user-facing label.</MudText>
+                    </div>
+                    <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2">
+                        <MudTextField Label="New field key" @bind-Value="_newFieldKey" Immediate="true" />
+                        <MudTextField Label="New field label" @bind-Value="_newFieldLabel" Immediate="true" />
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddTextFieldAsync" Disabled="@(string.IsNullOrWhiteSpace(_newFieldKey) || string.IsNullOrWhiteSpace(_newFieldLabel))">Add text field</MudButton>
+                    </MudStack>
+                </MudStack>
+            </section>
+            <section role="tabpanel" hidden="@(_activeToolTab != 1)">
+                <div class="studio-bpmn-tool-panel studio-bpmn-tool-panel--viewer">
+                    @if (_activeToolTab == 1)
+                    {
+                        <FormViewerSurface Json="@_savedFormJson" />
+                    }
+                </div>
+            </section>
+        </div>
+    </div>
 </MudStack>
 
 @code {
     private string _formJson = FallbackFormJson;
     private string _savedFormJson = FallbackFormJson;
-    private HttpClient _httpClient = default!;
     private FormBuilderSurface? _builder;
     private string _formKey = "invoice-approval";
     private string _formName = "Invoice approval";
     private string? _formId;
     private string _newFieldKey = string.Empty;
     private string _newFieldLabel = string.Empty;
+    private int _activeToolTab;
+
+    private string? ToolTabClass(int index) => _activeToolTab == index ? "studio-bpmn-tools__tab--active" : null;
+
+    private string AriaSelected(int index) => _activeToolTab == index ? "true" : "false";
 
     private const string FallbackFormJson = """
 {
@@ -77,7 +102,6 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _httpClient = HttpClientFactory.CreateClient("Default");
         await LoadFormJson(showNotification: false);
     }
 
@@ -163,7 +187,8 @@
     {
         try
         {
-            _formJson = await _httpClient.GetStringAsync("data/invoiceApprovalForm.json");
+            var templatePath = Path.Combine(HostEnvironment.WebRootPath, "data", "invoiceApprovalForm.json");
+            _formJson = await File.ReadAllTextAsync(templatePath);
             _savedFormJson = _formJson;
             if (showNotification)
                 Snackbar.Add("Form JSON loaded.", Severity.Info);

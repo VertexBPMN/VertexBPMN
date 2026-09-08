@@ -103,11 +103,6 @@ builder.Services.AddHttpClient("VertexBPMN.Api", client =>
 
 builder.Services.AddTransient<StudioApiAuthorizationHandler>();
 
-builder.Services.AddHttpClient("Default", client =>
-{
-    client.BaseAddress = new Uri("http://localhost/");
-});
-
 // Register HTTP-based services
 builder.Services.AddScoped<IBpmnEngineService, HttpBpmnEngineService>();
 builder.Services.AddScoped<IRepositoryService, RepositoryService>();

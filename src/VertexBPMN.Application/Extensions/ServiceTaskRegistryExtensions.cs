@@ -136,7 +136,13 @@ public static class ServiceTaskRegistryExtensions
         }
         
         // ✅ NEW: AI-specific dependencies
-        services.AddSingleton<HttpClient>();
+        // M1: disable automatic redirect following so a 3xx Location cannot be used
+        // to bypass the ConnectorDestination SSRF guard (redirect back to a private
+        // address). Connectors that need redirects must handle them explicitly.
+        services.AddSingleton<SocketsHttpHandler>(
+            _ => new SocketsHttpHandler { AllowAutoRedirect = false });
+        services.AddSingleton<HttpClient>(
+            provider => new HttpClient(provider.GetRequiredService<SocketsHttpHandler>()));
         services.AddSingleton<IConnectorExecutor, HttpConnectorExecutor>();
         services.AddSingleton<IConnectorExecutor, DelayConnectorExecutor>();
         services.AddSingleton<IConnectorExecutor, EmailConnectorExecutor>();

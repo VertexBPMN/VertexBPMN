@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 using VertexBPMN.Api.Dto;
 using VertexBPMN.Domain.Interfaces;
 
@@ -20,6 +21,10 @@ public class VertexVariableController : ControllerBase
     [HttpGet("{processInstanceId}")]
     public async Task<ActionResult<IDictionary<string, VariableValueDto>>> GetVariables(Guid processInstanceId)
     {
+        var instance = await _runtimeService.GetByIdAsync(processInstanceId);
+        if (instance is null) return NotFound();
+        if (!CanAccessTenant(instance.TenantId)) return NotFound();
+
         var variables = await _runtimeService.GetVariablesAsync(processInstanceId);
         if (variables == null) return NotFound();
         var result = new Dictionary<string, VariableValueDto>();
@@ -32,5 +37,12 @@ public class VertexVariableController : ControllerBase
             };
         }
         return result;
+    }
+
+    private bool CanAccessTenant(string? tenantId)
+    {
+        if (User.IsInRole("Admin")) return true;
+        var claim = User.FindFirstValue("tenant_id");
+        return string.Equals(tenantId, claim, StringComparison.Ordinal);
     }
 }

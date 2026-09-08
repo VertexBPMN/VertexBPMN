@@ -215,6 +215,9 @@ public sealed class LocalStudioE2ETestHost : IAsyncLifetime
             ["ConnectionStrings__messaging"] = RequiredEnvironment("VERTEXBPMN_E2E_RABBITMQ_CONNECTION"),
             ["Runtime__Outbox__Enabled"] = "true",
             ["Runtime__Outbox__Provider"] = "RabbitMq",
+            // Trusted test environment: keep the explicit-C# (Roslyn) scriptTask E2E green.
+            // Production default is false (Roslyn is not sandboxed); set only for trusted tenants.
+            ["Runtime__Scripts__AllowCSharp"] = "true",
             ["Modules__Telemetry"] = "false",
             ["Modules__Plugins"] = "false",
             ["Dependencies__Plugins__Enabled"] = "false",

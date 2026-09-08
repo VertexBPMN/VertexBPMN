@@ -53,13 +53,17 @@ public class TaskIoSnapshotController : ControllerBase
 
     private string? ResolveTenantId(string? explicitTenantId)
     {
+        // Non-admins are always pinned to their own tenant claim; an explicit
+        // query tenantId is honoured only for admins (who can read any tenant).
+        if (!User.IsInRole("Admin"))
+            return User.FindFirst("tenant_id")?.Value;
+
         if (!string.IsNullOrWhiteSpace(explicitTenantId))
             return explicitTenantId;
 
-        var claim = User.FindFirst("tenant_id") ??
-                    User.FindFirst("tenantid") ??
-                    User.FindFirst(ClaimTypes.NameIdentifier);
-        return claim?.Value;
+        return User.FindFirst("tenant_id")?.Value ??
+               User.FindFirst("tenantid")?.Value ??
+               User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
     }
 
     public sealed record TaskIoSnapshotDto(Guid Id, DateTime Timestamp, JsonElement Data);

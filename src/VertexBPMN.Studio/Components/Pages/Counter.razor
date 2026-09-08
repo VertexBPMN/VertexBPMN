@@ -3,11 +3,12 @@
 
 <PageTitle>Counter</PageTitle>
 
-<h1>Counter</h1>
+<StudioPageHeader Title="Counter" Eyebrow="Demo" Description="Interactive template page retained for development diagnostics." />
 
-<p role="status">Current count: @currentCount</p>
-
-<button class="btn btn-primary" @onclick="IncrementCount">Click me</button>
+<MudPaper Class="studio-content-card" Elevation="0">
+    <MudText Typo="Typo.h6" role="status">Current count: @currentCount</MudText>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="IncrementCount" Class="mt-4">Increment</MudButton>
+</MudPaper>
 
 @code {
     private int currentCount = 0;

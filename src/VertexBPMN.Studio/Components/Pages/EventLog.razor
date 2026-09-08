@@ -6,18 +6,18 @@
 
 <PageTitle>Event Log</PageTitle>
 
-<MudText Typo="Typo.h4" GutterBottom="true">Event Log</MudText>
-
-<MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync" Disabled="_isLoading" Class="mb-4">
-    Refresh
-</MudButton>
+<StudioPageHeader Title="Event Log" Eyebrow="Analyze" Description="Inspect persisted engine events for the active tenant.">
+    <Actions><MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync" Disabled="_isLoading">Refresh</MudButton></Actions>
+</StudioPageHeader>
 
 @if (_error is not null)
 {
-    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+    <StudioStatePanel Title="Event log could not be loaded" Description="@_error" Icon="@Icons.Material.Outlined.ErrorOutline" />
 }
-
-<MudTable Items="_events" Hover="true" Dense="true" Loading="_isLoading" data-testid="persistent-event-log-table">
+else
+{
+<MudPaper Class="studio-data-card" Elevation="0">
+<MudTable Items="_events" Hover="true" Dense="true" Loading="_isLoading" Breakpoint="Breakpoint.Md" Class="studio-data-table" data-testid="persistent-event-log-table">
     <HeaderContent>
         <MudTh>Timestamp</MudTh>
         <MudTh>Event</MudTh>
@@ -28,14 +28,16 @@
     <RowTemplate>
         <MudTd DataLabel="Timestamp">@context.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</MudTd>
         <MudTd DataLabel="Event">@FormatEventType(context.EventType)</MudTd>
-        <MudTd DataLabel="Process instance">@context.ProcessInstanceId</MudTd>
+        <MudTd DataLabel="Process instance"><span class="studio-technical-id">@context.ProcessInstanceId</span></MudTd>
         <MudTd DataLabel="Element">@context.ElementId</MudTd>
         <MudTd DataLabel="Details">@(context.Details ?? context.Data)</MudTd>
     </RowTemplate>
     <NoRecordsContent>
-        <MudText Class="pa-4">No persisted engine events found for the active tenant.</MudText>
+        <StudioStatePanel Title="No engine events found" Description="Persisted events for the active tenant will appear here." Icon="@Icons.Material.Outlined.ReceiptLong" />
     </NoRecordsContent>
 </MudTable>
+</MudPaper>
+}
 
 @code {
     private readonly List<HistoryEvent> _events = [];

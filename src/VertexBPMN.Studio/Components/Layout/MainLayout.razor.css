@@ -1,98 +1,109 @@
-.page {
-    position: relative;
+::deep .studio-appbar {
+    min-height: var(--vertex-appbar-height);
+    border-bottom: 1px solid var(--vertex-color-border);
+    box-shadow: var(--vertex-shadow-sm);
+    padding-inline: var(--vertex-space-4);
+}
+
+.studio-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--vertex-space-3);
+    min-width: 188px;
+    color: var(--vertex-color-text);
+    text-decoration: none;
+}
+
+.studio-brand__mark {
+    display: grid;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    border-radius: var(--vertex-radius-md);
+    color: #fff;
+    background: var(--vertex-color-accent);
+    font-size: 1rem;
+    font-weight: 750;
+    box-shadow: 0 5px 14px rgb(37 99 235 / 0.22);
+}
+
+.studio-brand__copy {
     display: flex;
-    flex-direction: column;
+    align-items: baseline;
+    gap: var(--vertex-space-1);
+    line-height: 1;
 }
 
-main {
-    flex: 1;
+.studio-brand__name {
+    font-size: 1rem;
+    font-weight: 720;
+    letter-spacing: -0.02em;
 }
 
-.sidebar {
-    background-image: linear-gradient(180deg, rgb(5, 39, 103) 0%, #3a0647 70%);
+.studio-brand__product {
+    color: var(--vertex-color-text-muted);
+    font-size: 0.75rem;
+    font-weight: 600;
 }
 
-.top-row {
-    background-color: #f7f7f7;
-    border-bottom: 1px solid #d6d5d5;
-    justify-content: flex-end;
-    height: 3.5rem;
+.studio-context {
     display: flex;
     align-items: center;
+    gap: var(--vertex-space-2);
 }
 
-    .top-row ::deep a, .top-row ::deep .btn-link {
-        white-space: nowrap;
-        margin-left: 1.5rem;
-        text-decoration: none;
-    }
+::deep .studio-context__select { width: 164px; }
+::deep .studio-context__select .mud-input-control { margin-top: 0; }
 
-    .top-row ::deep a:hover, .top-row ::deep .btn-link:hover {
-        text-decoration: underline;
-    }
-
-    .top-row ::deep a:first-child {
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
-@media (max-width: 640.98px) {
-    .top-row {
-        justify-content: space-between;
-    }
-
-    .top-row ::deep a, .top-row ::deep .btn-link {
-        margin-left: 0;
-    }
+::deep .studio-connection-status {
+    height: 32px;
+    background: var(--vertex-color-surface);
 }
 
-@media (min-width: 641px) {
-    .page {
-        flex-direction: row;
-    }
-
-    .sidebar {
-        width: 250px;
-        height: 100vh;
-        position: sticky;
-        top: 0;
-    }
-
-    .top-row {
-        position: sticky;
-        top: 0;
-        z-index: 1;
-    }
-
-    .top-row.auth ::deep a:first-child {
-        flex: 1;
-        text-align: right;
-        width: 0;
-    }
-
-    .top-row, article {
-        padding-left: 2rem !important;
-        padding-right: 1.5rem !important;
-    }
+::deep .studio-drawer {
+    width: var(--vertex-drawer-width);
+    border-right: 1px solid var(--vertex-color-border);
 }
 
-#blazor-error-ui {
-    color-scheme: light only;
-    background: lightyellow;
-    bottom: 0;
-    box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.2);
-    box-sizing: border-box;
-    display: none;
-    left: 0;
-    padding: 0.6rem 1.25rem 0.7rem 1.25rem;
-    position: fixed;
+::deep .studio-drawer__header {
+    min-height: 44px;
+    padding: var(--vertex-space-4) var(--vertex-space-5) var(--vertex-space-2);
+    color: var(--vertex-color-text-muted);
+}
+
+::deep .studio-main {
+    min-width: 0;
+    background: var(--vertex-color-app);
+}
+
+.studio-content {
+    width: min(100%, var(--vertex-content-max));
+    min-height: calc(100vh - var(--vertex-appbar-height));
+    margin-inline: auto;
+    padding: var(--vertex-space-8);
+}
+
+.studio-content--workspace {
     width: 100%;
-    z-index: 1000;
+    max-width: none;
+    padding: var(--vertex-space-5);
 }
 
-    #blazor-error-ui .dismiss {
-        cursor: pointer;
-        position: absolute;
-        right: 0.75rem;
-        top: 0.5rem;
-    }
+@media (max-width: 959.98px) {
+    .studio-brand { min-width: 0; }
+    .studio-brand__product,
+    ::deep .studio-connection-status { display: none; }
+    ::deep .studio-context__select { width: 132px; }
+    .studio-content,
+    .studio-content--workspace { padding: var(--vertex-space-5); }
+}
+
+@media (max-width: 599.98px) {
+    ::deep .studio-appbar { padding-inline: var(--vertex-space-2); }
+    .studio-brand__copy,
+    ::deep .studio-context__engine,
+    ::deep .studio-context__refresh { display: none; }
+    ::deep .studio-context__select { width: 126px; }
+    .studio-content,
+    .studio-content--workspace { padding: var(--vertex-space-4); }
+}

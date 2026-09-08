@@ -6,13 +6,13 @@
 
 <PageTitle>Simulation</PageTitle>
 
-<MudText Typo="Typo.h4" GutterBottom="true">Simulation</MudText>
-<MudText Typo="Typo.body2" Color="Color.Tertiary" Class="mb-4">
-    Scenario definitions can be managed here. Simulation execution is disabled by default until an engine-backed deterministic implementation passes the Phase 4 qualification gate.
-</MudText>
+<StudioPageHeader Title="Simulation" Eyebrow="Analyze" Description="Manage scenarios, run qualified simulations and compare their results." />
+<MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mb-4">Simulation execution is disabled by default until an engine-backed deterministic implementation passes the Phase 4 qualification gate.</MudAlert>
 
 <MudGrid>
     <MudItem xs="12" md="6">
+        <MudPaper Class="studio-content-card" Elevation="0">
+        <MudText Typo="Typo.h6" Class="mb-3">Scenario configuration</MudText>
         <MudTextField @bind-Value="_processDefinitionId" Label="Process definition id" Variant="Variant.Outlined" Class="mb-3" />
         <MudTextField Value="@TenantId" Label="Tenant id" ReadOnly="true" Variant="Variant.Outlined" Class="mb-3" />
         <MudNumericField @bind-Value="_maxSteps" Label="Maximum steps" Variant="Variant.Outlined" Class="mb-3" />
@@ -34,16 +34,18 @@
         <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="DeleteScenarioAsync" Disabled="_isDeletingScenario" Class="mt-2 ml-2">
             Delete scenario
         </MudButton>
+        </MudPaper>
     </MudItem>
     <MudItem xs="12" md="6">
         @if (_error is not null)
         {
-            <MudAlert Severity="Severity.Error">@_error</MudAlert>
+            <StudioStatePanel Title="Simulation operation failed" Description="@_error" Icon="@Icons.Material.Outlined.ErrorOutline" />
         }
         else if (_result is not null)
         {
+            <MudPaper Class="studio-result-card" Elevation="0">
             <MudText Typo="Typo.h6">Result</MudText>
-            <pre>@Format(_result.Value)</pre>
+            <pre class="studio-json-result">@Format(_result.Value)</pre>
             <MudTextField @bind-Value="_variableName" Label="Variable to trace" Variant="Variant.Outlined" Class="mt-3" />
             <MudButton Variant="Variant.Outlined" OnClick="AnalyzeAsync" Disabled="_isAnalyzing" Class="mt-3">
                 Analyze result
@@ -51,26 +53,32 @@
             @if (_analysis is not null)
             {
                 <MudText Typo="Typo.h6" Class="mt-4">Analytics</MudText>
-                <pre>@Format(_analysis.Value)</pre>
+                <pre class="studio-json-result">@Format(_analysis.Value)</pre>
             }
             @if (_scenarios is not null)
             {
                 <MudText Typo="Typo.h6" Class="mt-4">Saved scenarios</MudText>
-                <pre>@Format(_scenarios.Value)</pre>
+                <pre class="studio-json-result">@Format(_scenarios.Value)</pre>
             }
+            </MudPaper>
+        }
+        else
+        {
+            <StudioStatePanel Title="No simulation result" Description="Configure a scenario and run the simulation to inspect its result." Icon="@Icons.Material.Outlined.Science" />
         }
     </MudItem>
 </MudGrid>
 
-<MudDivider Class="my-4" />
+<MudPaper Class="studio-content-card mt-4" Elevation="0">
 <MudText Typo="Typo.h6">Compare simulation results</MudText>
 <MudTextField @bind-Value="_comparisonA" Label="Result A JSON" Lines="5" Variant="Variant.Outlined" Class="mt-2" />
 <MudTextField @bind-Value="_comparisonB" Label="Result B JSON" Lines="5" Variant="Variant.Outlined" Class="mt-2" />
 <MudButton Variant="Variant.Outlined" OnClick="CompareAsync" Disabled="_isComparing" Class="mt-2">Compare</MudButton>
 @if (_comparison is not null)
 {
-    <MudPaper Class="pa-4 mt-3" Elevation="1"><pre>@Format(_comparison.Value)</pre></MudPaper>
+    <MudPaper Class="studio-result-card" Elevation="0"><pre class="studio-json-result">@Format(_comparison.Value)</pre></MudPaper>
 }
+</MudPaper>
 
 @code {
     private string _processDefinitionId = "process";

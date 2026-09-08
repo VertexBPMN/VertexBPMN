@@ -50,7 +50,7 @@ public sealed class VertexBpmnClientTests
         var key = $"sdk-trigger-{Guid.NewGuid():N}";
         var deploy = await httpClient.PostAsJsonAsync("/api/repository", new
         {
-            bpmnXml = $"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='{key}'><startEvent id='start'/><endEvent id='end'/></process></definitions>",
+bpmnXml = $"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='{key}'><startEvent id='start'/><sequenceFlow id='start-end' sourceRef='start' targetRef='end'/><endEvent id='end'/></process></definitions>",
             name = $"{key}.bpmn",
             tenantId = (string?)null
         }, TestContext.Current.CancellationToken);
@@ -74,7 +74,7 @@ public sealed class VertexBpmnClientTests
         using var httpClient = factory.CreateClient();
         var client = new VertexBpmnClient(httpClient);
         var key = $"sdk-test-run-{Guid.NewGuid():N}";
-        var bpmnXml = $"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='{key}'><startEvent id='start'/><endEvent id='end'/></process></definitions>";
+        var bpmnXml = $"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='{key}'><startEvent id='start'/><sequenceFlow id='start-end' sourceRef='start' targetRef='end'/><endEvent id='end'/></process></definitions>";
 
         var validation = await client.ValidateBpmnAsync(bpmnXml, TestContext.Current.CancellationToken);
         var testRun = await client.StartTestRunAsync(bpmnXml, $"{key}.bpmn", new Dictionary<string, object?> { ["source"] = "sdk" }, null, TestContext.Current.CancellationToken);

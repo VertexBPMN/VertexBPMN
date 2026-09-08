@@ -131,7 +131,7 @@ public class OpenAiServiceTaskHandlerTests : IDisposable
             ItExpr.IsAny<CancellationToken>());
     }
 
-    [Fact(Skip = "Integration test that requires a valid OpenAI API key. Set the OPENAI_API_KEY environment variable to run this test.")]
+    [Fact]
     public async Task ExecuteAsync_HttpError_ShouldThrowServiceTaskExecutionException()
     {
         // Arrange

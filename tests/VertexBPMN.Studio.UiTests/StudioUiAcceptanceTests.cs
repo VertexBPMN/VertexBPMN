@@ -164,6 +164,7 @@ public sealed class StudioUiAcceptanceTests(StudioUiTestHost host) : IClassFixtu
         {
             await page.GotoAsync(host.BaseAddress.ToString());
             var description = page.Locator(".studio-page-header__description");
+            await page.Locator("[data-interactive-ready='true']").WaitForAsync();
             await description.WaitForAsync();
             var contrast = await description.EvaluateAsync<double>("""
                 element => {

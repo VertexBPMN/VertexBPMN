@@ -18,7 +18,7 @@ public sealed class PhaseTwelveApiTests
         var key = $"test-run-{Guid.NewGuid():N}";
         var response = await _client.PostAsJsonAsync("/api/test-runs", new
         {
-            bpmnXml = $"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='{key}'><startEvent id='start'/><endEvent id='end'/></process></definitions>",
+bpmnXml = $"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='{key}'><startEvent id='start'/><sequenceFlow id='start-end' sourceRef='start' targetRef='end'/><endEvent id='end'/></process></definitions>",
             name = $"{key}.bpmn",
             variables = new Dictionary<string, object> { ["source"] = "test" },
             businessKey = "phase-12"

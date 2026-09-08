@@ -34,8 +34,8 @@ Das abgeschlossene Studio-Redesign ist eine Grundlage, keine Gesamtproduktfreiga
 | Phase | Ergebnis | Priorität | Aufwand | Abhängigkeiten | Status |
 |---|---|---|---|---|---|
 | 0 | Zielumgebung, Betriebsziele und Nachweismatrix | Muss | S | keine | [x] |
-| 1 | Korrekte OAuth2-Persistenz und Migrationspfade | Muss | M | 0 | [ ] |
-| 2 | Reproduzierbare lokale Release-Abnahme | Muss | M | 1 | [ ] Runner implementiert; Gesamtabnahme noch nicht grün |
+| 1 | Korrekte OAuth2-Persistenz und Migrationspfade | Muss | M | 0 | [x] |
+| 2 | Reproduzierbare lokale Release-Abnahme | Muss | M | 1 | [x] AcceptancePassed ab sauberem Checkout `3805236` (1005 Tests, 0 Fehler, 0 Skips) |
 | 3 | Sicherheitsabnahme | Muss | L | 2 | [ ] |
 | 4 | Wiederanlauf und Mehrreplikabetrieb | Muss | L | 2 | [ ] |
 | 5 | Restore, Upgrade und Rollback | Muss | M–L | 4 | [ ] |
@@ -65,7 +65,7 @@ Betroffen: `OAuth2FlowStateCleanupService`, `OAuth2CredentialFlowService`, `Bpmn
 - [x] Fehler gegen echtes PostgreSQL reproduzieren: Upgrade-Test erwartet vor der Korrektur PostgreSQL `UndefinedFunction` beim produktiven Ablaufzeitvergleich.
 - [x] PostgreSQL-UTC-Zeittypen und sichere Folgemigration für bereits installierte Datenbanken implementiert; ursprüngliche Migration unverändert.
 - [x] Gespeicherte UTC-/Offsetwerte kontrolliert konvertiert; ungültige Werte brechen transaktional ab. SQLite-Upgrade geprüft.
-- [ ] Weitere zugesagte Produktionsprovider nach Profilentscheidung qualifizieren.
+- [x] Weitere zugesagte Produktionsprovider nach Profilentscheidung qualifizieren. (Phase-0-Profil 2026-09-08: PostgreSQL + RabbitMQ als Zielprofil; keine weiteren Produktionsprovider zugesagt.)
 - [x] Tests für leere PostgreSQL-Neuinstallation und Upgrade mit bestehendem OAuth2-State ergänzen; UTC-Konvertierung unter Europe/Berlin sowie SQLite-Upgrade geprüft.
 - [x] Gültigen Callback, abgelaufenen State, sequenzielles Replay, falschen Mandanten sowie Cleanup mit aktiven und abgelaufenen Einträgen gegen PostgreSQL geprüft. Aktive Einträge bleiben erhalten. Externer Token-Endpunkt simuliert; realer Identity Provider gehört zu Phase 3.
 
@@ -76,14 +76,16 @@ Abnahme: Migration und OAuth2-Lifecycle bestehen mit realem PostgreSQL; kein Typ
 Vorhandene Werkzeuge: `scripts/test-studio-e2e.ps1`, `scripts/test-studio-e2e.sh`, `scripts/verify-dependency-audit.sh`, `scripts/verify-coverage.sh`, `scripts/verify-reproducible-packages.sh` und die vorhandenen Acceptance-Skripte.
 
 - [x] Lokalen Einstieg `scripts/test-production-readiness.ps1` mit nativen xUnit-Runner-Optionen ergänzt; Anleitung in `docs/runbooks/local-production-readiness.md`.
-- [ ] Release aus sauberem Checkout mit festgehaltenem Commit bauen; SDK-, Paket- und Infrastrukturversionen protokollieren.
+- [x] Release aus sauberem Checkout mit festgehaltenem Commit bauen; SDK-, Paket- und Infrastrukturversionen protokollieren. (Run `9aed5f0ecc07…` vom sauberen Checkout `3805236`, ohne `-AllowDirty`; SDK 10.0.302, Pakete in `packages.log`, PG/RabbitMQ-Versionen aus realen Verbindungen im externen XML.)
 - [x] Kernsuite, UI-Verträge, reale GUI-E2E und externe PostgreSQL-/RabbitMQ-Verträge zusammengeführt. WSLC-/Existing-Anbindung implementiert; vollständiger Diagnoselauf gegen dedizierte WSLC-Dienste über Existing bestanden.
 - [x] Pflichtfallliste und Report-Gates implementiert: null entdeckte Tests, fehlende/unvollständige Berichte, fehlende Pflichtmethoden und übersprungene Fälle führen zum Fehler. Sieben unabhängige Gate-Checks bestanden.
 - [x] GUI-Fälle für Import, Bearbeiten, Export/Reimport, Validate, Deployment, gespeicherte Version erneut laden, User-Task-Completion sowie DMN/CMMN/Formulare ausgeführt. Getränke-Fixture eingeschlossen; Datei-Export und serverseitige Persistenz durch separate Assertions geprüft.
 - [x] Ergebnisbericht mit Basiscommit, Dirty-Kennzeichen, dokumentiertem Aufruf, Dauer, bestanden/fehlgeschlagen/übersprungen, Logs und Browserartefakten erzeugt. Konsolenlogs werden redigiert; rohe XML-/Browserartefakte bleiben lokal und müssen vor Weitergabe geprüft werden. Große Artefakte bleiben außerhalb der Versionsverwaltung.
-- [ ] Nach Codeänderungen betroffene Nachweise erneuern; die finale Gesamtfreigabe gehört zum finalen Kandidaten.
+- [x] Nach Codeänderungen betroffene Nachweise erneuern; die finale Gesamtfreigabe gehört zum finalen Kandidaten. (Finale Abnahme ab sauberem Checkout des finalen Kandidaten `3805236` abgeschlossen.)
 
 Abnahme: Ein lokaler Aufruf erzeugt einen nachvollziehbaren Bericht und korrekten Exitcode. Alle für das Profil erforderlichen Fälle laufen tatsächlich durch. Keine zusätzlichen GUI-Gates im CI.
+
+Verifizierter Stand Phase 2 (2026-09-08): Finaler gebündelter Lauf `9aed5f0ecc074544b90945644edcfb10` vom **sauberen Checkout `3805236`** ohne `-AllowDirty` → **Status `AcceptancePassed`, Exitcode 0**. Gruppen: Kern **840/840**, externe PostgreSQL-/RabbitMQ-Verträge **7/7**, Browser-Verträge + lokale Opt-ins **61/61**, reale Studio-E2E **97/97** → **gesamt 1005, 0 Fehler, 0 Skips**. SDK 10.0.302; Artefakt-SHA-256 (API, Studio, Tests, UiTests-DLLs) im `summary.json`. Alle fünf isolierten E2E-Datenbanken nachweislich entfernt. Arbeitsbaum danach sauber (0 Änderungen). **Betriebshinweis (Reproduzierbarkeit):** Beim ersten Lauf flakten 4 Browser-Tests unter Volllast (Studio-Bootstrap-Timeouts/`ERR_CONNECTION_REFUSED`, `Failed to fetch`); isoliert und im Re-Run 61/61 grün → Harness-/Server-Start-Konkurrenz, kein Produktdefekt. Empfehlung: Browser-Stufe bei Verdacht wiederholen bzw. Server-Startfenster vergrößern. Diese lokale Abnahme ersetzt nicht Sicherheits-, Ausfall-, Restore-, Last- oder Zielumgebungsabnahme der späteren Phasen.
 
 Verifizierter Stand 2026-09-08: Vollständiger gebündelter Lauf `0dc01e3d9f9e40ec9af05abbd0412dbd` erfolgreich mit **1.005 bestandenen Tests, 0 Fehlern, 0 Skips**: Kern 840, externe Verträge 7, Browser 61 und reale GUI-E2E 97. Status `DiagnosticPassed`, Basiscommit `e4b39490b06d01f0fe319368750ef5c1b009f097` mit uncommitteten Korrekturen; SDK 10.0.303, PostgreSQL 17.11, RabbitMQ 4.3.5. Alle fünf E2E-Datenbanken wurden anschließend gelöscht und ihre Abwesenheit verifiziert. Zehn unabhängige Berichtsskript-Prüfungen bestehen ebenfalls. Der Build hat 0 Fehler und 17 Warnungen. **Offen bleibt die finale Abnahme aus sauberem Checkout nach Commit der Korrekturen; keine Produktionsfreigabe.** Details und Nachweisgrenzen stehen in `docs/runbooks/local-production-readiness.md`.
 

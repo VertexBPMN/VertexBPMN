@@ -90,3 +90,21 @@ Alle Gruppen haben zusätzlich 0 Runner-Fehler. SDK 10.0.303; PostgreSQL 17.11 u
 Nachweise liegen unter `tests/VertexBPMN.Studio.UiTests/TestResults/production-readiness/0dc01e3d9f9e40ec9af05abbd0412dbd/`: `summary.json`, Gruppen-XML/-Logs sowie `e2e/results.html`, Screenshots, Traces und `e2e/database-cleanup.log`.
 
 **Noch offen:** Korrekturen committen und die Abnahme ohne `-AllowDirty` aus dem sauberen finalen Checkout wiederholen. Der erfolgreiche Diagnoselauf ist weder ein unveränderlicher Release-Kandidat noch eine Freigabe der Sicherheits-, Ausfall-, Restore- oder Lastphasen. Die temporären Testdienste werden nach der Prüfung entfernt; die genannten Testports sind keine dauerhafte lokale Konfiguration.
+
+### Finale Abnahme ab sauberem Checkout (Server/Linux)
+
+Lauf `9aed5f0ecc074544b90945644edcfb10`, 2026-09-08, Status **AcceptancePassed**, Exitcode 0. Aufruf vom **sauberen Checkout** `3805236` (keine uncommitteten Änderungen, kein `-AllowDirty`) gegen vorhandene lokale PostgreSQL-/RabbitMQ-Dienste:
+
+```powershell
+~/pwsh/pwsh -NoProfile -Command "& ./scripts/test-production-readiness.ps1 -Infrastructure Existing -PostgresHost 127.0.0.1 -PostgresPort 55432 -RabbitMqHost 127.0.0.1 -RabbitMqPort 55672 -User vertexbpmn -Password <pw>"
+```
+
+| Gruppe | Bestanden | Fehlgeschlagen / übersprungen |
+| --- | ---: | --- |
+| Kern | 840 | 0 / 0 |
+| PostgreSQL-/RabbitMQ-Verträge | 7 | 0 / 0 |
+| Browser-Verträge und lokale Opt-ins | 61 | 0 / 0 |
+| Reale Studio-E2E | 97 | 0 / 0 |
+| **Gesamt** | **1.005** | **0 / 0** |
+
+SDK 10.0.302; Artefakt-SHA-256 (API, Studio, Tests, UiTests-DLLs) im `summary.json`. Alle fünf isolierten E2E-Datenbanken nachweislich entfernt; Arbeitsbaum danach sauber. **Reproduzierbarkeitshinweis:** Ein erster Lauf flakte in der Browser-Stufe mit 4 Fehlern (Studio-Bootstrap-Timeouts, `ERR_CONNECTION_REFUSED`, `Failed to fetch`) unter Volllast der 61-Test-Gruppe; alle 4 passierten isoliert und im Folgegesamtlauf (61/61). Das ist Harness-/Server-Start-Konkurrenz, kein Produktdefekt — bei einer nicht bestandenen Browser-Stufe zuerst gezielt wiederholen bzw. das Server-Startfenster prüfen.

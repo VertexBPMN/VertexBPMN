@@ -33,7 +33,7 @@ Das abgeschlossene Studio-Redesign ist eine Grundlage, keine Gesamtproduktfreiga
 
 | Phase | Ergebnis | Priorität | Aufwand | Abhängigkeiten | Status |
 |---|---|---|---|---|---|
-| 0 | Zielumgebung, Betriebsziele und Nachweismatrix | Muss | S | keine | [ ] |
+| 0 | Zielumgebung, Betriebsziele und Nachweismatrix | Muss | S | keine | [x] |
 | 1 | Korrekte OAuth2-Persistenz und Migrationspfade | Muss | M | 0 | [ ] |
 | 2 | Reproduzierbare lokale Release-Abnahme | Muss | M | 1 | [ ] Runner implementiert; Gesamtabnahme noch nicht grün |
 | 3 | Sicherheitsabnahme | Muss | L | 2 | [ ] |
@@ -49,12 +49,14 @@ Phase 3 und 4 können nach Phase 2 parallel erfolgen; Phase 7 ebenfalls. Ein Abs
 
 ### Phase 0 – Produktionsprofil und Freigabekriterien
 
-- [ ] Tatsächliches Hosting, Betriebssystem, Datenbank-/Broker-Versionen, Replikazahl, Identity Provider und Secret-/Keyring-Speicherung festhalten. Kubernetes ist eine vorhandene Option, keine vorausgesetzte Nutzerentscheidung.
-- [ ] Erwartete Last definieren: aktive und wartende Instanzen, Starts pro Sekunde, parallele Benutzer, Modellgrößen, Historienwachstum und Aufbewahrung.
-- [ ] Verfügbarkeit, API-p95/p99, maximale Timer-Verzögerung, RPO (maximaler Datenverlust) und RTO (Wiederherstellungszeit) als messbare Zielwerte vereinbaren. Zahlen nicht aus lokalen Mikrobenchmarks ableiten.
-- [ ] Vorhandene Tests und Berichte inventarisieren: Feature → öffentlicher Einstieg → Persistenz → Test → letzter geprüfter Commit → offene Grenze.
+- [x] Tatsächliches Hosting, Betriebssystem, Datenbank-/Broker-Versionen, Replikazahl, Identity Provider und Secret-/Keyring-Speicherung festhalten. Kubernetes ist eine vorhandene Option, keine vorausgesetzte Nutzerentscheidung. (Versionen/Replikazahl erfasst; Hosting, IdP, Secret-Store bleiben sichtbar offen.)
+- [x] Erwartete Last definieren: aktive und wartende Instanzen, Starts pro Sekunde, parallele Benutzer, Modellgrößen, Historienwachstum und Aufbewahrung. (Entschieden 2026-09-08: mittel – 1–10 Starts/s, 50–500 parallele Benutzer. Wartende Instanzen/Historienwachstum/Aufbewahrung noch zu quantifizieren → sichtbar offen.)
+- [x] Verfügbarkeit, API-p95/p99, maximale Timer-Verzögerung, RPO (maximaler Datenverlust) und RTO (Wiederherstellungszeit) als messbare Zielwerte vereinbaren. Zahlen nicht aus lokalen Mikrobenchmarks ableiten. (Entschieden 2026-09-08: 99,5 %; p95 < 1 s; p99 < 3 s; RPO ≤ 15 min; RTO ≤ 4 h. Maximale Timer-Verzögerung noch offen – Vorschlag p95 ≤ 30 s.)
+- [x] Vorhandene Tests und Berichte inventarisieren: Feature → öffentlicher Einstieg → Persistenz → Test → letzter geprüfter Commit → offene Grenze. (Nachweis-Inventur in `2026-09-08_Produktionsprofil.md`; Basis `e4b3949`+Fixes, aktueller `master` `296366e` noch nicht nachqualifiziert.)
 
 Abnahme: Versioniertes Produktionsprofil mit konkreten Zielwerten; unbekannte Werte sichtbar offen. Zielabhängige Freigaben bleiben bis zur Festlegung offen, unabhängige technische Arbeiten können fortgesetzt werden.
+
+Verifizierter Stand Phase 0 (2026-09-08): `docs/reviews/2026-09-08_Produktionsprofil.md` versioniert mit Commit-Basis `296366e`, konkreten Zielwerten (2 API + 1 Worker; mittlere Last; 99,5 %/p95 < 1 s/p99 < 3 s; RPO ≤ 15 min/RTO ≤ 4 h) und sichtbar offenen Punkten (Hosting/OS, IdP/Secret/TLS, maximale Timer-Verzögerung, Historienwachstum/Aufbewahrung, Backup-/Alarmverantwortliche). Nachweis-Inventur deckt Engine, REST, gRPC, SDK, CLI, Studio, DMN, CMMN, Connectors, MCP, OAuth2/Migration, Security, Betrieb und Last ab.
 
 ### Phase 1 – OAuth2 und Datenbankmigrationen
 

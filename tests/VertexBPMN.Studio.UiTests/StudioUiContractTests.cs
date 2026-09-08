@@ -412,6 +412,65 @@ public sealed class StudioUiContractTests(StudioUiTestHost host) : IClassFixture
     }
 
     [Fact]
+    public async Task BpmnModeler_Getraenkeabwicklung_LoadsEditsExportsAndReimports_InBrowser()
+    {
+        const string fixtureName = "Getraenkeabwicklung-cad12eff63f31d4afd29a190c2a55591.bpmn";
+        const string editedTaskName = "Getränkekiste zum Mitarbeiter tragen (bearbeitet)";
+        var repositoryRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../.."));
+        var fixturePath = Path.Combine(repositoryRoot, "tests", "VertexBPMN.Tests", "TestData", fixtureName);
+        var sourceDocument = XDocument.Load(fixturePath);
+        var (page, browserErrors) = await OpenBpmnModelerAsync();
+
+        try
+        {
+            await page.GetByTestId("bpmn-import-file").SetInputFilesAsync(fixturePath);
+            await page.GetByText($"Imported {fixtureName}.", new() { Exact = true }).WaitForAsync();
+
+            var canvas = page.GetByTestId("bpmn-modeler-shell");
+            await canvas.Locator(".djs-element[data-element-id='Participant_0px403d']").WaitForAsync();
+            await canvas.Locator(".djs-element[data-element-id='Lane_1hlvh5k']").WaitForAsync();
+            var task = canvas.Locator(".djs-element[data-element-id='Activity_1qgme3a']");
+            await task.WaitForAsync();
+            await task.Locator(".djs-hit").DblClickAsync(new() { Force = true });
+            var directEditor = canvas.Locator(".djs-direct-editing-content");
+            await directEditor.WaitForAsync();
+            await directEditor.FillAsync(editedTaskName);
+            await directEditor.PressAsync("Enter");
+
+            await OpenBpmnToolTabAsync(page, "XML");
+            await page.GetByTestId("bpmn-xml-preview")
+                .GetByRole(AriaRole.Button, new() { Name = "Refresh", Exact = true })
+                .ClickAsync();
+            var editedXml = await WaitForPreviewXmlAsync(page, editedTaskName);
+            var editedDocument = XDocument.Parse(editedXml);
+            AssertGetraenkeabwicklungStructure(sourceDocument, editedDocument);
+            Assert.Contains(
+                editedDocument.Descendants(),
+                element => (string?)element.Attribute("id") == "Activity_1qgme3a"
+                           && (string?)element.Attribute("name") == editedTaskName);
+
+            var download = await page.RunAndWaitForDownloadAsync(() =>
+                page.GetByRole(AriaRole.Button, new() { Name = "Export XML", Exact = true }).ClickAsync());
+            Assert.Equal("studio-model.bpmn", download.SuggestedFilename);
+            var exportedXml = await File.ReadAllTextAsync(
+                await download.PathAsync(),
+                TestContext.Current.CancellationToken);
+            var exportedDocument = XDocument.Parse(exportedXml);
+            AssertGetraenkeabwicklungStructure(sourceDocument, exportedDocument);
+            Assert.Contains(editedTaskName, exportedXml, StringComparison.Ordinal);
+
+            await ImportBpmnAsync(page, exportedXml);
+            var roundtripDocument = XDocument.Parse(await WaitForPreviewXmlAsync(page, editedTaskName));
+            AssertGetraenkeabwicklungStructure(exportedDocument, roundtripDocument);
+            Assert.Empty(browserErrors);
+        }
+        finally
+        {
+            await page.CloseAsync();
+        }
+    }
+
+    [Fact]
     public async Task BpmnModeler_LocalSimulation_IsAvailable_ThroughThePinnedTokenSimulationBundle()
     {
         var (page, browserErrors) = await OpenBpmnModelerAsync();
@@ -490,6 +549,29 @@ public sealed class StudioUiContractTests(StudioUiTestHost host) : IClassFixture
             Buffer = Encoding.UTF8.GetBytes(xml)
         });
         await page.GetByText("Imported imported.bpmn.", new() { Exact = true }).WaitForAsync();
+    }
+
+    private static void AssertGetraenkeabwicklungStructure(XDocument expected, XDocument actual)
+    {
+        string[] elementTypes =
+        [
+            "collaboration", "participant", "process", "lane", "sequenceFlow", "startEvent",
+            "endEvent", "exclusiveGateway", "task", "manualTask", "serviceTask", "scriptTask", "userTask"
+        ];
+
+        foreach (var elementType in elementTypes)
+        {
+            Assert.Equal(
+                expected.Descendants().Count(element => element.Name.LocalName == elementType),
+                actual.Descendants().Count(element => element.Name.LocalName == elementType));
+        }
+
+        Assert.Contains(actual.Descendants(), element =>
+            element.Name.LocalName == "participant"
+            && (string?)element.Attribute("name") == "Getränkeabwicklung");
+        Assert.Contains(actual.Descendants(), element =>
+            element.Name.LocalName == "lane"
+            && (string?)element.Attribute("name") == "Getränkemarkt");
     }
 
     private async Task<string> WaitForPreviewXmlAsync(IPage page, string expectedToken)

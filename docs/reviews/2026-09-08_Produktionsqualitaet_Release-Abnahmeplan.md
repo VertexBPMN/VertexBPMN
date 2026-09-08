@@ -75,13 +75,15 @@ Vorhandene Werkzeuge: `scripts/test-studio-e2e.ps1`, `scripts/test-studio-e2e.sh
 
 - [x] Lokalen Einstieg `scripts/test-production-readiness.ps1` mit nativen xUnit-Runner-Optionen ergänzt; Anleitung in `docs/runbooks/local-production-readiness.md`.
 - [ ] Release aus sauberem Checkout mit festgehaltenem Commit bauen; SDK-, Paket- und Infrastrukturversionen protokollieren.
-- [ ] Kernsuite, UI-Verträge, reale GUI-E2E und externe PostgreSQL-/RabbitMQ-Verträge zusammenführen. WSLC und Existing-Infrastruktur unterstützen.
+- [x] Kernsuite, UI-Verträge, reale GUI-E2E und externe PostgreSQL-/RabbitMQ-Verträge zusammengeführt. WSLC-/Existing-Anbindung implementiert; vollständiger Diagnoselauf gegen dedizierte WSLC-Dienste über Existing bestanden.
 - [x] Pflichtfallliste und Report-Gates implementiert: null entdeckte Tests, fehlende/unvollständige Berichte, fehlende Pflichtmethoden und übersprungene Fälle führen zum Fehler. Sieben unabhängige Gate-Checks bestanden.
-- [ ] GUI-Fälle mindestens für Import, Bearbeiten, Export/Reimport, Validate, Deployment, gespeicherte Version erneut laden, User-Task-Completion sowie DMN/CMMN/Formulare ausführen. Die Getränke-Fixture einschließen; Datei-Export und serverseitige Persistenz separat nachweisen.
-- [ ] Ergebnisbericht mit Commit, Befehlen, Dauer, bestanden/fehlgeschlagen/übersprungen, Logs und Browserartefakten erzeugen; Secrets redigieren. Große Artefakte bleiben außerhalb der Versionsverwaltung.
+- [x] GUI-Fälle für Import, Bearbeiten, Export/Reimport, Validate, Deployment, gespeicherte Version erneut laden, User-Task-Completion sowie DMN/CMMN/Formulare ausgeführt. Getränke-Fixture eingeschlossen; Datei-Export und serverseitige Persistenz durch separate Assertions geprüft.
+- [x] Ergebnisbericht mit Basiscommit, Dirty-Kennzeichen, dokumentiertem Aufruf, Dauer, bestanden/fehlgeschlagen/übersprungen, Logs und Browserartefakten erzeugt. Konsolenlogs werden redigiert; rohe XML-/Browserartefakte bleiben lokal und müssen vor Weitergabe geprüft werden. Große Artefakte bleiben außerhalb der Versionsverwaltung.
 - [ ] Nach Codeänderungen betroffene Nachweise erneuern; die finale Gesamtfreigabe gehört zum finalen Kandidaten.
 
 Abnahme: Ein lokaler Aufruf erzeugt einen nachvollziehbaren Bericht und korrekten Exitcode. Alle für das Profil erforderlichen Fälle laufen tatsächlich durch. Keine zusätzlichen GUI-Gates im CI.
+
+Verifizierter Stand 2026-09-08: Vollständiger gebündelter Lauf `0dc01e3d9f9e40ec9af05abbd0412dbd` erfolgreich mit **1.005 bestandenen Tests, 0 Fehlern, 0 Skips**: Kern 840, externe Verträge 7, Browser 61 und reale GUI-E2E 97. Status `DiagnosticPassed`, Basiscommit `e4b39490b06d01f0fe319368750ef5c1b009f097` mit uncommitteten Korrekturen; SDK 10.0.303, PostgreSQL 17.11, RabbitMQ 4.3.5. Alle fünf E2E-Datenbanken wurden anschließend gelöscht und ihre Abwesenheit verifiziert. Zehn unabhängige Berichtsskript-Prüfungen bestehen ebenfalls. Der Build hat 0 Fehler und 17 Warnungen. **Offen bleibt die finale Abnahme aus sauberem Checkout nach Commit der Korrekturen; keine Produktionsfreigabe.** Details und Nachweisgrenzen stehen in `docs/runbooks/local-production-readiness.md`.
 
 ### Phase 3 – Sicherheit
 

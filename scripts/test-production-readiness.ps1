@@ -39,9 +39,34 @@ function Invoke-Suite {
     $runner = Join-Path $repo "tests/$Project/bin/Release/net10.0/$Project$suffix"
     $report = Join-Path $output "$Name.xml"
     Write-Host "Running $Name..."
-    Invoke-Recorded $Name { & $runner @Filter -parallelMode none -result-xml $report }
-    $count = Assert-ReadinessReport -Path $report -RequiredMethods $Required
-    $summary.Stages += @{ Name = $Name; Passed = $count; Report = $report }
+    $started = [DateTime]::UtcNow
+    $accepted = $false
+    try {
+        Invoke-Recorded $Name { & $runner @Filter -parallelMode none -result-xml $report }
+        $null = Assert-ReadinessReport -Path $report -RequiredMethods $Required
+        $accepted = $true
+    }
+    finally { Add-SuiteResult $Name $report $started $accepted }
+}
+
+function Add-SuiteResult {
+    param([string]$Name, [string]$Report, [DateTime]$Started, [bool]$Accepted)
+    $stage = [ordered]@{
+        Name = $Name; Status = $(if ($Accepted) { 'Passed' } else { 'Failed' })
+        StartedUtc = $Started.ToString('o'); DurationSeconds = ([DateTime]::UtcNow - $Started).TotalSeconds
+        Report = $Report; Total = $null; Passed = $null; Failed = $null; Skipped = $null; Errors = $null
+    }
+    try {
+        [xml]$xml = Get-Content -LiteralPath $Report -Raw -ErrorAction Stop
+        $assemblies = @($xml.SelectNodes('/assemblies/assembly'))
+        if ($assemblies.Count -gt 0) {
+            foreach ($field in @('Total', 'Passed', 'Failed', 'Skipped', 'Errors')) {
+                $stage[$field] = ($assemblies | Measure-Object -Property $field.ToLowerInvariant() -Sum).Sum
+            }
+        }
+    }
+    catch { $stage.ReportError = 'Missing or unreadable report; counts are unavailable.' }
+    $summary.Stages += $stage
 }
 
 Push-Location $repo
@@ -79,13 +104,19 @@ try {
     Invoke-Suite 'browser' 'VertexBPMN.Studio.UiTests' @('-trait-', 'Category=LocalStudioE2E') @(
         'BpmnModeler_Getraenkeabwicklung_LoadsEditsExportsAndReimports_InBrowser')
     $e2e = Join-Path $output 'e2e'
-    & (Join-Path $PSScriptRoot 'test-studio-e2e.ps1') -Infrastructure $Infrastructure -PostgresHost $PostgresHost -PostgresPort $PostgresPort -RabbitMqHost $RabbitMqHost -RabbitMqPort $RabbitMqPort -User $User -Password $Password -SkipBuild -ResultsDirectory $e2e
-    $count = Assert-ReadinessReport (Join-Path $e2e 'results.xml') @(
+    $e2eStarted = [DateTime]::UtcNow
+    $e2eAccepted = $false
+    try {
+        Invoke-Recorded 'e2e' { & (Join-Path $PSScriptRoot 'test-studio-e2e.ps1') -Infrastructure $Infrastructure -PostgresHost $PostgresHost -PostgresPort $PostgresPort -RabbitMqHost $RabbitMqHost -RabbitMqPort $RabbitMqPort -User $User -Password $Password -SkipBuild -ResultsDirectory $e2e }
+        $null = Assert-ReadinessReport (Join-Path $e2e 'results.xml') @(
         'BpmnModeler_ImportsEditsDeploysReloadsAndExports_ARealPersistedDefinition',
         'DmnModeler_ImportsDeploysReloadsEvaluatesAndExports_ARealDecision',
         'FormBuilder_ImportsSavesReloadsAndExports_ARealTenantForm',
-        'CmmnModeler_ImportsRegistersExecutesUpdatesAndExports_ARealCase')
-    $summary.Stages += @{ Name = 'e2e'; Passed = $count }
+        'CmmnModeler_ImportsRegistersExecutesUpdatesAndExports_ARealCase',
+        'BpmnRuntime_StartsClaimsCompletesAndShowsPersistedHistory_WithARealTaskForm')
+        $e2eAccepted = $true
+    }
+    finally { Add-SuiteResult 'e2e' (Join-Path $e2e 'results.xml') $e2eStarted $e2eAccepted }
     if ((& git rev-parse HEAD).Trim() -ne $summary.Commit) { throw 'Source commit changed during qualification.' }
     if (-not $AllowDirty -and @(& git status --porcelain).Count -gt 0) { throw 'Working tree changed during qualification.' }
     $summary.Status = if ($AllowDirty) { 'DiagnosticPassed' } else { 'AcceptancePassed' }

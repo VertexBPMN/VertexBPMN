@@ -14,7 +14,7 @@ using VertexBPMN.Infrastructure.Persistence.Services;
 
 namespace VertexBPMN.Tests.Acceptance;
 
-public sealed class ExternalBrokerPhase3AcceptanceTests
+public sealed class ExternalBrokerPhase3AcceptanceTests(ITestOutputHelper output)
 {
     [Fact]
     [Trait("Category", "Phase3ExternalAcceptance")]
@@ -36,6 +36,8 @@ public sealed class ExternalBrokerPhase3AcceptanceTests
         var transport = new RabbitMqRuntimeOutboxTransport(options);
         var factory = new ConnectionFactory { Uri = new Uri(connectionString) };
         await using var connection = await factory.CreateConnectionAsync(TestContext.Current.CancellationToken);
+        if (connection.ServerProperties.TryGetValue("version", out var version))
+            output.WriteLine($"RabbitMQ server version: {(version is byte[] bytes ? Encoding.UTF8.GetString(bytes) : version)}");
         await using var channel = await connection.CreateChannelAsync(cancellationToken: TestContext.Current.CancellationToken);
         await channel.ExchangeDeclareAsync(
             destination,
@@ -101,6 +103,7 @@ public sealed class ExternalBrokerPhase3AcceptanceTests
 
         await using var admin = new NpgsqlConnection(adminConnectionString);
         await admin.OpenAsync(TestContext.Current.CancellationToken);
+        output.WriteLine($"PostgreSQL server version: {admin.PostgreSqlVersion}");
         try
         {
             foreach (var databaseName in databaseNames)

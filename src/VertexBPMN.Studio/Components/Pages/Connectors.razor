@@ -7,15 +7,15 @@
 
 <PageTitle>Connectors</PageTitle>
 
-<MudText Typo="Typo.h4" GutterBottom="true">Connectors</MudText>
+<StudioPageHeader Title="Connectors" Eyebrow="Manage" Description="Create tenant-scoped integrations and connect them to credentials and reusable templates." />
 
 @if (string.IsNullOrWhiteSpace(TenantContext.CurrentTenantId))
 {
-    <MudAlert Severity="Severity.Warning">Select a tenant before managing connectors.</MudAlert>
+    <StudioStatePanel Title="Select a tenant" Description="Choose a tenant before managing connectors." Icon="@Icons.Material.Outlined.Apartment" />
 }
 else
 {
-    <MudPaper Class="pa-4 mb-4">
+    <MudPaper Class="studio-content-card mb-4" Elevation="0">
         <MudText Typo="Typo.h6">Create connector</MudText>
         <MudGrid>
             <MudItem xs="12" sm="6"><MudTextField @bind-Value="_name" Label="Name" Variant="Variant.Outlined" /></MudItem>
@@ -38,12 +38,12 @@ else
 
     @if (!string.IsNullOrWhiteSpace(_error))
     {
-        <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mb-4">@_error</MudAlert>
     }
 
-    <MudPaper Class="pa-4">
-        <MudText Typo="Typo.h6" GutterBottom="true">Tenant connectors</MudText>
-        <MudTable Items="_connectors" Dense="true" Hover="true">
+    <MudPaper Class="studio-data-card" Elevation="0">
+        <div class="studio-data-card__heading"><MudText Typo="Typo.h6">Tenant connectors</MudText></div>
+        <MudTable Items="_connectors" Dense="true" Hover="true" Breakpoint="Breakpoint.Md" Class="studio-data-table">
             <HeaderContent>
                 <MudTh>Name</MudTh>
                 <MudTh>Type</MudTh>
@@ -68,6 +68,7 @@ else
                     <MudButton Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteAsync(context))">Delete</MudButton>
                 </MudTd>
             </RowTemplate>
+            <NoRecordsContent><StudioStatePanel Title="No connectors found" Description="Create a connector to configure the first tenant integration." Icon="@Icons.Material.Outlined.Cable" /></NoRecordsContent>
         </MudTable>
     </MudPaper>
 }

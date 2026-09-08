@@ -1,12 +1,24 @@
 @inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
 
+<div class="bpmn-modeler-workspace">
+<div class="bpmn-modeler-mobile-actions">
+    <MudButton Variant="Variant.Outlined"
+               Size="Size.Small"
+               StartIcon="@Icons.Material.Outlined.Tune"
+               aria-expanded="@(_propertiesOpen ? "true" : "false")"
+               aria-controls="@_propertiesPanelId"
+               OnClick="ToggleProperties">
+        @(_propertiesOpen ? "Hide properties" : "Show properties")
+    </MudButton>
+</div>
 <div class="bpmn-io-shell" data-testid="bpmn-modeler-shell">
     <div id="@_canvasId" class="bpmn-io-canvas"><div class="bpmn-io-canvas-placeholder">BPMN modeler canvas</div></div>
-    <div id="@_propertiesPanelId" class="bpmn-io-properties-panel" aria-label="BPMN properties panel">
+    <div id="@_propertiesPanelId" class="bpmn-io-properties-panel @PropertiesPanelClass" aria-label="BPMN properties panel">
         <MudText Typo="Typo.subtitle2">Properties Panel</MudText>
         <MudText Typo="Typo.caption">Select an element to edit its BPMN metadata.</MudText>
     </div>
+</div>
 </div>
 
 @code {
@@ -20,11 +32,20 @@
     private IJSObjectReference? _modeler;
     private string _loadedXml = string.Empty;
     private bool _initialized;
+    private bool _propertiesOpen;
+    private bool _resizePending;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender)
+        {
+            if (_resizePending && _module is not null && _modeler is not null)
+            {
+                _resizePending = false;
+                await _module.InvokeVoidAsync("BpmnModelerInterop.resize", _modeler);
+            }
             return;
+        }
 
         _module = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/bpmn-modeler.js");
         _modeler = await _module.InvokeAsync<IJSObjectReference>("BpmnModelerInterop.createModeler", _canvasId, Xml, _propertiesPanelId);
@@ -121,6 +142,14 @@
     public Task PauseSimulationAsync() => InvokeSimulationActionAsync("BpmnModelerInterop.pauseSimulation");
 
     public Task ResetSimulationAsync() => InvokeSimulationActionAsync("BpmnModelerInterop.resetSimulation");
+
+    private void ToggleProperties()
+    {
+        _propertiesOpen = !_propertiesOpen;
+        _resizePending = true;
+    }
+
+    private string? PropertiesPanelClass => _propertiesOpen ? "bpmn-io-properties-panel--open" : null;
 
     private async Task InvokeSimulationActionAsync(string identifier)
     {

@@ -4,12 +4,11 @@
 
 <PageTitle>Messages &amp; Signals</PageTitle>
 
-<MudText Typo="Typo.h4" GutterBottom="true">Messages &amp; Signals</MudText>
-<MudText Typo="Typo.body2" Color="Color.Tertiary" Class="mb-4">
-    Correlate a message or broadcast a signal to the running engine.
-</MudText>
+<StudioPageHeader Title="Messages &amp; Signals" Eyebrow="Operate" Description="Correlate a message or broadcast a signal to the running engine." />
 
-<MudPaper Class="pa-4 mb-4" Elevation="1">
+<MudGrid>
+<MudItem xs="12" md="6">
+<MudPaper Class="studio-content-card" Elevation="0">
     <MudText Typo="Typo.h6" GutterBottom="true">Message correlation</MudText>
     <MudTextField @bind-Value="_messageName" Label="Message name" Variant="Variant.Outlined" Class="mb-3" />
     <MudTextField @bind-Value="_processInstanceId" Label="Process instance id (optional)" Variant="Variant.Outlined" Class="mb-3" />
@@ -18,8 +17,10 @@
         Correlate message (ProcessManager)
     </MudButton>
 </MudPaper>
+</MudItem>
 
-<MudPaper Class="pa-4 mb-4" Elevation="1">
+<MudItem xs="12" md="6">
+<MudPaper Class="studio-content-card" Elevation="0">
     <MudText Typo="Typo.h6" GutterBottom="true">Signal broadcast</MudText>
     <MudTextField @bind-Value="_signalName" Label="Signal name" Variant="Variant.Outlined" Class="mb-3" />
     <MudTextField @bind-Value="_signalVariables" Label="Variables JSON" Variant="Variant.Outlined" Lines="4" Class="mb-3" />
@@ -27,16 +28,18 @@
         Broadcast signal (ProcessManager)
     </MudButton>
 </MudPaper>
+</MudItem>
+</MudGrid>
 
 @if (_error is not null)
 {
-    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+    <StudioStatePanel Title="Operation failed" Description="@_error" Icon="@Icons.Material.Outlined.ErrorOutline" />
 }
 else if (_result is not null)
 {
-    <MudPaper Class="pa-4" Elevation="1">
+    <MudPaper Class="studio-result-card" Elevation="0">
         <MudText Typo="Typo.h6">Result</MudText>
-        <pre>@Format(_result.Value)</pre>
+        <pre class="studio-json-result">@Format(_result.Value)</pre>
     </MudPaper>
 }
 

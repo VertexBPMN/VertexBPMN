@@ -6,16 +6,15 @@
 
 <PageTitle>Workflow Triggers</PageTitle>
 
-<MudText Typo="Typo.h4" GutterBottom="true">Workflow Triggers</MudText>
-<MudText Typo="Typo.body2" GutterBottom="true">Register a secure external endpoint for starting a deployed BPMN process.</MudText>
+<StudioPageHeader Title="Workflow Triggers" Eyebrow="Operate" Description="Register secure external endpoints for starting deployed BPMN processes." />
 
 @if (string.IsNullOrWhiteSpace(TenantContext.CurrentTenantId))
 {
-    <MudAlert Severity="Severity.Warning">Select a tenant before managing workflow triggers.</MudAlert>
+    <StudioStatePanel Title="Select a tenant" Description="Choose a tenant before managing workflow triggers." Icon="@Icons.Material.Outlined.Apartment" />
 }
 else
 {
-    <MudPaper Class="pa-4 mb-4">
+    <MudPaper Class="studio-content-card mb-4" Elevation="0">
         <MudText Typo="Typo.h6">Register trigger</MudText>
         <MudGrid>
             <MudItem xs="12" sm="6"><MudTextField @bind-Value="_name" Label="Name" Variant="Variant.Outlined" /></MudItem>
@@ -35,12 +34,12 @@ else
 
     @if (!string.IsNullOrWhiteSpace(_error))
     {
-        <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+        <StudioStatePanel Title="Trigger operation failed" Description="@_error" Icon="@Icons.Material.Outlined.ErrorOutline" />
     }
 
-    <MudPaper Class="pa-4">
-        <MudText Typo="Typo.h6" GutterBottom="true">Registered triggers</MudText>
-        <MudTable Items="_triggers" Dense="true" Hover="true">
+    <MudPaper Class="studio-data-card" Elevation="0">
+        <div class="studio-data-card__heading"><MudText Typo="Typo.h6">Registered triggers</MudText></div>
+        <MudTable Items="_triggers" Dense="true" Hover="true" Breakpoint="Breakpoint.Md" Class="studio-data-table">
             <HeaderContent>
                 <MudTh>Name</MudTh>
                 <MudTh>Process key</MudTh>
@@ -73,6 +72,7 @@ else
                     <MudButton Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteAsync(context))">Delete</MudButton>
                 </MudTd>
             </RowTemplate>
+            <NoRecordsContent><StudioStatePanel Title="No triggers registered" Description="Register a trigger to expose a secure process-start endpoint." Icon="@Icons.Material.Outlined.Bolt" /></NoRecordsContent>
         </MudTable>
     </MudPaper>
 }

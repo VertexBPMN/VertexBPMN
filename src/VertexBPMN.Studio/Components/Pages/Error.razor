@@ -3,26 +3,27 @@
 
 <PageTitle>Error</PageTitle>
 
-<h1 class="text-danger">Error.</h1>
-<h2 class="text-danger">An error occurred while processing your request.</h2>
+<StudioPageHeader Title="Something went wrong" Eyebrow="Error" Description="An error occurred while processing your request." />
+
+<MudPaper Class="studio-content-card" Elevation="0">
+<MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mb-4">The requested operation could not be completed.</MudAlert>
 
 @if (ShowRequestId)
 {
-    <p>
-        <strong>Request ID:</strong> <code>@RequestId</code>
-    </p>
+    <MudText Typo="Typo.body2"><strong>Request ID:</strong> <code>@RequestId</code></MudText>
 }
 
-<h3>Development Mode</h3>
-<p>
+<MudText Typo="Typo.h6" Class="mt-5">Development mode</MudText>
+<MudText Typo="Typo.body2">
     Swapping to <strong>Development</strong> environment will display more detailed information about the error that occurred.
-</p>
-<p>
+</MudText>
+<MudText Typo="Typo.body2" Class="mt-3">
     <strong>The Development environment shouldn't be enabled for deployed applications.</strong>
     It can result in displaying sensitive information from exceptions to end users.
     For local debugging, enable the <strong>Development</strong> environment by setting the <strong>ASPNETCORE_ENVIRONMENT</strong> environment variable to <strong>Development</strong>
     and restarting the app.
-</p>
+</MudText>
+</MudPaper>
 
 @code{
     [CascadingParameter]

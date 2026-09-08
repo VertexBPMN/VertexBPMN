@@ -5,22 +5,17 @@
 
 <PageTitle>Feature Flags</PageTitle>
 
-<MudText Typo="Typo.h4" GutterBottom="true">Feature Flags</MudText>
-<MudText Typo="Typo.body2" Color="Color.Tertiary" Class="mb-4">
-    Runtime flag state from the API.
-</MudText>
-
-<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RefreshAsync" Disabled="_isLoading" Class="mb-4">
-    Refresh
-</MudButton>
+<StudioPageHeader Title="Feature Flags" Eyebrow="Manage" Description="Inspect runtime feature state and change flags when authorized.">
+    <Actions><MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" OnClick="RefreshAsync" Disabled="_isLoading">Refresh</MudButton></Actions>
+</StudioPageHeader>
 
 @if (_error is not null)
 {
-    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+    <StudioStatePanel Title="Feature flags could not be loaded" Description="@_error" Icon="@Icons.Material.Outlined.ErrorOutline" />
 }
 else if (_flags is not null)
 {
-    <MudTable Items="_flags.Value.EnumerateObject()" Hover="true" Striped="true">
+    <MudPaper Class="studio-data-card" Elevation="0"><MudTable Items="_flags.Value.EnumerateObject()" Hover="true" Dense="true" Breakpoint="Breakpoint.Sm" Class="studio-data-table">
         <HeaderContent>
             <MudTh>Flag</MudTh>
             <MudTh>Enabled</MudTh>
@@ -48,7 +43,8 @@ else if (_flags is not null)
                 </AuthorizeView>
             </MudTd>
         </RowTemplate>
-    </MudTable>
+        <NoRecordsContent><StudioStatePanel Title="No feature flags found" Description="The active API did not report runtime feature flags." Icon="@Icons.Material.Outlined.Flag" /></NoRecordsContent>
+    </MudTable></MudPaper>
 }
 
 @code {

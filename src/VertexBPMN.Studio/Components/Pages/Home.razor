@@ -10,24 +10,24 @@
 
 <PageTitle>Dashboard - VertexBPMN Studio</PageTitle>
 
-<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-6">
-    <MudText Typo="Typo.h3">
-        <MudIcon Icon="@Icons.Material.Filled.Dashboard" Class="mr-3" />
-        Dashboard
-    </MudText>
-    <MudButton Variant="Variant.Outlined"
-               Color="Color.Primary"
-               StartIcon="@Icons.Material.Filled.Refresh"
-               Disabled="_isLoading"
-               OnClick="RefreshData"
-               data-testid="dashboard-refresh">
-        Refresh
-    </MudButton>
-</MudStack>
+<StudioPageHeader Title="Dashboard"
+                  Eyebrow="Runtime"
+                  Description="Monitor the active tenant's workload and continue with the work that needs attention.">
+    <Actions>
+        <MudButton Variant="Variant.Outlined"
+                   Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Refresh"
+                   Disabled="_isLoading"
+                   OnClick="RefreshData"
+                   data-testid="dashboard-refresh">
+            Refresh
+        </MudButton>
+    </Actions>
+</StudioPageHeader>
 
 @if (_isLoading)
 {
-    <MudProgressLinear Indeterminate="true" Class="my-4" />
+    <MudProgressLinear Indeterminate="true" Class="mb-4" />
 }
 else if (_error != null)
 {
@@ -42,8 +42,7 @@ else if (_error != null)
     </MudAlert>
 }
 
-<!-- Key Metrics Cards -->
-<MudGrid Class="mb-6">
+<MudGrid Class="studio-dashboard-metrics mb-4">
     <MudItem xs="12" sm="6" md="3">
         <StatsCard Title="Process Instances"
                   Value="_metrics.TotalProcessInstances"
@@ -78,21 +77,25 @@ else if (_error != null)
     </MudItem>
 </MudGrid>
 
-<!-- Charts and Recent Activity -->
-<MudGrid>
-    <MudItem xs="12" md="8">
-        <MudPaper Class="pa-4" Style="height: 400px;">
-            <MudText Typo="Typo.h6" Class="mb-4">Process Activity (Last 7 Days)</MudText>
+<MudGrid Class="studio-dashboard-workspace">
+    <MudItem xs="12" md="7">
+        <MudPaper Class="studio-content-card" Elevation="0">
+            <div class="studio-content-card__header">
+                <div>
+                    <MudText Typo="Typo.h6">Current workload</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Open tasks relative to running process instances.</MudText>
+                </div>
+                <MudButton Href="/process-definitions" Variant="Variant.Text" EndIcon="@Icons.Material.Filled.ArrowForward">Definitions</MudButton>
+            </div>
             @if (_isLoading)
             {
-                <div class="d-flex justify-center align-center" style="height: 300px;">
+                <div class="studio-dashboard-loading">
                     <MudProgressCircular Indeterminate="true" />
                 </div>
             }
             else
             {
-                <MudStack Spacing="3" Class="mt-6">
-                    <MudText Typo="Typo.body2">Current workload</MudText>
+                <MudStack Spacing="3" Class="studio-dashboard-workload">
                     <MudProgressLinear Color="Color.Primary" Value="@GetWorkloadPercentage()" />
                     <MudText Typo="Typo.caption" Color="Color.Tertiary">
                         @_metrics.PendingTasks pending tasks across @_metrics.ActiveProcessInstances active instances
@@ -102,27 +105,31 @@ else if (_error != null)
         </MudPaper>
     </MudItem>
     
-    <MudItem xs="12" md="4">
-        <MudPaper Class="pa-4" Style="height: 400px;">
-            <div class="d-flex justify-space-between align-center mb-4">
-                <MudText Typo="Typo.h6">Recent Tasks</MudText>
-                <MudButton Href="/tasks" 
-                          Size="Size.Small" 
-                          Variant="Variant.Text">
+    <MudItem xs="12" md="5">
+        <MudPaper Class="studio-content-card" Elevation="0">
+            <div class="studio-content-card__header">
+                <div>
+                    <MudText Typo="Typo.h6">Recent tasks</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Newest work items for this tenant.</MudText>
+                </div>
+                <MudButton Href="/tasks"
+                          Size="Size.Small"
+                          Variant="Variant.Text"
+                          EndIcon="@Icons.Material.Filled.ArrowForward">
                     View All
                 </MudButton>
             </div>
             
             @if (_recentTasks.Any())
             {
-                <MudList T="UserTask" Dense="true" Style="height: 320px; overflow-y: auto;">
+                <MudList T="UserTask" Dense="true" Class="studio-dashboard-task-list">
                     @foreach (var task in _recentTasks.Take(10))
                     {
                         <MudListItem>
-                            <div class="d-flex justify-space-between align-center">
-                                <div>
+                            <div class="studio-dashboard-task">
+                                <div class="studio-dashboard-task__copy">
                                     <MudText Typo="Typo.body2">@task.Name</MudText>
-                                    <MudText Typo="Typo.caption" Color="Color.Tertiary">
+                                    <MudText Typo="Typo.caption" Color="Color.Tertiary" Class="studio-technical-id">
                                         @task.ProcessInstanceId
                                     </MudText>
                                 </div>
@@ -137,9 +144,9 @@ else if (_error != null)
             }
             else
             {
-                <MudAlert Severity="Severity.Info">
-                    No recent tasks found
-                </MudAlert>
+                <StudioStatePanel Title="No recent tasks"
+                                  Description="New user tasks will appear here when a process reaches them."
+                                  Icon="@Icons.Material.Outlined.TaskAlt" />
             }
         </MudPaper>
     </MudItem>

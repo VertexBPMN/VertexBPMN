@@ -4,13 +4,13 @@
 
 <MudDialog>
     <TitleContent>
-        <MudText Typo="Typo.h6">
+        <MudText Typo="Typo.h6" Class="studio-dialog-title">
             <MudIcon Icon="@Icons.Material.Filled.PlayArrow" Class="mr-3"/>
             Start Process Instance
         </MudText>
     </TitleContent>
     <DialogContent>
-        <MudContainer Style="max-width: none !important;">
+        <div class="studio-dialog-content">
             <MudText Typo="Typo.h6" Class="mb-4">Process Definition</MudText>
             <MudGrid>
                 <MudItem xs="12" md="6">
@@ -62,7 +62,7 @@
             
             @foreach (var variable in _variables)
             {
-                <MudGrid Class="mb-3">
+                <MudGrid Class="studio-variable-row mb-3">
                     <MudItem xs="5">
                         <MudTextField @bind-Value="variable.Name" 
                                      Label="Variable Name" 
@@ -89,7 +89,7 @@
                       Class="mt-2">
                 Add Variable
             </MudButton>
-        </MudContainer>
+        </div>
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="@(() => Dialog.Close(DialogResult.Cancel()))" Color="Color.Default">

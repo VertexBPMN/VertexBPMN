@@ -21,16 +21,12 @@
 
 <PageTitle>BPMN Modeler</PageTitle>
 
-<MudStack Spacing="3">
-    <div>
-        <MudText Typo="Typo.h4" GutterBottom="true">BPMN Modeler</MudText>
-        <MudText Typo="Typo.body2" Color="Color.Secondary">
-            bpmn.io Modeler-Shell mit editierbarem Modeler, Properties Panel und getrenntem NavigatedViewer-Fallback fuer read-only Vorschau.
-        </MudText>
-    </div>
+<MudStack Spacing="3" Class="studio-bpmn-page">
+    <StudioPageHeader Title="BPMN Modeler"
+                      Eyebrow="Model"
+                      Description="Design, validate, test and deploy executable BPMN processes." />
 
-    <MudPaper Class="pa-4">
-        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+    <StudioToolbar AriaLabel="BPMN model actions" Class="studio-bpmn-toolbar">
             <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="DeployBpmnXml" StartIcon="@Icons.Material.Filled.CloudUpload">Deploy BPMN</MudButton>
             <MudButton Variant="Variant.Filled" Color="Color.Tertiary" OnClick="@(() => _showNodeCatalog = true)" StartIcon="@Icons.Material.Filled.AddCircle">Add node</MudButton>
             <MudButton Variant="Variant.Outlined" OnClick="ValidateAsync" StartIcon="@Icons.Material.Filled.FactCheck">Validate</MudButton>
@@ -47,8 +43,7 @@
             <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="ExportBpmnXml" StartIcon="@Icons.Material.Filled.Download">Export XML</MudButton>
             <MudButton Variant="Variant.Outlined" OnClick="@(() => LoadBpmnXml())" StartIcon="@Icons.Material.Filled.Refresh">Load template</MudButton>
             <MudChip T="string" Color="Color.Info" Variant="Variant.Outlined">Tenant: @(TenantContext.CurrentTenantId ?? "default")</MudChip>
-        </MudStack>
-    </MudPaper>
+    </StudioToolbar>
 
     @if (_createdWebhooks.Count > 0)
     {
@@ -80,30 +75,6 @@
             }
         </MudPaper>
     }
-
-    <MudPaper Class="pa-4" data-testid="bpmn-local-simulation">
-        <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2" AlignItems="AlignItems.Center">
-            <div>
-                <MudText Typo="Typo.h6">Local simulation</MudText>
-                <MudText Typo="Typo.caption" Color="Color.Secondary">Run the current BPMN artifact locally with bpmn-js-token-simulation. This does not deploy or modify a process instance.</MudText>
-            </div>
-            <MudSpacer />
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="StartLocalSimulationAsync" StartIcon="@Icons.Material.Filled.PlayArrow">Start simulation</MudButton>
-            <MudButton Variant="Variant.Outlined" OnClick="PauseLocalSimulationAsync" StartIcon="@Icons.Material.Filled.Pause">Pause simulation</MudButton>
-            <MudButton Variant="Variant.Outlined" OnClick="ResetLocalSimulationAsync" StartIcon="@Icons.Material.Filled.RestartAlt">Reset simulation</MudButton>
-        </MudStack>
-    </MudPaper>
-
-    <MudPaper Class="pa-4" data-testid="bpmn-engine-test-run">
-        <MudText Typo="Typo.h6">Engine test run</MudText>
-        <MudText Typo="Typo.caption" Color="Color.Secondary">Deploys a new test version of the current diagram and starts it with the supplied JSON variables. The created instance remains available for visual debugging and history replay.</MudText>
-        <MudTextField @bind-Value="_testVariablesJson" Label="Test variables (JSON object)" Lines="4" Variant="Variant.Outlined" Class="mt-3" />
-        <MudButton Variant="Variant.Filled" Color="Color.Tertiary" OnClick="RunEngineTestAsync" Disabled="_isRunningEngineTest" StartIcon="@Icons.Material.Filled.PlayCircle" Class="mt-2">Deploy and run test</MudButton>
-        @if (_testRunInstanceId is not null)
-        {
-            <MudAlert Class="mt-3" Severity="Severity.Success">Test version deployed and process instance <code>@_testRunInstanceId</code> reached @_testRunOutcome. Open Debugging and use this instance id to inspect runtime state.</MudAlert>
-        }
-    </MudPaper>
 
     @if (_showNodeCatalog)
     {
@@ -138,27 +109,29 @@
         </MudPaper>
     }
 
-    <MudPaper Class="pa-4">
-        <MudText Typo="Typo.h6" GutterBottom="true">Connector templates</MudText>
-        <MudText Typo="Typo.caption" Color="Color.Secondary">Choose a manifest-defined node and configure its properties before inserting it into the diagram.</MudText>
-        @if (string.IsNullOrWhiteSpace(TenantContext.CurrentTenantId))
-        {
-            <MudAlert Class="mt-2" Severity="Severity.Info">Select a tenant to load connector templates.</MudAlert>
-        }
-        else
-        {
-            <ConnectorTemplatePalette Templates="_templates" Credentials="_credentials" OnInsert="InsertConfiguredTemplateAsync" />
-        }
-    </MudPaper>
-
-    <MudPaper Class="pa-4">
-        <MudText Typo="Typo.h6" GutterBottom="true">Modeler</MudText>
+    <MudPaper Class="studio-modeler-card" Elevation="0">
+        <div class="studio-modeler-card__header">
+            <div>
+                <MudText Typo="Typo.h6">Modeler</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Select an element to edit its BPMN metadata.</MudText>
+            </div>
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.Edit">Editing</MudChip>
+        </div>
         <BpmnModelerSurface @ref="_modeler" Xml="@_bpmnXml" ConnectorTemplates="_templates" DecisionOptions="_decisions" />
     </MudPaper>
 
-    <MudGrid>
-        <MudItem xs="12" md="5">
-            <MudPaper Class="pa-4" data-testid="bpmn-validation-sidebar">
+    <div class="studio-bpmn-tools">
+        <div class="studio-bpmn-tools__tabs" role="tablist" aria-label="BPMN tools">
+            <button type="button" id="bpmn-tab-validation" role="tab" aria-selected="@AriaSelected(0)" aria-controls="bpmn-panel-validation" class="studio-bpmn-tools__tab @ToolTabClass(0)" @onclick="@(() => SelectToolTab(0))"><MudIcon Icon="@Icons.Material.Outlined.FactCheck" Size="Size.Small" />Validation</button>
+            <button type="button" id="bpmn-tab-xml" role="tab" aria-selected="@AriaSelected(1)" aria-controls="bpmn-panel-xml" class="studio-bpmn-tools__tab @ToolTabClass(1)" @onclick="@(() => SelectToolTab(1))"><MudIcon Icon="@Icons.Material.Outlined.Code" Size="Size.Small" />XML</button>
+            <button type="button" id="bpmn-tab-connectors" role="tab" aria-selected="@AriaSelected(2)" aria-controls="bpmn-panel-connectors" class="studio-bpmn-tools__tab @ToolTabClass(2)" @onclick="@(() => SelectToolTab(2))"><MudIcon Icon="@Icons.Material.Outlined.Extension" Size="Size.Small" />Connectors</button>
+            <button type="button" id="bpmn-tab-test-runs" role="tab" aria-selected="@AriaSelected(3)" aria-controls="bpmn-panel-test-runs" class="studio-bpmn-tools__tab @ToolTabClass(3)" @onclick="@(() => SelectToolTab(3))"><MudIcon Icon="@Icons.Material.Outlined.PlayCircle" Size="Size.Small" />Test runs</button>
+            <button type="button" id="bpmn-tab-versions" role="tab" aria-selected="@AriaSelected(4)" aria-controls="bpmn-panel-versions" class="studio-bpmn-tools__tab @ToolTabClass(4)" @onclick="@(() => SelectToolTab(4))"><MudIcon Icon="@Icons.Material.Outlined.Difference" Size="Size.Small" />Versions</button>
+            <button type="button" id="bpmn-tab-viewer" role="tab" aria-selected="@AriaSelected(5)" aria-controls="bpmn-panel-viewer" class="studio-bpmn-tools__tab @ToolTabClass(5)" @onclick="@(() => SelectToolTab(5))"><MudIcon Icon="@Icons.Material.Outlined.Visibility" Size="Size.Small" />Viewer</button>
+        </div>
+        <div class="studio-bpmn-tools__panels">
+        <section id="bpmn-panel-validation" role="tabpanel" aria-labelledby="bpmn-tab-validation" hidden="@(_activeToolTab != 0)">
+            <div class="studio-bpmn-tool-panel" data-testid="bpmn-validation-sidebar">
                 <MudStack Row="true" AlignItems="AlignItems.Center">
                     <MudText Typo="Typo.h6">Validation</MudText>
                     <MudSpacer />
@@ -177,48 +150,97 @@
                         }
                     </MudList>
                 }
-            </MudPaper>
-        </MudItem>
-        <MudItem xs="12" md="7">
-            <MudPaper Class="pa-4" data-testid="bpmn-xml-preview">
+            </div>
+        </section>
+
+        <section id="bpmn-panel-xml" role="tabpanel" aria-labelledby="bpmn-tab-xml" hidden="@(_activeToolTab != 1)">
+            <div class="studio-bpmn-tool-panel" data-testid="bpmn-xml-preview">
                 <MudStack Row="true" AlignItems="AlignItems.Center">
                     <MudText Typo="Typo.h6">XML Preview</MudText>
                     <MudSpacer />
                     <MudButton Variant="Variant.Text" OnClick="RefreshXmlPreviewAsync">Refresh</MudButton>
                 </MudStack>
                 <MudTextField T="string" Value="_xmlPreview" ReadOnly="true" Lines="14" Variant="Variant.Outlined" Class="mt-2" />
-            </MudPaper>
-        </MudItem>
-    </MudGrid>
+            </div>
+        </section>
 
-    <MudPaper Class="pa-4" data-testid="bpmn-version-compare">
-        <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2" AlignItems="AlignItems.Center">
-            <MudText Typo="Typo.h6">Version compare</MudText>
-            <MudSelect T="string" Label="Deployed process version" @bind-Value="_selectedVersionId" Dense="true" Style="min-width: 280px" data-testid="bpmn-version-select">
-                @foreach (var definition in _deployedDefinitions.OrderByDescending(definition => definition.CreatedAt))
+        <section id="bpmn-panel-connectors" role="tabpanel" aria-labelledby="bpmn-tab-connectors" hidden="@(_activeToolTab != 2)">
+            <div class="studio-bpmn-tool-panel">
+                <MudText Typo="Typo.h6" GutterBottom="true">Connector templates</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Choose a manifest-defined node and configure its properties before inserting it into the diagram.</MudText>
+                @if (string.IsNullOrWhiteSpace(TenantContext.CurrentTenantId))
                 {
-                    <MudSelectItem T="string" Value="@definition.Id.ToString()">@($"{definition.Name} (v{definition.Version}, {definition.Key})")</MudSelectItem>
+                    <MudAlert Class="mt-2" Severity="Severity.Info">Select a tenant to load connector templates.</MudAlert>
                 }
-            </MudSelect>
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@string.IsNullOrWhiteSpace(_selectedVersionId)" OnClick="LoadSelectedVersionAsync" data-testid="bpmn-version-load-action">Load version</MudButton>
-            <MudButton Variant="Variant.Outlined" Disabled="@string.IsNullOrWhiteSpace(_selectedVersionId)" OnClick="CompareSelectedVersionAsync" data-testid="bpmn-version-compare-action">Compare</MudButton>
-            <MudButton Variant="Variant.Text" OnClick="LoadDeployedDefinitionsAsync">Refresh versions</MudButton>
-        </MudStack>
-        @if (!string.IsNullOrWhiteSpace(_versionDiff))
-        {
-            <MudAlert Class="mt-2" Severity="Severity.Info">@_versionDiff</MudAlert>
-        }
-    </MudPaper>
+                else
+                {
+                    <ConnectorTemplatePalette Templates="_templates" Credentials="_credentials" OnInsert="InsertConfiguredTemplateAsync" />
+                }
+            </div>
+        </section>
 
-    <MudPaper Class="pa-4">
-        <MudText Typo="Typo.h6" GutterBottom="true">Viewer</MudText>
-        <BpmnViewerSurface Xml="@_bpmnXml" />
-    </MudPaper>
+        <section id="bpmn-panel-test-runs" role="tabpanel" aria-labelledby="bpmn-tab-test-runs" hidden="@(_activeToolTab != 3)">
+            <MudStack Spacing="3" Class="studio-bpmn-tool-panel">
+                <div data-testid="bpmn-local-simulation">
+                    <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2" AlignItems="AlignItems.Center">
+                        <div class="studio-bpmn-tool-copy">
+                            <MudText Typo="Typo.h6">Local simulation</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Run the current BPMN artifact locally with bpmn-js-token-simulation. This does not deploy or modify a process instance.</MudText>
+                        </div>
+                        <MudSpacer />
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="StartLocalSimulationAsync" StartIcon="@Icons.Material.Filled.PlayArrow">Start simulation</MudButton>
+                        <MudButton Variant="Variant.Outlined" OnClick="PauseLocalSimulationAsync" StartIcon="@Icons.Material.Filled.Pause">Pause simulation</MudButton>
+                        <MudButton Variant="Variant.Outlined" OnClick="ResetLocalSimulationAsync" StartIcon="@Icons.Material.Filled.RestartAlt">Reset simulation</MudButton>
+                    </MudStack>
+                </div>
+                <MudDivider />
+                <div data-testid="bpmn-engine-test-run">
+                    <MudText Typo="Typo.h6">Engine test run</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Deploys a new test version of the current diagram and starts it with the supplied JSON variables. The created instance remains available for visual debugging and history replay.</MudText>
+                    <MudTextField @bind-Value="_testVariablesJson" Label="Test variables (JSON object)" Lines="4" Variant="Variant.Outlined" Class="mt-3" />
+                    <MudButton Variant="Variant.Filled" Color="Color.Tertiary" OnClick="RunEngineTestAsync" Disabled="_isRunningEngineTest" StartIcon="@Icons.Material.Filled.PlayCircle" Class="mt-2">Deploy and run test</MudButton>
+                    @if (_testRunInstanceId is not null)
+                    {
+                        <MudAlert Class="mt-3" Severity="Severity.Success">Test version deployed and process instance <code>@_testRunInstanceId</code> reached @_testRunOutcome. Open Debugging and use this instance id to inspect runtime state.</MudAlert>
+                    }
+                </div>
+            </MudStack>
+        </section>
+
+        <section id="bpmn-panel-versions" role="tabpanel" aria-labelledby="bpmn-tab-versions" hidden="@(_activeToolTab != 4)">
+            <div class="studio-bpmn-tool-panel" data-testid="bpmn-version-compare">
+                <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.h6">Version compare</MudText>
+                    <MudSelect T="string" Label="Deployed process version" @bind-Value="_selectedVersionId" Dense="true" Style="min-width: 280px" data-testid="bpmn-version-select">
+                        @foreach (var definition in _deployedDefinitions.OrderByDescending(definition => definition.CreatedAt))
+                        {
+                            <MudSelectItem T="string" Value="@definition.Id.ToString()">@($"{definition.Name} (v{definition.Version}, {definition.Key})")</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@string.IsNullOrWhiteSpace(_selectedVersionId)" OnClick="LoadSelectedVersionAsync" data-testid="bpmn-version-load-action">Load version</MudButton>
+                    <MudButton Variant="Variant.Outlined" Disabled="@string.IsNullOrWhiteSpace(_selectedVersionId)" OnClick="CompareSelectedVersionAsync" data-testid="bpmn-version-compare-action">Compare</MudButton>
+                    <MudButton Variant="Variant.Text" OnClick="LoadDeployedDefinitionsAsync">Refresh versions</MudButton>
+                </MudStack>
+                @if (!string.IsNullOrWhiteSpace(_versionDiff))
+                {
+                    <MudAlert Class="mt-2" Severity="Severity.Info">@_versionDiff</MudAlert>
+                }
+            </div>
+        </section>
+
+        <section id="bpmn-panel-viewer" role="tabpanel" aria-labelledby="bpmn-tab-viewer" hidden="@(_activeToolTab != 5)">
+            <div class="studio-bpmn-tool-panel studio-bpmn-tool-panel--viewer">
+                <BpmnViewerSurface @ref="_viewer" Xml="@_bpmnXml" />
+            </div>
+        </section>
+        </div>
+    </div>
 </MudStack>
 
 @code {
     private string _bpmnXml = FallbackBpmn;
     private BpmnModelerSurface? _modeler;
+    private BpmnViewerSurface? _viewer;
     private IReadOnlyList<StudioConnectorTemplate> _templates = [];
     private IReadOnlyList<StudioCredential> _credentials = [];
     private IReadOnlyList<StudioDecisionOption> _decisions = [];
@@ -231,6 +253,8 @@
     private string? _selectedVersionId;
     private string? _versionDiff;
     private string _testVariablesJson = "{}";
+    private int _activeToolTab;
+    private bool _refreshViewerViewport;
     private bool _isRunningEngineTest;
     private Guid? _testRunInstanceId;
     private IReadOnlyList<StudioCreatedWebhook> _createdWebhooks = [];
@@ -464,6 +488,7 @@
         if (_modeler is null)
             return;
 
+        _activeToolTab = 0;
         _validationIssues = (await _modeler.GetValidationIssuesAsync()).ToList();
         _xmlPreview = await _modeler.GetXmlAsync();
         await _modeler.FocusElementAsync(_validationIssues.FirstOrDefault(issue => issue.Severity.Equals("error", StringComparison.OrdinalIgnoreCase))?.ElementId);
@@ -562,6 +587,15 @@
             : $"Compared with deployed version: {added} changed/added line(s), {removed} removed line(s).";
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_refreshViewerViewport && _viewer is not null)
+        {
+            _refreshViewerViewport = false;
+            await _viewer.RefreshViewportAsync();
+        }
+    }
+
     private async Task<bool> ValidateForDeploymentAsync()
     {
         if (_modeler is null)
@@ -572,6 +606,7 @@
         _validationIssues = (await _modeler.GetValidationIssuesAsync()).ToList();
         if (!_validationIssues.Any(issue => issue.Severity.Equals("error", StringComparison.OrdinalIgnoreCase)))
             return true;
+        _activeToolTab = 0;
         Snackbar.Add("Deployment blocked. Correct the BPMN validation errors first.", Severity.Error);
         await _modeler.FocusElementAsync(_validationIssues.First(issue => issue.Severity.Equals("error", StringComparison.OrdinalIgnoreCase)).ElementId);
         return false;
@@ -605,6 +640,16 @@
     private static string[] NormalizeLines(string xml) => xml
         .Replace("\r\n", "\n", StringComparison.Ordinal)
         .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    private void SelectToolTab(int index)
+    {
+        _activeToolTab = index;
+        _refreshViewerViewport = index == 5;
+    }
+
+    private string? ToolTabClass(int index) => _activeToolTab == index ? "studio-bpmn-tools__tab--active" : null;
+
+    private string AriaSelected(int index) => _activeToolTab == index ? "true" : "false";
 
     private async Task DeployBpmnXml()
     {

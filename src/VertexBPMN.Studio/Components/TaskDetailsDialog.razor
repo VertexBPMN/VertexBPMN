@@ -9,13 +9,13 @@
 
 <MudDialog>
     <TitleContent>
-        <MudText Typo="Typo.h6">Task Details: @Task.Name</MudText>
+        <MudText Typo="Typo.h6" Class="studio-dialog-title"><MudIcon Icon="@Icons.Material.Outlined.TaskAlt" Class="me-2" />Task Details: @Task.Name</MudText>
     </TitleContent>
     <DialogContent>
-        <MudGrid>
+        <MudGrid Class="studio-dialog-details">
             <MudItem xs="12">
-                <MudText><b>Id:</b> @Task.Id</MudText>
-                <MudText><b>Process Instance Id:</b> @Task.ProcessInstanceId</MudText>
+                <MudText><b>Id:</b> <span class="studio-technical-id">@Task.Id</span></MudText>
+                <MudText><b>Process Instance Id:</b> <span class="studio-technical-id">@Task.ProcessInstanceId</span></MudText>
                 <MudText><b>Created Time:</b> @Task.CreatedAt</MudText>
                 <MudText><b>Assignee:</b> @(string.IsNullOrEmpty(Task.Assignee) ? "Unassigned" : Task.Assignee)</MudText>
                 <MudText><b>Due Date:</b> @(Task.DueDate?.ToShortDateString() ?? "N/A")</MudText>
@@ -24,7 +24,7 @@
             {
                 <MudItem xs="12">
                     <MudText Typo="Typo.h6" Class="mt-4">Task Form</MudText>
-                    <div id="@_formContainerId" style="height:400px; border:1px solid #ccc;"></div>
+                    <div id="@_formContainerId" class="studio-dialog-form"></div>
                 </MudItem>
             }
         </MudGrid>
@@ -33,7 +33,7 @@
         <MudButton OnClick="@(() => Dialog.Close())">Cancel</MudButton>
         @if (Task.Assignee == _currentUserName)
         {
-            <MudButton Color="Color.Primary" OnClick="CompleteTask">Complete</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Check" OnClick="CompleteTask">Complete</MudButton>
         }
     </DialogActions>
 </MudDialog>

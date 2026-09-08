@@ -140,6 +140,7 @@ function insertQuickTemplate(modeler, template, target) {
         : { x: target.x + target.width + 110, y: target.y + target.height / 2 };
     const created = createTemplateShape(modeler, template, null, position, target.parent || canvas.getRootElement());
     connectQuickInsert(modeler, target, created);
+    modeler.get("selection").select(created);
     canvas.scrollToElement(created);
 }
 
@@ -549,6 +550,15 @@ export const BpmnModelerInterop = {
     resetSimulation: function (modeler) {
         if (modeler && !modeler.__vertexFallback) {
             modeler.get("editorActions").trigger("resetTokenSimulation");
+        }
+    },
+    resize: function (modeler) {
+        if (!modeler || modeler.__vertexFallback || typeof modeler.get !== 'function') {
+            return;
+        }
+        const canvas = modeler.get('canvas');
+        if (canvas && typeof canvas.resized === 'function') {
+            canvas.resized();
         }
     },
     destroy: function (modeler) {

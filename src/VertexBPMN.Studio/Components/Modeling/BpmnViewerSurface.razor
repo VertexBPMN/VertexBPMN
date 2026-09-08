@@ -34,6 +34,12 @@
         }
     }
 
+    public async Task RefreshViewportAsync()
+    {
+        if (_module is not null && _viewer is not null)
+            await _module.InvokeVoidAsync("BpmnViewerInterop.resize", _viewer);
+    }
+
     public async ValueTask DisposeAsync()
     {
         try

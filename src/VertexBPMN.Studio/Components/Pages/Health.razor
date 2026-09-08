@@ -4,34 +4,30 @@
 
 <PageTitle>Health and Operations</PageTitle>
 
-<MudText Typo="Typo.h4" GutterBottom="true">Health and Operations</MudText>
-
-<MudStack Row="true" Spacing="2" Class="mb-4">
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RefreshAsync" Disabled="_isLoading">
-        Refresh
-    </MudButton>
-</MudStack>
+<StudioPageHeader Title="Health and Operations" Eyebrow="Analyze" Description="Inspect health checks, system metrics and circuit-breaker state.">
+    <Actions><MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" OnClick="RefreshAsync" Disabled="_isLoading">Refresh</MudButton></Actions>
+</StudioPageHeader>
 
 @if (_error is not null)
 {
-    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+    <StudioStatePanel Title="Health data could not be loaded" Description="@_error" Icon="@Icons.Material.Outlined.ErrorOutline" />
 }
 
 <MudGrid>
     <MudItem xs="12" md="6">
-        <MudPaper Class="pa-4">
+        <MudPaper Class="studio-content-card" Elevation="0">
             <MudText Typo="Typo.h6">Comprehensive health</MudText>
             @RenderPayload(_comprehensiveHealth)
         </MudPaper>
     </MudItem>
     <MudItem xs="12" md="6">
-        <MudPaper Class="pa-4">
+        <MudPaper Class="studio-content-card" Elevation="0">
             <MudText Typo="Typo.h6">System metrics</MudText>
             @RenderPayload(_systemMetrics)
         </MudPaper>
     </MudItem>
     <MudItem xs="12">
-        <MudPaper Class="pa-4">
+        <MudPaper Class="studio-content-card" Elevation="0">
             <MudText Typo="Typo.h6">Circuit breakers</MudText>
             @RenderPayload(_circuitBreakers)
         </MudPaper>
@@ -82,7 +78,7 @@
         }
 
         builder.OpenElement(1, "pre");
-        builder.AddAttribute(2, "class", "mt-3");
+        builder.AddAttribute(2, "class", "studio-json-result mt-3");
         builder.AddContent(3, JsonSerializer.Serialize(payload.Value, new JsonSerializerOptions { WriteIndented = true }));
         builder.CloseElement();
     };

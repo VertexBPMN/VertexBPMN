@@ -7,48 +7,39 @@
 
 <MudDialog>
     <TitleContent>
-        <MudText Typo="Typo.h6">
+        <MudText Typo="Typo.h6" Class="studio-dialog-title">
             <MudIcon Icon="@Icons.Material.Filled.Info" Class="mr-3"/>
             Process Instance Details
         </MudText>
     </TitleContent>
     <DialogContent>
-        <MudContainer Style="max-width: none !important;">
+        <div class="studio-dialog-content">
             @if (_isLoading)
             {
-                <div class="d-flex justify-center align-center" style="height: 200px;">
-                    <MudProgressCircular Indeterminate="true" Size="Size.Large" />
-                    <MudText Class="ml-3">Loading process instance details...</MudText>
-                </div>
+                <StudioStatePanel Title="Loading process instance details" Icon="@Icons.Material.Outlined.HourglassTop" />
             }
             else if (_error != null)
             {
-                <MudAlert Severity="Severity.Error">
-                    <MudText>Error loading process instance details: @_error</MudText>
-                    <MudButton OnClick="RefreshData" 
-                              Color="Color.Primary" 
-                              Size="Size.Small" 
-                              Class="mt-2">
-                        Retry
-                    </MudButton>
-                </MudAlert>
+                <StudioStatePanel Title="Process instance details could not be loaded" Description="@_error" Icon="@Icons.Material.Outlined.ErrorOutline">
+                    <Action><MudButton OnClick="RefreshData" Color="Color.Primary" Variant="Variant.Filled">Retry</MudButton></Action>
+                </StudioStatePanel>
             }
             else
             {
-                <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" Class="pa-6 process-instance-tabs">
+                <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" Class="studio-dialog-tabs process-instance-tabs">
                     <!-- Overview Tab -->
                     <MudTabPanel Text="Overview" Icon="@Icons.Material.Filled.Dashboard">
                         <MudGrid>
                             <!-- Basic Information -->
                             <MudItem xs="12" md="6">
-                                <MudPaper Class="pa-4" Style="height: 100%;">
+                                <MudPaper Class="studio-dialog-section pa-4" Elevation="0">
                                     <MudText Typo="Typo.h6" Class="mb-3">
                                         <MudIcon Icon="@Icons.Material.Filled.Info" Class="mr-2" />
                                         Basic Information
                                     </MudText>
                                     
                                     <MudField Label="Instance ID" Variant="Variant.Text">
-                                        <MudText Class="font-monospace">@ProcessInstance.InstanceId</MudText>
+                                        <MudText Class="studio-technical-id">@ProcessInstance.InstanceId</MudText>
                                     </MudField>
                                     
                                     <MudField Label="Process ID" Variant="Variant.Text">
@@ -72,7 +63,7 @@
 
                             <!-- Timeline Information -->
                             <MudItem xs="12" md="6">
-                                <MudPaper Class="pa-4" Style="height: 100%;">
+                                <MudPaper Class="studio-dialog-section pa-4" Elevation="0">
                                     <MudText Typo="Typo.h6" Class="mb-3">
                                         <MudIcon Icon="@Icons.Material.Filled.Schedule" Class="mr-2" />
                                         Timeline
@@ -98,7 +89,7 @@
 
                             <!-- Process Definition Information -->
                             <MudItem xs="12">
-                                <MudPaper Class="pa-4">
+                                <MudPaper Class="studio-dialog-section pa-4" Elevation="0">
                                     <MudText Typo="Typo.h6" Class="mb-3">
                                         <MudIcon Icon="@Icons.Material.Filled.Description" Class="mr-2" />
                                         Process Definition
@@ -153,7 +144,7 @@
                                     <PropertyColumn Property="x => x.Name" Title="Variable Name" />
                                     <TemplateColumn Title="Value" SortBy="@(x => x.Value?.ToString() ?? string.Empty)">
                                         <CellTemplate>
-                                            <div style="max-width: 300px; word-break: break-all;">
+                                            <div class="studio-dialog-value">
                                                 @if (context.Item.Value != null)
                                                 {
                                                     <MudText Typo="Typo.body2">@FormatValue(context.Item.Value)</MudText>
@@ -180,9 +171,7 @@
                         }
                         else
                         {
-                            <MudAlert Severity="Severity.Info">
-                                No variables found for this process instance.
-                            </MudAlert>
+                            <StudioStatePanel Title="No variables found" Description="This process instance currently has no persisted variables." Icon="@Icons.Material.Outlined.DataObject" />
                         }
                     </MudTabPanel>
 
@@ -196,7 +185,7 @@
                                     <MudListItem T="string">
                                         <div class="d-flex justify-space-between align-center">
                                             <div>
-                                                <MudText Typo="Typo.body1">@taskId</MudText>
+                                                <MudText Typo="Typo.body1" Class="studio-technical-id">@taskId</MudText>
                                                 <MudText Typo="Typo.caption" Color="Color.Tertiary">
                                                     Task ID
                                                 </MudText>
@@ -212,9 +201,7 @@
                         }
                         else
                         {
-                            <MudAlert Severity="Severity.Info">
-                                No active tasks for this process instance.
-                            </MudAlert>
+                            <StudioStatePanel Title="No active tasks" Description="This process instance currently has no open user tasks." Icon="@Icons.Material.Outlined.TaskAlt" />
                         }
                     </MudTabPanel>
 
@@ -243,9 +230,7 @@
                         }
                         else
                         {
-                            <MudAlert Severity="Severity.Info">
-                                No active execution tokens found.
-                            </MudAlert>
+                            <StudioStatePanel Title="No active execution tokens" Description="The process instance currently has no active execution tokens." Icon="@Icons.Material.Outlined.Token" />
                         }
                     </MudTabPanel>
 
@@ -253,7 +238,7 @@
                     <MudTabPanel Text="History" Icon="@Icons.Material.Filled.History">
                         @if (_historyEvents.Any())
                         {
-                            <div style="height: 400px; overflow-y: auto;">
+                            <div class="studio-dialog-timeline">
                                 <MudTimeline>
                                     @foreach (var historyEvent in _historyEvents.OrderByDescending(e => e.Timestamp).Take(20))
                                     {
@@ -289,14 +274,12 @@
                         }
                         else
                         {
-                            <MudAlert Severity="Severity.Info">
-                                No history events found for this process instance.
-                            </MudAlert>
+                            <StudioStatePanel Title="No history events found" Description="Runtime history for this process instance will appear here." Icon="@Icons.Material.Outlined.History" />
                         }
                     </MudTabPanel>
                 </MudTabs>
             }
-        </MudContainer>
+        </div>
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="RefreshData" 

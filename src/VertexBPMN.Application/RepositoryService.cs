@@ -14,6 +14,7 @@ public class RepositoryService : IRepositoryService
     private readonly IProcessDefinitionRepository _repo;
     private readonly IBpmnParser _parser;
     private readonly bool _scriptsEnabled;
+    private readonly bool _allowCSharp;
 
     public RepositoryService(
         IProcessDefinitionRepository repo,
@@ -23,6 +24,9 @@ public class RepositoryService : IRepositoryService
         _repo = repo;
         _parser = parser;
         _scriptsEnabled = configuration.GetValue("Runtime:Scripts:Enabled", true);
+        // Roslyn C# script execution is NOT sandboxed. Keep it off unless an operator
+        // explicitly opts in, so untrusted tenant-deployed BPMN cannot get RCE.
+        _allowCSharp = configuration.GetValue("Runtime:Scripts:AllowCSharp", false);
     }
 
     public async ValueTask<ProcessDefinition> DeployAsync(string bpmnXml, string name, string? tenantId = null, CancellationToken cancellationToken = default)
@@ -44,6 +48,11 @@ public class RepositoryService : IRepositoryService
 
         if (!_scriptsEnabled && model.Tasks.Any(task => task.Type.Equals("scriptTask", StringComparison.OrdinalIgnoreCase)))
             throw new InvalidOperationException("BPMN script tasks are disabled for the in-process production runtime.");
+
+        if (!_allowCSharp && model.Tasks.Any(RequestsCSharpScript))
+            throw new InvalidOperationException(
+                "BPMN C# script tasks are disabled for the in-process production runtime because Roslyn is not sandboxed. " +
+                "Set Runtime:Scripts:AllowCSharp=true only if all tenants are trusted.");
 
         var processId = model.ProcessId;
         var latest = await _repo.GetLatestByKeyAsync(processId, tenantId, cancellationToken);
@@ -70,6 +79,16 @@ public class RepositoryService : IRepositoryService
         };
         await _repo.AddAsync(def, cancellationToken);
         return def;
+    }
+
+    private static bool RequestsCSharpScript(BpmnTask task)
+    {
+        if (!task.Type.Equals("scriptTask", StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (task.Attributes is null || !task.Attributes.TryGetValue("scriptFormat", out var format))
+            return false;
+        return format.Equals("C#", StringComparison.OrdinalIgnoreCase)
+            || format.Equals("CSharp", StringComparison.OrdinalIgnoreCase);
     }
 
     public ValueTask<ProcessDefinition?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)

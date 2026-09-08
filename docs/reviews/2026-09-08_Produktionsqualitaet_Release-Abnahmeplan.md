@@ -91,12 +91,14 @@ Verifizierter Stand 2026-09-08: Vollständiger gebündelter Lauf `0dc01e3d9f9e40
 
 ### Phase 3 – Sicherheit
 
-- [ ] Rollen-/Tenant-Matrix für REST, gRPC, Studio, SDK und verfügbare weitere öffentliche Adapter abgleichen; direkte Objektzugriffe über fremde IDs negativ testen.
-- [ ] Produktionskonfiguration mit echtem Identity Provider prüfen: Login, Logout, abgelaufene Tokens, Rollenentzug und verweigerte Zugriffe.
-- [ ] OAuth2-State, Webhook-Authentifizierung und Replay, Secret-Rotation sowie Log-/Export-Redaktion prüfen.
-- [ ] Script- und Connector-Grenzen testen: erlaubte Zieladressen, interne Adressbereiche, Redirects, Laufzeit-/Speicherlimits und Hostzugriffe entsprechend zugesagtem Sicherheitsmodell.
-- [ ] Dependency-Audit mit erreichbaren Quellen abschließen; NU1900 ist kein erfolgreicher Vulnerability-Nachweis. Kritische/hohe Befunde beheben oder Freigabe mit nachvollziehbarer Bewertung offen lassen.
-- [ ] Für geschäftskritischen Einsatz unabhängiges Sicherheitsreview des finalen Kandidaten organisieren.
+> **Stand 2026-09-08:** Abnahmebericht: `2026-09-08_Phase3_Sicherheitsabnahme.md`. Req 1/3/4/5 abgeschlossen; Req 2 (echter IdP) und Req 6 (unabhängiges Review) offen — externe Ressourcen, blockieren den Phasenabschluss.
+
+- [x] Rollen-/Tenant-Matrix für REST, gRPC, Studio, SDK und verfügbare weitere öffentliche Adapter abgleichen; direkte Objektzugriffe über fremde IDs negativ testen. Matrix für 56 REST-Controller erstellt; T1–T4 (VertexJob, VertexVariable, SimulationScenario/Simulation, TaskIoSnapshot) behoben + 10 Negativtests; Rollen-Lücken S1–S6 als Mittel bewertet/dokumentiert.
+- [ ] Produktionskonfiguration mit echtem Identity Provider prüfen: Login, Logout, abgelaufene Tokens, Rollenentzug und verweigerte Zugriffe. **Offen** — hängt an Phase-0-IdP-Entscheidung; externer Token-Endpunkt simuliert getestet.
+- [x] OAuth2-State, Webhook-Authentifizierung und Replay, Secret-Rotation sowie Log-/Export-Redaktion prüfen. OAuth2-State+Rotation, Webhook-HMAC/Einmal-Secret, BpmnRedaction; M3 (Redaction nicht auf Export-Roh-XML) als Mittel dokumentiert.
+- [x] Script- und Connector-Grenzen testen: erlaubte Zieladressen, interne Adressbereiche, Redirects, Laufzeit-/Speicherlimits und Hostzugriffe entsprechend zugesagtem Sicherheitsmodell. Jint 2 s/8 MB, SSRF-Kern verifiziert; H1/H2 (Roslyn-RCE, Scripts-Enabled-Default) via `Runtime:Scripts:AllowCSharp`-Gate (default false) behoben; M1/M2/M5 (Redirect-/OAuth2-SSRF, DNS-Rebinding) als Mittel dokumentiert.
+- [x] Dependency-Audit mit erreichbaren Quellen abschließen; NU1900 ist kein erfolgreicher Vulnerability-Nachweis. NuGet 19 Projekte (Quelle `api.nuget.org`) 0 vuln, npm Studio/FEEL 0 — alle Severities, direkt + transitiv.
+- [ ] Für geschäftskritischen Einsatz unabhängiges Sicherheitsreview des finalen Kandidaten organisieren. **Offen** — organisatorisch, externer Review-Partner nötig.
 
 Abnahme: Keine offenen ausnutzbaren kritischen oder hohen Befunde; wirksame Tenant-/Rollengrenzen und Secret-Behandlung sind durch positive und negative Fälle belegt.
 

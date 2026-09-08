@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 
@@ -10,6 +12,7 @@ namespace VertexBPMN.Api.Controllers
     [ApiController]
     [Route("api/simulation")]
     [ApiExplorerSettings(GroupName = "Simulation")]
+    [Authorize]
     public class SimulationController : ControllerBase
     {
         private readonly ISimulationService _simulationService;
@@ -35,7 +38,7 @@ namespace VertexBPMN.Api.Controllers
         public async System.Threading.Tasks.Task<ActionResult<SimulationResult>> SimulateScenario(string scenarioId)
         {
             var scenario = await _scenarioService.GetByIdAsync(scenarioId);
-            if (scenario == null) return NotFound();
+            if (scenario == null || !CanAccessTenant(scenario.TenantId)) return NotFound();
             // Validate BPMN before simulation (assume scenario contains BPMN XML)
             var diagnostics = await _validationService.ValidateBpmnAsync(scenario.BpmnXml ?? "", HttpContext.RequestAborted);
             var request = new SimulationRequest
@@ -64,7 +67,7 @@ namespace VertexBPMN.Api.Controllers
                 ProcessDefinitionId = request.ProcessDefinitionId,
                 Variables = request.Variables,
                 MaxSteps = request.MaxSteps,
-                TenantId = request.TenantId,
+                TenantId = ResolveSimulationTenantId(request.TenantId),
                 EventSelections = request.EventSelections,
                 CalledProcessDefinitions = request.CalledProcessDefinitions
             };
@@ -91,6 +94,18 @@ namespace VertexBPMN.Api.Controllers
                     title: "BPMN simulation request is not executable",
                     detail: exception.Message);
             }
+        }
+        private string? ResolveSimulationTenantId(string? explicitTenantId)
+        {
+            if (!User.IsInRole("Admin"))
+                return User.FindFirstValue("tenant_id");
+            return string.IsNullOrWhiteSpace(explicitTenantId) ? null : explicitTenantId;
+        }
+
+        private bool CanAccessTenant(string? tenantId)
+        {
+            if (User.IsInRole("Admin")) return true;
+            return string.Equals(tenantId, User.FindFirstValue("tenant_id"), StringComparison.Ordinal);
         }
     }
 }

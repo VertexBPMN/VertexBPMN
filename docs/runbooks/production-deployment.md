@@ -61,10 +61,25 @@ Bei einem Broker-Ausfall:
 
 ## Datenbank-Recovery
 
+**Zielwerte (Phase 0, entschieden 2026-09-08):** RPO ≤ 15 min (maximaler Datenverlust), RTO ≤ 4 h (Wiederherstellungszeit).
+
+**Zu sichernde Stores (Konsistentes Backup `P5_AC_01`):**
+1. Die fünf Engine-Datenbanken (`Bpmn`, `Tenants`, `Simulation`, `ProcessMiningEvents`, `Decision`) als konsistenter `pg_dump --format=custom --no-owner` je Datenbank.
+2. Die Dependency-Registry als Dateikopie (SQLite-Datei, z. B. `dependencies.db`).
+3. Der Data-Protection-Key-Ring als Verzeichniskopie (`DataProtection:KeyRingPath`).
+4. Broker-/Outbox-Replay: Runtime-Ereignisse liegen dauerhaft in der **Datenbank-Outbox**; nach Restore repliziert der Publisher ausstehende `Pending`-Nachrichten selbst (at-least-once, stabile Message-ID, idempotente Konsumenten via Unique-Index `(TenantScope, Operation, IdempotencyKey)`). Es ist also keine separate Broker-Queue-Sicherung nötig – der konsistente DB-Dump deckt den Replay-Zustand ab.
+
+**Wiederherstellung auf frischer isolierter Umgebung (`P5_AC_02`, gemessene Werte 2026-09-09):**
 1. Schreibzugriffe und Publisher stoppen.
-2. Alle fünf Engine-Datenbanken sowie die Dependency-Registry aus einem konsistenten Backup wiederherstellen.
+2. Alle fünf Engine-Datenbanken sowie die Dependency-Registry und den Data-Protection-Key-Ring aus dem konsistenten Backup wiederherstellen (`pg_restore --no-owner` in eine frische Datenbank).
 3. Den versionierten Migrations-Job ausführen und auf erfolgreichen Abschluss warten.
 4. Einen einzelnen API-Pod starten und `/api/ready` prüfen.
 5. Erst danach auf die gewünschte Replikazahl skalieren und Outbox-Rückstand beobachten.
+
+**Gemessene RPO/RTO (lokal, echte Postgres 17 + RabbitMQ 4, 2026-09-09):** RTO ≈ 3,9 s (Restore 1,2 s + Ready 2,7 s) für eine kleine Bestandsdaten-DB – weit unter dem Ziel von 4 h. RPO = 0 für den konsistenten Dump-Zeitpunkt (Dump wird bei gestoppten Schreibzugriffen erzeugt). Diese Messwerte stammen aus einem lokalen Abnahmelauf (`P5_AC_02`), nicht aus dem Ziel-Cluster; für die endgültige Abnahme in der Zielumgebung sind die Messwerte dort real zu erfassen und gegen Phase 0 (RPO ≤ 15 min, RTO ≤ 4 h) zu belegen. Ein fachlicher Vergleich (überlebende Instanz, offene User-Task, Timer-Jobs) nach Restore ist Pflichtteil.
+
+**Upgrade (`P5_AC_03`):** Bestandsdaten (deployte Modelle, offene Tasks) überleben eine vollständige Migration; der DB-Dump nach `ApplyMigrationsOnStartup=false` verweigert bei ausstehenden Migrationen den Start kontrolliert (kein Serving), ein Migrationsfehler stoppt den Rollout.
+
+**Rollback (`P5_AC_04`):** Kein automatisches Schema-Downgrade. Rückkehr nur bei nachgewiesener Schemakompatibilität; andernfalls den getesteten Backup-Restore verwenden. Eine gegen das erwartete Schema zurückspringende Anwendung darf nicht dienen.
 
 Ein Schema-Downgrade wird nicht automatisch ausgeführt. Für Rollback muss die Anwendungsversion mit dem vorhandenen Schema kompatibel sein oder ein vorab getestetes Restore des Datenbank-Backups erfolgen.

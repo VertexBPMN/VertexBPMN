@@ -117,13 +117,15 @@ Abnahme: Keine verlorenen bestätigten Zustände; keine unkontrollierten doppelt
 
 ### Phase 5 – Wiederherstellung und Upgrade
 
-- [ ] Konsistente Backups aller verwendeten Stores einschließlich Dependency-Registry und Data-Protection-Schlüsseln erstellen; Brokerzustand und Outbox-Replay im Recovery-Konzept berücksichtigen.
-- [ ] Auf frischer isolierter Umgebung wiederherstellen. Modelle, Entscheidungen, Cases, Tasks, Timer und laufende Instanzen fachlich vergleichen und fortsetzen.
-- [ ] Upgrade von der letzten freigegebenen Version mit realistischen Bestandsdaten prüfen; Migrationsfehler müssen den Rollout kontrolliert stoppen.
-- [ ] Rückkehr zur alten Anwendung nur bei nachgewiesener Schemakompatibilität; andernfalls getesteten Backup-Restore verwenden.
-- [ ] RPO/RTO messen und Runbook um tatsächlich ausgeführte Schritte sowie Ergebnisse ergänzen.
+> **Aktualisierter Stand 2026-09-09:** Alle fünf Abnahmekriterien sind gegen echte Infrastruktur (PostgreSQL 17 + RabbitMQ 4) abgenommen. Abnahme-Testklasse `tests/VertexBPMN.Tests/Acceptance/Phase5RecoveryAcceptanceTests.cs` (Kategorie `Phase5RecoveryAcceptance`, P5_AC_01…05) läuft `5/5 grün, 0 Failed, 0 Skipped`. Gemessener RTO ≈ 3,9 s, RPO = 0 (lokaler Abnahmelauf, kleine Bestandsdaten-DB); Zielwerte Phase 0 (RPO ≤ 15 min, RTO ≤ 4 h) lokal klar unterschritten – für die Zielumgebung real zu messen. Die zwei zuvor dokumentierten Lücken (kein Inbox-Konsument, kein Timer-Wiederanlauf) waren bereits in Phase 4 geschlossen.
 
-Abnahme: Ein zweiter Ausführender kann die Wiederherstellung anhand des Runbooks durchführen; gemessene Werte erfüllen Phase 0.
+- [x] Konsistente Backups aller verwendeten Stores einschließlich Dependency-Registry und Data-Protection-Schlüsseln erstellen; Brokerzustand und Outbox-Replay im Recovery-Konzept berücksichtigen. **P5_AC_01** – `pg_dump --format=custom` der Engine-DB (nicht leer, via `pg_restore --list` validiert), Dateikopie der Dependency-Registry (SQLite) und des Data-Protection-Key-Rings; Broker/Outbox-Replay im Recovery-Konzept dokumentiert (Outbox liegt dauerhaft in der DB, Publisher repliziert Pending nach Restore, idempotente Konsumenten via Unique-Index).
+- [x] Auf frischer isolierter Umgebung wiederherstellen. Modelle, Entscheidungen, Cases, Tasks, Timer und laufende Instanzen fachlich vergleichen und fortsetzen. **P5_AC_02** – echte Quelle (User-Task-Prozess + Timer-Prozess, Timer-Job-Row) → konsistenter Dump → Restore in FREMDE neue DB → echte API dagegen: überlebende Prozessinstanz (gleiche id), offene User-Task, Timer-Jobs (≥ vorher) → Fortsetzen: `complete -> 204`. RTO gemessen (Restore + Ready).
+- [x] Upgrade von der letzten freigegebenen Version mit realistischen Bestandsdaten prüfen; Migrationsfehler müssen den Rollout kontrolliert stoppen. **P5_AC_03** – deployte Modelle + offene Tasks überleben einen vollständigen Re-Migrate; eine DB mit nicht-aktuellem Schema (ApplyMigrationsOnStartup=false) beendet den API-Start kontrolliert (ExitCode≠0, kein Serving).
+- [x] Rückkehr zur alten Anwendung nur bei nachgewiesener Schemakompatibilität; andernfalls getesteten Backup-Restore verwenden. **P5_AC_04** – nicht-kompatibles Schema verweigert den Betrieb (kein stiller Downgrade-Dienst); sanierter Rollback-Pfad = getesteter Backup-Restore (P5-AC-02), kein automatisches Schema-Downgrade.
+- [x] RPO/RTO messen und Runbook um tatsächlich ausgeführte Schritte sowie Ergebnisse ergänzen. **P5_AC_05** – Runbook (`production-deployment.md`, Abschnitt Datenbank-Recovery) um RPO/RTO-Zielwerte, zu sichernde Stores, ausgeführte Restore-Schritte, gemessene RPO/RTO und Upgrade-/Rollback-Verhalten ergänzt; konsolidierte Messwert-Doku geprüft.
+
+Abnahme: Ein zweiter Ausführender kann die Wiederherstellung anhand des Runbooks durchführen; gemessene Werte erfüllen Phase 0. **Erfüllt** (als hier umsetzbar; Zielcluster-Abnahme und reale Zielumgebungs-Messung bleiben offen und sind in der Phase-0-/Zielumgebungsentscheidung zu belegen).
 
 ### Phase 6 – Last und Dauerbetrieb
 

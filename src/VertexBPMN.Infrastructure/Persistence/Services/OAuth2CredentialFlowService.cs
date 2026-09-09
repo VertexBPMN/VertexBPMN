@@ -5,6 +5,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Application.Connectors;
+using VertexBPMN.Domain.Exceptions;
 
 namespace VertexBPMN.Infrastructure.Persistence.Services;
 
@@ -112,10 +114,17 @@ public sealed class OAuth2CredentialFlowService(
             ["client_secret"] = clientSecret
         };
 
+        var tokenEndpoint = await TryGetPublicEndpointAsync(record.TokenUrl, cancellationToken);
+        if (tokenEndpoint is null)
+        {
+            Logger().LogWarning("OAuth2 token URL for credential {CredentialId} is not a valid public destination", record.CredentialId);
+            return false;
+        }
+
         HttpResponseMessage response;
         try
         {
-            response = await http.PostAsync(record.TokenUrl, new FormUrlEncodedContent(form), cancellationToken);
+            response = await http.PostAsync(tokenEndpoint, new FormUrlEncodedContent(form), cancellationToken);
         }
         catch (Exception exception)
         {
@@ -200,10 +209,17 @@ public sealed class OAuth2CredentialFlowService(
             ["client_secret"] = clientSecret
         };
 
+        var refreshEndpoint = await TryGetPublicEndpointAsync(tokenUrl, cancellationToken);
+        if (refreshEndpoint is null)
+        {
+            Logger().LogWarning("OAuth2 token URL for credential {CredentialId} is not a valid public destination", credentialId);
+            return null;
+        }
+
         HttpResponseMessage response;
         try
         {
-            response = await http.PostAsync(tokenUrl, new FormUrlEncodedContent(form), cancellationToken);
+            response = await http.PostAsync(refreshEndpoint, new FormUrlEncodedContent(form), cancellationToken);
         }
         catch (Exception exception)
         {
@@ -237,6 +253,21 @@ public sealed class OAuth2CredentialFlowService(
 
         Logger().LogInformation("OAuth2 access token refreshed for credential {CredentialId}", credentialId);
         return newAccessToken;
+    }
+
+    private static async Task<Uri?> TryGetPublicEndpointAsync(string url, CancellationToken cancellationToken)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var endpoint))
+            return null;
+        try
+        {
+            await ConnectorDestinationPolicy.ThrowIfForbiddenAsync(endpoint.Host, cancellationToken, rejectUnresolvable: false);
+            return endpoint;
+        }
+        catch (ServiceTaskExecutionException)
+        {
+            return null;
+        }
     }
 
     private async Task RotateAsync(

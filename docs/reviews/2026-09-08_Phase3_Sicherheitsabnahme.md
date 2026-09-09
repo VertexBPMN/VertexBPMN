@@ -31,7 +31,7 @@ Abnahmekriterium *„keine offenen ausnutzbaren kritischen/hohen Befunde; wirksa
 
 ### Mittel (akzeptiert mit nachvollziehbarer Bewertung, geplant/optional behebbar)
 - **M1 – Keine Redirect-Policy im Connector-Client** → SSRF-Bypass über 30x-Umleitungen. **Behoben:** geteilter Connector-`HttpClient` verfolgt keine automatischen Redirects mehr (`SocketsHttpHandler.AllowAutoRedirect=false`, `ServiceTaskRegistryExtensions.cs`). Redirect-Ziele werden nicht mehr gefolgt; ein 3xx-`Location` zurück auf eine interne Adresse wird als 302 an den Aufrufer gegeben. Nachweis: `ConnectorRedirectSsrfTests` (2 Tests, grün).
-- **M2 – OAuth2 Authorization-/Token-URL unterliegt nicht dem SSRF-Guard.** Bewertung: ausgenutzer Zielserver/Operator; vor Freigabe zu behandeln.
+- **M2 – OAuth2 Token-URL unterlag nicht dem SSRF-Guard.** Bewertung: ausgenutzer Zielserver/Operator; vor Freigabe zu behandeln. **Behoben:** beide Token-POSTs (authorization_code + refresh) laufen durch `ConnectorDestinationPolicy.ThrowIfForbiddenAsync` (Private-/Loopback-/Link-Local-Block nach DNS-Auflösung, allowlist-frei). Negativtests: 2.
 - **M3 – BPMN-Redaction default aus, nicht auf Export-/Roh-XML-Pfad.** Bewertung: Redaktions-Policies sind als Parse-Option vorhanden und getestet; für Export-Pfad nachrüsten.
 - **M4 – Webhook kein expliziter Replay-Schutz.** Bewertung: HMAC + Einmal-Secret vorhanden; Replay-Fenster optional.
 - **M5 – DNS-Rebinding/TOCTOU nicht in Redirect-/Hostprüfung mitigiert.**
@@ -59,16 +59,18 @@ Jint-Sandbox 2 s/8 MB · Connector-SSRF (Private-IP-Block 10/8, 172.16/12, 192.1
 ## 5. Dateien/Änderungen dieser Phase
 - `src/VertexBPMN.Application/RepositoryService.cs` — `Runtime:Scripts:AllowCSharp`-Gate (H1/H2)
 - `src/VertexBPMN.Application/Extensions/ServiceTaskRegistryExtensions.cs` — Connector-HttpClient ohne Auto-Redirect (M1)
+- `src/VertexBPMN.Application/Connectors/ConnectorRuntime.cs`, `src/VertexBPMN.Infrastructure/Persistence/Services/OAuth2CredentialFlowService.cs` — OAuth2-Token-URL hinter SSRF-Guard (M2)
 - `src/VertexBPMN.Api/Controllers/VertexJobController.cs`, `VertexVariableController.cs`, `SimulationScenarioController.cs`, `SimulationController.cs`, `TaskIoSnapshotController.cs` — Tenant-/Rollen-Fixes (T1–T4)
 - `src/VertexBPMN.Api/Controllers/HealthController.cs`, `IdentityController.cs`, `LoadBalancerController.cs` — Rollen-Härtung S2/S3/S5 (`AdminOnly`)
 - `tests/VertexBPMN.Studio.UiTests/LocalStudioE2ETestHost.cs` — C#-Flag in vertrauenswürdiger Testumgebung
 - `tests/VertexBPMN.Tests/Unit/Application/RepositoryServiceScriptGateTests.cs` — Gate-Tests (neu)
 - `tests/VertexBPMN.Tests/Unit/Api/TenantIsolationPhase3SecurityTests.cs` — Negativtests T1–T4 (neu)
 - `tests/VertexBPMN.Tests/Integration/Handlers/ConnectorRedirectSsrfTests.cs` — M1-Redirect-Negativtests (neu)
+- `tests/VertexBPMN.Tests/Unit/Infrastructure/OAuth2CredentialFlowServiceTests.cs` — M2-Negativtests (Loopback/Private Token-URL)
 - Audit-Drafts: `2026-09-08_Phase3_TenantRollenMatrix_draft.md`, `2026-09-08_Phase3_ScriptConnectorBoundaries_draft.md`
 
 ## 6. Empfohlene nächste Schritte
-1. M2 (OAuth2 Authorization-/Token-URL hinter SSRF-Guard) angehen; M5 (DNS-Rebinding-Mitigation) nachrüsten.
-2. M2 (OAuth2 Authorization-/Token-URL hinter SSRF-Guard) und M5 (DNS-Rebinding-Mitigation) behandeln.
+1. M5 (DNS-Rebinding/TOCTOU in Redirect-/Hostprüfung) nachrüsten — letzter offener MEDIUM-Fix.
+2. Req 2 (echter IdP) und Req 6 (unabhängiges Sicherheitsreview) benötigen externe Ressourcen für den Phasenabschluss.
 3. Echten IdP für Req 2 bereitstellen (Phase-0-Entscheidung).
 4. Externes Sicherheitsreview (Req 6) organisieren.

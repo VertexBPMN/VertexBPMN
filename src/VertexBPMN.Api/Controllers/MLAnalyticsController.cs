@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using System.Text;
+using System.Security.Claims;
 using VertexBPMN.Domain.Entities.ML;
 using VertexBPMN.Domain.Interfaces;
 
@@ -12,7 +13,7 @@ namespace VertexBPMN.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/ml")]
-[Authorize]
+[Authorize(Policy = "TenantReadOnly")]
 public class MLAnalyticsController : ControllerBase
 {
     private readonly IPredictiveAnalyticsService _analyticsService;
@@ -32,6 +33,7 @@ public class MLAnalyticsController : ControllerBase
     [HttpGet("predict/completion/{processInstanceId}")]
     public async Task<ActionResult<ProcessCompletionPrediction>> PredictCompletion(Guid processInstanceId, [FromQuery] string? tenantId = null)
     {
+        if (!TryResolveTenant(tenantId, out tenantId)) return Forbid();
         try
         {
             var prediction = await _analyticsService.PredictProcessCompletionAsync(processInstanceId, tenantId);
@@ -58,9 +60,10 @@ public class MLAnalyticsController : ControllerBase
     [HttpPost("predict/duration")]
     public async Task<ActionResult<ProcessDurationPrediction>> PredictDuration([FromBody] DurationPredictionRequest request, [FromQuery] string? tenantId = null)
     {
+        if (!TryResolveTenant(tenantId ?? request.TenantId, out tenantId)) return Forbid();
         try
         {
-            var prediction = await _analyticsService.PredictProcessDurationAsync(request.ProcessDefinitionKey, request.Variables, tenantId ?? request.TenantId);
+            var prediction = await _analyticsService.PredictProcessDurationAsync(request.ProcessDefinitionKey, request.Variables, tenantId);
             return Ok(prediction);
         }
         catch (NotSupportedException ex)
@@ -84,6 +87,7 @@ public class MLAnalyticsController : ControllerBase
     [HttpGet("predict/bottlenecks/{processDefinitionKey}")]
     public async Task<ActionResult<ProcessBottleneckPrediction>> PredictBottlenecks(string processDefinitionKey, [FromQuery] string? tenantId = null)
     {
+        if (!TryResolveTenant(tenantId, out tenantId)) return Forbid();
         try
         {
             var prediction = await _analyticsService.PredictBottlenecksAsync(processDefinitionKey, tenantId);
@@ -110,6 +114,7 @@ public class MLAnalyticsController : ControllerBase
     [HttpGet("optimize/{processDefinitionKey}")]
     public async Task<ActionResult<ProcessOptimizationSuggestion>> GetOptimizationSuggestions(string processDefinitionKey, [FromQuery] string? tenantId = null)
     {
+        if (!TryResolveTenant(tenantId, out tenantId)) return Forbid();
         try
         {
             var suggestions = await _analyticsService.GetOptimizationSuggestionsAsync(processDefinitionKey, tenantId);
@@ -134,8 +139,10 @@ public class MLAnalyticsController : ControllerBase
     /// Train ML models with latest process data
     /// </summary>
     [HttpPost("train")]
+    [Authorize(Policy = "AdminOnly")]
     public async Task<ActionResult> TrainModels([FromQuery] string? tenantId = null)
     {
+        if (!TryResolveTenant(tenantId, out tenantId)) return Forbid();
         try
         {
             await _analyticsService.TrainModelsAsync(tenantId);
@@ -162,6 +169,7 @@ public class MLAnalyticsController : ControllerBase
     [Produces("text/csv")]
     public async Task<IActionResult> ExportTrainingData([FromQuery] string? processDefinitionKey = null, [FromQuery] string? tenantId = null)
     {
+        if (!TryResolveTenant(tenantId, out tenantId)) return Forbid();
         try
         {
             var csv = await _analyticsService.ExportTrainingDataAsync(processDefinitionKey, tenantId);
@@ -175,6 +183,11 @@ public class MLAnalyticsController : ControllerBase
         {
             return Forbid();
         }
+    }
+    private bool TryResolveTenant(string? requested, out string? tenant)
+    {
+        tenant = User.IsInRole("Admin") ? requested : User.FindFirstValue("tenant_id");
+        return User.IsInRole("Admin") || !string.IsNullOrWhiteSpace(tenant);
     }
 }
 

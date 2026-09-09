@@ -41,6 +41,7 @@ public class LoadBalancerController : ControllerBase
     /// Register a new worker node
     /// </summary>
     [HttpPost("workers")]
+    [Authorize(Policy = "AdminOnly")]
     public IActionResult RegisterWorker([FromBody] WorkerRegistrationRequest request)
     {
         var worker = new WorkerNode(
@@ -76,6 +77,7 @@ public class LoadBalancerController : ControllerBase
     /// Update worker heartbeat
     /// </summary>
     [HttpPost("workers/{workerId}/heartbeat")]
+    [Authorize(Policy = "AdminOnly")]
     public IActionResult UpdateHeartbeat(string workerId, [FromBody] WorkerHeartbeatRequest request)
     {
         _loadBalancer.UpdateWorkerHeartbeat(workerId, request.CurrentLoad);

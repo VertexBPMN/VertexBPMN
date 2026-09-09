@@ -6,6 +6,7 @@ using Jint;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Domain.Model.Bpmn;
@@ -42,17 +43,20 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
     private readonly IServiceTaskRegistry _serviceTasks;
     private readonly IDecisionService _decisions;
     private readonly ILogger<PersistentProcessExecutionRuntime> _logger;
+    private readonly IConfiguration? _configuration;
 
     public PersistentProcessExecutionRuntime(
         BpmnDbContext db,
         IServiceTaskRegistry serviceTasks,
         IDecisionService decisions,
-        ILogger<PersistentProcessExecutionRuntime> logger)
+        ILogger<PersistentProcessExecutionRuntime> logger,
+        IConfiguration? configuration = null)
     {
         _db = db;
         _serviceTasks = serviceTasks;
         _decisions = decisions;
         _logger = logger;
+        _configuration = configuration;
     }
 
     public async ValueTask<ProcessInstance> StartAsync(
@@ -873,7 +877,9 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                 node.Name,
                 new Dictionary<string, string>(node.Attributes, StringComparer.Ordinal),
                 null);
-            await ScriptTaskExecution.TryHandleScriptTaskAsync(taskDescriptor, variables, cancellationToken);
+            await ScriptTaskExecution.TryHandleScriptTaskAsync(taskDescriptor, variables, cancellationToken,
+                allowCSharp: _configuration?.GetValue("Runtime:Scripts:AllowCSharp", false) ?? false,
+                scriptsEnabled: _configuration?.GetValue("Runtime:Scripts:Enabled", true) ?? true);
             MergeActivityOutputs(instance.Variables, variables, pending.LocalVariables);
             instance.Variables = new Dictionary<string, object>(instance.Variables, StringComparer.Ordinal);
             AddHistory(instance, "SCRIPT_TASK_COMPLETED", node.Id, new { });

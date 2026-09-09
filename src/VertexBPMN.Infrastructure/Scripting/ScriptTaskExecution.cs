@@ -22,10 +22,15 @@ public static class ScriptTaskExecution
     public static async Task<bool> TryHandleScriptTaskAsync(
         BpmnTask task,
         IDictionary<string, object> processVariables,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool allowCSharp = false,
+        bool scriptsEnabled = true)
     {
         if (!string.Equals(task.Type, "scriptTask", StringComparison.OrdinalIgnoreCase))
             return false;
+
+        if (!scriptsEnabled)
+            throw new InvalidOperationException("BPMN script tasks are disabled for the in-process runtime.");
 
         if (task.Attributes == null)
             throw new InvalidOperationException($"ScriptTask '{task.Id}' ohne Attributes.");
@@ -42,6 +47,8 @@ public static class ScriptTaskExecution
         if (format.Equals("C#", StringComparison.OrdinalIgnoreCase)
             || format.Equals("CSharp", StringComparison.OrdinalIgnoreCase))
         {
+            if (!allowCSharp)
+                throw new InvalidOperationException("BPMN C# script execution is disabled because Roslyn is not sandboxed.");
             // Explicit C# (Roslyn) remains supported; not the default.
             result = await ExecuteCSharpAsync(script!, processVariables, ct).ConfigureAwait(false);
         }

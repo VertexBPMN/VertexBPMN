@@ -12,7 +12,7 @@ namespace VertexBPMN.Api.Controllers
     [ApiController]
     [Route("api/simulation")]
     [ApiExplorerSettings(GroupName = "Simulation")]
-    [Authorize]
+    [Authorize(Policy = "TenantReadOnly")]
     public class SimulationController : ControllerBase
     {
         private readonly ISimulationService _simulationService;
@@ -105,7 +105,8 @@ namespace VertexBPMN.Api.Controllers
         private bool CanAccessTenant(string? tenantId)
         {
             if (User.IsInRole("Admin")) return true;
-            return string.Equals(tenantId, User.FindFirstValue("tenant_id"), StringComparison.Ordinal);
+            var claim = User.FindFirstValue("tenant_id");
+            return !string.IsNullOrWhiteSpace(claim) && string.Equals(tenantId, claim, StringComparison.Ordinal);
         }
     }
 }

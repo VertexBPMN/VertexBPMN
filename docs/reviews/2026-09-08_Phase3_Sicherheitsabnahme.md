@@ -4,9 +4,9 @@ Datum: 2026-09-08 · Kandidat: `master` (Arbeitsstand nach Phase-3-Remediation) 
 
 ## 1. Ergebnis
 
-Sicherheitsabnahme **durchgeführt**. Die zwei offenen **Hoch-Befunde** (Roslyn-C#-RCE und `Runtime:Scripts:Enabled`-Default) wurden beseitigt, die höchsten Cross-Tenant-/ID-Zugriffslücken (T1–T4) geschlossen und mit Negativtests belegt. Dependency-Audit ist gegen erreichbare Quellen grün (0 Befunde). **Ausstehend** (externe Ressourcen, nicht autonom lösbar): Req 2 (Prüfung gegen echten Identity Provider) und Req 6 (unabhängiges Sicherheitsreview).
+**Korrigierter Stand 2026-09-09: Sicherheitsabnahme nicht abgeschlossen.** Das Review hat zusätzliche hohe Lücken bei fehlenden Tenant-Claims, Debug-Zugriffen, Rollenprüfungen und der Ausführung bereits gespeicherter C#-Prozesse aufgedeckt. Diese Pfade wurden nachgehärtet. Der untenstehende Nachweis vom 2026-09-08 ist historisch und kein Nachweis für den aktuellen Arbeitsstand.
 
-Abnahmekriterium *„keine offenen ausnutzbaren kritischen/hohen Befunde; wirksame Tenant-/Rollengrenzen und Secret-Behandlung durch positive und negative Fälle belegt“* ist für die **behebbaren** Bezugspunkte erfüllt. Ein vollständiger Abschluss der Phase hängt an Req 2/Req 6.
+Die pauschale Aussage, alle autonom behebbaren Punkte seien abgeschlossen, wird zurückgenommen. Neben Req 2/Req 6 sind M3/M4/M6 und weitergehende Connector-Nachweise offen. Aktuelle Korrekturen, Tests und nächste Schritte: [Nachprüfung vom 2026-09-09](2026-09-09_Phase3_Sicherheitsnachpruefung.md).
 
 ## 2. Verifizierter Nachweis (reale Ausführung, 2026-09-08)
 

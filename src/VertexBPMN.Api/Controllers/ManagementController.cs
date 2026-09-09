@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using VertexBPMN.Domain.Interfaces;
 
 namespace VertexBPMN.Api.Controllers;
@@ -17,6 +18,7 @@ public class ManagementController : ControllerBase
     }
 
     [HttpPost("suspend-process-instance/{id}")]
+    [Authorize(Policy = "ProcessManager")]
     public async Task<IActionResult> SuspendProcessInstance(Guid id, [FromQuery] string? tenantId = null)
     {
         var effectiveTenantId = ResolveTenant(id, tenantId);
@@ -27,6 +29,7 @@ public class ManagementController : ControllerBase
     }
 
     [HttpPost("resume-process-instance/{id}")]
+    [Authorize(Policy = "ProcessManager")]
     public async Task<IActionResult> ResumeProcessInstance(Guid id, [FromQuery] string? tenantId = null)
     {
         var effectiveTenantId = ResolveTenant(id, tenantId);
@@ -37,6 +40,7 @@ public class ManagementController : ControllerBase
     }
 
     [HttpPost("delete-process-instance/{id}")]
+    [Authorize(Policy = "ProcessManager")]
     public async Task<IActionResult> DeleteProcessInstance(Guid id, [FromQuery] string? tenantId = null)
     {
         var effectiveTenantId = ResolveTenant(id, tenantId);

@@ -33,8 +33,10 @@ public class VisualDebugController : ControllerBase
     /// Start a debugging session for a process instance
     /// </summary>
     [HttpPost("session/start/{processInstanceId}")]
+    [Authorize(Policy = "ProcessManager")]
     public async Task<ActionResult<DebugSession>> StartDebuggingSession(Guid processInstanceId, [FromBody] DebugOptions? options = null)
     {
+        if (!await CanAccessInstanceAsync(processInstanceId)) return NotFound();
         try
         {
             var session = await _debugService.StartDebuggingSessionAsync(processInstanceId, options ?? new DebugOptions());
@@ -51,8 +53,10 @@ public class VisualDebugController : ControllerBase
     /// Stop a debugging session
     /// </summary>
     [HttpPost("session/stop/{sessionId}")]
+    [Authorize(Policy = "ProcessManager")]
     public async Task<ActionResult> StopDebuggingSession(Guid sessionId)
     {
+        if (!await CanAccessSessionAsync(sessionId)) return NotFound();
         try
         {
             await _debugService.StopDebuggingSessionAsync(sessionId);
@@ -71,6 +75,7 @@ public class VisualDebugController : ControllerBase
     [HttpGet("session/{sessionId}")]
     public async Task<ActionResult<DebugSession?>> GetDebugSession(Guid sessionId)
     {
+        if (!await CanAccessSessionAsync(sessionId)) return NotFound();
         try
         {
             var session = await _debugService.GetDebugSessionAsync(sessionId);
@@ -91,8 +96,10 @@ public class VisualDebugController : ControllerBase
     /// Set a breakpoint at an activity
     /// </summary>
     [HttpPost("breakpoint/{sessionId}/{activityId}")]
+    [Authorize(Policy = "ProcessManager")]
     public async Task<ActionResult> SetBreakpoint(Guid sessionId, string activityId, [FromBody] BreakpointCondition? condition = null)
     {
+        if (!await CanAccessSessionAsync(sessionId)) return NotFound();
         try
         {
             await _debugService.SetBreakpointAsync(sessionId, activityId, condition);
@@ -109,8 +116,10 @@ public class VisualDebugController : ControllerBase
     /// Remove a breakpoint from an activity
     /// </summary>
     [HttpDelete("breakpoint/{sessionId}/{activityId}")]
+    [Authorize(Policy = "ProcessManager")]
     public async Task<ActionResult> RemoveBreakpoint(Guid sessionId, string activityId)
     {
+        if (!await CanAccessSessionAsync(sessionId)) return NotFound();
         try
         {
             await _debugService.RemoveBreakpointAsync(sessionId, activityId);
@@ -127,8 +136,10 @@ public class VisualDebugController : ControllerBase
     /// Step over current activity
     /// </summary>
     [HttpPost("step/over/{sessionId}")]
+    [Authorize(Policy = "ProcessManager")]
     public async Task<ActionResult<StepResult>> StepOver(Guid sessionId)
     {
+        if (!await CanAccessSessionAsync(sessionId)) return NotFound();
         try
         {
             var result = await _debugService.StepOverAsync(sessionId);
@@ -145,8 +156,10 @@ public class VisualDebugController : ControllerBase
     /// Step into current activity (dive into subprocesses)
     /// </summary>
     [HttpPost("step/into/{sessionId}")]
+    [Authorize(Policy = "ProcessManager")]
     public async Task<ActionResult<StepResult>> StepInto(Guid sessionId)
     {
+        if (!await CanAccessSessionAsync(sessionId)) return NotFound();
         try
         {
             var result = await _debugService.StepIntoAsync(sessionId);
@@ -163,8 +176,10 @@ public class VisualDebugController : ControllerBase
     /// Step out of current subprocess
     /// </summary>
     [HttpPost("step/out/{sessionId}")]
+    [Authorize(Policy = "ProcessManager")]
     public async Task<ActionResult<StepResult>> StepOut(Guid sessionId)
     {
+        if (!await CanAccessSessionAsync(sessionId)) return NotFound();
         try
         {
             var result = await _debugService.StepOutAsync(sessionId);
@@ -181,8 +196,10 @@ public class VisualDebugController : ControllerBase
     /// Continue execution until next breakpoint or completion
     /// </summary>
     [HttpPost("continue/{sessionId}")]
+    [Authorize(Policy = "ProcessManager")]
     public async Task<ActionResult<ContinueResult>> ContinueExecution(Guid sessionId)
     {
+        if (!await CanAccessSessionAsync(sessionId)) return NotFound();
         try
         {
             var result = await _debugService.ContinueExecutionAsync(sessionId);
@@ -234,7 +251,20 @@ public class VisualDebugController : ControllerBase
 
     private bool CanAccessTenant(string? tenantId) =>
         User.IsInRole("Admin") ||
-        string.Equals(User.FindFirstValue("tenant_id"), tenantId, StringComparison.Ordinal);
+        (!string.IsNullOrWhiteSpace(User.FindFirstValue("tenant_id")) &&
+         string.Equals(User.FindFirstValue("tenant_id"), tenantId, StringComparison.Ordinal));
+
+    private async Task<bool> CanAccessInstanceAsync(Guid id)
+    {
+        var instance = await _runtimeService.GetByIdAsync(id, HttpContext.RequestAborted);
+        return instance is not null && CanAccessTenant(instance.TenantId);
+    }
+
+    private async Task<bool> CanAccessSessionAsync(Guid id)
+    {
+        var session = await _debugService.GetDebugSessionAsync(id);
+        return session is not null && await CanAccessInstanceAsync(session.ProcessInstanceId);
+    }
 
     /// <summary>
     /// Inspect variables in current debug session
@@ -242,6 +272,7 @@ public class VisualDebugController : ControllerBase
     [HttpGet("variables/{sessionId}")]
     public async Task<ActionResult<VariableInspection>> InspectVariables(Guid sessionId)
     {
+        if (!await CanAccessSessionAsync(sessionId)) return NotFound();
         try
         {
             var inspection = await _debugService.InspectVariablesAsync(sessionId);
@@ -260,6 +291,7 @@ public class VisualDebugController : ControllerBase
     [HttpGet("trace/{processInstanceId}")]
     public async Task<ActionResult<ExecutionTrace>> GetExecutionTrace(Guid processInstanceId)
     {
+        if (!await CanAccessInstanceAsync(processInstanceId)) return NotFound();
         try
         {
             var trace = await _debugService.GetExecutionTraceAsync(processInstanceId);

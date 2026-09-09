@@ -91,12 +91,12 @@ Verifizierter Stand 2026-09-08: Vollständiger gebündelter Lauf `0dc01e3d9f9e40
 
 ### Phase 3 – Sicherheit
 
-> **Stand 2026-09-08:** Abnahmebericht: `2026-09-08_Phase3_Sicherheitsabnahme.md`. Req 1/3/4/5 abgeschlossen; Req 2 (echter IdP) und Req 6 (unabhängiges Review) offen — externe Ressourcen, blockieren den Phasenabschluss.
+> **Korrigierter Stand 2026-09-09:** Phase 3 bleibt offen. Zusätzliche Tenant-/Rollen- und Skript-Laufzeitlücken wurden behoben; Req 1/3/4 werden wegen verbleibender Abnahmelücken wieder geöffnet. Siehe [Sicherheitsnachprüfung](2026-09-09_Phase3_Sicherheitsnachpruefung.md). Req 2 (echter IdP) und Req 6 (unabhängiges Review) benötigen externe Entscheidungen/Ressourcen. Req 5 ist ein historischer Dependency-Nachweis vom 2026-09-08.
 
-- [x] Rollen-/Tenant-Matrix für REST, gRPC, Studio, SDK und verfügbare weitere öffentliche Adapter abgleichen; direkte Objektzugriffe über fremde IDs negativ testen. Matrix für 56 REST-Controller erstellt; T1–T4 (VertexJob, VertexVariable, SimulationScenario/Simulation, TaskIoSnapshot) behoben + 10 Negativtests; Rollen-Lücken S1–S6 als Mittel bewertet/dokumentiert.
+- [ ] Rollen-/Tenant-Matrix für REST, gRPC, Studio, SDK und weitere aktive Adapter vollständig abnehmen. Zusätzliche REST-Lücken behoben und negativ getestet; daraus folgt keine adapterübergreifende Freigabe.
 - [ ] Produktionskonfiguration mit echtem Identity Provider prüfen: Login, Logout, abgelaufene Tokens, Rollenentzug und verweigerte Zugriffe. **Offen** — hängt an Phase-0-IdP-Entscheidung; externer Token-Endpunkt simuliert getestet.
-- [x] OAuth2-State, Webhook-Authentifizierung und Replay, Secret-Rotation sowie Log-/Export-Redaktion prüfen. OAuth2-State+Rotation, Webhook-HMAC/Einmal-Secret, BpmnRedaction; M3 (Redaction nicht auf Export-Roh-XML) als Mittel dokumentiert; M1 (Connector-Redirect) inzwischen behoben (`AllowAutoRedirect=false`).
-- [x] Script- und Connector-Grenzen testen: erlaubte Zieladressen, interne Adressbereiche, Redirects, Laufzeit-/Speicherlimits und Hostzugriffe entsprechend zugesagtem Sicherheitsmodell. Jint 2 s/8 MB, SSRF-Kern verifiziert; H1/H2 (Roslyn-RCE, Scripts-Enabled-Default) via `Runtime:Scripts:AllowCSharp`-Gate (default false) behoben; M1 (Connector-Redirect) behoben (`AllowAutoRedirect=false`); M2 (OAuth2-SSRF) + M5 (DNS-Rebinding/TOCTOU) behoben (Token-URL hinter SSRF-Guard; validierte-IP-Connect).
+- [ ] OAuth2-State, Webhook-Authentifizierung und Replay, Secret-Rotation sowie Log-/Export-Redaktion vollständig abnehmen. M3 (Export), M4 (Replay) und M6 (Benutzer-/Sitzungsbindung) bleiben offen.
+- [ ] Script- und Connector-Grenzen vollständig testen. C#-Gate jetzt auch zur Laufzeit geprüft, einschließlich gespeicherter Definition und Freigabeentzug während User-Task-Wait. Redirect-/DNS-Rebinding-Nachweis über den tatsächlichen Produktionstransport mit wechselnder DNS-Antwort und erfolgreichem öffentlichem Ziel bleibt offen.
 - [x] Dependency-Audit mit erreichbaren Quellen abschließen; NU1900 ist kein erfolgreicher Vulnerability-Nachweis. NuGet 19 Projekte (Quelle `api.nuget.org`) 0 vuln, npm Studio/FEEL 0 — alle Severities, direkt + transitiv.
 - [ ] Für geschäftskritischen Einsatz unabhängiges Sicherheitsreview des finalen Kandidaten organisieren. **Offen** — organisatorisch, externer Review-Partner nötig.
 

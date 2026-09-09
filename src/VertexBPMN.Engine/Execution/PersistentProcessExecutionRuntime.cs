@@ -679,7 +679,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                     break;
 
                 case "intermediateCatchEvent":
-                    _ = await CreateEventWaitAsync(instance, node, pending, cancellationToken);
+                    _ = await CreateEventWaitAsync(instance, node, pending, model, cancellationToken);
                     break;
 
                 case "endEvent":
@@ -1466,10 +1466,17 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         ProcessInstance instance,
         ExecutionNode node,
         PendingNode pending,
+        ExecutionModel model,
         CancellationToken cancellationToken)
     {
         var token = CreateWaitingToken(instance, node);
-        if (!string.IsNullOrWhiteSpace(pending.SourceNodeId))
+        // Nur Event-basierte Gateways bilden eine Wettbewerbsgruppe, deren Zweige sich gegenseitig
+        // annullieren (CancelEventGatewayCompetitorsAsync). Bei parallelen Gateways mit mehreren
+        // Timer-/Message-Zweigen sind alle Zweige gleichwertig und muessen ALLE feuern - sonst wird
+        // ein legitimer Parallelzweig faelschlich als Konkurrent gestrichen (Bugbehebung P7_AC_04).
+        if (!string.IsNullOrWhiteSpace(pending.SourceNodeId)
+            && model.Nodes.TryGetValue(pending.SourceNodeId, out var source)
+            && source.Kind == "eventBasedGateway")
             token.Variables[EventGatewayVariable] = pending.SourceNodeId;
         StoreExecutionContext(token, pending);
         switch (node.EventType)
@@ -1546,6 +1553,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                     instance,
                     start,
                     new PendingNode(start.Id, eventSubprocess.Id),
+                    model,
                     cancellationToken);
                 token.Variables[EventSubprocessIdVariable] = eventSubprocess.Id;
                 token.Variables[EventSubprocessInterruptingVariable] = start.IsInterrupting;

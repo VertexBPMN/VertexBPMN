@@ -83,3 +83,12 @@ Bei einem Broker-Ausfall:
 **Rollback (`P5_AC_04`):** Kein automatisches Schema-Downgrade. Rückkehr nur bei nachgewiesener Schemakompatibilität; andernfalls den getesteten Backup-Restore verwenden. Eine gegen das erwartete Schema zurückspringende Anwendung darf nicht dienen.
 
 Ein Schema-Downgrade wird nicht automatisch ausgeführt. Für Rollback muss die Anwendungsversion mit dem vorhandenen Schema kompatibel sein oder ein vorab getestetes Restore des Datenbank-Backups erfolgen.
+
+## Last und Kapazität (Phase 6, 2026-09-09)
+
+**Gemessene Betriebsziele (lokal, echte Postgres 17 + RabbitMQ 4, `P6_AC_02`, 660 Ops):**
+Gesamt-p95 ≈ 351 ms (< Ziel 1 s), Gesamt-p99 ≈ 574 ms (< Ziel 3 s), Fehlerrate 0; DB-Verbindungen 5→16, Locks 9→12 (kein unbegrenztes Wachstum); Speicher über die Lastphase stabil ≈ 232 MB. Die Rampen-Instant-Tiefpunkte des Outbox-Pending wachsen nur, weil die Burst-Erzeugung kurzzeitig schneller ist als die Drain-Rate des Publishers (50/s je Poll); nach Lastende drainet der Rückstau innerhalb von 90 s auf ≤ 25 (Peak 1150 → final 14) – kein dauerhaft zunehmender Rückstand. **Abnahme-Zielprofil (Phase 0):** 1–10 Starts/s, 50–500 parallele Benutzer. **Kapazitätsprofil:** `docs/reviews/2026-09-09_Phase6_Last_Abnahme.md` (Hardware/Replikazahl, gemessene Sättigung, Grenzen).
+
+- Der API-Outbox-Transport benötigt `Runtime__Outbox__Enabled=true`, `Runtime__Outbox__Provider=RabbitMq` und `Runtime__Outbox__ConnectionString=<AMQP>`; ohne diese Konfiguration fällt der Publisher auf den Disabled-Transport zurück und `Pending`-Nachrichten würden dauerhaft akkumulieren (kein Produktdefekt, aber Betriebsfehler).
+- Das globale ASP.NET-Rate-Limit (`RateLimiting:PermitLimit`, Standard 120/60 s je IP) schützt vor Überlast. Für Lasttests muss es (wie in `P6_AC_02`) angehoben werden, damit die Engine-Latenz statt des Limits gemessen wird; in der Produktion ist der Wert als Kapazitätsparameter zu belegen.
+- Ein **voller 24–72 h-Dauerlauf** mit Langzeit-Drift/Warmzeit wurde nicht gefahren (kurzer Dauerlauf-Abschnitt mit Lastspitze + kontrollierter Unterbrechung in `P6_AC_03`); er ist nach Zielprofil in der Zielumgebung zu betreiben, bevor eine Kapazitätszusage auf die absoluten Grenzen getroffen wird.

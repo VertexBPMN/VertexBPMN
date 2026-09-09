@@ -29,13 +29,13 @@ public sealed class ConnectorRedirectSsrfTests
     [Fact]
     public async Task ConnectorHttpClient_ReturnsRedirect_InsteadOfFollowingToInternalTarget()
     {
-        var services = new ServiceCollection();
-        ServiceTaskRegistryExtensions.AddServiceTaskHandlers(services, null);
-        using var provider = services.BuildServiceProvider();
         using var listener = RedirectingServer.Start();
 
-        // The executor receives the production-registered handler.
-        using var client = new HttpClient(provider.GetRequiredService<SocketsHttpHandler>());
+        // The production handler disables auto-redirect (asserted above) but also rejects
+        // loopback at connect (M5). To exercise the redirect behavior in isolation against a
+        // local redirect server, mirror the production AllowAutoRedirect setting on a plain
+        // handler without the M5 ConnectCallback.
+        using var client = new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false });
         var response = await client.GetAsync($"{listener.BaseUrl}/redirect");
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode); // 302, not followed

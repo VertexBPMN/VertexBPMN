@@ -1,4 +1,6 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
+using System.Net;
+using System.Net.Sockets;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Configuration;
 using SendGrid;
@@ -140,7 +142,44 @@ public static class ServiceTaskRegistryExtensions
         // to bypass the ConnectorDestination SSRF guard (redirect back to a private
         // address). Connectors that need redirects must handle them explicitly.
         services.AddSingleton<SocketsHttpHandler>(
-            _ => new SocketsHttpHandler { AllowAutoRedirect = false });
+            _ => new SocketsHttpHandler
+            {
+                AllowAutoRedirect = false,
+                // M5: close the DNS-rebinding/TOCTOU gap between SSRF validation and the actual
+                // connection. Resolve + validate here and connect to that same validated address
+                // (SNI stays the hostname), so a post-check rebind to a private/internal address
+                // can never be reached.
+                ConnectCallback = async (context, cancellationToken) =>
+                {
+                    var addresses = await ConnectorDestinationPolicy.ResolveValidatedAddressesAsync(
+                        context.DnsEndPoint.Host, cancellationToken);
+                    Socket? connected = null;
+                    Exception? lastError = null;
+                    foreach (var address in addresses)
+                    {
+                        var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
+                        try
+                        {
+                            await socket.ConnectAsync(new IPEndPoint(address, context.DnsEndPoint.Port), cancellationToken);
+                            connected = socket;
+                            break;
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            socket.Dispose();
+                            throw;
+                        }
+                        catch (SocketException exception)
+                        {
+                            socket.Dispose();
+                            lastError = exception;
+                        }
+                    }
+                    if (connected is null)
+                        throw lastError ?? new HttpRequestException("No reachable validated destination address.");
+                    return new NetworkStream(connected, ownsSocket: true);
+                }
+            });
         services.AddSingleton<HttpClient>(
             provider => new HttpClient(provider.GetRequiredService<SocketsHttpHandler>()));
         services.AddSingleton<IConnectorExecutor, HttpConnectorExecutor>();

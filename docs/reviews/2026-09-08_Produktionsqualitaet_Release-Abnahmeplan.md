@@ -141,14 +141,16 @@ Abnahme: Betriebsziele unter vereinbarter Last erfuellt; kein unbegrenztes Speic
 
 ### Phase 7 – Standardkonformität und ehrliche Supportaussagen
 
-- [ ] BPMN-, DMN- und gegebenenfalls CMMN-Standardversionen sowie unterstützte öffentliche Ausführungspfade festhalten.
-- [ ] Aktuelle MIWG- und DMN-TCK-Integration inventarisieren; Testsatzversion/Commit pinnen und vollständigen Ergebnisbericht erzeugen. Fehlende Runner ergänzen.
-- [ ] Interaktive Modelle mit echten User-Task-Outputs, Entscheidungen und Events treiben. Ein erwarteter Wait-State ist korrekt, aber kein Nachweis des anschließenden Endzustands.
-- [ ] Kombinationen risikobasiert prüfen: verschachtelte Scopes, Multi-Instance mit Boundary Events, Kompensation, konkurrierende Events und Wiederanlauf.
-- [ ] Lokale Engine und persistente API auf dieselbe fachliche Semantik prüfen; fehlende Entscheidungen dürfen nicht unbemerkt als erfolgreiche Auswertung erscheinen.
-- [ ] Supportmatrix, README und Konformitätsbericht mit konkreten Ergebnissen synchronisieren; widersprüchliche CI-Aussagen korrigieren.
+> **Aktualisierter Stand 2026-09-09:** Abnahme-Testklasse `tests/VertexBPMN.Tests/Acceptance/Phase7ConformanceAcceptanceTests.cs` (Kategorie `Phase7ConformanceAcceptance`, P7_AC_01/02/06, P7_AC_03, P7_AC_04, P7_AC_05) läuft **gegen echte Infrastruktur** (PostgreSQL 17 + RabbitMQ 4): echte API-Subprozess, interaktive Modelle bis zum Endzustand, risikobasierte Kombinationen, lokale-Engine/API-Parität + fail-closed. Dabei wurde ein echter Engine-Bug gefunden und behoben (Event-Gateway-Bug: Parallel-Gateway-Zweige wurden fälschlich als Event-Gateway-Konkurrenten behandelt). Ehrlich offen: DMN-TCK-CI-Verdrahtung (Testsatz gepinnt, 3391/3391 grün) und Subprozess-Boundary-Bewaffnung. Vollbericht: [2026-09-09_Phase7_Standardkonformitaet_Abnahme.md](2026-09-09_Phase7_Standardkonformitaet_Abnahme.md).
 
-Abnahme: Jede Zusage hat einen versionsgebundenen Nachweis. Keine Aussage „jede Kombination bewiesen“ aus einer endlichen Referenzsuite ableiten. Offene Fälle verhindern die entsprechende Vollkonformitätszusage, nicht automatisch jede enger abgegrenzte Produktfreigabe.
+- [x] BPMN-, DMN- und gegebenenfalls CMMN-Standardversionen sowie unterstützte öffentliche Ausführungspfade festhalten. **P7_AC_01** – BPMN 2.0 (20100524/MODEL), DMN 1.4 (20191111/MODEL/), FEEL, CMMN 1.1; öffentliche Pfade REST/gRPC MCP/SDK; versionsgebunden festgehalten.
+- [x] Aktuelle MIWG- und DMN-TCK-Integration inventarisieren; Testsatzversion/Commit pinnen und vollständigen Ergebnisbericht erzeugen. Fehlende Runner ergänzen. **P7_AC_02** – MIWG inventarisiert (18/21 Completed, 3 interaktiv via `MIWGInteractiveInputSuite`); DMN-TCK-Runner + Skript vorhanden, Testsatz **gepinnt** (`eng/dmn-tck.version` = `20274cd2`), **vollständiger Ergebnisbericht**: Level 2+3, **3391/3391 passed, 0 failed**, Exit 0. CI-Verdrahtung des gepinnten Skripts als Folgearbeit.
+- [x] Interaktive Modelle mit echten User-Task-Outputs, Entscheidungen und Events treiben. Ein erwarteter Wait-State ist korrekt, aber kein Nachweis des anschließenden Endzustands. **P7_AC_03** – User-Task-Output + Decision (API-Pfad) + Timer-Catch → EndEvent `Completed` verifiziert.
+- [x] Kombinationen risikobasiert prüfen: verschachtelte Scopes, Multi-Instance mit Boundary Events, Kompensation, konkurrierende Events und Wiederanlauf. **P7_AC_04** – MI+Boundary (unterstützte Kombination), verschachtelte Scopes, konkurrierende Timer (nach Engine-Fix grün), Wiederanlauf nach API-Kill; Kompensation via `CompensationSemanticsAcceptanceTests`.
+- [x] Lokale Engine und persistente API auf dieselbe fachliche Semantik prüfen; fehlende Entscheidungen dürfen nicht unbemerkt als erfolgreiche Auswertung erscheinen. **P7_AC_05** – Parität über gemeinsamen API-/Engine-Pfad (FPS-DMN-01…05); Schwerpunkt fail-closed: missing Decision (NO_SUCH_DECISION_123) → Incident/Suspended, kein stiller Completed.
+- [x] Supportmatrix, README und Konformitätsbericht mit konkreten Ergebnissen synchronisieren; widersprüchliche CI-Aussagen korrigieren. **P7_AC_06** – Supportmatrix/README/MIWG-Bericht konsistent; überholte `bpmn-standard-support.md`-Gap-Analyse als veraltet gekennzeichnet und auf aktuelle Quellen verwiesen.
+
+Abnahme: Jede Zusage hat einen versionsgebundenen Nachweis. Keine Aussage „jede Kombination bewiesen“ aus einer endlichen Referenzsuite ableiten. Offene Fälle verhindern die entsprechende Vollkonformitätszusage, nicht automatisch jede enger abgegrenzte Produktfreigabe. **Erfüllt als hier belegt** (DMN-TCK-Testsatz gepinnt + 3391/3391 grün; DMN-TCK-CI-Verdrahtung und Subprozess-Boundary-Bewaffnung als ehrlich offene Teilbereiche).
 
 ### Phase 8 – Monitoring, Pilot und Freigabe
 

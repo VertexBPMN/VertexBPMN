@@ -1,3 +1,7 @@
+> **HINWEIS (2026-09-09):** Diese Datei ist eine **überholte Gap-Analyse vom 02.09.2026** (Copilot-basiert, Modellstand „MVP / Annotation Harvester&quot;) und beschreibt den Parser als weit von standardkonformer BPMN-Abdeckung entfernt. Seither wurde die Engine erheblich erweitert und **gegen reale Infrastruktur verifiziert**: MIWG-Konformität **18/21** (3 interaktive Fälle über `MIWGInteractiveInputSuite` bis zum EndEvent autorisiert), Kompensation, Boundary-Events (Message/Signal/Timer), Error-/Escalation-/Cancel-/Terminate, eingebettete + Multi-Instance-Subprozesse, Call Activities, Event-basierte Gateways, FEEL/DRD und fail-closed bei fehlender Decision. **Verbindliche, aktuelle Aussagen sind `docs/reference/product-support-matrix.md` und `docs/reviews/2026-09-06_MIWG_Conformance.md` sowie der Phase-7-Abnahmebericht `docs/reviews/2026-09-09_Phase7_Standardkonformitaet_Abnahme.md`.** Diese Datei bleibt nur als historische Self-Auskunft erhalten; sie darf nicht als Quelle für den aktuellen Support- oder Konformitätsgrad zitiert werden.
+
+Die folgenden Zeilen geben den **veralteten** Analyse-Stand wider.
+
 GitHub Copilot
 
 Nachfolgend eine strukturierte, tiefgehende Gap‑Analyse deines aktuellen BpmnParser gegenüber dem BPMN 2.0 Standard (ISO/IEC 19510: Business Process Model and Notation). Ich beziehe mich auf öffentlich bekannte Standardbestandteile, ohne geschützte Formulierungen aus der PDF zu reproduzieren.

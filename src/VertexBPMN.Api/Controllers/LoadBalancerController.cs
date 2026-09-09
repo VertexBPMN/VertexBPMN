@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 
 namespace VertexBPMN.Api.Controllers;
 
@@ -63,6 +64,7 @@ public class LoadBalancerController : ControllerBase
     /// Unregister a worker node
     /// </summary>
     [HttpDelete("workers/{workerId}")]
+    [Authorize(Policy = "AdminOnly")]
     public IActionResult UnregisterWorker(string workerId)
     {
         _loadBalancer.UnregisterWorker(workerId);
@@ -107,6 +109,7 @@ public class LoadBalancerController : ControllerBase
     /// Rebalance workload across workers
     /// </summary>
     [HttpPost("rebalance")]
+    [Authorize(Policy = "AdminOnly")]
     public async Task<IActionResult> Rebalance()
     {
         var result = await _loadBalancer.RebalanceAsync();
@@ -127,6 +130,7 @@ public class LoadBalancerController : ControllerBase
     /// Update load balancing configuration
     /// </summary>
     [HttpPut("config")]
+    [Authorize(Policy = "AdminOnly")]
     public IActionResult UpdateConfig([FromBody] LoadBalancingConfig config)
     {
         _loadBalancer.UpdateConfiguration(config);

@@ -4,6 +4,7 @@ using VertexBPMN.Api.Services;
 using IHealthMonitoringService = VertexBPMN.Domain.Interfaces.IHealthMonitoringService;
 using IRateLimitingService = VertexBPMN.Domain.Interfaces.IRateLimitingService;
 using IResilienceService = VertexBPMN.Domain.Interfaces.IResilienceService;
+using Microsoft.AspNetCore.Authorization;
 
 namespace VertexBPMN.Api.Controllers;
 
@@ -282,6 +283,7 @@ public class HealthController : ControllerBase
     /// </summary>
     [HttpPost("gc")]
     [RateLimit("admin")]
+    [Authorize(Policy = "AdminOnly")]
     public IActionResult ForceGarbageCollection()
     {
         try
@@ -318,6 +320,7 @@ public class HealthController : ControllerBase
     /// </summary>
     [HttpPost("rate-limits/{identifier}/reset")]
     [RateLimit("admin")]
+    [Authorize(Policy = "AdminOnly")]
     public IActionResult ResetRateLimit(string identifier, [FromQuery] string policy = "default")
     {
         try

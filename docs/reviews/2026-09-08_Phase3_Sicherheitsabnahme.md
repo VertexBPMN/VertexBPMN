@@ -43,8 +43,10 @@ Abnahmekriterium *„keine offenen ausnutzbaren kritischen/hohen Befunde; wirksa
 - **T3 `SimulationScenario`/`Simulation`** — Szenarien ohne Tenant-Schutz inkl. Fremd-Tenant-Create. **Fix:** `[Authorize]` + Tenant-Pinning (Non-Admin auf Claim-Tenant fixiert, Admin darf Query-/Body-Tenant), Access-Checks mit `NotFound`. Negativtests: 3.
 - **T4 `TaskIoSnapshot`** — akzeptierte beliebige Query-`tenantId`. **Fix:** Non-Admin auf Claim-Tenant fixiert, Admin darf Query-Tenant. Negativtests: 2 (inkl. In-Memory-EF).
 
-### Rollen-Lücken S1–S6 (zurückgestellt, bewertet)
-Management suspend/delete, Health GC-/RateLimit-Reset, LoadBalancer, Metrics/Performance, Identity list-tenants global: **Mittel**, Rollen-Härtung z. B. auf `AdminOnly` empfehlenswert vor Produktivfreigabe; ohne unbefugte Datenausleitung (kein Cross-Tenant) bewertet.
+### Rollen-Lücken S1–S6 (hartärbarer Teil behoben)
+- **Behoben (`AdminOnly`):** Health `gc` + `rate-limits/{id}/reset` (Doku-Kommentar „admin only“ war nicht durchgesetzt), Identity `list-tenants` (globale Tenant-Liste), LoadBalancer `workers`-Unregister + `rebalance` + `config`-PUT (Infra-Mutationen).
+- **Bewusst offen:** `Management` suspend/resume/delete bleibt tenant-gescoped (`ResolveTenant`: Admin beliebig, Non-Admin claim-gepinnt) — ProcessManager darf eigene Instanzen verwalten, kein Cross-Tenant. `Metrics`/`Performance`-Monitoring-Reads bleiben erreichbar (Telemetrie/Scraping); eine Einschränkung ist Proposal, keine Schwachstelle.
+- **Negativtests:** `PrivilegeGateSecurityTests` — ReadOnly-Prinzipal (X-Test-User) erhält **403** auf allen 6 gehärteten Endpoints; Admin-Prinzipal OK (8/8 grün).
 
 ### Bereits verifiziert vorhanden / unverändert
 Jint-Sandbox 2 s/8 MB · Connector-SSRF (Private-IP-Block 10/8, 172.16/12, 192.168/16, Loopback, Link-Local + Host-Allowlist) · constant-time HMAC/Vergleich · fehlendes Secret abgelehnt · OAuth2-State (32-Byte-Nonce, TTL-Cleanup, Rotation) · BpmnRedaction · XXE-Block (secure XML).
@@ -58,6 +60,7 @@ Jint-Sandbox 2 s/8 MB · Connector-SSRF (Private-IP-Block 10/8, 172.16/12, 192.1
 - `src/VertexBPMN.Application/RepositoryService.cs` — `Runtime:Scripts:AllowCSharp`-Gate (H1/H2)
 - `src/VertexBPMN.Application/Extensions/ServiceTaskRegistryExtensions.cs` — Connector-HttpClient ohne Auto-Redirect (M1)
 - `src/VertexBPMN.Api/Controllers/VertexJobController.cs`, `VertexVariableController.cs`, `SimulationScenarioController.cs`, `SimulationController.cs`, `TaskIoSnapshotController.cs` — Tenant-/Rollen-Fixes (T1–T4)
+- `src/VertexBPMN.Api/Controllers/HealthController.cs`, `IdentityController.cs`, `LoadBalancerController.cs` — Rollen-Härtung S2/S3/S5 (`AdminOnly`)
 - `tests/VertexBPMN.Studio.UiTests/LocalStudioE2ETestHost.cs` — C#-Flag in vertrauenswürdiger Testumgebung
 - `tests/VertexBPMN.Tests/Unit/Application/RepositoryServiceScriptGateTests.cs` — Gate-Tests (neu)
 - `tests/VertexBPMN.Tests/Unit/Api/TenantIsolationPhase3SecurityTests.cs` — Negativtests T1–T4 (neu)
@@ -65,7 +68,7 @@ Jint-Sandbox 2 s/8 MB · Connector-SSRF (Private-IP-Block 10/8, 172.16/12, 192.1
 - Audit-Drafts: `2026-09-08_Phase3_TenantRollenMatrix_draft.md`, `2026-09-08_Phase3_ScriptConnectorBoundaries_draft.md`
 
 ## 6. Empfohlene nächste Schritte
-1. Rollen-Härtung S1–S6 (AdminOnly) angehen.
+1. M2 (OAuth2 Authorization-/Token-URL hinter SSRF-Guard) angehen; M5 (DNS-Rebinding-Mitigation) nachrüsten.
 2. M2 (OAuth2 Authorization-/Token-URL hinter SSRF-Guard) und M5 (DNS-Rebinding-Mitigation) behandeln.
 3. Echten IdP für Req 2 bereitstellen (Phase-0-Entscheidung).
 4. Externes Sicherheitsreview (Req 6) organisieren.

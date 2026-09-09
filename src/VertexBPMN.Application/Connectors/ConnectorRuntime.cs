@@ -182,6 +182,17 @@ public sealed class ConnectorDestinationPolicy(IConfiguration configuration)
     private async Task ValidateNetworkHostAsync(string host, string section, CancellationToken cancellationToken)
     {
         EnsureAllowed(host, section, "destination host");
+        await ThrowIfForbiddenAsync(host, cancellationToken);
+    }
+
+    /// <summary>
+    /// Rejects loopback, private, link-local, multicast, unspecified and unresolved
+    /// destinations after DNS resolution, without requiring a pre-registered
+    /// allowlist. Used for operator-supplied public endpoints such as OAuth2
+    /// token URLs (M2) where no static host allowlist is configured.
+    /// </summary>
+    public static async Task ThrowIfForbiddenAsync(string host, CancellationToken cancellationToken, bool rejectUnresolvable = true)
+    {
         IPAddress[] addresses;
         try
         {
@@ -191,12 +202,17 @@ public sealed class ConnectorDestinationPolicy(IConfiguration configuration)
         }
         catch (SocketException exception)
         {
+            if (!rejectUnresolvable)
+                return; // no reachable internal target; the POST fails anyway
             throw new ServiceTaskExecutionException($"Destination host '{host}' could not be resolved.", exception);
         }
 
-        if (addresses.Length == 0 || addresses.Any(IsForbiddenAddress))
+        if (addresses.Any(IsForbiddenAddress))
             throw new ServiceTaskExecutionException(
                 $"Destination host '{host}' resolves to a private, loopback, link-local or unspecified address.");
+
+        if (addresses.Length == 0 && rejectUnresolvable)
+            throw new ServiceTaskExecutionException($"Destination host '{host}' could not be resolved.");
     }
 
     private void EnsureAllowed(string value, string section, string kind)

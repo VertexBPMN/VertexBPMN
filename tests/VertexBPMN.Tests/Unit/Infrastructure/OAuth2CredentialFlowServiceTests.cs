@@ -134,6 +134,45 @@ public sealed class OAuth2CredentialFlowServiceTests
         Assert.Null(await flow.ResolveValidAccessTokenAsync("tenant-a", cred, TestContext.Current.CancellationToken));
     }
 
+    [Fact]
+    public async Task CompleteAuthorization_RejectsLoopbackTokenUrl_WithoutHttpPost()
+    {
+        var db = NewDb();
+        var cred = await CredentialAsync(db, "tenant-a");
+        var handler = new ScriptedHandler(_ => TokenResponse("authorization_code"));
+        var flow = CreateFlow(db, handler);
+
+        var start = await flow.StartAuthorizationAsync(
+            "tenant-a", cred, new OAuth2AuthorizationConfig(
+                "https://auth.example/authorize", "http://127.0.0.1:9/token",
+                "client-1", "https://app.example/callback", "read write"), TestContext.Current.CancellationToken);
+
+        // Loopback token URL must be rejected by the SSRF guard before any HTTP POST.
+        var completed = await flow.CompleteAuthorizationAsync(start.State, "auth-code", TestContext.Current.CancellationToken);
+        Assert.False(completed);
+        Assert.Equal(0, handler.CallCount);
+        Assert.Null(await SecretAsync(db, "tenant-a", cred, "access_token"));
+    }
+
+    [Fact]
+    public async Task ResolveValidAccessToken_RejectsPrivateTokenUrl()
+    {
+        var db = NewDb();
+        var cred = await CredentialAsync(db, "tenant-a");
+        var handler = new ScriptedHandler(_ => TokenResponse("refresh_token"));
+        var flow = CreateFlow(db, handler);
+
+        await RotateAsync(db, "tenant-a", cred, "access_token", "expired-token", "access_token");
+        await RotateAsync(db, "tenant-a", cred, "expires_at", DateTime.UtcNow.AddMinutes(-5).ToString("o", CultureInfo.InvariantCulture), "expires_at");
+        await RotateAsync(db, "tenant-a", cred, "refresh_token", RefreshToken, "refresh_token");
+        await RotateAsync(db, "tenant-a", cred, "token_url", "http://10.224.0.5/token", "token_url");
+
+        // Private-Range token URL must be rejected before any HTTP POST.
+        var token = await flow.ResolveValidAccessTokenAsync("tenant-a", cred, TestContext.Current.CancellationToken);
+        Assert.Null(token);
+        Assert.Equal(0, handler.CallCount);
+    }
+
     private static BpmnDbContext NewDb()
     {
         var options = new DbContextOptionsBuilder<BpmnDbContext>()

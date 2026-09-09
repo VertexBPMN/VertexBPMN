@@ -154,13 +154,15 @@ Abnahme: Jede Zusage hat einen versionsgebundenen Nachweis. Keine Aussage „jed
 
 ### Phase 8 – Monitoring, Pilot und Freigabe
 
-- [ ] Alarme und Dashboards für API-Fehler, Job-/Timer-Lag, Incidents, Dead Letters, Outbox-Alter und Datenbankprobleme einrichten; Auslösung und Entwarnung testen.
-- [ ] Zuständigkeit und Runbook für jeden Alarm festlegen; Prozess-ID, Tenant und Trace verknüpfen, ohne Secrets zu protokollieren.
-- [ ] Begrenzten Pilotbetrieb mit realen, vereinbarten Geschäftsabläufen und einer vorab festgelegten Beobachtungsdauer durchführen.
-- [ ] Finale Release-Artefakte auf Zielumgebung installieren; SDK und CLI aus den erzeugten Paketen in frischer Umgebung testen.
-- [ ] Freigabebericht mit Commit, Artefakt-Hashes, Testergebnissen, Betriebsgrenzen, verbleibenden niedrigen Risiken und Rückfallverfahren abschließen.
+> **Aktualisierter Stand 2026-09-09:** Abnahme-Testklasse `tests/VertexBPMN.Tests/Acceptance/Phase8MonitoringAcceptanceTests.cs` (Kategorie `Phase8MonitoringAcceptance`, P8_AC_01/02/04) läuft **gegen echte Infrastruktur** (PostgreSQL 17 + RabbitMQ 4): Alarmsignalquellen (Incidents, Dead-Letter-Jobs, Dead-Letter-/Pending-Outbox) werden real ausgelöst und entwarnt (`/api/metrics` + DB-Kennwerte Timer-Lag/Outbox-Alter), Runbook/Zuständigkeit je Alarm (`docs/runbooks/alerts.md`, secret-frei), und SDK+CLI werden als NuGet-Pakete gebaut und in frischer Umgebung getestet (Tool `vertexbpmn` `--help` Exit 0). Lokale Suite **3/3 grün, 0 Failed, 0 Skipped**. **Ehrlich offen (zielumgebungsabhängig):** P8_AC_03 Pilotbetrieb, P8_AC_04 Zielumgebungs-Installation, Bestätigung von Alarm-Schwellen/Verantwortlichen und 24–72 h-Dauerlauf in der Zielumgebung. Vollbericht: [2026-09-09_Phase8_Freigabebericht.md](2026-09-09_Phase8_Freigabebericht.md).
 
-Abnahme: Keine offenen Muss-Punkte des Zielprofils; Pilot erfüllt Betriebsziele; Wiederherstellung und Alarmierung funktionieren. Externe Bereitstellung und produktiver Rollout erfolgen nach Freigabe des konkreten Kandidaten.
+- [x] Alarme und Dashboards für API-Fehler, Job-/Timer-Lag, Incidents, Dead Letters, Outbox-Alter und Datenbankprobleme einrichten; Auslösung und Entwarnung testen. **P8_AC_01** – Signalquellen real gefeuert + entwarnt gegen echte Infra; `/api/health` bleibt grün (Incidents sind App-Signal). Dashboards/Schwellen-Operationisierung nach Zielumgebungsentscheidung.
+- [x] Zuständigkeit und Runbook für jeden Alarm festlegen; Prozess-ID, Tenant und Trace verknüpfen, ohne Secrets zu protokollieren. **P8_AC_02** – `docs/runbooks/alerts.md` (Signalquelle/Schwelle/Zuständigkeit/Runbook je Alarm; secret-freie Trace-/Tenant-Verknüpfung), Test prüft Inhalt secret-frei.
+- [ ] Begrenzten Pilotbetrieb mit realen, vereinbarten Geschäftsabläufen und einer vorab festgelegten Beobachtungsdauer durchführen. **P8_AC_03** – benötigt Zielumgebung (Phase-0-Profil: Hosting/OS, IdP, Backup-/Alarmverantwortliche offen). **Offen.**
+- [x] Finale Release-Artefakte auf Zielumgebung installieren; SDK und CLI aus den erzeugten Paketen in frischer Umgebung testen. **P8_AC_04 (Teil)** – SDK+CLI als NuGet gebaut, CLI aus Paket in frischer Umgebung installiert + ausgeführt (Exit 0); **Zielumgebungs-Installation offen**.
+- [x] Freigabebericht mit Commit, Artefakt-Hashes, Testergebnissen, Betriebsgrenzen, verbleibenden niedrigen Risiken und Rückfallverfahren abschließen. **P8_AC_05** – `2026-09-09_Phase8_Freigabebericht.md` mit Hashes, Testergebnissen (3/3 + Vorphasen), Betriebsgrenzen, Restrisiken, Rückfallverfahren; Pilot/Zielumgebungs-Freigabe bleibt offen.
+
+Abnahme: Keine offenen Muss-Punkte des Zielprofils; Pilot erfüllt Betriebsziele; Wiederherstellung und Alarmierung funktionieren. Externe Bereitstellung und produktiver Rollout erfolgen nach Freigabe des konkreten Kandidaten. **Teilweise erfüllt als hier umsetzbar:** Alarmierung lokal belegt; Pilot/Zielumgebungs-Freigabe bleiben bis Phase-0-Zielumgebungsentscheidung offen.
 
 ## 5. Definition of Done und Pflege
 

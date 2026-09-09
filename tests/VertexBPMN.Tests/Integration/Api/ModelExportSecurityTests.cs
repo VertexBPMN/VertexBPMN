@@ -14,7 +14,7 @@ public sealed class ModelExportSecurityTests(CustomWebApplicationFactory factory
     [Fact]
     public async Task ApiExport_RedactsInlineSecrets_PreservesStoredModel_AndRejectsRedactedRedeploy()
     {
-        using var host = factory.WithSharedFixture(dbFixture);
+        var host = factory.WithSharedFixture(dbFixture);
         using var client = host.CreateClient(output);
         var key = "export-" + Guid.NewGuid().ToString("N");
         var xml = $"""

@@ -8,6 +8,9 @@ using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using MudBlazor.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+// Hosting request-start logs include the query string (OAuth2 authorization codes).
+// Keep warning/error diagnostics without logging callback query credentials at Information.
+builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Warning);
 builder.AddServiceDefaults();
 var isUiTest = builder.Environment.IsEnvironment("UiTest")
     && string.Equals(
@@ -153,6 +156,15 @@ if (!app.Environment.IsDevelopment())
 if (!isUiTest && httpsRedirectionEnabled)
     app.UseHttpsRedirection();
 app.UseAuthentication();
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/oauth2/callback"))
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        context.Response.Headers["Referrer-Policy"] = "no-referrer";
+    }
+    await next();
+});
 app.UseAuthorization();
 app.UseAntiforgery();
 

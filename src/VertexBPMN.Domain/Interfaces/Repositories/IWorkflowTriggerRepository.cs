@@ -11,4 +11,5 @@ public interface IWorkflowTriggerRepository
     Task AddAsync(WorkflowTrigger trigger, CancellationToken cancellationToken = default);
     Task<bool> DeleteAsync(Guid id, string? tenantId = null, CancellationToken cancellationToken = default);
     Task SaveAsync(WorkflowTrigger trigger, CancellationToken cancellationToken = default);
+    Task<bool> TryReserveDeliveryAsync(Guid triggerId, string? tenantId, string deliveryId, CancellationToken cancellationToken = default);
 }

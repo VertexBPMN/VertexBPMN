@@ -1,6 +1,8 @@
 # Phase 3 – Sicherheitsnachprüfung und Remediation
 
-Datum: 2026-09-09. Ausgangspunkt: Commit `d45ab78`; Änderungen derzeit uncommittet.
+Datum: 2026-09-09. Ausgangspunkt: Commit `d45ab78`; die nachfolgend beschriebenen Korrekturen wurden in `a9829e8` committed. Historischer Zwischenbericht.
+
+Aktuelle Fortsetzung: [Restpunkte und Abschlussgrenzen](2026-09-09_Phase3_Restpunkte_Abschluss.md). Die technischen Maßnahmen zu den untenstehenden Punkten 1–5 wurden inzwischen umgesetzt und nachgeprüft; deren ursprüngliche Problembeschreibung bleibt hier als Historie erhalten. Die vollständige Adapter-/Zielumgebungsfreigabe folgt daraus nicht. Echter IdP und unabhängiges Review bleiben offen.
 
 ## Status
 
@@ -29,7 +31,7 @@ Tests: `tests/VertexBPMN.Tests/Unit/Api/{TenantIsolationPhase3SecurityTests,Tena
 - Finaler Core-Lauf: **907 Tests, 900 bestanden, 0 Fehler, 7 Skips**, 148,773 Sekunden (`TestResults/phase3-security-final-full.xml`). Die sieben externen Infrastrukturtests wurden mangels Connection-Konfiguration übersprungen und sind nicht bestanden. Keine Testfehler ausgeblendet.
 - Keine neuen UI-/Browser-, gRPC-, echten IdP- oder externen Infrastruktur-Abnahmen in diesem Durchlauf. Keine erneute Dependency-Audit-Aussage. Lokale TestResults sind keine eingecheckten Release-Artefakte.
 
-## Offene Arbeit in Umsetzungsreihenfolge
+## Ursprünglich offene Arbeit in Umsetzungsreihenfolge (historischer Stand)
 
 1. **Connector-Nachweis (M1/M5, Muss, M):** DNS und Socket-Verbindung als kontrollierbare Transportabhängigkeiten isolieren, dieselbe produktive Handler-Registrierung verwenden; öffentliche erste Auflösung, private zweite Auflösung und öffentliche erfolgreiche Verbindung prüfen. Gegenwärtiger Redirect-Test spiegelt nur eine Handler-Einstellung, Rebinding-Test weist lediglich Loopback-Abweisung nach. Kein vollständiger Rebinding-Nachweis.
 2. **OAuth2-Bindung (M6, Muss, M):** Browser-/Studio-Callback-Topologie festlegen; State an initiierende Sitzung/Identität binden und atomar einmalig konsumieren. Fremder Benutzer, fremder Browser, Ablauf und paralleler Callback müssen scheitern. Studio startet den Flow serverseitig (`HttpCredentialService`), deshalb genügt ein nur von der API gesetztes Cookie nicht.

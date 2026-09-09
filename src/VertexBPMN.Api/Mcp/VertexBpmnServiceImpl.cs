@@ -8,7 +8,7 @@ using VertexBPMN.Domain.Interfaces;
 
 namespace VertexBPMN.Api.Mcp;
 
-[Authorize]
+[Authorize(Policy = "ProcessManager")]
 public sealed class VertexBpmnServiceImpl(
     ICaseExecutionRuntime cases,
     ILogger<VertexBpmnServiceImpl> logger) : VertexBPMNService.VertexBPMNServiceBase
@@ -99,8 +99,13 @@ public sealed class VertexBpmnServiceImpl(
         await cases.ResolveInstanceAsync(identifier, Tenant(context), context.CancellationToken)
         ?? throw new KeyNotFoundException($"Active case '{identifier}' was not found.");
 
-    internal static string Tenant(ServerCallContext context) =>
-        context.GetHttpContext().User.FindFirstValue("tenant_id") ?? "default";
+    internal static string Tenant(ServerCallContext context)
+    {
+        var tenant = context.GetHttpContext().User.FindFirstValue("tenant_id");
+        if (string.IsNullOrWhiteSpace(tenant))
+            throw new RpcException(new Status(StatusCode.PermissionDenied, "A tenant claim is required."));
+        return tenant;
+    }
 
     internal static string FirstDiscretionaryItem(CaseInstanceRecord instance)
     {

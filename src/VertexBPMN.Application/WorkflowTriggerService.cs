@@ -168,21 +168,25 @@ public sealed class WorkflowTriggerService(
         return created;
     }
 
-    public async Task<WorkflowTriggerInvocationResult> InvokeWebhookAsync(string path, string method, string? triggerSecret, string? signature, ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default)
+    public async Task<WorkflowTriggerInvocationResult> InvokeWebhookAsync(string path, string method, string? triggerSecret, string? signature, ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default, string? timestamp = null, string? deliveryId = null)
     {
         var trigger = await triggerRepository.GetByEndpointAsync(NormalizePath(path), NormalizeMethod(method), null, cancellationToken);
         if (trigger is null) return new(WorkflowTriggerInvocationStatus.NotFound);
         if (!trigger.Enabled) return new(WorkflowTriggerInvocationStatus.Disabled);
 
+        if (!WebhookRequestSignature.IsFresh(timestamp, deliveryId, DateTimeOffset.UtcNow))
+            return new(WorkflowTriggerInvocationStatus.InvalidSecret);
+        var signedPayload = WebhookRequestSignature.CreatePayload(trigger.Method!, trigger.Path!, timestamp!, deliveryId!, payload.Span);
         if (string.Equals(trigger.AuthenticationMode, "hmac-sha256", StringComparison.OrdinalIgnoreCase))
         {
             if (string.IsNullOrWhiteSpace(trigger.TenantId) || string.IsNullOrWhiteSpace(trigger.CredentialId))
                 return new(WorkflowTriggerInvocationStatus.InvalidSecret);
             var secret = await credentialService.ResolveSecretAsync(trigger.TenantId, trigger.CredentialId, trigger.CredentialSecretKey ?? "secret", cancellationToken);
-            if (string.IsNullOrWhiteSpace(secret) || !IsValidHmac(secret, payload.Span, signature))
+            if (string.IsNullOrWhiteSpace(secret) || !IsValidHmac(secret, signedPayload, signature))
                 return new(WorkflowTriggerInvocationStatus.InvalidSecret);
         }
-        else if (string.IsNullOrWhiteSpace(triggerSecret) || !CryptographicEquals(trigger.SecretHash, HashSecret(triggerSecret)))
+        else if (string.IsNullOrWhiteSpace(triggerSecret) || !CryptographicEquals(trigger.SecretHash, HashSecret(triggerSecret))
+                 || !IsValidHmac(triggerSecret, signedPayload, signature))
         {
             return new(WorkflowTriggerInvocationStatus.InvalidSecret);
         }
@@ -190,6 +194,8 @@ public sealed class WorkflowTriggerService(
         var variables = ParsePayload(payload);
         if (!IsPayloadValid(trigger.PayloadSchemaJson, payload))
             return new(WorkflowTriggerInvocationStatus.InvalidPayload);
+        if (!await triggerRepository.TryReserveDeliveryAsync(trigger.Id, trigger.TenantId, deliveryId!, cancellationToken))
+            return new(WorkflowTriggerInvocationStatus.ReplayRejected);
         var businessKey = ResolveCorrelationKey(trigger.CorrelationKey, variables);
         return await StartAsync(trigger, variables, businessKey, cancellationToken);
     }

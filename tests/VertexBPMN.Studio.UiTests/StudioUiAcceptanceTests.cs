@@ -12,6 +12,26 @@ public sealed class StudioUiAcceptanceTests(StudioUiTestHost host) : IClassFixtu
 {
     [Fact]
     [Trait("Category", "LocalUiAcceptance")]
+    public async Task OAuthCallback_WithoutInitiatingBrowserProof_FailsBeforeApiCall()
+    {
+        var page = await host.Browser.NewPageAsync();
+        try
+        {
+            var callbacksBefore = host.ApiRequests.Count(x => x.Contains("/api/oauth2/callback", StringComparison.Ordinal));
+            var response = await page.GotoAsync($"{host.BaseAddress}oauth2/callback?state=foreign-state&code=foreign-code");
+            Assert.NotNull(response);
+            Assert.True(System.Net.Http.Headers.CacheControlHeaderValue.Parse(response.Headers["cache-control"]).NoStore);
+            Assert.Equal("no-referrer", response.Headers["referrer-policy"]);
+            await page.GetByText("Authorization could not be completed. Start again from Credentials in this browser tab using the original account.", new() { Exact = true }).WaitForAsync();
+            Assert.Equal(callbacksBefore, host.ApiRequests.Count(x => x.Contains("/api/oauth2/callback", StringComparison.Ordinal)));
+            Assert.DoesNotContain("foreign-code", page.Url);
+            Assert.DoesNotContain(host.StudioLogs, line => line.Contains("foreign-code", StringComparison.Ordinal));
+        }
+        finally { await page.CloseAsync(); }
+    }
+
+    [Fact]
+    [Trait("Category", "LocalUiAcceptance")]
     public async Task Shell_Has_ScreenReader_Landmarks_And_Can_Be_Operated_By_Keyboard()
     {
         var page = await host.Browser.NewPageAsync(new() { ViewportSize = new() { Width = 390, Height = 844 } });

@@ -33,6 +33,8 @@ public class RepositoryService : IRepositoryService
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(bpmnXml);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        if (bpmnXml.Contains(ModelExportRedaction.Marker, StringComparison.Ordinal))
+            throw new VertexBPMN.Domain.Exceptions.SecurityException("A redacted export cannot be deployed. Replace inline credentials with credential references first.");
         tenantId = string.IsNullOrWhiteSpace(tenantId) ? null : tenantId.Trim();
 
         var model = await _parser.ParseAsync(bpmnXml, cancellationToken);

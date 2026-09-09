@@ -228,6 +228,9 @@ public sealed class ConnectorDestinationPolicy(IConfiguration configuration)
 
     private static bool IsForbiddenAddress(IPAddress address)
     {
+        if (address.IsIPv4MappedToIPv6) return IsForbiddenAddress(address.MapToIPv4());
+        if (address.AddressFamily == AddressFamily.InterNetworkV6
+            && (address.GetAddressBytes()[0] & 0xfe) == 0xfc) return true;
         if (IPAddress.IsLoopback(address) || address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any)
             || address.Equals(IPAddress.None) || address.Equals(IPAddress.IPv6None)
             || address.IsIPv6LinkLocal || address.IsIPv6SiteLocal || address.IsIPv6Multicast)
@@ -272,10 +275,15 @@ public sealed class ConnectorDestinationPolicy(IConfiguration configuration)
             throw new ServiceTaskExecutionException($"Destination host '{host}' could not be resolved.", exception);
         }
 
+        ValidateResolvedAddresses(host, addresses);
+        return addresses;
+    }
+
+    public static void ValidateResolvedAddresses(string host, IPAddress[] addresses)
+    {
         if (addresses.Length == 0 || addresses.Any(IsForbiddenAddress))
             throw new ServiceTaskExecutionException(
                 $"Destination host '{host}' resolves to a private, loopback, link-local or unspecified address.");
-        return addresses;
     }
 }
 

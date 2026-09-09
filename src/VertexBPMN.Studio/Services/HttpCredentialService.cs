@@ -39,13 +39,14 @@ public sealed class HttpCredentialService(IHttpClientFactory httpClientFactory) 
         response.EnsureSuccessStatusCode();
     }
 
-    public async Task<string> StartOAuth2AuthorizationAsync(string tenantId, string credentialId, OAuth2ConnectConfig config, CancellationToken cancellationToken = default)
+    public async Task<string> StartOAuth2AuthorizationAsync(string tenantId, string credentialId, OAuth2ConnectConfig config, CancellationToken cancellationToken = default, string? browserProof = null)
     {
         var client = httpClientFactory.CreateClient("VertexBPMN.Api");
         using var response = await client.PostAsJsonAsync("/api/oauth2/authorize", new
         {
             tenantId,
             credentialId,
+            browserProof,
             config = new { config.AuthorizationUrl, config.TokenUrl, config.ClientId, config.RedirectUri, config.Scopes }
         }, cancellationToken);
         response.EnsureSuccessStatusCode();
@@ -55,4 +56,11 @@ public sealed class HttpCredentialService(IHttpClientFactory httpClientFactory) 
     }
 
     private sealed record OAuth2AuthorizationStartDto(string RedirectUrl, string State);
+
+    public async Task CompleteOAuth2AuthorizationAsync(string state, string code, string browserProof, CancellationToken cancellationToken = default)
+    {
+        var client = httpClientFactory.CreateClient("VertexBPMN.Api");
+        using var response = await client.PostAsJsonAsync("/api/oauth2/callback", new { state, code, browserProof }, cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
 }

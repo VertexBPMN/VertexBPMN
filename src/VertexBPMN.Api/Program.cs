@@ -115,7 +115,9 @@ builder.Services.AddWhen(moduleOptions.SignalR, s => s.AddSignalR());
 
 
 // Add services to the container.
-builder.Services.AddControllers();
+builder.Services.AddControllers().AddJsonOptions(options =>
+    options.JsonSerializerOptions.TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver
+    { Modifiers = { VertexBPMN.Api.Security.ModelExportJsonPolicy.Apply } });
 builder.Services.AddHttpContextAccessor();
 
 // Authentication is disabled only in the dedicated test host, where tests install

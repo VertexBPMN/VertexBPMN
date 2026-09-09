@@ -174,12 +174,33 @@ public sealed class OAuth2CredentialFlowServiceTests
     }
 
     private static BpmnDbContext NewDb()
+
     {
         var options = new DbContextOptionsBuilder<BpmnDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
-        var db = new BpmnDbContext(options);
-        return db;
+        return new BpmnDbContext(options);
+    }
+
+    [Fact]
+    public async Task BoundFlow_RejectsOtherUserBrowserAndMissingProof_ThenConsumesExactlyOnce()
+    {
+        await using var db = NewDb();
+        var credential = await CredentialAsync(db, "tenant-a");
+        var handler = new ScriptedHandler(_ => TokenResponse("authorization_code"));
+        var flow = CreateFlow(db, handler);
+        var binding = new OAuth2FlowBinding("issuer:user-a:tenant-a", new string('A', 44));
+        var ct = TestContext.Current.CancellationToken;
+        var start = await flow.StartAuthorizationAsync("tenant-a", credential,
+            new OAuth2AuthorizationConfig("https://auth.example/authorize", "https://auth.example/token", "client", "https://studio.example/oauth2/callback", "read"), ct, binding);
+        Assert.False(await flow.CompleteAuthorizationAsync(start.State, "code", ct, binding with { Subject = "issuer:user-b:tenant-a" }));
+        Assert.False(await flow.CompleteAuthorizationAsync(start.State, "code", ct, binding with { BrowserProof = new string('B', 44) }));
+        Assert.False(await flow.CompleteAuthorizationAsync(start.State, "code", ct));
+        Assert.Equal(0, handler.CallCount);
+        Assert.True(await flow.CompleteAuthorizationAsync(start.State, "code", ct, binding));
+        Assert.False(await flow.CompleteAuthorizationAsync(start.State, "code", ct, binding));
+        Assert.Equal(1, handler.CallCount);
+        Assert.Empty(await db.RuntimeInbox.Where(x => x.Operation == "oauth2-browser-binding").ToListAsync(ct));
     }
 
     private static async Task<string> CredentialAsync(BpmnDbContext db, string tenant)
@@ -195,6 +216,44 @@ public sealed class OAuth2CredentialFlowServiceTests
                 ["client_secret"] = "super-secret-client"
             }), TestContext.Current.CancellationToken);
         return meta.Id;
+    }
+
+    [Fact]
+    public async Task ConcurrentCallbacks_WithSeparateSqliteContexts_ExchangeExactlyOneToken()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var connectionString = $"Data Source=file:oauth-race-{Guid.NewGuid():N}?mode=memory&cache=shared";
+        await using var keeper = new Microsoft.Data.Sqlite.SqliteConnection(connectionString);
+        await keeper.OpenAsync(ct);
+        var options = new DbContextOptionsBuilder<BpmnDbContext>().UseSqlite(connectionString).Options;
+        await using var seed = new BpmnDbContext(options);
+        await seed.Database.EnsureCreatedAsync(ct);
+        var credentialId = await CredentialAsync(seed, "tenant-a");
+        var handler = new ScriptedHandler(_ => TokenResponse("authorization_code"));
+        var binding = new OAuth2FlowBinding("user-a", new string('A', 44));
+        var start = await CreateFlow(seed, handler).StartAuthorizationAsync("tenant-a", credentialId,
+            new OAuth2AuthorizationConfig("https://auth.example/authorize", "https://auth.example/token", "client", "https://studio.example/oauth2/callback", "read"), ct, binding);
+        var arrivals = 0;
+        var barrier = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var credentials = new Mock<ICredentialService>();
+        credentials.Setup(x => x.ResolveSecretAsync("tenant-a", credentialId, "client_secret", It.IsAny<CancellationToken>()))
+            .Returns(async () =>
+            {
+                if (Interlocked.Increment(ref arrivals) == 2) barrier.TrySetResult();
+                await barrier.Task.WaitAsync(TimeSpan.FromSeconds(15), ct);
+                return "secret";
+            });
+        credentials.Setup(x => x.RotateSecretAsync("tenant-a", credentialId, It.IsAny<CredentialSecretRotation>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        await using var firstDb = new BpmnDbContext(options);
+        await using var secondDb = new BpmnDbContext(options);
+        var clients = new FakeClientFactory(new HttpClient(handler));
+        OAuth2CredentialFlowService Flow(BpmnDbContext db) => new(db, credentials.Object, clients,
+            Mock.Of<IAuditLogService>(), Mock.Of<ILogger<OAuth2CredentialFlowService>>());
+        var results = await Task.WhenAll(
+            Flow(firstDb).CompleteAuthorizationAsync(start.State, "code", ct, binding),
+            Flow(secondDb).CompleteAuthorizationAsync(start.State, "code", ct, binding));
+        Assert.Single(results, result => result);
+        Assert.Equal(1, handler.CallCount);
     }
 
     private static async Task<string?> SecretAsync(BpmnDbContext db, string tenant, string cred, string key)

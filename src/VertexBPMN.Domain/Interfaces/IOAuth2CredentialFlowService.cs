@@ -10,12 +10,14 @@ public interface IOAuth2CredentialFlowService
         string tenantId,
         string credentialId,
         OAuth2AuthorizationConfig config,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        OAuth2FlowBinding? binding = null);
 
     Task<bool> CompleteAuthorizationAsync(
         string state,
         string code,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        OAuth2FlowBinding? binding = null);
 
     Task<string?> ResolveValidAccessTokenAsync(
         string tenantId,
@@ -33,3 +35,6 @@ public sealed record OAuth2AuthorizationConfig(
 public sealed record OAuth2AuthorizationStart(
     string RedirectUrl,
     string State);
+
+/// <summary>Identity comes from authenticated claims; browser proof is a random, per-flow secret.</summary>
+public sealed record OAuth2FlowBinding(string Subject, string BrowserProof);

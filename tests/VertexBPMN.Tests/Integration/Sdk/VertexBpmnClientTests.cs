@@ -7,6 +7,28 @@ namespace VertexBPMN.Tests.Integration.Sdk;
 public sealed class VertexBpmnClientTests
 {
     [Fact]
+    public async Task Sdk_CannotOverrideTenantOrBypassMutationRole()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        using var adminHttp = factory.CreateClient();
+        var admin = new VertexBpmnClient(adminHttp);
+        var ct = TestContext.Current.CancellationToken;
+        var key = "sdk-isolation-" + Guid.NewGuid().ToString("N");
+        var xml = $"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='{key}'><startEvent id='s'/><sequenceFlow id='f' sourceRef='s' targetRef='e'/><endEvent id='e'/></process></definitions>";
+        var deployed = await admin.DeployProcessAsync(xml, key, "tenant-a", ct);
+        Assert.NotNull(deployed);
+        using var readerHttp = factory.CreateClient();
+        readerHttp.DefaultRequestHeaders.Add("X-Test-User", "reader");
+        readerHttp.DefaultRequestHeaders.Add("X-Test-Tenant", "tenant-b");
+        var reader = new VertexBpmnClient(readerHttp);
+        Assert.Empty(await reader.ListProcessDefinitionsAsync(key, "tenant-a", ct));
+        var foreign = await Assert.ThrowsAsync<HttpRequestException>(() => reader.GetProcessDefinitionAsync(Guid.Parse(deployed.Id), ct));
+        Assert.Equal(System.Net.HttpStatusCode.Forbidden, foreign.StatusCode);
+        var mutation = await Assert.ThrowsAsync<HttpRequestException>(() => reader.DeployProcessAsync(xml, key, "tenant-b", ct));
+        Assert.Equal(System.Net.HttpStatusCode.Forbidden, mutation.StatusCode);
+    }
+
+    [Fact]
     public async Task GetEngineCapabilitiesAsync_SimpleApi_ReturnsSimpleCapabilities()
     {
         using var factory = new CustomWebApplicationFactory().WithEngineType("Simple");

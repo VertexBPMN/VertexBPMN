@@ -11,7 +11,7 @@ public interface IWorkflowTriggerService
     Task<bool> DeleteAsync(Guid id, string? tenantId = null, CancellationToken cancellationToken = default);
     Task<WorkflowTriggerInvocationResult> InvokeAsync(Guid id, string secret, IDictionary<string, object?>? variables = null, string? businessKey = null, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<WorkflowTriggerCreated>> SynchronizeBpmnWebhooksAsync(string bpmnXml, string processDefinitionKey, string? tenantId = null, CancellationToken cancellationToken = default);
-    Task<WorkflowTriggerInvocationResult> InvokeWebhookAsync(string path, string method, string? triggerSecret, string? signature, ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default);
+    Task<WorkflowTriggerInvocationResult> InvokeWebhookAsync(string path, string method, string? triggerSecret, string? signature, ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default, string? timestamp = null, string? deliveryId = null);
 }
 
 public sealed record WorkflowTriggerInfo(
@@ -43,5 +43,6 @@ public enum WorkflowTriggerInvocationStatus
     InvalidSecret,
     Disabled,
     InvalidPayload,
-    ProcessDefinitionNotFound
+    ProcessDefinitionNotFound,
+    ReplayRejected
 }

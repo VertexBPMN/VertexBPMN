@@ -6,11 +6,12 @@ using VertexBPMN.Domain.Interfaces;
 
 namespace VertexBPMN.Api.Mcp;
 
-[Authorize]
+[Authorize(Policy = "TenantReadOnly")]
 public sealed class VertexBpmnMcpServiceImpl(
     ICaseExecutionRuntime cases,
     ILogger<VertexBpmnMcpServiceImpl> logger) : VertexBPMNMCPService.VertexBPMNMCPServiceBase
 {
+    [Authorize(Policy = "ProcessManager")]
     public override async Task<ExecuteCaseResponse> ExecuteCase(ExecuteCaseRequest request, ServerCallContext context)
     {
         VertexBpmnServiceImpl.Validate(request.CaseId, nameof(request.CaseId));
@@ -27,6 +28,7 @@ public sealed class VertexBpmnMcpServiceImpl(
         }
     }
 
+    [Authorize(Policy = "ProcessManager")]
     public override async Task<CmmnResponse> TriggerUserEvent(TriggerEventRequest request, ServerCallContext context)
     {
         VertexBpmnServiceImpl.Validate(request.CaseId, nameof(request.CaseId));
@@ -44,6 +46,7 @@ public sealed class VertexBpmnMcpServiceImpl(
         }
     }
 
+    [Authorize(Policy = "ProcessManager")]
     public override async Task<CmmnResponse> UpdateCaseFileItem(CaseFileUpdateRequest request, ServerCallContext context)
     {
         VertexBpmnServiceImpl.Validate(request.CaseId, nameof(request.CaseId));
@@ -60,6 +63,7 @@ public sealed class VertexBpmnMcpServiceImpl(
         }
     }
 
+    [Authorize(Policy = "ProcessManager")]
     public override async Task<CmmnResponse> GenerateAdHocSubprocess(GenerateAdHocSubprocessRequest request, ServerCallContext context)
     {
         VertexBpmnServiceImpl.Validate(request.CaseId, nameof(request.CaseId));

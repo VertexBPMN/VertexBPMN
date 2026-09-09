@@ -34,7 +34,7 @@ Abnahmekriterium *„keine offenen ausnutzbaren kritischen/hohen Befunde; wirksa
 - **M2 – OAuth2 Token-URL unterlag nicht dem SSRF-Guard.** Bewertung: ausgenutzer Zielserver/Operator; vor Freigabe zu behandeln. **Behoben:** beide Token-POSTs (authorization_code + refresh) laufen durch `ConnectorDestinationPolicy.ThrowIfForbiddenAsync` (Private-/Loopback-/Link-Local-Block nach DNS-Auflösung, allowlist-frei). Negativtests: 2.
 - **M3 – BPMN-Redaction default aus, nicht auf Export-/Roh-XML-Pfad.** Bewertung: Redaktions-Policies sind als Parse-Option vorhanden und getestet; für Export-Pfad nachrüsten.
 - **M4 – Webhook kein expliziter Replay-Schutz.** Bewertung: HMAC + Einmal-Secret vorhanden; Replay-Fenster optional.
-- **M5 – DNS-Rebinding/TOCTOU nicht in Redirect-/Hostprüfung mitigiert.**
+- **M5 – DNS-Rebinding/TOCTOU in der Hostprüfung.** **Behoben:** Connector-`SocketsHttpHandler` verbindet jetzt über einen `ConnectCallback` zur **validierten** IP (Resolution + Private-/Loopback-Block direkt am Connect, SNI bleibt Hostname) statt per Hostname neu aufzulösen — ein post-check Rebind zu einer internen Adresse wird nie erreicht. `ResolveValidatedAddressesAsync` extrahiert (geteilt). Negativtests: 2 (`ConnectorRebindingSsrfTests`, Loopback-Ziel → Fehler, Listener unberührt).
 - **M6 – OAuth2-State nicht an den Benutzer gebunden.**
 
 ### Cross-Tenant-/ID-Lücken (behoben, T1–T4)
@@ -70,7 +70,7 @@ Jint-Sandbox 2 s/8 MB · Connector-SSRF (Private-IP-Block 10/8, 172.16/12, 192.1
 - Audit-Drafts: `2026-09-08_Phase3_TenantRollenMatrix_draft.md`, `2026-09-08_Phase3_ScriptConnectorBoundaries_draft.md`
 
 ## 6. Empfohlene nächste Schritte
-1. M5 (DNS-Rebinding/TOCTOU in Redirect-/Hostprüfung) nachrüsten — letzter offener MEDIUM-Fix.
+1. M3 (Export-/Roh-XML-Redaction), M4 (Webhook-Replay-Schutz), M6 (OAuth2-State an Benutzer binden) — restliche MEDIUM-Punkte; M5 (DNS-Rebinding) in diesem Durchlauf behoben.
 2. Req 2 (echter IdP) und Req 6 (unabhängiges Sicherheitsreview) benötigen externe Ressourcen für den Phasenabschluss.
 3. Echten IdP für Req 2 bereitstellen (Phase-0-Entscheidung).
 4. Externes Sicherheitsreview (Req 6) organisieren.

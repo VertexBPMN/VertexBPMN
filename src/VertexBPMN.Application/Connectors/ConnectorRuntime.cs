@@ -251,6 +251,32 @@ public sealed class ConnectorDestinationPolicy(IConfiguration configuration)
 
     private static string? Value(DbConnectionStringBuilder values, string key) =>
         values.TryGetValue(key, out var value) ? Convert.ToString(value) : null;
+
+    /// <summary>
+    /// Resolves a host and returns its validated non-forbidden addresses after rejecting
+    /// loopback/private/link-local/multicast/unspecified ones. Connecting to one of the
+    /// returned addresses (instead of re-resolving by hostname) closes the DNS-rebinding /
+    /// TOCTOU window between SSRF validation and the actual connection (M5).
+    /// </summary>
+    public static async Task<IPAddress[]> ResolveValidatedAddressesAsync(string host, CancellationToken cancellationToken)
+    {
+        IPAddress[] addresses;
+        try
+        {
+            addresses = IPAddress.TryParse(host, out var address)
+                ? [address]
+                : await Dns.GetHostAddressesAsync(host, cancellationToken);
+        }
+        catch (SocketException exception)
+        {
+            throw new ServiceTaskExecutionException($"Destination host '{host}' could not be resolved.", exception);
+        }
+
+        if (addresses.Length == 0 || addresses.Any(IsForbiddenAddress))
+            throw new ServiceTaskExecutionException(
+                $"Destination host '{host}' resolves to a private, loopback, link-local or unspecified address.");
+        return addresses;
+    }
 }
 
 public sealed class ConnectorRuntime(

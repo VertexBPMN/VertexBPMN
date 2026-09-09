@@ -114,6 +114,14 @@ public static class InfrastructureModule
             });
         if (options.Enabled)
             services.AddHostedService<RuntimeOutboxPublisherService>();
+
+        // Produktioneller Inbox-Konsument (idempotent). Optional separat
+        // zuschaltbar ueber Runtime:Inbox:Enabled; faellt ohne Flag zurueck
+        // auf den Outbox-Enabled-Zustand, damit der at-least-once-Zustellungs-
+        // und Wiederanlauf-Kreis im Produktivpfad geschlossen ist.
+        var inboxEnabled = configuration.GetValue("Runtime:Inbox:Enabled", options.Enabled);
+        if (inboxEnabled && !string.IsNullOrWhiteSpace(options.ConnectionString))
+            services.AddHostedService<RuntimeInboxConsumerService>();
     }
 
     /// <summary>

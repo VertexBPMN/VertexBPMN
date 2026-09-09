@@ -616,6 +616,220 @@ public sealed class Phase4OutageAcceptanceTests(ITestOutputHelper output)
         }
     }
 
+    [Fact]
+    [Trait("Category", "Phase4OutageAcceptance")]
+    public async Task P4_AC_07_Production_Inbox_Consumer_Exactly_Once()
+    {
+        var adminConnectionString = Environment.GetEnvironmentVariable("VERTEXBPMN_TEST_POSTGRES_ADMIN");
+        var rabbitConnectionString = Environment.GetEnvironmentVariable("VERTEXBPMN_TEST_RABBITMQ");
+        Assert.SkipUnless(!string.IsNullOrWhiteSpace(adminConnectionString), "Local PostgreSQL connection required.");
+        Assert.SkipUnless(!string.IsNullOrWhiteSpace(rabbitConnectionString), "Local RabbitMQ connection required.");
+
+        // --- 1) Isolierte DB anlegen + BpmnDbContext-Migrationen anwenden ---
+        var databaseName = $"p4_inbox_{Guid.NewGuid():N}";
+        await using var admin = new NpgsqlConnection(adminConnectionString);
+        await admin.OpenAsync(TestContext.Current.CancellationToken);
+        await ExecuteAdminCommandAsync(admin, $"CREATE DATABASE \"{databaseName}\"");
+        var connectionString = ConnectionStringFor(adminConnectionString, databaseName);
+
+        var destination = $"vertexbpmn-ph4inbox-{Guid.NewGuid():N}";
+        ServiceProvider? provider = null;
+        try
+        {
+            // Migrationen auf die isolierte echte Postgres-DB anwenden.
+            await using (var migrateContext = new BpmnDbContext(
+                new DbContextOptionsBuilder<BpmnDbContext>().UseVertexNpgsql(connectionString).Options))
+            {
+                await migrateContext.Database.MigrateAsync(TestContext.Current.CancellationToken);
+            }
+
+            // --- 2) ServiceProvider mit echtem BpmnDbContext + Recording-Handler ---
+            var recordingSink = new RecordingInboxSink();
+            var services = new ServiceCollection();
+            services.AddLogging();
+            services.AddSingleton<IInboxEventSink>(recordingSink);
+            services.AddDbContext<BpmnDbContext>(options => options.UseVertexNpgsql(connectionString));
+            provider = services.BuildServiceProvider();
+
+            var options = new RuntimeOutboxOptions
+            {
+                Enabled = true,
+                Provider = "RabbitMq",
+                ConnectionString = rabbitConnectionString,
+                Destination = destination
+            };
+
+            // --- 3) Echten produktionellen Inbox-Konsumenten starten ---
+            using (var consumer = new RuntimeInboxConsumerService(
+                provider.GetRequiredService<IServiceScopeFactory>(),
+                options,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<RuntimeInboxConsumerService>.Instance))
+            {
+                await consumer.StartAsync(TestContext.Current.CancellationToken);
+                // Kurz warten, bis die Queue gebunden und der Consumer lauscht.
+                await Task.Delay(1_500, TestContext.Current.CancellationToken);
+
+                // --- 4) Echte Outbox-Publikation: DIESELBE stabile Message-ID 2x (at-least-once Duplikat) ---
+                var transport = new RabbitMqRuntimeOutboxTransport(options);
+                var messageId = Guid.NewGuid();
+                var message = new RuntimeOutboxMessage
+                {
+                    Id = messageId,
+                    EventType = "Phase4InboxBusiness",
+                    Payload = System.Text.Json.JsonSerializer.Serialize(new { order = "IN-42", amount = 7.25 }),
+                    State = "InFlight",
+                    OccurredAt = DateTime.UtcNow
+                };
+                await transport.PublishAsync(message, TestContext.Current.CancellationToken);
+                await transport.PublishAsync(message, TestContext.Current.CancellationToken);
+
+                // --- 5) Warten, bis der Konsument beide Zustellungen verarbeitet hat ---
+                var deadline = DateTime.UtcNow.AddSeconds(30);
+                while (DateTime.UtcNow < deadline && recordingSink.Handled < 1)
+                    await Task.Delay(300, TestContext.Current.CancellationToken);
+                await Task.Delay(1_000, TestContext.Current.CancellationToken); // Zeit fuer evtl. zweite Zustellung
+
+                await consumer.StopAsync(TestContext.Current.CancellationToken);
+
+                // --- 6) Beweis idempotenter Geschaeftseverarbeitung ---
+                Assert.Equal(1, recordingSink.Handled); // fachlich genau 1x (trotz 2 Zustellungen)
+
+                using var verify = new BpmnDbContext(
+                    new DbContextOptionsBuilder<BpmnDbContext>().UseVertexNpgsql(connectionString).Options);
+                var completedRows = await verify.RuntimeInbox
+                    .AsNoTracking()
+                    .Where(item => item.IdempotencyKey == messageId.ToString("N"))
+                    .ToListAsync(TestContext.Current.CancellationToken);
+                Assert.Single(completedRows);
+                Assert.NotNull(completedRows[0].CompletedAt);
+                Assert.Equal("Processed", completedRows[0].Result);
+
+                output.WriteLine("P4_AC_07 grün: PRODUKTIONELLER RuntimeInboxConsumerService (durable Queue " +
+                                 $"'inbox:{destination}', Unique-Index (TenantScope, Operation, IdempotencyKey)) " +
+                                 $"verarbeitete die stabile Message-ID {messageId:N} bei 2 Zustellungen fachlich genau 1x; " +
+                                 $"1 Completed-Inbox-Row im echten PostgreSQL.");
+            }
+        }
+        finally
+        {
+            if (provider is not null)
+                await provider.DisposeAsync();
+            await ExecuteAdminCommandAsync(admin, $"DROP DATABASE IF EXISTS \"{databaseName}\" WITH (FORCE)");
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Phase4OutageAcceptance")]
+    public async Task P4_AC_08_Timer_Job_Survives_Api_Restart()
+    {
+        var adminConnectionString = Environment.GetEnvironmentVariable("VERTEXBPMN_TEST_POSTGRES_ADMIN");
+        Assert.SkipUnless(!string.IsNullOrWhiteSpace(adminConnectionString), "Local PostgreSQL connection required.");
+
+        var databaseName = $"p4_timer_{Guid.NewGuid():N}";
+        await using var admin = new NpgsqlConnection(adminConnectionString);
+        await admin.OpenAsync(TestContext.Current.CancellationToken);
+        await ExecuteAdminCommandAsync(admin, $"CREATE DATABASE \"{databaseName}\"");
+        var connectionString = ConnectionStringFor(adminConnectionString, databaseName);
+        Process? process = null;
+        var baseUrl = string.Empty;
+        try
+        {
+            baseUrl = await StartApiProcessAsync(connectionString, onProcess: p => process = p);
+            var client = new HttpClient { BaseAddress = new Uri(baseUrl) };
+            client.DefaultRequestHeaders.Add("X-API-Key", "local-dev-vertexbpmn");
+            await WaitForApiReadyAsync(client, baseUrl);
+
+            // Prozess mit Timer-Intermediat-Catch (PT10S) -> UserTask.
+            var key = $"p4_timer_{Guid.NewGuid():N}";
+            var bpmn = "<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>" +
+                       $"<process id='{key}'><startEvent id='s'/>" +
+                       "<sequenceFlow id='f1' sourceRef='s' targetRef='tc'/>" +
+                       "<intermediateCatchEvent id='tc'><timerEventDefinition>" +
+                       "<timeDuration>PT10S</timeDuration></timerEventDefinition></intermediateCatchEvent>" +
+                       "<sequenceFlow id='f2' sourceRef='tc' targetRef='u'/>" +
+                       "<userTask id='u' name='AfterTimer'/>" +
+                       "<sequenceFlow id='f3' sourceRef='u' targetRef='e'/>" +
+                       "<endEvent id='e'/></process></definitions>";
+            var deploy = await client.PostAsJsonAsync("/api/repository", new
+            {
+                bpmnXml = bpmn,
+                name = $"{key}.bpmn",
+                tenantId = (string?)null
+            }, TestContext.Current.CancellationToken);
+            deploy.EnsureSuccessStatusCode();
+
+            var start = await client.PostAsJsonAsync("/api/runtime/start", new
+            {
+                ProcessDefinitionKey = key,
+                Variables = new Dictionary<string, object> { ["request"] = "ph4timer" },
+                BusinessKey = (string?)null,
+                TenantId = (string?)null
+            }, TestContext.Current.CancellationToken);
+            start.EnsureSuccessStatusCode();
+            var startJson = JsonDocument.Parse(await start.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            var instanceId = startJson.RootElement.GetProperty("id").GetGuid();
+
+            // Sicherstellen: noch KEINE offene User-Task (Timer-Wait), bevor der API-Prozess beendet wird.
+            var noTaskYet = await client.GetAsync($"/api/task?processInstanceId={instanceId}", TestContext.Current.CancellationToken);
+            var noTaskJson = JsonDocument.Parse(await noTaskYet.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            Assert.Empty(noTaskJson.RootElement.EnumerateArray());
+
+            // --- API kontrolliert beenden, BEVOR der Timer feuert ---
+            process!.Kill(entireProcessTree: true);
+            await process.WaitForExitAsync(TestContext.Current.CancellationToken);
+            process = null;
+
+            // --- Gegen DIESELBE DB neu starten; der durable Timer-Job (Type=timer) ueberlebt ---
+            baseUrl = await StartApiProcessAsync(connectionString, onProcess: p => process = p);
+            client = new HttpClient { BaseAddress = new Uri(baseUrl) };
+            client.DefaultRequestHeaders.Add("X-API-Key", "local-dev-vertexbpmn");
+            await WaitForApiReadyAsync(client, baseUrl);
+
+            // Nach Restart feuert JobExecutorService den ueberlebenden Timer-Job
+            // (pollt alle ~5s) und erzeugt die User-Task 'AfterTimer'.
+            var taskId = Guid.Empty;
+            var deadline = DateTime.UtcNow.AddSeconds(60);
+            while (DateTime.UtcNow < deadline)
+            {
+                var resp = await client.GetAsync($"/api/task?processInstanceId={instanceId}", TestContext.Current.CancellationToken);
+                if (resp.IsSuccessStatusCode)
+                {
+                    var tasks = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+                    var first = tasks.RootElement.EnumerateArray().Cast<JsonElement>().FirstOrDefault();
+                    if (first.ValueKind == JsonValueKind.Object && first.TryGetProperty("id", out var tid))
+                    {
+                        taskId = tid.GetGuid();
+                        break;
+                    }
+                }
+                await Task.Delay(1_000, TestContext.Current.CancellationToken);
+            }
+            Assert.NotEqual(Guid.Empty, taskId);
+            output.WriteLine($"P4_AC_08 grün: Timer-Intermediat-Catch-Job (durable, Type=timer) ueberlebte " +
+                             $"API-Kill+Restart gegen dieselbe DB; die 'AfterTimer'-User-Task {taskId:N} wurde NACH " +
+                             $"dem Wiederanlauf vom JobExecutorService erzeugt (Timer feuert post-restart).");
+        }
+        finally
+        {
+            if (process is not null)
+            {
+                try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { /* already gone */ }
+                try { await process.WaitForExitAsync(TestContext.Current.CancellationToken); } catch { /* ignore */ }
+            }
+            await ExecuteAdminCommandAsync(admin, $"DROP DATABASE IF EXISTS \"{databaseName}\" WITH (FORCE)");
+        }
+    }
+
+    private sealed class RecordingInboxSink : IInboxEventSink
+    {
+        public int Handled;
+        public Task HandleAsync(InboxEnvelope envelope, CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref Handled);
+            return Task.CompletedTask;
+        }
+    }
+
     // ---------- Subprozess-Helfer (P4_AC_01) ----------
 
     private static async Task<string> StartApiProcessAsync(

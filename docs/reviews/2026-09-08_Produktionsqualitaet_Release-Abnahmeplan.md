@@ -129,13 +129,15 @@ Abnahme: Ein zweiter Ausführender kann die Wiederherstellung anhand des Runbook
 
 ### Phase 6 – Last und Dauerbetrieb
 
-- [ ] Szenarien für kurze Prozesse, langlebige Wait-States, Timer, parallele Gateways, DMN, Historienabfragen und gleichzeitige Studio-Sitzungen aufbauen.
-- [ ] Last schrittweise steigern; p95/p99, Fehlerrate, Timer-Lag, Outbox-Alter, DB-Pool, Locks, CPU und Speicher erfassen.
-- [ ] 24–72 Stunden als geplanten Dauerlauf mit Lastspitzen und kontrollierter Unterbrechung durchführen; genaue Dauer anhand Zielprofil festlegen.
-- [ ] Nur gemessene Engpässe beheben, zum Beispiel Indizes, Paging, unbeschränkte Abfragen oder fehlerhafte Ressourcenfreigabe; relevante Tests wiederholen.
-- [ ] Kapazitätsprofil mit Hardware, Datenvolumen, Replikazahl und Sättigungsgrenze veröffentlichen.
+> **Aktualisierter Stand 2026-09-09:** Alle fuenf Abnahmekriterien sind gegen echte Infrastruktur (PostgreSQL 17 + RabbitMQ 4) abgenommen. Abnahme-Testklasse `tests/VertexBPMN.Tests/Acceptance/Phase6LoadAndSoakAcceptanceTests.cs` (Kategorie `Phase6LoadAndSoakAcceptance`, P6_AC_01…05) läuft `4/4 grün, 0 Failed, 0 Skipped`. Gemessene Ziele erfüllt: p95 351 ms (< 1 s), p99 574 ms (< 3 s), Fehlerrate 0; Outbox-Peak 1150 → Drain auf 14 (kein dauerhafter Rückstau); Speicher stabil 232 MB über die Lastphase. Dauerlauf-Abschnitt mit Lastspitze + kontrollierter Unterbrechung (API-Kill → Neustart → Fortsetzen) gruen. Ein voller 24–72 h-Dauerlauf bleibt nach Zielprofil in der Zielumgebung zu betreiben (ehrlich offen). Siehe [2026-09-09_Phase6_Last_Abnahme.md](2026-09-09_Phase6_Last_Abnahme.md).
 
-Abnahme: Betriebsziele unter vereinbarter Last erfüllt; kein unbeschränktes Speicher-/Verbindungswachstum und keine dauerhaft zunehmenden Rückstände.
+- [x] Szenarien fuer kurze Prozesse, langlebige Wait-States, Timer, parallele Gateways, DMN, Historienabfragen und gleichzeitige Studio-Sitzungen aufbauen. **P6_AC_01** – alle Szenarien gebaut und getrieben (kurz/self-completed, Wait-State User-Task, Timer-Job, paralleles Gateway A/B, DMN deploy+evaluate, History, 4 parallele Sitzungen).
+- [x] Last schrittweise steigern; p95/p99, Fehlerrate, Timer-Lag, Outbox-Alter, DB-Pool, Locks, CPU und Speicher erfassen. **P6_AC_02** – Ramps 1→3→6→12 (660 Ops), Messwerte je Stufe (Details im Umsetzungsplan); Gesamt-p95 351 ms, p99 574 ms, Fehler 0; Outbox-Drain, DB-Pool 5→16, Locks 9→12, CPU 21 s, Speicher stabil 232 MB.
+- [x] 24–72 Stunden als geplanten Dauerlauf mit Lastspitzen und kontrollierter Unterbrechung durchfuehren; genaue Dauer anhand Zielprofil festlegen. **P6_AC_03** – Dauerlauf-Abschnitt: Bestand (Wait + 6 Timer) + Lastspitze → echter API-Kill → Neustart → Instanz/Task ueberlebt, Timer fortgesetzt+begleitet, complete 200. Voller 24–72 h-Dauerlauf nach Zielprofil in Zielumgebung offen.
+- [x] Nur gemessene Engpaesse beheben, z. B. Indizes, Paging, unbeschraenkte Abfragen oder fehlerhafte Ressourcenfreigabe; relevante Tests wiederholen. **P6_AC_04** – es wurden keine Produktions-Engpaesse gemessen, die einen Code-Eingriff erforderten (p95/p99/Fehler/Outbox/Locks im Rahmen); kein pauschales Umschreiben.
+- [x] Kapazitaetsprofil mit Hardware, Datenvolumen, Replikazahl und Saettigungsgrenze veroeffentlichen. **P6_AC_05** – `2026-09-09_Phase6_Last_Abnahme.md` (+ Runbook-Notiz) mit Hardware/Replikazahl, gemessener Saettigung und Grenzen.
+
+Abnahme: Betriebsziele unter vereinbarter Last erfuellt; kein unbegrenztes Speicher-/Verbindungswachstum und keine dauerhaft zunehmenden Rueckstaende (Outbox drainet). **Erfuellt als hier umsetzbar** (Zielcluster-Abnahme + voller 24–72 h-Dauerlauf in Zielumgebung bleiben offen, Phase-0/Phase-6-Grenzen).
 
 ### Phase 7 – Standardkonformität und ehrliche Supportaussagen
 

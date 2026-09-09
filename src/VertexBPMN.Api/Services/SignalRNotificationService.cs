@@ -36,10 +36,6 @@ public sealed class SignalRNotificationService : INotificationService
             await _hub.Clients.Group($"User_{n.RecipientId}")
                 .SendAsync("UserNotification", payload, cancellationToken);
 
-            // Global stream (optional)
-            await _hub.Clients.Group("Notifications")
-                .SendAsync("UserNotification", payload, cancellationToken);
-
             _logger.LogDebug("Sent notification to {Recipient} ({Category})", n.RecipientId, n.Category);
         }
     }

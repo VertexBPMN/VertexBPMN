@@ -44,6 +44,7 @@ public sealed class OAuth2FlowApiTests
         {
             tenantId,
             credentialId,
+            browserProof = new string('A', 44),
             config = new
             {
                 authorizationUrl = "https://auth.example/authorize",
@@ -60,9 +61,9 @@ public sealed class OAuth2FlowApiTests
         Assert.Contains("client_id=client-1", start.RedirectUrl, StringComparison.Ordinal);
         Assert.Contains($"state={Uri.EscapeDataString(start.State)}", start.RedirectUrl, StringComparison.Ordinal);
 
-        // The callback endpoint is anonymous; an unknown state must be rejected (401), never leak info.
-        var staleCallback = await _client.GetAsync(
-            $"/api/oauth2/callback?state=does-not-exist&code=abc", TestContext.Current.CancellationToken);
+        // Authenticated callback also requires the initiating browser proof.
+        var staleCallback = await _client.PostAsJsonAsync("/api/oauth2/callback",
+            new { state = "does-not-exist", code = "abc", browserProof = new string('A', 44) }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Unauthorized, staleCallback.StatusCode);
     }
 
@@ -74,6 +75,7 @@ public sealed class OAuth2FlowApiTests
         {
             tenantId,
             credentialId = "missing-credential",
+            browserProof = new string('A', 44),
             config = new
             {
                 authorizationUrl = "https://auth.example/authorize",

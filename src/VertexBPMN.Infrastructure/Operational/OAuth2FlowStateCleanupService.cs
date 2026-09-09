@@ -23,6 +23,8 @@ public sealed class OAuth2FlowStateCleanupService(
             {
                 await using var scope = scopeFactory.CreateAsyncScope();
                 var db = scope.ServiceProvider.GetRequiredService<BpmnDbContext>();
+                await db.RuntimeInbox.Where(s => s.Operation == "oauth2-browser-binding"
+                    && s.ReceivedAt <= DateTime.UtcNow.AddMinutes(-10)).ExecuteDeleteAsync(stoppingToken);
                 var removed = await db.OAuth2FlowStates
                     .Where(s => s.ExpiresAt <= DateTime.UtcNow)
                     .ExecuteDeleteAsync(stoppingToken);

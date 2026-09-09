@@ -44,4 +44,26 @@ public sealed class WorkflowTriggerRepository(BpmnDbContext db) : IWorkflowTrigg
 
     public Task SaveAsync(WorkflowTrigger trigger, CancellationToken cancellationToken = default)
         => db.SaveChangesAsync(cancellationToken);
+
+    public async Task<bool> TryReserveDeliveryAsync(Guid triggerId, string? tenantId, string deliveryId, CancellationToken cancellationToken = default)
+    {
+        var record = new RuntimeInboxMessage
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, TenantScope = tenantId ?? "$global",
+            Operation = $"webhook:{triggerId:N}", IdempotencyKey = deliveryId, ReceivedAt = DateTime.UtcNow
+        };
+        db.RuntimeInbox.Add(record);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+        catch (DbUpdateException ex) when (
+            ex.InnerException is Microsoft.Data.Sqlite.SqliteException { SqliteExtendedErrorCode: 2067 or 1555 }
+            || ex.InnerException is Npgsql.PostgresException { SqlState: "23505" })
+        {
+            db.Entry(record).State = EntityState.Detached;
+            return false;
+        }
+    }
 }

@@ -105,21 +105,44 @@ bpmnXml = $"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><pr
         Assert.Equal(credentialJson.Id, registered.CredentialId);
 
         var body = "{\"orderId\":\"ORDER-42\",\"amount\":42}";
-        var signature = Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(signingSecret), Encoding.UTF8.GetBytes(body))).ToLowerInvariant();
+        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var deliveryId = Guid.NewGuid().ToString("N");
+        var signature = Sign(signingSecret, endpoint, timestamp, deliveryId, body);
         using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/webhooks{endpoint}") { Content = new StringContent(body, Encoding.UTF8, "application/json") };
         request.Headers.Add("X-VertexBPMN-Signature", $"sha256={signature}");
+        request.Headers.Add("X-VertexBPMN-Timestamp", timestamp);
+        request.Headers.Add("X-VertexBPMN-Delivery-Id", deliveryId);
         var invoked = await _client.SendAsync(request, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, invoked.StatusCode);
 
+        using var replay = SignedWebhook(endpoint, signingSecret, body, timestamp, deliveryId);
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.SendAsync(replay, TestContext.Current.CancellationToken)).StatusCode);
+        using var expired = SignedWebhook(endpoint, signingSecret, body,
+            DateTimeOffset.UtcNow.AddMinutes(-6).ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture));
+        Assert.Equal(HttpStatusCode.Unauthorized, (await _client.SendAsync(expired, TestContext.Current.CancellationToken)).StatusCode);
+        var concurrentId = Guid.NewGuid().ToString("N");
+        using var duplicateA = SignedWebhook(endpoint, signingSecret, body, timestamp, concurrentId);
+        using var duplicateB = SignedWebhook(endpoint, signingSecret, body, timestamp, concurrentId);
+        var responses = await Task.WhenAll(_client.SendAsync(duplicateA, TestContext.Current.CancellationToken),
+            _client.SendAsync(duplicateB, TestContext.Current.CancellationToken));
+        Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Created);
+        Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Conflict);
+        foreach (var response in responses) response.Dispose();
+
         using var invalidRequest = new HttpRequestMessage(HttpMethod.Post, $"/api/webhooks{endpoint}") { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+        invalidRequest.Headers.Add("X-VertexBPMN-Timestamp", timestamp);
+        invalidRequest.Headers.Add("X-VertexBPMN-Delivery-Id", Guid.NewGuid().ToString("N"));
         invalidRequest.Headers.Add("X-VertexBPMN-Signature", "sha256=00");
         var invalid = await _client.SendAsync(invalidRequest, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Unauthorized, invalid.StatusCode);
 
+        using var tampered = SignedWebhook(endpoint, signingSecret, body, timestamp);
+        tampered.Headers.Remove("X-VertexBPMN-Delivery-Id");
+        tampered.Headers.Add("X-VertexBPMN-Delivery-Id", Guid.NewGuid().ToString("N"));
+        Assert.Equal(HttpStatusCode.Unauthorized, (await _client.SendAsync(tampered, TestContext.Current.CancellationToken)).StatusCode);
+
         const string malformedBody = "{\"amount\":\"not-an-integer\"}";
-        var malformedSignature = Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(signingSecret), Encoding.UTF8.GetBytes(malformedBody))).ToLowerInvariant();
-        using var malformedRequest = new HttpRequestMessage(HttpMethod.Post, $"/api/webhooks{endpoint}") { Content = new StringContent(malformedBody, Encoding.UTF8, "application/json") };
-        malformedRequest.Headers.Add("X-VertexBPMN-Signature", $"sha256={malformedSignature}");
+        using var malformedRequest = SignedWebhook(endpoint, signingSecret, malformedBody, timestamp);
         var malformed = await _client.SendAsync(malformedRequest, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, malformed.StatusCode);
     }
@@ -144,12 +167,14 @@ bpmnXml = $"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><pr
         Assert.False(string.IsNullOrWhiteSpace(hook.Secret));
         Assert.Equal($"/api/webhooks{path}", hook.InvokePath);
 
-        using var wrongRequest = new HttpRequestMessage(HttpMethod.Post, $"/api/webhooks{path}") { Content = new StringContent("{}", Encoding.UTF8, "application/json") };
+        using var wrongRequest = SignedWebhook(path, "wrong-secret", "{}",
+            DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture));
         wrongRequest.Headers.Add("X-VertexBPMN-Trigger-Secret", "wrong-secret");
         var wrong = await _client.SendAsync(wrongRequest, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Unauthorized, wrong.StatusCode);
 
-        using var okRequest = new HttpRequestMessage(HttpMethod.Post, $"/api/webhooks{path}") { Content = new StringContent("{}", Encoding.UTF8, "application/json") };
+        using var okRequest = SignedWebhook(path, hook.Secret, "{}",
+            DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture));
         okRequest.Headers.Add("X-VertexBPMN-Trigger-Secret", hook.Secret);
         var ok = await _client.SendAsync(okRequest, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, ok.StatusCode);
@@ -194,6 +219,21 @@ bpmnXml = $"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><pr
         Assert.NotNull(persisted);
         Assert.Equal("test", persisted!.Variables["origin"].ToString());
         Assert.Equal("received", persisted.Variables["status"].ToString());
+    }
+
+    private static string Sign(string secret, string path, string timestamp, string id, string body) =>
+        Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(secret),
+            Encoding.UTF8.GetBytes($"v1\nPOST\n{path}\n{timestamp}\n{id}\n{body}")));
+
+    private static HttpRequestMessage SignedWebhook(string path, string secret, string body, string timestamp, string? id = null)
+    {
+        id ??= Guid.NewGuid().ToString("N");
+        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/webhooks{path}")
+        { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+        request.Headers.Add("X-VertexBPMN-Timestamp", timestamp);
+        request.Headers.Add("X-VertexBPMN-Delivery-Id", id);
+        request.Headers.Add("X-VertexBPMN-Signature", "sha256=" + Sign(secret, path, timestamp, id, body));
+        return request;
     }
 
     private sealed record TriggerCreated(TriggerInfo Trigger, string Secret, string InvokePath);

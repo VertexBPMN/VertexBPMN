@@ -138,7 +138,42 @@ public sealed class GrpcContractTests : IDisposable
     }
 
     private static string EmptyCase(string id) =>
+
         $"<definitions xmlns='https://www.omg.org/spec/CMMN/20151109/MODEL'><case id='{id}'><casePlanModel id='plan'/></case></definitions>";
+
+    [Fact]
+    public async Task ReadOnlyCannotMutateThroughEitherGrpcAdapter()
+    {
+        var headers = new Metadata { { "x-test-user", "reader" }, { "x-test-tenant", "tenant-a" } };
+        var primary = new api::VertexBPMN.Api.Grpc.VertexBPMNService.VertexBPMNServiceClient(_channel);
+        var mcp = new api::VertexBPMN.Api.Grpc.Mcp.VertexBPMNMCPService.VertexBPMNMCPServiceClient(_channel);
+        var ct = TestContext.Current.CancellationToken;
+        var first = await Assert.ThrowsAsync<RpcException>(() => primary.RegisterCmmnModelAsync(
+            new ApiRegisterCmmnRequest { CaseId = "forbidden", CmmnXml = EmptyCase("forbidden") }, headers, cancellationToken: ct).ResponseAsync);
+        Assert.Equal(StatusCode.PermissionDenied, first.StatusCode);
+        var second = await Assert.ThrowsAsync<RpcException>(() => mcp.ExecuteCaseAsync(
+            new McpExecuteCaseRequest { CaseId = "forbidden" }, headers, cancellationToken: ct).ResponseAsync);
+        Assert.Equal(StatusCode.PermissionDenied, second.StatusCode);
+    }
+
+    [Fact]
+    public async Task McpHistory_DoesNotExposeForeignTenantInstance()
+    {
+        var primary = new api::VertexBPMN.Api.Grpc.VertexBPMNService.VertexBPMNServiceClient(_channel);
+        var mcp = new api::VertexBPMN.Api.Grpc.Mcp.VertexBPMNMCPService.VertexBPMNMCPServiceClient(_channel);
+        var ct = TestContext.Current.CancellationToken;
+        var key = "isolated-" + Guid.NewGuid().ToString("N");
+        await primary.RegisterCmmnModelAsync(new ApiRegisterCmmnRequest { CaseId = key, CmmnXml = EmptyCase(key) }, cancellationToken: ct);
+        var started = await primary.ExecuteCaseAsync(new ApiExecuteCaseRequest { CaseId = key }, cancellationToken: ct);
+        var foreign = new Metadata { { "x-test-user", "foreign-reader" }, { "x-test-tenant", "other-tenant" } };
+        var denied = await Assert.ThrowsAsync<RpcException>(() => mcp.GetHistoricalContextAsync(
+            new McpHistoricalContextRequest { CaseId = started.CaseInstanceId }, foreign, cancellationToken: ct).ResponseAsync);
+        Assert.Equal(StatusCode.NotFound, denied.StatusCode);
+        var missingTenant = new Metadata { { "x-test-user", "reader" }, { "x-test-tenant", " " } };
+        var missing = await Assert.ThrowsAsync<RpcException>(() => mcp.GetHistoricalContextAsync(
+            new McpHistoricalContextRequest { CaseId = started.CaseInstanceId }, missingTenant, cancellationToken: ct).ResponseAsync);
+        Assert.Equal(StatusCode.PermissionDenied, missing.StatusCode);
+    }
 
     private static string InteractiveCase(string id) => $"""
         <definitions xmlns="https://www.omg.org/spec/CMMN/20151109/MODEL">

@@ -19,10 +19,15 @@ public sealed class OAuth2Controller(IOAuth2CredentialFlowService flowService) :
         var tenant = ResolveTenant(request.TenantId, out var forbidden);
         if (forbidden) return Forbid();
         if (tenant is null) return BadRequest(new ProblemDetails { Title = "TenantId is required." });
+        var subject = Subject();
+        if (subject is null) return Forbid();
+        if (request.BrowserProof is null || request.BrowserProof.Length is < 43 or > 256)
+            return BadRequest(new ProblemDetails { Title = "A per-browser OAuth2 proof is required." });
 
         try
         {
-            var start = await flowService.StartAuthorizationAsync(tenant, request.CredentialId, request.Config, cancellationToken);
+            var start = await flowService.StartAuthorizationAsync(tenant, request.CredentialId, request.Config, cancellationToken,
+                new OAuth2FlowBinding(subject, request.BrowserProof));
             return Ok(start);
         }
         catch (ArgumentException exception)
@@ -31,14 +36,17 @@ public sealed class OAuth2Controller(IOAuth2CredentialFlowService flowService) :
         }
     }
 
-    [HttpGet("callback")]
-    [AllowAnonymous]
+    [HttpPost("callback")]
+    [Authorize(Policy = "AdminOnly")]
     public async Task<IActionResult> Callback(
-        [FromQuery] string state,
-        [FromQuery] string code,
+        [FromBody] OAuth2CallbackRequest request,
         CancellationToken cancellationToken)
     {
-        var completed = await flowService.CompleteAuthorizationAsync(state, code, cancellationToken);
+        var subject = Subject();
+        if (subject is null) return Forbid();
+        if (string.IsNullOrWhiteSpace(request.BrowserProof) || request.BrowserProof.Length > 256) return Unauthorized();
+        var completed = await flowService.CompleteAuthorizationAsync(request.State, request.Code, cancellationToken,
+            new OAuth2FlowBinding(subject, request.BrowserProof));
         if (!completed)
             return Unauthorized(new ProblemDetails { Title = "Invalid or expired OAuth2 authorization." });
 
@@ -53,8 +61,18 @@ public sealed class OAuth2Controller(IOAuth2CredentialFlowService flowService) :
         return User.IsInRole("Admin") ? requested ?? claimTenant : claimTenant;
     }
 
+    private string? Subject()
+    {
+        var claim = User.FindFirst(ClaimTypes.NameIdentifier) ?? User.FindFirst("sub") ?? User.FindFirst(ClaimTypes.Name);
+        return claim is null || string.IsNullOrWhiteSpace(claim.Value) ? null
+            : System.Text.Json.JsonSerializer.Serialize(new[] { claim.Issuer, claim.Value, User.FindFirstValue("tenant_id") });
+    }
+
+    public sealed record OAuth2CallbackRequest(string State, string Code, string BrowserProof);
+
     public sealed record OAuth2AuthorizeRequest(
         string? TenantId,
         string CredentialId,
-        OAuth2AuthorizationConfig Config);
+        OAuth2AuthorizationConfig Config,
+        string? BrowserProof = null);
 }

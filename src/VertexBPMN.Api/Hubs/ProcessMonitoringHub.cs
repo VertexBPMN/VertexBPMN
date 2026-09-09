@@ -1,5 +1,8 @@
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
+using VertexBPMN.Api.Security;
+using VertexBPMN.Domain.Interfaces;
 using Task = System.Threading.Tasks.Task;
 
 namespace VertexBPMN.Api.Hubs;
@@ -8,14 +11,16 @@ namespace VertexBPMN.Api.Hubs;
 /// SignalR Hub for real-time process monitoring and notifications
 /// Olympic-level feature: Enterprise Scalability - Real-time monitoring
 /// </summary>
-[Authorize]
+[Authorize(Policy = "TenantReadOnly")]
 public class ProcessMonitoringHub : Hub
 {
     private readonly ILogger<ProcessMonitoringHub> _logger;
+    private readonly IRuntimeService _runtime;
 
-    public ProcessMonitoringHub(ILogger<ProcessMonitoringHub> logger)
+    public ProcessMonitoringHub(ILogger<ProcessMonitoringHub> logger, IRuntimeService runtime)
     {
         _logger = logger;
+        _runtime = runtime;
     }
 
     /// <summary>
@@ -23,6 +28,8 @@ public class ProcessMonitoringHub : Hub
     /// </summary>
     public async Task JoinProcessGroup(string processInstanceId)
     {
+        var id = await HubTenantAccess.RequireProcessAsync(Context, _runtime, processInstanceId);
+        processInstanceId = id.ToString();
         await Groups.AddToGroupAsync(Context.ConnectionId, $"Process_{processInstanceId}");
         _logger.LogInformation("Client {ConnectionId} joined process group {ProcessInstanceId}",
             Context.ConnectionId, processInstanceId);
@@ -43,6 +50,7 @@ public class ProcessMonitoringHub : Hub
     /// </summary>
     public async Task JoinTenantGroup(string tenantId)
     {
+        HubTenantAccess.RequireTenant(Context, tenantId);
         await Groups.AddToGroupAsync(Context.ConnectionId, $"Tenant_{tenantId}");
         _logger.LogInformation("Client {ConnectionId} joined tenant group {TenantId}",
             Context.ConnectionId, tenantId);
@@ -51,8 +59,10 @@ public class ProcessMonitoringHub : Hub
     /// <summary>
     /// Join workers group for system administrators
     /// </summary>
+    [Authorize(Policy = "AdminOnly")]
     public async Task JoinWorkersGroup()
     {
+        if (Context.User?.IsInRole("Admin") != true) throw new HubException("Access denied.");
         await Groups.AddToGroupAsync(Context.ConnectionId, "Workers");
         _logger.LogInformation("Client {ConnectionId} joined workers monitoring group", Context.ConnectionId);
     }
@@ -62,8 +72,10 @@ public class ProcessMonitoringHub : Hub
     /// </summary>
     public async Task JoinUserChannel(string userId)
     {
+        var own = Context.User?.FindFirstValue(ClaimTypes.NameIdentifier) ?? Context.User?.FindFirstValue("sub") ?? Context.User?.Identity?.Name;
+        if (string.IsNullOrWhiteSpace(own) || !string.Equals(own, userId, StringComparison.Ordinal))
+            throw new HubException("Access denied.");
         await Groups.AddToGroupAsync(Context.ConnectionId, $"User_{userId}");
-        await Groups.AddToGroupAsync(Context.ConnectionId, "Notifications");
         _logger.LogInformation("Connection {ConnectionId} joined user notification groups for {UserId}", Context.ConnectionId, userId);
     }
 
@@ -97,6 +109,7 @@ public class ProcessMonitoringHub : Hub
     /// <summary>
     /// Notify process started
     /// </summary>
+    [Authorize(Policy = "AdminOnly")]
     public async Task NotifyProcessStarted(string processInstanceId, string processDefinitionKey, string tenantId)
     {
         var notification = new
@@ -117,6 +130,7 @@ public class ProcessMonitoringHub : Hub
     /// <summary>
     /// Notify task completed
     /// </summary>
+    [Authorize(Policy = "AdminOnly")]
     public async Task NotifyTaskCompleted(string processInstanceId, string taskId, string taskDefinitionKey, string tenantId)
     {
         var notification = new
@@ -138,6 +152,7 @@ public class ProcessMonitoringHub : Hub
     /// <summary>
     /// Notify process completed
     /// </summary>
+    [Authorize(Policy = "AdminOnly")]
     public async Task NotifyProcessCompleted(string processInstanceId, string processDefinitionKey, string tenantId)
     {
         var notification = new
@@ -158,6 +173,7 @@ public class ProcessMonitoringHub : Hub
     /// <summary>
     /// Notify incident occurred
     /// </summary>
+    [Authorize(Policy = "AdminOnly")]
     public async Task NotifyIncident(string processInstanceId, string incidentType, string message, string tenantId)
     {
         var notification = new
@@ -172,7 +188,7 @@ public class ProcessMonitoringHub : Hub
 
         await Clients.Group($"Process_{processInstanceId}").SendAsync("ProcessEvent", notification);
         await Clients.Group($"Tenant_{tenantId}").SendAsync("ProcessEvent", notification);
-        await Clients.All.SendAsync("SystemAlert", notification); // System-wide alert
+        await Clients.Group("Workers").SendAsync("SystemAlert", notification);
 
         _logger.LogWarning("Notified incident in process {ProcessInstanceId}: {IncidentType} - {Message}",
             processInstanceId, incidentType, message);
@@ -181,6 +197,7 @@ public class ProcessMonitoringHub : Hub
     /// <summary>
     /// Broadcast system message to all connected clients
     /// </summary>
+    [Authorize(Policy = "AdminOnly")]
     public async Task BroadcastSystemMessage(string message, string severity = "Info")
     {
         var notification = new
@@ -198,9 +215,10 @@ public class ProcessMonitoringHub : Hub
     /// <summary>
     /// Send performance metrics update
     /// </summary>
+    [Authorize(Policy = "AdminOnly")]
     public async Task SendPerformanceUpdate(object metrics)
     {
-        await Clients.All.SendAsync("PerformanceUpdate", new
+        await Clients.Group("Workers").SendAsync("PerformanceUpdate", new
         {
             Type = "PerformanceMetrics",
             Data = metrics,

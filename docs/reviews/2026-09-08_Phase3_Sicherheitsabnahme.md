@@ -6,7 +6,7 @@ Datum: 2026-09-08 · Kandidat: `master` (Arbeitsstand nach Phase-3-Remediation) 
 
 **Korrigierter Stand 2026-09-09: Sicherheitsabnahme nicht abgeschlossen.** Das Review hat zusätzliche hohe Lücken bei fehlenden Tenant-Claims, Debug-Zugriffen, Rollenprüfungen und der Ausführung bereits gespeicherter C#-Prozesse aufgedeckt. Diese Pfade wurden nachgehärtet. Der untenstehende Nachweis vom 2026-09-08 ist historisch und kein Nachweis für den aktuellen Arbeitsstand.
 
-Die pauschale Aussage, alle autonom behebbaren Punkte seien abgeschlossen, wird zurückgenommen. Neben Req 2/Req 6 sind M3/M4/M6 und weitergehende Connector-Nachweise offen. Aktuelle Korrekturen, Tests und nächste Schritte: [Nachprüfung vom 2026-09-09](2026-09-09_Phase3_Sicherheitsnachpruefung.md).
+Die pauschale Abschlussaussage wird zurückgenommen. Die zunächst offenen technischen Maßnahmen M3/M4/M6 sowie Connector- und Adapter-Nachbesserungen wurden in einer weiteren Arbeitsrunde umgesetzt. Aktueller Nachweis und notwendige Vertragsumstellungen: [Restpunkte vom 2026-09-09](2026-09-09_Phase3_Restpunkte_Abschluss.md). Req 2/Req 6 und die umfassende Zielumgebungsfreigabe bleiben offen. Die folgenden Ergebnisse und Befundbewertungen sind historisch.
 
 ## 2. Verifizierter Nachweis (reale Ausführung, 2026-09-08)
 

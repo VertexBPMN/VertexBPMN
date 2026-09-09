@@ -20,11 +20,13 @@ public sealed class WebhookIngressController(IWorkflowTriggerService triggerServ
     {
         await using var content = new MemoryStream();
         await Request.Body.CopyToAsync(content, cancellationToken);
-        var result = await triggerService.InvokeWebhookAsync("/" + (path ?? string.Empty), Request.Method, triggerSecret, signature, content.ToArray(), cancellationToken);
+        var result = await triggerService.InvokeWebhookAsync("/" + (path ?? string.Empty), Request.Method, triggerSecret, signature, content.ToArray(), cancellationToken,
+            Request.Headers["X-VertexBPMN-Timestamp"].ToString(), Request.Headers["X-VertexBPMN-Delivery-Id"].ToString());
         return result.Status switch
         {
             WorkflowTriggerInvocationStatus.Started => Created($"/api/runtime/{result.ProcessInstance!.Id}", result.ProcessInstance),
             WorkflowTriggerInvocationStatus.InvalidSecret => Unauthorized(),
+            WorkflowTriggerInvocationStatus.ReplayRejected => Conflict(new ProblemDetails { Title = "Webhook delivery has already been accepted." }),
             WorkflowTriggerInvocationStatus.InvalidPayload => BadRequest(new ProblemDetails { Title = "Webhook payload does not match its declared schema." }),
             WorkflowTriggerInvocationStatus.NotFound or WorkflowTriggerInvocationStatus.Disabled => NotFound(),
             WorkflowTriggerInvocationStatus.ProcessDefinitionNotFound => UnprocessableEntity(new ProblemDetails { Title = "Process definition not found" }),

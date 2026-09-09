@@ -141,47 +141,48 @@ public static class ServiceTaskRegistryExtensions
         // M1: disable automatic redirect following so a 3xx Location cannot be used
         // to bypass the ConnectorDestination SSRF guard (redirect back to a private
         // address). Connectors that need redirects must handle them explicitly.
+        services.TryAddSingleton<IConnectorNetworkTransport, ConnectorNetworkTransport>();
         services.AddSingleton<SocketsHttpHandler>(
-            _ => new SocketsHttpHandler
+            provider => new SocketsHttpHandler
             {
                 AllowAutoRedirect = false,
+                // A proxy would resolve the ultimate destination outside our validated-IP path.
+                UseProxy = false,
+                UseCookies = false,
+                ConnectTimeout = TimeSpan.FromSeconds(10),
                 // M5: close the DNS-rebinding/TOCTOU gap between SSRF validation and the actual
                 // connection. Resolve + validate here and connect to that same validated address
                 // (SNI stays the hostname), so a post-check rebind to a private/internal address
                 // can never be reached.
                 ConnectCallback = async (context, cancellationToken) =>
                 {
-                    var addresses = await ConnectorDestinationPolicy.ResolveValidatedAddressesAsync(
-                        context.DnsEndPoint.Host, cancellationToken);
-                    Socket? connected = null;
+                    var network = provider.GetRequiredService<IConnectorNetworkTransport>();
+                    var addresses = await network.ResolveAsync(context.DnsEndPoint.Host, cancellationToken);
+                    ConnectorDestinationPolicy.ValidateResolvedAddresses(context.DnsEndPoint.Host, addresses);
                     Exception? lastError = null;
                     foreach (var address in addresses)
                     {
-                        var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
                         try
                         {
-                            await socket.ConnectAsync(new IPEndPoint(address, context.DnsEndPoint.Port), cancellationToken);
-                            connected = socket;
-                            break;
+                            return await network.ConnectAsync(new IPEndPoint(address, context.DnsEndPoint.Port), cancellationToken);
                         }
                         catch (OperationCanceledException)
                         {
-                            socket.Dispose();
                             throw;
                         }
                         catch (SocketException exception)
                         {
-                            socket.Dispose();
                             lastError = exception;
                         }
                     }
-                    if (connected is null)
-                        throw lastError ?? new HttpRequestException("No reachable validated destination address.");
-                    return new NetworkStream(connected, ownsSocket: true);
+                    throw lastError ?? new HttpRequestException("No reachable validated destination address.");
                 }
             });
         services.AddSingleton<HttpClient>(
             provider => new HttpClient(provider.GetRequiredService<SocketsHttpHandler>()));
+        services.AddHttpClient("VertexBPMN.PublicEndpoints")
+            .ConfigurePrimaryHttpMessageHandler(provider => provider.GetRequiredService<SocketsHttpHandler>())
+            .SetHandlerLifetime(Timeout.InfiniteTimeSpan);
         services.AddSingleton<IConnectorExecutor, HttpConnectorExecutor>();
         services.AddSingleton<IConnectorExecutor, DelayConnectorExecutor>();
         services.AddSingleton<IConnectorExecutor, EmailConnectorExecutor>();

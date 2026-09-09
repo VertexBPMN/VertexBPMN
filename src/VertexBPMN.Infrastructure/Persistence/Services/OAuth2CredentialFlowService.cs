@@ -30,8 +30,12 @@ public sealed class OAuth2CredentialFlowService(
         string tenantId,
         string credentialId,
         OAuth2AuthorizationConfig config,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        OAuth2FlowBinding? binding = null)
     {
+        if (!Uri.TryCreate(config.AuthorizationUrl, UriKind.Absolute, out var authorizationUri)
+            || authorizationUri.Scheme != "https" || !string.IsNullOrEmpty(authorizationUri.Fragment))
+            throw new ArgumentException("OAuth2 authorization URL must be an absolute HTTPS URL without a fragment.");
         var credential = await credentialService.GetAsync(tenantId, credentialId, cancellationToken);
         if (credential is null)
             throw new ArgumentException("The credential does not exist.");
@@ -61,11 +65,22 @@ public sealed class OAuth2CredentialFlowService(
             CreatedAt = now,
             ExpiresAt = now.Add(StateTtl)
         });
+        if (binding is not null)
+        {
+            if (string.IsNullOrWhiteSpace(binding.Subject) || binding.BrowserProof.Length is < 43 or > 256)
+                throw new ArgumentException("OAuth2 requires an authenticated subject and a per-browser proof.");
+            db.RuntimeInbox.Add(new RuntimeInboxMessage
+            {
+                Id = Guid.NewGuid(), Operation = "oauth2-browser-binding", IdempotencyKey = state,
+                TenantId = tenantId, TenantScope = tenantId, ReceivedAt = now,
+                Result = JsonSerializer.Serialize(new OAuth2FlowBinding(binding.Subject, HashProof(binding.BrowserProof)))
+            });
+        }
         await db.SaveChangesAsync(cancellationToken);
 
         var redirectUrl =
             $"{config.AuthorizationUrl}" +
-            $"?response_type=code" +
+            $"{(config.AuthorizationUrl.Contains('?') ? "&" : "?")}response_type=code" +
             $"&client_id={Uri.EscapeDataString(config.ClientId)}" +
             $"&redirect_uri={Uri.EscapeDataString(config.RedirectUri)}" +
             $"&scope={Uri.EscapeDataString(config.Scopes)}" +
@@ -78,7 +93,8 @@ public sealed class OAuth2CredentialFlowService(
     public async Task<bool> CompleteAuthorizationAsync(
         string state,
         string code,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        OAuth2FlowBinding? binding = null)
     {
         if (string.IsNullOrWhiteSpace(state) || string.IsNullOrWhiteSpace(code))
             return false;
@@ -96,6 +112,16 @@ public sealed class OAuth2CredentialFlowService(
             return false;
         }
 
+        var browserRecord = await db.RuntimeInbox.SingleOrDefaultAsync(x =>
+            x.Operation == "oauth2-browser-binding" && x.IdempotencyKey == state && x.TenantId == record.TenantId, cancellationToken);
+        var expectedBinding = browserRecord?.Result is { } serialized ? JsonSerializer.Deserialize<OAuth2FlowBinding>(serialized) : null;
+        if (expectedBinding is not null || binding is not null)
+        {
+            if (expectedBinding is null || binding is null || !string.Equals(expectedBinding.Subject, binding.Subject, StringComparison.Ordinal)
+                || !CryptographicOperations.FixedTimeEquals(Convert.FromHexString(expectedBinding.BrowserProof),
+                    Convert.FromHexString(HashProof(binding.BrowserProof)))) return false;
+        }
+
         var clientSecret = await credentialService.ResolveSecretAsync(
             record.TenantId, record.CredentialId, "client_secret", cancellationToken);
         if (clientSecret is null)
@@ -104,7 +130,7 @@ public sealed class OAuth2CredentialFlowService(
             return false;
         }
 
-        var http = httpClientFactory.CreateClient();
+        var http = httpClientFactory.CreateClient("VertexBPMN.PublicEndpoints");
         var form = new Dictionary<string, string>
         {
             ["grant_type"] = "authorization_code",
@@ -121,6 +147,13 @@ public sealed class OAuth2CredentialFlowService(
             return false;
         }
 
+        // Consume before contacting the provider. EF checks affected rows on DELETE:
+        // concurrent callbacks cannot both win, across API replicas as well.
+        db.OAuth2FlowStates.Remove(record);
+        if (browserRecord is not null) db.RuntimeInbox.Remove(browserRecord);
+        try { await db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException) { return false; }
+
         HttpResponseMessage response;
         try
         {
@@ -132,6 +165,7 @@ public sealed class OAuth2CredentialFlowService(
             return false;
         }
 
+        using var responseLifetime = response;
         if (!response.IsSuccessStatusCode)
         {
             Logger().LogWarning("OAuth2 token endpoint returned {Status} for credential {CredentialId}",
@@ -139,7 +173,7 @@ public sealed class OAuth2CredentialFlowService(
             return false;
         }
 
-        var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
         var root = json.RootElement;
         var accessToken = root.TryGetProperty("access_token", out var at) ? at.GetString() : null;
         if (string.IsNullOrWhiteSpace(accessToken))
@@ -159,9 +193,6 @@ public sealed class OAuth2CredentialFlowService(
         if (!string.IsNullOrWhiteSpace(refreshToken))
             await RotateAsync(record.TenantId, record.CredentialId, "refresh_token", refreshToken, cancellationToken);
 
-        db.OAuth2FlowStates.Remove(record);
-        await db.SaveChangesAsync(cancellationToken);
-
         await auditLogService.RecordAsync(new AuditLog
         {
             Timestamp = DateTimeOffset.UtcNow,
@@ -175,6 +206,8 @@ public sealed class OAuth2CredentialFlowService(
         Logger().LogInformation("OAuth2 token stored for credential {CredentialId}", record.CredentialId);
         return true;
     }
+
+    private static string HashProof(string proof) => Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(proof)));
 
     public async Task<string?> ResolveValidAccessTokenAsync(
         string tenantId,
@@ -200,7 +233,7 @@ public sealed class OAuth2CredentialFlowService(
         if (clientId is null || clientSecret is null)
             return null;
 
-        var http = httpClientFactory.CreateClient();
+        var http = httpClientFactory.CreateClient("VertexBPMN.PublicEndpoints");
         var form = new Dictionary<string, string>
         {
             ["grant_type"] = "refresh_token",
@@ -257,7 +290,7 @@ public sealed class OAuth2CredentialFlowService(
 
     private static async Task<Uri?> TryGetPublicEndpointAsync(string url, CancellationToken cancellationToken)
     {
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var endpoint))
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var endpoint) || endpoint.Scheme != "https" || !string.IsNullOrEmpty(endpoint.UserInfo))
             return null;
         try
         {
@@ -293,6 +326,10 @@ public sealed class OAuth2CredentialFlowService(
             return;
 
         db.OAuth2FlowStates.RemoveRange(expired);
+        var expiredStates = expired.Select(x => x.State).ToArray();
+        var bindings = await db.RuntimeInbox.Where(x => x.Operation == "oauth2-browser-binding"
+            && x.TenantId == tenantId && expiredStates.Contains(x.IdempotencyKey)).ToListAsync(cancellationToken);
+        db.RuntimeInbox.RemoveRange(bindings);
         await db.SaveChangesAsync(cancellationToken);
     }
 

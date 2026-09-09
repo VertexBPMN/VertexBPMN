@@ -1,0 +1,38 @@
+@page "/oauth2/callback"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+@inject ICredentialService Credentials
+@inject IJSRuntime Js
+@inject Microsoft.AspNetCore.Components.NavigationManager Navigation
+
+<PageTitle>OAuth2 authorization</PageTitle>
+<StudioPageHeader Title="OAuth2 authorization" Eyebrow="Credentials" Description="@_message" />
+<MudLink Href="credentials">Return to credentials</MudLink>
+
+@code {
+    [Microsoft.AspNetCore.Components.SupplyParameterFromQuery(Name = "state")] public string? State { get; set; }
+    [Microsoft.AspNetCore.Components.SupplyParameterFromQuery(Name = "code")] public string? Code { get; set; }
+    private string _message = "Checking this browser session…";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(State) || string.IsNullOrWhiteSpace(Code))
+                throw new InvalidOperationException();
+            var key = "vertex.oauth2." + State;
+            var proof = await Js.InvokeAsync<string?>("sessionStorage.getItem", key);
+            await Js.InvokeVoidAsync("sessionStorage.removeItem", key);
+            // Remove authorization code/state from browser history after capturing them.
+            await Js.InvokeVoidAsync("history.replaceState", (object?)null, "", new Uri(new Uri(Navigation.BaseUri), "oauth2/callback").AbsoluteUri);
+            if (string.IsNullOrWhiteSpace(proof)) throw new InvalidOperationException();
+            await Credentials.CompleteOAuth2AuthorizationAsync(State, Code, proof);
+            _message = "Authorization completed. The credential tokens have been stored securely.";
+        }
+        catch
+        {
+            _message = "Authorization could not be completed. Start again from Credentials in this browser tab using the original account.";
+        }
+        StateHasChanged();
+    }
+}

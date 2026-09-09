@@ -49,7 +49,8 @@ bestätigt durch `P8_AC_02_Alert_Runbook_And_Trace_Correlation_Exist_Secret_Free
 
 1. **P8_AC_03 Pilot:** begrenzter Pilotbetrieb mit realen, vereinbarten Geschäftsabläufen und
    vereinbarter Beobachtungsdauer benötigt die **Zielumgebung** (Phase-0-Profil: Hosting/OS, IdP,
-   Backup-/Alarmverantwortliche offen). **Nicht lokal abnahmefähig; offen.**
+   Backup-/Alarmverantwortliche offen). **Nicht lokal abnahmefähig; offen.** Entscheidungsvorlage:
+   [2026-09-09_Phase0_Zielumgebungsentscheidung.md](2026-09-09_Phase0_Zielumgebungsentscheidung.md).
 2. **P8_AC_04 Zielumgebungs-Installation:** Artefakte lokal gebaut/verpackt und CLI aus Paket in
    frischer Umgebung getestet; Installation auf die tatsächliche Zielumgebung offen.
 3. **Echter IdP / Secret Store / TLS:** Phase-3-Rest; produktive Authentifizierung separat

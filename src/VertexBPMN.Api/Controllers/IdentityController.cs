@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using VertexBPMN.Domain.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 
 namespace VertexBPMN.Api.Controllers;
 
@@ -17,6 +18,7 @@ public class IdentityController : ControllerBase
     }
 
     [HttpGet("list-tenants")]
+    [Authorize(Policy = "AdminOnly")]
     public IAsyncEnumerable<TenantInfo> ListTenants()
         => _identityService.ListTenantsAsync();
 

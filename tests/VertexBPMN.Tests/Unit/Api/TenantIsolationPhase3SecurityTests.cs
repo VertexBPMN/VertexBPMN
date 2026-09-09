@@ -230,6 +230,93 @@ public sealed class TenantIsolationPhase3SecurityTests
 
     // ---------- Helpers ----------
 
+    [Fact]
+    public async Task ForeignDebugSession_CannotBeReadOrMutated()
+    {
+        var instance = new ProcessInstance { Id = Guid.NewGuid(), TenantId = TenantB };
+        var session = new VertexBPMN.Domain.Entities.Debugging.DebugSession
+        { Id = Guid.NewGuid(), ProcessInstanceId = instance.Id };
+        var runtime = new Mock<IRuntimeService>(MockBehavior.Strict);
+        runtime.Setup(x => x.GetByIdAsync(instance.Id, It.IsAny<CancellationToken>()))
+            .Returns(new ValueTask<ProcessInstance?>(instance));
+        var debug = new Mock<IVisualDebuggingService>(MockBehavior.Strict);
+        debug.Setup(x => x.GetDebugSessionAsync(session.Id)).ReturnsAsync(session);
+        var controller = new VisualDebugController(debug.Object,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<VisualDebugController>.Instance, runtime.Object)
+        { ControllerContext = ContextFor(TenantA) };
+        Assert.IsType<NotFoundResult>((await controller.GetDebugSession(session.Id)).Result);
+        Assert.IsType<NotFoundResult>(await controller.StopDebuggingSession(session.Id));
+        Assert.IsType<NotFoundResult>(await controller.SetBreakpoint(session.Id, "task"));
+        Assert.IsType<NotFoundResult>(await controller.RemoveBreakpoint(session.Id, "task"));
+        Assert.IsType<NotFoundResult>((await controller.StepOver(session.Id)).Result);
+        Assert.IsType<NotFoundResult>((await controller.StepInto(session.Id)).Result);
+        Assert.IsType<NotFoundResult>((await controller.StepOut(session.Id)).Result);
+        Assert.IsType<NotFoundResult>((await controller.ContinueExecution(session.Id)).Result);
+        Assert.IsType<NotFoundResult>((await controller.InspectVariables(session.Id)).Result);
+        Assert.IsType<NotFoundResult>((await controller.StartDebuggingSession(instance.Id)).Result);
+        Assert.IsType<NotFoundResult>((await controller.GetExecutionTrace(instance.Id)).Result);
+        debug.Verify(x => x.GetDebugSessionAsync(session.Id), Times.Exactly(9));
+        debug.VerifyNoOtherCalls();
+    }
+
+    [Theory]
+    [InlineData("tenant-b")]
+    [InlineData(null)]
+    public async Task DebuggerState_ForeignOrUnscopedInstance_IsNotExposed(string? instanceTenant)
+    {
+        var instance = new ProcessInstance { Id = Guid.NewGuid(), TenantId = instanceTenant };
+        var runtime = new Mock<IRuntimeService>(MockBehavior.Strict);
+        runtime.Setup(x => x.GetByIdAsync(instance.Id, It.IsAny<CancellationToken>()))
+            .Returns(new ValueTask<ProcessInstance?>(instance));
+        var controller = new VisualDebuggerController(runtime.Object, Mock.Of<IVisualDebugStepService>())
+        { ControllerContext = ContextFor(TenantA) };
+        Assert.IsType<NotFoundResult>((await controller.GetInstanceState(instance.Id, default)).Result);
+    }
+
+    [Fact]
+    public async Task AnalyticsExport_PinsTenantToClaim()
+    {
+        var service = new Mock<IPredictiveAnalyticsService>(MockBehavior.Strict);
+        service.Setup(x => x.ExportTrainingDataAsync(null, TenantA)).ReturnsAsync("safe-data");
+        var controller = new MLAnalyticsController(service.Object,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<MLAnalyticsController>.Instance)
+        { ControllerContext = ContextFor(TenantA) };
+        Assert.IsType<FileContentResult>(await controller.ExportTrainingData(null, TenantB));
+        service.Verify(x => x.ExportTrainingDataAsync(null, TenantA), Times.Once);
+    }
+
+    [Fact]
+    public async Task AnalyticsExport_MissingTenant_DoesNotQueryGlobalData()
+    {
+        var service = new Mock<IPredictiveAnalyticsService>(MockBehavior.Strict);
+        var controller = new MLAnalyticsController(service.Object,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<MLAnalyticsController>.Instance)
+        { ControllerContext = ContextFor("") };
+        Assert.IsType<ForbidResult>(await controller.ExportTrainingData());
+        service.VerifyNoOtherCalls();
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
+    public async Task Jobs_WithoutValidTenant_FailClosed(string? tenant)
+    {
+        var context = ContextFor(tenant ?? "");
+        if (tenant is null)
+        {
+            var identity = (ClaimsIdentity)context.HttpContext.User.Identity!;
+            identity.RemoveClaim(identity.FindFirst("tenant_id")!);
+        }
+        var repo = new Mock<IJobRepository>(MockBehavior.Strict);
+        var controller = new VertexJobController(repo.Object) { ControllerContext = context };
+        var rows = new List<JobDto>();
+        await foreach (var row in controller.GetAll()) rows.Add(row);
+        Assert.Empty(rows);
+        Assert.IsType<ForbidResult>((await controller.GetById(Guid.NewGuid())).Result);
+        repo.VerifyNoOtherCalls();
+    }
+
     private static Job Job(string tenantId) => new()
     {
         Id = Guid.NewGuid(),

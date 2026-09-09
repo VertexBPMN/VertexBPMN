@@ -121,6 +121,7 @@ public class CustomWebApplicationFactory : WebApplicationFactory<VertexBPMN.Api.
                 options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
                 options.AddPolicy("ProcessManager", policy => policy.RequireRole("Admin", "ProcessManager"));
                 options.AddPolicy("ReadOnly", policy => policy.RequireRole("Admin", "ProcessManager", "ReadOnly"));
+                VertexBPMN.Api.Security.SecurityConfiguration.AddTenantReadOnlyPolicy(options);
             });
 
             // Remove existing DbContext options so we can inject unified connection

@@ -35,6 +35,8 @@ namespace VertexBPMN.Api.Controllers
             var instance = await _runtimeService.GetByIdAsync(id, cancellationToken);
             if (instance == null) return NotFound();
 
+            if (!CanAccessTenant(instance.TenantId)) return NotFound();
+
             // Fetch real BPMN XML for the process definition
             string bpmnXml = string.Empty;
             if (instance.ProcessDefinitionId != Guid.Empty)
@@ -92,6 +94,7 @@ namespace VertexBPMN.Api.Controllers
         /// Step the process instance to the next activity (Step-API).
         /// </summary>
         [HttpPost("instance/{id}/step")]
+        [Authorize(Policy = "ProcessManager")]
         [ProducesResponseType(typeof(VisualDebugStepResult), 200)]
         public async Task<ActionResult<VisualDebugStepResult>> StepInstance(Guid id, CancellationToken cancellationToken)
         {
@@ -116,7 +119,8 @@ namespace VertexBPMN.Api.Controllers
 
         private bool CanAccessTenant(string? tenantId) =>
             User.IsInRole("Admin") ||
-            string.Equals(User.FindFirstValue("tenant_id"), tenantId, StringComparison.Ordinal);
+            (!string.IsNullOrWhiteSpace(User.FindFirstValue("tenant_id")) &&
+             string.Equals(User.FindFirstValue("tenant_id"), tenantId, StringComparison.Ordinal));
 
     }
 }

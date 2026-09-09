@@ -9,7 +9,7 @@ namespace VertexBPMN.Api.Controllers
     [ApiController]
     [Route("api/simulation-scenario")]
     [ApiExplorerSettings(GroupName = "Simulation")]
-    [Authorize]
+    [Authorize(Policy = "TenantReadOnly")]
     public class SimulationScenarioController : ControllerBase
     {
         private readonly ISimulationScenarioService _service;
@@ -59,6 +59,7 @@ namespace VertexBPMN.Api.Controllers
         }
 
         [HttpPost]
+        [Authorize(Policy = "ProcessManager")]
         public async Task<ActionResult<Dto.SimulationScenarioDto>> Create([FromBody] Dto.SimulationScenarioDto dto)
         {
             var scenario = new SimulationScenario
@@ -77,6 +78,7 @@ namespace VertexBPMN.Api.Controllers
         }
 
         [HttpPut("{id}")]
+        [Authorize(Policy = "ProcessManager")]
         public async Task<ActionResult<Dto.SimulationScenarioDto>> Update(string id, [FromBody] Dto.SimulationScenarioDto dto)
         {
             var existing = await _service.GetByIdAsync(id);
@@ -98,6 +100,7 @@ namespace VertexBPMN.Api.Controllers
         }
 
         [HttpDelete("{id}")]
+        [Authorize(Policy = "ProcessManager")]
         public async Task<IActionResult> Delete(string id)
         {
             var existing = await _service.GetByIdAsync(id);
@@ -116,7 +119,8 @@ namespace VertexBPMN.Api.Controllers
         private bool CanAccessTenant(string? tenantId)
         {
             if (User.IsInRole("Admin")) return true;
-            return string.Equals(tenantId, User.FindFirstValue("tenant_id"), StringComparison.Ordinal);
+            var claim = User.FindFirstValue("tenant_id");
+            return !string.IsNullOrWhiteSpace(claim) && string.Equals(tenantId, claim, StringComparison.Ordinal);
         }
     }
 }

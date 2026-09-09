@@ -35,6 +35,17 @@ public class PrivilegeGateSecurityTests
     [InlineData("DELETE", "/api/load-balancer/workers/worker-1", "")]
     [InlineData("POST", "/api/load-balancer/rebalance", "")]
     [InlineData("PUT", "/api/load-balancer/config", "")]
+    [InlineData("POST", "/api/load-balancer/workers", "")]
+    [InlineData("POST", "/api/load-balancer/workers/worker-1/heartbeat", "")]
+    [InlineData("POST", "/api/ml/train", "")]
+    [InlineData("POST", "/api/simulation-scenario", "")]
+    [InlineData("PUT", "/api/simulation-scenario/scenario-1", "")]
+    [InlineData("DELETE", "/api/simulation-scenario/scenario-1", "")]
+    [InlineData("POST", "/api/visual-debug/session/start/00000000-0000-0000-0000-000000000001", "")]
+    [InlineData("POST", "/api/visual-debug/step/over/00000000-0000-0000-0000-000000000001", "")]
+    [InlineData("POST", "/api/management/suspend-process-instance/00000000-0000-0000-0000-000000000001", "")]
+    [InlineData("POST", "/api/management/resume-process-instance/00000000-0000-0000-0000-000000000001", "")]
+    [InlineData("POST", "/api/management/delete-process-instance/00000000-0000-0000-0000-000000000001", "")]
     public async Task AdminOnlyEndpoints_ReadOnlyUser_IsForbidden(string method, string path, string query)
     {
         var request = WithReadOnly(new HttpRequestMessage(new HttpMethod(method), path + query));

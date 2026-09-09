@@ -8,7 +8,7 @@ namespace VertexBPMN.Api.Controllers;
 using Microsoft.AspNetCore.Authorization;
 [ApiController]
 [Route("api/vertex/variable")]
-[Authorize]
+[Authorize(Policy = "TenantReadOnly")]
 public class VertexVariableController : ControllerBase
 {
     private readonly IRuntimeService _runtimeService;
@@ -43,6 +43,6 @@ public class VertexVariableController : ControllerBase
     {
         if (User.IsInRole("Admin")) return true;
         var claim = User.FindFirstValue("tenant_id");
-        return string.Equals(tenantId, claim, StringComparison.Ordinal);
+        return !string.IsNullOrWhiteSpace(claim) && string.Equals(tenantId, claim, StringComparison.Ordinal);
     }
 }

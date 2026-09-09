@@ -10,7 +10,7 @@ using Microsoft.AspNetCore.Authorization;
 
 [ApiController]
 [Route("api/vertex/job")]
-[Authorize(Policy = "ReadOnly")]
+[Authorize(Policy = "TenantReadOnly")]
 public class VertexJobController : ControllerBase
 {
     private readonly IJobRepository _jobRepository;
@@ -24,6 +24,8 @@ public class VertexJobController : ControllerBase
     public async IAsyncEnumerable<JobDto> GetAll()
     {
         var currentTenant = CurrentTenantId();
+        if (!User.IsInRole("Admin") && string.IsNullOrWhiteSpace(currentTenant))
+            yield break;
         await foreach (var job in _jobRepository.ListDueAsync(DateTime.UtcNow.AddYears(100)))
         {
             if (currentTenant is null || string.Equals(job.TenantId, currentTenant, StringComparison.Ordinal))
@@ -34,6 +36,8 @@ public class VertexJobController : ControllerBase
     [HttpGet("{id}")]
     public async Task<ActionResult<JobDto>> GetById(Guid id)
     {
+        if (!User.IsInRole("Admin") && string.IsNullOrWhiteSpace(CurrentTenantId()))
+            return Forbid();
         var job = await _jobRepository.GetByIdAsync(id);
         if (job is null) return NotFound();
 

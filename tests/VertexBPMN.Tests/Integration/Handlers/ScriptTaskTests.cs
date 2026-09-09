@@ -10,6 +10,38 @@ namespace VertexBPMN.Tests.Integration.Handlers;
 
 public class ScriptTaskTests
 {
+    [Theory]
+    [InlineData("C#")]
+    [InlineData("CSharp")]
+    public async Task CSharp_IsDeniedByDefault_BeforeVariableMutation(string format)
+    {
+        var task = new BpmnTask("unsafe", "scriptTask", Attributes: new Dictionary<string, string>
+        {
+            ["scriptFormat"] = format,
+            ["script"] = "variables[\"executed\"] = true; return 1;"
+        });
+        var variables = new Dictionary<string, object>();
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            ScriptTaskExecution.TryHandleScriptTaskAsync(task, variables, TestContext.Current.CancellationToken));
+        Assert.Empty(variables);
+    }
+
+    [Theory]
+    [InlineData("C#")]
+    [InlineData("JavaScript")]
+    public async Task DisabledScripts_CannotExecute_EvenWithCSharpOptIn(string format)
+    {
+        var task = new BpmnTask("disabled", "scriptTask", Attributes: new Dictionary<string, string>
+        {
+            ["scriptFormat"] = format,
+            ["script"] = "variables[\"executed\"] = true;"
+        });
+        var variables = new Dictionary<string, object>();
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            ScriptTaskExecution.TryHandleScriptTaskAsync(task, variables, TestContext.Current.CancellationToken, allowCSharp: true, scriptsEnabled: false));
+        Assert.Empty(variables);
+    }
+
     [Fact]
     public async Task CSharp_ScriptTask_AddsNumbers_AndStoresResult()
     {
@@ -45,7 +77,7 @@ public class ScriptTaskTests
         };
 
         // Act: Direkt den Runner testen (unabhängig vom Engine-Loop)
-        var handled = await ScriptTaskExecution.TryHandleScriptTaskAsync(task, variables, TestContext.Current.CancellationToken);
+        var handled = await ScriptTaskExecution.TryHandleScriptTaskAsync(task, variables, TestContext.Current.CancellationToken, allowCSharp: true);
 
         // Assert
         handled.ShouldBe(true);
@@ -124,7 +156,7 @@ public class ScriptTaskTests
         // Act
         Assert.NotNull(model.ProcessVariables);
         var variables = model.ProcessVariables!;
-        var handled = await ScriptTaskExecution.TryHandleScriptTaskAsync(scriptTask, variables, TestContext.Current.CancellationToken);
+        var handled = await ScriptTaskExecution.TryHandleScriptTaskAsync(scriptTask, variables, TestContext.Current.CancellationToken, allowCSharp: true);
 
         // Assert
         Assert.True(handled);

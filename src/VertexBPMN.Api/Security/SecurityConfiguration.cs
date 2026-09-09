@@ -81,6 +81,8 @@ public static class SecurityConfiguration
             options.AddPolicy("ReadOnly", policy =>
                 policy.RequireClaim(ClaimTypes.Role, "Admin", "ProcessManager", "ReadOnly"));
 
+            AddTenantReadOnlyPolicy(options);
+
             options.AddPolicy("ProcessViewer", policy =>
                 policy.RequireClaim(ClaimTypes.Role, "Admin", "ProcessManager", "ReadOnly"));
 
@@ -103,6 +105,14 @@ public static class SecurityConfiguration
         // Security Headers
 
         return services;
+    }
+    public static void AddTenantReadOnlyPolicy(Microsoft.AspNetCore.Authorization.AuthorizationOptions options)
+    {
+        options.AddPolicy("TenantReadOnly", policy => policy
+            .RequireAuthenticatedUser()
+            .RequireClaim(ClaimTypes.Role, "Admin", "ProcessManager", "ReadOnly")
+            .RequireAssertion(context => context.User.IsInRole("Admin") ||
+                !string.IsNullOrWhiteSpace(context.User.FindFirstValue("tenant_id"))));
     }
 }
 

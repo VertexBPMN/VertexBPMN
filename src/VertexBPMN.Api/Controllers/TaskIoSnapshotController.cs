@@ -13,7 +13,7 @@ namespace VertexBPMN.Api.Controllers;
 /// process instance + element. Data is already redacted at write time.
 /// </summary>
 [ApiController]
-[Authorize]
+[Authorize(Policy = "TenantReadOnly")]
 public class TaskIoSnapshotController : ControllerBase
 {
     private readonly BpmnDbContext _db;
@@ -29,8 +29,8 @@ public class TaskIoSnapshotController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         var effectiveTenantId = ResolveTenantId(tenantId);
-        if (effectiveTenantId is null)
-            return Forbid("Cannot resolve tenant from token or query.");
+        if (string.IsNullOrWhiteSpace(effectiveTenantId))
+            return Forbid();
 
         var rows = await _db.HistoryEvents.AsNoTracking()
             .Where(e => e.ProcessInstanceId == processInstanceId

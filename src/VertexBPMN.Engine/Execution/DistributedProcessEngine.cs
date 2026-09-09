@@ -1,6 +1,7 @@
 using Acornima;
 using Jint;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
 using OpenTelemetry.Trace;
 using System.Collections.Concurrent;
 using VertexBPMN.Domain.Entities;
@@ -17,6 +18,7 @@ namespace VertexBPMN.Engine.Execution
     public class DistributedProcessEngine : IDistributedProcessEngine, IDisposable
     {
         private readonly ILogger<DistributedProcessEngine> _logger;
+        private readonly IConfiguration? _configuration;
         private readonly IServiceTaskRegistry _serviceRegistry;
         private readonly IMessageDispatcher _messageDispatcher;
         private readonly IProcessInstanceStore _store;
@@ -45,9 +47,11 @@ namespace VertexBPMN.Engine.Execution
             ICmmnParser cmmnParser,
             IBpmnParser bpmnParser,
             IAiDecisionService aiDecisionService,
-            TracerProvider tracerProvider)
+            TracerProvider tracerProvider,
+            IConfiguration? configuration = null)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _configuration = configuration;
             _serviceRegistry = serviceRegistry ?? throw new ArgumentNullException(nameof(serviceRegistry));
             _messageDispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
             _store = store ?? throw new ArgumentNullException(nameof(store));
@@ -1481,7 +1485,9 @@ namespace VertexBPMN.Engine.Execution
                     if (model.ProcessVariables != null)
                         foreach (var kv in model.ProcessVariables)
                             token.Variables[kv.Key] = kv.Value;
-                    await ScriptTaskExecution.TryHandleScriptTaskAsync(task, token.Variables, cancellationToken);
+                    await ScriptTaskExecution.TryHandleScriptTaskAsync(task, token.Variables, cancellationToken,
+                        allowCSharp: _configuration?.GetValue("Runtime:Scripts:AllowCSharp", false) ?? false,
+                        scriptsEnabled: _configuration?.GetValue("Runtime:Scripts:Enabled", true) ?? true);
                     if (model.ProcessVariables != null)
                         foreach (var kv in token.Variables)
                             model.ProcessVariables[kv.Key] = kv.Value;

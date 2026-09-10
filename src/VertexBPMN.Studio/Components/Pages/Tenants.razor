@@ -6,14 +6,16 @@
 <StudioPageHeader Title="Tenants" Eyebrow="Manage" Description="Manage tenants visible through the identity API.">
     <Actions><MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" OnClick="RefreshAsync" Disabled="_isLoading">Refresh</MudButton></Actions>
 </StudioPageHeader>
-<MudPaper Class="studio-content-card mb-4" Elevation="0">
-<MudText Typo="Typo.h6" Class="mb-3">Create tenant</MudText>
-<MudTextField @bind-Value="_name" Label="Tenant name" Variant="Variant.Outlined" Class="mb-3" />
-<MudTextField @bind-Value="_description" Label="Description" Variant="Variant.Outlined" Class="mb-3" />
-<MudButton Variant="Variant.Outlined" Color="Color.Success" OnClick="CreateAsync" Disabled="_isLoading || string.IsNullOrWhiteSpace(_name)" Class="mb-4">
-    Create tenant (Admin)
-</MudButton>
-</MudPaper>
+<AuthorizeView Roles="Admin">
+    <MudPaper Class="studio-content-card mb-4" Elevation="0" data-testid="tenant-admin-create">
+        <MudText Typo="Typo.h6" Class="mb-3">Create tenant</MudText>
+        <MudTextField @bind-Value="_name" Label="Tenant name" Variant="Variant.Outlined" Class="mb-3" />
+        <MudTextField @bind-Value="_description" Label="Description" Variant="Variant.Outlined" Class="mb-3" />
+        <MudButton Variant="Variant.Outlined" Color="Color.Success" OnClick="CreateAsync" Disabled="_isLoading || string.IsNullOrWhiteSpace(_name)" Class="mb-4">
+            Create tenant (Admin)
+        </MudButton>
+    </MudPaper>
+</AuthorizeView>
 
 @if (_error is not null)
 {
@@ -26,16 +28,18 @@ else if (_tenants is not null)
             <MudTh>Id</MudTh>
             <MudTh>Name</MudTh>
             <MudTh>Description</MudTh>
-            <MudTh>Actions</MudTh>
+            <AuthorizeView Roles="Admin" Context="headerAuth"><MudTh>Actions</MudTh></AuthorizeView>
         </HeaderContent>
         <RowTemplate>
             <MudTd DataLabel="Id"><span class="studio-technical-id">@context.Id</span></MudTd>
             <MudTd DataLabel="Name">@context.Name</MudTd>
             <MudTd DataLabel="Description">@context.Description</MudTd>
-            <MudTd DataLabel="Actions">
-                <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="() => UpdateAsync(context)" Disabled="_isLoading">Update</MudButton>
-                <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="() => DeleteAsync(context.Id)" Disabled="_isLoading">Delete</MudButton>
-            </MudTd>
+            <AuthorizeView Roles="Admin" Context="rowAuth">
+                <MudTd DataLabel="Actions" data-testid="tenant-admin-actions">
+                    <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="() => UpdateAsync(context)" Disabled="_isLoading">Update</MudButton>
+                    <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="() => DeleteAsync(context.Id)" Disabled="_isLoading">Delete</MudButton>
+                </MudTd>
+            </AuthorizeView>
         </RowTemplate>
         <NoRecordsContent><StudioStatePanel Title="No tenants found" Description="Create a tenant to begin isolating process data." Icon="@Icons.Material.Outlined.Apartment" /></NoRecordsContent>
     </MudTable></MudPaper>

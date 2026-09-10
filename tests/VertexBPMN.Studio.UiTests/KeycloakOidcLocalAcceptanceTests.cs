@@ -26,10 +26,10 @@ public sealed class KeycloakOidcLocalAcceptanceTests
         });
         var page = await browser.NewPageAsync();
 
-        await page.GotoAsync(studioUrl);
+        await GotoStudioAsync(page, studioUrl);
         await page.Locator("#username").FillAsync(username);
         await page.Locator("#password").FillAsync(password);
-        await page.Locator("#kc-login").ClickAsync();
+        await page.Locator("#kc-login").EvaluateAsync("element => element.click()");
 
         await page.GetByRole(AriaRole.Heading, new() { Name = "Dashboard", Exact = true }).WaitForAsync();
         await page.Locator("[data-testid='dashboard-refresh']").WaitForAsync();
@@ -39,8 +39,8 @@ public sealed class KeycloakOidcLocalAcceptanceTests
         await page.GetByRole(AriaRole.Heading, new() { Name = "Process Definitions", Exact = true }).First.WaitForAsync();
         Assert.DoesNotContain("Failed to load", await page.Locator("body").InnerTextAsync());
 
-        // The local orchestrator configures a 70-second access-token lifetime.
-        // Crossing the 60-second server refresh window forces a real token-endpoint call.
+        // The local orchestrator configures a deliberately short token lifetime.
+        // It is inside the server's 60-second refresh window and forces a real token-endpoint call.
         await Task.Delay(TimeSpan.FromSeconds(12), TestContext.Current.CancellationToken);
         var refreshJson = await page.EvaluateAsync<string>("""
             async () => {
@@ -65,6 +65,30 @@ public sealed class KeycloakOidcLocalAcceptanceTests
         await page.GetByRole(AriaRole.Button, new() { Name = "Sign out", Exact = true }).ClickAsync();
         await page.Locator("#username").WaitForAsync();
         Assert.Contains("/realms/vertexbpmn/", page.Url, StringComparison.Ordinal);
+    }
+
+    private static async Task GotoStudioAsync(IPage page, string studioUrl)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await page.GotoAsync(studioUrl, new PageGotoOptions
+                {
+                    WaitUntil = WaitUntilState.DOMContentLoaded,
+                    Timeout = 45_000
+                });
+                return;
+            }
+            catch (PlaywrightException) when (attempt < 3)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(500 * attempt), TestContext.Current.CancellationToken);
+            }
+            catch (TimeoutException) when (attempt < 3)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(500 * attempt), TestContext.Current.CancellationToken);
+            }
+        }
     }
 
     private static string RequiredEnvironment(string name) =>

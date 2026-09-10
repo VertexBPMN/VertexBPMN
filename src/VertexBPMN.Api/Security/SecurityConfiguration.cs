@@ -28,6 +28,10 @@ public static class SecurityConfiguration
             || string.Equals(configuration["ASPNETCORE_ENVIRONMENT"], "OidcTest", StringComparison.OrdinalIgnoreCase);
         var useDevelopmentApiKey = isDevelopment && configuration.GetValue<bool>("Jwt:UseDevelopmentApiKey");
         var requireHttpsMetadata = configuration.GetValue<bool?>("Jwt:RequireHttpsMetadata") ?? !isDevelopment;
+        var clockSkewSeconds = configuration.GetValue<int?>("Jwt:ClockSkewSeconds") ?? 30;
+
+        if (clockSkewSeconds is < 0 or > 300)
+            throw new InvalidOperationException("Jwt:ClockSkewSeconds must be between 0 and 300 seconds.");
 
         if (!requireHttpsMetadata
             && !isDevelopment
@@ -76,7 +80,7 @@ public static class SecurityConfiguration
                         : null,
                     NameClaimType = "preferred_username",
                     RoleClaimType = ClaimTypes.Role,
-                    ClockSkew = TimeSpan.FromSeconds(30)
+                    ClockSkew = TimeSpan.FromSeconds(clockSkewSeconds)
                 };
                 if (!string.IsNullOrWhiteSpace(authority))
                 {

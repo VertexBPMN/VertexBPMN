@@ -129,6 +129,7 @@ try {
     $env:Jwt__Authority = "http://localhost:58080/realms/vertexbpmn"
     $env:Jwt__Issuer = "http://localhost:58080/realms/vertexbpmn"
     $env:Jwt__Audience = "vertexbpmn-api"
+    $env:Jwt__ClockSkewSeconds = "0"
     $env:Jwt__RequireHttpsMetadata = "false"
     $env:Jwt__UseDevelopmentApiKey = "false"
 
@@ -163,6 +164,9 @@ try {
     $env:VERTEXBPMN_OIDC_TEST_API_URL = "http://localhost:51870/"
     $env:VERTEXBPMN_KEYCLOAK_TEST_USER = "vertexbpmn-user"
     $env:VERTEXBPMN_KEYCLOAK_SECURITY_CLIENT_ID = "vertexbpmn-security-test"
+    $env:VERTEXBPMN_KEYCLOAK_WRONG_AUDIENCE_CLIENT_ID = "vertexbpmn-wrong-audience-test"
+    $env:VERTEXBPMN_KEYCLOAK_EXPIRING_CLIENT_ID = "vertexbpmn-expiring-test"
+    $env:VERTEXBPMN_KEYCLOAK_ACCESS_TOKEN_LIFESPAN = $AccessTokenLifespan.ToString([Globalization.CultureInfo]::InvariantCulture)
     $env:VERTEXBPMN_KEYCLOAK_SECURITY_CLIENT_SECRET = $env:VERTEXBPMN_KEYCLOAK_STUDIO_CLIENT_SECRET
     $testClasses = @("-class", "*KeycloakOidcLocalAcceptanceTests")
     if ($SecurityAcceptance) {

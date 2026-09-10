@@ -7,7 +7,7 @@ param(
     [string]$PostgresImage = "postgres:17-alpine",
     [ValidateRange(1, 65535)]
     [int]$KeycloakPort = 58080,
-    [ValidateRange(60, 3600)]
+    [ValidateRange(10, 3600)]
     [int]$AccessTokenLifespan = 300,
     [switch]$SecurityAcceptance,
     [ValidatePattern("^[A-Za-z0-9._~-]+$")]
@@ -30,6 +30,8 @@ $realmName = "vertexbpmn"
 $apiClientId = "vertexbpmn-api"
 $studioClientId = "vertexbpmn-studio"
 $securityClientId = "vertexbpmn-security-test"
+$wrongAudienceClientId = "vertexbpmn-wrong-audience-test"
+$expiringClientId = "vertexbpmn-expiring-test"
 $requiredSecretVariables = @(
     "VERTEXBPMN_KEYCLOAK_ADMIN_PASSWORD",
     "VERTEXBPMN_KEYCLOAK_DB_PASSWORD",
@@ -221,6 +223,17 @@ function Ensure-TestUser {
         "--username", $Username,
         "--new-password", $password
     )
+    if ($RequireMfaEnrollment) {
+        $credentialLookup = Invoke-Kcadm -Arguments @("get", "users/$userId/credentials", "-r", $realmName)
+        $credentials = @($credentialLookup.Output -join [Environment]::NewLine | ConvertFrom-Json)
+        foreach ($credential in @($credentials | Where-Object { $_.type -eq "otp" })) {
+            if (-not [string]::IsNullOrWhiteSpace($credential.id)) {
+                $null = Invoke-Kcadm -Arguments @(
+                    "delete", "users/$userId/credentials/$($credential.id)", "-r", $realmName
+                )
+            }
+        }
+    }
     $null = Invoke-Kcadm -Arguments @(
         "add-roles", "-r", $realmName,
         "--uusername", $Username,
@@ -234,6 +247,8 @@ function Ensure-SecurityAcceptanceProfile {
     Ensure-TestUser -Username "vertexbpmn-readonly" -TenantId "tenant-a" -Role "ReadOnly"
     Ensure-TestUser -Username "vertexbpmn-manager-b" -TenantId "tenant-b" -Role "ProcessManager"
     Ensure-TestUser -Username "vertexbpmn-no-tenant" -TenantId "" -Role "ProcessManager"
+    Ensure-TestUser -Username "vertexbpmn-role-revocation" -TenantId "tenant-a" -Role "ProcessManager"
+    Ensure-TestUser -Username "vertexbpmn-account-lock" -TenantId "tenant-a" -Role "ProcessManager"
 
     $lookup = Invoke-Kcadm -Arguments @("get", "clients", "-r", $realmName, "-q", "clientId=$securityClientId")
     $clients = @($lookup.Output -join [Environment]::NewLine | ConvertFrom-Json)
@@ -279,6 +294,76 @@ function Ensure-SecurityAcceptanceProfile {
     $claimsScopeId = $claimsScopes[0].id
     $null = Invoke-Kcadm -Arguments @(
         "update", "clients/$securityClientEntityId/default-client-scopes/$claimsScopeId", "-r", $realmName
+    )
+
+    $wrongAudienceLookup = Invoke-Kcadm -Arguments @(
+        "get", "clients", "-r", $realmName, "-q", "clientId=$wrongAudienceClientId"
+    )
+    $wrongAudienceClients = @($wrongAudienceLookup.Output -join [Environment]::NewLine | ConvertFrom-Json)
+    if ($wrongAudienceClients.Count -eq 0) {
+        $null = Invoke-Kcadm -Arguments @(
+            "create", "clients", "-r", $realmName,
+            "-s", "clientId=$wrongAudienceClientId",
+            "-s", "name=VertexBPMN local wrong-audience acceptance",
+            "-s", "enabled=true",
+            "-s", "publicClient=false",
+            "-s", "bearerOnly=false",
+            "-s", "standardFlowEnabled=false",
+            "-s", "directAccessGrantsEnabled=true",
+            "-s", "serviceAccountsEnabled=false"
+        )
+    }
+    elseif ($wrongAudienceClients.Count -ne 1) {
+        throw "More than one Keycloak client matched '$wrongAudienceClientId'."
+    }
+
+    $wrongAudienceClientEntityId = Get-KeycloakEntityId -Resource "clients" -Query "clientId=$wrongAudienceClientId"
+    $null = Invoke-Kcadm -Arguments @(
+        "update", "clients/$wrongAudienceClientEntityId", "-r", $realmName,
+        "-s", "enabled=true",
+        "-s", "secret=$securityClientSecret",
+        "-s", "publicClient=false",
+        "-s", "bearerOnly=false",
+        "-s", "standardFlowEnabled=false",
+        "-s", "directAccessGrantsEnabled=true",
+        "-s", "serviceAccountsEnabled=false"
+    )
+
+    $expiringLookup = Invoke-Kcadm -Arguments @(
+        "get", "clients", "-r", $realmName, "-q", "clientId=$expiringClientId"
+    )
+    $expiringClients = @($expiringLookup.Output -join [Environment]::NewLine | ConvertFrom-Json)
+    if ($expiringClients.Count -eq 0) {
+        $null = Invoke-Kcadm -Arguments @(
+            "create", "clients", "-r", $realmName,
+            "-s", "clientId=$expiringClientId",
+            "-s", "name=VertexBPMN local expiry acceptance",
+            "-s", "enabled=true",
+            "-s", "publicClient=false",
+            "-s", "bearerOnly=false",
+            "-s", "standardFlowEnabled=false",
+            "-s", "directAccessGrantsEnabled=true",
+            "-s", "serviceAccountsEnabled=false"
+        )
+    }
+    elseif ($expiringClients.Count -ne 1) {
+        throw "More than one Keycloak client matched '$expiringClientId'."
+    }
+
+    $expiringClientEntityId = Get-KeycloakEntityId -Resource "clients" -Query "clientId=$expiringClientId"
+    $null = Invoke-Kcadm -Arguments @(
+        "update", "clients/$expiringClientEntityId", "-r", $realmName,
+        "-s", "enabled=true",
+        "-s", "secret=$securityClientSecret",
+        "-s", "publicClient=false",
+        "-s", "bearerOnly=false",
+        "-s", "standardFlowEnabled=false",
+        "-s", "directAccessGrantsEnabled=true",
+        "-s", "serviceAccountsEnabled=false",
+        "-s", 'attributes."access.token.lifespan"="5"'
+    )
+    $null = Invoke-Kcadm -Arguments @(
+        "update", "clients/$expiringClientEntityId/default-client-scopes/$claimsScopeId", "-r", $realmName
     )
 }
 

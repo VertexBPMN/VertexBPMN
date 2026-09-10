@@ -26,9 +26,19 @@ Modus: lokaler Opt-in-Lauf mit WSLC; keine Aufnahme in GitHub CI
 - Admin darf tenantübergreifende Verwaltungsoperationen ausführen
 - Tenant-Auflistung ist für Nicht-Administratoren auf den Claim-Tenant beschränkt
 - Fokussierte zentrale API-Regression: 10/10 Tests bestanden
-- Reale Keycloak-/Browser-Suite: 2/2 Tests bestanden
+- Reale Keycloak-/Browser-Suite nach dem sechsten K05-Paket: 10/10 Tests bestanden
+- Zwei getrennte reale Browsersitzungen belegen, dass ReadOnly keine Tenant-Admin-Aktionen sieht und Admin die Verwaltungsoberfläche erhält
+- Manipulierte, unsignierte, syntaktisch ungültige und tatsächlich abgelaufene Tokens werden von der realen API mit 401 abgewiesen
+- Von Keycloak signierte Tokens aus dem richtigen Realm ohne Ziel-Audience sowie aus dem falschen Realm werden mit 401 abgewiesen; die Test-Payloads werden vor dem Request auf `iss` und `aud` geprüft
 - Frische API-/Studio-Logs enthalten nach dem grünen Lauf keine ungefangenen Fehler, HTTP-500-Antworten oder fehlenden Static Assets
 - Der Testhost verwendet keinen Development-API-Key und fällt nicht auf Testauth zurück
+- Ein offener Blazor-Circuit überlebt den Access-Token-Ablauf; sechs parallele, antiforgery-geschützte Session-Refresh-Anfragen werden kontrolliert erneuert und der anschließende API-Aufruf bleibt funktionsfähig
+- Zwei gleichzeitig aktive, vollständig getrennte Browserkontexte für unterschiedliche Tenant-Benutzer behalten vor und nach paralleler Navigation ausschließlich den jeweiligen Tenant-Kontext; es gibt keinen Cookie-, Claims- oder HttpClient-Handler-Leak
+- Nach Entzug der ProcessManager-Rolle übernimmt der nächste echte Token-Refresh die reduzierten Claims; der weiterhin offene Blazor-Circuit erhält auf rollenpflichtigen API-Pfaden HTTP 403
+- Nach Sperrung eines Kontos verwirft ein fehlgeschlagener Refresh den serverseitigen Tokenzustand und das Studio-Cookie; der Passwortgrant und die erneute Studio-Anmeldung bleiben gesperrt
+- Lokaler Cookie-/OIDC-Logout beendet die Studio-Sitzung und führt zum realen Keycloak-Login zurück
+- Ein dediziertes MFA-Konto wird bei jedem isolierten Lauf ohne vorhandenes OTP neu eingeschrieben; ohne zweiten Faktor entsteht kein Studio-Cookie und eine alternative lokale Studio-Route bleibt im Keycloak-Flow blockiert
+- Falsche TOTP-Codes werden sowohl bei der Einschreibung als auch beim Folge-Login abgewiesen; erst der korrekte aktuelle Code öffnet Dashboard und API-Zugriff, und nach Logout verlangt der nächste Login erneut TOTP
 
 ## Gefundener und korrigierter Produktionsfehler
 
@@ -40,12 +50,6 @@ Zusätzlich führte ein autorisierter Repository-Deploy mit leerem BPMN-XML zu e
 
 K05 ist noch nicht abgeschlossen:
 
-- T02: rollenabhängige UI-Sichtbarkeit und Bedienbarkeit zusätzlich zur bestandenen API-Matrix
-- T03: falscher Issuer/Audience sowie manipulierte, unsignierte und abgelaufene Tokens gegen den real gestarteten Host
-- T04: parallele API-Aufrufe während des Refreshs
-- T05: zwei reale parallele Browsersitzungen mit verschiedenen Tenants
-- T06: Rollenentzug und Kontosperre bei offener Sitzung
-- T07: vollständiger MFA-Ablauf einschließlich negativer zweiter Faktoren
 - T08: Signing-Key-Rotation und JWKS-Cache
 - T09: Keycloak-Unterbrechung und Wiederanlauf
 - T10: Proxy-/HTTPS-/Forwarded-Header- und Callback-Manipulation
@@ -53,4 +57,3 @@ K05 ist noch nicht abgeschlossen:
 - T12: alternativer realer OIDC-Issuer
 - Regression der übrigen Authprofile sowie SDK-/gRPC-/SignalR-Zugriffe
 - finale Wiederholung aus sauberem Checkout und unabhängiges Review
-

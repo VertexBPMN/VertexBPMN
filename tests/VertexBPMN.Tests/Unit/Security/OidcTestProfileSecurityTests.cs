@@ -18,6 +18,7 @@ public sealed class OidcTestProfileSecurityTests
             ["OperationalMode"] = "OidcTest",
             ["Jwt:Authority"] = "http://localhost:58080/realms/vertexbpmn",
             ["Jwt:Audience"] = "vertexbpmn-api",
+            ["Jwt:ClockSkewSeconds"] = "0",
             ["Jwt:RequireHttpsMetadata"] = "false",
             ["Jwt:UseDevelopmentApiKey"] = "true"
         }));
@@ -29,6 +30,26 @@ public sealed class OidcTestProfileSecurityTests
         Assert.Equal(JwtBearerDefaults.AuthenticationScheme, authentication.DefaultAuthenticateScheme);
         Assert.False(jwt.RequireHttpsMetadata);
         Assert.Equal("http://localhost:58080/realms/vertexbpmn", jwt.Authority);
+        Assert.Equal(TimeSpan.Zero, jwt.TokenValidationParameters.ClockSkew);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(301)]
+    public void InvalidClockSkew_IsRejected(int seconds)
+    {
+        var configuration = Configuration(new Dictionary<string, string?>
+        {
+            ["OperationalMode"] = "Production",
+            ["Jwt:Authority"] = "https://identity.example.org/realms/vertexbpmn",
+            ["Jwt:Audience"] = "vertexbpmn-api",
+            ["Jwt:ClockSkewSeconds"] = seconds.ToString(System.Globalization.CultureInfo.InvariantCulture)
+        });
+
+        var error = Assert.Throws<InvalidOperationException>(() =>
+            new ServiceCollection().AddProductionSecurity(configuration));
+
+        Assert.Contains("ClockSkewSeconds", error.Message, StringComparison.Ordinal);
     }
 
     [Theory]

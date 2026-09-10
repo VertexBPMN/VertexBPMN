@@ -4,8 +4,11 @@ using VertexBPMN.Studio.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using MudBlazor.Services;
+using System.Security.Claims;
+using VertexBPMN.ServiceDefaults.Security;
 
 var builder = WebApplication.CreateBuilder(args);
 // Hosting request-start logs include the query string (OAuth2 authorization codes).
@@ -33,15 +36,34 @@ builder.Services.AddRazorComponents()
 builder.Services.AddControllers();
 builder.Services.AddMudServices();
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<OidcSessionTokenStore>();
+builder.Services.AddScoped<OidcCookieRefreshEvents>();
 
 var oidcAuthority = builder.Configuration["StudioAuthentication:Authority"];
 var oidcClientId = builder.Configuration["StudioAuthentication:ClientId"];
 var oidcClientSecret = builder.Configuration["StudioAuthentication:ClientSecret"];
 var oidcApiScope = builder.Configuration["StudioAuthentication:ApiScope"];
+var oidcClaimsScope = builder.Configuration["StudioAuthentication:ClaimsScope"];
+var oidcRequireClientSecret = builder.Configuration.GetValue<bool>("StudioAuthentication:RequireClientSecret");
+var oidcRequireHttpsMetadata = builder.Configuration.GetValue<bool?>("StudioAuthentication:RequireHttpsMetadata")
+    ?? !builder.Environment.IsDevelopment();
 if (!isUiTest && !isLocalDevelopment && (string.IsNullOrWhiteSpace(oidcAuthority) || string.IsNullOrWhiteSpace(oidcClientId)))
 {
     throw new InvalidOperationException(
         "StudioAuthentication:Authority and StudioAuthentication:ClientId must be configured before starting VertexBPMN Studio.");
+}
+if (!isUiTest && !isLocalDevelopment && oidcRequireClientSecret && string.IsNullOrWhiteSpace(oidcClientSecret))
+{
+    throw new InvalidOperationException(
+        "StudioAuthentication:ClientSecret must be supplied by a secret store for this confidential OIDC client.");
+}
+if (!oidcRequireHttpsMetadata
+    && !builder.Environment.IsDevelopment()
+    && !(builder.Environment.IsEnvironment("OidcTest") && IsLoopbackHttpAuthority(oidcAuthority)))
+{
+    throw new InvalidOperationException(
+        "StudioAuthentication:RequireHttpsMetadata may be disabled outside Development only for the OidcTest profile with a loopback Authority.");
 }
 
 if (isUiTest || isLocalDevelopment)
@@ -67,21 +89,66 @@ else
         options.LoginPath = "/authentication/login";
         options.LogoutPath = "/authentication/logout";
         options.AccessDeniedPath = "/authentication/access-denied";
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SameSite = SameSiteMode.Lax;
+        options.Cookie.SecurePolicy = oidcRequireHttpsMetadata
+            ? CookieSecurePolicy.Always
+            : CookieSecurePolicy.SameAsRequest;
+        options.EventsType = typeof(OidcCookieRefreshEvents);
     })
     .AddOpenIdConnect(options =>
     {
         options.Authority = oidcAuthority;
         options.ClientId = oidcClientId;
         options.ClientSecret = oidcClientSecret;
+        options.RequireHttpsMetadata = oidcRequireHttpsMetadata;
         options.ResponseType = OpenIdConnectResponseType.Code;
         options.UsePkce = true;
         options.SaveTokens = true;
         options.GetClaimsFromUserInfoEndpoint = true;
         options.MapInboundClaims = false;
+        options.TokenValidationParameters.NameClaimType = "preferred_username";
+        options.TokenValidationParameters.RoleClaimType = ClaimTypes.Role;
+        options.TokenValidationParameters.ClockSkew = TimeSpan.FromSeconds(30);
+        options.Events.OnTokenValidated = context =>
+        {
+            var identity = context.Principal?.Identities.FirstOrDefault(item => item.IsAuthenticated);
+            if (identity is null)
+            {
+                context.Fail("OIDC did not produce an authenticated identity.");
+                return Task.CompletedTask;
+            }
+            if (!identity.HasClaim(claim => claim.Type == OidcSessionTokenStore.SessionIdClaim))
+                identity.AddClaim(new Claim(OidcSessionTokenStore.SessionIdClaim, Guid.NewGuid().ToString("N")));
+            if (!VertexOidcClaims.TryNormalize(context.Principal!, out var error))
+                context.Fail(error);
+            return Task.CompletedTask;
+        };
+        options.Events.OnTicketReceived = context =>
+        {
+            var store = context.HttpContext.RequestServices.GetRequiredService<OidcSessionTokenStore>();
+            try
+            {
+                store.Register(context.Principal!, context.Properties!);
+            }
+            catch (OidcSessionExpiredException exception)
+            {
+                context.Fail(exception);
+            }
+            return Task.CompletedTask;
+        };
         options.Scope.Add("openid");
         options.Scope.Add("profile");
-        options.Scope.Add("roles");
-        options.Scope.Add("tenant_id");
+        if (string.IsNullOrWhiteSpace(oidcClaimsScope))
+        {
+            // Backwards-compatible defaults for existing generic OIDC deployments.
+            options.Scope.Add("roles");
+            options.Scope.Add("tenant_id");
+        }
+        else
+        {
+            options.Scope.Add(oidcClaimsScope);
+        }
         if (!string.IsNullOrWhiteSpace(oidcApiScope))
             options.Scope.Add(oidcApiScope);
     });
@@ -178,12 +245,52 @@ app.MapGet("/authentication/login", (HttpContext httpContext, string? returnUrl)
         [OpenIdConnectDefaults.AuthenticationScheme]);
 }).AllowAnonymous();
 
-app.MapGet("/authentication/logout", async (HttpContext httpContext) =>
+app.MapPost("/authentication/logout", async (HttpContext httpContext, IAntiforgery antiforgery) =>
 {
-    await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-    await httpContext.SignOutAsync(OpenIdConnectDefaults.AuthenticationScheme,
-        new AuthenticationProperties { RedirectUri = "/" });
-}).AllowAnonymous();
+    try
+    {
+        await antiforgery.ValidateRequestAsync(httpContext);
+    }
+    catch (AntiforgeryValidationException)
+    {
+        return Results.BadRequest();
+    }
+
+    if (isUiTest || isLocalDevelopment)
+        return Results.Redirect("/");
+
+    var tokenStore = httpContext.RequestServices.GetRequiredService<OidcSessionTokenStore>();
+    var idToken = tokenStore.GetIdToken(httpContext.User)
+        ?? await httpContext.GetTokenAsync("id_token");
+    tokenStore.Remove(httpContext.User);
+    var logoutProperties = new AuthenticationProperties { RedirectUri = "/" };
+    if (!string.IsNullOrWhiteSpace(idToken))
+    {
+        logoutProperties.StoreTokens(
+            [new AuthenticationToken { Name = "id_token", Value = idToken }]);
+    }
+
+    return Results.SignOut(
+        logoutProperties,
+        [CookieAuthenticationDefaults.AuthenticationScheme, OpenIdConnectDefaults.AuthenticationScheme]);
+}).RequireAuthorization();
+
+app.MapPost("/authentication/session/refresh", async (HttpContext httpContext, IAntiforgery antiforgery) =>
+{
+    try
+    {
+        await antiforgery.ValidateRequestAsync(httpContext);
+    }
+    catch (AntiforgeryValidationException)
+    {
+        return Results.BadRequest();
+    }
+
+    return Results.Ok(new
+    {
+        renewed = httpContext.Items.ContainsKey(OidcSessionTokenStore.SessionRenewedItem)
+    });
+}).RequireAuthorization();
 
 app.MapGet("/authentication/access-denied", () => Results.Problem(
     statusCode: StatusCodes.Status403Forbidden,
@@ -198,5 +305,10 @@ if (!isUiTest)
 
 app.MapControllers();
 app.Run();
+
+static bool IsLoopbackHttpAuthority(string? authority) =>
+    Uri.TryCreate(authority, UriKind.Absolute, out var uri)
+    && uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+    && uri.IsLoopback;
 
 public partial class Program;

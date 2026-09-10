@@ -107,3 +107,25 @@
     .studio-content,
     .studio-content--workspace { padding: var(--vertex-space-4); }
 }
+.studio-logout-form {
+    margin: 0;
+}
+
+.studio-logout-button {
+    align-items: center;
+    background: transparent;
+    border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+    border-radius: var(--studio-radius-sm, 0.5rem);
+    color: inherit;
+    cursor: pointer;
+    display: inline-flex;
+    font: inherit;
+    gap: 0.4rem;
+    min-height: 2.25rem;
+    padding: 0.35rem 0.7rem;
+}
+
+.studio-logout-button:hover,
+.studio-logout-button:focus-visible {
+    background: color-mix(in srgb, currentColor 10%, transparent);
+}

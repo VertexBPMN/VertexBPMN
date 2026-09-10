@@ -299,15 +299,35 @@ public class CustomWebApplicationFactory : WebApplicationFactory<VertexBPMN.Api.
     {
         await base.DisposeAsync();
 
+        var ownedConnections = TakeOwnedConnections();
+        await Task.WhenAll(ownedConnections.Select(connection => connection.DisposeAsync().AsTask()));
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        base.Dispose(disposing);
+
+        if (!disposing)
+            return;
+
+        foreach (var connection in TakeOwnedConnections())
+            connection.Dispose();
+    }
+
+    private SqliteConnection[] TakeOwnedConnections()
+    {
         SqliteConnection[] ownedConnections;
         lock (_ownedConnectionsLock)
         {
+            if (_ownedConnectionsDisposed)
+                return [];
+
             _ownedConnectionsDisposed = true;
             ownedConnections = [.. _ownedConnections];
             _ownedConnections.Clear();
         }
 
-        await Task.WhenAll(ownedConnections.Select(connection => connection.DisposeAsync().AsTask()));
+        return ownedConnections;
     }
     private static async Task<bool> TableExistsAsync(IServiceProvider sp, string table)
     {

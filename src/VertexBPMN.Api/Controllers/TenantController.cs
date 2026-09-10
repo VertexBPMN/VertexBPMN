@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Infrastructure.Persistence.Services;
 
@@ -20,12 +21,25 @@ namespace VertexBPMN.Api.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Tenant>>> GetAll()
         {
-            return Ok(await _db.Tenants.ToListAsync());
+            if (User.IsInRole("Admin"))
+                return Ok(await _db.Tenants.ToListAsync());
+
+            var tenantId = User.FindFirstValue("tenant_id");
+            if (string.IsNullOrWhiteSpace(tenantId))
+                return Forbid();
+
+            return Ok(await _db.Tenants.Where(tenant => tenant.Id == tenantId).ToListAsync());
         }
 
         [HttpGet("{id}")]
         public async Task<ActionResult<Tenant>> GetById(string id)
         {
+            if (!User.IsInRole("Admin")
+                && !string.Equals(User.FindFirstValue("tenant_id"), id, StringComparison.Ordinal))
+            {
+                return Forbid();
+            }
+
             var tenant = await _db.Tenants.FindAsync(id);
             if (tenant == null) return NotFound();
             return Ok(tenant);

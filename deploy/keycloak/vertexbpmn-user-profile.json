@@ -1,0 +1,104 @@
+{
+  "attributes": [
+    {
+      "name": "username",
+      "displayName": "Username",
+      "validations": {
+        "length": {
+          "min": 3,
+          "max": 255
+        },
+        "username-prohibited-characters": {},
+        "up-username-not-idn-homograph": {}
+      },
+      "permissions": {
+        "view": ["admin", "user"],
+        "edit": ["admin", "user"]
+      },
+      "multivalued": false
+    },
+    {
+      "name": "email",
+      "displayName": "Email",
+      "validations": {
+        "email": {},
+        "length": {
+          "max": 255
+        }
+      },
+      "required": {
+        "roles": ["user"]
+      },
+      "permissions": {
+        "view": ["admin", "user"],
+        "edit": ["admin", "user"]
+      },
+      "multivalued": false
+    },
+    {
+      "name": "firstName",
+      "displayName": "First name",
+      "validations": {
+        "length": {
+          "max": 255
+        },
+        "person-name-prohibited-characters": {}
+      },
+      "required": {
+        "roles": ["user"]
+      },
+      "permissions": {
+        "view": ["admin", "user"],
+        "edit": ["admin", "user"]
+      },
+      "multivalued": false
+    },
+    {
+      "name": "lastName",
+      "displayName": "Last name",
+      "validations": {
+        "length": {
+          "max": 255
+        },
+        "person-name-prohibited-characters": {}
+      },
+      "required": {
+        "roles": ["user"]
+      },
+      "permissions": {
+        "view": ["admin", "user"],
+        "edit": ["admin", "user"]
+      },
+      "multivalued": false
+    },
+    {
+      "name": "tenant_id",
+      "displayName": "VertexBPMN tenant",
+      "validations": {
+        "length": {
+          "min": 1,
+          "max": 128
+        },
+        "pattern": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._~-]{0,127}$",
+          "error-message": "Invalid VertexBPMN tenant identifier"
+        }
+      },
+      "required": {
+        "roles": ["user"]
+      },
+      "permissions": {
+        "view": ["admin", "user"],
+        "edit": ["admin"]
+      },
+      "multivalued": false
+    }
+  ],
+  "groups": [
+    {
+      "name": "user-metadata",
+      "displayHeader": "User metadata",
+      "displayDescription": "Attributes which refer to user metadata"
+    }
+  ]
+}

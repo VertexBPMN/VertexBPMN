@@ -1,9 +1,17 @@
 ﻿<!DOCTYPE html>
+@using Microsoft.AspNetCore.Antiforgery
+@inject IAntiforgery Antiforgery
+@inject IConfiguration Configuration
+
 <html lang="en">
 
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    @if (UseOidcSessionRefresh && HttpContext is not null)
+    {
+        <meta name="vertexbpmn-antiforgery" content="@Antiforgery.GetAndStoreTokens(HttpContext).RequestToken" />
+    }
     <base href="/" />
     <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
     <link rel="stylesheet" href="@Assets["lib/bootstrap/dist/css/bootstrap.min.css"]" />
@@ -41,6 +49,20 @@
     <script src="@Assets["lib/form-js/form-editor.js"]"></script>
     <script src="@Assets["lib/form-js/form-viewer.js"]"></script>
     <script src="@Assets["js/file-helpers.js"]"></script>
+    @if (UseOidcSessionRefresh)
+    {
+        <script src="@Assets["js/oidc-session-refresh.js"]"></script>
+    }
 </body>
 
 </html>
+
+@code {
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    private bool UseOidcSessionRefresh =>
+        !string.IsNullOrWhiteSpace(Configuration["StudioAuthentication:Authority"])
+        && !Configuration.GetValue<bool>("StudioAuthentication:LocalDevelopmentEnabled")
+        && !Configuration.GetValue<bool>("StudioAuthentication:UiTestEnabled");
+}

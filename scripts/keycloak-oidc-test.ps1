@@ -113,7 +113,8 @@ function Ensure-Container {
 function Wait-Keycloak {
     $discoveryUri = "http://localhost:$KeycloakPort/realms/$realmName/.well-known/openid-configuration"
     $deadline = [DateTime]::UtcNow.AddMinutes(3)
-    $restartedForPortBinding = $false
+    $portBindingRestarts = 0
+    $lastPortBindingRestart = [DateTime]::MinValue
     do {
         try {
             $response = Invoke-RestMethod -Uri $discoveryUri -TimeoutSec 5
@@ -126,13 +127,15 @@ function Wait-Keycloak {
             # after the containerized server reports that it is listening. One
             # bounded restart re-establishes that host binding without touching
             # the dedicated database or any non-Keycloak resources.
-            if (-not $restartedForPortBinding -and (Test-ContainerRunning -Name $keycloakContainer)) {
+            $restartCooldownElapsed = [DateTime]::UtcNow - $lastPortBindingRestart -ge [TimeSpan]::FromSeconds(20)
+            if (($portBindingRestarts -lt 2) -and $restartCooldownElapsed -and (Test-ContainerRunning -Name $keycloakContainer)) {
                 $startupLogs = Invoke-Wslc -Arguments @("logs", "--tail", "40", $keycloakContainer) -IgnoreExitCode
                 if (($startupLogs.Output -join [Environment]::NewLine) -match "Listening on:") {
-                    Write-Host "Keycloak is running but its WSLC host port is unavailable; restarting the dedicated container once..."
+                    $portBindingRestarts++
+                    Write-Host "Keycloak is running but its WSLC host port is unavailable; rebinding the dedicated container ($portBindingRestarts/2)..."
                     $null = Invoke-Wslc -Arguments @("stop", $keycloakContainer)
                     $null = Invoke-Wslc -Arguments @("start", $keycloakContainer)
-                    $restartedForPortBinding = $true
+                    $lastPortBindingRestart = [DateTime]::UtcNow
                 }
             }
             Start-Sleep -Seconds 2

@@ -19,6 +19,7 @@ public sealed class OidcTestProfileSecurityTests
             ["Jwt:Authority"] = "http://localhost:58080/realms/vertexbpmn",
             ["Jwt:Audience"] = "vertexbpmn-api",
             ["Jwt:ClockSkewSeconds"] = "0",
+            ["Jwt:MetadataRefreshIntervalSeconds"] = "1",
             ["Jwt:RequireHttpsMetadata"] = "false",
             ["Jwt:UseDevelopmentApiKey"] = "true"
         }));
@@ -31,6 +32,27 @@ public sealed class OidcTestProfileSecurityTests
         Assert.False(jwt.RequireHttpsMetadata);
         Assert.Equal("http://localhost:58080/realms/vertexbpmn", jwt.Authority);
         Assert.Equal(TimeSpan.Zero, jwt.TokenValidationParameters.ClockSkew);
+        Assert.True(jwt.RefreshOnIssuerKeyNotFound);
+        Assert.Equal(TimeSpan.FromSeconds(1), jwt.RefreshInterval);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(301)]
+    public void InvalidMetadataRefreshInterval_IsRejected(int seconds)
+    {
+        var configuration = Configuration(new Dictionary<string, string?>
+        {
+            ["OperationalMode"] = "Production",
+            ["Jwt:Authority"] = "https://identity.example.org/realms/vertexbpmn",
+            ["Jwt:Audience"] = "vertexbpmn-api",
+            ["Jwt:MetadataRefreshIntervalSeconds"] = seconds.ToString(System.Globalization.CultureInfo.InvariantCulture)
+        });
+
+        var error = Assert.Throws<InvalidOperationException>(() =>
+            new ServiceCollection().AddProductionSecurity(configuration));
+
+        Assert.Contains("MetadataRefreshIntervalSeconds", error.Message, StringComparison.Ordinal);
     }
 
     [Theory]

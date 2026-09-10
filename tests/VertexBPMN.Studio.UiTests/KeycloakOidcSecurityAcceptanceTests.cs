@@ -17,6 +17,59 @@ public sealed class KeycloakOidcSecurityAcceptanceTests
 {
     [Fact]
     [Trait("Category", "KeycloakOidcSecurityAcceptance")]
+    public async Task T08_RsaSigningKeyRotation_RefreshesJwksAndPreservesTheOverlapWindow()
+    {
+        var authority = RequiredEnvironment("Jwt__Authority").TrimEnd('/');
+        var apiUrl = RequiredEnvironment("VERTEXBPMN_OIDC_TEST_API_URL");
+        var clientId = RequiredEnvironment("VERTEXBPMN_KEYCLOAK_SECURITY_CLIENT_ID");
+        var clientSecret = RequiredEnvironment("VERTEXBPMN_KEYCLOAK_SECURITY_CLIENT_SECRET");
+        var password = RequiredEnvironment("VERTEXBPMN_KEYCLOAK_TEST_USER_PASSWORD");
+
+        using var keycloak = new HttpClient();
+        using var api = new HttpClient { BaseAddress = new Uri(apiUrl) };
+        using var admin = await CreateKeycloakAdminClientAsync(keycloak, authority);
+        var oldToken = await PasswordAccessTokenAsync(
+            keycloak, authority, clientId, clientSecret, "vertexbpmn-admin", password);
+        var oldKid = ReadKeyId(oldToken);
+        Assert.Contains(oldKid, await GetJwksKeyIdsAsync(keycloak, authority));
+        Assert.Equal(HttpStatusCode.OK,
+            (await SendAsync(api, HttpMethod.Get, "api/tenant", oldToken)).StatusCode);
+
+        var providerId = await CreateGeneratedRsaKeyProviderAsync(admin);
+        string? newKid = null;
+        try
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(1_250), TestContext.Current.CancellationToken);
+            var newToken = await WaitForTokenWithDifferentKeyAsync(
+                keycloak, authority, clientId, clientSecret, password, oldKid);
+            newKid = ReadKeyId(newToken);
+            Assert.NotEqual(oldKid, newKid);
+
+            var publishedKids = await GetJwksKeyIdsAsync(keycloak, authority);
+            Assert.Contains(oldKid, publishedKids);
+            Assert.Contains(newKid, publishedKids);
+
+            Assert.Equal(HttpStatusCode.OK,
+                (await SendAsync(api, HttpMethod.Get, "api/tenant", newToken)).StatusCode);
+            Assert.Equal(HttpStatusCode.OK,
+                (await SendAsync(api, HttpMethod.Get, "api/tenant", oldToken)).StatusCode);
+            Assert.Equal(HttpStatusCode.Unauthorized,
+                (await SendAsync(api, HttpMethod.Get, "api/tenant", TamperSignature(newToken))).StatusCode);
+        }
+        finally
+        {
+            await DeleteKeyProviderAsync(admin, providerId);
+        }
+
+        Assert.DoesNotContain(newKid!, await GetJwksKeyIdsAsync(keycloak, authority));
+        var rollbackToken = await WaitForTokenWithKeyAsync(
+            keycloak, authority, clientId, clientSecret, password, oldKid);
+        Assert.Equal(HttpStatusCode.OK,
+            (await SendAsync(api, HttpMethod.Get, "api/tenant", rollbackToken)).StatusCode);
+    }
+
+    [Fact]
+    [Trait("Category", "KeycloakOidcSecurityAcceptance")]
     public async Task T07_TotpEnrollmentAndLogin_RequireAValidSecondFactor()
     {
         var studioUrl = RequiredEnvironment("VERTEXBPMN_OIDC_TEST_STUDIO_URL");
@@ -528,6 +581,109 @@ public sealed class KeycloakOidcSecurityAcceptanceTests
         return client;
     }
 
+    private static async Task<string> CreateGeneratedRsaKeyProviderAsync(HttpClient admin)
+    {
+        using var realmResponse = await GetWithTransportRetryAsync(admin, "");
+        realmResponse.EnsureSuccessStatusCode();
+        using var realm = JsonDocument.Parse(
+            await realmResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        var realmId = realm.RootElement.GetProperty("id").GetString()
+            ?? throw new InvalidOperationException("The Keycloak realm has no id.");
+        var name = $"vertexbpmn-t08-{Guid.NewGuid():N}";
+        using var response = await admin.PostAsJsonAsync(
+            "components",
+            new
+            {
+                name,
+                providerId = "rsa-generated",
+                providerType = "org.keycloak.keys.KeyProvider",
+                parentId = realmId,
+                config = new Dictionary<string, string[]>
+                {
+                    ["priority"] = ["200"],
+                    ["enabled"] = ["true"],
+                    ["active"] = ["true"],
+                    ["keySize"] = ["2048"],
+                    ["algorithm"] = ["RS256"]
+                }
+            },
+            TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var location = response.Headers.Location
+            ?? throw new InvalidOperationException("Keycloak did not return the created key-provider location.");
+        return location.Segments[^1].Trim('/');
+    }
+
+    private static async Task DeleteKeyProviderAsync(HttpClient admin, string providerId)
+    {
+        using var response = await admin.DeleteAsync(
+            $"components/{Uri.EscapeDataString(providerId)}",
+            TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+    }
+
+    private static async Task<string> WaitForTokenWithDifferentKeyAsync(
+        HttpClient keycloak,
+        string authority,
+        string clientId,
+        string clientSecret,
+        string password,
+        string oldKid)
+    {
+        for (var attempt = 1; attempt <= 10; attempt++)
+        {
+            var token = await PasswordAccessTokenAsync(
+                keycloak, authority, clientId, clientSecret, "vertexbpmn-admin", password);
+            if (!string.Equals(ReadKeyId(token), oldKid, StringComparison.Ordinal))
+                return token;
+            await Task.Delay(TimeSpan.FromMilliseconds(250), TestContext.Current.CancellationToken);
+        }
+        throw new InvalidOperationException("Keycloak did not activate the rotated RSA signing key.");
+    }
+
+    private static async Task<string> WaitForTokenWithKeyAsync(
+        HttpClient keycloak,
+        string authority,
+        string clientId,
+        string clientSecret,
+        string password,
+        string expectedKid)
+    {
+        for (var attempt = 1; attempt <= 10; attempt++)
+        {
+            var token = await PasswordAccessTokenAsync(
+                keycloak, authority, clientId, clientSecret, "vertexbpmn-admin", password);
+            if (string.Equals(ReadKeyId(token), expectedKid, StringComparison.Ordinal))
+                return token;
+            await Task.Delay(TimeSpan.FromMilliseconds(250), TestContext.Current.CancellationToken);
+        }
+        throw new InvalidOperationException("Keycloak did not restore the original RSA signing key.");
+    }
+
+    private static async Task<IReadOnlySet<string>> GetJwksKeyIdsAsync(HttpClient keycloak, string authority)
+    {
+        using var response = await keycloak.GetAsync(
+            $"{authority}/protocol/openid-connect/certs",
+            TestContext.Current.CancellationToken);
+        response.EnsureSuccessStatusCode();
+        using var jwks = JsonDocument.Parse(
+            await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        return jwks.RootElement.GetProperty("keys").EnumerateArray()
+            .Select(key => key.GetProperty("kid").GetString())
+            .Where(kid => !string.IsNullOrWhiteSpace(kid))
+            .Select(kid => kid!)
+            .ToHashSet(StringComparer.Ordinal);
+    }
+
+    private static string ReadKeyId(string token)
+    {
+        var segments = token.Split('.');
+        Assert.Equal(3, segments.Length);
+        using var header = JsonDocument.Parse(DecodeBase64Url(segments[0]));
+        return header.RootElement.GetProperty("kid").GetString()
+            ?? throw new InvalidOperationException("The JWT header has no kid.");
+    }
+
     private static async Task<KeycloakRole> GetClientRoleAsync(
         HttpClient admin,
         string username,
@@ -720,6 +876,23 @@ public sealed class KeycloakOidcSecurityAcceptanceTests
                     endpoint,
                     new FormUrlEncodedContent(form),
                     TestContext.Current.CancellationToken);
+            }
+            catch (HttpRequestException) when (attempt < 3)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(250 * attempt), TestContext.Current.CancellationToken);
+            }
+        }
+    }
+
+    private static async Task<HttpResponseMessage> GetWithTransportRetryAsync(
+        HttpClient client,
+        string endpoint)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await client.GetAsync(endpoint, TestContext.Current.CancellationToken);
             }
             catch (HttpRequestException) when (attempt < 3)
             {

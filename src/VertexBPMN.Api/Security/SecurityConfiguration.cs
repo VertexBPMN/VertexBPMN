@@ -29,9 +29,12 @@ public static class SecurityConfiguration
         var useDevelopmentApiKey = isDevelopment && configuration.GetValue<bool>("Jwt:UseDevelopmentApiKey");
         var requireHttpsMetadata = configuration.GetValue<bool?>("Jwt:RequireHttpsMetadata") ?? !isDevelopment;
         var clockSkewSeconds = configuration.GetValue<int?>("Jwt:ClockSkewSeconds") ?? 30;
+        var metadataRefreshIntervalSeconds = configuration.GetValue<int?>("Jwt:MetadataRefreshIntervalSeconds") ?? 30;
 
         if (clockSkewSeconds is < 0 or > 300)
             throw new InvalidOperationException("Jwt:ClockSkewSeconds must be between 0 and 300 seconds.");
+        if (metadataRefreshIntervalSeconds is < 1 or > 300)
+            throw new InvalidOperationException("Jwt:MetadataRefreshIntervalSeconds must be between 1 and 300 seconds.");
 
         if (!requireHttpsMetadata
             && !isDevelopment
@@ -64,6 +67,8 @@ public static class SecurityConfiguration
             {
                 options.MapInboundClaims = false;
                 options.RequireHttpsMetadata = requireHttpsMetadata;
+                options.RefreshOnIssuerKeyNotFound = true;
+                options.RefreshInterval = TimeSpan.FromSeconds(metadataRefreshIntervalSeconds);
                 if (!string.IsNullOrWhiteSpace(authority))
                     options.Authority = authority;
 

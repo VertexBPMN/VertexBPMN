@@ -181,6 +181,26 @@ public static class VertexBpmnAppHostTopology
     {
         ArgumentNullException.ThrowIfNull(builder);
 
+        var useOidcTest = string.Equals(
+            builder.Configuration["VertexBPMN:AuthenticationMode"],
+            "OidcTest",
+            StringComparison.OrdinalIgnoreCase);
+        var oidcAuthority = builder.Configuration["VertexBPMN:Oidc:Authority"];
+        if (useOidcTest)
+        {
+            if (!Uri.TryCreate(oidcAuthority, UriKind.Absolute, out var authorityUri)
+                || !authorityUri.IsLoopback
+                || !authorityUri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "VertexBPMN:Oidc:Authority must be an HTTP loopback URI in the local OidcTest AppHost profile.");
+            }
+
+        }
+        var studioClientSecret = useOidcTest
+            ? builder.AddParameter("oidcStudioClientSecret", secret: true)
+            : null;
+
         var bpmnDb = builder.AddConnectionString("BpmnDbContext");
         var tenantDb = builder.AddConnectionString("TenantDbContext");
         var simulationDb = builder.AddConnectionString("SimulationScenarioDbContext");
@@ -194,9 +214,6 @@ public static class VertexBpmnAppHostTopology
                 port: 51870,
                 name: "http")
             .WithHttpHealthCheck("/api/ready")
-            .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development")
-            .WithEnvironment("DOTNET_ENVIRONMENT", "Development")
-            .WithEnvironment("OperationalMode", "Development")
             .WithEnvironment("Database__ApplyMigrationsOnStartup", "true")
             .WithReference(bpmnDb)
             .WithReference(tenantDb)
@@ -207,7 +224,25 @@ public static class VertexBpmnAppHostTopology
             .WithEnvironment("Runtime__Outbox__Enabled", "true")
             .WithEnvironment("Runtime__Outbox__Provider", "RabbitMq");
 
-        builder
+        if (useOidcTest)
+        {
+            api.WithEnvironment("ASPNETCORE_ENVIRONMENT", "OidcTest")
+                .WithEnvironment("DOTNET_ENVIRONMENT", "OidcTest")
+                .WithEnvironment("OperationalMode", "OidcTest")
+                .WithEnvironment("Jwt__Authority", oidcAuthority!)
+                .WithEnvironment("Jwt__Issuer", oidcAuthority!)
+                .WithEnvironment("Jwt__Audience", "vertexbpmn-api")
+                .WithEnvironment("Jwt__RequireHttpsMetadata", "false")
+                .WithEnvironment("Jwt__UseDevelopmentApiKey", "false");
+        }
+        else
+        {
+            api.WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development")
+                .WithEnvironment("DOTNET_ENVIRONMENT", "Development")
+                .WithEnvironment("OperationalMode", "Development");
+        }
+
+        var studio = builder
             .AddProject<Projects.VertexBPMN_Studio>("studio")
             .WithHttpEndpoint(
                 port: 5263,
@@ -215,9 +250,26 @@ public static class VertexBpmnAppHostTopology
             .WithHttpHealthCheck("/health")
             .WithReference(api)
             .WaitFor(api)
-            .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development")
-            .WithEnvironment("StudioAuthentication__LocalDevelopmentEnabled", "true")
             .WithEnvironment("StudioHttpsRedirection__Enabled", "false")
             .WithEnvironment("ApiBaseUrl", api.GetEndpoint("http"));
+
+        if (useOidcTest)
+        {
+            studio.WithEnvironment("ASPNETCORE_ENVIRONMENT", "OidcTest")
+                .WithEnvironment("DOTNET_ENVIRONMENT", "OidcTest")
+                .WithEnvironment("StudioAuthentication__Authority", oidcAuthority!)
+                .WithEnvironment("StudioAuthentication__ClientId", "vertexbpmn-studio")
+                .WithEnvironment("StudioAuthentication__ClientSecret", studioClientSecret!)
+                .WithEnvironment("StudioAuthentication__ClaimsScope", "vertexbpmn-claims")
+                .WithEnvironment("StudioAuthentication__RequireClientSecret", "true")
+                .WithEnvironment("StudioAuthentication__RequireHttpsMetadata", "false")
+                .WithEnvironment("StudioAuthentication__LocalDevelopmentEnabled", "false")
+                .WithEnvironment("StudioAuthentication__UiTestEnabled", "false");
+        }
+        else
+        {
+            studio.WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development")
+                .WithEnvironment("StudioAuthentication__LocalDevelopmentEnabled", "true");
+        }
     }
 }

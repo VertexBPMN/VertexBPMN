@@ -6,6 +6,7 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Security.Cryptography;
+using VertexBPMN.ServiceDefaults.Security;
 
 namespace VertexBPMN.Api.Security;
 
@@ -23,7 +24,18 @@ public static class SecurityConfiguration
         var secretKey = configuration["Jwt:SecretKey"];
         var isDevelopment = string.Equals(configuration["OperationalMode"], "Development", StringComparison.OrdinalIgnoreCase)
             || string.Equals(configuration["ASPNETCORE_ENVIRONMENT"], "Development", StringComparison.OrdinalIgnoreCase);
+        var isOidcTest = string.Equals(configuration["OperationalMode"], "OidcTest", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(configuration["ASPNETCORE_ENVIRONMENT"], "OidcTest", StringComparison.OrdinalIgnoreCase);
         var useDevelopmentApiKey = isDevelopment && configuration.GetValue<bool>("Jwt:UseDevelopmentApiKey");
+        var requireHttpsMetadata = configuration.GetValue<bool?>("Jwt:RequireHttpsMetadata") ?? !isDevelopment;
+
+        if (!requireHttpsMetadata
+            && !isDevelopment
+            && !(isOidcTest && IsLoopbackAuthority(authority)))
+        {
+            throw new InvalidOperationException(
+                "Jwt:RequireHttpsMetadata may be disabled outside Development only for the OidcTest profile with a loopback Authority.");
+        }
 
         if (string.IsNullOrWhiteSpace(audience))
             throw new InvalidOperationException("Jwt:Audience must be configured.");
@@ -46,7 +58,8 @@ public static class SecurityConfiguration
             })
             .AddJwtBearer(options =>
             {
-                options.RequireHttpsMetadata = !isDevelopment;
+                options.MapInboundClaims = false;
+                options.RequireHttpsMetadata = requireHttpsMetadata;
                 if (!string.IsNullOrWhiteSpace(authority))
                     options.Authority = authority;
 
@@ -60,8 +73,23 @@ public static class SecurityConfiguration
                     ValidAudience = audience,
                     IssuerSigningKey = string.IsNullOrWhiteSpace(authority)
                         ? new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey!))
-                        : null
+                        : null,
+                    NameClaimType = "preferred_username",
+                    RoleClaimType = ClaimTypes.Role,
+                    ClockSkew = TimeSpan.FromSeconds(30)
                 };
+                if (!string.IsNullOrWhiteSpace(authority))
+                {
+                    options.Events = new JwtBearerEvents
+                    {
+                        OnTokenValidated = context =>
+                        {
+                            if (!VertexOidcClaims.TryNormalize(context.Principal!, out var error))
+                                context.Fail(error);
+                            return Task.CompletedTask;
+                        }
+                    };
+                }
             })
             .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>("ApiKey", _ => { });
 
@@ -106,6 +134,12 @@ public static class SecurityConfiguration
 
         return services;
     }
+
+    private static bool IsLoopbackAuthority(string? authority) =>
+        Uri.TryCreate(authority, UriKind.Absolute, out var uri)
+        && uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+        && uri.IsLoopback;
+
     public static void AddTenantReadOnlyPolicy(Microsoft.AspNetCore.Authorization.AuthorizationOptions options)
     {
         options.AddPolicy("TenantReadOnly", policy => policy

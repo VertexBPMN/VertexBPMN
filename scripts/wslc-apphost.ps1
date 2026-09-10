@@ -15,8 +15,11 @@ param(
     [int]$RabbitMqPort = 55672,
     [ValidateRange(1, 65535)]
     [int]$RabbitMqManagementPort = 15673,
+    [ValidateRange(60, 3600)]
+    [int]$KeycloakAccessTokenLifespan = 300,
     [switch]$ExistingInfrastructure,
-    [switch]$InfrastructureOnly
+    [switch]$InfrastructureOnly,
+    [switch]$OidcTest
 )
 
 $ErrorActionPreference = "Stop"
@@ -212,6 +215,7 @@ if ($ExistingInfrastructure -and ($Action -ne "Start" -or $InfrastructureOnly)) 
 
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $appHostProject = Join-Path $repositoryRoot "src/VertexBPMN.AppHost/VertexBPMN.AppHost.csproj"
+$keycloakTestScript = Join-Path $PSScriptRoot "keycloak-oidc-test.ps1"
 if ($Action -eq "Start" -and -not $InfrastructureOnly) {
     # Build before the first wslc.exe invocation. WSLC 2.9.3 can leave the
     # calling process in a state where a subsequent MSBuild exits with code 1
@@ -230,10 +234,16 @@ else {
     switch ($Action) {
         "Stop" {
             Stop-Infrastructure
+            if ($OidcTest) {
+                & $keycloakTestScript -Action Stop
+            }
             return
         }
         "Status" {
             Show-Status
+            if ($OidcTest) {
+                & $keycloakTestScript -Action Status
+            }
             return
         }
         "Start" {
@@ -243,8 +253,19 @@ else {
 
     Show-Status
     if ($InfrastructureOnly) {
+        if ($OidcTest) {
+            & $keycloakTestScript -Action Start
+        }
         return
     }
+}
+
+if ($OidcTest) {
+    if ([string]::IsNullOrWhiteSpace($env:VERTEXBPMN_KEYCLOAK_STUDIO_CLIENT_SECRET)) {
+        throw "VERTEXBPMN_KEYCLOAK_STUDIO_CLIENT_SECRET must be set for the OidcTest profile."
+    }
+
+    & $keycloakTestScript -Action Start -AccessTokenLifespan $KeycloakAccessTokenLifespan
 }
 
 $postgresBase = "Host=localhost;Port=$PostgresPort;Username=$User;Password=$Password"
@@ -253,6 +274,11 @@ Write-Host "Starting VertexBPMN.AppHost with external local infrastructure..."
 $env:DOTNET_ENVIRONMENT = "Wslc"
 $env:ASPNETCORE_ENVIRONMENT = "Wslc"
 $env:VertexBPMN__ApiHostingMode = "ExternalServices"
+if ($OidcTest) {
+    $env:VertexBPMN__AuthenticationMode = "OidcTest"
+    $env:VertexBPMN__Oidc__Authority = "http://localhost:58080/realms/vertexbpmn"
+    $env:Parameters__oidcStudioClientSecret = $env:VERTEXBPMN_KEYCLOAK_STUDIO_CLIENT_SECRET
+}
 $env:ConnectionStrings__BpmnDbContext = "$postgresBase;Database=vertexbpmn_bpmn"
 $env:ConnectionStrings__TenantDbContext = "$postgresBase;Database=vertexbpmn_tenants"
 $env:ConnectionStrings__SimulationScenarioDbContext = "$postgresBase;Database=vertexbpmn_simulation"

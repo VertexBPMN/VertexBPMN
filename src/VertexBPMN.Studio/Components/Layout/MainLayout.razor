@@ -4,6 +4,7 @@
 @inject VertexBPMN.Studio.Services.IIdentityService IdentityService
 @inject VertexBPMN.Studio.Services.StudioTenantContext TenantContext
 @inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ILogger<MainLayout> Logger
 
 <MudThemeProvider Theme="_theme" />
@@ -37,7 +38,7 @@
                        Variant="Variant.Outlined"
                        Margin="Margin.Dense"
                        Class="studio-context__select studio-context__tenant"
-                       Disabled="!_tenantsLoaded">
+                       Disabled="!_tenantsLoaded || !_canSelectTenant">
                 <MudSelectItem Value="@((string?)null)">Default</MudSelectItem>
                 @foreach (var tenant in _tenants)
                 {
@@ -71,6 +72,14 @@
                            Class="studio-context__refresh"
                            aria-label="Refresh engines"
                            OnClick="RefreshEngines" />
+
+            <form method="post" action="/authentication/logout" class="studio-logout-form">
+                <AntiforgeryToken />
+                <button type="submit" class="studio-logout-button" aria-label="Sign out">
+                    <span aria-hidden="true">↪</span>
+                    <span>Sign out</span>
+                </button>
+            </form>
         </div>
     </MudAppBar>
 
@@ -100,9 +109,24 @@
     private List<VertexBPMN.Studio.Services.EngineConnection> _engineConnections = new();
     private IReadOnlyList<VertexBPMN.Studio.Services.StudioTenant> _tenants = Array.Empty<VertexBPMN.Studio.Services.StudioTenant>();
     private bool _tenantsLoaded;
+    private bool _canSelectTenant;
 
     protected override async Task OnInitializedAsync()
     {
+        var principal = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+        _canSelectTenant = principal.IsInRole("Admin");
+        if (!_canSelectTenant)
+        {
+            var tenantId = principal.FindFirst("tenant_id")?.Value;
+            if (!string.IsNullOrWhiteSpace(tenantId))
+            {
+                TenantContext.SetTenant(tenantId);
+                _tenants = [new VertexBPMN.Studio.Services.StudioTenant(tenantId, tenantId)];
+            }
+            _tenantsLoaded = true;
+            return;
+        }
+
         for (var attempt = 1; attempt <= 3; attempt++)
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
@@ -162,6 +186,8 @@
 
     private void SelectTenant(string? tenantId)
     {
+        if (!_canSelectTenant)
+            return;
         TenantContext.SetTenant(tenantId);
         StateHasChanged();
     }

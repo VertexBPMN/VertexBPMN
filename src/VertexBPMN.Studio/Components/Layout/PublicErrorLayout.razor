@@ -1,0 +1,14 @@
+@inherits LayoutComponentBase
+
+<MudThemeProvider Theme="_theme" />
+<MudDialogProvider />
+<MudSnackbarProvider />
+<MudPopoverProvider />
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="studio-content py-12">
+    @Body
+</MudContainer>
+
+@code {
+    private static readonly MudTheme _theme = VertexBPMN.Studio.Styling.StudioTheme.Default;
+}

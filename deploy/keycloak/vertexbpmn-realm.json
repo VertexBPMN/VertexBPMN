@@ -218,10 +218,14 @@
       "directAccessGrantsEnabled": false,
       "frontchannelLogout": true,
       "redirectUris": [
-        "http://localhost:5263/signin-oidc"
+        "http://localhost:5263/signin-oidc",
+        "https://localhost:5263/signin-oidc",
+        "http://localhost:5264/signin-oidc"
       ],
       "webOrigins": [
-        "http://localhost:5263"
+        "http://localhost:5263",
+        "https://localhost:5263",
+        "http://localhost:5264"
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",

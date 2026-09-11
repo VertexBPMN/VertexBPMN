@@ -2,6 +2,8 @@
 param(
     [ValidateRange(60, 300)]
     [int]$AccessTokenLifespan = 70,
+    [switch]$SecurityAcceptance,
+    [string]$TestMethod,
     [switch]$KeepKeycloak
 )
 
@@ -9,8 +11,10 @@ $ErrorActionPreference = "Stop"
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $keycloakScript = Join-Path $PSScriptRoot "keycloak-oidc-test.ps1"
 $apiProject = Join-Path $repositoryRoot "src/VertexBPMN.Api/VertexBPMN.Api.csproj"
+$studioProject = Join-Path $repositoryRoot "src/VertexBPMN.Studio/VertexBPMN.Studio.csproj"
+$studioPublishDirectory = Join-Path $repositoryRoot "tests/VertexBPMN.Studio.UiTests/TestResults/keycloak-oidc/studio-publish"
+$studioPublishedAssembly = Join-Path $studioPublishDirectory "VertexBPMN.Studio.dll"
 $apiAssembly = Join-Path $repositoryRoot "src/VertexBPMN.Api/bin/Release/net10.0/VertexBPMN.Api.dll"
-$studioAssembly = Join-Path $repositoryRoot "src/VertexBPMN.Studio/bin/Release/net10.0/VertexBPMN.Studio.dll"
 $uiTestProject = Join-Path $repositoryRoot "tests/VertexBPMN.Studio.UiTests/VertexBPMN.Studio.UiTests.csproj"
 $uiTestAssembly = Join-Path $repositoryRoot "tests/VertexBPMN.Studio.UiTests/bin/Release/net10.0/VertexBPMN.Studio.UiTests.dll"
 $resultsDirectory = Join-Path $repositoryRoot "tests/VertexBPMN.Studio.UiTests/TestResults/keycloak-oidc"
@@ -47,6 +51,7 @@ function Wait-ForEndpoint {
     $handler = [System.Net.Http.HttpClientHandler]::new()
     $handler.AllowAutoRedirect = $false
     $client = [System.Net.Http.HttpClient]::new($handler)
+    $client.Timeout = [TimeSpan]::FromSeconds(5)
     try {
         do {
             if ($Process.HasExited) {
@@ -61,6 +66,9 @@ function Wait-ForEndpoint {
             }
             catch [System.Net.Http.HttpRequestException] {
                 # Kestrel or Keycloak is still starting.
+            }
+            catch [System.Threading.Tasks.TaskCanceledException] {
+                # A dependency may be accepting connections before it can answer.
             }
             Start-Sleep -Milliseconds 500
         } while ([DateTime]::UtcNow -lt $deadline)
@@ -91,16 +99,29 @@ $apiStdout = Join-Path $resultsDirectory "api.stdout.log"
 $apiStderr = Join-Path $resultsDirectory "api.stderr.log"
 $studioStdout = Join-Path $resultsDirectory "studio.stdout.log"
 $studioStderr = Join-Path $resultsDirectory "studio.stderr.log"
+foreach ($artifact in @(
+    $apiStdout,
+    $apiStderr,
+    $studioStdout,
+    $studioStderr,
+    (Join-Path $resultsDirectory "dependencies.db"),
+    (Join-Path $resultsDirectory "dependencies.db-shm"),
+    (Join-Path $resultsDirectory "dependencies.db-wal")
+)) {
+    Remove-Item -LiteralPath $artifact -Force -ErrorAction SilentlyContinue
+}
 
 Write-Host "Building API, Studio and the local browser acceptance test..."
 & dotnet build $apiProject --configuration Release --no-restore --disable-build-servers --maxcpucount:1
 if ($LASTEXITCODE -ne 0) { throw "The API build failed with exit code $LASTEXITCODE." }
-& dotnet build $uiTestProject --configuration Release --no-restore --disable-build-servers --maxcpucount:1 -p:SkipBpmnIoAssetBuild=true
+& dotnet build $uiTestProject --configuration Release --no-restore --disable-build-servers --maxcpucount:1
 if ($LASTEXITCODE -ne 0) { throw "The UI acceptance test build failed with exit code $LASTEXITCODE." }
+& dotnet publish $studioProject --configuration Release --no-restore --disable-build-servers --maxcpucount:1 --output $studioPublishDirectory
+if ($LASTEXITCODE -ne 0) { throw "The Studio publish failed with exit code $LASTEXITCODE." }
 
 try {
     Write-Host "Starting the dedicated Keycloak test realm..."
-    & $keycloakScript -Action Start -AccessTokenLifespan $AccessTokenLifespan
+    & $keycloakScript -Action Start -AccessTokenLifespan $AccessTokenLifespan -SecurityAcceptance:$SecurityAcceptance
 
     $env:ASPNETCORE_ENVIRONMENT = "OidcTest"
     $env:DOTNET_ENVIRONMENT = "OidcTest"
@@ -113,6 +134,7 @@ try {
     $env:Jwt__Authority = "http://localhost:58080/realms/vertexbpmn"
     $env:Jwt__Issuer = "http://localhost:58080/realms/vertexbpmn"
     $env:Jwt__Audience = "vertexbpmn-api"
+    $env:Jwt__ClockSkewSeconds = "0"
     $env:Jwt__RequireHttpsMetadata = "false"
     $env:Jwt__UseDevelopmentApiKey = "false"
 
@@ -124,7 +146,13 @@ try {
         -RedirectStandardOutput $apiStdout -RedirectStandardError $apiStderr
     Wait-ForEndpoint -Uri "http://localhost:51870/api/ready" -Name "VertexBPMN API" -Process $apiProcess
 
+    # WSLC can lose a published host port while the .NET applications are
+    # starting although the container itself keeps running. Re-verify and, if
+    # necessary, rebind Keycloak before Studio loads OIDC metadata.
+    & $keycloakScript -Action Wait
+
     $env:ApiBaseUrl = "http://localhost:51870/"
+    $env:DataProtection__KeyRingPath = Join-Path $resultsDirectory "studio-keyring"
     $env:StudioHttpsRedirection__Enabled = "false"
     $env:StudioAuthentication__Authority = "http://localhost:58080/realms/vertexbpmn"
     $env:StudioAuthentication__ClientId = "vertexbpmn-studio"
@@ -134,19 +162,51 @@ try {
     $env:StudioAuthentication__RequireHttpsMetadata = "false"
     $env:StudioAuthentication__LocalDevelopmentEnabled = "false"
     $env:StudioAuthentication__UiTestEnabled = "false"
+    $env:AllowedHosts = "localhost;127.0.0.1"
+    $env:ReverseProxy__Enabled = "true"
+    $env:ReverseProxy__KnownProxies__0 = "127.0.0.1"
+    $env:ReverseProxy__KnownProxies__1 = "::1"
 
     Write-Host "Starting the real Studio directly for deterministic browser acceptance..."
     $studioProcess = Start-Process dotnet `
-        -ArgumentList @($studioAssembly, "--urls", "http://localhost:5263") `
-        -WorkingDirectory (Split-Path -Parent $studioAssembly) `
+        -ArgumentList @($studioPublishedAssembly, "--urls", "http://localhost:5263") `
+        -WorkingDirectory $studioPublishDirectory `
         -PassThru -WindowStyle Hidden `
         -RedirectStandardOutput $studioStdout -RedirectStandardError $studioStderr
     Wait-ForEndpoint -Uri "http://localhost:5263/" -Name "VertexBPMN Studio" -Process $studioProcess
 
+    # Keep the final precondition explicit so a disappearing WSLC port is
+    # reported/rebound before the browser and key-rotation assertions begin.
+    & $keycloakScript -Action Wait
+
     $env:VERTEXBPMN_OIDC_TEST_STUDIO_URL = "http://localhost:5263/"
+    $env:VERTEXBPMN_OIDC_TEST_STUDIO_REPLICA_URL = "http://localhost:5264/"
+    $env:VERTEXBPMN_OIDC_TEST_STUDIO_ASSEMBLY = $studioPublishedAssembly
+    $env:VERTEXBPMN_OIDC_TEST_API_URL = "http://localhost:51870/"
+    $env:VERTEXBPMN_OIDC_TEST_ALTERNATE_API_URL = "http://localhost:51871/"
+    $env:VERTEXBPMN_OIDC_TEST_API_ASSEMBLY = $apiAssembly
+    $env:VERTEXBPMN_OIDC_TEST_RESULTS_DIR = $resultsDirectory
     $env:VERTEXBPMN_KEYCLOAK_TEST_USER = "vertexbpmn-user"
-    Write-Host "Running real browser login, API authorization, refresh and logout..."
-    & dotnet $uiTestAssembly -class "*KeycloakOidcLocalAcceptanceTests"
+    $env:VERTEXBPMN_KEYCLOAK_TEST_CONTAINER = "vertexbpmn-keycloak-test"
+    $env:VERTEXBPMN_KEYCLOAK_TEST_SCRIPT = $keycloakScript
+    $env:VERTEXBPMN_KEYCLOAK_STUDIO_CLIENT_ID = "vertexbpmn-studio"
+    $env:VERTEXBPMN_KEYCLOAK_SECURITY_CLIENT_ID = "vertexbpmn-security-test"
+    $env:VERTEXBPMN_KEYCLOAK_WRONG_AUDIENCE_CLIENT_ID = "vertexbpmn-wrong-audience-test"
+    $env:VERTEXBPMN_KEYCLOAK_EXPIRING_CLIENT_ID = "vertexbpmn-expiring-test"
+    $env:VERTEXBPMN_KEYCLOAK_ACCESS_TOKEN_LIFESPAN = $AccessTokenLifespan.ToString([Globalization.CultureInfo]::InvariantCulture)
+    $env:VERTEXBPMN_KEYCLOAK_SECURITY_CLIENT_SECRET = $env:VERTEXBPMN_KEYCLOAK_STUDIO_CLIENT_SECRET
+    $testFilters = if ([string]::IsNullOrWhiteSpace($TestMethod)) {
+        $classes = @("-class", "*KeycloakOidcLocalAcceptanceTests")
+        if ($SecurityAcceptance) {
+            $classes += @("-class", "*KeycloakOidcSecurityAcceptanceTests")
+        }
+        $classes
+    }
+    else {
+        @("-method", $TestMethod)
+    }
+    Write-Host "Running real browser login, API authorization, refresh and logout$(if ($SecurityAcceptance) { ' plus K05 security acceptance' })..."
+    & dotnet $uiTestAssembly @testFilters -parallelMode none
     if ($LASTEXITCODE -ne 0) {
         throw "The Keycloak browser acceptance test failed with exit code $LASTEXITCODE."
     }

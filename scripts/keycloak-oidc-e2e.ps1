@@ -3,6 +3,7 @@ param(
     [ValidateRange(60, 300)]
     [int]$AccessTokenLifespan = 70,
     [switch]$SecurityAcceptance,
+    [string]$TestMethod,
     [switch]$KeepKeycloak
 )
 
@@ -151,6 +152,7 @@ try {
     & $keycloakScript -Action Wait
 
     $env:ApiBaseUrl = "http://localhost:51870/"
+    $env:DataProtection__KeyRingPath = Join-Path $resultsDirectory "studio-keyring"
     $env:StudioHttpsRedirection__Enabled = "false"
     $env:StudioAuthentication__Authority = "http://localhost:58080/realms/vertexbpmn"
     $env:StudioAuthentication__ClientId = "vertexbpmn-studio"
@@ -160,6 +162,10 @@ try {
     $env:StudioAuthentication__RequireHttpsMetadata = "false"
     $env:StudioAuthentication__LocalDevelopmentEnabled = "false"
     $env:StudioAuthentication__UiTestEnabled = "false"
+    $env:AllowedHosts = "localhost;127.0.0.1"
+    $env:ReverseProxy__Enabled = "true"
+    $env:ReverseProxy__KnownProxies__0 = "127.0.0.1"
+    $env:ReverseProxy__KnownProxies__1 = "::1"
 
     Write-Host "Starting the real Studio directly for deterministic browser acceptance..."
     $studioProcess = Start-Process dotnet `
@@ -174,19 +180,33 @@ try {
     & $keycloakScript -Action Wait
 
     $env:VERTEXBPMN_OIDC_TEST_STUDIO_URL = "http://localhost:5263/"
+    $env:VERTEXBPMN_OIDC_TEST_STUDIO_REPLICA_URL = "http://localhost:5264/"
+    $env:VERTEXBPMN_OIDC_TEST_STUDIO_ASSEMBLY = $studioPublishedAssembly
     $env:VERTEXBPMN_OIDC_TEST_API_URL = "http://localhost:51870/"
+    $env:VERTEXBPMN_OIDC_TEST_ALTERNATE_API_URL = "http://localhost:51871/"
+    $env:VERTEXBPMN_OIDC_TEST_API_ASSEMBLY = $apiAssembly
+    $env:VERTEXBPMN_OIDC_TEST_RESULTS_DIR = $resultsDirectory
     $env:VERTEXBPMN_KEYCLOAK_TEST_USER = "vertexbpmn-user"
+    $env:VERTEXBPMN_KEYCLOAK_TEST_CONTAINER = "vertexbpmn-keycloak-test"
+    $env:VERTEXBPMN_KEYCLOAK_TEST_SCRIPT = $keycloakScript
+    $env:VERTEXBPMN_KEYCLOAK_STUDIO_CLIENT_ID = "vertexbpmn-studio"
     $env:VERTEXBPMN_KEYCLOAK_SECURITY_CLIENT_ID = "vertexbpmn-security-test"
     $env:VERTEXBPMN_KEYCLOAK_WRONG_AUDIENCE_CLIENT_ID = "vertexbpmn-wrong-audience-test"
     $env:VERTEXBPMN_KEYCLOAK_EXPIRING_CLIENT_ID = "vertexbpmn-expiring-test"
     $env:VERTEXBPMN_KEYCLOAK_ACCESS_TOKEN_LIFESPAN = $AccessTokenLifespan.ToString([Globalization.CultureInfo]::InvariantCulture)
     $env:VERTEXBPMN_KEYCLOAK_SECURITY_CLIENT_SECRET = $env:VERTEXBPMN_KEYCLOAK_STUDIO_CLIENT_SECRET
-    $testClasses = @("-class", "*KeycloakOidcLocalAcceptanceTests")
-    if ($SecurityAcceptance) {
-        $testClasses += @("-class", "*KeycloakOidcSecurityAcceptanceTests")
+    $testFilters = if ([string]::IsNullOrWhiteSpace($TestMethod)) {
+        $classes = @("-class", "*KeycloakOidcLocalAcceptanceTests")
+        if ($SecurityAcceptance) {
+            $classes += @("-class", "*KeycloakOidcSecurityAcceptanceTests")
+        }
+        $classes
+    }
+    else {
+        @("-method", $TestMethod)
     }
     Write-Host "Running real browser login, API authorization, refresh and logout$(if ($SecurityAcceptance) { ' plus K05 security acceptance' })..."
-    & dotnet $uiTestAssembly @testClasses -parallelMode none
+    & dotnet $uiTestAssembly @testFilters -parallelMode none
     if ($LASTEXITCODE -ne 0) {
         throw "The Keycloak browser acceptance test failed with exit code $LASTEXITCODE."
     }

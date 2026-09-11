@@ -1,7 +1,7 @@
 # Austauschbarer OIDC-Provider: Keycloak Self-Hosting
 
 Stand: 2026-09-11. Synchronisierte Basis: `ca5699e`.
-Status: **K00–K04 abgeschlossen, K05 begonnen. T01–T08 sind gegen echten Keycloak vollständig bestanden. T09–T12, die vollständige Regression, K06, Betreiberwerte und das unabhängige Review bleiben offen.**
+Status: **K00–K04 abgeschlossen, K05 nahezu abgeschlossen. T01–T12 sind lokal einzeln vollständig bestanden und die relevante Regression ist grün. Vor Abschluss von K05 fehlt noch ein fehlerfreier kombinierter T01–T12-Lauf; K06, Betreiberwerte und das unabhängige Review bleiben offen.**
 Branch: `codex/keycloak-k05-security-acceptance`.
 Arbeitsverzeichnis: `C:/repo/VertexBPMN`.
 
@@ -139,9 +139,9 @@ Abnahme: lokaler vollständiger Login → Studio → echte API; keine Docker-Pfl
 ### K05 – Sicherheitsabnahme
 
 - [ ] T01–T12 ausführen, Loginbrowser gegen echten Keycloak; keine reine Token-Mock-Suite als Ersatz.
-- [ ] Testhost bei fehlendem Keycloak als nicht abgenommen/fehlgeschlagen melden, nicht still auf Testauth wechseln.
-- [ ] Schlüsselrotation, IdP-Unterbrechung, Rollenentzug und Sessionablauf kontrolliert mit isolierter Instanz testen; echte Requests nach Ereignis prüfen.
-- [ ] Lokale Regression anderer Authprofile, SDK-/gRPC-/SignalR-Zugriffe im relevanten Umfang durchführen.
+- [x] Testhost bei fehlendem Keycloak als nicht abgenommen/fehlgeschlagen melden, nicht still auf Testauth wechseln.
+- [x] Schlüsselrotation, IdP-Unterbrechung, Rollenentzug und Sessionablauf kontrolliert mit isolierter Instanz testen; echte Requests nach Ereignis prüfen.
+- [x] Lokale Regression anderer Authprofile, SDK-/gRPC-/SignalR-Zugriffe im relevanten Umfang durchführen.
 
 Abnahme: keine Fehler/übersprungenen Pflichtfälle; Berichte nennen Commit, Provider-/DB-Version, Modus, Zahlen und Grenzen. Keine zusätzlichen GUI-Gates in GitHub CI.
 
@@ -201,7 +201,7 @@ Offizielle Quellen, geprüft zur Planung am 2026-09-09; konkrete versionsabhäng
 - [x] K03 – Studio/API-Anbindung. Claimnormalisierung, `OidcTest`-Konfiguration, echter JWT-Handlervertrag, sitzungsgebundener Tokenrefresh, Mehrsitzungsisolation und OIDC-Logout sind implementiert. 27 gezielte Security-/Sessiontests sowie die vollständige serielle Kernsuite mit 975 Tests und 0 Fehlern bestanden am 2026-09-10; 18 explizit externe Infrastrukturtests wurden übersprungen. Der frühere Zwischenstand bleibt als Implementierungsprotokoll erhalten: [K03 Zwischenstand](2026-09-09_Keycloak-OIDC_K03_Zwischenstand.md).
 - [x] K04 – Lokale AppHost-/WSLC-/Existing-Topologie. Der reale lokale Browserlauf hat Keycloak-Redirect, Login, API-gestützte Studio-Seiten, echten Refresh und IdP-Logout mit 1/1 Tests bestanden. Nach dem Master-Sync bestanden Release-Build und 60 Studio-Vertragstests; zwei weitere lokale Opt-in-Tests wurden erwartungsgemäß übersprungen. Der reale Keycloak-Lauf wurde nach dem Sync mangels gesetzter lokaler Secrets nicht erneut gestartet.
 - [ ] K05 – Reale IdP-/Sicherheitsabnahme.
-  - Zwischenstand: [K05 Sicherheitsabnahme – Zwischenstand 1](2026-09-10_Keycloak-OIDC_K05_Zwischenstand.md). Reale Browser-/API-Suite 11/11 und fokussierte API-Regression 10/10 grün; T01–T08 sind vollständig belegt. T09–T12 und die vollständige Regression bleiben offen.
+  - Zwischenstand: [K05 Sicherheitsabnahme – Zwischenstand 5](2026-09-10_Keycloak-OIDC_K05_Zwischenstand.md). Reale Browser-/API-Suite für T01–T09 12/12 und T10–T12 jeweils fokussiert 1/1 grün. Die relevante Auth-/Tenant-/SDK-/gRPC-/SignalR-Regression bestand 84/84 Tests; die vollständige serielle Haupttestsuite zusätzlich 988 Tests mit 0 Fehlern und 25 erwartungsgemäß übersprungenen externen Fällen. Ein kombinierter T01–T12-Wiederholungslauf bleibt als letzter K05-Nachweis offen; der aktuelle Lauf konnte in der Codex-Sandbox Chromium nicht starten (`spawn EPERM`) und ist deshalb kein Produktfehlernachweis.
 - [ ] K06 – Runbook/Austauschbarkeit/Übergabe.
 
-**Nächster Umsetzungsschritt: K05 fortsetzen.** T09 mit echter Keycloak-Unterbrechung und Wiederanlauf belegen; danach T10–T12 sowie die Auth-/SDK-/gRPC-/SignalR-Regression ausführen. K06 folgt erst danach; eine Produktionsfreigabe wird aus diesem Zwischenstand nicht abgeleitet.
+**Nächster Umsetzungsschritt: K05 abschließen.** Die vollständige reale T01–T12-Suite mit lokaler Browserprozess-Berechtigung einmal kombiniert ausführen und den finalen Status ausschließlich bei 15/15 fehlerfreien Pflichtfällen setzen. Die relevante Auth-/Tenant-/SDK-/gRPC-/SignalR-Regression ist mit 84/84 bereits abgeschlossen. K06 folgt erst danach; eine Produktionsfreigabe wird aus diesem Zwischenstand nicht abgeleitet.

@@ -1,8 +1,16 @@
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.IdentityModel.JsonWebTokens;
+using Microsoft.IdentityModel.Tokens;
 using Microsoft.Playwright;
 using Xunit;
 
@@ -15,6 +23,265 @@ namespace VertexBPMN.Studio.UiTests;
 /// </summary>
 public sealed class KeycloakOidcSecurityAcceptanceTests
 {
+    [Fact]
+    [Trait("Category", "KeycloakOidcSecurityAcceptance")]
+    public async Task T12_IndependentOidcIssuer_IsAcceptedOnlyByTheApiConfiguredForIt()
+    {
+        const string issuer = "http://localhost:58081/oidc";
+        const string keyId = "vertexbpmn-independent-issuer-key";
+        var mainApiUrl = RequiredEnvironment("VERTEXBPMN_OIDC_TEST_API_URL");
+        var alternateApiUrl = RequiredEnvironment("VERTEXBPMN_OIDC_TEST_ALTERNATE_API_URL");
+        var apiAssembly = RequiredEnvironment("VERTEXBPMN_OIDC_TEST_API_ASSEMBLY");
+
+        using var rsa = RSA.Create(2048);
+        var parameters = rsa.ExportParameters(false);
+        var issuerBuilder = WebApplication.CreateSlimBuilder();
+        issuerBuilder.WebHost.UseUrls("http://localhost:58081");
+        var issuerApp = issuerBuilder.Build();
+        issuerApp.MapGet("/oidc/.well-known/openid-configuration", () => Results.Json(new
+        {
+            issuer,
+            jwks_uri = $"{issuer}/jwks"
+        }));
+        issuerApp.MapGet("/oidc/jwks", () => Results.Json(new
+        {
+            keys = new[]
+            {
+                new
+                {
+                    kty = "RSA",
+                    use = "sig",
+                    kid = keyId,
+                    alg = "RS256",
+                    n = Base64UrlEncoder.Encode(parameters.Modulus),
+                    e = Base64UrlEncoder.Encode(parameters.Exponent)
+                }
+            }
+        }));
+        await issuerApp.StartAsync(TestContext.Current.CancellationToken);
+
+        Process? alternateApi = null;
+        try
+        {
+            alternateApi = await StartAlternateApiAsync(apiAssembly, alternateApiUrl, issuer);
+            var token = IndependentIssuerToken(rsa, keyId, issuer);
+            using var alternateClient = new HttpClient { BaseAddress = new Uri(alternateApiUrl) };
+            using var mainClient = new HttpClient { BaseAddress = new Uri(mainApiUrl) };
+
+            Assert.Equal(HttpStatusCode.OK,
+                (await SendAsync(alternateClient, HttpMethod.Get, "api/tenant", token)).StatusCode);
+            Assert.Equal(HttpStatusCode.Unauthorized,
+                (await SendAsync(mainClient, HttpMethod.Get, "api/tenant", token)).StatusCode);
+        }
+        finally
+        {
+            if (alternateApi is not null)
+                await StopProcessAsync(alternateApi);
+            await issuerApp.StopAsync(TestContext.Current.CancellationToken);
+            await issuerApp.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "KeycloakOidcSecurityAcceptance")]
+    public async Task T11_SharedDataProtection_PreservesTheSessionAcrossReplicaAndRestart()
+    {
+        var authority = RequiredEnvironment("Jwt__Authority").TrimEnd('/');
+        var primaryUrl = RequiredEnvironment("VERTEXBPMN_OIDC_TEST_STUDIO_URL");
+        var replicaUrl = RequiredEnvironment("VERTEXBPMN_OIDC_TEST_STUDIO_REPLICA_URL");
+        var studioAssembly = RequiredEnvironment("VERTEXBPMN_OIDC_TEST_STUDIO_ASSEMBLY");
+        var password = RequiredEnvironment("VERTEXBPMN_KEYCLOAK_TEST_USER_PASSWORD");
+
+        using var playwright = await Playwright.CreateAsync();
+        await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
+        {
+            Headless = true,
+            ExecutablePath = global::Chromium.Path
+        });
+        await using var context = await browser.NewContextAsync();
+        var page = await context.NewPageAsync();
+        await LoginAsync(page, primaryUrl, "vertexbpmn-admin", password);
+
+        var browserRequests = new ConcurrentQueue<string>();
+        page.Request += (_, request) => browserRequests.Enqueue(request.Url);
+        Process? replica = null;
+        try
+        {
+            replica = await StartStudioReplicaAsync(studioAssembly, replicaUrl);
+            Clear(browserRequests);
+            await GotoStudioAsync(page, replicaUrl);
+            await page.GetByRole(AriaRole.Heading, new() { Name = "Dashboard", Exact = true }).WaitForAsync();
+            Assert.StartsWith(replicaUrl, page.Url, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(browserRequests, url => url.StartsWith(authority, StringComparison.OrdinalIgnoreCase));
+
+            await StopProcessAsync(replica);
+            replica = await StartStudioReplicaAsync(studioAssembly, replicaUrl);
+            Clear(browserRequests);
+            await GotoStudioAsync(page, replicaUrl);
+            await page.GetByRole(AriaRole.Heading, new() { Name = "Dashboard", Exact = true }).WaitForAsync();
+            Assert.StartsWith(replicaUrl, page.Url, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(browserRequests, url => url.StartsWith(authority, StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            if (replica is not null)
+                await StopProcessAsync(replica);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "KeycloakOidcSecurityAcceptance")]
+    public async Task T10_ProxyAndRedirectManipulation_PreserveTheTrustedHttpsOriginAndFailClosed()
+    {
+        var authority = RequiredEnvironment("Jwt__Authority").TrimEnd('/');
+        var studioUrl = RequiredEnvironment("VERTEXBPMN_OIDC_TEST_STUDIO_URL");
+        var studioClientId = RequiredEnvironment("VERTEXBPMN_KEYCLOAK_STUDIO_CLIENT_ID");
+        var password = RequiredEnvironment("VERTEXBPMN_KEYCLOAK_TEST_USER_PASSWORD");
+
+        using var noRedirect = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false });
+        using var proxyRequest = new HttpRequestMessage(
+            HttpMethod.Get,
+            new Uri(new Uri(studioUrl), "authentication/login"));
+        proxyRequest.Headers.Host = "localhost:5263";
+        proxyRequest.Headers.Add("X-Forwarded-For", "203.0.113.10");
+        proxyRequest.Headers.Add("X-Forwarded-Proto", "https");
+        proxyRequest.Headers.Add("X-Forwarded-Host", "attacker.example");
+        using var proxyResponse = await noRedirect.SendAsync(proxyRequest, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Redirect, proxyResponse.StatusCode);
+        var authorizationLocation = proxyResponse.Headers.Location
+            ?? throw new InvalidOperationException("The OIDC challenge returned no authorization location.");
+        Assert.Equal(new Uri(authority).Host, authorizationLocation.Host);
+        var authorizationQuery = QueryHelpers.ParseQuery(authorizationLocation.Query);
+        Assert.False(string.IsNullOrWhiteSpace(authorizationQuery["request_uri"].ToString()));
+        Assert.DoesNotContain("attacker.example", authorizationLocation.ToString(), StringComparison.OrdinalIgnoreCase);
+
+        using var badHostRequest = new HttpRequestMessage(HttpMethod.Get, new Uri(studioUrl));
+        badHostRequest.Headers.Host = "attacker.example";
+        using var badHostResponse = await noRedirect.SendAsync(badHostRequest, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, badHostResponse.StatusCode);
+
+        var invalidCallback = new Uri(QueryHelpers.AddQueryString(
+            $"{authority}/protocol/openid-connect/auth",
+            new Dictionary<string, string?>
+            {
+                ["client_id"] = studioClientId,
+                ["response_type"] = "code",
+                ["scope"] = "openid",
+                ["redirect_uri"] = "https://attacker.example/signin-oidc",
+                ["state"] = "t10-invalid-callback",
+                ["nonce"] = "t10-invalid-callback"
+            }));
+        using var invalidCallbackResponse = await GetWithTransportRetryAsync(
+            noRedirect,
+            invalidCallback.ToString());
+        Assert.Equal(HttpStatusCode.BadRequest, invalidCallbackResponse.StatusCode);
+        Assert.True(
+            invalidCallbackResponse.Headers.Location is null
+            || !invalidCallbackResponse.Headers.Location.Host.Equals("attacker.example", StringComparison.OrdinalIgnoreCase));
+
+        using var playwright = await Playwright.CreateAsync();
+        await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
+        {
+            Headless = true,
+            ExecutablePath = global::Chromium.Path
+        });
+        await using var context = await browser.NewContextAsync();
+        var page = await context.NewPageAsync();
+        var maliciousReturnUrl = new Uri(
+            new Uri(studioUrl),
+            $"authentication/login?returnUrl={Uri.EscapeDataString("//attacker.example/")}");
+        await page.GotoAsync(maliciousReturnUrl.ToString());
+        await page.Locator("#username").FillAsync("vertexbpmn-admin");
+        await page.Locator("#password").FillAsync(password);
+        await ClickWithoutImplicitNavigationWaitAsync(page.Locator("#kc-login"));
+        await page.GetByRole(AriaRole.Heading, new() { Name = "Dashboard", Exact = true }).WaitForAsync();
+        Assert.StartsWith(studioUrl, page.Url, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("attacker.example", page.Url, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    [Trait("Category", "KeycloakOidcSecurityAcceptance")]
+    public async Task T09_KeycloakOutageAndRestart_FailClosedAndRecoverWithoutRedirectLoop()
+    {
+        var authority = RequiredEnvironment("Jwt__Authority").TrimEnd('/');
+        var apiUrl = RequiredEnvironment("VERTEXBPMN_OIDC_TEST_API_URL");
+        var studioUrl = RequiredEnvironment("VERTEXBPMN_OIDC_TEST_STUDIO_URL");
+        var container = RequiredEnvironment("VERTEXBPMN_KEYCLOAK_TEST_CONTAINER");
+        var clientId = RequiredEnvironment("VERTEXBPMN_KEYCLOAK_SECURITY_CLIENT_ID");
+        var clientSecret = RequiredEnvironment("VERTEXBPMN_KEYCLOAK_SECURITY_CLIENT_SECRET");
+        var password = RequiredEnvironment("VERTEXBPMN_KEYCLOAK_TEST_USER_PASSWORD");
+
+        using var keycloak = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        using var api = new HttpClient { BaseAddress = new Uri(apiUrl) };
+        var cachedToken = await PasswordAccessTokenAsync(
+            keycloak, authority, clientId, clientSecret, "vertexbpmn-admin", password);
+        Assert.Equal(HttpStatusCode.OK,
+            (await SendAsync(api, HttpMethod.Get, "api/tenant", cachedToken)).StatusCode);
+
+        using var playwright = await Playwright.CreateAsync();
+        await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
+        {
+            Headless = true,
+            ExecutablePath = global::Chromium.Path
+        });
+        await using var context = await browser.NewContextAsync();
+        var page = await context.NewPageAsync();
+        var keycloakStopped = false;
+
+        try
+        {
+            await RunWslcAsync("stop", container);
+            keycloakStopped = true;
+            Assert.True(await WaitForDiscoveryStateAsync(authority, available: false, TimeSpan.FromSeconds(15)),
+                "Keycloak remained reachable after its dedicated test container was stopped.");
+
+            Assert.Equal(HttpStatusCode.OK,
+                (await SendAsync(api, HttpMethod.Get, "api/tenant", cachedToken)).StatusCode);
+            Assert.Equal(HttpStatusCode.Unauthorized,
+                (await SendAsync(api, HttpMethod.Get, "api/tenant", null)).StatusCode);
+            await Assert.ThrowsAnyAsync<HttpRequestException>(() => PasswordAccessTokenAsync(
+                keycloak, authority, clientId, clientSecret, "vertexbpmn-admin", password));
+
+            var navigation = Stopwatch.StartNew();
+            try
+            {
+                await page.GotoAsync(
+                    new Uri(new Uri(studioUrl), "connectors").ToString(),
+                    new PageGotoOptions
+                    {
+                        Timeout = 15_000,
+                        WaitUntil = WaitUntilState.DOMContentLoaded
+                    });
+            }
+            catch (PlaywrightException)
+            {
+                // A stopped IdP may fail either at Studio discovery or at the
+                // redirected Keycloak URL. Both are finite fail-closed outcomes.
+            }
+
+            Assert.True(navigation.Elapsed < TimeSpan.FromSeconds(20),
+                $"The failed login did not terminate within the bounded window ({navigation.Elapsed}).");
+            await AssertNoStudioSessionAsync(context, studioUrl);
+            await page.GetByRole(AriaRole.Heading, new() { Name = "Something went wrong", Exact = true })
+                .WaitForAsync(new LocatorWaitForOptions { Timeout = 5_000 });
+            Assert.Equal(0, await page.GetByRole(
+                AriaRole.Heading,
+                new() { Name = "Dashboard", Exact = true }).CountAsync());
+        }
+        finally
+        {
+            if (keycloakStopped)
+                await RestartKeycloakAsync(container, authority);
+        }
+
+        var recoveredToken = await PasswordAccessTokenAsync(
+            keycloak, authority, clientId, clientSecret, "vertexbpmn-admin", password);
+        Assert.Equal(HttpStatusCode.OK,
+            (await SendAsync(api, HttpMethod.Get, "api/tenant", recoveredToken)).StatusCode);
+        await LoginAsync(page, studioUrl, "vertexbpmn-admin", password);
+        await page.GetByRole(AriaRole.Heading, new() { Name = "Dashboard", Exact = true }).WaitForAsync();
+    }
+
     [Fact]
     [Trait("Category", "KeycloakOidcSecurityAcceptance")]
     public async Task T08_RsaSigningKeyRotation_RefreshesJwksAndPreservesTheOverlapWindow()
@@ -152,8 +419,9 @@ public sealed class KeycloakOidcSecurityAcceptanceTests
 
         using var keycloak = new HttpClient();
         using var api = new HttpClient { BaseAddress = new Uri(apiUrl) };
-        using var admin = await CreateKeycloakAdminClientAsync(keycloak, authority);
-        var role = await GetClientRoleAsync(admin, username, "ProcessManager");
+        KeycloakRole role;
+        using (var lookupAdmin = await CreateKeycloakAdminClientAsync(keycloak, authority))
+            role = await GetClientRoleAsync(lookupAdmin, username, "ProcessManager");
 
         using var playwright = await Playwright.CreateAsync();
         await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
@@ -167,7 +435,8 @@ public sealed class KeycloakOidcSecurityAcceptanceTests
         await page.Locator("[data-testid='dashboard-refresh']").WaitForAsync();
         await WaitForRefreshWindowAsync(lifespan);
 
-        await SetClientRoleAsync(admin, role, assign: false);
+        using (var revokeAdmin = await CreateKeycloakAdminClientAsync(keycloak, authority))
+            await SetClientRoleAsync(revokeAdmin, role, assign: false);
         try
         {
             using var refresh = await RefreshBrowserSessionAsync(page);
@@ -193,7 +462,8 @@ public sealed class KeycloakOidcSecurityAcceptanceTests
         }
         finally
         {
-            await SetClientRoleAsync(admin, role, assign: true);
+            using var restoreAdmin = await CreateKeycloakAdminClientAsync(keycloak, authority);
+            await SetClientRoleAsync(restoreAdmin, role, assign: true);
         }
     }
 
@@ -208,8 +478,9 @@ public sealed class KeycloakOidcSecurityAcceptanceTests
         const string username = "vertexbpmn-account-lock";
 
         using var keycloak = new HttpClient();
-        using var admin = await CreateKeycloakAdminClientAsync(keycloak, authority);
-        var userId = await GetKeycloakEntityIdAsync(admin, $"users?username={username}&exact=true");
+        string userId;
+        using (var lookupAdmin = await CreateKeycloakAdminClientAsync(keycloak, authority))
+            userId = await GetKeycloakEntityIdAsync(lookupAdmin, $"users?username={username}&exact=true");
 
         using var playwright = await Playwright.CreateAsync();
         await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
@@ -222,7 +493,8 @@ public sealed class KeycloakOidcSecurityAcceptanceTests
         await LoginAsync(page, studioUrl, username, password);
         await WaitForRefreshWindowAsync(lifespan);
 
-        await SetUserEnabledAsync(admin, userId, enabled: false);
+        using (var disableAdmin = await CreateKeycloakAdminClientAsync(keycloak, authority))
+            await SetUserEnabledAsync(disableAdmin, userId, enabled: false);
         try
         {
             using var refresh = await RefreshBrowserSessionAsync(page, manualRedirect: true);
@@ -251,7 +523,8 @@ public sealed class KeycloakOidcSecurityAcceptanceTests
         }
         finally
         {
-            await SetUserEnabledAsync(admin, userId, enabled: true);
+            using var restoreAdmin = await CreateKeycloakAdminClientAsync(keycloak, authority);
+            await SetUserEnabledAsync(restoreAdmin, userId, enabled: true);
         }
     }
 
@@ -568,17 +841,28 @@ public sealed class KeycloakOidcSecurityAcceptanceTests
     private static async Task<HttpClient> CreateKeycloakAdminClientAsync(HttpClient tokenClient, string authority)
     {
         var masterAuthority = new Uri(new Uri(authority + "/"), "../master").ToString().TrimEnd('/');
-        var adminToken = await PasswordAccessTokenAsync(
-            tokenClient,
-            masterAuthority,
-            "admin-cli",
-            null,
-            "vertexbpmn-admin",
-            RequiredEnvironment("VERTEXBPMN_KEYCLOAK_ADMIN_PASSWORD"));
         var origin = new Uri(authority).GetLeftPart(UriPartial.Authority);
-        var client = new HttpClient { BaseAddress = new Uri($"{origin}/admin/realms/vertexbpmn/") };
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
-        return client;
+        for (var attempt = 1; ; attempt++)
+        {
+            var adminToken = await PasswordAccessTokenAsync(
+                tokenClient,
+                masterAuthority,
+                "admin-cli",
+                null,
+                "vertexbpmn-admin",
+                RequiredEnvironment("VERTEXBPMN_KEYCLOAK_ADMIN_PASSWORD"));
+            var client = new HttpClient { BaseAddress = new Uri($"{origin}/admin/realms/vertexbpmn/") };
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
+            using var readiness = await GetWithTransportRetryAsync(client, "");
+            if (readiness.IsSuccessStatusCode)
+                return client;
+
+            client.Dispose();
+            if (readiness.StatusCode != HttpStatusCode.Unauthorized || attempt >= 3)
+                readiness.EnsureSuccessStatusCode();
+
+            await Task.Delay(TimeSpan.FromMilliseconds(500 * attempt), TestContext.Current.CancellationToken);
+        }
     }
 
     private static async Task<string> CreateGeneratedRsaKeyProviderAsync(HttpClient admin)
@@ -691,9 +975,9 @@ public sealed class KeycloakOidcSecurityAcceptanceTests
     {
         var userId = await GetKeycloakEntityIdAsync(admin, $"users?username={username}&exact=true");
         var clientId = await GetKeycloakEntityIdAsync(admin, "clients?clientId=vertexbpmn-api");
-        using var response = await admin.GetAsync(
-            $"clients/{Uri.EscapeDataString(clientId)}/roles/{Uri.EscapeDataString(roleName)}",
-            TestContext.Current.CancellationToken);
+        using var response = await GetWithTransportRetryAsync(
+            admin,
+            $"clients/{Uri.EscapeDataString(clientId)}/roles/{Uri.EscapeDataString(roleName)}");
         response.EnsureSuccessStatusCode();
         var role = await response.Content.ReadFromJsonAsync<KeycloakRole>(TestContext.Current.CancellationToken)
             ?? throw new InvalidOperationException($"Keycloak returned no representation for role '{roleName}'.");
@@ -702,7 +986,7 @@ public sealed class KeycloakOidcSecurityAcceptanceTests
 
     private static async Task<string> GetKeycloakEntityIdAsync(HttpClient admin, string path)
     {
-        using var response = await admin.GetAsync(path, TestContext.Current.CancellationToken);
+        using var response = await GetWithTransportRetryAsync(admin, path);
         response.EnsureSuccessStatusCode();
         using var payload = JsonDocument.Parse(
             await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
@@ -881,6 +1165,11 @@ public sealed class KeycloakOidcSecurityAcceptanceTests
             {
                 await Task.Delay(TimeSpan.FromMilliseconds(250 * attempt), TestContext.Current.CancellationToken);
             }
+            catch (TaskCanceledException) when (
+                !TestContext.Current.CancellationToken.IsCancellationRequested && attempt < 3)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(250 * attempt), TestContext.Current.CancellationToken);
+            }
         }
     }
 
@@ -901,6 +1190,244 @@ public sealed class KeycloakOidcSecurityAcceptanceTests
         }
     }
 
+    private static async Task RestartKeycloakAsync(string container, string authority)
+    {
+        for (var attempt = 1; attempt <= 3; attempt++)
+        {
+            await RunWslcAsync("start", container);
+            if (await WaitForDiscoveryStateAsync(authority, available: true, TimeSpan.FromSeconds(60)))
+                return;
+
+            if (attempt < 3)
+                await RunWslcAsync("stop", container);
+        }
+
+        throw new InvalidOperationException("Keycloak did not recover after three bounded WSLC starts.");
+    }
+
+    private static async Task<bool> WaitForDiscoveryStateAsync(
+        string authority,
+        bool available,
+        TimeSpan timeout)
+    {
+        using var handler = new HttpClientHandler { UseProxy = false };
+        using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(2) };
+        var endpoint = $"{authority}/.well-known/openid-configuration";
+        var deadline = DateTimeOffset.UtcNow + timeout;
+        do
+        {
+            var isAvailable = false;
+            try
+            {
+                using var response = await client.GetAsync(endpoint, TestContext.Current.CancellationToken);
+                isAvailable = response.IsSuccessStatusCode;
+            }
+            catch (HttpRequestException)
+            {
+                // Expected while the dedicated IdP is stopped or still starting.
+            }
+            catch (TaskCanceledException) when (!TestContext.Current.CancellationToken.IsCancellationRequested)
+            {
+                // Treat a per-request timeout as unavailable, but preserve test cancellation.
+            }
+
+            if (isAvailable == available)
+                return true;
+
+            await Task.Delay(TimeSpan.FromMilliseconds(500), TestContext.Current.CancellationToken);
+        } while (DateTimeOffset.UtcNow < deadline);
+
+        return false;
+    }
+
+    private static async Task RunWslcAsync(params string[] arguments)
+    {
+        var startInfo = new ProcessStartInfo("wslc.exe")
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true
+        };
+        foreach (var argument in arguments)
+            startInfo.ArgumentList.Add(argument);
+
+        using var process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("Could not start wslc.exe for the isolated Keycloak outage test.");
+        var outputTask = process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
+        var errorTask = process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(90));
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException) when (!TestContext.Current.CancellationToken.IsCancellationRequested)
+        {
+            process.Kill(entireProcessTree: true);
+            throw new TimeoutException($"wslc.exe did not finish: {string.Join(' ', arguments)}.");
+        }
+
+        var output = await outputTask;
+        var error = await errorTask;
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"wslc.exe exited with code {process.ExitCode}: {string.Join(' ', arguments)}. {error} {output}".Trim());
+        }
+    }
+
+    private static async Task<Process> StartStudioReplicaAsync(string assembly, string replicaUrl)
+    {
+        var startInfo = new ProcessStartInfo("dotnet")
+        {
+            WorkingDirectory = Path.GetDirectoryName(assembly)
+                ?? throw new InvalidOperationException("The Studio replica assembly has no parent directory."),
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true
+        };
+        startInfo.ArgumentList.Add(assembly);
+        startInfo.ArgumentList.Add("--urls");
+        startInfo.ArgumentList.Add(replicaUrl.TrimEnd('/'));
+
+        var process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("Could not start the second Studio process.");
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+        using var readiness = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+        var endpoint = new Uri(new Uri(replicaUrl), "Error");
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(30);
+        do
+        {
+            if (process.HasExited)
+                throw new InvalidOperationException($"The second Studio process exited with code {process.ExitCode}.");
+            try
+            {
+                using var response = await readiness.GetAsync(endpoint, TestContext.Current.CancellationToken);
+                if (response.IsSuccessStatusCode)
+                    return process;
+            }
+            catch (HttpRequestException)
+            {
+                // The process has not bound its local endpoint yet.
+            }
+            catch (TaskCanceledException) when (!TestContext.Current.CancellationToken.IsCancellationRequested)
+            {
+                // A per-request readiness timeout is transient.
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(250), TestContext.Current.CancellationToken);
+        } while (DateTimeOffset.UtcNow < deadline);
+
+        await StopProcessAsync(process);
+        throw new TimeoutException("The second Studio process did not become ready within 30 seconds.");
+    }
+
+    private static async Task<Process> StartAlternateApiAsync(
+        string assembly,
+        string apiUrl,
+        string issuer)
+    {
+        var resultsDirectory = RequiredEnvironment("VERTEXBPMN_OIDC_TEST_RESULTS_DIR");
+        var startInfo = new ProcessStartInfo("dotnet")
+        {
+            WorkingDirectory = Path.GetDirectoryName(assembly)
+                ?? throw new InvalidOperationException("The API assembly has no parent directory."),
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true
+        };
+        startInfo.ArgumentList.Add(assembly);
+        startInfo.ArgumentList.Add("--urls");
+        startInfo.ArgumentList.Add(apiUrl.TrimEnd('/'));
+        startInfo.Environment["ASPNETCORE_ENVIRONMENT"] = "OidcTest";
+        startInfo.Environment["DOTNET_ENVIRONMENT"] = "OidcTest";
+        startInfo.Environment["OperationalMode"] = "OidcTest";
+        startInfo.Environment["Database__ApplyMigrationsOnStartup"] = "true";
+        startInfo.Environment["Operational__Metrics__Enabled"] = "false";
+        startInfo.Environment["Runtime__Outbox__Enabled"] = "false";
+        startInfo.Environment["Runtime__Outbox__Provider"] = "Disabled";
+        startInfo.Environment["ConnectionStrings__DependencyRegistry"] =
+            $"Data Source={Path.Combine(resultsDirectory, "alternate-issuer-dependencies.db")}";
+        startInfo.Environment["Jwt__Authority"] = issuer;
+        startInfo.Environment["Jwt__Issuer"] = issuer;
+        startInfo.Environment["Jwt__Audience"] = "vertexbpmn-api";
+        startInfo.Environment["Jwt__ClockSkewSeconds"] = "0";
+        startInfo.Environment["Jwt__RequireHttpsMetadata"] = "false";
+        startInfo.Environment["Jwt__UseDevelopmentApiKey"] = "false";
+
+        var process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("Could not start the alternate-issuer API process.");
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+        using var readiness = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+        var endpoint = new Uri(new Uri(apiUrl), "api/ready");
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(30);
+        do
+        {
+            if (process.HasExited)
+                throw new InvalidOperationException($"The alternate-issuer API exited with code {process.ExitCode}.");
+            try
+            {
+                using var response = await readiness.GetAsync(endpoint, TestContext.Current.CancellationToken);
+                if (response.IsSuccessStatusCode)
+                    return process;
+            }
+            catch (HttpRequestException)
+            {
+                // The process has not bound its local endpoint yet.
+            }
+            catch (TaskCanceledException) when (!TestContext.Current.CancellationToken.IsCancellationRequested)
+            {
+                // A per-request readiness timeout is transient.
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(250), TestContext.Current.CancellationToken);
+        } while (DateTimeOffset.UtcNow < deadline);
+
+        await StopProcessAsync(process);
+        throw new TimeoutException("The alternate-issuer API did not become ready within 30 seconds.");
+    }
+
+    private static string IndependentIssuerToken(RSA rsa, string keyId, string issuer) =>
+        new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
+        {
+            Issuer = issuer,
+            Audience = "vertexbpmn-api",
+            Claims = new Dictionary<string, object>
+            {
+                ["sub"] = "independent-user",
+                ["preferred_username"] = "independent-user",
+                ["tenant_id"] = "tenant-independent",
+                ["roles"] = new[] { "Admin" }
+            },
+            NotBefore = DateTime.UtcNow.AddMinutes(-1),
+            Expires = DateTime.UtcNow.AddMinutes(5),
+            SigningCredentials = new SigningCredentials(
+                new RsaSecurityKey(rsa) { KeyId = keyId },
+                SecurityAlgorithms.RsaSha256)
+        });
+
+    private static async Task StopProcessAsync(Process process)
+    {
+        if (!process.HasExited)
+        {
+            process.Kill(entireProcessTree: true);
+            await process.WaitForExitAsync(TestContext.Current.CancellationToken);
+        }
+        process.Dispose();
+    }
+
+    private static void Clear(ConcurrentQueue<string> queue)
+    {
+        while (queue.TryDequeue(out _))
+        {
+        }
+    }
+
     private static Task<HttpResponseMessage> SendAsync(
         HttpClient client,
         HttpMethod method,
@@ -916,11 +1443,74 @@ public sealed class KeycloakOidcSecurityAcceptanceTests
 
     private static async Task LoginAsync(IPage page, string studioUrl, string username, string password)
     {
+        await EnsureKeycloakReadyAsync();
         await GotoStudioAsync(page, studioUrl);
         await page.Locator("#username").FillAsync(username);
         await page.Locator("#password").FillAsync(password);
         await ClickWithoutImplicitNavigationWaitAsync(page.Locator("#kc-login"));
-        await page.GetByRole(AriaRole.Heading, new() { Name = "Dashboard", Exact = true }).WaitForAsync();
+        try
+        {
+            await page.GetByRole(AriaRole.Heading, new() { Name = "Dashboard", Exact = true }).WaitForAsync();
+        }
+        catch (TimeoutException exception)
+        {
+            var body = await page.Locator("body").InnerTextAsync();
+            if (body.Length > 1_000)
+                body = body[..1_000];
+            throw new TimeoutException(
+                $"Keycloak login for '{username}' did not reach the Dashboard. URL: {page.Url}. Body: {body}",
+                exception);
+        }
+    }
+
+    private static async Task EnsureKeycloakReadyAsync()
+    {
+        var script = RequiredEnvironment("VERTEXBPMN_KEYCLOAK_TEST_SCRIPT");
+        var startInfo = new ProcessStartInfo("pwsh.exe")
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true
+        };
+        foreach (var argument in new[]
+        {
+            "-NoProfile",
+            "-File",
+            script,
+            "-Action",
+            "Wait",
+            "-SecurityAcceptance",
+            "-AccessTokenLifespan",
+            RequiredEnvironment("VERTEXBPMN_KEYCLOAK_ACCESS_TOKEN_LIFESPAN")
+        })
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        using var process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("Could not start the Keycloak readiness check.");
+        var outputTask = process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
+        var errorTask = process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromMinutes(3));
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException) when (!TestContext.Current.CancellationToken.IsCancellationRequested)
+        {
+            process.Kill(entireProcessTree: true);
+            throw new TimeoutException("The Keycloak readiness check did not finish within three minutes.");
+        }
+
+        var output = await outputTask;
+        var error = await errorTask;
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"The Keycloak readiness check failed with code {process.ExitCode}: {error} {output}".Trim());
+        }
     }
 
     private static async Task GotoStudioAsync(IPage page, string studioUrl)

@@ -350,3 +350,11 @@ apm_modules/
 # logs
 api-log-*.txt
 src/VertexBPMN.Api/Logs/
+
+# Local secrets — never commit a filled .env
+.env
+deploy/compose/.env
+
+# Host-published .NET output used to build the lean runtime images
+deploy/compose/publish/
+

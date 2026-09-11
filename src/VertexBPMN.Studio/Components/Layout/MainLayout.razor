@@ -38,6 +38,7 @@
                        Variant="Variant.Outlined"
                        Margin="Margin.Dense"
                        Class="studio-context__select studio-context__tenant"
+                       data-testid="tenant-context"
                        Disabled="!_tenantsLoaded || !_canSelectTenant">
                 <MudSelectItem Value="@((string?)null)">Default</MudSelectItem>
                 @foreach (var tenant in _tenants)

@@ -44,7 +44,11 @@ public sealed class KeycloakRealmTemplateTests
             "http://localhost:5263/*",
             studio.GetProperty("attributes").GetProperty("post.logout.redirect.uris").GetString());
         Assert.Equal(
-            ["http://localhost:5263/signin-oidc"],
+            [
+                "http://localhost:5263/signin-oidc",
+                "https://localhost:5263/signin-oidc",
+                "http://localhost:5264/signin-oidc"
+            ],
             studio.GetProperty("redirectUris").EnumerateArray().Select(item => item.GetString()));
     }
 

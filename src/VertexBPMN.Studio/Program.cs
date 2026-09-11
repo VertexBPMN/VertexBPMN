@@ -5,8 +5,11 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using MudBlazor.Services;
+using System.Net;
 using System.Security.Claims;
 using VertexBPMN.ServiceDefaults.Security;
 
@@ -25,6 +28,54 @@ var isLocalDevelopment = builder.Environment.IsDevelopment()
 var httpsRedirectionEnabled = builder.Configuration.GetValue(
     "StudioHttpsRedirection:Enabled",
     true);
+var operationalMode = builder.Configuration["OperationalMode"] ?? builder.Environment.EnvironmentName;
+var dataProtection = builder.Services.AddDataProtection().SetApplicationName("VertexBPMN.Studio");
+var dataProtectionKeyRingPath = builder.Configuration["DataProtection:KeyRingPath"];
+if (operationalMode.Equals("Production", StringComparison.OrdinalIgnoreCase)
+    || operationalMode.Equals("Stage", StringComparison.OrdinalIgnoreCase))
+{
+    if (string.IsNullOrWhiteSpace(dataProtectionKeyRingPath))
+    {
+        throw new InvalidOperationException(
+            "DataProtection:KeyRingPath is required in Production and Stage so Studio replicas share durable authentication keys.");
+    }
+}
+if (!string.IsNullOrWhiteSpace(dataProtectionKeyRingPath))
+{
+    dataProtection.PersistKeysToFileSystem(
+        Directory.CreateDirectory(Path.GetFullPath(dataProtectionKeyRingPath)));
+}
+var reverseProxyEnabled = builder.Configuration.GetValue<bool>("ReverseProxy:Enabled");
+var knownProxyValues = builder.Configuration
+    .GetSection("ReverseProxy:KnownProxies")
+    .Get<string[]>() ?? [];
+var knownProxies = new List<IPAddress>();
+foreach (var value in knownProxyValues)
+{
+    if (!IPAddress.TryParse(value, out var address))
+        throw new InvalidOperationException($"ReverseProxy:KnownProxies contains invalid IP address '{value}'.");
+    knownProxies.Add(address);
+}
+if (reverseProxyEnabled && knownProxies.Count == 0)
+{
+    throw new InvalidOperationException(
+        "ReverseProxy:KnownProxies must contain at least one explicit proxy IP when ReverseProxy:Enabled is true.");
+}
+if (reverseProxyEnabled)
+{
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        // The proxy must preserve the public Host header. Deliberately do not
+        // consume X-Forwarded-Host, so it cannot rewrite OIDC callback origins.
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        options.ForwardLimit = 1;
+        options.RequireHeaderSymmetry = true;
+        options.KnownProxies.Clear();
+        options.KnownIPNetworks.Clear();
+        foreach (var address in knownProxies)
+            options.KnownProxies.Add(address);
+    });
+}
 
 if (isUiTest)
     builder.WebHost.UseStaticWebAssets();
@@ -213,6 +264,9 @@ builder.Services.AddLogging();
 var app = builder.Build();
 app.MapDefaultEndpoints();
 
+if (reverseProxyEnabled)
+    app.UseForwardedHeaders();
+
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
@@ -237,9 +291,7 @@ app.UseAntiforgery();
 
 app.MapGet("/authentication/login", (HttpContext httpContext, string? returnUrl) =>
 {
-    var target = string.IsNullOrWhiteSpace(returnUrl) || !returnUrl.StartsWith('/')
-        ? "/"
-        : returnUrl;
+    var target = IsLocalReturnUrl(returnUrl) ? returnUrl! : "/";
     return Results.Challenge(
         new AuthenticationProperties { RedirectUri = target },
         [OpenIdConnectDefaults.AuthenticationScheme]);
@@ -310,5 +362,12 @@ static bool IsLoopbackHttpAuthority(string? authority) =>
     Uri.TryCreate(authority, UriKind.Absolute, out var uri)
     && uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
     && uri.IsLoopback;
+
+static bool IsLocalReturnUrl(string? returnUrl) =>
+    !string.IsNullOrWhiteSpace(returnUrl)
+    && returnUrl[0] == '/'
+    && (returnUrl.Length == 1 || (returnUrl[1] != '/' && returnUrl[1] != '\\'))
+    && !returnUrl.Contains('\r', StringComparison.Ordinal)
+    && !returnUrl.Contains('\n', StringComparison.Ordinal);
 
 public partial class Program;

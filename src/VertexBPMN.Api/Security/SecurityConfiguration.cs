@@ -28,6 +28,14 @@ public static class SecurityConfiguration
             || string.Equals(configuration["ASPNETCORE_ENVIRONMENT"], "OidcTest", StringComparison.OrdinalIgnoreCase);
         var useDevelopmentApiKey = isDevelopment && configuration.GetValue<bool>("Jwt:UseDevelopmentApiKey");
         var requireHttpsMetadata = configuration.GetValue<bool?>("Jwt:RequireHttpsMetadata") ?? !isDevelopment;
+        var clockSkewSeconds = configuration.GetValue<int?>("Jwt:ClockSkewSeconds") ?? 30;
+        var metadataRefreshIntervalSeconds = configuration.GetValue<int?>("Jwt:MetadataRefreshIntervalSeconds") ?? 30;
+        var blockOnMetadataRefresh = configuration.GetValue<bool?>("Jwt:BlockOnMetadataRefresh") ?? true;
+
+        if (clockSkewSeconds is < 0 or > 300)
+            throw new InvalidOperationException("Jwt:ClockSkewSeconds must be between 0 and 300 seconds.");
+        if (metadataRefreshIntervalSeconds is < 1 or > 300)
+            throw new InvalidOperationException("Jwt:MetadataRefreshIntervalSeconds must be between 1 and 300 seconds.");
 
         if (!requireHttpsMetadata
             && !isDevelopment
@@ -51,6 +59,15 @@ public static class SecurityConfiguration
         if (string.IsNullOrWhiteSpace(authority) && Encoding.UTF8.GetByteCount(secretKey!) < 32)
             throw new InvalidOperationException("Jwt:SecretKey must contain at least 32 bytes.");
 
+        // IdentityModel 8 refreshes unknown signing keys in the background by default. That
+        // makes the first request after an IdP key rotation fail even when the new key is
+        // already published. Blocking only the rate-limited metadata refresh preserves the
+        // rotation overlap window; operators can opt out if availability is preferred over
+        // a seamless first request while their identity provider is unavailable.
+        AppContext.SetSwitch(
+            "Switch.Microsoft.IdentityModel.UpdateConfigAsBlocking",
+            blockOnMetadataRefresh);
+
         services.AddAuthentication(options =>
             {
                 options.DefaultAuthenticateScheme = useDevelopmentApiKey ? "ApiKey" : JwtBearerDefaults.AuthenticationScheme;
@@ -60,6 +77,8 @@ public static class SecurityConfiguration
             {
                 options.MapInboundClaims = false;
                 options.RequireHttpsMetadata = requireHttpsMetadata;
+                options.RefreshOnIssuerKeyNotFound = true;
+                options.RefreshInterval = TimeSpan.FromSeconds(metadataRefreshIntervalSeconds);
                 if (!string.IsNullOrWhiteSpace(authority))
                     options.Authority = authority;
 
@@ -76,7 +95,7 @@ public static class SecurityConfiguration
                         : null,
                     NameClaimType = "preferred_username",
                     RoleClaimType = ClaimTypes.Role,
-                    ClockSkew = TimeSpan.FromSeconds(30)
+                    ClockSkew = TimeSpan.FromSeconds(clockSkewSeconds)
                 };
                 if (!string.IsNullOrWhiteSpace(authority))
                 {

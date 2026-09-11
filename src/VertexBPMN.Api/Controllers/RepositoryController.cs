@@ -66,6 +66,15 @@ public class RepositoryController : ControllerBase
     [ProducesResponseType(typeof(ProcessDefinition), 201)]
     public async Task<ActionResult<ProcessDefinition>> Deploy([FromBody] RepositoryDeployRequest request)
     {
+        if (string.IsNullOrWhiteSpace(request.BpmnXml) || string.IsNullOrWhiteSpace(request.Name))
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Title = "Invalid process deployment.",
+                Detail = "BpmnXml and Name are required."
+            });
+        }
+
         var effectiveTenantId = ResolveTenantId(request.TenantId);
         if (effectiveTenantId is null && !User.IsInRole("Admin")) return Forbid();
 

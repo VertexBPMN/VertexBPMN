@@ -1,14 +1,15 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("Start", "Stop", "Status", "Bootstrap", "Remove")]
+    [ValidateSet("Start", "Stop", "Status", "Wait", "Bootstrap", "Remove")]
     [string]$Action = "Start",
 
     [string]$KeycloakImage = "quay.io/keycloak/keycloak:26.7.3",
     [string]$PostgresImage = "postgres:17-alpine",
     [ValidateRange(1, 65535)]
     [int]$KeycloakPort = 58080,
-    [ValidateRange(60, 3600)]
+    [ValidateRange(10, 3600)]
     [int]$AccessTokenLifespan = 300,
+    [switch]$SecurityAcceptance,
     [ValidatePattern("^[A-Za-z0-9._~-]+$")]
     [string]$AdminUser = "vertexbpmn-admin",
     [ValidatePattern("^[A-Za-z0-9._~-]+$")]
@@ -28,6 +29,9 @@ $realmFile = Join-Path $repositoryRoot "deploy/keycloak/vertexbpmn-realm.json"
 $realmName = "vertexbpmn"
 $apiClientId = "vertexbpmn-api"
 $studioClientId = "vertexbpmn-studio"
+$securityClientId = "vertexbpmn-security-test"
+$wrongAudienceClientId = "vertexbpmn-wrong-audience-test"
+$expiringClientId = "vertexbpmn-expiring-test"
 $requiredSecretVariables = @(
     "VERTEXBPMN_KEYCLOAK_ADMIN_PASSWORD",
     "VERTEXBPMN_KEYCLOAK_DB_PASSWORD",
@@ -109,7 +113,8 @@ function Ensure-Container {
 function Wait-Keycloak {
     $discoveryUri = "http://localhost:$KeycloakPort/realms/$realmName/.well-known/openid-configuration"
     $deadline = [DateTime]::UtcNow.AddMinutes(3)
-    $restartedForPortBinding = $false
+    $portBindingRestarts = 0
+    $lastPortBindingRestart = [DateTime]::MinValue
     do {
         try {
             $response = Invoke-RestMethod -Uri $discoveryUri -TimeoutSec 5
@@ -122,13 +127,15 @@ function Wait-Keycloak {
             # after the containerized server reports that it is listening. One
             # bounded restart re-establishes that host binding without touching
             # the dedicated database or any non-Keycloak resources.
-            if (-not $restartedForPortBinding -and (Test-ContainerRunning -Name $keycloakContainer)) {
+            $restartCooldownElapsed = [DateTime]::UtcNow - $lastPortBindingRestart -ge [TimeSpan]::FromSeconds(20)
+            if (($portBindingRestarts -lt 2) -and $restartCooldownElapsed -and (Test-ContainerRunning -Name $keycloakContainer)) {
                 $startupLogs = Invoke-Wslc -Arguments @("logs", "--tail", "40", $keycloakContainer) -IgnoreExitCode
                 if (($startupLogs.Output -join [Environment]::NewLine) -match "Listening on:") {
-                    Write-Host "Keycloak is running but its WSLC host port is unavailable; restarting the dedicated container once..."
+                    $portBindingRestarts++
+                    Write-Host "Keycloak is running but its WSLC host port is unavailable; rebinding the dedicated container ($portBindingRestarts/2)..."
                     $null = Invoke-Wslc -Arguments @("stop", $keycloakContainer)
                     $null = Invoke-Wslc -Arguments @("start", $keycloakContainer)
-                    $restartedForPortBinding = $true
+                    $lastPortBindingRestart = [DateTime]::UtcNow
                 }
             }
             Start-Sleep -Seconds 2
@@ -173,7 +180,7 @@ function Get-KeycloakEntityId {
 function Ensure-TestUser {
     param(
         [Parameter(Mandatory)][string]$Username,
-        [Parameter(Mandatory)][string]$TenantId,
+        [AllowEmptyString()][string]$TenantId,
         [Parameter(Mandatory)][string]$Role,
         [switch]$RequireMfaEnrollment
     )
@@ -197,15 +204,21 @@ function Ensure-TestUser {
 
     $userId = Get-KeycloakEntityId -Resource "users" -Query "username=$Username"
     $requiredActions = if ($RequireMfaEnrollment) { '["CONFIGURE_TOTP"]' } else { '[]' }
-    $null = Invoke-Kcadm -Arguments @(
+    $updateArguments = @(
         "update", "users/$userId", "-r", $realmName,
         "-s", "email=$Username@vertexbpmn.test",
         "-s", "firstName=VertexBPMN",
         "-s", "lastName=Test User",
         "-s", "emailVerified=true",
-        "-s", "attributes.tenant_id=[`"$TenantId`"]",
         "-s", "requiredActions=$requiredActions"
     )
+    $updateArguments += if ([string]::IsNullOrWhiteSpace($TenantId)) {
+        @("-s", "attributes.tenant_id=[]")
+    }
+    else {
+        @("-s", "attributes.tenant_id=[`"$TenantId`"]")
+    }
+    $null = Invoke-Kcadm -Arguments $updateArguments
 
     $password = [Environment]::GetEnvironmentVariable("VERTEXBPMN_KEYCLOAK_TEST_USER_PASSWORD")
     $null = Invoke-Kcadm -Arguments @(
@@ -213,11 +226,147 @@ function Ensure-TestUser {
         "--username", $Username,
         "--new-password", $password
     )
+    if ($RequireMfaEnrollment) {
+        $credentialLookup = Invoke-Kcadm -Arguments @("get", "users/$userId/credentials", "-r", $realmName)
+        $credentials = @($credentialLookup.Output -join [Environment]::NewLine | ConvertFrom-Json)
+        foreach ($credential in @($credentials | Where-Object { $_.type -eq "otp" })) {
+            if (-not [string]::IsNullOrWhiteSpace($credential.id)) {
+                $null = Invoke-Kcadm -Arguments @(
+                    "delete", "users/$userId/credentials/$($credential.id)", "-r", $realmName
+                )
+            }
+        }
+    }
     $null = Invoke-Kcadm -Arguments @(
         "add-roles", "-r", $realmName,
         "--uusername", $Username,
         "--cclientid", $apiClientId,
         "--rolename", $Role
+    )
+}
+
+function Ensure-SecurityAcceptanceProfile {
+    Ensure-TestUser -Username "vertexbpmn-admin" -TenantId "tenant-a" -Role "Admin"
+    Ensure-TestUser -Username "vertexbpmn-readonly" -TenantId "tenant-a" -Role "ReadOnly"
+    Ensure-TestUser -Username "vertexbpmn-manager-b" -TenantId "tenant-b" -Role "ProcessManager"
+    Ensure-TestUser -Username "vertexbpmn-no-tenant" -TenantId "" -Role "ProcessManager"
+    Ensure-TestUser -Username "vertexbpmn-role-revocation" -TenantId "tenant-a" -Role "ProcessManager"
+    Ensure-TestUser -Username "vertexbpmn-account-lock" -TenantId "tenant-a" -Role "ProcessManager"
+
+    $lookup = Invoke-Kcadm -Arguments @("get", "clients", "-r", $realmName, "-q", "clientId=$securityClientId")
+    $clients = @($lookup.Output -join [Environment]::NewLine | ConvertFrom-Json)
+    if ($clients.Count -eq 0) {
+        $null = Invoke-Kcadm -Arguments @(
+            "create", "clients", "-r", $realmName,
+            "-s", "clientId=$securityClientId",
+            "-s", "name=VertexBPMN local security acceptance",
+            "-s", "enabled=true",
+            "-s", "publicClient=false",
+            "-s", "bearerOnly=false",
+            "-s", "standardFlowEnabled=false",
+            "-s", "directAccessGrantsEnabled=true",
+            "-s", "serviceAccountsEnabled=false"
+        )
+    }
+    elseif ($clients.Count -ne 1) {
+        throw "More than one Keycloak client matched '$securityClientId'."
+    }
+
+    $securityClientEntityId = Get-KeycloakEntityId -Resource "clients" -Query "clientId=$securityClientId"
+    $securityClientSecret = [Environment]::GetEnvironmentVariable("VERTEXBPMN_KEYCLOAK_STUDIO_CLIENT_SECRET")
+    $null = Invoke-Kcadm -Arguments @(
+        "update", "clients/$securityClientEntityId", "-r", $realmName,
+        "-s", "enabled=true",
+        "-s", "secret=$securityClientSecret",
+        "-s", "publicClient=false",
+        "-s", "bearerOnly=false",
+        "-s", "standardFlowEnabled=false",
+        "-s", "directAccessGrantsEnabled=true",
+        "-s", "serviceAccountsEnabled=false",
+        "-s", 'defaultClientScopes=["profile","email","roles","vertexbpmn-claims"]'
+    )
+
+    # Keycloak versions differ in whether client-scopes accepts the name query.
+    # Read the realm scopes and select the exact configured scope deterministically.
+    $scopeLookup = Invoke-Kcadm -Arguments @("get", "client-scopes", "-r", $realmName)
+    $allScopes = @($scopeLookup.Output -join [Environment]::NewLine | ConvertFrom-Json)
+    $claimsScopes = @($allScopes | Where-Object { $_.name -eq "vertexbpmn-claims" })
+    if ($claimsScopes.Count -ne 1 -or [string]::IsNullOrWhiteSpace($claimsScopes[0].id)) {
+        throw "Expected exactly one Keycloak client scope named 'vertexbpmn-claims'."
+    }
+    $claimsScopeId = $claimsScopes[0].id
+    $null = Invoke-Kcadm -Arguments @(
+        "update", "clients/$securityClientEntityId/default-client-scopes/$claimsScopeId", "-r", $realmName
+    )
+
+    $wrongAudienceLookup = Invoke-Kcadm -Arguments @(
+        "get", "clients", "-r", $realmName, "-q", "clientId=$wrongAudienceClientId"
+    )
+    $wrongAudienceClients = @($wrongAudienceLookup.Output -join [Environment]::NewLine | ConvertFrom-Json)
+    if ($wrongAudienceClients.Count -eq 0) {
+        $null = Invoke-Kcadm -Arguments @(
+            "create", "clients", "-r", $realmName,
+            "-s", "clientId=$wrongAudienceClientId",
+            "-s", "name=VertexBPMN local wrong-audience acceptance",
+            "-s", "enabled=true",
+            "-s", "publicClient=false",
+            "-s", "bearerOnly=false",
+            "-s", "standardFlowEnabled=false",
+            "-s", "directAccessGrantsEnabled=true",
+            "-s", "serviceAccountsEnabled=false"
+        )
+    }
+    elseif ($wrongAudienceClients.Count -ne 1) {
+        throw "More than one Keycloak client matched '$wrongAudienceClientId'."
+    }
+
+    $wrongAudienceClientEntityId = Get-KeycloakEntityId -Resource "clients" -Query "clientId=$wrongAudienceClientId"
+    $null = Invoke-Kcadm -Arguments @(
+        "update", "clients/$wrongAudienceClientEntityId", "-r", $realmName,
+        "-s", "enabled=true",
+        "-s", "secret=$securityClientSecret",
+        "-s", "publicClient=false",
+        "-s", "bearerOnly=false",
+        "-s", "standardFlowEnabled=false",
+        "-s", "directAccessGrantsEnabled=true",
+        "-s", "serviceAccountsEnabled=false"
+    )
+
+    $expiringLookup = Invoke-Kcadm -Arguments @(
+        "get", "clients", "-r", $realmName, "-q", "clientId=$expiringClientId"
+    )
+    $expiringClients = @($expiringLookup.Output -join [Environment]::NewLine | ConvertFrom-Json)
+    if ($expiringClients.Count -eq 0) {
+        $null = Invoke-Kcadm -Arguments @(
+            "create", "clients", "-r", $realmName,
+            "-s", "clientId=$expiringClientId",
+            "-s", "name=VertexBPMN local expiry acceptance",
+            "-s", "enabled=true",
+            "-s", "publicClient=false",
+            "-s", "bearerOnly=false",
+            "-s", "standardFlowEnabled=false",
+            "-s", "directAccessGrantsEnabled=true",
+            "-s", "serviceAccountsEnabled=false"
+        )
+    }
+    elseif ($expiringClients.Count -ne 1) {
+        throw "More than one Keycloak client matched '$expiringClientId'."
+    }
+
+    $expiringClientEntityId = Get-KeycloakEntityId -Resource "clients" -Query "clientId=$expiringClientId"
+    $null = Invoke-Kcadm -Arguments @(
+        "update", "clients/$expiringClientEntityId", "-r", $realmName,
+        "-s", "enabled=true",
+        "-s", "secret=$securityClientSecret",
+        "-s", "publicClient=false",
+        "-s", "bearerOnly=false",
+        "-s", "standardFlowEnabled=false",
+        "-s", "directAccessGrantsEnabled=true",
+        "-s", "serviceAccountsEnabled=false",
+        "-s", 'attributes."access.token.lifespan"="5"'
+    )
+    $null = Invoke-Kcadm -Arguments @(
+        "update", "clients/$expiringClientEntityId/default-client-scopes/$claimsScopeId", "-r", $realmName
     )
 }
 
@@ -240,6 +389,9 @@ function Bootstrap-Realm {
 
     Ensure-TestUser -Username $TestUser -TenantId "tenant-a" -Role "ProcessManager"
     Ensure-TestUser -Username $MfaTestUser -TenantId "tenant-b" -Role "ReadOnly" -RequireMfaEnrollment
+    if ($SecurityAcceptance) {
+        Ensure-SecurityAcceptanceProfile
+    }
 }
 
 function Start-IsolatedKeycloak {
@@ -328,6 +480,7 @@ switch ($Action) {
     "Stop" { Stop-IsolatedKeycloak }
     "Remove" { Remove-IsolatedKeycloak }
     "Status" { Show-Status; return }
+    "Wait" { Wait-Keycloak }
     "Bootstrap" { Bootstrap-Realm }
 }
 

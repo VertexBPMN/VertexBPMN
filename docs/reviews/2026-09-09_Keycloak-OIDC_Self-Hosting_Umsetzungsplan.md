@@ -1,9 +1,9 @@
 # Austauschbarer OIDC-Provider: Keycloak Self-Hosting
 
-Stand: 2026-09-10. Synchronisierte Basis: `9104622`.
-Status: **K00–K04 abgeschlossen. Providerneutrale Claimnormalisierung, negativer JWT-Handlervertrag, sitzungsgebundener Refresh, Logout, AppHost-/WSLC-Profil und echter Keycloak-Browserlogin sind implementiert und geprüft. K05–K06, die übrigen T01–T12-Sicherheitsfälle, Betreiberwerte und das unabhängige Review bleiben offen.**
-Branch: `codex/keycloak-oidc-self-hosting`.
-Separater Worktree: `C:/repo/VertexBPMN-keycloak-oidc`.
+Stand: 2026-09-11. Synchronisierte Basis: `ca5699e`.
+Status: **K00–K04 abgeschlossen, K05 nahezu abgeschlossen. T01–T12 sind lokal einzeln vollständig bestanden und die relevante Regression ist grün. Vor Abschluss von K05 fehlt noch ein fehlerfreier kombinierter T01–T12-Lauf; K06, Betreiberwerte und das unabhängige Review bleiben offen.**
+Branch: `codex/keycloak-k05-security-acceptance`.
+Arbeitsverzeichnis: `C:/repo/VertexBPMN`.
 
 ## 1. Ziel und Grenzen
 
@@ -139,9 +139,9 @@ Abnahme: lokaler vollständiger Login → Studio → echte API; keine Docker-Pfl
 ### K05 – Sicherheitsabnahme
 
 - [ ] T01–T12 ausführen, Loginbrowser gegen echten Keycloak; keine reine Token-Mock-Suite als Ersatz.
-- [ ] Testhost bei fehlendem Keycloak als nicht abgenommen/fehlgeschlagen melden, nicht still auf Testauth wechseln.
-- [ ] Schlüsselrotation, IdP-Unterbrechung, Rollenentzug und Sessionablauf kontrolliert mit isolierter Instanz testen; echte Requests nach Ereignis prüfen.
-- [ ] Lokale Regression anderer Authprofile, SDK-/gRPC-/SignalR-Zugriffe im relevanten Umfang durchführen.
+- [x] Testhost bei fehlendem Keycloak als nicht abgenommen/fehlgeschlagen melden, nicht still auf Testauth wechseln.
+- [x] Schlüsselrotation, IdP-Unterbrechung, Rollenentzug und Sessionablauf kontrolliert mit isolierter Instanz testen; echte Requests nach Ereignis prüfen.
+- [x] Lokale Regression anderer Authprofile, SDK-/gRPC-/SignalR-Zugriffe im relevanten Umfang durchführen.
 
 Abnahme: keine Fehler/übersprungenen Pflichtfälle; Berichte nennen Commit, Provider-/DB-Version, Modus, Zahlen und Grenzen. Keine zusätzlichen GUI-Gates in GitHub CI.
 
@@ -176,7 +176,7 @@ Im ersten Profil Machine-to-Machine nur dann real abnehmen, wenn ein vorhandener
 
 ## 7. Betriebs- und Übergaberegeln
 
-- Ausschließlich im Worktree `C:/repo/VertexBPMN-keycloak-oidc` arbeiten. Hauptcheckout `C:/repo/VertexBPMN` bleibt auf seinem Branch; nicht umschalten, resetten oder dessen Änderungen übernehmen.
+- K05 ausschließlich auf `codex/keycloak-k05-security-acceptance` in `C:/repo/VertexBPMN` bearbeiten; Änderungen anderer Arbeitszweige nicht übernehmen oder überschreiben.
 - Worktrees isolieren Dateien, **nicht** Ports, Datenbanken, Secrets oder Git-Refs. Eigene Testressourcen verwenden; keine gemeinsamen User-Secrets verändern. Updates vom Hauptbranch nur kontrolliert integrieren.
 - Pro Paket: Status, Basiscommit, Dateien, Entscheidungen, Testbefehle/-zahlen, Artefaktpfade und offene Punkte dokumentieren. Produktionssecrets nie in Übergaben kopieren.
 - Keine automatischen Commits/Pushes/PRs ohne Nutzerauftrag. Bei paralleler Arbeit an `Program.cs`, SecurityConfiguration oder AppHost Integration abstimmen; ein separater Branch verhindert spätere Mergekonflikte nicht vollständig.
@@ -184,7 +184,7 @@ Im ersten Profil Machine-to-Machine nur dann real abnehmen, wenn ein vorhandener
 
 Kopierbarer Auftrag:
 
-> Arbeite ausschließlich im Worktree `C:/repo/VertexBPMN-keycloak-oidc` auf `codex/keycloak-oidc-self-hosting`. Lies diesen Plan vollständig sowie die dort geltenden Repository-Anweisungen. Bearbeite das nächste freigegebene K-Paket, prüfe vorhandene Implementierung und sichere Claims/Sessiongrenzen mit positiven und negativen Tests ab. Keycloak bleibt austauschbarer OIDC-Provider; keine Enginekopplung, keine schwächere Authentifizierung für grüne Tests. Verwende isolierte lokale Testressourcen, keine echten Secrets in Dateien. Aktualisiere den Status und benenne fehlende echte Abnahmen ausdrücklich. Kein Commit/Push ohne Auftrag.
+> Arbeite in `C:/repo/VertexBPMN` auf dem für das freigegebene K-Paket angelegten `codex/`-Branch. Lies diesen Plan vollständig sowie die dort geltenden Repository-Anweisungen. Prüfe vorhandene Implementierung und sichere Claims/Sessiongrenzen mit positiven und negativen Tests ab. Keycloak bleibt austauschbarer OIDC-Provider; keine Enginekopplung, keine schwächere Authentifizierung für grüne Tests. Verwende isolierte lokale Testressourcen, keine echten Secrets in Dateien. Aktualisiere den Status und benenne fehlende echte Abnahmen ausdrücklich. Kein Commit/Push ohne Auftrag.
 
 ## 8. Quellen und Fortschritt
 
@@ -201,6 +201,7 @@ Offizielle Quellen, geprüft zur Planung am 2026-09-09; konkrete versionsabhäng
 - [x] K03 – Studio/API-Anbindung. Claimnormalisierung, `OidcTest`-Konfiguration, echter JWT-Handlervertrag, sitzungsgebundener Tokenrefresh, Mehrsitzungsisolation und OIDC-Logout sind implementiert. 27 gezielte Security-/Sessiontests sowie die vollständige serielle Kernsuite mit 975 Tests und 0 Fehlern bestanden am 2026-09-10; 18 explizit externe Infrastrukturtests wurden übersprungen. Der frühere Zwischenstand bleibt als Implementierungsprotokoll erhalten: [K03 Zwischenstand](2026-09-09_Keycloak-OIDC_K03_Zwischenstand.md).
 - [x] K04 – Lokale AppHost-/WSLC-/Existing-Topologie. Der reale lokale Browserlauf hat Keycloak-Redirect, Login, API-gestützte Studio-Seiten, echten Refresh und IdP-Logout mit 1/1 Tests bestanden. Nach dem Master-Sync bestanden Release-Build und 60 Studio-Vertragstests; zwei weitere lokale Opt-in-Tests wurden erwartungsgemäß übersprungen. Der reale Keycloak-Lauf wurde nach dem Sync mangels gesetzter lokaler Secrets nicht erneut gestartet.
 - [ ] K05 – Reale IdP-/Sicherheitsabnahme.
+  - Zwischenstand: [K05 Sicherheitsabnahme – Zwischenstand 5](2026-09-10_Keycloak-OIDC_K05_Zwischenstand.md). Reale Browser-/API-Suite für T01–T09 12/12 und T10–T12 jeweils fokussiert 1/1 grün. Die relevante Auth-/Tenant-/SDK-/gRPC-/SignalR-Regression bestand 84/84 Tests; die vollständige serielle Haupttestsuite zusätzlich 988 Tests mit 0 Fehlern und 25 erwartungsgemäß übersprungenen externen Fällen. Ein kombinierter T01–T12-Wiederholungslauf bleibt als letzter K05-Nachweis offen; der aktuelle Lauf konnte in der Codex-Sandbox Chromium nicht starten (`spawn EPERM`) und ist deshalb kein Produktfehlernachweis.
 - [ ] K06 – Runbook/Austauschbarkeit/Übergabe.
 
-**Nächster Umsetzungsschritt: K05.** Die noch offenen Sicherheitsfälle T02 sowie T06–T12 sind gegen isolierte reale Infrastruktur auszuführen und mit Commit, Provider-/DB-Version, Modus und Grenzen zu dokumentieren. K06 folgt erst danach; eine Produktionsfreigabe oder vollständige Phase-3-Freigabe wird aus diesem PR nicht abgeleitet.
+**Nächster Umsetzungsschritt: K05 abschließen.** Die vollständige reale T01–T12-Suite mit lokaler Browserprozess-Berechtigung einmal kombiniert ausführen und den finalen Status ausschließlich bei 15/15 fehlerfreien Pflichtfällen setzen. Die relevante Auth-/Tenant-/SDK-/gRPC-/SignalR-Regression ist mit 84/84 bereits abgeschlossen. K06 folgt erst danach; eine Produktionsfreigabe wird aus diesem Zwischenstand nicht abgeleitet.

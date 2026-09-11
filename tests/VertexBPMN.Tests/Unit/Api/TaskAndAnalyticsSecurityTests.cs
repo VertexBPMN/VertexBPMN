@@ -124,6 +124,32 @@ public sealed class TaskAndAnalyticsSecurityTests
     }
 
     [Fact]
+    public async Task RepositoryDeploy_WithEmptyXml_ReturnsBadRequestWithoutMutation()
+    {
+        var service = new Mock<IRepositoryService>();
+        var triggerService = new Mock<IWorkflowTriggerService>();
+        var controller = new RepositoryController(service.Object, triggerService.Object)
+        {
+            ControllerContext = ContextFor("tenant-a")
+        };
+
+        var result = await controller.Deploy(new RepositoryController.RepositoryDeployRequest(
+            " ",
+            "invalid.bpmn",
+            "tenant-a"));
+
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+        service.Verify(
+            x => x.DeployAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+        triggerService.VerifyNoOtherCalls();
+    }
+
+    [Fact]
     public async Task VertexTaskList_ForNonAdmin_UsesClaimTenantInsteadOfRequestedTenant()
     {
         var task = new UserTask { Id = Guid.NewGuid(), TenantId = "tenant-a" };

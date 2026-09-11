@@ -1,0 +1,208 @@
+# VertexBPMN self-hosted full stack (Linux/docker compose)
+#
+# Stack: postgres (5 engine DBs) + rabbitmq + keycloak (+ own postgres) + api + studio,
+# wired through Keycloak OIDC exactly as the tested OIDC profile.
+#
+# The API and Studio run on the docker *host* network (network_mode: host) so their
+# Keycloak authority stays an HTTP loopback (localhost) — that is the only way
+# `Jwt:RequireHttpsMetadata=false` is permitted against an HTTP Keycloak
+# (SecurityConfiguration guard: OidcTest profile + loopback authority).
+#
+# 1) cp .env.example .env   and fill the secrets
+# 2) docker compose up -d --build
+# 3) open http://localhost:5263  (browser login via Keycloak at http://localhost:58080)
+# 4) validate: curl -s http://localhost:51870/api/ready
+name: vertexbpmn
+
+# ----------------------------------------------------------------- engine DB
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-vertexbpmn}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: vertexbpmn_bpmn
+    ports:
+      - "5432:5432"
+    volumes:
+      - engine-pgdata:/var/lib/postgresql/data
+      - ./init-engine-dbs.sql:/docker-entrypoint-initdb.d/10-init-dbs.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vertexbpmn} -d vertexbpmn_bpmn"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-vertexbpmn}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD in .env}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+# --------------------------------------------------------------------- OIDC
+  keycloak-postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?set KEYCLOAK_DB_PASSWORD in .env}
+      POSTGRES_DB: keycloak
+    volumes:
+      - keycloak-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.3
+    restart: unless-stopped
+    command: start-dev --import-realm --http-port=8080
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USER:-vertexbpmn-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD in .env}
+      KC_DB: postgres
+      KC_DB_URL_HOST: keycloak-postgres
+      KC_DB_URL_DATABASE: keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:-http://localhost:58080}
+    ports:
+      - "58080:8080"
+    volumes:
+      - ../../deploy/keycloak/vertexbpmn-realm.json:/opt/keycloak/data/import/vertexbpmn-realm.json:ro
+    depends_on:
+      keycloak-postgres:
+        condition: service_healthy
+    healthcheck:
+      # Keycloak image ships bash; the /dev/tcp probe needs no curl.
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      start_period: 60s
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # One-shot: set the (non-public) studio client secret + create the demo test
+  # user via kcadm. Runs after Keycloak is healthy, completes, then api/studio start.
+  keycloak-bootstrap:
+    image: quay.io/keycloak/keycloak:26.7.3
+    entrypoint: ["/bin/bash", "/tmp/kcbootstrap.sh"]
+    environment:
+      KCADM_SERVER: http://keycloak:8080
+      KEYCLOAK_ADMIN_USER: ${KEYCLOAK_ADMIN_USER:-vertexbpmn-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KEYCLOAK_STUDIO_CLIENT_SECRET: ${KEYCLOAK_STUDIO_CLIENT_SECRET:?set KEYCLOAK_STUDIO_CLIENT_SECRET in .env}
+      KEYCLOAK_TEST_USER: ${KEYCLOAK_TEST_USER:-vertexbpmn-user}
+      KEYCLOAK_TEST_USER_PASSWORD: ${KEYCLOAK_TEST_USER_PASSWORD:?set KEYCLOAK_TEST_USER_PASSWORD in .env}
+      KEYCLOAK_TEST_USER_TENANT: ${KEYCLOAK_TEST_USER_TENANT:-tenant-a}
+      KEYCLOAK_TEST_USER_ROLE: ${KEYCLOAK_TEST_USER_ROLE:-ProcessManager}
+    volumes:
+      - ./keycloak-bootstrap.sh:/tmp/kcbootstrap.sh:ro
+    depends_on:
+      keycloak:
+        condition: service_healthy
+
+# ------------------------------------------------------------------- apps
+  api:
+    build:
+      context: .
+      dockerfile: runtime-api.Dockerfile
+    # Host network: reach http://localhost:58080 (keycloak), localhost:5432 (pg),
+    # localhost:5672 (rabbitmq) and serve on host :51870.
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: OidcTest
+      DOTNET_ENVIRONMENT: OidcTest
+      OperationalMode: OidcTest
+      ASPNETCORE_HTTP_PORTS: "51870"
+      Database__ApplyMigrationsOnStartup: "true"
+      # 5 engine databases (durable Postgres; not InMemory)
+      ConnectionStrings__Bpmn: "Host=localhost;Port=5432;Username=${POSTGRES_USER:-vertexbpmn};Password=${POSTGRES_PASSWORD};Database=vertexbpmn_bpmn"
+      ConnectionStrings__Tenants: "Host=localhost;Port=5432;Username=${POSTGRES_USER:-vertexbpmn};Password=${POSTGRES_PASSWORD};Database=vertexbpmn_tenants"
+      ConnectionStrings__Simulation: "Host=localhost;Port=5432;Username=${POSTGRES_USER:-vertexbpmn};Password=${POSTGRES_PASSWORD};Database=vertexbpmn_simulation"
+      ConnectionStrings__ProcessMiningEvents: "Host=localhost;Port=5432;Username=${POSTGRES_USER:-vertexbpmn};Password=${POSTGRES_PASSWORD};Database=vertexbpmn_events"
+      ConnectionStrings__Decision: "Host=localhost;Port=5432;Username=${POSTGRES_USER:-vertexbpmn};Password=${POSTGRES_PASSWORD};Database=vertexbpmn_decision"
+      ConnectionStrings__DependencyRegistry: "Data Source=/var/lib/vertexbpmn/dependencies.db"
+      DataProtection__KeyRingPath: /var/lib/vertexbpmn/keys
+      # Outbox -> RabbitMQ
+      Runtime__Outbox__Enabled: "true"
+      Runtime__Outbox__Provider: RabbitMq
+      Runtime__Outbox__ConnectionString: "amqp://${RABBITMQ_USER:-vertexbpmn}:${RABBITMQ_PASSWORD}@localhost:5672"
+      # OIDC (loopback -> approved in OidcTest)
+      Jwt__Authority: http://localhost:58080/realms/vertexbpmn
+      Jwt__Issuer: http://localhost:58080/realms/vertexbpmn
+      Jwt__Audience: vertexbpmn-api
+      Jwt__RequireHttpsMetadata: "false"
+      Jwt__UseDevelopmentApiKey: "false"
+      Operational__Metrics__Enabled: "true"
+    volumes:
+      - vertexbpmn-state:/var/lib/vertexbpmn
+      - ./healthcheck.sh:/usr/local/bin/hcheck:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      keycloak-bootstrap:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "/bin/bash /usr/local/bin/hcheck 51870 /api/ready"]
+      start_period: 60s
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  studio:
+    build:
+      context: .
+      dockerfile: runtime-studio.Dockerfile
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: OidcTest
+      DOTNET_ENVIRONMENT: OidcTest
+      OperationalMode: OidcTest
+      ASPNETCORE_HTTP_PORTS: "5263"
+      ApiBaseUrl: http://localhost:51870/
+      StudioHttpsRedirection__Enabled: "false"
+      StudioAuthentication__Authority: http://localhost:58080/realms/vertexbpmn
+      StudioAuthentication__ClientId: vertexbpmn-studio
+      StudioAuthentication__ClientSecret: ${KEYCLOAK_STUDIO_CLIENT_SECRET}
+      StudioAuthentication__ClaimsScope: vertexbpmn-claims
+      StudioAuthentication__RequireClientSecret: "true"
+      StudioAuthentication__RequireHttpsMetadata: "false"
+      StudioAuthentication__LocalDevelopmentEnabled: "false"
+      StudioAuthentication__UiTestEnabled: "false"
+    depends_on:
+      api:
+        condition: service_healthy
+      keycloak-bootstrap:
+        condition: service_completed_successfully
+    volumes:
+      - ./healthcheck.sh:/usr/local/bin/hcheck:ro
+    healthcheck:
+      test: ["CMD-SHELL", "/bin/bash /usr/local/bin/hcheck 5263 /health"]
+      start_period: 60s
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  engine-pgdata:
+  rabbitmq-data:
+  keycloak-pgdata:
+  vertexbpmn-state:

@@ -30,6 +30,7 @@ public static class SecurityConfiguration
         var requireHttpsMetadata = configuration.GetValue<bool?>("Jwt:RequireHttpsMetadata") ?? !isDevelopment;
         var clockSkewSeconds = configuration.GetValue<int?>("Jwt:ClockSkewSeconds") ?? 30;
         var metadataRefreshIntervalSeconds = configuration.GetValue<int?>("Jwt:MetadataRefreshIntervalSeconds") ?? 30;
+        var blockOnMetadataRefresh = configuration.GetValue<bool?>("Jwt:BlockOnMetadataRefresh") ?? true;
 
         if (clockSkewSeconds is < 0 or > 300)
             throw new InvalidOperationException("Jwt:ClockSkewSeconds must be between 0 and 300 seconds.");
@@ -57,6 +58,15 @@ public static class SecurityConfiguration
 
         if (string.IsNullOrWhiteSpace(authority) && Encoding.UTF8.GetByteCount(secretKey!) < 32)
             throw new InvalidOperationException("Jwt:SecretKey must contain at least 32 bytes.");
+
+        // IdentityModel 8 refreshes unknown signing keys in the background by default. That
+        // makes the first request after an IdP key rotation fail even when the new key is
+        // already published. Blocking only the rate-limited metadata refresh preserves the
+        // rotation overlap window; operators can opt out if availability is preferred over
+        // a seamless first request while their identity provider is unavailable.
+        AppContext.SetSwitch(
+            "Switch.Microsoft.IdentityModel.UpdateConfigAsBlocking",
+            blockOnMetadataRefresh);
 
         services.AddAuthentication(options =>
             {

@@ -50,6 +50,7 @@ function Wait-ForEndpoint {
     $handler = [System.Net.Http.HttpClientHandler]::new()
     $handler.AllowAutoRedirect = $false
     $client = [System.Net.Http.HttpClient]::new($handler)
+    $client.Timeout = [TimeSpan]::FromSeconds(5)
     try {
         do {
             if ($Process.HasExited) {
@@ -64,6 +65,9 @@ function Wait-ForEndpoint {
             }
             catch [System.Net.Http.HttpRequestException] {
                 # Kestrel or Keycloak is still starting.
+            }
+            catch [System.Threading.Tasks.TaskCanceledException] {
+                # A dependency may be accepting connections before it can answer.
             }
             Start-Sleep -Milliseconds 500
         } while ([DateTime]::UtcNow -lt $deadline)
@@ -141,6 +145,11 @@ try {
         -RedirectStandardOutput $apiStdout -RedirectStandardError $apiStderr
     Wait-ForEndpoint -Uri "http://localhost:51870/api/ready" -Name "VertexBPMN API" -Process $apiProcess
 
+    # WSLC can lose a published host port while the .NET applications are
+    # starting although the container itself keeps running. Re-verify and, if
+    # necessary, rebind Keycloak before Studio loads OIDC metadata.
+    & $keycloakScript -Action Wait
+
     $env:ApiBaseUrl = "http://localhost:51870/"
     $env:StudioHttpsRedirection__Enabled = "false"
     $env:StudioAuthentication__Authority = "http://localhost:58080/realms/vertexbpmn"
@@ -159,6 +168,10 @@ try {
         -PassThru -WindowStyle Hidden `
         -RedirectStandardOutput $studioStdout -RedirectStandardError $studioStderr
     Wait-ForEndpoint -Uri "http://localhost:5263/" -Name "VertexBPMN Studio" -Process $studioProcess
+
+    # Keep the final precondition explicit so a disappearing WSLC port is
+    # reported/rebound before the browser and key-rotation assertions begin.
+    & $keycloakScript -Action Wait
 
     $env:VERTEXBPMN_OIDC_TEST_STUDIO_URL = "http://localhost:5263/"
     $env:VERTEXBPMN_OIDC_TEST_API_URL = "http://localhost:51870/"

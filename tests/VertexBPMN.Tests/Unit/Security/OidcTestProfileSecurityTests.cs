@@ -18,6 +18,7 @@ public sealed class OidcTestProfileSecurityTests
             ["OperationalMode"] = "OidcTest",
             ["Jwt:Authority"] = "http://localhost:58080/realms/vertexbpmn",
             ["Jwt:Audience"] = "vertexbpmn-api",
+            ["Jwt:BlockOnMetadataRefresh"] = "true",
             ["Jwt:ClockSkewSeconds"] = "0",
             ["Jwt:MetadataRefreshIntervalSeconds"] = "1",
             ["Jwt:RequireHttpsMetadata"] = "false",
@@ -34,6 +35,10 @@ public sealed class OidcTestProfileSecurityTests
         Assert.Equal(TimeSpan.Zero, jwt.TokenValidationParameters.ClockSkew);
         Assert.True(jwt.RefreshOnIssuerKeyNotFound);
         Assert.Equal(TimeSpan.FromSeconds(1), jwt.RefreshInterval);
+        Assert.True(AppContext.TryGetSwitch(
+            "Switch.Microsoft.IdentityModel.UpdateConfigAsBlocking",
+            out var blocksOnRefresh));
+        Assert.True(blocksOnRefresh);
     }
 
     [Theory]

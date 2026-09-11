@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("Start", "Stop", "Status", "Bootstrap", "Remove")]
+    [ValidateSet("Start", "Stop", "Status", "Wait", "Bootstrap", "Remove")]
     [string]$Action = "Start",
 
     [string]$KeycloakImage = "quay.io/keycloak/keycloak:26.7.3",
@@ -480,6 +480,7 @@ switch ($Action) {
     "Stop" { Stop-IsolatedKeycloak }
     "Remove" { Remove-IsolatedKeycloak }
     "Status" { Show-Status; return }
+    "Wait" { Wait-Keycloak }
     "Bootstrap" { Bootstrap-Realm }
 }
 

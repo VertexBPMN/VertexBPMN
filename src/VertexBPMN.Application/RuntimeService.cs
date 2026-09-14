@@ -114,6 +114,8 @@ public class RuntimeService : IRuntimeService
         {
             if (inst.Status != ProcessInstanceStatus.Suspended)
                 throw new InvalidOperationException($"Process instance is in {inst.Status} state.");
+            if (inst.State == "Incident")
+                throw new InvalidOperationException("Recover the open incident before resuming this process instance.");
             inst.Status = ProcessInstanceStatus.Running;
             inst.State = "Waiting";
             inst.LastModified = DateTime.UtcNow;
@@ -136,10 +138,11 @@ public class RuntimeService : IRuntimeService
         var inst = await _repo.GetByIdAsync(processInstanceId, cancellationToken);
         if (inst != null)
         {
-            // Optionally: await _repo.DeleteAsync(processInstanceId, cancellationToken);
+            if (inst.Status == ProcessInstanceStatus.Terminated) return;
+            await _executionRuntime.TerminateAsync(processInstanceId, inst.TenantId, cancellationToken);
             await _eventSink.EmitAsync(new ProcessMiningEvent
             {
-                EventType = "ProcessEnded",
+                EventType = "ProcessTerminated",
                 ProcessInstanceId = inst.Id.ToString(),
                 TenantId = inst.TenantId,
                 Timestamp = DateTimeOffset.UtcNow
@@ -152,10 +155,14 @@ public class RuntimeService : IRuntimeService
         var inst = await _repo.GetByIdAsync(processInstanceId, cancellationToken);
         if (inst != null)
         {
-            await _repo.DeleteAsync(processInstanceId, cancellationToken);
+            if (inst.Status == ProcessInstanceStatus.Terminated) return;
+            var retainForExternalAudit = await _executionRuntime.TerminateAsync(
+                processInstanceId, inst.TenantId, cancellationToken);
+            if (!retainForExternalAudit)
+                await _repo.DeleteAsync(processInstanceId, cancellationToken);
             await _eventSink.EmitAsync(new ProcessMiningEvent
             {
-                EventType = "ProcessDeleted",
+                EventType = retainForExternalAudit ? "ProcessTerminated" : "ProcessDeleted",
                 ProcessInstanceId = inst.Id.ToString(),
                 TenantId = inst.TenantId,
                 Timestamp = DateTimeOffset.UtcNow

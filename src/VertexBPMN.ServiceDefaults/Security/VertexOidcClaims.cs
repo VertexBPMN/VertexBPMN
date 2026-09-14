@@ -11,12 +11,15 @@ public static class VertexOidcClaims
     public const string RolesClaimType = "roles";
     public const string TenantClaimType = "tenant_id";
     public const string SubjectClaimType = "sub";
+    public const string ExternalTaskTopicClaimType = "external_task_topic";
+    public const string ExternalTaskProfileClaimType = "external_task_profile";
 
     private static readonly HashSet<string> AllowedRoles =
     [
         "Admin",
         "ProcessManager",
-        "ReadOnly"
+        "ReadOnly",
+        "ExternalTaskWorker"
     ];
 
     public static bool TryNormalize(ClaimsPrincipal principal, out string error)

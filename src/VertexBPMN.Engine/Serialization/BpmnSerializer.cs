@@ -277,9 +277,15 @@ public class BpmnSerializer
             if (ext == null || ext.Count == 0) return;
             var extRoot = new XElement(Bpmn + "extensionElements");
             var elementMap = new Dictionary<string,XElement>();
+            const string vertexUri = "https://vertexbpmn.io/schema/bpmn/1.0";
+            var mappings = ext.Where(item => item.Key.StartsWith("vertex:ioMapping.input.", StringComparison.Ordinal)
+                || item.Key.StartsWith("vertex:ioMapping.output.", StringComparison.Ordinal)).ToArray();
             foreach (var kv in ext)
             {
                 if (!TryParseExtensionKey(kv.Key, out var nsUri, out var localName, out var attrName, out var attrNsUri)) continue;
+                // Nested mappings cannot be flattened into attributes on ioMapping or
+                // emitted again as sibling input/output elements from raw projections.
+                if (mappings.Length > 0 && nsUri == vertexUri && localName is "ioMapping" or "input" or "output") continue;
                 var key = nsUri + "|" + localName;
                 if (!elementMap.TryGetValue(key, out var el))
                 {
@@ -296,7 +302,21 @@ public class BpmnSerializer
                 }
                 el.SetAttributeValue(string.IsNullOrEmpty(attrNsUri) ? XName.Get(attrName) : XName.Get(attrName, attrNsUri), kv.Value);
             }
-            if (elementMap.Count > 0) parent.Add(extRoot);
+            if (mappings.Length > 0)
+            {
+                XNamespace vertex = vertexUri;
+                var mapping = new XElement(vertex + "ioMapping");
+                foreach (var item in mappings.OrderBy(item => item.Key, StringComparer.Ordinal))
+                {
+                    var input = item.Key.StartsWith("vertex:ioMapping.input.", StringComparison.Ordinal);
+                    var prefix = input ? "vertex:ioMapping.input." : "vertex:ioMapping.output.";
+                    mapping.Add(new XElement(vertex + (input ? "input" : "output"),
+                        new XAttribute("name", item.Key[prefix.Length..]),
+                        new XAttribute(input ? "expression" : "target", item.Value)));
+                }
+                extRoot.Add(mapping);
+            }
+            if (extRoot.HasElements) parent.Add(extRoot);
         }
 
         XElement? AttachRawExtensions(string id, XElement target)
@@ -375,10 +395,33 @@ public class BpmnSerializer
         foreach (var gw in model.Gateways)
         { var gwEl = new XElement(Bpmn + gw.Type, new XAttribute("id", gw.Id)); if (!string.IsNullOrWhiteSpace(gw.DefaultFlowId)) gwEl.Add(new XAttribute("default", gw.DefaultFlowId)); if (strict) AttachRawExtensions(gw.Id, gwEl); else AddExtensionsNormalized(gwEl, gw.ExtensionAttributes); ApplyOriginalAttributes(gw.Id, gwEl); AddRawDocumentation(gw.Id, gwEl); AppendInOutIfStrict(gw.Id, gwEl); Register(gw.Id, gwEl); }
         foreach (var task in model.Tasks)
-        { var taskEl = new XElement(Bpmn + task.Type, new XAttribute("id", task.Id)); if (!strict && !string.IsNullOrWhiteSpace(task.Name)) taskEl.SetAttributeValue("name", task.Name); if (strict && raw?.RawMultiInstance != null && raw.RawMultiInstance.TryGetValue(task.Id, out var rawMi)) taskEl.Add(new XElement(rawMi)); if (strict) AttachRawExtensions(task.Id, taskEl); else AddExtensionsNormalized(taskEl, task.Attributes); ApplyOriginalAttributes(task.Id, taskEl); AddRawDocumentation(task.Id, taskEl); AppendInOutIfStrict(task.Id, taskEl); Register(task.Id, taskEl); }
+        {
+            var taskEl = new XElement(Bpmn + task.Type, new XAttribute("id", task.Id));
+            if (!strict && !string.IsNullOrWhiteSpace(task.Name)) taskEl.SetAttributeValue("name", task.Name);
+            if (strict && raw?.RawMultiInstance != null && raw.RawMultiInstance.TryGetValue(task.Id, out var rawMi)) taskEl.Add(new XElement(rawMi));
+            else if (task.Loop is { } loop) taskEl.Add(SerializeLoop(loop));
+            if (strict) AttachRawExtensions(task.Id, taskEl); else AddExtensionsNormalized(taskEl, task.Attributes);
+            ApplyOriginalAttributes(task.Id, taskEl); AddRawDocumentation(task.Id, taskEl); AppendInOutIfStrict(task.Id, taskEl); Register(task.Id, taskEl);
+        }
         foreach (var f in model.SequenceFlows)
         { var fEl = new XElement(Bpmn + "sequenceFlow", new XAttribute("id", f.Id), new XAttribute("sourceRef", f.SourceRef), new XAttribute("targetRef", f.TargetRef)); if (f.Priority.HasValue){ if (strict && raw?.PriorityAttributeNamespace != null && raw.PriorityAttributeNamespace.TryGetValue(f.Id, out var pns)){ if (string.IsNullOrEmpty(pns)) fEl.SetAttributeValue("priority", f.Priority.Value); else fEl.SetAttributeValue(XName.Get("priority", pns), f.Priority.Value);} else fEl.SetAttributeValue(XName.Get("priority", "http://vertexbpmn.io/schema/1.0"), f.Priority.Value);} if (strict && raw?.SequenceFlowConditions != null && raw.SequenceFlowConditions.TryGetValue(f.Id, out var rcond)){ if (!string.IsNullOrEmpty(rcond.Raw)){ var condEl = new XElement(Bpmn + "conditionExpression"); if (!string.IsNullOrWhiteSpace(f.ConditionExpressionLanguage)) condEl.SetAttributeValue("language", f.ConditionExpressionLanguage); if (rcond.WasCData) condEl.Add(new XCData(rcond.Raw)); else condEl.Value = rcond.Raw; fEl.Add(condEl);} } else if (!string.IsNullOrWhiteSpace(f.ConditionExpression)) { var condEl = new XElement(Bpmn + "conditionExpression", new XCData(f.ConditionExpression)); if (!string.IsNullOrWhiteSpace(f.ConditionExpressionLanguage)) condEl.SetAttributeValue("language", f.ConditionExpressionLanguage); fEl.Add(condEl); } if (strict) AttachRawExtensions(f.Id, fEl); else AddExtensionsNormalized(fEl, f.ExtensionAttributes); ApplyOriginalAttributes(f.Id, fEl); AddRawDocumentation(f.Id, fEl); Register(f.Id, fEl); }
         if (orderedElements != null){ foreach (var id in orderedElements){ if (elementLookup.TryGetValue(id, out var el)) proc.Add(el); } }
+        if (!strict)
+        {
+            var nodes = proc.Elements().Where(element => element.Attribute("id") is not null)
+                .ToDictionary(element => element.Attribute("id")!.Value, StringComparer.Ordinal);
+            var owners = model.Subprocesses.Select(item => (item.Id, item.SubprocessId))
+                .Concat(model.Tasks.Select(item => (item.Id, item.SubprocessId)))
+                .Concat(model.Events.Select(item => (item.Id, item.SubprocessId)))
+                .Concat(model.Gateways.Select(item => (item.Id, item.SubprocessId)))
+                .Concat(model.SequenceFlows.Select(item => (item.Id, item.SubprocessId)));
+            foreach (var (id, ownerId) in owners)
+                if (ownerId is not null && nodes.TryGetValue(id, out var child) && nodes.TryGetValue(ownerId, out var owner))
+                {
+                    child.Remove();
+                    owner.Add(child);
+                }
+        }
         if (strict && raw?.RawArtifacts is { Count: >0 }) foreach (var art in raw.RawArtifacts) proc.Add(new XElement(art));
         if (strict && raw?.RawLanes is { Count: >0 })
         {
@@ -586,6 +629,26 @@ public class BpmnSerializer
         ["xsi"] = "http://www.w3.org/2001/XMLSchema-instance",
         ["w4graph"] = "http://www.w4.eu/spec/BPMN/20110930/GRAPH"
     };
+
+    private static XElement SerializeLoop(LoopCharacteristics loop)
+    {
+        if (loop is StandardLoopCharacteristics standard)
+        {
+            var element = new XElement(Bpmn + "standardLoopCharacteristics", new XAttribute("testBefore", standard.TestBefore));
+            if (standard.LoopMaximum.HasValue) element.Add(new XAttribute("loopMaximum", standard.LoopMaximum.Value));
+            if (standard.LoopCondition is not null) element.Add(new XElement(Bpmn + "loopCondition", standard.LoopCondition));
+            return element;
+        }
+        var multi = (MultiInstanceLoopCharacteristics)loop;
+        var result = new XElement(Bpmn + "multiInstanceLoopCharacteristics", new XAttribute("isSequential", multi.IsSequential));
+        if (multi.LoopCardinality.HasValue) result.Add(new XElement(Bpmn + "loopCardinality", multi.LoopCardinality.Value));
+        if (multi.Collection is not null) result.Add(new XAttribute(XName.Get("collection", "http://camunda.org/schema/1.0/bpmn"), multi.Collection));
+        if (multi.ElementVariable is not null) result.Add(new XAttribute(XName.Get("elementVariable", "http://camunda.org/schema/1.0/bpmn"), multi.ElementVariable));
+        if (multi.InputElement is not null) result.Add(new XElement(XName.Get("inputElement", "http://zeebe.io/schema/zeebe/1.0"), multi.InputElement));
+        if (multi.OutputElement is not null) result.Add(new XElement(XName.Get("outputElement", "http://zeebe.io/schema/zeebe/1.0"), multi.OutputElement));
+        if (multi.CompletionCondition is not null) result.Add(new XElement(Bpmn + "completionCondition", multi.CompletionCondition));
+        return result;
+    }
 
     private static string? ParseElementNamespace(string key)
     {

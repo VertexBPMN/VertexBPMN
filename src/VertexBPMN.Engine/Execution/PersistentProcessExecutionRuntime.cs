@@ -19,7 +19,7 @@ namespace VertexBPMN.Engine.Execution;
 /// Transactional BPMN subset runtime used by every public execution API.
 /// Its wait states are database rows; no in-memory trace is authoritative.
 /// </summary>
-public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
+public sealed partial class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
 {
     private const string ActiveSubscription = "Active";
     private const string ScheduledJob = "Scheduled";
@@ -44,19 +44,25 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
     private readonly IDecisionService _decisions;
     private readonly ILogger<PersistentProcessExecutionRuntime> _logger;
     private readonly IConfiguration? _configuration;
+    private readonly IExternalTaskContractResolver? _externalContracts;
+    private readonly TimeProvider _timeProvider;
 
     public PersistentProcessExecutionRuntime(
         BpmnDbContext db,
         IServiceTaskRegistry serviceTasks,
         IDecisionService decisions,
         ILogger<PersistentProcessExecutionRuntime> logger,
-        IConfiguration? configuration = null)
+        IConfiguration? configuration = null,
+        IExternalTaskContractResolver? externalContracts = null,
+        TimeProvider? timeProvider = null)
     {
         _db = db;
         _serviceTasks = serviceTasks;
         _decisions = decisions;
         _logger = logger;
         _configuration = configuration;
+        _externalContracts = externalContracts;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public async ValueTask<ProcessInstance> StartAsync(
@@ -333,7 +339,8 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         }
         else
         {
-            await AdvanceAsync(instance, model, model.Outgoing(task.ActivityId), cancellationToken);
+            await AdvanceAsync(instance, model, model.Outgoing(task.ActivityId).Select(flow =>
+                WithExecutionContext(flow, new PendingNode(task.ActivityId, null, LocalVariables: task.LocalVariables))), cancellationToken);
         }
         await FinalizeTransitionAsync(instance, cancellationToken);
         CompleteInbox(inbox, task.Id.ToString());
@@ -379,7 +386,10 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                 }
             }
             if (payload.Interrupting && !string.IsNullOrWhiteSpace(payload.AttachedActivityId))
+            {
+                await CancelExternalActivityAsync(instance.Id, payload.AttachedActivityId, model, cancellationToken);
                 await CompleteWaitingTokenAsync(instance.Id, payload.AttachedActivityId, cancellationToken);
+            }
         }
         else
         {
@@ -478,7 +488,15 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
             if (string.IsNullOrWhiteSpace(incident.ActivityId))
                 throw new InvalidOperationException("The incident has no recoverable BPMN activity.");
             var model = ExecutionModel.Parse(definition.BpmnXml, definition.Key);
-            await AdvanceAsync(instance, model, [new PendingNode(incident.ActivityId, null)], cancellationToken);
+            var recoveryToken = await _db.ExecutionTokens.SingleOrDefaultAsync(
+                token => token.Id == incident.Id && token.ProcessInstanceId == instance.Id
+                    && token.NodeType == "incidentRecovery" && token.State == ExecutionToken.FailedState,
+                cancellationToken);
+            var context = recoveryToken is null
+                ? new PendingNode(incident.ActivityId, null)
+                : ExecutionContextFromToken(recoveryToken);
+            if (recoveryToken is not null) _db.ExecutionTokens.Remove(recoveryToken);
+            await AdvanceAsync(instance, model, [context], cancellationToken);
         }
 
         AddHistory(instance, "INCIDENT_RECOVERED", incident.ActivityId ?? "", new { incident.Id, incident.RetryCount });
@@ -487,6 +505,52 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         CompleteInbox(inbox, incident.Id.ToString());
         await _db.SaveChangesAsync(cancellationToken);
         if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async ValueTask<bool> TerminateAsync(
+        Guid processInstanceId,
+        string? tenantId,
+        CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await BeginTransactionAsync(cancellationToken);
+        var instance = await _db.ProcessInstances.SingleOrDefaultAsync(
+            item => item.Id == processInstanceId && item.TenantId == tenantId, cancellationToken)
+            ?? throw new KeyNotFoundException($"Process instance '{processInstanceId}' was not found.");
+        var retainsExternalAudit = await _db.ExternalTaskJobs.AsNoTracking()
+            .AnyAsync(item => item.ProcessInstanceId == processInstanceId, cancellationToken);
+        if (instance.Status == ProcessInstanceStatus.Terminated)
+        {
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+            return retainsExternalAudit;
+        }
+
+        await CancelWaitStatesAsync(processInstanceId, _ => true, cancellationToken);
+        var recoveryTokens = await _db.ExecutionTokens.Where(token => token.ProcessInstanceId == processInstanceId
+            && token.NodeType == "incidentRecovery" && token.State == ExecutionToken.FailedState).ToListAsync(cancellationToken);
+        foreach (var token in recoveryTokens)
+        {
+            token.State = ExecutionToken.CompletedState;
+            token.Revision++;
+        }
+        var openIncidents = await _db.Incidents.Where(incident => incident.ProcessInstanceId == processInstanceId
+            && (incident.State == "Open" || incident.State == "DeadLetter")).ToListAsync(cancellationToken);
+        foreach (var incident in openIncidents)
+        {
+            incident.State = "Resolved";
+            incident.ResolvedAt = DateTime.UtcNow;
+        }
+        instance.Status = ProcessInstanceStatus.Terminated;
+        instance.State = "Terminated";
+        instance.EndedAt = DateTime.UtcNow;
+        instance.LastModified = DateTime.UtcNow;
+        instance.ActiveTasks = [];
+        instance.ActiveTokens = [];
+        instance.Revision++;
+        AddHistory(instance, "PROCESS_TERMINATED", "", new { reason = "management" });
+        AddOutbox(instance, "ProcessTerminated", new { reason = "management" });
+        await _db.SaveChangesAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+        return retainsExternalAudit;
     }
 
     private async Task ConsumeSubscriptionAsync(
@@ -513,6 +577,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
             && IsBoundaryInterrupting(boundaryNode))
         {
             // Interrupting boundary: cancel the attached activity's waiting token(s) and any open user task.
+            await CancelExternalActivityAsync(instance.Id, boundaryNode.AttachedToRef, model, cancellationToken);
             await CompleteWaitingTokenAsync(instance.Id, boundaryNode.AttachedToRef, cancellationToken);
             await CancelAttachedUserTaskAsync(instance.Id, boundaryNode.AttachedToRef, cancellationToken);
         }
@@ -533,6 +598,11 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         CancellationToken cancellationToken)
     {
         var queue = new Queue<PendingNode>(initial);
+        if (model.Nodes.Values.Any(candidate => ExternalTaskDefinition.FromAttributes(candidate.Attributes) is not null)
+            && (_externalContracts is null || _configuration?.GetValue<bool>("ExternalTasks:EnableSchedulingPreview") != true))
+            throw new InvalidOperationException("external_task_feature_not_enabled");
+        if (_externalContracts is null || _configuration?.GetValue<bool>("ExternalTasks:EnableSchedulingPreview") != true)
+            await ValidateCalledExternalCapabilitiesAsync(model, instance.TenantId, cancellationToken);
         var steps = 0;
         while (queue.Count > 0)
         {
@@ -548,7 +618,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                 && node.IsMultiInstance
                 && node.Kind is "userTask" or "serviceTask" or "businessRuleTask" or "task" or "manualTask" or "sendTask" or "receiveTask" or "subProcess" or "transaction")
             {
-                await StartMultiInstanceAsync(instance, node, model, queue, cancellationToken);
+                await StartMultiInstanceAsync(instance, node, model, queue, pending, cancellationToken);
                 continue;
             }
 
@@ -650,6 +720,41 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                     break;
 
                 case "serviceTask":
+                    if (ExternalTaskDefinition.FromAttributes(node.Attributes) is { } externalDefinition)
+                    {
+                        if (node.Attributes.ContainsKey("standardLoop"))
+                        {
+                            var locals = pending.LocalVariables is null ? new Dictionary<string, object>(StringComparer.Ordinal)
+                                : new Dictionary<string, object>(pending.LocalVariables, StringComparer.Ordinal);
+                            locals["loopCounter"] = 0;
+                            var maximum = node.Attributes.GetValueOrDefault("standardLoopMaximum");
+                            var limit = maximum is null ? int.MaxValue : int.Parse(maximum, CultureInfo.InvariantCulture);
+                            if (limit < 0) throw new InvalidOperationException("external_task_invalid_loop_limit");
+                            var condition = node.Attributes.GetValueOrDefault("standardLoopCondition");
+                            if (limit == 0 || (node.Attributes.GetValueOrDefault("standardLoopTestBefore") == "true"
+                                && !string.IsNullOrWhiteSpace(condition)
+                                && !BpmnConditionEvaluator.Evaluate(condition, CreateActivityVariables(instance.Variables, locals))))
+                            {
+                                Enqueue(queue, model.Outgoing(node.Id), pending);
+                                break;
+                            }
+                            pending = pending with { LocalVariables = locals };
+                        }
+                        try
+                        {
+                            await CreateExternalTaskWaitAsync(instance, node, pending, model, externalDefinition, cancellationToken);
+                        }
+                        catch (InvalidOperationException error) when (error.Message is
+                            "external_task_input_missing" or "external_task_input_schema_invalid"
+                            or "external_task_input_not_allowed" or "external_task_input_too_large"
+                            or "external_task_contract_unavailable" or "external_task_contract_limits_exceeded")
+                        {
+                            // Only fixed validation codes are audited; never serialize rejected inputs
+                            // or turn persistence/concurrency failures into successful scheduling.
+                            await SuspendWithIncidentAsync(instance, node.Id, error.Message, cancellationToken, pending);
+                        }
+                        break;
+                    }
                     await ExecuteServiceTaskAsync(instance, node, pending.LocalVariables, cancellationToken);
                     if (instance.Status == ProcessInstanceStatus.Running)
                     {
@@ -673,7 +778,14 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                     }
                     else
                     {
-                        Enqueue(queue, subprocessStarts, pending);
+                        var scopedLocals = pending.LocalVariables is null
+                            ? new Dictionary<string, object>(StringComparer.Ordinal)
+                            : new Dictionary<string, object>(pending.LocalVariables, StringComparer.Ordinal);
+                        scopedLocals["$vertex.scopeExecution." + node.Id] = Guid.NewGuid().ToString();
+                        Enqueue(queue, subprocessStarts, pending with { LocalVariables = scopedLocals });
+                        if (model.Nodes.Values.Any(candidate => model.IsInScope(candidate.Id, node.Id)
+                            && ExternalTaskDefinition.FromAttributes(candidate.Attributes) is not null))
+                            await RegisterExternalBoundariesAsync(instance, node, model, cancellationToken);
                         await ActivateEventSubprocessesAsync(instance, model, node.Id, cancellationToken);
                     }
                     break;
@@ -1091,15 +1203,29 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         ProcessInstance instance,
         string activityId,
         string message,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        PendingNode? executionContext = null)
     {
         instance.Status = ProcessInstanceStatus.Suspended;
         instance.State = "Incident";
         instance.LastModified = DateTime.UtcNow;
         instance.Revision++;
+        var incidentId = Guid.NewGuid();
+        if (executionContext is not null && (executionContext.MultiInstanceExecutionId.HasValue
+            || executionContext.LocalVariables?.Count > 0))
+        {
+            // Persist execution-local state separately from the redacted incident payload.
+            // Bind to this incident, not merely its BPMN activity (multiple MI iterations may fail).
+            var recoveryToken = new ExecutionToken(incidentId, instance.Id, activityId, "incidentRecovery")
+            {
+                State = ExecutionToken.FailedState
+            };
+            StoreExecutionContext(recoveryToken, executionContext);
+            _db.ExecutionTokens.Add(recoveryToken);
+        }
         _db.Incidents.Add(new Incident
         {
-            Id = Guid.NewGuid(),
+            Id = incidentId,
             ProcessInstanceId = instance.Id,
             ActivityId = activityId,
             Type = "ExecutionFailure",
@@ -1141,6 +1267,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         ExecutionNode node,
         ExecutionModel model,
         Queue<PendingNode> queue,
+        PendingNode context,
         CancellationToken cancellationToken)
     {
         var items = ResolveMultiInstanceItems(node, instance.Variables);
@@ -1172,7 +1299,14 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
 
         var numberToActivate = execution.IsSequential ? 1 : items.Count;
         for (var index = 0; index < numberToActivate; index++)
-            queue.Enqueue(CreateMultiInstancePending(node, execution, index, items[index]));
+        {
+            var iteration = CreateMultiInstancePending(node, execution, index, items[index]);
+            var locals = context.LocalVariables is null ? new Dictionary<string, object>(StringComparer.Ordinal)
+                : new Dictionary<string, object>(context.LocalVariables, StringComparer.Ordinal);
+            if (iteration.LocalVariables is not null)
+                foreach (var pair in iteration.LocalVariables) locals[pair.Key] = pair.Value;
+            queue.Enqueue(iteration with { LocalVariables = locals });
+        }
         execution.NextIndex = numberToActivate;
         AddHistory(instance, "MULTI_INSTANCE_STARTED", node.Id,
             new { instances = items.Count, execution.IsSequential });
@@ -1355,6 +1489,82 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
             && value.EndsWith('}'))
             return value[2..^1].Trim();
         return value.StartsWith('=') ? value[1..].Trim() : value;
+    }
+
+    private async Task CreateExternalTaskWaitAsync(
+        ProcessInstance instance, ExecutionNode node, PendingNode pending, ExecutionModel model,
+        ExternalTaskDefinition definition, CancellationToken cancellationToken)
+    {
+        if (_externalContracts is null || _configuration?.GetValue<bool>("ExternalTasks:EnableSchedulingPreview") != true)
+            throw new InvalidOperationException("external_task_feature_not_enabled");
+        if (string.IsNullOrWhiteSpace(instance.TenantId))
+            throw new InvalidOperationException("external_task_tenant_required");
+        var inputs = new Dictionary<string, object>(StringComparer.Ordinal);
+        const string prefix = "vertex:ioMapping.input.";
+        foreach (var mapping in node.Attributes.Where(attribute => attribute.Key.StartsWith(prefix, StringComparison.Ordinal)))
+        {
+            // Initial preview supports plain variable references; reject other expressions explicitly.
+            var name = mapping.Key[prefix.Length..];
+            var source = mapping.Value;
+            if (string.IsNullOrWhiteSpace(name) || name.StartsWith('$') || string.IsNullOrWhiteSpace(source)
+                || source.Any(character => !(char.IsLetterOrDigit(character) || character == '_')))
+                throw new InvalidOperationException("external_task_input_expression_unsupported");
+            if (pending.LocalVariables?.TryGetValue(source, out var localValue) == true)
+                inputs.Add(name, localValue);
+            else if (instance.Variables.TryGetValue(source, out var globalValue))
+                inputs.Add(name, globalValue);
+            else
+                throw new InvalidOperationException("external_task_input_missing");
+        }
+        var inputSnapshot = JsonSerializer.Serialize(inputs);
+        if (System.Text.Encoding.UTF8.GetByteCount(inputSnapshot) > 128 * 1024)
+            throw new InvalidOperationException("external_task_input_too_large");
+        // Resolver implementations must be local policy/schema checks, with no remote I/O in this transaction.
+        var contract = await _externalContracts.ResolveAsync(instance.TenantId, definition, inputs, cancellationToken);
+        if (string.IsNullOrWhiteSpace(contract.Version) || string.IsNullOrWhiteSpace(contract.SchemaSnapshot)
+            || (definition.AgentProfileRef is not null && string.IsNullOrWhiteSpace(contract.AgentProfileVersion)))
+            throw new InvalidOperationException("external_task_invalid_contract");
+        var deployed = await _db.ProcessDefinitions.AsNoTracking().SingleAsync(item => item.Id == instance.ProcessDefinitionId, cancellationToken);
+        var scopeId = instance.Id;
+        if (node.ParentSubprocessId is not null)
+        {
+            if (pending.LocalVariables?.TryGetValue("$vertex.scopeExecution." + node.ParentSubprocessId, out var scopeValue) != true
+                || !Guid.TryParse(scopeValue?.ToString(), out scopeId))
+                throw new InvalidOperationException("external_task_scope_identity_missing");
+        }
+        var token = new ExecutionToken
+        {
+            Id = Guid.NewGuid(), ProcessInstanceId = instance.Id, CurrentNodeId = node.Id,
+            NodeType = "serviceTask", State = ExecutionToken.WaitingState, Revision = 1,
+            ActivityExecutionId = Guid.NewGuid(), ScopeExecutionId = pending.MultiInstanceExecutionId ?? scopeId,
+            Variables = pending.LocalVariables is null ? [] : new(pending.LocalVariables, StringComparer.Ordinal),
+            CreatedAt = _timeProvider.GetUtcNow().UtcDateTime
+        };
+        StoreExecutionContext(token, pending);
+        var now = _timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
+        var mappingSnapshot = node.Attributes.Where(item => item.Key.StartsWith("vertex:ioMapping.", StringComparison.Ordinal)).ToDictionary();
+        var definitionContent = JsonSerializer.Serialize(new { definition, mappings = mappingSnapshot });
+        static string Sha256(string value) => Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(value)));
+        var job = new ExternalTaskJob
+        {
+            Id = Guid.NewGuid(), TenantId = instance.TenantId, ProcessInstanceId = instance.Id,
+            DefinitionId = deployed.Id, DefinitionVersion = deployed.Version,
+            ActivityId = node.Id, ActivityExecutionId = token.ActivityExecutionId.Value,
+            WaitTokenId = token.Id, ScopeExecutionId = token.ScopeExecutionId.Value,
+            MultiInstanceExecutionId = pending.MultiInstanceExecutionId, MultiInstanceIndex = pending.MultiInstanceIndex,
+            Topic = definition.Topic, ContractVersion = contract.Version, AgentProfileRef = definition.AgentProfileRef,
+            AgentProfileVersion = contract.AgentProfileVersion,
+            InputSnapshot = inputSnapshot, SchemaSnapshot = contract.SchemaSnapshot,
+            DefinitionSnapshot = JsonSerializer.Serialize(new
+            {
+                definition, mappings = mappingSnapshot,
+                definitionSha256 = Sha256(definitionContent), inputSha256 = Sha256(inputSnapshot), schemaSha256 = Sha256(contract.SchemaSnapshot)
+            }),
+            State = ExternalTaskState.Ready, Revision = 1, CreatedAt = now, AvailableAt = now,
+            Deadline = checked(now + definition.DeadlineSeconds * 1000L), MaxAttempts = definition.MaxAttempts
+        };
+        await new ExternalTaskSchedulingStore(_db).StageAsync(job, token, cancellationToken);
+        await RegisterExternalBoundariesAsync(instance, node, model, cancellationToken);
     }
 
     private async Task CreateUserTaskWaitAsync(
@@ -1581,6 +1791,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         var interrupting = token.Variables.TryGetValue(EventSubprocessInterruptingVariable, out var interruptingValue)
                            && bool.TryParse(interruptingValue?.ToString(), out var parsed)
                            && parsed;
+        token.Variables["$vertex.scopeExecution." + subprocessId] = Guid.NewGuid().ToString();
         if (interrupting)
         {
             var parentScopeId = eventSubprocess.ParentSubprocessId;
@@ -2209,7 +2420,8 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                     }
                 }
 
-                Enqueue(queue, model.Outgoing(eventSubprocessStart.Id));
+                Enqueue(queue, model.Outgoing(eventSubprocessStart.Id), new PendingNode(eventSubprocessStart.Id, null,
+                    LocalVariables: new Dictionary<string, object> { ["$vertex.scopeExecution." + eventSubprocess.Id] = Guid.NewGuid().ToString() }));
                 AddHistory(instance, $"{throwEvent.EventType?.ToUpperInvariant()}_CAUGHT", eventSubprocessStart.Id,
                     new { throwEvent.Id, scopeId, eventSubprocessId = eventSubprocess.Id, interrupting });
                 return interrupting ? ScopedThrowResult.Interrupting : ScopedThrowResult.NonInterrupting;
@@ -2296,6 +2508,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         Func<string, bool> belongsToScope,
         CancellationToken cancellationToken)
     {
+        await CancelExternalTaskWaitsAsync(processInstanceId, belongsToScope, cancellationToken);
         var persistedTokens = await _db.ExecutionTokens
             .Where(token => token.ProcessInstanceId == processInstanceId
                             && token.State == ExecutionToken.WaitingState)
@@ -2779,7 +2992,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
             await _db.SaveChangesAsync(cancellationToken);
             return null;
         }
-        catch (DbUpdateException exception)
+        catch (DbUpdateException exception) when (IsInboxClaimConflict(exception))
         {
             if (transaction is not null)
                 await transaction.RollbackAsync(cancellationToken);
@@ -2790,6 +3003,18 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                 $"Failed to acquire idempotency key '{key}' for operation '{operation}'.", exception);
         }
     }
+
+    private static bool IsInboxClaimConflict(DbUpdateException exception)
+        => exception.InnerException switch
+        {
+            Npgsql.PostgresException postgres => postgres.SqlState == "23505"
+                && postgres.ConstraintName == "IX_RuntimeInbox_TenantScope_Operation_IdempotencyKey",
+            Microsoft.Data.Sqlite.SqliteException sqlite => sqlite.SqliteExtendedErrorCode == 2067
+                && sqlite.Message.Contains(
+                    "UNIQUE constraint failed: RuntimeInbox.TenantScope, RuntimeInbox.Operation, RuntimeInbox.IdempotencyKey",
+                    StringComparison.Ordinal),
+            _ => false
+        };
 
     private static void CompleteInbox(RuntimeInboxMessage? inbox, string result)
     {
@@ -2858,7 +3083,8 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
     private static PendingNode ExecutionContextFromToken(ExecutionToken token)
     {
         var locals = token.Variables
-            .Where(pair => pair.Key is not TaskIdVariable and not EventGatewayVariable)
+            .Where(pair => pair.Key is not TaskIdVariable and not EventGatewayVariable
+                and not EventSubprocessIdVariable and not EventSubprocessInterruptingVariable)
             .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
         if (!token.Variables.TryGetValue(MultiInstanceIdVariable, out var executionValue)
             || !Guid.TryParse(executionValue?.ToString(), out var executionId))
@@ -3093,6 +3319,7 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
         public static ExecutionModel Parse(string xml, string processKey)
         {
             var document = XDocument.Parse(xml, LoadOptions.PreserveWhitespace | LoadOptions.SetLineInfo);
+            VertexBPMN.Engine.Parsing.ExternalTaskValidation.ValidateXml(document);
             var process = document.Descendants().FirstOrDefault(element =>
                 element.Name.LocalName == "process"
                 && string.Equals((string?)element.Attribute("id"), processKey, StringComparison.Ordinal))
@@ -3150,6 +3377,9 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                     StringComparer.OrdinalIgnoreCase);
                 var activationCondition = element.Elements().FirstOrDefault(child =>
                     child.Name.LocalName == "activationCondition")?.Value.Trim();
+                foreach (var extension in element.Elements().Where(child => child.Name.LocalName == "extensionElements")
+                             .SelectMany(root => root.Elements()).Where(child => child.Name.NamespaceName == VertexBPMN.Engine.Parsing.VertexBpmnExtensions.NamespaceUri))
+                    VertexBPMN.Engine.Parsing.VertexBpmnExtensions.Flatten(extension, attributes);
                 if (!string.IsNullOrWhiteSpace(activationCondition))
                     attributes["activationCondition"] = activationCondition;
                 if (element.Name.LocalName == "businessRuleTask")
@@ -3158,6 +3388,15 @@ public sealed class PersistentProcessExecutionRuntime : IProcessExecutionRuntime
                     ReadUserTaskBinding(element, attributes);
                 var multiInstance = element.Elements().FirstOrDefault(child =>
                     child.Name.LocalName == "multiInstanceLoopCharacteristics");
+                var standardLoop = element.Elements().FirstOrDefault(child => child.Name.LocalName == "standardLoopCharacteristics");
+                if (standardLoop is not null)
+                {
+                    attributes["standardLoop"] = "true";
+                    attributes["standardLoopTestBefore"] = (string?)standardLoop.Attribute("testBefore") ?? "false";
+                    if (standardLoop.Attribute("loopMaximum") is { } maximum) attributes["standardLoopMaximum"] = maximum.Value;
+                    if (standardLoop.Elements().FirstOrDefault(child => child.Name.LocalName == "loopCondition") is { } condition)
+                        attributes["standardLoopCondition"] = condition.Value;
+                }
                 var loopCardinality = multiInstance?.Elements().FirstOrDefault(child =>
                     child.Name.LocalName == "loopCardinality")?.Value;
                 var collection = multiInstance?.Attributes().FirstOrDefault(attribute =>

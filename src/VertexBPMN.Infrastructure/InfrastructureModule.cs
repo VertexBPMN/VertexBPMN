@@ -26,6 +26,14 @@ public static class InfrastructureModule
                                  ?? "Development");
         var configuredDependencyRegistry = configuration.GetConnectionString("DependencyRegistry")
                                            ?? configuration["DependencyRegistry:ConnectionString"];
+        if (configuration.GetValue<bool>("ExternalTasks:EnableSchedulingPreview"))
+        {
+            var previewEnvironment = configuration["OperationalMode"] ?? configuration["ASPNETCORE_ENVIRONMENT"];
+            if (previewEnvironment?.Trim().ToLowerInvariant() is not ("development" or "test" or "unittest"))
+                throw new InvalidOperationException("External-task scheduling preview is restricted to Development and Test.");
+            services.AddScoped<IExternalTaskContractResolver, ConfiguredExternalTaskContractResolver>();
+            services.AddScoped<IExternalTaskLeaseService, ExternalTaskLeaseService>();
+        }
         if (mode is "Production" or "Stage" && string.IsNullOrWhiteSpace(configuredDependencyRegistry))
             throw new InvalidOperationException(
                 "ConnectionStrings:DependencyRegistry is required in Production and Stage; the local file fallback is forbidden.");

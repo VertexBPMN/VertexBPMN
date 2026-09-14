@@ -46,4 +46,13 @@ public interface IProcessExecutionRuntime
         string? tenantId,
         string? idempotencyKey = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Atomically terminates a process and all durable wait states. Returns true when
+    /// external-task audit data requires retaining the terminal process as a tombstone.
+    /// </summary>
+    ValueTask<bool> TerminateAsync(
+        Guid processInstanceId,
+        string? tenantId,
+        CancellationToken cancellationToken = default);
 }

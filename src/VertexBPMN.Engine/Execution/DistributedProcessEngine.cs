@@ -85,6 +85,24 @@ namespace VertexBPMN.Engine.Execution
 
         public async Task<List<string>> ExecuteAsync(BpmnModel model, CancellationToken cancellationToken = default)
         {
+            VertexBPMN.Engine.Parsing.ExternalTaskValidation.RejectUnsupported(model);
+            var pendingModels = new Stack<BpmnModel>();
+            var visitedModels = new HashSet<string>(StringComparer.Ordinal);
+            pendingModels.Push(model);
+            while (pendingModels.TryPop(out var currentModel))
+            {
+                if (!visitedModels.Add(currentModel.ProcessId)) continue;
+                if (visitedModels.Count > 64) throw new InvalidOperationException("external_task_call_graph_limit");
+                VertexBPMN.Engine.Parsing.ExternalTaskValidation.RejectUnsupported(currentModel);
+                foreach (var call in currentModel.Tasks.Where(task => task.Type == "callActivity"))
+                    if (call.Attributes?.GetValueOrDefault("calledElement") is { Length: > 0 } key)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        var xml = await _store.GetBpmnModelAsync(key);
+                        if (!string.IsNullOrWhiteSpace(xml))
+                            pendingModels.Push(await _bpmnParser.ParseAsync(xml, cancellationToken));
+                    }
+            }
             var trace = new List<string>();
             var processInstanceId = Guid.NewGuid();
             try

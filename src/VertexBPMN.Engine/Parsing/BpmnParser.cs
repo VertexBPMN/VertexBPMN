@@ -184,6 +184,7 @@ public partial class BpmnParser : IBpmnParser
         using var secureReader = new BpmnResourceLimiter(_options.SecurityOptions)
             .CreateSecureXmlReader(xml, cancellationToken);
         var doc = XDocument.Load(secureReader, LoadOptions.PreserveWhitespace);
+        ExternalTaskValidation.ValidateXml(doc);
         var root = doc.Root!;
         var ns = root.Name.Namespace;
         if (strict)
@@ -495,6 +496,7 @@ public partial class BpmnParser : IBpmnParser
                             implementation = "vertex:connector";
                         var task = new BpmnTask(id, local, currentSub, taskAttributes, implementation)
                         {
+                            Loop = ParseLoopLocal(el, ns, pendingMiConflicts).loop,
                             Name = el.Attribute("name")?.Value ?? string.Empty,
                             ProcessId = currentProcessId
                         };

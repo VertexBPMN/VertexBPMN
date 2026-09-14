@@ -134,7 +134,8 @@
   <Folder Include="Integration\Services\" />
 </ItemGroup>
 <ItemGroup>
-  <ProjectReference Include="..\..\src\VertexBPMN.Cli\VertexBPMN.Cli.csproj" />
+  <ProjectReference Include="..\..\src\VertexBPMN.Cli\VertexBPMN.Cli.csproj"
+                    Condition="'$(ExternalTaskVerificationBuild)' != 'true'" />
   <ProjectReference Include="..\..\src\VertexBPMN.Api\VertexBPMN.Api.csproj" Aliases="global,api" />
   <ProjectReference Include="..\..\src\VertexBPMN.Application\VertexBPMN.Application.csproj" />
   <ProjectReference Include="..\..\src\VertexBPMN.Domain\VertexBPMN.Domain.csproj" />
@@ -147,6 +148,11 @@
   <ProjectReference Include="..\..\src\VertexBPMN.AppHost\VertexBPMN.AppHost.csproj"
                     IsAspireProjectResource="false" />
   <ProjectReference Include="..\..\src\VertexBPMN.Sdk\VertexBPMN.Sdk.csproj" />
+  <ProjectReference Include="..\..\src\VertexBPMN.AgentWorker\VertexBPMN.AgentWorker.csproj" />
+</ItemGroup>
+<ItemGroup Condition="'$(ExternalTaskVerificationBuild)' == 'true'">
+  <Compile Remove="Unit\Cli\**\*.cs" />
+  <Compile Remove="Acceptance\Phase8MonitoringAcceptanceTests.cs" />
 </ItemGroup>
 
 </Project>

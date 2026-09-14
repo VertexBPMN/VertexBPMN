@@ -9,9 +9,9 @@
     "test:flow-validation": "node --test tools/bpmn-io/test/flow-validation.test.mjs"
   },
   "dependencies": {
-    "@bpmn-io/form-js": "1.25.0",
-    "@bpmn-io/properties-panel": "3.54.0",
-    "bpmn-js": "18.27.1",
+    "@bpmn-io/form-js": "1.26.0",
+    "@bpmn-io/properties-panel": "3.54.1",
+    "bpmn-js": "18.28.0",
     "bpmn-js-properties-panel": "5.65.0",
     "bpmn-js-token-simulation": "0.40.0",
     "cmmn-js": "0.20.0",
@@ -19,6 +19,6 @@
   },
   "devDependencies": {
     "esbuild": "0.28.2",
-    "eslint": "^10.9.1"
+    "eslint": "^10.10.0"
   }
 }

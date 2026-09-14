@@ -10,24 +10,24 @@
 
   <ItemGroup>
   <PackageReference Include="Grpc.Core" Version="2.46.6" />
-  <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.11" />
+  <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
   <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.9.0" />
   <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" Version="5.9.0" PrivateAssets="all" />
-  <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.11" />
-  <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" />
-  <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11">
+  <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.12" />
+  <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
+  <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
     <PrivateAssets>all</PrivateAssets>
     <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
   </PackageReference>
   <PackageReference Include="Microsoft.ML" Version="5.0.0" />
-  <PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />
+  <PackageReference Include="Microsoft.OpenApi" Version="3.10.2" />
   <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.18.0" />
   <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.18.0" />
   <PackageReference Include="Serilog.Extensions.Logging.File" Version="3.0.0" />
   <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
   <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.3" />
-  <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.11" />
-  <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="10.0.11" />
+  <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.12" />
+  <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="10.0.12" />
   <PackageReference Include="Grpc.AspNetCore" Version="2.83.0" />
   <PackageReference Include="Google.Protobuf" Version="3.36.1" />
   <PackageReference Include="Grpc.Tools" Version="2.83.0" PrivateAssets="All" />

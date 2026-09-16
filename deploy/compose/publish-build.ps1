@@ -1,5 +1,5 @@
 # ============================================================================
-# Publish API + Studio on the HOST (Windows / PowerShell), then (re)build/start
+# Publish API + Studio + AgentWorker on the HOST (Windows / PowerShell), then (re)build/start
 # the docker compose stack. Windows counterpart of publish-build.sh.
 #
 # Same reasoning as the bash version: the original repo Dockerfiles do a
@@ -27,6 +27,11 @@ Write-Host "== Host-publish VertexBPMN.Studio =="
 & dotnet publish (Join-Path $repo 'src\VertexBPMN.Studio\VertexBPMN.Studio.csproj') `
     -c Release -o (Join-Path $root 'publish\studio') /p:UseAppHost=false /p:SkipBpmnIoAssetBuild=true
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish (Studio) failed with exit $LASTEXITCODE" }
+
+Write-Host "== Host-publish VertexBPMN.AgentWorker =="
+& dotnet publish (Join-Path $repo 'src\VertexBPMN.AgentWorker\VertexBPMN.AgentWorker.csproj') `
+    -c Release -o (Join-Path $root 'publish\agent-worker') /p:UseAppHost=false
+if ($LASTEXITCODE -ne 0) { throw "dotnet publish (AgentWorker) failed with exit $LASTEXITCODE" }
 
 Write-Host "== docker compose up -d --build =="
 Push-Location $root

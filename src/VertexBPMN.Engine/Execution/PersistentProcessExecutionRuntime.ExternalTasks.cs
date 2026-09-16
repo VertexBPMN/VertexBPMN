@@ -79,8 +79,14 @@ public sealed partial class PersistentProcessExecutionRuntime
                 && Domain.Model.Bpmn.ExternalTaskDefinition.FromAttributes(candidate.Attributes) is not null))
             await CancelWaitStatesAsync(processId, id => model.IsInScope(id, activityId), cancellationToken);
         else if (Domain.Model.Bpmn.ExternalTaskDefinition.FromAttributes(node.Attributes) is not null)
-            await CancelExternalTaskWaitsAsync(processId, id => id == activityId, cancellationToken);
+            await CancelExternalTaskWaitsAsync(processId, job => job.ActivityId == activityId, cancellationToken);
         else return;
+        await CancelExternalBoundaryWaitsAsync(processId, activityId, model, cancellationToken);
+    }
+
+    private async Task CancelExternalBoundaryWaitsAsync(Guid processId, string activityId, ExecutionModel model,
+        CancellationToken cancellationToken)
+    {
         await CancelBoundarySubscriptionsAsync(processId, model, activityId, cancellationToken);
         var boundaryIds = model.BoundaryEvents(activityId).Select(item => item.Id).ToArray();
         var timers = await _db.Jobs.Where(item => item.ProcessInstanceId == processId
@@ -95,13 +101,13 @@ public sealed partial class PersistentProcessExecutionRuntime
         }
     }
 
-    private async Task CancelExternalTaskWaitsAsync(Guid processInstanceId, Func<string, bool> belongsToScope,
+    private async Task CancelExternalTaskWaitsAsync(Guid processInstanceId, Func<ExternalTaskJob, bool> belongsToScope,
         CancellationToken cancellationToken)
     {
         var persisted = await _db.ExternalTaskJobs.Where(job => job.ProcessInstanceId == processInstanceId)
             .ToListAsync(cancellationToken);
         var jobs = _db.ExternalTaskJobs.Local.Where(job => job.ProcessInstanceId == processInstanceId)
-            .Concat(persisted).DistinctBy(job => job.Id).Where(job => belongsToScope(job.ActivityId)).ToArray();
+            .Concat(persisted).DistinctBy(job => job.Id).Where(belongsToScope).ToArray();
         if (jobs.Length == 0) return;
         if (_db.Database.CurrentTransaction is null)
             throw new InvalidOperationException("external_task_transaction_required");

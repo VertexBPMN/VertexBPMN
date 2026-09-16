@@ -29,6 +29,10 @@
         {
           "name": "ReadOnly",
           "description": "Read-only access to VertexBPMN"
+        },
+        {
+          "name": "ExternalTaskWorker",
+          "description": "Lease and complete explicitly authorized external tasks"
         }
       ]
     }
@@ -235,6 +239,85 @@
         "profile",
         "email",
         "vertexbpmn-claims"
+      ]
+    },
+    {
+      "clientId": "vertexbpmn-contract-reviewer",
+      "name": "VertexBPMN local contract review worker",
+      "description": "Confidential service account restricted to the contract-review topic and profile",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "bearerOnly": false,
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "frontchannelLogout": false,
+      "protocolMappers": [
+        {
+          "name": "vertexbpmn-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "vertexbpmn-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        },
+        {
+          "name": "external-worker-role",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "roles",
+            "claim.value": "ExternalTaskWorker",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        },
+        {
+          "name": "external-worker-tenant",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "tenant_id",
+            "claim.value": "tenant-a",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        },
+        {
+          "name": "external-worker-topic",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "external_task_topic",
+            "claim.value": "agent.contract-review",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        },
+        {
+          "name": "external-worker-profile",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "external_task_profile",
+            "claim.value": "contract-reviewer.v1",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
       ]
     }
   ],

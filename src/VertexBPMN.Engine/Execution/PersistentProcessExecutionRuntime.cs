@@ -37,6 +37,12 @@ public sealed partial class PersistentProcessExecutionRuntime : IProcessExecutio
     private const string CompensationSubscriptionVariable = "$vertex.compensationSubscription";
     private const string CompensationCompletedVariable = "$vertex.compensationCompleted";
     private const string RootCompensationScope = "$vertex.root";
+    private const string ExternalDispatchNodeType = "externalTaskDispatch";
+    private const string ExternalDispatchSourceVariable = "$vertex.externalDispatch.source";
+    private const string ExternalDispatchFlowVariable = "$vertex.externalDispatch.flow";
+    private const string ExternalDispatchConditionVariable = "$vertex.externalDispatch.condition";
+    private const string ExternalDispatchDefaultVariable = "$vertex.externalDispatch.default";
+    private const string ExternalDispatchLanguageVariable = "$vertex.externalDispatch.language";
     private const int MaxAutomaticSteps = 10_000;
 
     private readonly BpmnDbContext _db;
@@ -46,6 +52,10 @@ public sealed partial class PersistentProcessExecutionRuntime : IProcessExecutio
     private readonly IConfiguration? _configuration;
     private readonly IExternalTaskContractResolver? _externalContracts;
     private readonly TimeProvider _timeProvider;
+
+    private bool ExternalTasksEnabled => _externalContracts is not null
+        && (_configuration?.GetValue<bool>("ExternalTasks:Enabled") == true
+            || _configuration?.GetValue<bool>("ExternalTasks:EnableSchedulingPreview") == true);
 
     public PersistentProcessExecutionRuntime(
         BpmnDbContext db,
@@ -599,9 +609,9 @@ public sealed partial class PersistentProcessExecutionRuntime : IProcessExecutio
     {
         var queue = new Queue<PendingNode>(initial);
         if (model.Nodes.Values.Any(candidate => ExternalTaskDefinition.FromAttributes(candidate.Attributes) is not null)
-            && (_externalContracts is null || _configuration?.GetValue<bool>("ExternalTasks:EnableSchedulingPreview") != true))
+            && !ExternalTasksEnabled)
             throw new InvalidOperationException("external_task_feature_not_enabled");
-        if (_externalContracts is null || _configuration?.GetValue<bool>("ExternalTasks:EnableSchedulingPreview") != true)
+        if (!ExternalTasksEnabled)
             await ValidateCalledExternalCapabilitiesAsync(model, instance.TenantId, cancellationToken);
         var steps = 0;
         while (queue.Count > 0)
@@ -726,12 +736,13 @@ public sealed partial class PersistentProcessExecutionRuntime : IProcessExecutio
                         {
                             var locals = pending.LocalVariables is null ? new Dictionary<string, object>(StringComparer.Ordinal)
                                 : new Dictionary<string, object>(pending.LocalVariables, StringComparer.Ordinal);
-                            locals["loopCounter"] = 0;
+                            var enteringLoop = !locals.ContainsKey("loopCounter");
+                            if (enteringLoop) locals["loopCounter"] = 0;
                             var maximum = node.Attributes.GetValueOrDefault("standardLoopMaximum");
                             var limit = maximum is null ? int.MaxValue : int.Parse(maximum, CultureInfo.InvariantCulture);
                             if (limit < 0) throw new InvalidOperationException("external_task_invalid_loop_limit");
                             var condition = node.Attributes.GetValueOrDefault("standardLoopCondition");
-                            if (limit == 0 || (node.Attributes.GetValueOrDefault("standardLoopTestBefore") == "true"
+                            if (limit == 0 || (enteringLoop && node.Attributes.GetValueOrDefault("standardLoopTestBefore") == "true"
                                 && !string.IsNullOrWhiteSpace(condition)
                                 && !BpmnConditionEvaluator.Evaluate(condition, CreateActivityVariables(instance.Variables, locals))))
                             {
@@ -1395,6 +1406,8 @@ public sealed partial class PersistentProcessExecutionRuntime : IProcessExecutio
         Guid executionId,
         CancellationToken cancellationToken)
     {
+        await CancelExternalTaskWaitsAsync(processInstanceId,
+            job => job.MultiInstanceExecutionId == executionId, cancellationToken);
         var executionIdText = executionId.ToString();
         var persistedTokens = await _db.ExecutionTokens
             .Where(token => token.ProcessInstanceId == processInstanceId
@@ -1495,8 +1508,9 @@ public sealed partial class PersistentProcessExecutionRuntime : IProcessExecutio
         ProcessInstance instance, ExecutionNode node, PendingNode pending, ExecutionModel model,
         ExternalTaskDefinition definition, CancellationToken cancellationToken)
     {
-        if (_externalContracts is null || _configuration?.GetValue<bool>("ExternalTasks:EnableSchedulingPreview") != true)
+        if (!ExternalTasksEnabled)
             throw new InvalidOperationException("external_task_feature_not_enabled");
+        var externalContracts = _externalContracts!;
         if (string.IsNullOrWhiteSpace(instance.TenantId))
             throw new InvalidOperationException("external_task_tenant_required");
         var inputs = new Dictionary<string, object>(StringComparer.Ordinal);
@@ -1520,7 +1534,7 @@ public sealed partial class PersistentProcessExecutionRuntime : IProcessExecutio
         if (System.Text.Encoding.UTF8.GetByteCount(inputSnapshot) > 128 * 1024)
             throw new InvalidOperationException("external_task_input_too_large");
         // Resolver implementations must be local policy/schema checks, with no remote I/O in this transaction.
-        var contract = await _externalContracts.ResolveAsync(instance.TenantId, definition, inputs, cancellationToken);
+        var contract = await externalContracts.ResolveAsync(instance.TenantId, definition, inputs, cancellationToken);
         if (string.IsNullOrWhiteSpace(contract.Version) || string.IsNullOrWhiteSpace(contract.SchemaSnapshot)
             || (definition.AgentProfileRef is not null && string.IsNullOrWhiteSpace(contract.AgentProfileVersion)))
             throw new InvalidOperationException("external_task_invalid_contract");
@@ -2508,7 +2522,7 @@ public sealed partial class PersistentProcessExecutionRuntime : IProcessExecutio
         Func<string, bool> belongsToScope,
         CancellationToken cancellationToken)
     {
-        await CancelExternalTaskWaitsAsync(processInstanceId, belongsToScope, cancellationToken);
+        await CancelExternalTaskWaitsAsync(processInstanceId, job => belongsToScope(job.ActivityId), cancellationToken);
         var persistedTokens = await _db.ExecutionTokens
             .Where(token => token.ProcessInstanceId == processInstanceId
                             && token.State == ExecutionToken.WaitingState)

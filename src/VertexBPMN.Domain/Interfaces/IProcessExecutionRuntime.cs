@@ -55,4 +55,13 @@ public interface IProcessExecutionRuntime
         Guid processInstanceId,
         string? tenantId,
         CancellationToken cancellationToken = default);
+
+    ValueTask<ExternalTaskContinuationBatchResult> ProcessExternalTaskContinuationsAsync(
+        int maximumItems = 100,
+        CancellationToken cancellationToken = default);
 }
+
+public sealed record ExternalTaskContinuationBatchResult(
+    int ContinuationsApplied,
+    int DispatchesCompleted,
+    int Conflicts);

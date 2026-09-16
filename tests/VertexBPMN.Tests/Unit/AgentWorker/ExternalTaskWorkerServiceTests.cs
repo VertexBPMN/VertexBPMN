@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using VertexBPMN.AgentWorker;
 using VertexBPMN.Domain.Interfaces;
 
@@ -28,6 +29,27 @@ public sealed class ExternalTaskWorkerServiceTests
         Assert.Equal(1, api.MaximumClaimBatch);
         Assert.Equal(1, api.HeartbeatCount);
         Assert.True(api.WasRunningWhenHeartbeatArrived);
+        Assert.Equal(0, api.Mutations);
+    }
+
+    [Fact]
+    public async Task SuccessfulHandlerCompletesWithOneStableReceiptAcrossLostResponseRetry()
+    {
+        var lease = Lease();
+        var api = new RecordingApi(lease, failFirstMutation: true);
+        var handler = new SuccessfulHandler();
+        var service = new ExternalTaskWorkerService(api, [handler], Microsoft.Extensions.Options.Options.Create(Options()),
+            NullLogger<ExternalTaskWorkerService>.Instance);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+
+        await service.StartAsync(timeout.Token);
+        await api.Completed.Task.WaitAsync(timeout.Token);
+        await service.StopAsync(timeout.Token);
+
+        Assert.Equal(2, api.CompletionIds.Count);
+        Assert.Single(api.CompletionIds.Distinct());
+        Assert.All(api.Results, value => Assert.Equal("{\"approved\":true}", value));
+        Assert.Equal(0, api.Failures);
     }
 
     [Fact]
@@ -137,6 +159,19 @@ public sealed class ExternalTaskWorkerServiceTests
             HeartbeatCalled.TrySetResult();
             return ValueTask.FromResult(new ExternalTaskWorkerHeartbeatResult(ExternalTaskHeartbeatOutcome.LeaseLost));
         }
+        public int Mutations { get; private set; }
+        public ValueTask<ExternalTaskWorkerMutationResult> CompleteAsync(ExternalTaskLease item, Guid completionId,
+            JsonElement result, CancellationToken cancellationToken)
+        {
+            Mutations++;
+            return ValueTask.FromResult(new ExternalTaskWorkerMutationResult(ExternalTaskMutationOutcome.Accepted));
+        }
+        public ValueTask<ExternalTaskWorkerMutationResult> FailAsync(ExternalTaskLease item, Guid failureId,
+            string kind, string code, CancellationToken cancellationToken)
+        {
+            Mutations++;
+            return ValueTask.FromResult(new ExternalTaskWorkerMutationResult(ExternalTaskMutationOutcome.Accepted));
+        }
     }
 
     private sealed class FailingApi : IExternalTaskApiClient
@@ -150,6 +185,10 @@ public sealed class ExternalTaskWorkerServiceTests
         }
         public ValueTask<ExternalTaskWorkerHeartbeatResult> HeartbeatAsync(ExternalTaskLease lease, int leaseSeconds,
             CancellationToken cancellationToken) => throw new NotSupportedException();
+        public ValueTask<ExternalTaskWorkerMutationResult> CompleteAsync(ExternalTaskLease lease, Guid completionId,
+            JsonElement result, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public ValueTask<ExternalTaskWorkerMutationResult> FailAsync(ExternalTaskLease lease, Guid failureId,
+            string kind, string code, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
     private sealed class BlockingHandler : IExternalTaskHandler
@@ -159,7 +198,7 @@ public sealed class ExternalTaskWorkerServiceTests
         public bool IsRunning => _running;
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Cancelled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public async ValueTask HandleAsync(ExternalTaskLease lease, CancellationToken cancellationToken)
+        public async ValueTask<ExternalTaskHandlerResult> HandleAsync(ExternalTaskLease lease, CancellationToken cancellationToken)
         {
             _running = true;
             Started.TrySetResult();
@@ -170,6 +209,55 @@ public sealed class ExternalTaskWorkerServiceTests
                 throw;
             }
             finally { _running = false; }
+            return ExternalTaskHandlerResult.TechnicalFailure("transport_failure");
+        }
+    }
+
+    private sealed class SuccessfulHandler : IExternalTaskHandler
+    {
+        public string Topic => "test.work";
+        public ValueTask<ExternalTaskHandlerResult> HandleAsync(ExternalTaskLease lease,
+            CancellationToken cancellationToken)
+        {
+            using var result = JsonDocument.Parse("{\"approved\":true}");
+            return ValueTask.FromResult(ExternalTaskHandlerResult.Success(result.RootElement));
+        }
+    }
+
+    private sealed class RecordingApi(ExternalTaskLease lease, bool failFirstMutation) : IExternalTaskApiClient
+    {
+        private int _claims;
+        public List<Guid> CompletionIds { get; } = [];
+        public List<string> Results { get; } = [];
+        public int Failures { get; private set; }
+        public TaskCompletionSource Completed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public ValueTask<IReadOnlyList<ExternalTaskLease>> ClaimAsync(IReadOnlyCollection<string> topics,
+            int maxTasks, int leaseSeconds, CancellationToken cancellationToken) =>
+            ValueTask.FromResult<IReadOnlyList<ExternalTaskLease>>(
+                Interlocked.Increment(ref _claims) == 1 ? [lease] : []);
+
+        public ValueTask<ExternalTaskWorkerHeartbeatResult> HeartbeatAsync(ExternalTaskLease item,
+            int leaseSeconds, CancellationToken cancellationToken) =>
+            ValueTask.FromResult(new ExternalTaskWorkerHeartbeatResult(ExternalTaskHeartbeatOutcome.Accepted,
+                lease.LeaseExpiresAt + 10_000));
+
+        public ValueTask<ExternalTaskWorkerMutationResult> CompleteAsync(ExternalTaskLease item, Guid completionId,
+            JsonElement result, CancellationToken cancellationToken)
+        {
+            CompletionIds.Add(completionId);
+            Results.Add(result.GetRawText());
+            if (failFirstMutation && CompletionIds.Count == 1)
+                throw new ExternalTaskTransportException("response lost", TimeSpan.Zero);
+            Completed.TrySetResult();
+            return ValueTask.FromResult(new ExternalTaskWorkerMutationResult(ExternalTaskMutationOutcome.Accepted));
+        }
+
+        public ValueTask<ExternalTaskWorkerMutationResult> FailAsync(ExternalTaskLease item, Guid failureId,
+            string kind, string code, CancellationToken cancellationToken)
+        {
+            Failures++;
+            return ValueTask.FromResult(new ExternalTaskWorkerMutationResult(ExternalTaskMutationOutcome.Accepted));
         }
     }
 

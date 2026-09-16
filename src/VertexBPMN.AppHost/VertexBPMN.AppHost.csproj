@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\VertexBPMN.Api\VertexBPMN.Api.csproj" />
+    <ProjectReference Include="..\VertexBPMN.AgentWorker\VertexBPMN.AgentWorker.csproj" />
     <ProjectReference Include="..\VertexBPMN.Studio\VertexBPMN.Studio.csproj" />
   </ItemGroup>
 

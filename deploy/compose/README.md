@@ -1,6 +1,6 @@
 # VertexBPMN full-stack docker compose
 
-Selbst-gehosteter Stack: **postgres** (5 Engine-DBs) + **rabbitmq** (inkl. Management-UI) + **keycloak** (OIDC, mit eigenem Postgres) + **api** + **studio**.
+Selbst-gehosteter Stack: **postgres** (5 Engine-DBs) + **rabbitmq** (inkl. Management-UI) + **keycloak** (OIDC, mit eigenem Postgres) + **api** + **studio** + lokaler **agent-worker**.
 
 ## Schnellstart
 
@@ -22,8 +22,8 @@ Stoppen: `docker compose down` — mit Volumes: `docker compose down -v`
 
 Die Original-Dockerfiles machen einen **Solution-weiten Build im Container** (`dotnet restore VertexBPMN.sln` + publish ALLER Projekte) und brauchen ~5–6 GB freien Speicher im Container-Layer. Auf der 29-GB-Referenzpartition (Host-SDK ~6 GB + Repo + Basis-Images) schlägt das wiederholt mit `No space left on device` fehl. Daher:
 
-1. `publish-build.sh` puplisht API + Studio **auf dem Host** (nutzt lokales SDK 10.0.302 + NuGet-Cache, schreibt auf die Host-Disk).
-2. `runtime-api.Dockerfile` / `runtime-studio.Dockerfile` (Context = `deploy/compose/`) kopieren nur den fertigen Publish-Ordner in ein schlankes `aspnet:10.0.11`-Runtime-Image — kein Build im Container, kleine Images.
+1. `publish-build.sh` publiziert API, Studio und AgentWorker **auf dem Host** (nutzt lokales SDK 10.0.302 + NuGet-Cache, schreibt auf die Host-Disk).
+2. Die drei `runtime-*.Dockerfile` (Context = `deploy/compose/`) kopieren nur die fertigen Publish-Ordner in schlanke `aspnet:10.0.11`-Runtime-Images — kein Build im Container, kleine Images.
 
 `publish/` ist gitignored und wird bei Bedarf neu erzeugt.
 
@@ -36,7 +36,8 @@ Die .NET-aspnet-Images enthalten **kein curl/wget**. `healthcheck.sh` (`hcheck`)
 ## Architektur / wichtige Entscheidungen
 
 - **netzwerke:** `api` und `studio` laufen auf dem **Docker-Host-Netz (`network_mode: host`)**. Grund: Der API-Security-Guard gestattet `Jwt:RequireHttpsMetadata=false` gegen HTTP-Keycloak **nur** im `OidcTest`-Profil mit **Loopback-Authority** (`http://localhost:58080`). Im Host-Netz ist `localhost` der Host — Keycloak (:58080), Postgres (:5432), RabbitMQ (:5672) und die Apps (:51870/:5263) sind alle über `localhost` erreichbar, exakt wie im getesteten OIDC-E2E.
-- **Keycloak-Realm:** wird beim Start aus `../../deploy/keycloak/vertexbpmn-realm.json` importiert. Da dort weder Client-Secrets noch Nutzer stehen, setzt ein **One-Shot-`keycloak-bootstrap`** per `kcadm` (JSON-IDs via `sed`, das Image hat kein python/jq) das Studio-Client-Secret und legt den Testnutzer an; `api`/`studio` starten erst, wenn dieser erfolgreich beendet ist (`depends_on: service_completed_successfully`).
+- **Keycloak-Realm:** wird beim Start aus `../../deploy/keycloak/vertexbpmn-realm.json` importiert. Da dort weder Client-Secrets noch Nutzer stehen, setzt ein **One-Shot-`keycloak-bootstrap`** per `kcadm` (JSON-IDs via `sed`, das Image hat kein python/jq) getrennte Studio-/Worker-Secrets und legt den Testnutzer an; API, Studio und Worker starten erst nach erfolgreichem Bootstrap.
+- **AgentWorker:** verwendet ausschließlich Client Credentials des Clients `vertexbpmn-contract-reviewer`. Seine Tokenclaims sind auf `tenant-a`, `agent.contract-review` und `contract-reviewer.v1` begrenzt. Ollama muss auf dem Host unter `OLLAMA_ENDPOINT` erreichbar sein; es gibt keinen Cloud-Fallback. Für jeden weiteren Tenant ist ein eigener, entsprechend begrenzter Client erforderlich.
 - **Non-root:** Die Runtime-Images chownen `/app` und `/var/lib/vertexbpmn` auf `$APP_UID`, damit die App als Non-Root (`USER $APP_UID`) Plugin-/State-Verzeichnisse anlegen kann.
 - **DBs:** `vertexbpmn_bpmn` entsteht via `POSTGRES_DB`; `tenants/simulation/events/decision` per `init-engine-dbs.sql` (`/docker-entrypoint-initdb.d`). Migrations laufen beim ersten API-Start (`Database__ApplyMigrationsOnStartup=true`).
 - **Outbox:** API publiziert Runtime-Events über RabbitMQ (`Runtime__Outbox__Provider=RabbitMq`). Ohne Broker/Berechtigung akkumulieren `pending`-Outbox-Zeilen (siehe `docs/runbooks/production-deployment.md`).
@@ -48,4 +49,5 @@ Der Stack läuft bewusst im **`OidcTest`**-Profil (nicht `Production`), weil fü
 
 ## Secrets
 
-Alle Secrets gehören in `.env` (gitignored, siehe `.gitignore`). Kein Klartext-Secret committen.
+Alle Secrets gehören in `.env` (gitignored, siehe `.gitignore`). Studio- und Worker-Secret dürfen
+nicht identisch sein. Kein Klartext-Secret committen.

@@ -226,6 +226,100 @@ function startEventEntries() {
   ];
 }
 
+function externalTaskResultTargetEntry() {
+  return {
+    id: 'vertex-external-task-result-target',
+    component: function VertexExternalTaskResultTargetEntry(props) {
+      const { element } = props;
+      const debounce = useService('debounceInput');
+      const bpmnFactory = useService('bpmnFactory');
+      const commandStack = useService('commandStack');
+
+      const getValue = () => {
+        const mapping = getExtension(element, 'vertex:IoMapping');
+        const result = (mapping?.get('outputs') || []).find(output => output.get('name') === 'result');
+        return result?.get('target') || '';
+      };
+
+      const setValue = value => {
+        const mapping = getOrCreateExtension(element, 'vertex:IoMapping', bpmnFactory, commandStack, {
+          inputs: [],
+          outputs: []
+        });
+        const target = String(value || '').trim();
+        const outputs = target
+          ? [createModdleElement('vertex:Output', { name: 'result', target }, mapping, bpmnFactory)]
+          : [];
+        commandStack.execute('element.updateModdleProperties', {
+          element,
+          moddleElement: mapping,
+          properties: { outputs }
+        });
+      };
+
+      return TextFieldEntry({
+        element,
+        id: props.id,
+        label: 'Validated result variable',
+        description: 'Stores the complete schema-validated agent response in one process variable.',
+        getValue,
+        setValue,
+        debounce
+      });
+    },
+    isEdited: isTextFieldEntryEdited
+  };
+}
+
+function externalTaskProfileEntry() {
+  return {
+    id: 'vertex-external-task-profile',
+    component: function VertexExternalTaskProfileEntry(props) {
+      const { element } = props;
+      const bpmnFactory = useService('bpmnFactory');
+      const commandStack = useService('commandStack');
+      const getValue = () => getExtension(element, 'vertex:ExternalTask')?.get('agentProfileRef') || '';
+      const getOptions = () => {
+        const current = getValue();
+        const options = [{ value: '', label: 'Select an agent profile' }].concat(
+          (window.VertexBpmnAgentProfiles || []).map(profile => ({
+            value: profile.profileRef,
+            label: `${profile.profileRef} (${profile.profileVersion})`
+          })));
+        if (current && !options.some(option => option.value === current)) {
+          options.push({ value: current, label: `${current} (not available for this tenant)` });
+        }
+        return options;
+      };
+      const setValue = value => {
+        setExtensionProperty(element, 'vertex:ExternalTask', 'agentProfileRef', value, bpmnFactory, commandStack);
+        const profile = (window.VertexBpmnAgentProfiles || []).find(item => item.profileRef === value);
+        if (!profile) return;
+        setExtensionProperty(element, 'vertex:ExternalTask', 'topic', profile.topic, bpmnFactory, commandStack);
+        setExtensionProperty(element, 'vertex:ExternalTask', 'maxRetries', Math.max(0, profile.maxAttempts - 1), bpmnFactory, commandStack);
+        setExtensionProperty(element, 'vertex:ExternalTask', 'deadlineSeconds', profile.maxDeadlineSeconds, bpmnFactory, commandStack);
+      };
+      return SelectEntry({
+        element, id: props.id, label: 'Agent profile',
+        description: 'Tenant-owned execution profile. Provider endpoints and credentials are never stored in BPMN XML.',
+        getValue, setValue, getOptions
+      });
+    },
+    isEdited: isSelectEntryEdited
+  };
+}
+
+function externalTaskEntries() {
+  return [
+    externalTaskProfileEntry(),
+    textEntry('vertex-external-task-topic', 'Worker topic', 'vertex:ExternalTask', 'topic'),
+    textEntry('vertex-external-task-retries', 'Maximum retries (0–9)', 'vertex:ExternalTask', 'maxRetries'),
+    textEntry('vertex-external-task-deadline', 'Deadline (seconds, 1–86400)', 'vertex:ExternalTask', 'deadlineSeconds'),
+    ioMappingEntry('vertex-external-task-inputs', 'Agent inputs', 'inputs', 'vertex:Input', 'name', 'expression'),
+    externalTaskResultTargetEntry()
+  ];
+}
+
 function decisionReferenceEntry() {
   return {
     id: 'vertex-decision-ref',
@@ -289,7 +383,7 @@ function userTaskEntries() {
 function createVertexGroup(element) {
   const entries = [];
   if (isConnectorHost(element)) {
-    entries.push(...connectorEntries());
+    entries.push(...(getExtension(element, 'vertex:ExternalTask') ? externalTaskEntries() : connectorEntries()));
   }
   if (isStartEvent(element)) {
     entries.push(...startEventEntries());

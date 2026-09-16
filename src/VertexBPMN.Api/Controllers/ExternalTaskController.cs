@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -78,6 +79,36 @@ public sealed class ExternalTaskController(IExternalTaskLeaseService leases) : C
         }
     }
 
+    [HttpPost("{jobId:guid}/complete")]
+    public async Task<ActionResult<ExternalTaskMutationResult>> Complete(
+        Guid jobId, [FromBody] ExternalTaskCompleteRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetWorker(out var worker, out var denied)) return denied;
+        try
+        {
+            return Ok(await leases.CompleteAsync(worker!, jobId,
+                new ExternalTaskCompleteCommand(request.LeaseId, request.LeaseGeneration,
+                    request.CompletionId, request.Result), cancellationToken));
+        }
+        catch (ExternalTaskLeaseException exception) { return LeaseProblem(exception.Code); }
+    }
+
+    [HttpPost("{jobId:guid}/fail")]
+    public async Task<ActionResult<ExternalTaskMutationResult>> Fail(
+        Guid jobId, [FromBody] ExternalTaskFailRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetWorker(out var worker, out var denied)) return denied;
+        try
+        {
+            return Ok(await leases.FailAsync(worker!, jobId,
+                new ExternalTaskFailCommand(request.LeaseId, request.LeaseGeneration,
+                    request.FailureId, request.Kind, request.Code), cancellationToken));
+        }
+        catch (ExternalTaskLeaseException exception) { return LeaseProblem(exception.Code); }
+    }
+
     private bool TryGetWorker(out ExternalTaskWorkerContext? worker, out ActionResult denied)
     {
         if (ExternalTaskWorkerPrincipal.TryCreate(User, out worker, out var code))
@@ -94,10 +125,13 @@ public sealed class ExternalTaskController(IExternalTaskLeaseService leases) : C
     {
         var status = code switch
         {
-            "invalid_limits" => StatusCodes.Status400BadRequest,
+            "invalid_limits" or "invalid_request" or "duplicate_json_property" => StatusCodes.Status400BadRequest,
             "worker_forbidden" or "topic_forbidden" or "policy_revoked" => StatusCodes.Status403Forbidden,
             "external_task_not_found" => StatusCodes.Status404NotFound,
-            "lease_lost" or "activity_not_waiting" or "deadline_exceeded" => StatusCodes.Status409Conflict,
+            "lease_lost" or "activity_not_waiting" or "deadline_exceeded" or "job_terminal"
+                or "completion_conflict" => StatusCodes.Status409Conflict,
+            "payload_too_large" => StatusCodes.Status413PayloadTooLarge,
+            "result_schema_invalid" or "business_error_not_allowed" => StatusCodes.Status422UnprocessableEntity,
             _ => StatusCodes.Status500InternalServerError
         };
         var problem = new ProblemDetails
@@ -123,4 +157,12 @@ public sealed class ExternalTaskController(IExternalTaskLeaseService leases) : C
         Guid LeaseId,
         long LeaseGeneration,
         int LeaseSeconds = 60);
+
+    [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+    public sealed record ExternalTaskCompleteRequest(
+        Guid LeaseId, long LeaseGeneration, Guid CompletionId, JsonElement Result);
+
+    [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+    public sealed record ExternalTaskFailRequest(
+        Guid LeaseId, long LeaseGeneration, Guid FailureId, string Kind, string Code);
 }

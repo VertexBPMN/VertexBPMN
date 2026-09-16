@@ -49,6 +49,40 @@ public sealed class HttpExternalTaskApiClient(
         throw Transport(response, "External task heartbeat failed.");
     }
 
+    public ValueTask<ExternalTaskWorkerMutationResult> CompleteAsync(
+        ExternalTaskLease lease, Guid completionId, JsonElement result, CancellationToken cancellationToken)
+        => MutateAsync(lease, "complete", new
+        {
+            leaseId = lease.LeaseId, leaseGeneration = lease.LeaseGeneration, completionId, result
+        }, cancellationToken);
+
+    public ValueTask<ExternalTaskWorkerMutationResult> FailAsync(
+        ExternalTaskLease lease, Guid failureId, string kind, string code, CancellationToken cancellationToken)
+        => MutateAsync(lease, "fail", new
+        {
+            leaseId = lease.LeaseId, leaseGeneration = lease.LeaseGeneration, failureId, kind, code
+        }, cancellationToken);
+
+    private async ValueTask<ExternalTaskWorkerMutationResult> MutateAsync(
+        ExternalTaskLease lease, string operation, object body, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post,
+            $"api/external-tasks/{lease.JobId:D}/{operation}") { Content = JsonContent.Create(body) };
+        using var response = await SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            var result = await ReadResponseAsync<ExternalTaskMutationResult>(response, cancellationToken);
+            if (result is null || result.JobId != lease.JobId)
+                throw new ExternalTaskTransportException("External task mutation response is invalid.");
+            return new ExternalTaskWorkerMutationResult(ExternalTaskMutationOutcome.Accepted);
+        }
+        if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Conflict or HttpStatusCode.Forbidden)
+            return new ExternalTaskWorkerMutationResult(ExternalTaskMutationOutcome.LeaseLost);
+        if ((int)response.StatusCode is >= 400 and < 500)
+            return new ExternalTaskWorkerMutationResult(ExternalTaskMutationOutcome.Rejected);
+        throw Transport(response, "External task mutation failed.");
+    }
+
     private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         try

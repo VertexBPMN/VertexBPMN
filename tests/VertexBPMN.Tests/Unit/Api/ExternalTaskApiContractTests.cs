@@ -114,6 +114,39 @@ public sealed class ExternalTaskApiContractTests
             "{\"topics\":[\"documents\"],\"tenantId\":\"forged\"}", options));
         Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<ExternalTaskController.ExternalTaskHeartbeatRequest>(
             "{\"leaseId\":\"00000000-0000-0000-0000-000000000001\",\"leaseGeneration\":1,\"workerId\":\"forged\"}", options));
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<ExternalTaskController.ExternalTaskCompleteRequest>(
+            "{\"leaseId\":\"00000000-0000-0000-0000-000000000001\",\"leaseGeneration\":1," +
+            "\"completionId\":\"00000000-0000-0000-0000-000000000002\",\"result\":{},\"tenantId\":\"forged\"}", options));
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<ExternalTaskController.ExternalTaskFailRequest>(
+            "{\"leaseId\":\"00000000-0000-0000-0000-000000000001\",\"leaseGeneration\":1," +
+            "\"failureId\":\"00000000-0000-0000-0000-000000000002\",\"kind\":\"technical\"," +
+            "\"code\":\"transport_failure\",\"subject\":\"forged\"}", options));
+    }
+
+    [Theory]
+    [InlineData("payload_too_large", StatusCodes.Status413PayloadTooLarge)]
+    [InlineData("result_schema_invalid", StatusCodes.Status422UnprocessableEntity)]
+    [InlineData("business_error_not_allowed", StatusCodes.Status422UnprocessableEntity)]
+    [InlineData("completion_conflict", StatusCodes.Status409Conflict)]
+    public async Task CompletionErrorsUseStableHttpContract(string code, int expectedStatus)
+    {
+        var service = new Mock<IExternalTaskLeaseService>(MockBehavior.Strict);
+        service.Setup(item => item.CompleteAsync(It.IsAny<ExternalTaskWorkerContext>(), It.IsAny<Guid>(),
+                It.IsAny<ExternalTaskCompleteCommand>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new ExternalTaskLeaseException(code));
+        var controller = Controller(service.Object, Principal(
+            new Claim("iss", "issuer"), new Claim("sub", "worker"), new Claim("tenant_id", "tenant"),
+            new Claim("external_task_topic", "documents")));
+        using var json = JsonDocument.Parse("{}");
+
+        var result = await controller.Complete(Guid.NewGuid(),
+            new ExternalTaskController.ExternalTaskCompleteRequest(Guid.NewGuid(), 1, Guid.NewGuid(),
+                json.RootElement.Clone()), TestContext.Current.CancellationToken);
+
+        var problemResult = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(expectedStatus, problemResult.StatusCode);
+        Assert.Equal(code, Assert.IsType<ProblemDetails>(problemResult.Value).Extensions["code"]);
+        service.VerifyAll();
     }
 
     [Fact]

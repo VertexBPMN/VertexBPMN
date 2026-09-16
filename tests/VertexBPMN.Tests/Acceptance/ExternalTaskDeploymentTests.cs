@@ -29,7 +29,7 @@ public sealed class ExternalTaskDeploymentTests
         <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:vertex="https://vertexbpmn.io/schema/bpmn/1.0" targetNamespace="urn:test">
           <process id="p" isExecutable="true"><startEvent id="s"/><serviceTask id="work"><extensionElements>
             <vertex:externalTask topic="{{topic}}" maxRetries="0" deadlineSeconds="300"/>
-            <vertex:ioMapping><vertex:input name="{{inputName}}" expression="document"/></vertex:ioMapping>
+            <vertex:ioMapping><vertex:input name="{{inputName}}" expression="document"/><vertex:output name="result" target="contractReview"/></vertex:ioMapping>
           </extensionElements></serviceTask><endEvent id="e"/>
           <sequenceFlow id="f1" sourceRef="s" targetRef="work"/><sequenceFlow id="f2" sourceRef="work" targetRef="e"/>
           </process></definitions>
@@ -52,5 +52,30 @@ public sealed class ExternalTaskDeploymentTests
             Assert.Contains(error.Diagnostics, diagnostic => diagnostic.Code == "VEN-EXTERNAL-TASK-CONTRACT");
             repository.VerifyNoOtherCalls();
         }
+    }
+
+    [Fact]
+    public async Task ProductionFeatureDeploysExternalTaskWithoutPreviewFlag()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var config = ExternalTaskContractResolverTests.Configuration();
+        config["ExternalTasks:Enabled"] = "true";
+        config["ExternalTasks:EnableSchedulingPreview"] = "false";
+        var xml = """
+        <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:vertex="https://vertexbpmn.io/schema/bpmn/1.0" targetNamespace="urn:test">
+          <process id="production-external" isExecutable="true"><startEvent id="s"/><serviceTask id="work"><extensionElements>
+            <vertex:externalTask topic="test.work" maxRetries="0" deadlineSeconds="300"/>
+            <vertex:ioMapping><vertex:input name="text" expression="document"/><vertex:output name="result" target="contractReview"/></vertex:ioMapping>
+          </extensionElements></serviceTask><endEvent id="e"/>
+          <sequenceFlow id="f1" sourceRef="s" targetRef="work"/><sequenceFlow id="f2" sourceRef="work" targetRef="e"/>
+          </process></definitions>
+        """;
+        var repository = new Mock<IProcessDefinitionRepository>();
+        var service = new VertexBPMN.Application.RepositoryService(repository.Object, new BpmnParser(), config,
+            new ConfiguredExternalTaskContractResolver(config));
+
+        await service.DeployAsync(xml, "production", "a", ct);
+
+        repository.Verify(repo => repo.AddAsync(It.IsAny<ProcessDefinition>(), ct), Times.Once);
     }
 }

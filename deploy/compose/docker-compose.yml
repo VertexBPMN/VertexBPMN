@@ -105,6 +105,7 @@ services:
       KEYCLOAK_ADMIN_USER: ${KEYCLOAK_ADMIN_USER:-vertexbpmn-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
       KEYCLOAK_STUDIO_CLIENT_SECRET: ${KEYCLOAK_STUDIO_CLIENT_SECRET:?set KEYCLOAK_STUDIO_CLIENT_SECRET in .env}
+      KEYCLOAK_WORKER_CLIENT_SECRET: ${KEYCLOAK_WORKER_CLIENT_SECRET:?set KEYCLOAK_WORKER_CLIENT_SECRET in .env}
       KEYCLOAK_TEST_USER: ${KEYCLOAK_TEST_USER:-vertexbpmn-user}
       KEYCLOAK_TEST_USER_PASSWORD: ${KEYCLOAK_TEST_USER_PASSWORD:?set KEYCLOAK_TEST_USER_PASSWORD in .env}
       KEYCLOAK_TEST_USER_TENANT: ${KEYCLOAK_TEST_USER_TENANT:-tenant-a}
@@ -149,6 +150,60 @@ services:
       Jwt__RequireHttpsMetadata: "false"
       Jwt__UseDevelopmentApiKey: "false"
       Operational__Metrics__Enabled: "true"
+      ExternalTasks__Enabled: "true"
+      ExternalTasks__EnableSchedulingPreview: "false"
+      ExternalTasks__Contracts__0__TenantId: tenant-a
+      ExternalTasks__Contracts__0__Enabled: "true"
+      ExternalTasks__Contracts__0__Topic: agent.contract-review
+      ExternalTasks__Contracts__0__Version: contract-review.v1
+      ExternalTasks__Contracts__0__AgentProfileRef: contract-reviewer.v1
+      ExternalTasks__Contracts__0__AgentProfileVersion: contract-reviewer.v1
+      ExternalTasks__Contracts__0__MaxAttempts: "2"
+      ExternalTasks__Contracts__0__MaxDeadlineSeconds: "300"
+      ExternalTasks__Contracts__0__Inputs__0__Name: document
+      ExternalTasks__Contracts__0__Inputs__0__Type: string
+      ExternalTasks__Contracts__0__Inputs__0__MaxLength: "65536"
+      ExternalTasks__Contracts__0__Inputs__0__AllowExternalTransfer: "true"
+      ExternalTasks__Contracts__0__Inputs__1__Name: documentId
+      ExternalTasks__Contracts__0__Inputs__1__Type: string
+      ExternalTasks__Contracts__0__Inputs__1__MaxLength: "256"
+      ExternalTasks__Contracts__0__Inputs__1__AllowExternalTransfer: "true"
+      ExternalTasks__Contracts__0__Inputs__2__Name: documentVersion
+      ExternalTasks__Contracts__0__Inputs__2__Type: string
+      ExternalTasks__Contracts__0__Inputs__2__MaxLength: "256"
+      ExternalTasks__Contracts__0__Inputs__2__AllowExternalTransfer: "true"
+      ExternalTasks__Contracts__0__Outputs__0__Name: schemaVersion
+      ExternalTasks__Contracts__0__Outputs__0__Type: string
+      ExternalTasks__Contracts__0__Outputs__0__MaxLength: "64"
+      ExternalTasks__Contracts__0__Outputs__0__AllowExternalTransfer: "true"
+      ExternalTasks__Contracts__0__Outputs__1__Name: documentVersion
+      ExternalTasks__Contracts__0__Outputs__1__Type: string
+      ExternalTasks__Contracts__0__Outputs__1__MaxLength: "256"
+      ExternalTasks__Contracts__0__Outputs__1__AllowExternalTransfer: "true"
+      ExternalTasks__Contracts__0__Outputs__2__Name: summary
+      ExternalTasks__Contracts__0__Outputs__2__Type: string
+      ExternalTasks__Contracts__0__Outputs__2__MaxLength: "4096"
+      ExternalTasks__Contracts__0__Outputs__2__AllowExternalTransfer: "true"
+      ExternalTasks__Contracts__0__Outputs__3__Name: findings
+      ExternalTasks__Contracts__0__Outputs__3__Type: string
+      ExternalTasks__Contracts__0__Outputs__3__MaxLength: "65536"
+      ExternalTasks__Contracts__0__Outputs__3__AllowExternalTransfer: "true"
+      ExternalTasks__Contracts__0__Outputs__4__Name: uncertainties
+      ExternalTasks__Contracts__0__Outputs__4__Type: string
+      ExternalTasks__Contracts__0__Outputs__4__MaxLength: "32768"
+      ExternalTasks__Contracts__0__Outputs__4__AllowExternalTransfer: "true"
+      ExternalTasks__Contracts__0__Outputs__5__Name: requiresHumanReview
+      ExternalTasks__Contracts__0__Outputs__5__Type: boolean
+      ExternalTasks__Contracts__0__Outputs__5__MaxLength: "1"
+      ExternalTasks__Contracts__0__Outputs__5__AllowExternalTransfer: "true"
+      ExternalTasks__Contracts__0__Outputs__6__Name: promptVersion
+      ExternalTasks__Contracts__0__Outputs__6__Type: string
+      ExternalTasks__Contracts__0__Outputs__6__MaxLength: "128"
+      ExternalTasks__Contracts__0__Outputs__6__AllowExternalTransfer: "true"
+      ExternalTasks__Contracts__0__Outputs__7__Name: documentHash
+      ExternalTasks__Contracts__0__Outputs__7__Type: string
+      ExternalTasks__Contracts__0__Outputs__7__MaxLength: "64"
+      ExternalTasks__Contracts__0__Outputs__7__AllowExternalTransfer: "true"
     volumes:
       - vertexbpmn-state:/var/lib/vertexbpmn
       - ./healthcheck.sh:/usr/local/bin/hcheck:ro
@@ -165,6 +220,33 @@ services:
       interval: 10s
       timeout: 5s
       retries: 30
+
+  agent-worker:
+    build:
+      context: .
+      dockerfile: runtime-agent-worker.Dockerfile
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      ExternalTaskWorker__Enabled: "true"
+      ExternalTaskWorker__BaseAddress: http://localhost:51870/
+      ExternalTaskWorker__TokenEndpoint: http://localhost:58080/realms/vertexbpmn/protocol/openid-connect/token
+      ExternalTaskWorker__ClientId: vertexbpmn-contract-reviewer
+      ExternalTaskWorker__ClientSecret: ${KEYCLOAK_WORKER_CLIENT_SECRET}
+      ExternalTaskWorker__Scope: openid
+      ExternalTaskWorker__Topics__0: agent.contract-review
+      ExternalTaskWorker__MaxConcurrency: "1"
+      ExternalTaskWorker__MaxTasksPerClaim: "1"
+      ExternalTaskWorker__LeaseSeconds: "60"
+      ExternalTaskWorker__HeartbeatSeconds: "20"
+      ContractReviewer__Enabled: "true"
+      ContractReviewer__Endpoint: ${OLLAMA_ENDPOINT:-http://127.0.0.1:11434/}
+      ContractReviewer__Model: ${OLLAMA_MODEL:-qwen3:8b}
+    depends_on:
+      api:
+        condition: service_healthy
+      keycloak-bootstrap:
+        condition: service_completed_successfully
 
   studio:
     build:

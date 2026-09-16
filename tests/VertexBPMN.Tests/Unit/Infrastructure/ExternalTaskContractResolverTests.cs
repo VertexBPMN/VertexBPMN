@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using VertexBPMN.Domain.Model.Bpmn;
+using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Infrastructure.Persistence;
 using VertexBPMN.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
@@ -8,6 +9,27 @@ namespace VertexBPMN.Tests.Unit.Infrastructure;
 
 public sealed class ExternalTaskContractResolverTests
 {
+    [Fact]
+    public void ProductionExternalTasksRegisterCoreServicesWithoutEnablingPreview()
+    {
+        var configuration = Configuration();
+        configuration["OperationalMode"] = "Production";
+        configuration["ExternalTasks:Enabled"] = "true";
+        configuration["ExternalTasks:EnableSchedulingPreview"] = "false";
+        configuration["ConnectionStrings:DependencyRegistry"] = "Data Source=production-test.db";
+        configuration["Runtime:Outbox:Enabled"] = "true";
+        configuration["Runtime:Outbox:Provider"] = "RabbitMq";
+        configuration["Runtime:Outbox:ConnectionString"] = "amqp://localhost";
+        configuration["DataProtection:KeyRingPath"] = Path.Combine(Path.GetTempPath(), "vertexbpmn-external-task-registration");
+        var services = new ServiceCollection();
+
+        services.AddBpmnPersistenceServices(configuration);
+
+        Assert.Contains(services, item => item.ServiceType == typeof(IExternalTaskLeaseService));
+        Assert.Contains(services, item => item.ServiceType == typeof(IExternalTaskRecoveryService));
+        Assert.Contains(services, item => item.ServiceType == typeof(IExternalTaskContractResolver));
+    }
+
     [Theory]
     [InlineData("Production")]
     [InlineData("Stage")]
@@ -30,7 +52,12 @@ public sealed class ExternalTaskContractResolverTests
         ["ExternalTasks:Contracts:0:Version"] = "v1",
         ["ExternalTasks:Contracts:0:Inputs:0:Name"] = "text",
         ["ExternalTasks:Contracts:0:Inputs:0:MaxLength"] = "16",
-        ["ExternalTasks:Contracts:0:Inputs:0:AllowExternalTransfer"] = "true"
+        ["ExternalTasks:Contracts:0:Inputs:0:AllowExternalTransfer"] = "true",
+        ["ExternalTasks:Contracts:0:Outputs:0:Name"] = "approved",
+        ["ExternalTasks:Contracts:0:Outputs:0:Type"] = "boolean",
+        ["ExternalTasks:Contracts:0:Outputs:0:Required"] = "true",
+        ["ExternalTasks:Contracts:0:Outputs:0:AllowExternalTransfer"] = "true",
+        ["ExternalTasks:Contracts:0:BusinessErrorCodes:0"] = "contract_rejected"
     }).Build();
 
     [Fact]

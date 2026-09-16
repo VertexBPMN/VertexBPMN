@@ -62,6 +62,8 @@ project.fragment.lock.json
 artifacts/
 vertexbpmn.db
 vertexbpmn-dependencies.db
+vertexbpmn-dependencies.db-shm
+vertexbpmn-dependencies.db-wal
 vertexbpmn.db-shm
 vertexbpmn.db-wal
 **/Properties/launchSettings.json

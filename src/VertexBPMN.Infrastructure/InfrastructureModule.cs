@@ -26,13 +26,20 @@ public static class InfrastructureModule
                                  ?? "Development");
         var configuredDependencyRegistry = configuration.GetConnectionString("DependencyRegistry")
                                            ?? configuration["DependencyRegistry:ConnectionString"];
-        if (configuration.GetValue<bool>("ExternalTasks:EnableSchedulingPreview"))
+        var externalTasksEnabled = configuration.GetValue<bool>("ExternalTasks:Enabled");
+        var schedulingPreviewEnabled = configuration.GetValue<bool>("ExternalTasks:EnableSchedulingPreview");
+        if (schedulingPreviewEnabled)
         {
             var previewEnvironment = configuration["OperationalMode"] ?? configuration["ASPNETCORE_ENVIRONMENT"];
             if (previewEnvironment?.Trim().ToLowerInvariant() is not ("development" or "test" or "unittest"))
                 throw new InvalidOperationException("External-task scheduling preview is restricted to Development and Test.");
+        }
+        if (externalTasksEnabled || schedulingPreviewEnabled)
+        {
             services.AddScoped<IExternalTaskContractResolver, ConfiguredExternalTaskContractResolver>();
             services.AddScoped<IExternalTaskLeaseService, ExternalTaskLeaseService>();
+            services.AddScoped<IExternalTaskRecoveryService, ExternalTaskRecoveryService>();
+            if (mode != "Test") services.AddHostedService<ExternalTaskRecoveryHostedService>();
         }
         if (mode is "Production" or "Stage" && string.IsNullOrWhiteSpace(configuredDependencyRegistry))
             throw new InvalidOperationException(

@@ -40,6 +40,12 @@ public sealed class ConfiguredExternalTaskContractResolver(IConfiguration config
             throw new InvalidOperationException("external_task_contract_limits_exceeded");
         ValidateFields(contract.Inputs);
         ValidateFields(contract.Outputs);
+        if (contract.BusinessErrorCodes.Length > 32
+            || contract.BusinessErrorCodes.Distinct(StringComparer.Ordinal).Count() != contract.BusinessErrorCodes.Length
+            || contract.BusinessErrorCodes.Any(code => string.IsNullOrWhiteSpace(code) || code.Length > 128
+                || !char.IsAsciiLetter(code[0]) || !char.IsLower(code[0])
+                || code.Any(character => !(char.IsAsciiLetterOrDigit(character) || character is '_' or '.'))))
+            throw new InvalidOperationException("external_task_invalid_error_allowlist");
         return contract;
     }
 
@@ -73,7 +79,8 @@ public sealed class ConfiguredExternalTaskContractResolver(IConfiguration config
         var snapshot = JsonSerializer.Serialize(new
         {
             dialect = "vertex.scalar-contract.v1", version = contract.Version,
-            input = Schema(contract.Inputs), output = Schema(contract.Outputs)
+            input = Schema(contract.Inputs), output = Schema(contract.Outputs),
+            businessErrors = contract.BusinessErrorCodes.Order(StringComparer.Ordinal).ToArray()
         });
         return ValueTask.FromResult(new ResolvedExternalTaskContract(contract.Version, contract.AgentProfileVersion, snapshot));
     }
@@ -110,6 +117,7 @@ public sealed class ExternalTaskCatalogEntry
     public int MaxDeadlineSeconds { get; set; } = 300;
     public ExternalTaskScalarField[] Inputs { get; set; } = [];
     public ExternalTaskScalarField[] Outputs { get; set; } = [];
+    public string[] BusinessErrorCodes { get; set; } = [];
 }
 
 public sealed class ExternalTaskScalarField

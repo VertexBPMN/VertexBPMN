@@ -7,6 +7,8 @@
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.18.0" />
     <ProjectReference Include="..\VertexBPMN.Domain\VertexBPMN.Domain.csproj" />
+    <ProjectReference Include="..\VertexBPMN.ServiceDefaults\VertexBPMN.ServiceDefaults.csproj" />
   </ItemGroup>
 </Project>

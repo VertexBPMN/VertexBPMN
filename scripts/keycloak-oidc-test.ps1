@@ -29,6 +29,7 @@ $realmFile = Join-Path $repositoryRoot "deploy/keycloak/vertexbpmn-realm.json"
 $realmName = "vertexbpmn"
 $apiClientId = "vertexbpmn-api"
 $studioClientId = "vertexbpmn-studio"
+$workerClientId = "vertexbpmn-contract-reviewer"
 $securityClientId = "vertexbpmn-security-test"
 $wrongAudienceClientId = "vertexbpmn-wrong-audience-test"
 $expiringClientId = "vertexbpmn-expiring-test"
@@ -386,6 +387,15 @@ function Bootstrap-Realm {
         "update", "clients/$studioId", "-r", $realmName,
         "-s", "secret=$studioSecret"
     )
+
+    $workerSecret = [Environment]::GetEnvironmentVariable("VERTEXBPMN_KEYCLOAK_WORKER_CLIENT_SECRET")
+    if (-not [string]::IsNullOrWhiteSpace($workerSecret)) {
+        $workerId = Get-KeycloakEntityId -Resource "clients" -Query "clientId=$workerClientId"
+        $null = Invoke-Kcadm -Arguments @(
+            "update", "clients/$workerId", "-r", $realmName,
+            "-s", "secret=$workerSecret"
+        )
+    }
 
     Ensure-TestUser -Username $TestUser -TenantId "tenant-a" -Role "ProcessManager"
     Ensure-TestUser -Username $MfaTestUser -TenantId "tenant-b" -Role "ReadOnly" -RequireMfaEnrollment

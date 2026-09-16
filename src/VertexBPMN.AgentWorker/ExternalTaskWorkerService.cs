@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.Json;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -86,18 +87,27 @@ public sealed class ExternalTaskWorkerService(
         ExternalTaskWorkerOptions settings, CancellationToken shutdown)
     {
         using var execution = CancellationTokenSource.CreateLinkedTokenSource(shutdown);
+        var leaseState = new LeaseState(lease.LeaseExpiresAt);
         var work = handler.HandleAsync(lease, execution.Token).AsTask();
-        var heartbeat = KeepLeaseAsync(lease, settings, execution, shutdown);
+        var heartbeat = KeepLeaseAsync(lease, settings, execution, leaseState, shutdown);
         var first = await Task.WhenAny(work, heartbeat);
         if (first == heartbeat && !await heartbeat) execution.Cancel();
         if (first == work) execution.Cancel();
-        try { await work; }
+        ExternalTaskHandlerResult? result = null;
+        try { result = await work; }
         catch (OperationCanceledException) when (execution.IsCancellationRequested) { }
-        if (!heartbeat.IsCompleted) await heartbeat;
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "External task handler failed; reporting a redacted technical failure.");
+            result = ExternalTaskHandlerResult.TechnicalFailure("transport_failure");
+        }
+        var leaseValid = await heartbeat;
+        if (result is null || !leaseValid || shutdown.IsCancellationRequested) return;
+        await SubmitResultAsync(lease, result, leaseState, settings, shutdown);
     }
 
     private async Task<bool> KeepLeaseAsync(ExternalTaskLease lease, ExternalTaskWorkerOptions settings,
-        CancellationTokenSource execution, CancellationToken shutdown)
+        CancellationTokenSource execution, LeaseState leaseState, CancellationToken shutdown)
     {
         var failures = 0;
         var leaseExpiresAt = lease.LeaseExpiresAt;
@@ -107,10 +117,13 @@ public sealed class ExternalTaskWorkerService(
             catch (OperationCanceledException) { return true; }
             try
             {
-                var heartbeat = await api.HeartbeatAsync(lease, settings.LeaseSeconds, shutdown);
+                ExternalTaskWorkerHeartbeatResult heartbeat;
+                try { heartbeat = await api.HeartbeatAsync(lease, settings.LeaseSeconds, execution.Token); }
+                catch (OperationCanceledException) when (execution.IsCancellationRequested) { return true; }
                 if (heartbeat.Outcome == ExternalTaskHeartbeatOutcome.LeaseLost) return false;
                 if (heartbeat.LeaseExpiresAt is null || heartbeat.LeaseExpiresAt <= leaseExpiresAt) return false;
                 leaseExpiresAt = heartbeat.LeaseExpiresAt.Value;
+                leaseState.ExpiresAt = leaseExpiresAt;
                 failures = 0;
             }
             catch (ExternalTaskTransportException exception)
@@ -124,6 +137,47 @@ public sealed class ExternalTaskWorkerService(
             }
         }
         return true;
+    }
+
+    private async Task SubmitResultAsync(ExternalTaskLease lease, ExternalTaskHandlerResult result,
+        LeaseState leaseState, ExternalTaskWorkerOptions settings, CancellationToken shutdown)
+    {
+        if (result.Outcome == ExternalTaskHandlerOutcome.Success && result.Result.ValueKind == JsonValueKind.Undefined)
+            throw new InvalidOperationException("A successful external task result requires JSON output.");
+        if (result.Outcome != ExternalTaskHandlerOutcome.Success && string.IsNullOrWhiteSpace(result.Code))
+            throw new InvalidOperationException("A failed external task result requires a stable error code.");
+        var receiptId = Guid.NewGuid();
+        var failures = 0;
+        while (!shutdown.IsCancellationRequested)
+        {
+            try
+            {
+                var mutation = result.Outcome switch
+                {
+                    ExternalTaskHandlerOutcome.Success => await api.CompleteAsync(
+                        lease, receiptId, result.Result, shutdown),
+                    ExternalTaskHandlerOutcome.BusinessError => await api.FailAsync(
+                        lease, receiptId, "business", result.Code!, shutdown),
+                    _ => await api.FailAsync(lease, receiptId, "technical", result.Code!, shutdown)
+                };
+                if (mutation.Outcome == ExternalTaskMutationOutcome.Rejected)
+                    logger.LogError("External task result was rejected by the server for job {JobId}.", lease.JobId);
+                return;
+            }
+            catch (ExternalTaskTransportException exception)
+            {
+                failures++;
+                var delay = exception.RetryAfter ?? Backoff(failures, Math.Min(settings.MaximumBackoffSeconds, 5));
+                var now = (clock ?? TimeProvider.System).GetUtcNow().ToUnixTimeMilliseconds();
+                if (now + delay.TotalMilliseconds >= leaseState.ExpiresAt) return;
+                await Task.Delay(delay, shutdown);
+            }
+        }
+    }
+
+    private sealed class LeaseState(long expiresAt)
+    {
+        public long ExpiresAt { get; set; } = expiresAt;
     }
 
     private static TimeSpan Backoff(int failures, int maximumSeconds)

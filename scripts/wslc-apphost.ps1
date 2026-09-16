@@ -19,10 +19,17 @@ param(
     [int]$KeycloakAccessTokenLifespan = 300,
     [switch]$ExistingInfrastructure,
     [switch]$InfrastructureOnly,
-    [switch]$OidcTest
+    [switch]$OidcTest,
+    [switch]$EnableContractReviewer,
+    [string]$ContractReviewerModel = "qwen3:8b",
+    [string]$ContractReviewerEndpoint = "http://127.0.0.1:11434/"
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($EnableContractReviewer -and -not $OidcTest) {
+    throw "EnableContractReviewer requires OidcTest so the worker can use Client Credentials."
+}
 
 $networkName = "vertexbpmn"
 $postgresContainer = "vertexbpmn-postgres"
@@ -265,6 +272,11 @@ if ($OidcTest) {
         throw "VERTEXBPMN_KEYCLOAK_STUDIO_CLIENT_SECRET must be set for the OidcTest profile."
     }
 
+    if ($EnableContractReviewer -and
+        [string]::IsNullOrWhiteSpace($env:VERTEXBPMN_KEYCLOAK_WORKER_CLIENT_SECRET)) {
+        throw "VERTEXBPMN_KEYCLOAK_WORKER_CLIENT_SECRET must be set when the contract reviewer is enabled."
+    }
+
     & $keycloakTestScript -Action Start -AccessTokenLifespan $KeycloakAccessTokenLifespan
 }
 
@@ -278,6 +290,13 @@ if ($OidcTest) {
     $env:VertexBPMN__AuthenticationMode = "OidcTest"
     $env:VertexBPMN__Oidc__Authority = "http://localhost:58080/realms/vertexbpmn"
     $env:Parameters__oidcStudioClientSecret = $env:VERTEXBPMN_KEYCLOAK_STUDIO_CLIENT_SECRET
+    if ($EnableContractReviewer) {
+        $env:VertexBPMN__ContractReviewer__Enabled = "true"
+        $env:VertexBPMN__ContractReviewer__TenantId = "tenant-a"
+        $env:VertexBPMN__ContractReviewer__Model = $ContractReviewerModel
+        $env:VertexBPMN__ContractReviewer__Endpoint = $ContractReviewerEndpoint
+        $env:Parameters__oidcWorkerClientSecret = $env:VERTEXBPMN_KEYCLOAK_WORKER_CLIENT_SECRET
+    }
 }
 $env:ConnectionStrings__BpmnDbContext = "$postgresBase;Database=vertexbpmn_bpmn"
 $env:ConnectionStrings__TenantDbContext = "$postgresBase;Database=vertexbpmn_tenants"

@@ -1,4 +1,5 @@
 using System.Data.Common;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -17,7 +18,7 @@ public sealed class ExternalTaskPostgresAcceptanceTests
 {
     [Fact]
     [Trait("Category", "ExternalTaskPostgres")]
-    public async Task TwoDatabaseWorkersHaveExactlyOneLeaseWinner()
+    public async Task TwoDatabaseWorkersHaveOneLeaseWinnerAndOneDurableCompletion()
     {
         var ct = TestContext.Current.CancellationToken;
         var adminString = Environment.GetEnvironmentVariable("VERTEXBPMN_TEST_POSTGRES_ADMIN");
@@ -29,6 +30,8 @@ public sealed class ExternalTaskPostgresAcceptanceTests
             await create.ExecuteNonQueryAsync(ct);
         var connectionString = new NpgsqlConnectionStringBuilder(adminString) { Database = database, Pooling = false }.ConnectionString;
         var options = new DbContextOptionsBuilder<BpmnDbContext>().UseVertexNpgsql(connectionString).Options;
+        var configuration = Unit.Infrastructure.ExternalTaskContractResolverTests.Configuration();
+        configuration["ExternalTasks:Contracts:0:MaxAttempts"] = "2";
         try
         {
             Guid jobId;
@@ -39,7 +42,15 @@ public sealed class ExternalTaskPostgresAcceptanceTests
                 var definition = new ProcessDefinition
                 {
                     Id = Guid.NewGuid(), Key = "a03", Name = "a03", TenantId = "a", TenantScope = "a",
-                    Version = 1, DeploymentId = deployment.Id
+                    Version = 1, DeploymentId = deployment.Id,
+                    BpmnXml = "<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL' " +
+                        "xmlns:vertex='https://vertexbpmn.io/schema/bpmn/1.0'><process id='a03'>" +
+                        "<startEvent id='s'/><serviceTask id='work'><extensionElements>" +
+                        "<vertex:externalTask topic='test.work' maxRetries='1' deadlineSeconds='300'/>" +
+                        "<vertex:ioMapping><vertex:input name='text' expression='document'/>" +
+                        "<vertex:output name='result' target='review'/></vertex:ioMapping></extensionElements>" +
+                        "</serviceTask><userTask id='after'/><sequenceFlow id='f1' sourceRef='s' targetRef='work'/>" +
+                        "<sequenceFlow id='f2' sourceRef='work' targetRef='after'/></process></definitions>"
                 };
                 var process = new ProcessInstance
                 {
@@ -54,13 +65,17 @@ public sealed class ExternalTaskPostgresAcceptanceTests
                     ScopeExecutionId = process.Id, Revision = 1
                 };
                 var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                var resolved = await new ConfiguredExternalTaskContractResolver(configuration).ResolveAsync("a",
+                    new VertexBPMN.Domain.Model.Bpmn.ExternalTaskDefinition("test.work", null, 1, 300),
+                    new Dictionary<string, object> { ["text"] = "synthetic" }, ct);
                 var job = new ExternalTaskJob
                 {
                     Id = Guid.NewGuid(), TenantId = "a", ProcessInstanceId = process.Id, DefinitionId = definition.Id,
                     DefinitionVersion = 1, ActivityId = "work", ActivityExecutionId = activityExecutionId,
                     WaitTokenId = wait.Id, ScopeExecutionId = process.Id, Topic = "test.work", ContractVersion = "v1",
                     InputSnapshot = "{\"text\":\"synthetic\"}",
-                    SchemaSnapshot = "{\"dialect\":\"vertex.scalar-contract.v1\"}",
+                    DefinitionSnapshot = "{\"mappings\":{\"vertex:ioMapping.output.result\":\"review\"}}",
+                    SchemaSnapshot = resolved.SchemaSnapshot,
                     State = ExternalTaskState.Ready, Revision = 1, CreatedAt = now, AvailableAt = now,
                     Deadline = now + 300_000, MaxAttempts = 2
                 };
@@ -72,8 +87,6 @@ public sealed class ExternalTaskPostgresAcceptanceTests
             var barrier = new LeaseCandidateBarrier();
             var workerOptions = new DbContextOptionsBuilder<BpmnDbContext>()
                 .UseVertexNpgsql(connectionString).AddInterceptors(barrier).Options;
-            var configuration = Unit.Infrastructure.ExternalTaskContractResolverTests.Configuration();
-            configuration["ExternalTasks:Contracts:0:MaxAttempts"] = "2";
             async Task<(string Worker, IReadOnlyList<ExternalTaskLease> Leases)> ClaimAsync(string subject)
             {
                 await using var workerDb = new BpmnDbContext(workerOptions);
@@ -108,6 +121,15 @@ public sealed class ExternalTaskPostgresAcceptanceTests
             await read.ExternalTaskJobs.Where(item => item.Id == jobId).ExecuteUpdateAsync(setters => setters
                 .SetProperty(item => item.LeaseExpiresAt, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - 1), ct);
             await using var reclaimDb = new BpmnDbContext(options);
+            var recovery = new ExternalTaskRecoveryService(reclaimDb);
+            Assert.Equal(1, (await recovery.RecoverAsync(cancellationToken: ct)).Transitioned);
+            reclaimDb.ChangeTracker.Clear();
+            Assert.Equal(ExternalTaskState.RetryScheduled,
+                (await reclaimDb.ExternalTaskJobs.AsNoTracking().SingleAsync(item => item.Id == jobId, ct)).State);
+            await reclaimDb.ExternalTaskJobs.Where(item => item.Id == jobId).ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.AvailableAt, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - 1), ct);
+            Assert.Equal(1, (await recovery.RecoverAsync(cancellationToken: ct)).Transitioned);
+            reclaimDb.ChangeTracker.Clear();
             var reclaimService = new ExternalTaskLeaseService(reclaimDb,
                 new ConfiguredExternalTaskContractResolver(configuration));
             var workerC = new ExternalTaskWorkerContext("issuer", "worker-c", "a",
@@ -127,6 +149,52 @@ public sealed class ExternalTaskPostgresAcceptanceTests
             Assert.Equal(2, reclaimedAttempts.Count);
             Assert.Equal("lease_expired", reclaimedAttempts[0].EndReason);
             Assert.Null(reclaimedAttempts[1].EndedAt);
+
+            var completionId = Guid.NewGuid();
+            using var payload = JsonDocument.Parse("{\"approved\":true}");
+            async Task<(ExternalTaskMutationResult? Result, string? Error)> CompleteAsync()
+            {
+                await using var completionDb = new BpmnDbContext(options);
+                var completionService = new ExternalTaskLeaseService(completionDb,
+                    new ConfiguredExternalTaskContractResolver(configuration));
+                try
+                {
+                    return (await completionService.CompleteAsync(workerC, jobId,
+                        new ExternalTaskCompleteCommand(reclaimed.LeaseId, reclaimed.LeaseGeneration,
+                            completionId, payload.RootElement.Clone()), ct), null);
+                }
+                catch (ExternalTaskLeaseException exception)
+                {
+                    return (null, exception.Code);
+                }
+            }
+
+            var completions = await Task.WhenAll(CompleteAsync(), CompleteAsync());
+            Assert.Contains(completions, item => item.Result?.State == "Completed");
+            Assert.All(completions.Where(item => item.Result is null),
+                item => Assert.Equal("lease_lost", item.Error));
+            var receipt = await CompleteAsync();
+            Assert.Equal("Completed", receipt.Result?.State);
+            Assert.Null(receipt.Error);
+            await using (var restartDb = new BpmnDbContext(options))
+            {
+                var restartedRuntime = new PersistentProcessExecutionRuntime(restartDb,
+                    Mock.Of<IServiceTaskRegistry>(), Mock.Of<IDecisionService>(),
+                    NullLogger<PersistentProcessExecutionRuntime>.Instance, configuration,
+                    new ConfiguredExternalTaskContractResolver(configuration));
+                Assert.Equal(new ExternalTaskContinuationBatchResult(1, 1, 0),
+                    await restartedRuntime.ProcessExternalTaskContinuationsAsync(cancellationToken: ct));
+                Assert.Equal(new ExternalTaskContinuationBatchResult(0, 0, 0),
+                    await restartedRuntime.ProcessExternalTaskContinuationsAsync(cancellationToken: ct));
+            }
+            await using var completionRead = new BpmnDbContext(options);
+            Assert.Equal(ExternalTaskState.Completed,
+                (await completionRead.ExternalTaskJobs.AsNoTracking().SingleAsync(ct)).State);
+            Assert.Equal(ExternalTaskContinuationState.Applied,
+                (await completionRead.ExternalTaskContinuations.AsNoTracking().SingleAsync(ct)).State);
+            Assert.Equal("after", (await completionRead.Tasks.AsNoTracking().SingleAsync(ct)).ActivityId);
+            Assert.True((await completionRead.ProcessInstances.AsNoTracking().SingleAsync(ct))
+                .Variables.ContainsKey("review"));
         }
         finally
         {

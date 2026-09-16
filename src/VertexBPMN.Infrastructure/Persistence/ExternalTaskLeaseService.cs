@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Domain.Model.Bpmn;
+using VertexBPMN.Infrastructure.Operational;
 
 namespace VertexBPMN.Infrastructure.Persistence;
 
@@ -63,8 +64,7 @@ public sealed class ExternalTaskLeaseService(
         var candidates = await db.ExternalTaskJobs.AsNoTracking()
             .Where(job => job.TenantId == worker.TenantId
                 && requestedTopics.Contains(job.Topic)
-                && ((job.State == ExternalTaskState.Ready && job.AvailableAt <= now)
-                    || (job.State == ExternalTaskState.Leased && job.LeaseExpiresAt <= now))
+                && job.State == ExternalTaskState.Ready && job.AvailableAt <= now
                 && job.Deadline > now
                 && job.AttemptsStarted < job.MaxAttempts)
             .OrderBy(job => job.AvailableAt).ThenBy(job => job.Id)
@@ -139,10 +139,268 @@ public sealed class ExternalTaskLeaseService(
         if (jobUpdated != 1)
         {
             await transaction.RollbackAsync(cancellationToken);
-            throw new ExternalTaskLeaseException("lease_lost");
+            throw LeaseLost();
         }
         await transaction.CommitAsync(cancellationToken);
         return new ExternalTaskHeartbeatResult(jobId, command.LeaseGeneration, expires, now);
+    }
+
+    public async ValueTask<ExternalTaskMutationResult> CompleteAsync(
+        ExternalTaskWorkerContext worker, Guid jobId, ExternalTaskCompleteCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateWorker(worker);
+        if (jobId == Guid.Empty || command.LeaseId == Guid.Empty || command.LeaseGeneration < 1
+            || command.CompletionId == Guid.Empty)
+            throw new ExternalTaskLeaseException("invalid_limits");
+        var visible = await FindVisibleJobAsync(worker, jobId, cancellationToken);
+        if (visible.State == ExternalTaskState.Completed)
+        {
+            if (visible.WorkerIssuer != worker.Issuer || visible.WorkerSubject != worker.Subject)
+                throw new ExternalTaskLeaseException("external_task_not_found");
+            if (visible.LeaseId != command.LeaseId || visible.LeaseGeneration != command.LeaseGeneration
+                || visible.CompletionId != command.CompletionId)
+                throw new ExternalTaskLeaseException("completion_conflict");
+            await EnsurePolicyAsync(visible, cancellationToken);
+            string receiptHash;
+            try { (_, receiptHash) = ExternalTaskPayloadPolicy.ValidateResult(command.Result, visible.SchemaSnapshot); }
+            catch (ExternalTaskPayloadException exception) { throw new ExternalTaskLeaseException(exception.Code); }
+            if (visible.ResultHash != receiptHash) throw new ExternalTaskLeaseException("completion_conflict");
+            return await MutationResultAsync(visible, cancellationToken);
+        }
+        EnsureCurrentLease(visible, worker, command.LeaseId, command.LeaseGeneration);
+        await EnsurePolicyAsync(visible, cancellationToken);
+        string canonical;
+        string resultHash;
+        try { (canonical, resultHash) = ExternalTaskPayloadPolicy.ValidateResult(command.Result, visible.SchemaSnapshot); }
+        catch (ExternalTaskPayloadException exception)
+        {
+            RuntimeTelemetry.ExternalTaskSchemaFailures.Add(1);
+            throw new ExternalTaskLeaseException(exception.Code);
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var now = Now();
+        if (now >= visible.Deadline) throw new ExternalTaskLeaseException("deadline_exceeded");
+        var (process, wait) = await LoadActiveOwnersAsync(visible, worker.TenantId, cancellationToken);
+        var ownersUpdated = await TouchOwnersAsync(process, wait, cancellationToken);
+        var jobUpdated = ownersUpdated
+            ? await db.ExternalTaskJobs.Where(job => job.Id == jobId && job.Revision == visible.Revision
+                    && job.State == ExternalTaskState.Leased && job.LeaseId == command.LeaseId
+                    && job.LeaseGeneration == command.LeaseGeneration && job.LeaseExpiresAt > now
+                    && job.Deadline > now && job.WorkerIssuer == worker.Issuer && job.WorkerSubject == worker.Subject)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(job => job.State, ExternalTaskState.Completed)
+                    .SetProperty(job => job.Result, canonical)
+                    .SetProperty(job => job.ResultHash, resultHash)
+                    .SetProperty(job => job.CompletionId, command.CompletionId)
+                    .SetProperty(job => job.CompletedAt, now)
+                    .SetProperty(job => job.ErrorCode, (string?)null)
+                    .SetProperty(job => job.Revision, job => job.Revision + 1), cancellationToken)
+            : 0;
+        if (jobUpdated != 1)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw LeaseLost();
+        }
+        var attemptUpdated = await db.ExternalTaskAttempts.Where(item => item.JobId == jobId
+                && item.LeaseId == command.LeaseId && item.LeaseGeneration == command.LeaseGeneration
+                && item.EndedAt == null)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.EndedAt, now)
+                .SetProperty(item => item.EndReason, "completed"), cancellationToken);
+        if (attemptUpdated != 1)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw LeaseLost();
+        }
+        db.ExternalTaskContinuations.Add(new ExternalTaskContinuation
+        {
+            Id = Guid.NewGuid(), JobId = jobId, ActivityExecutionId = visible.ActivityExecutionId,
+            Outcome = ExternalTaskOutcome.Success, State = ExternalTaskContinuationState.Pending,
+            Revision = 1, CreatedAt = now
+        });
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        RuntimeTelemetry.ExternalTaskDuration.Record(Math.Max(0, now - visible.CreatedAt));
+        return new ExternalTaskMutationResult(jobId, ExternalTaskState.Completed.ToString(),
+            ExternalTaskContinuationState.Pending.ToString(), null, visible.AttemptsStarted);
+    }
+
+    public async ValueTask<ExternalTaskMutationResult> FailAsync(
+        ExternalTaskWorkerContext worker, Guid jobId, ExternalTaskFailCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateWorker(worker);
+        if (jobId == Guid.Empty || command.LeaseId == Guid.Empty || command.LeaseGeneration < 1
+            || command.FailureId == Guid.Empty || string.IsNullOrWhiteSpace(command.Kind)
+            || string.IsNullOrWhiteSpace(command.Code) || command.Code.Length > 128)
+            throw new ExternalTaskLeaseException("invalid_limits");
+        var kind = command.Kind.Trim().ToLowerInvariant();
+        var code = command.Code.Trim();
+        if (kind is not ("technical" or "business") || !ValidErrorCode(code))
+            throw new ExternalTaskLeaseException("invalid_request");
+        var visible = await FindVisibleJobAsync(worker, jobId, cancellationToken);
+        var failureHash = ExternalTaskPayloadPolicy.HashFailure(kind, code);
+        var receipt = await db.ExternalTaskAttempts.AsNoTracking().SingleOrDefaultAsync(item =>
+            item.JobId == jobId && item.FailureId == command.FailureId, cancellationToken);
+        if (receipt is not null)
+        {
+            if (receipt.WorkerIssuer != worker.Issuer || receipt.WorkerSubject != worker.Subject)
+                throw new ExternalTaskLeaseException("external_task_not_found");
+            if (receipt.LeaseId != command.LeaseId || receipt.LeaseGeneration != command.LeaseGeneration
+                || receipt.FailureHash != failureHash)
+                throw new ExternalTaskLeaseException("completion_conflict");
+            await EnsurePolicyAsync(visible, cancellationToken);
+            return await MutationResultAsync(visible, cancellationToken);
+        }
+        if (visible.State != ExternalTaskState.Leased)
+            throw new ExternalTaskLeaseException("job_terminal");
+        EnsureCurrentLease(visible, worker, command.LeaseId, command.LeaseGeneration);
+        await EnsurePolicyAsync(visible, cancellationToken);
+        if (kind == "business")
+        {
+            try
+            {
+                if (!ExternalTaskPayloadPolicy.IsAllowedBusinessError(visible.SchemaSnapshot, code))
+                    throw new ExternalTaskLeaseException("business_error_not_allowed");
+            }
+            catch (ExternalTaskPayloadException exception) { throw new ExternalTaskLeaseException(exception.Code); }
+        }
+        else if (!RetryableTechnicalCodes.Contains(code) && !TerminalTechnicalCodes.Contains(code))
+            throw new ExternalTaskLeaseException("invalid_request");
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var now = Now();
+        if (now >= visible.Deadline) throw new ExternalTaskLeaseException("deadline_exceeded");
+        var retryAt = checked(now + RetryDelayMilliseconds(visible.Id, visible.AttemptsStarted));
+        var retry = kind == "technical" && RetryableTechnicalCodes.Contains(code)
+            && visible.AttemptsStarted < visible.MaxAttempts && retryAt < visible.Deadline;
+        var target = retry ? ExternalTaskState.RetryScheduled : ExternalTaskState.Failed;
+        var (process, wait) = await LoadActiveOwnersAsync(visible, worker.TenantId, cancellationToken);
+        var ownersUpdated = await TouchOwnersAsync(process, wait, cancellationToken);
+        var targetQuery = db.ExternalTaskJobs.Where(job => job.Id == jobId && job.Revision == visible.Revision
+            && job.State == ExternalTaskState.Leased && job.LeaseId == command.LeaseId
+            && job.LeaseGeneration == command.LeaseGeneration && job.LeaseExpiresAt > now
+            && job.Deadline > now && job.WorkerIssuer == worker.Issuer && job.WorkerSubject == worker.Subject);
+        var jobUpdated = !ownersUpdated ? 0 : retry
+            ? await targetQuery.ExecuteUpdateAsync(setters => setters
+                .SetProperty(job => job.State, ExternalTaskState.RetryScheduled)
+                .SetProperty(job => job.AvailableAt, retryAt)
+                .SetProperty(job => job.ErrorCode, code)
+                .SetProperty(job => job.CompletedAt, (long?)null)
+                .SetProperty(job => job.Revision, job => job.Revision + 1), cancellationToken)
+            : await targetQuery.ExecuteUpdateAsync(setters => setters
+                .SetProperty(job => job.State, ExternalTaskState.Failed)
+                .SetProperty(job => job.ErrorCode, code)
+                .SetProperty(job => job.CompletedAt, now)
+                .SetProperty(job => job.Revision, job => job.Revision + 1), cancellationToken);
+        if (jobUpdated != 1)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw LeaseLost();
+        }
+        var attemptUpdated = await db.ExternalTaskAttempts.Where(item => item.JobId == jobId
+                && item.LeaseId == command.LeaseId && item.LeaseGeneration == command.LeaseGeneration
+                && item.EndedAt == null && item.FailureId == null)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.EndedAt, now)
+                .SetProperty(item => item.EndReason, retry ? "retry_scheduled" : kind)
+                .SetProperty(item => item.ErrorCode, code).SetProperty(item => item.FailureId, command.FailureId)
+                .SetProperty(item => item.FailureHash, failureHash), cancellationToken);
+        if (attemptUpdated != 1)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw LeaseLost();
+        }
+        if (!retry)
+            db.ExternalTaskContinuations.Add(new ExternalTaskContinuation
+            {
+                Id = Guid.NewGuid(), JobId = jobId, ActivityExecutionId = visible.ActivityExecutionId,
+                Outcome = kind == "business" ? ExternalTaskOutcome.BusinessError : ExternalTaskOutcome.TechnicalFailure,
+                State = ExternalTaskContinuationState.Pending, Revision = 1, CreatedAt = now
+            });
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        if (retry) RuntimeTelemetry.ExternalTaskRetries.Add(1);
+        else RuntimeTelemetry.ExternalTaskDuration.Record(Math.Max(0, now - visible.CreatedAt));
+        return new ExternalTaskMutationResult(jobId, target.ToString(),
+            retry ? null : ExternalTaskContinuationState.Pending.ToString(), retry ? retryAt : null,
+            visible.AttemptsStarted);
+    }
+
+    private static readonly HashSet<string> RetryableTechnicalCodes = new(StringComparer.Ordinal)
+        { "provider_unavailable", "provider_rate_limited", "transport_failure", "lease_expired" };
+    private static readonly HashSet<string> TerminalTechnicalCodes = new(StringComparer.Ordinal)
+        { "invalid_input", "result_validation_exhausted", "budget_exhausted" };
+
+    private async ValueTask<ExternalTaskJob> FindVisibleJobAsync(
+        ExternalTaskWorkerContext worker, Guid jobId, CancellationToken cancellationToken)
+    {
+        var job = await db.ExternalTaskJobs.AsNoTracking().SingleOrDefaultAsync(item =>
+            item.Id == jobId && item.TenantId == worker.TenantId && worker.Topics.Contains(item.Topic), cancellationToken);
+        if (job is null || !CanUseProfile(worker, job.AgentProfileRef))
+            throw new ExternalTaskLeaseException("external_task_not_found");
+        return job;
+    }
+
+    private static void EnsureCurrentLease(ExternalTaskJob job, ExternalTaskWorkerContext worker,
+        Guid leaseId, long leaseGeneration)
+    {
+        if (job.WorkerIssuer != worker.Issuer || job.WorkerSubject != worker.Subject)
+            throw new ExternalTaskLeaseException("external_task_not_found");
+        if (job.State != ExternalTaskState.Leased || job.LeaseId != leaseId
+            || job.LeaseGeneration != leaseGeneration)
+            throw LeaseLost();
+    }
+
+    private async ValueTask<(ProcessInstance Process, ExecutionToken Wait)> LoadActiveOwnersAsync(
+        ExternalTaskJob job, string tenantId, CancellationToken cancellationToken)
+    {
+        var process = await db.ProcessInstances.AsNoTracking().SingleOrDefaultAsync(item =>
+            item.Id == job.ProcessInstanceId && item.TenantId == tenantId, cancellationToken);
+        var wait = await db.ExecutionTokens.AsNoTracking().SingleOrDefaultAsync(item =>
+            item.Id == job.WaitTokenId && item.ProcessInstanceId == job.ProcessInstanceId
+            && item.ActivityExecutionId == job.ActivityExecutionId, cancellationToken);
+        if (process?.Status != ProcessInstanceStatus.Running || wait?.State != ExecutionToken.WaitingState)
+            throw new ExternalTaskLeaseException("activity_not_waiting");
+        return (process, wait);
+    }
+
+    private async ValueTask<bool> TouchOwnersAsync(ProcessInstance process, ExecutionToken wait,
+        CancellationToken cancellationToken)
+    {
+        var processUpdated = await db.ProcessInstances.Where(item => item.Id == process.Id
+                && item.Revision == process.Revision && item.Status == ProcessInstanceStatus.Running)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.Revision, item => item.Revision + 1), cancellationToken);
+        if (processUpdated != 1) return false;
+        var waitUpdated = await db.ExecutionTokens.Where(item => item.Id == wait.Id
+                && item.Revision == wait.Revision && item.State == ExecutionToken.WaitingState)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.Revision, item => item.Revision + 1), cancellationToken);
+        return waitUpdated == 1;
+    }
+
+    private async ValueTask<ExternalTaskMutationResult> MutationResultAsync(
+        ExternalTaskJob job, CancellationToken cancellationToken)
+    {
+        var continuation = await db.ExternalTaskContinuations.AsNoTracking()
+            .Where(item => item.JobId == job.Id).Select(item => (ExternalTaskContinuationState?)item.State)
+            .SingleOrDefaultAsync(cancellationToken);
+        return new ExternalTaskMutationResult(job.Id, job.State.ToString(), continuation?.ToString(),
+            job.State == ExternalTaskState.RetryScheduled ? job.AvailableAt : null, job.AttemptsStarted);
+    }
+
+    private static bool ValidErrorCode(string code) => code.Length is >= 1 and <= 128
+        && char.IsAsciiLetter(code[0]) && char.IsLower(code[0])
+        && code.All(character => char.IsAsciiLetterOrDigit(character) || character is '_' or '.');
+
+    internal static long RetryDelayMilliseconds(Guid jobId, int attemptNumber)
+    {
+        var exponent = Math.Min(4, Math.Max(0, attemptNumber - 1));
+        var baseDelay = Math.Min(60_000, 5_000L << exponent);
+        Span<byte> source = stackalloc byte[20];
+        jobId.TryWriteBytes(source);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(source[16..], attemptNumber);
+        var hash = System.Security.Cryptography.SHA256.HashData(source);
+        return baseDelay + System.Buffers.Binary.BinaryPrimitives.ReadUInt16BigEndian(hash) % 1001;
     }
 
     private async Task<ExternalTaskLease?> TryClaimAsync(ExternalTaskWorkerContext worker, ExternalTaskJob candidate,
@@ -171,11 +429,9 @@ public sealed class ExternalTaskLeaseService(
                     && item.State == ExecutionToken.WaitingState)
                 .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.Revision, item => item.Revision + 1), cancellationToken)
             : 0;
-        var candidateIsReady = candidate.State == ExternalTaskState.Ready;
         var jobUpdated = waitUpdated == 1
             ? await db.ExternalTaskJobs.Where(job => job.Id == candidate.Id && job.Revision == candidate.Revision
-                    && ((candidateIsReady && job.State == ExternalTaskState.Ready && job.AvailableAt <= now)
-                        || (!candidateIsReady && job.State == ExternalTaskState.Leased && job.LeaseExpiresAt <= now))
+                    && job.State == ExternalTaskState.Ready && job.AvailableAt <= now
                     && job.Deadline > now
                     && job.AttemptsStarted < job.MaxAttempts)
                 .ExecuteUpdateAsync(setters => setters
@@ -193,16 +449,6 @@ public sealed class ExternalTaskLeaseService(
             await transaction.RollbackAsync(cancellationToken);
             return null;
         }
-        if (!candidateIsReady && candidate.LeaseId is { } expiredLeaseId)
-        {
-            await db.ExternalTaskAttempts.Where(item => item.JobId == candidate.Id
-                    && item.LeaseId == expiredLeaseId && item.LeaseGeneration == candidate.LeaseGeneration
-                    && item.EndedAt == null)
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(item => item.EndedAt, now)
-                    .SetProperty(item => item.EndReason, "lease_expired")
-                    .SetProperty(item => item.ErrorCode, "lease_expired"), cancellationToken);
-        }
         db.ExternalTaskAttempts.Add(new ExternalTaskAttempt
         {
             Id = Guid.NewGuid(), JobId = candidate.Id, AttemptNumber = attempt,
@@ -211,6 +457,7 @@ public sealed class ExternalTaskLeaseService(
         });
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        RuntimeTelemetry.ExternalTaskQueueAge.Record(Math.Max(0, now - candidate.CreatedAt));
         return ToLease(candidate, leaseId, generation, expires, attempt);
     }
 
@@ -222,7 +469,8 @@ public sealed class ExternalTaskLeaseService(
             var seconds = checked((int)((job.Deadline - job.CreatedAt) / 1000));
             var current = await contracts.ResolveAsync(job.TenantId,
                 new ExternalTaskDefinition(job.Topic, job.AgentProfileRef, job.MaxAttempts - 1, seconds), inputs, cancellationToken);
-            if (current.Version != job.ContractVersion || current.AgentProfileVersion != job.AgentProfileVersion)
+            if (current.Version != job.ContractVersion || current.AgentProfileVersion != job.AgentProfileVersion
+                || current.SchemaSnapshot != job.SchemaSnapshot)
                 throw new ExternalTaskLeaseException("policy_revoked");
         }
         catch (ExternalTaskLeaseException) { throw; }
@@ -281,6 +529,12 @@ public sealed class ExternalTaskLeaseService(
 
     private static bool CanUseProfile(ExternalTaskWorkerContext worker, string? profile)
         => profile is null || worker.Profiles.Contains(profile);
+
+    private static ExternalTaskLeaseException LeaseLost()
+    {
+        RuntimeTelemetry.ExternalTaskLeaseLosses.Add(1);
+        return new ExternalTaskLeaseException("lease_lost");
+    }
 
     private long Now() => (timeProvider ?? TimeProvider.System).GetUtcNow().ToUnixTimeMilliseconds();
 

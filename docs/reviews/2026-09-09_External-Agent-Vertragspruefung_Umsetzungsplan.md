@@ -1,7 +1,7 @@
 # External Tasks und Agent-Vertragsprüfung – Umsetzungsplan
 
 Stand: 2026-09-12. Ursprüngliche Planungsbasis: `5b211c6a897c2e78a7518f5a00a2e201acef5d1f`; A00 geprüft gegen `9f65335a45e61b50d421b05850e0e8115dc69d65`.
-Status: **A00 bis A03 abgeschlossen.** Aktueller Stand vom 2026-09-14: [A03-Prüfbericht mit realem PostgreSQL-Race-, Lease-, JWT- und Worker-Nachweis](2026-09-14_External-Agent_A03_Pruefbericht.md). A03 stellt Claim/Heartbeat und das sichere Worker-Grundgerüst bereit; Complete/Fail, atomare BPMN-Fortsetzung und Crash-Recovery bleiben ausdrücklich A04. Das Feature bleibt bis dahin standardmäßig deaktiviert und ist nicht produktionsfreigegeben. Ergebnisse der Vorpakete: [A02-Prüfbericht](2026-09-13_External-Agent_A02_Pruefbericht.md), [Inventur](2026-09-12_External-Agent-A00_Inventur.md), [verbindlicher Vertrag v1](2026-09-12_External-Agent-A01_Vertrag.md), [Architektur-/Security-Selbstreview](2026-09-12_External-Agent-A01_Review.md). Bei abweichenden Vorschlägen in Abschnitt 4 gilt die Konkretisierung aus A01.
+Status: **A00 bis A07 abgeschlossen.** A07 wurde am 2026-09-16 nach einem eigenen lokalen Test durch den Auftraggeber abgenommen und als separate weitere Testphase übersprungen. Die nicht automatisiert belegten E06-/E11- und Fachbenchmark-Grenzen bleiben in [A07-Prüfbericht](2026-09-15_External-Agent_A07_Pruefbericht.md) und [E01-E14-Matrix](2026-09-15_External-Agent_A07_E01-E14_Matrix.md) dokumentiert. Infrastrukturabhängige Akzeptanztests bleiben lokal und werden nicht in GitHub CI ausgeführt. Ergebnisse der Vorpakete: [A04-Prüfbericht](2026-09-14_External-Agent_A04_Pruefbericht.md), [A03-Prüfbericht](2026-09-14_External-Agent_A03_Pruefbericht.md), [A02-Prüfbericht](2026-09-13_External-Agent_A02_Pruefbericht.md), [Inventur](2026-09-12_External-Agent-A00_Inventur.md), [verbindlicher Vertrag v1](2026-09-12_External-Agent-A01_Vertrag.md), [Architektur-/Security-Selbstreview](2026-09-12_External-Agent-A01_Review.md). Bei abweichenden Vorschlägen in Abschnitt 4 gilt die Konkretisierung aus A01.
 
 ## 1. Auftrag und erster Anwendungsfall
 
@@ -205,44 +205,52 @@ Abnahme: E03/E04/E07. Zwei tatsächliche Worker/DB-Kontexte, keine lediglich seq
 
 ### A04 – Completion, Recovery und BPMN-Semantik
 
-- [ ] Ergebnis, Jobabschluss und persistente Fortsetzung atomar sichern. Eventuelle Outbox-Fortsetzung mit idempotentem Consumer end-to-end implementieren.
-- [ ] Completion/Fail mit aktueller Lease und Aktivitätsidentität binden; veraltete oder widersprüchliche Ergebnisse abweisen.
-- [ ] Retry-Backoff, Versuchslimit und absolute Deadline in allen Pfaden erzwingen, einschließlich Lease-Ablauf ohne explizites Fail.
-- [ ] Fachlichen Error zum passenden BPMN-Handler propagieren; technische Erschöpfung gemäß vereinbartem Fehler-/Incident-Vertrag behandeln.
-- [ ] Cancellation, interrupting/non-interrupting Boundary Events, Scope-Ende und konkurrierende Timer/Completion integrieren. Ergebnis nur in korrekten Variablenscope schreiben.
-- [ ] Recovery begrenzt/paginiert und multi-replikasicher ausführen; kein vollständiger unbegrenzter Tabellenscan im Polling.
+- [x] Ergebnis, Jobabschluss und persistente Fortsetzung atomar sichern. Persistenter Continuation-Consumer und separate Dispatch-Tokens sind idempotent end-to-end implementiert.
+- [x] Completion/Fail mit aktueller Lease und Aktivitätsidentität binden; veraltete oder widersprüchliche Ergebnisse abweisen.
+- [x] Retry-Backoff, Versuchslimit und absolute Deadline in allen Pfaden erzwingen, einschließlich Lease-Ablauf ohne explizites Fail.
+- [x] Fachlichen Error zum passenden BPMN-Handler propagieren; technische Erschöpfung gemäß vereinbartem Fehler-/Incident-Vertrag behandeln.
+- [x] Cancellation, interrupting/non-interrupting Boundary Events, Scope-Ende und konkurrierende Timer/Completion integrieren. Ergebnis nur in korrekten Variablenscope schreiben.
+- [x] Recovery auf maximal 100 Datensätze pro Pass begrenzen und durch CAS, kurze Einzeltransaktionen sowie höchstens drei Konfliktwiederholungen multi-replikasicher ausführen; kein unbegrenzter Tabellenscan im Polling.
 
 Abnahme: E05/E06/E08/E09/E10/E11 mit gezielten Prozessabbrüchen. Ein API-Erfolg darf nach Neustart nicht zu dauerhaft verlorenem Wait oder doppelter Fortsetzung führen.
 
 ### A05 – Konkreter read-only Agent
 
-- [ ] Fachlichen Anwendungsfall und ein lokales Modell/Runtime-Profil bestätigen. Kein fest verdrahteter Anbieter und kein Cloud-Fallback für `local-sensitive`.
-- [ ] `IAgentRuntime` mit genau einem echten Adapter zunächst implementieren; dessen aktuellen API-Vertrag vor Umsetzung anhand offizieller Dokumentation prüfen.
-- [ ] Versionierte Promptvorlage und deterministische Tools: nur Abschnitt lesen/suchen innerhalb des Jobdokuments. Kein Modellzugriff auf Dateipfade, Shell, allgemeines HTTP oder fremde Dokumente.
-- [ ] Tool-Argumente, Callanzahl, Laufzeit, Ein-/Ausgabegrößen und Tokenbudget kontrollieren. Runtime-Abbruch plus Hard-Limits; keine bloße Prompt-Anweisung als Sicherheitsgrenze.
-- [ ] Schema und Belegstellen vor Ergebnisannahme prüfen. Ungültige Ausgabe nur innerhalb des expliziten Gesamtbudgets korrigieren lassen; keine unbegrenzte Reparaturschleife.
-- [ ] Menschlichen User Task mit Analyse, Belegen und Unsicherheiten bereitstellen. Das Modell kann den Human-Review-Schritt nicht überspringen.
-- [ ] Alten AI-Mock sichtbar getrennt halten; nicht ohne gesonderten Auftrag bestehende AI-Verträge austauschen oder Erfolg simulieren.
+- [x] Fachlichen Anwendungsfall und lokales Runtime-Profil bestätigen: `agent.contract-review` / `contract-reviewer.v1`, `local-sensitive`, kein Cloud-Fallback. Das konkrete Modell bleibt bewusst Parameter der realen Fachabnahme.
+- [x] `IAgentRuntime` mit genau einem echten Adapter implementieren; Ollamas aktuellen `POST /api/chat`-Vertrag vor Umsetzung anhand offizieller Dokumentation geprüft.
+- [x] Versionierte Promptvorlage und deterministische Tools: nur Abschnitt lesen/suchen innerhalb des Jobdokuments. Kein Modellzugriff auf Dateipfade, Shell, allgemeines HTTP oder fremde Dokumente.
+- [x] Tool-Argumente, Callanzahl, Laufzeit, Ein-/Ausgabegrößen und Tokenbudget kontrollieren. Runtime-Abbruch plus Hard-Limits; keine bloße Prompt-Anweisung als Sicherheitsgrenze.
+- [x] Schema und Belegstellen vor Ergebnisannahme prüfen. Ungültige Ausgabe nur innerhalb des expliziten Gesamtbudgets einmal korrigieren lassen; keine unbegrenzte Reparaturschleife.
+- [x] Menschlichen User Task mit Analyse, Belegen und Unsicherheiten bereitstellen. Das Modell kann den Human-Review-Schritt nicht überspringen.
+- [x] Alten AI-Mock sichtbar getrennt halten; bestehende AI-Verträge wurden nicht ausgetauscht und kein Erfolg simuliert.
 
-Abnahme: E12/E13 und Fachbenchmark. Echte Modellabnahme benötigt erreichbare Runtime; ohne sie Paket als implementiert, aber nicht real abgenommen markieren.
+Abnahme: E12/E13 sind automatisiert grün. Implementierung und Einschränkungen sind im [A05-Prüfbericht](2026-09-14_External-Agent_A05_Pruefbericht.md) dokumentiert. Der opt-in Fachbenchmark ist vorhanden, aber mangels erreichbarer Ollama-Runtime und installiertem Modell noch nicht real gelaufen; A05 ist deshalb implementiert, jedoch nicht real abgenommen.
 
 ### A06 – Studio und Betrieb
 
-- [ ] Agent-Preset im bestehenden Katalog, Moddle und Properties ergänzen; Profil-/Input-/Output-Auswahl und Limits verständlich darstellen.
-- [ ] Roundtrip, Undo/Redo und Client-/Servervalidierung prüfen; Profile tenantgebunden laden, keine Secrets im XML.
-- [ ] Jobstatus/Versuche/Deadline/Fehlercode in bestehende Betriebsansichten integrieren; Prozess/Element verlinken. Keine separate globale, ungeschützte Jobliste.
-- [ ] Metriken für Queue-Alter, Lease-Verlust, Retry, Laufzeit, Schemafehler und Budgets; Inhalte redigieren. Nutzungsmessungen des Workers nicht als vertrauenswürdige Abrechnung übernehmen.
-- [ ] Deployment/Start ohne verfügbares Profil eindeutig ablehnen beziehungsweise fehlenden Worker als wartenden Betriebszustand sichtbar machen.
+- [x] Agent-Preset im bestehenden Katalog, Moddle und Properties ergänzen; Profil-/Input-/Output-Auswahl und Limits verständlich darstellen.
+- [x] Roundtrip, Undo/Redo und Client-/Servervalidierung prüfen; Profile tenantgebunden laden, keine Secrets im XML.
+- [x] Jobstatus/Versuche/Deadline/Fehlercode in bestehende Betriebsansichten integrieren; Prozess/Element verlinken. Keine separate globale, ungeschützte Jobliste.
+- [x] Metriken für Queue-Alter, Lease-Verlust, Retry, Laufzeit, Schemafehler und Budgets; Inhalte redigieren. Nutzungsmessungen des Workers nicht als vertrauenswürdige Abrechnung übernehmen.
+- [x] Deployment/Start ohne verfügbares Profil eindeutig ablehnen beziehungsweise fehlenden Worker als wartenden Betriebszustand sichtbar machen.
+
+Implementierungs- und Abnahmenachweis: [A06-Prüfbericht](2026-09-15_External-Agent_A06_Pruefbericht.md). E14 ist mit realem WSLC/PostgreSQL, API, Studio und Browser vollständig grün: 1/1 bestanden, keine Skips.
 
 Abnahme: E14 mit realem Studio/API; Rollen-/Tenantnegativtests, bestehende Editoraktionen bleiben erhalten. Mit dem separaten Studio-Workspace-Plan abstimmen, keine parallelen Änderungen derselben Dateien.
 
 ### A07 – Abnahme und Übergabe
 
-- [ ] Vollständigen Beispielprozess samt synthetischen Dokumenten und Fehlerpfaden versionieren.
-- [ ] E01–E14 gegen reale lokale PostgreSQL-/API-/Worker-Infrastruktur ausführen; Crash-Tests mit getrennten Prozessen, nicht nur Exceptions im selben Testprozess.
-- [ ] Fachbenchmark mit festgehaltenem Modell, Prompt, Schema, Parametern und Dokumentversionen durchführen.
-- [ ] Finale Regression und sauberer Checkout des freigegebenen Commits; alte Testzahlen nicht als neue Abnahme übernehmen.
-- [ ] Runbook für Start, Worker-Ausfall, Lease-Recovery, Quarantäne/Incident, Modellwechsel, Aufbewahrung und Upgrade schreiben.
+Zwischenstand: [A07-Prüfbericht](2026-09-15_External-Agent_A07_Pruefbericht.md). Die technische
+Auswahl ist gegen WSLC-PostgreSQL und das reale lokale Modell `qwen3:8b` mit 269/269 bestandenen
+Tests und ohne Skips stabil. Dabei wurden Qwen3-Thinking und ein Mehrfachrequestfehler im
+Ollama-Adapter korrigiert. Der lokale Runner besitzt einen fail-closed `-RequireNoSkips`-Modus.
+Fachbenchmark, getrennte Crashprozesse und sauberer Checkout bleiben offen.
+
+- [x] Vollständigen Beispielprozess samt 20 synthetischen Dokumenten und Fehlerpfaden versionieren. Technischer Entwurf unter `tests/VertexBPMN.Tests/TestData/ContractReviewBenchmark/v1`; die fachkundige Freigabe der Annotationen bleibt Voraussetzung des Fachlaufs.
+- [x] E01–E14 lokal durch den Auftraggeber abgenommen; fehlende automatisierte E06-/E11-Nachweise sind als akzeptierte Grenzen dokumentiert.
+- [x] Fachabnahme für diesen Lieferumfang durch Auftraggeberentscheidung akzeptiert; der nicht ausgeführte formale 20-Dokumente-Benchmark bleibt ausdrücklich dokumentiert.
+- [x] Technische Abschlussregression ausgeführt; lokale Infrastrukturtests sind aus GitHub CI ausgeschlossen.
+- [x] Runbook für Start, Worker-Ausfall, Lease-Recovery, Quarantäne/Incident, Modellwechsel, Aufbewahrung und Upgrade schreiben. Siehe [External-Agent-Runbook](../runbooks/external-agent-contract-review.md); reale Recovery-Abnahme bleibt Bestandteil E06/E11.
 
 Abnahme: alle Pflichtfälle bestanden, keine Skips als Erfolg; bekannte Grenzen und ungetestete Engine-Modi sichtbar. Keine vollständige BPMN-/Agent-Sicherheits- oder Produktionszertifizierung aus diesem Feature ableiten.
 
@@ -297,12 +305,12 @@ Pro Paket dokumentieren: Basiscommit, Status, geänderte Dateien, Vertrags-/Migr
 - [x] A01 – Verträge/Sicherheitsreview. [Vertrag](2026-09-12_External-Agent-A01_Vertrag.md) und [Review](2026-09-12_External-Agent-A01_Review.md).
 - [x] A02 – Job/Wait/Parser/Migration. Implementierungsumfang abgeschlossen; vollständige E09/E10-Completion-Abnahme folgt nach A03/A04.
 - [x] A03 – Lease-API/Worker-Grundgerüst. Nachweis: [A03-Prüfbericht](2026-09-14_External-Agent_A03_Pruefbericht.md).
-- [ ] A04 – Completion/Recovery/BPMN-Semantik.
-- [ ] A05 – Reale read-only Agent-Runtime.
-- [ ] A06 – Studio/Betriebsintegration.
-- [ ] A07 – Lokale Gesamt- und Fachabnahme.
+- [x] A04 – Completion/Recovery/BPMN-Semantik. Nachweis: [A04-Prüfbericht](2026-09-14_External-Agent_A04_Pruefbericht.md).
+- [x] A05 – Reale read-only Agent-Runtime. Implementiert; reale Ollama-Fachabnahme folgt in A07.
+- [x] A06 – Studio/Betriebsintegration. Realer E14-Nachweis im [A06-Prüfbericht](2026-09-15_External-Agent_A06_Pruefbericht.md).
+- [x] A07 – Durch den Auftraggeber lokal abgenommen und als separate weitere Testphase übersprungen; automatisierte Nachweisgrenzen bleiben dokumentiert.
 
-**Nächster Schritt: A04 – Completion, Recovery und BPMN-Semantik.** A03 stellt ausschließlich den abgesicherten Claim-/Heartbeat-Pfad und Worker-Host bereit. Ohne atomare Completion/Fail-/Recovery-Semantik kann kein Job fachlich abgeschlossen werden; eine Produktionsfreigabe bleibt bis A04–A07 ausgeschlossen.
+**Abschlussentscheidung A07:** Der Auftraggeber hat den Anwendungsfall selbst lokal getestet und am 2026-09-16 abgenommen. E14 und die technische Ollama-/PostgreSQL-Gesamtregression sind grün. Der E11-Runner ist implementiert, war auf diesem Host wegen instabiler WSLC-Portweiterleitung jedoch nicht automatisiert grün. E06-Hard-Crashes an allen Commitgrenzen und der formal freizugebende 20-Dokumente-Benchmark bleiben als akzeptierte Nachweisgrenzen dokumentiert und werden nicht als bestandene automatisierte Tests dargestellt.
 
 ### Fortsetzung 2026-09-13 – Abbruchzustände und Schedulingidentität
 

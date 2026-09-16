@@ -19,6 +19,19 @@ public sealed record ExternalTaskHeartbeatCommand(
     long LeaseGeneration,
     int LeaseSeconds = 60);
 
+public sealed record ExternalTaskCompleteCommand(
+    Guid LeaseId,
+    long LeaseGeneration,
+    Guid CompletionId,
+    JsonElement Result);
+
+public sealed record ExternalTaskFailCommand(
+    Guid LeaseId,
+    long LeaseGeneration,
+    Guid FailureId,
+    string Kind,
+    string Code);
+
 public sealed record ExternalTaskLease(
     Guid JobId,
     Guid ActivityExecutionId,
@@ -39,6 +52,13 @@ public sealed record ExternalTaskHeartbeatResult(
     long LeaseGeneration,
     long LeaseExpiresAt,
     long ServerTime);
+
+public sealed record ExternalTaskMutationResult(
+    Guid JobId,
+    string State,
+    string? ContinuationState,
+    long? AvailableAt,
+    int AttemptsStarted);
 
 public sealed record ExternalTaskStatus(
     Guid JobId,
@@ -84,6 +104,18 @@ public interface IExternalTaskLeaseService
         ExternalTaskHeartbeatCommand command,
         CancellationToken cancellationToken = default);
 
+    ValueTask<ExternalTaskMutationResult> CompleteAsync(
+        ExternalTaskWorkerContext worker,
+        Guid jobId,
+        ExternalTaskCompleteCommand command,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ExternalTaskMutationResult> FailAsync(
+        ExternalTaskWorkerContext worker,
+        Guid jobId,
+        ExternalTaskFailCommand command,
+        CancellationToken cancellationToken = default);
+
     ValueTask<ExternalTaskStatus> GetAsync(
         ExternalTaskWorkerContext worker,
         Guid jobId,
@@ -94,5 +126,14 @@ public interface IExternalTaskLeaseService
         Guid jobId,
         string? after,
         int limit,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed record ExternalTaskRecoveryResult(int Examined, int Transitioned, int Conflicts);
+
+public interface IExternalTaskRecoveryService
+{
+    ValueTask<ExternalTaskRecoveryResult> RecoverAsync(
+        int maximumJobs = 100,
         CancellationToken cancellationToken = default);
 }

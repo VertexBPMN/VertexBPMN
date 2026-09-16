@@ -188,6 +188,21 @@ public sealed class StudioUiTestHost : IAsyncLifetime
 
     private static void MapApiContracts(WebApplication app)
     {
+        app.MapGet("/api/external-task-operations/catalog", () => Results.Json(new[]
+        {
+            new
+            {
+                profileRef = "contract-reviewer.v1", profileVersion = "contract-reviewer.v1",
+                topic = "agent.contract-review", maxAttempts = 2, maxDeadlineSeconds = 300,
+                inputs = new[]
+                {
+                    new { name = "document", type = "string", required = true, maxLength = 65536 },
+                    new { name = "documentId", type = "string", required = true, maxLength = 256 },
+                    new { name = "documentVersion", type = "string", required = true, maxLength = 256 }
+                },
+                outputs = new[] { new { name = "summary", type = "string", required = true, maxLength = 4096 } }
+            }
+        }));
         app.MapGet("/api/repository", () => Results.Json(new[]
         {
             new

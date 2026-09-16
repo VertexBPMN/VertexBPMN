@@ -15,7 +15,7 @@ public class RepositoryService : IRepositoryService
     private readonly IBpmnParser _parser;
     private readonly bool _scriptsEnabled;
     private readonly bool _allowCSharp;
-    private readonly bool _externalPreview;
+    private readonly bool _externalTasksEnabled;
     private readonly IExternalTaskContractResolver? _externalContracts;
 
     public RepositoryService(
@@ -27,7 +27,8 @@ public class RepositoryService : IRepositoryService
         _repo = repo;
         _parser = parser;
         _externalContracts = externalContracts;
-        _externalPreview = configuration.GetValue<bool>("ExternalTasks:EnableSchedulingPreview");
+        _externalTasksEnabled = configuration.GetValue<bool>("ExternalTasks:Enabled")
+            || configuration.GetValue<bool>("ExternalTasks:EnableSchedulingPreview");
         _scriptsEnabled = configuration.GetValue("Runtime:Scripts:Enabled", true);
         // Roslyn C# script execution is NOT sandboxed. Keep it off unless an operator
         // explicitly opts in, so untrusted tenant-deployed BPMN cannot get RCE.
@@ -67,7 +68,7 @@ public class RepositoryService : IRepositoryService
         {
             try
             {
-                if (!_externalPreview || _externalContracts is null)
+                if (!_externalTasksEnabled || _externalContracts is null)
                     throw new InvalidOperationException("external_task_feature_not_enabled");
                 if (tenantId is null)
                     throw new InvalidOperationException("external_task_tenant_required");

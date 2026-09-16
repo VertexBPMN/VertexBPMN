@@ -16,6 +16,9 @@ public class BpmnDbContext : DbContext
     public DbSet<ExecutionToken> ExecutionTokens => Set<ExecutionToken>();
     public DbSet<Variable> Variables => Set<Variable>();
     public DbSet<Job> Jobs => Set<Job>();
+    public DbSet<ExternalTaskJob> ExternalTaskJobs => Set<ExternalTaskJob>();
+    public DbSet<ExternalTaskAttempt> ExternalTaskAttempts => Set<ExternalTaskAttempt>();
+    public DbSet<ExternalTaskContinuation> ExternalTaskContinuations => Set<ExternalTaskContinuation>();
     public DbSet<UserTask> Tasks => Set<UserTask>();
     public DbSet<HistoryEvent> HistoryEvents => Set<HistoryEvent>();
     public DbSet<Incident> Incidents => Set<Incident>();
@@ -51,6 +54,7 @@ public class BpmnDbContext : DbContext
         ConfigureExecutionToken(modelBuilder);
         ConfigureVariable(modelBuilder);
         ConfigureJob(modelBuilder);
+        ExternalTaskMapping.Configure(modelBuilder);
         ConfigureUserTask(modelBuilder);
         ConfigureHistoryEvent(modelBuilder);
         ConfigureIncident(modelBuilder);

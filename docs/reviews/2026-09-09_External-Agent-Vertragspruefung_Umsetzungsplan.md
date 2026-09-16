@@ -1,7 +1,7 @@
 # External Tasks und Agent-Vertragsprüfung – Umsetzungsplan
 
-Stand: 2026-09-09. Planungsbasis: `5b211c6a897c2e78a7518f5a00a2e201acef5d1f`.
-Status: **Geplant, nicht implementiert oder abgenommen.**
+Stand: 2026-09-12. Ursprüngliche Planungsbasis: `5b211c6a897c2e78a7518f5a00a2e201acef5d1f`; A00 geprüft gegen `9f65335a45e61b50d421b05850e0e8115dc69d65`.
+Status: **A00 bis A07 abgeschlossen.** A07 wurde am 2026-09-16 nach einem eigenen lokalen Test durch den Auftraggeber abgenommen und als separate weitere Testphase übersprungen. Die nicht automatisiert belegten E06-/E11- und Fachbenchmark-Grenzen bleiben in [A07-Prüfbericht](2026-09-15_External-Agent_A07_Pruefbericht.md) und [E01-E14-Matrix](2026-09-15_External-Agent_A07_E01-E14_Matrix.md) dokumentiert. Infrastrukturabhängige Akzeptanztests bleiben lokal und werden nicht in GitHub CI ausgeführt. Ergebnisse der Vorpakete: [A04-Prüfbericht](2026-09-14_External-Agent_A04_Pruefbericht.md), [A03-Prüfbericht](2026-09-14_External-Agent_A03_Pruefbericht.md), [A02-Prüfbericht](2026-09-13_External-Agent_A02_Pruefbericht.md), [Inventur](2026-09-12_External-Agent-A00_Inventur.md), [verbindlicher Vertrag v1](2026-09-12_External-Agent-A01_Vertrag.md), [Architektur-/Security-Selbstreview](2026-09-12_External-Agent-A01_Review.md). Bei abweichenden Vorschlägen in Abschnitt 4 gilt die Konkretisierung aus A01.
 
 ## 1. Auftrag und erster Anwendungsfall
 
@@ -136,83 +136,121 @@ Aufwand: relative Planungsgröße S ≈ 1–2, M ≈ 3–5, L ≈ 6–10 Entwick
 
 ### A00 – Vorhandene Mechanismen prüfen
 
-- [ ] Referenzierten Code und aktuelle Produktions-/Studio-Pläne lesen; Änderungen seit Planungsbasis erfassen.
-- [ ] Alle angebotenen Engine-Ausführungsmodi, Wait-/Boundary-/Scope-/Multi-Instance-Pfade sowie aktuelle API-Policies inventarisieren.
-- [ ] Outbox-/Inbox-, Leasing-, Job-Recovery-, Runtime-Transaktions- und AI-Pfade prüfen; wiederverwendbare Bausteine mit Codeverweisen nennen.
-- [ ] Bestehende Tests lokal ausführen und neue Kontrollpunkte für Crash-/Race-Tests identifizieren.
+- [x] Referenzierten Code und aktuelle Produktions-/Studio-Pläne lesen; Änderungen seit Planungsbasis erfassen.
+- [x] Alle angebotenen Engine-Ausführungsmodi, Wait-/Boundary-/Scope-/Multi-Instance-Pfade sowie aktuelle API-Policies inventarisieren.
+- [x] Outbox-/Inbox-, Leasing-, Job-Recovery-, Runtime-Transaktions- und AI-Pfade prüfen; wiederverwendbare Bausteine mit Codeverweisen nennen.
+- [x] Bestehende Tests lokal ausführen und neue Kontrollpunkte für Crash-/Race-Tests identifizieren.
 
-Abnahme: Matrix Funktion → bestehender Code → Wiederverwendung/Erweiterung → Test → offene Grenze. Für nicht implementierte Engine-Modi vorläufige explizite Ablehnung des neuen Task-Typs planen; kein stiller Durchlauf als normaler Service Task.
+Abnahme: **Erfüllt und dokumentiert** in [A00 Inventur und Baseline](2026-09-12_External-Agent-A00_Inventur.md). Für Simple und Legacy-Distributed ist bis zu einer vollständigen Implementierung eine explizite Ablehnung festgelegt; Zielmodus ist die persistente Runtime.
 
 ### A01 – Verträge und Sicherheitsreview
 
-- [ ] Abschnitt 4 konkretisieren: XML/DTOs, Zustandsmatrix, atomare Grenzen, Fehlercodes, Attempts/Deadline, Aktivitätsidentität und unterstützte Engine-Modi.
-- [ ] Worker-Authentifizierung in vorhandenes Auth-System integrieren; eigene eingeschränkte Worker-Policy statt pauschalem Admin-Zugang. Tenant-/Topic-/Profilberechtigungen festlegen.
-- [ ] Geheimnis-/Dokumentspeicherung, Lösch-/Aufbewahrungsfristen und Audit-Daten festlegen. Keine Dokumente/Prompts als standardmäßige Logattribute.
-- [ ] Serverzeit/TimeProvider, CAS-/Lease-Verfahren, Completion-Deduplication und Datenbankmigration entwerfen.
-- [ ] Bei lokalem Modellserver: operatorseitig festgelegte Endpunkt-Allowlist und Egress-Policy. Private lokale Ziele nur im getrennten Workerprofil erlauben, nicht durch Lockerung des allgemeinen Connector-SSRF-Schutzes.
+- [x] Abschnitt 4 konkretisieren: XML/DTOs, Zustandsmatrix, atomare Grenzen, Fehlercodes, Attempts/Deadline, Aktivitätsidentität und unterstützte Engine-Modi.
+- [x] Integration der Worker-Authentifizierung in vorhandenes Auth-System entwerfen; eigene eingeschränkte Worker-Policy sowie Tenant-/Topic-/Profilberechtigungen festlegen. Laufzeitimplementierung und Handler-Negativtests folgen in A03.
+- [x] Geheimnis-/Dokumentzugriff, Audit und Aufbewahrungsvertrag festlegen. Pilotfristen sind Vorschläge; konkrete Produktfristen bleiben eine explizite A05-Entscheidung und Voraussetzung der Produktionsaktivierung.
+- [x] Serverzeit/TimeProvider, CAS-/Lease-Verfahren, Completion-Deduplication und Datenbankmigration entwerfen.
+- [x] Bei lokalem Modellserver: operatorseitig festgelegte Endpunkt-Allowlist und Egress-Policy. Private lokale Ziele nur im getrennten Workerprofil erlauben, nicht durch Lockerung des allgemeinen Connector-SSRF-Schutzes.
 
 Abnahme: prüfbare Vertragsbeispiele plus separates Architektur-/Security-Review vor Umsetzung. Unentschiedene Produktfragen konkret vorlegen; keine Infrastruktur oder externen AI-Zugänge stillschweigend voraussetzen.
 
+Ergebnis 2026-09-12: [Vertrag v1](2026-09-12_External-Agent-A01_Vertrag.md) und [separates Selbstreview](2026-09-12_External-Agent-A01_Review.md). A01 ist als Entwurf abgeschlossen; keine unabhängige Prüfung oder Laufzeitabnahme behauptet. Offene A05-Entscheidungen sind in beiden Dokumenten benannt.
+
 ### A02 – Domain, Migration, Parser und Wait
 
-- [ ] External-Task-Definition im Domain-Modell, Parser, Serializer und Deploymentvalidator ergänzen. Unbekannte/ungültige Profile fail-closed behandeln.
-- [ ] Job-/Versuchsmodell und notwendige Aktivitätszuordnung implementieren, inklusive Queue-Indizes und Constraints.
-- [ ] Job-Erzeugung und Wait-State in derselben Transaktion speichern; konkurrierende Duplikate anhand Unique-Key korrekt behandeln.
-- [ ] Agent-Task nicht in den bestehenden direkt abschließenden Service-Task-Pfad fallen lassen; Scope/LocalVariables sichern.
-- [ ] Neue/alte DB mit PostgreSQL und zugesagtem SQLite-Verhalten testen.
+Zwischenstand 2026-09-12: **In Arbeit, nicht abgenommen.** `ExternalTaskDefinition` mit geprüften Limits und typisiertem Zugriff auf `BpmnTask` implementiert. XML-Prüfung erkennt Namespace, Owner, Duplikate, Konflikte und unbekannte Konfiguration. Normalisierter Parser-/Serializer-Roundtrip ist getestet. Simple/Legacy-Distributed besitzen eine Ablehnung am Modelleinstieg; die persistente Runtime bleibt für diesen Typ bis zur Job-/Wait-Implementierung gesperrt. Streaming lehnt den Typ ausdrücklich ab, damit seine vereinfachte Extension-Verarbeitung ihn nicht still verliert.
+
+Verifikation: frischer Release-Build von `tests/VertexBPMN.Tests/VertexBPMN.Tests.csproj` erfolgreich (0 Fehler, 31 bestehende Warnungen im letzten Lauf). Wegen wiederkehrender Sandbox-Schreibfehler im CLI-obj-Verzeichnis außerhalb der Sandbox wiederholt. Danach `dotnet tests/VertexBPMN.Tests/bin/Release/net10.0/VertexBPMN.Tests.dll -class '*ExternalTaskDefinitionTests' -class '*UnifiedParserSerializerTests' -class '*StrictSerializerRoundtripTests' -class '*PersistentRuntimePhase2AcceptanceTests' -parallelMode none`: **22 bestanden, 0 fehlgeschlagen, 0 übersprungen**, 11,883 s. Enthält 12 neue External-Task-Fälle.
+
+Fortsetzung 2026-09-12: `ExternalTaskJob`, `ExternalTaskAttempt`, `ExternalTaskContinuation`, nullable Aktivitäts-/Scope-IDs am Token und EF-Mapping implementiert. Migration `20260912090238_ExternalTaskPersistence` samt Snapshot/Designer angelegt; PostgreSQL-GUIDs/Zeitwerte explizit als uuid/bigint, SQLite entsprechend TEXT/INTEGER. Downgrade verhindert Entfernung bei vorhandenen Jobs. SQLite-Downgrade verwendet direkte Spaltenentfernung, weil ältere Migrationen keine ausreichenden Zielmodelle für den EF-Rebuild liefern.
+
+`ExternalTaskSchedulingStore.StageAsync` verlangt eine bestehende relationale Transaktion, prüft Tenant/Prozess/Definition/Wait und legt Job + Wait + redigierte Historie gemeinsam in deren Unit of Work an. Die Prozessrevision wird für konkurrierende Änderungen erhöht. Identische Wiederholung innerhalb desselben Durchlaufs legt keine zweite Zeile an. Der Baustein ist noch nicht in den öffentlichen Runtime-Service-Task-Pfad eingebunden; Inputs/Schema/Topic müssen vorher serverseitig validiert werden. Mehrreplikat-Konflikterholung ist weiterhin offen.
+
+Aktueller Nachweis: frischer Testprojekt-Release-Build erfolgreich (0 Fehler, 31 bestehende Warnungen); `dotnet tests/VertexBPMN.Tests/bin/Release/net10.0/VertexBPMN.Tests.dll -class '*ExternalTaskPersistenceTests' -class '*ExternalTaskDefinitionTests' -parallelMode none`: **16 bestanden, 0 fehlgeschlagen, 0 übersprungen**, 2,429 s. Neue relationale SQLite-Tests prüfen Commit/Rollback für Job/Wait/Historie, Transaktionspflicht, Fremdtenant-Abweisung und Upgrade/Downgrade mit Erhalt bestehender Benutzer. PostgreSQL-SQL-Generierung prüft uuid/bigint ohne Verbindung; dies ist ausdrücklich keine reale PostgreSQL-Abnahme.
+
+Weitere Fortsetzung 2026-09-12: Die persistente Runtime bindet den Store nun über `CreateExternalTaskWaitAsync` ein. Aktivierung ausschließlich mit `ExternalTasks:EnableSchedulingPreview=true` und explizit injiziertem `IExternalTaskContractResolver`; keine Standardregistrierung und keine Produktionsfreigabe. Der Resolververtrag verlangt lokale Tenant-/Topic-/Profil-/Schema-/Secret-Prüfung ohne Netzwerkzugriff. Ein echter Produktionsresolver fehlt noch. Variable Referenzen werden aus lokalem Scope beziehungsweise Prozessvariablen explizit gemappt, das Eingabesnapshot auf 128 KiB begrenzt; andere Ausdrücke werden abgewiesen. Job und Wait erhalten pro Eintritt eigene Aktivitätsidentitäten, bei paralleler MI mit Iterationszuordnung. Die normale Inline-Handlerausführung entfällt für diese Tasks. Die Feature-Sperre wird bereits vor automatischen Schritten im aktuellen Ausführungsmodell geprüft. Boundary-, Event-Subprozess- und verschachtelte Scope-Konstellationen werden im Preview explizit abgewiesen.
+
+Aktuell verifiziert: frischer Release-Build, 0 Fehler/32 bestehende Warnungen. `dotnet tests/VertexBPMN.Tests/bin/Release/net10.0/VertexBPMN.Tests.dll -class '*ExternalTaskSchedulingPreviewTests' -class '*ExternalTaskPersistenceTests' -class '*ExternalTaskDefinitionTests' -class '*UnifiedParserSerializerTests' -class '*StrictSerializerRoundtripTests' -parallelMode none`: **23 bestanden, 0 fehlgeschlagen, 0 übersprungen**, 2,805 s. Drei neue Runtimefälle prüfen deaktiviertes Feature mit Rollback, einfachen Wait sowie drei parallele MI-Waits, idempotenten Start und ausschließlich gemappte Eingaben. Nur die Policyauflösung ist ein Testdouble; Engine und SQLite-Persistenz sind real. Dies belegt weder Worker-Completion noch MI-Abschluss/Loops oder Produktionspolicy.
+
+Katalog-Fortsetzung 2026-09-12: `ConfiguredExternalTaskContractResolver` implementiert einen lokalen, operatorverwalteten Tenant-/Topic-/Profilkatalog mit Aktivierung/Widerruf, Versionssnapshot, Limits und expliziter Transferfreigabe je Feld. Der begrenzte Dialekt `vertex.scalar-contract.v1` validiert String/Int64/Boolean-Inputs; kein allgemeines JSON Schema und noch keine verschachtelten Agentresultate. Registrierung nur bei explizitem Development/Test/UnitTest und aktiviertem Preview; Production, Stage, unbekannte oder fehlende Umgebung werden abgewiesen. Die Runtime-Tests verwenden jetzt diesen echten Resolver statt eines Policydoubles. Konfiguration und Grenzen: [Scheduling-Preview](2026-09-12_External-Agent_A02_Scheduling-Preview.md).
+
+Letzter Nachweis: frischer Release-Build, 0 Fehler/31 bestehende Warnungen. `dotnet tests/VertexBPMN.Tests/bin/Release/net10.0/VertexBPMN.Tests.dll -class '*ExternalTaskContractResolverTests' -class '*ExternalTaskSchedulingPreviewTests' -class '*ExternalTaskPersistenceTests' -class '*ExternalTaskDefinitionTests' -parallelMode none`: **33 bestanden, 0 fehlgeschlagen, 0 übersprungen**, 2,797 s. Einschließlich Widerruf, Fremdtenant, unbekanntem Topic/Profil, Typ-/Größen-/Versuchslimits, Transferfreigabe und Umgebungsschutz. Keine AI-/Produktionsabnahme.
+
+Deployment-Fortsetzung 2026-09-12: Der registrierte Application-`RepositoryService` prüft External Tasks vor dem ersten Repositoryzugriff gegen `ValidateDeploymentAsync`. Preview-Aktivierung, Tenant, Topic/Profil, Limits, erforderliche/erlaubte Inputnamen und einfache Variablenreferenzen werden geprüft. Nicht unterstützte Boundary-/Subprozess-Konstellationen werden abgewiesen. Vertragsfehler einschließlich bekannter External-Task-Parserfehler werden als `BpmnDeploymentValidationException` mit `VEN-EXTERNAL-TASK-CONTRACT` weitergereicht; die bestehende Repository-API liefert dafür Bad Request. XML-Prüfung erkennt doppelte Mappingcontainer/Inputnamen sowie falsche Namespaces und ungültige Outputziele.
+
+Letzter Nachweis: frischer Release-Build mit 0 Fehlern/32 bestehenden Warnungen. `dotnet tests/VertexBPMN.Tests/bin/Release/net10.0/VertexBPMN.Tests.dll -class '*ExternalTaskDeploymentTests' -class '*ExternalTaskContractResolverTests' -class '*ExternalTaskSchedulingPreviewTests' -class '*ExternalTaskPersistenceTests' -class '*ExternalTaskDefinitionTests' -class '*UnifiedParserSerializerTests' -class '*StrictSerializerRoundtripTests' -parallelMode none`: **44 bestanden, 0 fehlgeschlagen, 0 übersprungen**, 2,875 s. Sieben Deployment-Servicefälle prüfen gültige Annahme und Ablehnung vor Repositoryzugriff bei deaktiviertem Feature, Fremdtenant, unbekanntem Topic, falschem Mapping, negativem Retrylimit und doppeltem Input. Kein separater HTTP-Test in diesem Lauf.
+
+Abbruch-Fortsetzung 2026-09-12: `PersistentProcessExecutionRuntime.ExternalTasks.cs` bindet External Tasks in `CancelWaitStatesAsync` ein. Ready/Leased/RetryScheduled werden atomar Cancelled, offene Attempts geschlossen, Leasefelder entfernt und Pending-Continuations annulliert. Zugehörige aktive MI-Ausführungen werden Cancelled, damit der Prozess nicht dauerhaft wartend bleibt. Der Root-Terminate-End-Event ist im Scheduling-Preview nun zulässig. Tests lösen ihn über einen parallelen User Task nach gespeichertem External-Task-Wait aus und prüfen Job-/Tokenzustand, Historie, abgeschlossenen Prozess und keine aktive MI-Ausführung.
+
+Letzter Nachweis: frischer Release-Build, 0 Fehler/32 bestehende Warnungen. `dotnet tests/VertexBPMN.Tests/bin/Release/net10.0/VertexBPMN.Tests.dll -class '*ExternalTaskDeploymentTests' -class '*ExternalTaskContractResolverTests' -class '*ExternalTaskSchedulingPreviewTests' -class '*ExternalTaskPersistenceTests' -class '*ExternalTaskDefinitionTests' -class '*PersistentRuntimePhase2AcceptanceTests' -parallelMode none`: **48 bestanden, 0 fehlgeschlagen, 0 übersprungen**, 13,991 s. Nachgewiesen sind Root-Terminierung einfacher und dreifach paralleler Ready-Jobs sowie vorhandene Runtime-Regression. Lease-/Completion-Rennen, bereits laufende Attempts und Pending-Completion-Abbruch sind implementierte Pfade, aber noch nicht separat abgenommen.
+
+Weiter offen: produktionsfähiger Katalog mit vollständiger Schemapolitik, vollständige Mapping-/Strict-/Streaming-Unterstützung, Boundary-/verschachtelte Scope-Integration, öffentliche Lösch-/Abbruch- und Suspend-Semantik, vollständiger MI-/Loop-Lebenszyklus, geschachtelte Call-Activity-Capabilityprüfung, Mehrreplikat-Konflikterholung, Constraint-/Downgrade-Negativfälle sowie E02/E09/E10 und reale PostgreSQL-Abnahme. Keine vorhandene Checkbox dieses Pakets wird durch diese Teilimplementierung als vollständig erfüllt markiert.
+
+- [x] External-Task-Definition im Domain-Modell, Parser, Serializer und Deploymentvalidator ergänzen. Unbekannte/ungültige Profile fail-closed behandeln.
+- [x] Job-/Versuchsmodell und notwendige Aktivitätszuordnung implementieren, inklusive Queue-Indizes und Constraints. Siehe A02-Prüfbericht; dies ist kein Worker-/Completion-Nachweis.
+- [x] Job-Erzeugung und Wait-State in derselben Transaktion speichern; konkurrierende Duplikate anhand Unique-Key korrekt behandeln. Echter PostgreSQL-Doppelstart und Rollback lokal geprüft.
+- [x] Agent-Task nicht in den bestehenden direkt abschließenden Service-Task-Pfad fallen lassen; Scope/LocalVariables sichern. Einschließlich verschachtelter und paralleler MI-Recovery.
+- [x] Neue/alte DB mit PostgreSQL und zugesagtem SQLite-Verhalten testen. Lokale Migration-/Rollback-/Downgrade-Nachweise im A02-Prüfbericht; keine allgemeine Crash-Abnahme.
 
 Abnahme: E01/E02/E09/E10. In diesem Paket darf ein deterministischer Testworker verwendet werden; das ist noch kein KI-Nachweis.
 
 ### A03 – Lease-Protokoll und Worker-Host
 
-- [ ] Claim/Heartbeat mit CAS und pro Claim neuer Lease implementieren; Batch-/Topic-/Zeitlimits begrenzen.
-- [ ] Alle API-Operationen inklusive Lesen und Wiederholung autorisieren; Claimfilter nicht als ausreichenden Schutz für spätere Aufrufe ansehen.
-- [ ] Separaten .NET-Worker bauen (vorgeschlagener Projektname `VertexBPMN.AgentWorker`); bounded concurrency, konfigurierbares Polling mit Backoff/Jitter und Graceful Shutdown.
-- [ ] Heartbeat unabhängig vom langen Modellaufruf ausführen. Bei Lease-Verlust oder Shutdown Ausführung abbrechen; kein neues Fail/Complete mit ungültiger Lease.
-- [ ] API-Ausfälle und verlorene Antworten kontrolliert behandeln; Transportfehler nicht als fachlichen Modellfehler verbuchen.
+- [x] Claim/Heartbeat mit CAS und pro Claim neuer Lease implementieren; Batch-/Topic-/Zeitlimits begrenzen.
+- [x] Alle in A03 vorhandenen API-Operationen einschließlich Status und paginierter Versuchshistorie autorisieren; Tenant, Topic, Profil, Subject, aktuelle Policy und Lease werden je Aufruf erneut geprüft. Complete/Fail folgen in A04 nach demselben Prinzip.
+- [x] Separaten .NET-Worker `VertexBPMN.AgentWorker` bauen; bounded concurrency, konfigurierbares Polling mit Backoff/Jitter und Graceful Shutdown.
+- [x] Heartbeat unabhängig vom langen Modellaufruf ausführen. Lease-Verlust und Shutdown brechen die Handlerausführung ab; die jeweils erneuerte Lease-Ablaufzeit wird für Transport-Retrygrenzen übernommen. Complete/Fail existieren vor A04 bewusst nicht.
+- [x] API-Ausfälle, Rate-Limits, ungültige/verlorene Antworten und Tokenfehler kontrolliert als Transportzustände behandeln; sie werden nicht als fachlicher Modellfehler verbucht.
 
 Abnahme: E03/E04/E07. Zwei tatsächliche Worker/DB-Kontexte, keine lediglich sequenzielle Nachbildung konkurrierender Claims.
 
 ### A04 – Completion, Recovery und BPMN-Semantik
 
-- [ ] Ergebnis, Jobabschluss und persistente Fortsetzung atomar sichern. Eventuelle Outbox-Fortsetzung mit idempotentem Consumer end-to-end implementieren.
-- [ ] Completion/Fail mit aktueller Lease und Aktivitätsidentität binden; veraltete oder widersprüchliche Ergebnisse abweisen.
-- [ ] Retry-Backoff, Versuchslimit und absolute Deadline in allen Pfaden erzwingen, einschließlich Lease-Ablauf ohne explizites Fail.
-- [ ] Fachlichen Error zum passenden BPMN-Handler propagieren; technische Erschöpfung gemäß vereinbartem Fehler-/Incident-Vertrag behandeln.
-- [ ] Cancellation, interrupting/non-interrupting Boundary Events, Scope-Ende und konkurrierende Timer/Completion integrieren. Ergebnis nur in korrekten Variablenscope schreiben.
-- [ ] Recovery begrenzt/paginiert und multi-replikasicher ausführen; kein vollständiger unbegrenzter Tabellenscan im Polling.
+- [x] Ergebnis, Jobabschluss und persistente Fortsetzung atomar sichern. Persistenter Continuation-Consumer und separate Dispatch-Tokens sind idempotent end-to-end implementiert.
+- [x] Completion/Fail mit aktueller Lease und Aktivitätsidentität binden; veraltete oder widersprüchliche Ergebnisse abweisen.
+- [x] Retry-Backoff, Versuchslimit und absolute Deadline in allen Pfaden erzwingen, einschließlich Lease-Ablauf ohne explizites Fail.
+- [x] Fachlichen Error zum passenden BPMN-Handler propagieren; technische Erschöpfung gemäß vereinbartem Fehler-/Incident-Vertrag behandeln.
+- [x] Cancellation, interrupting/non-interrupting Boundary Events, Scope-Ende und konkurrierende Timer/Completion integrieren. Ergebnis nur in korrekten Variablenscope schreiben.
+- [x] Recovery auf maximal 100 Datensätze pro Pass begrenzen und durch CAS, kurze Einzeltransaktionen sowie höchstens drei Konfliktwiederholungen multi-replikasicher ausführen; kein unbegrenzter Tabellenscan im Polling.
 
 Abnahme: E05/E06/E08/E09/E10/E11 mit gezielten Prozessabbrüchen. Ein API-Erfolg darf nach Neustart nicht zu dauerhaft verlorenem Wait oder doppelter Fortsetzung führen.
 
 ### A05 – Konkreter read-only Agent
 
-- [ ] Fachlichen Anwendungsfall und ein lokales Modell/Runtime-Profil bestätigen. Kein fest verdrahteter Anbieter und kein Cloud-Fallback für `local-sensitive`.
-- [ ] `IAgentRuntime` mit genau einem echten Adapter zunächst implementieren; dessen aktuellen API-Vertrag vor Umsetzung anhand offizieller Dokumentation prüfen.
-- [ ] Versionierte Promptvorlage und deterministische Tools: nur Abschnitt lesen/suchen innerhalb des Jobdokuments. Kein Modellzugriff auf Dateipfade, Shell, allgemeines HTTP oder fremde Dokumente.
-- [ ] Tool-Argumente, Callanzahl, Laufzeit, Ein-/Ausgabegrößen und Tokenbudget kontrollieren. Runtime-Abbruch plus Hard-Limits; keine bloße Prompt-Anweisung als Sicherheitsgrenze.
-- [ ] Schema und Belegstellen vor Ergebnisannahme prüfen. Ungültige Ausgabe nur innerhalb des expliziten Gesamtbudgets korrigieren lassen; keine unbegrenzte Reparaturschleife.
-- [ ] Menschlichen User Task mit Analyse, Belegen und Unsicherheiten bereitstellen. Das Modell kann den Human-Review-Schritt nicht überspringen.
-- [ ] Alten AI-Mock sichtbar getrennt halten; nicht ohne gesonderten Auftrag bestehende AI-Verträge austauschen oder Erfolg simulieren.
+- [x] Fachlichen Anwendungsfall und lokales Runtime-Profil bestätigen: `agent.contract-review` / `contract-reviewer.v1`, `local-sensitive`, kein Cloud-Fallback. Das konkrete Modell bleibt bewusst Parameter der realen Fachabnahme.
+- [x] `IAgentRuntime` mit genau einem echten Adapter implementieren; Ollamas aktuellen `POST /api/chat`-Vertrag vor Umsetzung anhand offizieller Dokumentation geprüft.
+- [x] Versionierte Promptvorlage und deterministische Tools: nur Abschnitt lesen/suchen innerhalb des Jobdokuments. Kein Modellzugriff auf Dateipfade, Shell, allgemeines HTTP oder fremde Dokumente.
+- [x] Tool-Argumente, Callanzahl, Laufzeit, Ein-/Ausgabegrößen und Tokenbudget kontrollieren. Runtime-Abbruch plus Hard-Limits; keine bloße Prompt-Anweisung als Sicherheitsgrenze.
+- [x] Schema und Belegstellen vor Ergebnisannahme prüfen. Ungültige Ausgabe nur innerhalb des expliziten Gesamtbudgets einmal korrigieren lassen; keine unbegrenzte Reparaturschleife.
+- [x] Menschlichen User Task mit Analyse, Belegen und Unsicherheiten bereitstellen. Das Modell kann den Human-Review-Schritt nicht überspringen.
+- [x] Alten AI-Mock sichtbar getrennt halten; bestehende AI-Verträge wurden nicht ausgetauscht und kein Erfolg simuliert.
 
-Abnahme: E12/E13 und Fachbenchmark. Echte Modellabnahme benötigt erreichbare Runtime; ohne sie Paket als implementiert, aber nicht real abgenommen markieren.
+Abnahme: E12/E13 sind automatisiert grün. Implementierung und Einschränkungen sind im [A05-Prüfbericht](2026-09-14_External-Agent_A05_Pruefbericht.md) dokumentiert. Der opt-in Fachbenchmark ist vorhanden, aber mangels erreichbarer Ollama-Runtime und installiertem Modell noch nicht real gelaufen; A05 ist deshalb implementiert, jedoch nicht real abgenommen.
 
 ### A06 – Studio und Betrieb
 
-- [ ] Agent-Preset im bestehenden Katalog, Moddle und Properties ergänzen; Profil-/Input-/Output-Auswahl und Limits verständlich darstellen.
-- [ ] Roundtrip, Undo/Redo und Client-/Servervalidierung prüfen; Profile tenantgebunden laden, keine Secrets im XML.
-- [ ] Jobstatus/Versuche/Deadline/Fehlercode in bestehende Betriebsansichten integrieren; Prozess/Element verlinken. Keine separate globale, ungeschützte Jobliste.
-- [ ] Metriken für Queue-Alter, Lease-Verlust, Retry, Laufzeit, Schemafehler und Budgets; Inhalte redigieren. Nutzungsmessungen des Workers nicht als vertrauenswürdige Abrechnung übernehmen.
-- [ ] Deployment/Start ohne verfügbares Profil eindeutig ablehnen beziehungsweise fehlenden Worker als wartenden Betriebszustand sichtbar machen.
+- [x] Agent-Preset im bestehenden Katalog, Moddle und Properties ergänzen; Profil-/Input-/Output-Auswahl und Limits verständlich darstellen.
+- [x] Roundtrip, Undo/Redo und Client-/Servervalidierung prüfen; Profile tenantgebunden laden, keine Secrets im XML.
+- [x] Jobstatus/Versuche/Deadline/Fehlercode in bestehende Betriebsansichten integrieren; Prozess/Element verlinken. Keine separate globale, ungeschützte Jobliste.
+- [x] Metriken für Queue-Alter, Lease-Verlust, Retry, Laufzeit, Schemafehler und Budgets; Inhalte redigieren. Nutzungsmessungen des Workers nicht als vertrauenswürdige Abrechnung übernehmen.
+- [x] Deployment/Start ohne verfügbares Profil eindeutig ablehnen beziehungsweise fehlenden Worker als wartenden Betriebszustand sichtbar machen.
+
+Implementierungs- und Abnahmenachweis: [A06-Prüfbericht](2026-09-15_External-Agent_A06_Pruefbericht.md). E14 ist mit realem WSLC/PostgreSQL, API, Studio und Browser vollständig grün: 1/1 bestanden, keine Skips.
 
 Abnahme: E14 mit realem Studio/API; Rollen-/Tenantnegativtests, bestehende Editoraktionen bleiben erhalten. Mit dem separaten Studio-Workspace-Plan abstimmen, keine parallelen Änderungen derselben Dateien.
 
 ### A07 – Abnahme und Übergabe
 
-- [ ] Vollständigen Beispielprozess samt synthetischen Dokumenten und Fehlerpfaden versionieren.
-- [ ] E01–E14 gegen reale lokale PostgreSQL-/API-/Worker-Infrastruktur ausführen; Crash-Tests mit getrennten Prozessen, nicht nur Exceptions im selben Testprozess.
-- [ ] Fachbenchmark mit festgehaltenem Modell, Prompt, Schema, Parametern und Dokumentversionen durchführen.
-- [ ] Finale Regression und sauberer Checkout des freigegebenen Commits; alte Testzahlen nicht als neue Abnahme übernehmen.
-- [ ] Runbook für Start, Worker-Ausfall, Lease-Recovery, Quarantäne/Incident, Modellwechsel, Aufbewahrung und Upgrade schreiben.
+Zwischenstand: [A07-Prüfbericht](2026-09-15_External-Agent_A07_Pruefbericht.md). Die technische
+Auswahl ist gegen WSLC-PostgreSQL und das reale lokale Modell `qwen3:8b` mit 269/269 bestandenen
+Tests und ohne Skips stabil. Dabei wurden Qwen3-Thinking und ein Mehrfachrequestfehler im
+Ollama-Adapter korrigiert. Der lokale Runner besitzt einen fail-closed `-RequireNoSkips`-Modus.
+Fachbenchmark, getrennte Crashprozesse und sauberer Checkout bleiben offen.
+
+- [x] Vollständigen Beispielprozess samt 20 synthetischen Dokumenten und Fehlerpfaden versionieren. Technischer Entwurf unter `tests/VertexBPMN.Tests/TestData/ContractReviewBenchmark/v1`; die fachkundige Freigabe der Annotationen bleibt Voraussetzung des Fachlaufs.
+- [x] E01–E14 lokal durch den Auftraggeber abgenommen; fehlende automatisierte E06-/E11-Nachweise sind als akzeptierte Grenzen dokumentiert.
+- [x] Fachabnahme für diesen Lieferumfang durch Auftraggeberentscheidung akzeptiert; der nicht ausgeführte formale 20-Dokumente-Benchmark bleibt ausdrücklich dokumentiert.
+- [x] Technische Abschlussregression ausgeführt; lokale Infrastrukturtests sind aus GitHub CI ausgeschlossen.
+- [x] Runbook für Start, Worker-Ausfall, Lease-Recovery, Quarantäne/Incident, Modellwechsel, Aufbewahrung und Upgrade schreiben. Siehe [External-Agent-Runbook](../runbooks/external-agent-contract-review.md); reale Recovery-Abnahme bleibt Bestandteil E06/E11.
 
 Abnahme: alle Pflichtfälle bestanden, keine Skips als Erfolg; bekannte Grenzen und ungetestete Engine-Modi sichtbar. Keine vollständige BPMN-/Agent-Sicherheits- oder Produktionszertifizierung aus diesem Feature ableiten.
 
@@ -263,13 +301,62 @@ Pro Paket dokumentieren: Basiscommit, Status, geänderte Dateien, Vertrags-/Migr
 > Lies diesen Plan und die aktuellen Repository-Anweisungen vollständig. Bearbeite ausschließlich das nächste freigegebene A-Paket. Prüfe vorhandenen Code statt Beispielklassen blind zu übernehmen. Implementiere Konkurrenz-/Tenant-/Crash-Nachweise gemeinsam mit der Funktion. Keine abgeschwächten Tests, Fake-Modellantworten als Realnachweis oder unautorisierten Toolwirkungen. Halte technische Implementierung, reale Infrastrukturabnahme und fachliche Modellabnahme getrennt. Bei fehlender Entscheidung frage konkret nach. Aktualisiere den Paketstatus und die Übergabe, ohne spätere Pakete ungefragt zu beginnen.
 
 - [x] Implementierungsplan erstellt.
-- [ ] A00 – Inventur/Baseline.
-- [ ] A01 – Verträge/Sicherheitsreview.
-- [ ] A02 – Job/Wait/Parser/Migration.
-- [ ] A03 – Lease-API/Worker-Grundgerüst.
-- [ ] A04 – Completion/Recovery/BPMN-Semantik.
-- [ ] A05 – Reale read-only Agent-Runtime.
-- [ ] A06 – Studio/Betriebsintegration.
-- [ ] A07 – Lokale Gesamt- und Fachabnahme.
+- [x] A00 – Inventur/Baseline. Ergebnis: [Inventur und Baseline](2026-09-12_External-Agent-A00_Inventur.md).
+- [x] A01 – Verträge/Sicherheitsreview. [Vertrag](2026-09-12_External-Agent-A01_Vertrag.md) und [Review](2026-09-12_External-Agent-A01_Review.md).
+- [x] A02 – Job/Wait/Parser/Migration. Implementierungsumfang abgeschlossen; vollständige E09/E10-Completion-Abnahme folgt nach A03/A04.
+- [x] A03 – Lease-API/Worker-Grundgerüst. Nachweis: [A03-Prüfbericht](2026-09-14_External-Agent_A03_Pruefbericht.md).
+- [x] A04 – Completion/Recovery/BPMN-Semantik. Nachweis: [A04-Prüfbericht](2026-09-14_External-Agent_A04_Pruefbericht.md).
+- [x] A05 – Reale read-only Agent-Runtime. Implementiert; reale Ollama-Fachabnahme folgt in A07.
+- [x] A06 – Studio/Betriebsintegration. Realer E14-Nachweis im [A06-Prüfbericht](2026-09-15_External-Agent_A06_Pruefbericht.md).
+- [x] A07 – Durch den Auftraggeber lokal abgenommen und als separate weitere Testphase übersprungen; automatisierte Nachweisgrenzen bleiben dokumentiert.
 
-**Erster freizugebender Schritt: A00.** Dieses Dokument allein startet weder Implementierung noch Infrastruktur und behauptet keine Produktionsfreigabe.
+**Abschlussentscheidung A07:** Der Auftraggeber hat den Anwendungsfall selbst lokal getestet und am 2026-09-16 abgenommen. E14 und die technische Ollama-/PostgreSQL-Gesamtregression sind grün. Der E11-Runner ist implementiert, war auf diesem Host wegen instabiler WSLC-Portweiterleitung jedoch nicht automatisiert grün. E06-Hard-Crashes an allen Commitgrenzen und der formal freizugebende 20-Dokumente-Benchmark bleiben als akzeptierte Nachweisgrenzen dokumentiert und werden nicht als bestandene automatisierte Tests dargestellt.
+
+### Fortsetzung 2026-09-13 – Abbruchzustände und Schedulingidentität
+
+- `ExternalTaskSchedulingPreviewTests`: Root-Terminate zusätzlich mit einfach/dreifach geleasten Jobs und einem bereits angenommenen Ergebnis mit Pending-Continuation geprüft. Offene Attempts werden geschlossen, Lease-/Workerfelder entfernt, die Fortsetzung wird annulliert; gespeichertes Ergebnis und Completion-Receipt bleiben erhalten. Kein Ergebnis wird als Prozessvariable übernommen. Wiederholtes Terminate über dieselbe User-Task-Idempotency-ID erzeugt keine zusätzliche Wirkung.
+- Lease und angenommene Completion werden hierfür ausdrücklich als persistente Ausgangszustände angelegt. Das prüft den echten Runtime-Abbruchpfad, nicht die noch fehlende Claim-/Complete-API, echte konkurrierende Completion oder Crash-Recovery.
+- `ExternalTaskSchedulingStore`: Identische Wiederholung vergleicht zusätzlich Definitionsidentität/-version, Profilversion, Versuchslimit, Deadline, Erstellzeit und MI-Zuordnung. Abweichungen führen zu `external_task_scheduling_conflict`. Regression in `ExternalTaskPersistenceTests` prüft verändertes Versuchslimit und unveränderten ursprünglichen Job.
+- Frischer Release-Build: 0 Fehler, 31 Warnungen. Gezielte External-Task-Suite: **45 bestanden**. Anschließender Lauf einschließlich `PersistentRuntimePhase2AcceptanceTests`: **51 bestanden, 0 fehlgeschlagen, 0 übersprungen, 0 nicht ausgeführt**, 15,494 s.
+
+```powershell
+dotnet tests/VertexBPMN.Tests/bin/Release/net10.0/VertexBPMN.Tests.dll -class '*ExternalTaskDeploymentTests' -class '*ExternalTaskContractResolverTests' -class '*ExternalTaskSchedulingPreviewTests' -class '*ExternalTaskPersistenceTests' -class '*ExternalTaskDefinitionTests' -class '*PersistentRuntimePhase2AcceptanceTests' -parallelMode none
+```
+
+Historischer Zwischenstand: A02 blieb zu diesem Zeitpunkt offen. Diese lokale Auswahl ersetzte weder die Gesamtsuite noch reale PostgreSQL-Race-/Crash-Nachweise. Änderungen waren nicht committed oder gepusht.
+
+### Fortsetzung 2026-09-13 – Migrations-Negativnachweise
+
+`ExternalTaskPersistenceTests.MigratedSchemaRejectsInvalidJobsAndDestructiveDowngrade` ergänzt neun Fälle gegen eine isolierte SQLite-Datenbank, die über die tatsächlichen EF-Migrationen aufgebaut wird (nicht `EnsureCreated`). Direkte SQL-Änderungen umgehen bewusst den Applicationvalidator: ungültiges Versuchslimit, überschrittene Versuche, Deadline, Verfügbarkeit, negative Revision/Leasegeneration, unbekannter Status und Leased ohne Leaseidentität scheitern an den jeweils benannten CHECK-Constraints. Nach jedem Fehler wird der unveränderte Job aus einem neuen DbContext gelesen.
+
+Der neunte Fall weist einen Downgrade mit vorhandenem Job ab und prüft den Erhalt von Job, Wait/Aktivitätsidentität, Attempt-/Continuationtabellen und Migrationseintrag. Nach expliziter Entfernung ausschließlich des synthetischen Testjobs gelingt derselbe Downgrade; der Prozess bleibt erhalten. Damit ist auch die Wiederverwendbarkeit nach dem fehlgeschlagenen Downgrade geprüft, einschließlich temporärer Guard-Tabelle und Migrationssperre.
+
+Verifikation: frischer Release-Build mit 0 Fehlern/31 Warnungen. Obiger kombinierter Testbefehl einschließlich Runtime-Regression: **60 bestanden, 0 fehlgeschlagen, 0 übersprungen, 0 nicht ausgeführt**, 15,577 s. Keine Änderung am Produktionscode erforderlich; die vorhandenen Constraints und der Downgrade-Schutz haben diese Fälle korrekt behandelt. PostgreSQL ist damit weiterhin nicht real abgenommen; Unique-/FK-Konkurrenz, vollständige Scope-/Mappingintegration und A02-Gesamtabnahme bleiben offen. Kein Commit/Push.
+
+### Fortsetzung 2026-09-13 – Scheduling-Revisionsschutz und persistierte Wiederholung
+
+Neue Datei `tests/VertexBPMN.Tests/Unit/Infrastructure/ExternalTaskSchedulingConcurrencyTests.cs`, acht Fälle auf tatsächlich migriertem SQLite-Schema:
+
+- Zwei DbContexts lesen beziehungsweise ändern dieselbe Prozessrevision in festgelegter Reihenfolge. Nach dem Commit des ersten Kontexts (neuer Job oder expliziter Prozessabschluss mit Revisionserhöhung) scheitert das Scheduling des veralteten Kontexts mit `DbUpdateConcurrencyException`. Nach Rollback bleiben keine zusätzlichen Jobs, Waits oder Historieneinträge erhalten.
+- Direkte EF-Inserts unter Umgehung des Stores belegen Unique-Schutz für Tenant/Aktivitätsausführung und Wait-ID sowie Fremdschlüssel für Definition und Prozess. Der fehlgeschlagene Schreibvorgang erhält jeweils das ursprüngliche Job-/Wait-Paar ohne zusätzliche Waits.
+- Scheduling nach Commit aus einem frischen DbContext lädt bei identischen Daten den persistierten Job, ohne Schreibzugriff oder doppelte Historie. Veränderte Eingaben werden als `external_task_scheduling_conflict` abgewiesen; das gespeicherte Snapshot bleibt unverändert.
+
+Die Tests verwenden getrennte Change Tracker mit gezielter Commitreihenfolge und eine gemeinsame SQLite-Verbindung. Sie sind **kein Nachweis paralleler PostgreSQL-Transaktionen**, keiner automatischen Konflikterholung und kein zusätzlicher Runtime-Abbruchnachweis: Der Prozessabschluss im Revisionsfall ist ein gezielt vorbereiteter Datenbankzustand. Mehrreplikat-Erholung/E02 und A02-Gesamtabnahme bleiben offen. Produktionscode musste für diese Fälle nicht geändert werden.
+
+Frischer Release-Build: 0 Fehler, 31 Warnungen. Folgender Lauf: **68 bestanden, 0 fehlgeschlagen, 0 übersprungen, 0 nicht ausgeführt**, 19,643 s:
+
+```powershell
+dotnet tests/VertexBPMN.Tests/bin/Release/net10.0/VertexBPMN.Tests.dll -class '*ExternalTaskSchedulingConcurrencyTests' -class '*ExternalTaskDeploymentTests' -class '*ExternalTaskContractResolverTests' -class '*ExternalTaskSchedulingPreviewTests' -class '*ExternalTaskPersistenceTests' -class '*ExternalTaskDefinitionTests' -class '*PersistentRuntimePhase2AcceptanceTests' -parallelMode none
+```
+
+Nächster Integrationsschritt: Konkurrenzfehler im öffentlichen Runtime-Aufrufpfad untersuchen und eine begrenzte, transaktionssichere Konflikterholung mit erneutem Laden der Prozess-/Aktivitätsidentität implementieren; kein Unique-Fehler als erfolgreicher Prozessstart. Anschließend reale PostgreSQL-Verifikation. Kein Commit/Push.
+
+### Fortsetzung 2026-09-13 – Inbox-Konflikte gezielt behandeln
+
+Untersuchung des öffentlichen `PersistentProcessExecutionRuntime.StartAsync`-Pfads: Der Inbox-Claim wird bereits vor der Prozessausführung gespeichert. Sein bisheriger Catch behandelte jedoch jeden `DbUpdateException` wie einen möglichen Idempotenzkonflikt. `ClaimInboxAsync` akzeptiert jetzt ausschließlich den Unique-Verstoß des konkreten Tenant/Operation/IdempotencyKey-Indexes: PostgreSQL SQLSTATE 23505 plus exakter Constraintname, SQLite ExtendedCode 2067 plus die betroffenen Inbox-Spalten. Andere Schreibfehler werden nicht umgedeutet und nicht automatisch wiederholt. Bei einem echten Inbox-Konflikt bleiben Rollback, Leeren des Trackers und Nachladen des bereits abgeschlossenen Ergebnisses erhalten.
+
+`ExternalTaskSchedulingPreviewTests` ergänzt drei Fälle am öffentlichen Runtime-Einstieg: Ein Command-Interceptor lässt gezielt nur den ersten Inbox-Lesezugriff den vorhandenen Eintrag übersehen; das folgende INSERT verletzt den echten SQLite-Unique-Constraint. Die Runtime liefert danach die vorhandene Prozess-ID, ohne zweiten Job/Wait. Dies ist ein deterministischer Stale-Read-Failpoint, kein echter paralleler Commit. Zwei SaveChanges-Failpoints prüfen, dass ein Fremdschlüsselfehler und ein Unique-Fehler einer anderen Tabelle als ursprüngliche `DbUpdateException` weitergegeben werden, ohne Wiederholungsversuch, Prozess oder Handlerwirkung.
+
+Verifikation: erster Build durch Sandbox-Schreibzugriff auf CLI-obj blockiert; Wiederholung außerhalb der Sandbox erfolgreich, 0 Fehler/32 Warnungen. Die 11 Previewfälle bestehen. Kombinierter Testbefehl des vorigen Abschnitts: **71 bestanden, 0 fehlgeschlagen, 0 übersprungen, 0 nicht ausgeführt**, 17,616 s.
+
+Keine allgemeine Wiederholung von `AdvanceAsync` eingeführt: Dort können bereits normale Service-Handler mit externen Seiteneffekten laufen. Sichere Wiederholung nach einem späteren Revisionskonflikt benötigt eine explizite Begrenzung auf transaktionale Ausführung oder vorherige Absicherung dieser Seiteneffekte. A02, echte PostgreSQL-Konkurrenz und automatische Erholung späterer Scheduling-Konflikte bleiben offen. Kein Commit/Push.

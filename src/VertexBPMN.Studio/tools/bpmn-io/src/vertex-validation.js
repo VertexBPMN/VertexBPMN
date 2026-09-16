@@ -36,6 +36,12 @@ function attr(element, name) {
 
 function collectFromExtensions(ownerId, values) {
   const issues = [];
+  const hasConnector = values.some(value => isVertexType(value, 'Connector'));
+  const hasExternalTask = values.some(value => isVertexType(value, 'ExternalTask'));
+  if (hasConnector && hasExternalTask) {
+    issues.push({ code: 'VEN-EXTERNAL-TASK-MIXED-HANDLER', severity: 'error', elementId: ownerId,
+      message: `'${ownerId}' cannot contain both vertex:connector and vertex:externalTask` });
+  }
   for (const value of values) {
     if (isVertexType(value, 'Connector')) {
       if (!attr(value, 'type')) {
@@ -53,6 +59,33 @@ function collectFromExtensions(ownerId, values) {
           elementId: ownerId,
           message: `vertex:connector on '${ownerId}' is missing required operationId`
         });
+      }
+    } else if (isVertexType(value, 'ExternalTask')) {
+      const topic = attr(value, 'topic');
+      const profile = attr(value, 'agentProfileRef');
+      const retries = attr(value, 'maxRetries');
+      const deadline = attr(value, 'deadlineSeconds');
+      if (!/^agent\.[a-z0-9.-]+$/.test(topic)) {
+        issues.push({ code: 'VEN-EXTERNAL-TASK-TOPIC', severity: 'error', elementId: ownerId, message: `Agent task '${ownerId}' requires a valid agent.* topic` });
+      }
+      if (!profile) {
+        issues.push({ code: 'VEN-EXTERNAL-TASK-PROFILE', severity: 'error', elementId: ownerId, message: `Agent task '${ownerId}' requires a tenant agent profile` });
+      } else if (!(window.VertexBpmnAgentProfiles || []).some(item => item.profileRef === profile && item.topic === topic)) {
+        issues.push({ code: 'VEN-EXTERNAL-TASK-PROFILE-UNAVAILABLE', severity: 'error', elementId: ownerId, message: `Agent profile '${profile}' is not available for this tenant and topic` });
+      }
+      if (!/^[0-9]$/.test(retries)) {
+        issues.push({ code: 'VEN-EXTERNAL-TASK-RETRIES', severity: 'error', elementId: ownerId, message: `Agent task '${ownerId}' requires maxRetries between 0 and 9` });
+      }
+      if (!/^\d+$/.test(deadline) || Number(deadline) < 1 || Number(deadline) > 86400) {
+        issues.push({ code: 'VEN-EXTERNAL-TASK-DEADLINE', severity: 'error', elementId: ownerId, message: `Agent task '${ownerId}' requires deadlineSeconds between 1 and 86400` });
+      }
+      const mapping = values.find(item => isVertexType(item, 'IoMapping'));
+      const outputs = mapping?.get('outputs') || [];
+      if (outputs.length && (outputs.length !== 1
+          || attr(outputs[0], 'name') !== 'result'
+          || !/^[A-Za-z0-9_]+$/.test(attr(outputs[0], 'target')))) {
+        issues.push({ code: 'VEN-EXTERNAL-TASK-OUTPUT-MAPPING', severity: 'error', elementId: ownerId,
+          message: `Agent task '${ownerId}' supports one complete result mapping: result=<processVariable>` });
       }
     } else if (isVertexType(value, 'Webhook')) {
       if (!attr(value, 'path')) {
@@ -169,6 +202,27 @@ function collectFromXml(xml) {
       }
       if (!xmlAttr(node, 'operationId')) {
         issues.push({ code: 'VEN-VERTEX-CONNECTOR-OPERATION', severity: 'error', elementId: ownerId, message: `vertex:connector on '${ownerId}' is missing required operationId` });
+      }
+    } else if (name === 'externalTask') {
+      const topic = xmlAttr(node, 'topic');
+      const profile = xmlAttr(node, 'agentProfileRef');
+      const retries = xmlAttr(node, 'maxRetries');
+      const deadline = xmlAttr(node, 'deadlineSeconds');
+      if (!/^agent\.[a-z0-9.-]+$/.test(topic)) issues.push({ code: 'VEN-EXTERNAL-TASK-TOPIC', severity: 'error', elementId: ownerId, message: `Agent task '${ownerId}' requires a valid agent.* topic` });
+      if (!profile) issues.push({ code: 'VEN-EXTERNAL-TASK-PROFILE', severity: 'error', elementId: ownerId, message: `Agent task '${ownerId}' requires a tenant agent profile` });
+      if (!/^[0-9]$/.test(retries)) issues.push({ code: 'VEN-EXTERNAL-TASK-RETRIES', severity: 'error', elementId: ownerId, message: `Agent task '${ownerId}' requires maxRetries between 0 and 9` });
+      if (!/^\d+$/.test(deadline) || Number(deadline) < 1 || Number(deadline) > 86400) issues.push({ code: 'VEN-EXTERNAL-TASK-DEADLINE', severity: 'error', elementId: ownerId, message: `Agent task '${ownerId}' requires deadlineSeconds between 1 and 86400` });
+      const siblings = [...node.parentNode.children];
+      if (siblings.some(sibling => sibling !== node && isVertexNode(sibling) && localName(sibling) === 'connector')) {
+        issues.push({ code: 'VEN-EXTERNAL-TASK-MIXED-HANDLER', severity: 'error', elementId: ownerId, message: `'${ownerId}' cannot contain both vertex:connector and vertex:externalTask` });
+      }
+      const mapping = siblings.find(sibling => isVertexNode(sibling) && localName(sibling) === 'ioMapping');
+      const outputs = mapping ? [...mapping.children].filter(child => isVertexNode(child) && localName(child) === 'output') : [];
+      if (outputs.length && (outputs.length !== 1
+          || xmlAttr(outputs[0], 'name') !== 'result'
+          || !/^[A-Za-z0-9_]+$/.test(xmlAttr(outputs[0], 'target')))) {
+        issues.push({ code: 'VEN-EXTERNAL-TASK-OUTPUT-MAPPING', severity: 'error', elementId: ownerId,
+          message: `Agent task '${ownerId}' supports one complete result mapping: result=<processVariable>` });
       }
     } else if (name === 'webhook' && !xmlAttr(node, 'path')) {
       issues.push({ code: 'VEN-VERTEX-WEBHOOK-PATH', severity: 'error', elementId: ownerId, message: `vertex:webhook on '${ownerId}' is missing required path` });

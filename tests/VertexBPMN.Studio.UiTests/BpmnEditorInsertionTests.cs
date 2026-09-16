@@ -48,6 +48,14 @@ public sealed class BpmnEditorInsertionTests
             </definitions>
             """;
         await page.EvaluateAsync("async xml => { window.modeler = await BpmnModelerInterop.createModeler('canvas', xml, 'properties'); }", xml);
+        await page.EvaluateAsync("""
+            () => BpmnModelerInterop.configureAgentProfiles([{
+              profileRef: 'contract-reviewer.v1', profileVersion: 'contract-reviewer.v1', topic: 'agent.contract-review',
+              maxAttempts: 2, maxDeadlineSeconds: 300,
+              inputs: [{ name: 'document' }, { name: 'documentId' }, { name: 'documentVersion' }],
+              outputs: [{ name: 'schemaVersion' }, { name: 'summary' }, { name: 'findings' }, { name: 'requiresHumanReview' }]
+            }])
+            """);
         var refusal = await page.EvaluateAsync<string>("""
             () => { try { BpmnModelerInterop.insertLowCodeNode(modeler, 'form'); return 'unexpected success'; } catch(e) { return e.message; } }
             """);
@@ -103,7 +111,7 @@ public sealed class BpmnEditorInsertionTests
         }
         await page.EvaluateAsync("() => { modeler.get('selection').select([]); modeler.get('canvas').zoom('fit-viewport'); }");
         await page.ScreenshotAsync(new() { Path = Path.Combine(screenshots, "if-insertion.png") });
-        foreach (var pattern in new[] { "http-retry", "webhook-if-http", "cron-batch-db", "user-approval", "decision-routing", "case-start" })
+        foreach (var pattern in new[] { "http-retry", "webhook-if-http", "cron-batch-db", "user-approval", "decision-routing", "case-start", "agent-contract-review" })
         {
             await page.EvaluateAsync("async xml => { await BpmnModelerInterop.loadXml(modeler, xml); modeler.get('commandStack').clear(); }", xml);
             await page.EvaluateAsync("id => { BpmnModelerInterop.insertLowCodePattern(modeler, id); }", pattern);
@@ -118,6 +126,25 @@ public sealed class BpmnEditorInsertionTests
                   const baseline = modeler.get('elementRegistry').getAll().filter(e => e.businessObject?.$instanceOf('bpmn:FlowNode')).length === 2;
                   stack.redo(); return baseline && modeler.get('elementRegistry').getAll().length === before; }
                 """));
+            if (pattern == "agent-contract-review")
+            {
+                var exportedAgentXml = await page.EvaluateAsync<string>("() => BpmnModelerInterop.getXml(modeler)");
+                Assert.Contains("vertex:externalTask", exportedAgentXml);
+                Assert.Contains("agentProfileRef=\"contract-reviewer.v1\"", exportedAgentXml);
+                Assert.Contains("name=\"document\" expression=\"document\"", exportedAgentXml);
+                Assert.Contains("name=\"result\" target=\"contractReview\"", exportedAgentXml);
+                Assert.DoesNotContain("name=\"findings\" target=\"findings\"", exportedAgentXml);
+                Assert.Contains("candidateGroups=\"contract-reviewers\"", exportedAgentXml);
+                Assert.DoesNotContain("providerUrl", exportedAgentXml, StringComparison.OrdinalIgnoreCase);
+                Assert.DoesNotContain("apiKey", exportedAgentXml, StringComparison.OrdinalIgnoreCase);
+                var invalidOutputXml = exportedAgentXml.Replace(
+                    "name=\"result\" target=\"contractReview\"",
+                    "name=\"findings\" target=\"findings\"",
+                    StringComparison.Ordinal);
+                var invalidOutputCodes = await page.EvaluateAsync<string[]>(
+                    "xml => window.VertexValidateBpmn(xml).map(issue => issue.code)", invalidOutputXml);
+                Assert.Contains("VEN-EXTERNAL-TASK-OUTPUT-MAPPING", invalidOutputCodes);
+            }
         }
     }
 }

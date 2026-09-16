@@ -50,6 +50,8 @@ public class ExecutionToken
     public int RetryCount { get;  set; }
     public string? State { get;  set; } = PendingState;
     public long Revision { get; set; }
+    public Guid? ActivityExecutionId { get; set; }
+    public Guid? ScopeExecutionId { get; set; }
 
     public void AssignWorker(string worker)
     {

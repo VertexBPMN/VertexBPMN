@@ -79,6 +79,11 @@ public sealed class BpmnStreamingParser
                 {
                     await ProcessElementAsync(xmlReader2, streamingContext, cancellationToken);
                 }
+                else if (xmlReader2.NodeType == XmlNodeType.EndElement
+                    && xmlReader2.LocalName is "subProcess" or "adHocSubProcess" or "transaction")
+                {
+                    if (streamingContext.ScopeIds.Count > 0) streamingContext.ScopeIds.Pop();
+                }
             }
         }
         catch (Exception ex)
@@ -104,6 +109,8 @@ public sealed class BpmnStreamingParser
         // Process known BPMN elements
         switch (localName)
         {
+            case "externalTask":
+                throw new InvalidOperationException("external_task_invalid_owner");
             case "process":
                 context.ProcessId = reader.GetAttribute("id") ?? string.Empty;
                 break;
@@ -131,6 +138,7 @@ public sealed class BpmnStreamingParser
                 
             case "subProcess":
             case "adHocSubProcess":
+            case "transaction":
                 await ProcessSubprocessElementAsync(reader, context, cancellationToken);
                 break;
         }
@@ -150,7 +158,7 @@ public sealed class BpmnStreamingParser
             var element = await ReadElementAsync(reader, cancellationToken);
             var definitions = ParseEventDefinitions(element);
             
-            context.Events.Add(new BpmnEvent(id, type, definitions, null, 
+            context.Events.Add(new BpmnEvent(id, type, definitions, context.ScopeIds.TryPeek(out var scope) ? scope : null,
                 name != null ? new Dictionary<string, string> { ["name"] = name } : null));
         }
     }
@@ -163,20 +171,16 @@ public sealed class BpmnStreamingParser
         
         if (!string.IsNullOrEmpty(id))
         {
-            // For streaming, we collect basic task info without full extension processing
-            var task = new BpmnTask(id, type, null, null) { Name = name };
-            
-            // Process extensions if present - but limit depth for memory efficiency
-            if (!reader.IsEmptyElement)
-            {
-                var extensions = await ProcessTaskExtensionsStreamingAsync(reader, cancellationToken);
-                if (extensions.Count > 0)
-                {
-                    task = task with { Attributes = extensions };
-                }
-            }
-            
-            context.Tasks.Add(task);
+            // Materialize only this activity, not the entire document. Reuse canonical
+            // task parsing so external mappings, loops and namespace validation cannot drift.
+            var element = await ReadElementAsync(reader, cancellationToken);
+            var ns = element.Name.Namespace;
+            var wrapper = new XElement(ns + "definitions",
+                new XElement(ns + "process", new XAttribute("id", context.ProcessId), element));
+            var parsed = await new BpmnParser(new BpmnParserOptions { EnableStreamingParse = false })
+                .ParseAsync(wrapper.ToString(SaveOptions.DisableFormatting), cancellationToken);
+            var task = parsed.Tasks.Single();
+            context.Tasks.Add(task with { SubprocessId = context.ScopeIds.TryPeek(out var scope) ? scope : null });
         }
     }
 
@@ -188,7 +192,7 @@ public sealed class BpmnStreamingParser
         
         if (!string.IsNullOrEmpty(id))
         {
-            context.Gateways.Add(new BpmnGateway(id, type, defaultFlow, null, null));
+            context.Gateways.Add(new BpmnGateway(id, type, defaultFlow, context.ScopeIds.TryPeek(out var scope) ? scope : null, null));
         }
     }
 
@@ -211,7 +215,7 @@ public sealed class BpmnStreamingParser
             }
             
             var extensions = name != null ? new Dictionary<string, string> { ["name"] = name } : null;
-            context.SequenceFlows.Add(new BpmnSequenceFlow(id, sourceRef, targetRef, false, conditionExpression, null, extensions, null));
+            context.SequenceFlows.Add(new BpmnSequenceFlow(id, sourceRef, targetRef, false, conditionExpression, context.ScopeIds.TryPeek(out var scope) ? scope : null, extensions, null));
         }
     }
 
@@ -223,14 +227,19 @@ public sealed class BpmnStreamingParser
         
         if (!string.IsNullOrEmpty(id))
         {
-            context.Subprocesses.Add(new BpmnSubprocess(id, triggeredByEvent, transaction, null, null, null));
+            context.Subprocesses.Add(new BpmnSubprocess(id, triggeredByEvent, transaction || reader.LocalName == "transaction", null, context.ScopeIds.TryPeek(out var scope) ? scope : null, null));
+            if (!reader.IsEmptyElement) context.ScopeIds.Push(id);
         }
     }
 
     private async Task<XElement> ReadElementAsync(XmlReader reader, CancellationToken cancellationToken)
     {
-        // Read the current element as XElement for detailed processing
-        return XElement.ReadFrom(reader) as XElement ?? throw new InvalidOperationException("Failed to read XML element");
+        // ReadSubtree leaves the parent on this element's end tag; the outer loop
+        // must not skip the immediately following sibling (XElement.ReadFrom does).
+        using var subtree = reader.ReadSubtree();
+        var element = await XElement.LoadAsync(subtree, LoadOptions.PreserveWhitespace, cancellationToken);
+        ExternalTaskValidation.ValidateXml(new XDocument(new XElement(element)));
+        return element;
     }
 
     private async Task<Dictionary<string, string>> ProcessTaskExtensionsStreamingAsync(XmlReader reader, CancellationToken cancellationToken)
@@ -320,6 +329,7 @@ public sealed class BpmnStreamingParser
         public List<BpmnGateway> Gateways { get; } = new();
         public List<BpmnSubprocess> Subprocesses { get; } = new();
         public List<BpmnSequenceFlow> SequenceFlows { get; } = new();
+        public Stack<string> ScopeIds { get; } = new();
         public int TotalElementsProcessed { get; set; }
     }
 }

@@ -203,6 +203,24 @@ function extensionElements(bpmnFactory, values) {
     return bpmnFactory.create("bpmn:ExtensionElements", { values });
 }
 
+function agentProfile(profileRef) {
+    const profiles = window.VertexBpmnAgentProfiles || [];
+    return profileRef ? profiles.find(profile => profile.profileRef === profileRef) : profiles[0];
+}
+
+function agentIoMapping(bpmnFactory, profile) {
+    return bpmnFactory.create("vertex:IoMapping", {
+        inputs: (profile.inputs || []).map(field => bpmnFactory.create("vertex:Input", {
+            name: field.name, expression: field.name
+        })),
+        // External-task completion validates the complete agent response against
+        // the profile schema and then stores it atomically as one result object.
+        outputs: [bpmnFactory.create("vertex:Output", {
+            name: "result", target: "contractReview"
+        })]
+    });
+}
+
 function lowCodeDefinition(modeler, kind) {
     const bpmnFactory = modeler.get("bpmnFactory");
     const processKey = rootProcessKey(modeler);
@@ -223,6 +241,27 @@ function lowCodeDefinition(modeler, kind) {
             };
         case "http":
             return { type: "bpmn:ServiceTask", name: "HTTP request", extensions: [bpmnFactory.create("vertex:Connector", { type: "http", operationId: "http-request" })] };
+        case "agent-contract-review": {
+            const profile = agentProfile("contract-reviewer.v1") || agentProfile();
+            if (!profile) throw new Error("No tenant agent profile is configured. Configure ExternalTasks:Contracts before using this preset.");
+            return {
+                type: "bpmn:ServiceTask", name: "Review contract with agent",
+                extensions: [
+                    bpmnFactory.create("vertex:ExternalTask", {
+                        topic: profile.topic,
+                        agentProfileRef: profile.profileRef,
+                        maxRetries: Math.max(0, Math.min(9, profile.maxAttempts - 1)),
+                        deadlineSeconds: Math.min(86400, profile.maxDeadlineSeconds)
+                    }),
+                    agentIoMapping(bpmnFactory, profile)
+                ]
+            };
+        }
+        case "human-agent-review":
+            return {
+                type: "bpmn:UserTask", name: "Human contract review",
+                extensions: [bpmnFactory.create("vertex:Assignment", { candidateGroups: "contract-reviewers" })]
+            };
         case "database":
             return { type: "bpmn:ServiceTask", name: "Database write", extensions: [bpmnFactory.create("vertex:Connector", { type: "database", operationId: "db-upsert" })] };
         case "start":
@@ -351,7 +390,8 @@ function insertLowCodePattern(modeler, patternId) {
         "cron-batch-db": ["timer", "batch", "database", "end"],
         "user-approval": ["start", "form", "end"],
         "decision-routing": ["start", "decision", "if", "form", "end"],
-        "case-start": ["start", "case", "end"]
+        "case-start": ["start", "case", "end"],
+        "agent-contract-review": ["start", "agent-contract-review", "human-agent-review", "end"]
     };
     const kinds = patterns[patternId];
     if (!kinds) throw new Error(`Unsupported low-code pattern '${patternId}'.`);
@@ -535,6 +575,19 @@ export const BpmnModelerInterop = {
         window.VertexBpmnDecisionOptions = (decisions || [])
             .filter(decision => decision && decision.key)
             .map(decision => ({ key: decision.key, name: decision.name || decision.key }));
+    },
+    configureAgentProfiles: function (profiles) {
+        window.VertexBpmnAgentProfiles = (profiles || [])
+            .filter(profile => profile && profile.profileRef && profile.topic)
+            .map(profile => ({
+                profileRef: profile.profileRef,
+                profileVersion: profile.profileVersion || profile.profileRef,
+                topic: profile.topic,
+                maxAttempts: profile.maxAttempts,
+                maxDeadlineSeconds: profile.maxDeadlineSeconds,
+                inputs: profile.inputs || [],
+                outputs: profile.outputs || []
+            }));
     },
     startSimulation: function (modeler) {
         if (!modeler || modeler.__vertexFallback) {

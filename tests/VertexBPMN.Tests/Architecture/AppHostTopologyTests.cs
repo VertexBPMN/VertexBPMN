@@ -135,6 +135,41 @@ public sealed class AppHostTopologyTests
         Assert.DoesNotContain("test-only-secret", secretEnvironmentValue.ToString(), StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task ExternalServicesOidcTestMode_OptionallyModelsLeastPrivilegeAgentWorker()
+    {
+        const string authority = "http://localhost:58080/realms/vertexbpmn";
+        var builder = DistributedApplication.CreateBuilder();
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["VertexBPMN:AuthenticationMode"] = "OidcTest",
+            ["VertexBPMN:Oidc:Authority"] = authority,
+            ["VertexBPMN:ContractReviewer:Enabled"] = "true",
+            ["VertexBPMN:ContractReviewer:TenantId"] = "tenant-a",
+            ["VertexBPMN:ContractReviewer:Model"] = "qwen3:8b",
+            ["Parameters:oidcStudioClientSecret"] = "studio-test-only",
+            ["Parameters:oidcWorkerClientSecret"] = "worker-test-only"
+        });
+
+        VertexBpmnAppHostTopology.ConfigureExternalServicesMode(builder);
+
+        var resources = builder.Resources.ToDictionary(resource => resource.Name);
+        var apiEnvironment = await ResolveEnvironmentAsync(resources["api"]);
+        var workerEnvironment = await ResolveEnvironmentAsync(resources["agent-worker"]);
+        var workerSecret = Assert.IsType<ParameterResource>(resources["oidcWorkerClientSecret"]);
+        Assert.True(workerSecret.Secret);
+        AssertWaitsFor(resources["agent-worker"], resources["api"]);
+        Assert.Equal("tenant-a", apiEnvironment["ExternalTasks__Contracts__0__TenantId"]);
+        Assert.Equal("agent.contract-review", apiEnvironment["ExternalTasks__Contracts__0__Topic"]);
+        Assert.Equal("true", workerEnvironment["ExternalTaskWorker__Enabled"]);
+        Assert.Equal("vertexbpmn-contract-reviewer", workerEnvironment["ExternalTaskWorker__ClientId"]);
+        Assert.Equal("agent.contract-review", workerEnvironment["ExternalTaskWorker__Topics__0"]);
+        Assert.Equal("qwen3:8b", workerEnvironment["ContractReviewer__Model"]);
+        Assert.IsAssignableFrom<IValueProvider>(workerEnvironment["ExternalTaskWorker__ClientSecret"]);
+        Assert.DoesNotContain("worker-test-only",
+            workerEnvironment["ExternalTaskWorker__ClientSecret"].ToString(), StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("https://identity.example.com/realms/vertexbpmn")]
     [InlineData("http://identity.example.com/realms/vertexbpmn")]

@@ -89,6 +89,20 @@ builder.Services.AddRateLimiter(options =>
 	var queueLimit = builder.Configuration.GetValue("RateLimiting:QueueLimit", 0);
 
 	options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+	options.OnRejected = async (context, cancellationToken) =>
+	{
+		if (!context.HttpContext.Request.Path.StartsWithSegments("/api/external-tasks")) return;
+		var retryAfter = context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var duration)
+			? duration : TimeSpan.FromSeconds(2);
+		context.HttpContext.Response.Headers.RetryAfter = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(
+			System.Globalization.CultureInfo.InvariantCulture);
+		context.HttpContext.Response.ContentType = "application/problem+json";
+		await context.HttpContext.Response.WriteAsJsonAsync(new
+		{
+			type = "about:blank", title = "External task rate limit exceeded.", status = 429,
+			code = "worker_rate_limited", traceId = context.HttpContext.TraceIdentifier
+		}, cancellationToken);
+	};
 	options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
 		RateLimitPartition.GetFixedWindowLimiter(
 			context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
@@ -97,6 +111,20 @@ builder.Services.AddRateLimiter(options =>
 				PermitLimit = permitLimit,
 				Window = TimeSpan.FromSeconds(windowSeconds),
 				QueueLimit = queueLimit,
+				AutoReplenishment = true
+			}));
+
+	// Worker leases have a separate identity-based budget. Five tokens permit a
+	// short burst; one token every two seconds sustains at most 30 operations/minute.
+	options.AddPolicy("ExternalTaskWorker", context =>
+		RateLimitPartition.GetTokenBucketLimiter(
+			$"{context.User.FindFirst("tenant_id")?.Value}:{context.User.FindFirst("sub")?.Value}",
+			_ => new TokenBucketRateLimiterOptions
+			{
+				TokenLimit = 5,
+				TokensPerPeriod = 1,
+				ReplenishmentPeriod = TimeSpan.FromSeconds(2),
+				QueueLimit = 0,
 				AutoReplenishment = true
 			}));
 });
@@ -116,8 +144,10 @@ builder.Services.AddWhen(moduleOptions.SignalR, s => s.AddSignalR());
 
 // Add services to the container.
 builder.Services.AddControllers().AddJsonOptions(options =>
-    options.JsonSerializerOptions.TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver
-    { Modifiers = { VertexBPMN.Api.Security.ModelExportJsonPolicy.Apply } });
+{
+	options.JsonSerializerOptions.TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver
+	{ Modifiers = { VertexBPMN.Api.Security.ModelExportJsonPolicy.Apply } };
+});
 builder.Services.AddHttpContextAccessor();
 
 // Authentication is disabled only in the dedicated test host, where tests install
@@ -365,8 +395,8 @@ app.MapHealthChecks("/api/ready", new Microsoft.AspNetCore.Diagnostics.HealthChe
 if (opMode != OperationalMode.Test)
 {
 	app.UseCors("Production");
-	app.UseRateLimiter();
 	app.UseAuthentication();
+	app.UseRateLimiter();
 }
 
 app.UseMiddleware<CorrelationIdMiddleware>();

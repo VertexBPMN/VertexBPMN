@@ -104,6 +104,11 @@ bootstrap_realm() {
     local studio_id
     studio_id="$(json_id_for clients clientId vertexbpmn-studio)"
     kcadm update "clients/$studio_id" -r vertexbpmn -s "secret=$VERTEXBPMN_KEYCLOAK_STUDIO_CLIENT_SECRET" >/dev/null
+    if [[ -n "${VERTEXBPMN_KEYCLOAK_WORKER_CLIENT_SECRET:-}" ]]; then
+        local worker_id
+        worker_id="$(json_id_for clients clientId vertexbpmn-contract-reviewer)"
+        kcadm update "clients/$worker_id" -r vertexbpmn -s "secret=$VERTEXBPMN_KEYCLOAK_WORKER_CLIENT_SECRET" >/dev/null
+    fi
     ensure_user vertexbpmn-user    tenant-a ProcessManager 0
     ensure_user vertexbpmn-mfa-user tenant-b ReadOnly       1
 }

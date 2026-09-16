@@ -40,6 +40,7 @@ public sealed class LocalStudioE2ETestHost : IAsyncLifetime
 
     public string RunId { get; private set; } = string.Empty;
     public string TenantId => $"studio-e2e-{RunId}";
+    public string AgentTenantName => $"Agent E2E {RunId}";
     public Uri ApiBaseAddress { get; private set; } = null!;
     public Uri StudioBaseAddress { get; private set; } = null!;
     public IBrowser Browser { get; private set; } = null!;
@@ -240,12 +241,35 @@ public sealed class LocalStudioE2ETestHost : IAsyncLifetime
             ["ApiKeyAuthentication__DevelopmentRoles__2"] = "ReadOnly"
         };
 
+        apiEnvironment["ExternalTasks__EnableSchedulingPreview"] = "true";
+        apiEnvironment["ExternalTasks__Contracts__0__TenantId"] = TenantId;
+        apiEnvironment["ExternalTasks__Contracts__0__Enabled"] = "true";
+        apiEnvironment["ExternalTasks__Contracts__0__Topic"] = "agent.contract-review";
+        apiEnvironment["ExternalTasks__Contracts__0__Version"] = "contract-review.v1";
+        apiEnvironment["ExternalTasks__Contracts__0__AgentProfileRef"] = "contract-reviewer.v1";
+        apiEnvironment["ExternalTasks__Contracts__0__AgentProfileVersion"] = "contract-reviewer.v1";
+        apiEnvironment["ExternalTasks__Contracts__0__MaxAttempts"] = "2";
+        apiEnvironment["ExternalTasks__Contracts__0__MaxDeadlineSeconds"] = "300";
+        AddContractField(apiEnvironment, "Inputs", 0, "document", "string", 65536);
+        AddContractField(apiEnvironment, "Inputs", 1, "documentId", "string", 256);
+        AddContractField(apiEnvironment, "Inputs", 2, "documentVersion", "string", 256);
+        var agentOutputs = new[]
+        {
+            ("schemaVersion", "string", 64), ("documentVersion", "string", 256),
+            ("summary", "string", 4096), ("findings", "string", 65536),
+            ("uncertainties", "string", 32768), ("requiresHumanReview", "boolean", 1),
+            ("promptVersion", "string", 128), ("documentHash", "string", 128)
+        };
+        for (var index = 0; index < agentOutputs.Length; index++)
+            AddContractField(apiEnvironment, "Outputs", index, agentOutputs[index].Item1, agentOutputs[index].Item2, agentOutputs[index].Item3);
+
         _apiProcess = StartProject(apiProject, configuration, ApiBaseAddress, apiEnvironment, _apiLogs);
         await WaitForEndpointAsync(
             new Uri(ApiBaseAddress, "api/ready"),
             _apiProcess,
             _apiLogs,
             "API readiness");
+        await CreateAgentTenantAsync(tenantConnection);
 
         var studioEnvironment = new Dictionary<string, string?>
         {
@@ -274,6 +298,34 @@ public sealed class LocalStudioE2ETestHost : IAsyncLifetime
             Headless = true,
             ExecutablePath = chromiumExecutable
         });
+    }
+
+    private static void AddContractField(
+        IDictionary<string, string?> environment, string direction, int index, string name, string type, int maxLength)
+    {
+        var prefix = $"ExternalTasks__Contracts__0__{direction}__{index}";
+        environment[$"{prefix}__Name"] = name;
+        environment[$"{prefix}__Type"] = type;
+        environment[$"{prefix}__Required"] = "true";
+        environment[$"{prefix}__MaxLength"] = maxLength.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        environment[$"{prefix}__AllowExternalTransfer"] = "true";
+    }
+
+    private async Task CreateAgentTenantAsync(string connectionString)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO "Tenants" ("Id", "Name", "Description", "CreatedAt")
+            VALUES (@id, @name, @description, @createdAt)
+            ON CONFLICT ("Id") DO NOTHING;
+            """;
+        command.Parameters.AddWithValue("id", TenantId);
+        command.Parameters.AddWithValue("name", AgentTenantName);
+        command.Parameters.AddWithValue("description", "Isolated external-agent Studio E2E tenant");
+        command.Parameters.AddWithValue("createdAt", DateTime.UtcNow);
+        await command.ExecuteNonQueryAsync();
     }
 
     public async ValueTask DisposeAsync()

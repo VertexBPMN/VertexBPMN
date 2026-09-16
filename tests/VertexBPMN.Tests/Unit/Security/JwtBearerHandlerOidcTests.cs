@@ -63,6 +63,32 @@ public sealed class JwtBearerHandlerOidcTests
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData("valid", HttpStatusCode.OK)]
+    [InlineData("admin-only", HttpStatusCode.Forbidden)]
+    [InlineData("missing-topic", HttpStatusCode.Forbidden)]
+    [InlineData("wildcard-topic", HttpStatusCode.Forbidden)]
+    public async Task WorkerPolicyAndPrincipalValidationUseRealJwtBearerHandler(
+        string variant, HttpStatusCode expected)
+    {
+        using var signingKey = RSA.Create(2048);
+        await using var host = await CreateHostAsync(signingKey);
+        var claims = new Dictionary<string, object>
+        {
+            ["preferred_username"] = "external-worker",
+            ["sub"] = "worker-1",
+            ["tenant_id"] = "tenant-a",
+            ["roles"] = variant == "admin-only" ? "Admin" : "ExternalTaskWorker"
+        };
+        if (variant != "missing-topic")
+            claims["external_task_topic"] = variant == "wildcard-topic" ? "*" : "documents";
+        var token = Token(signingKey, Issuer, Audience, DateTime.UtcNow.AddMinutes(5), claims);
+
+        var response = await SendAsync(host, token, "/worker");
+
+        Assert.Equal(expected, response.StatusCode);
+    }
+
     private static async Task<WebApplication> CreateHostAsync(RSA trustedKey)
     {
         var securityKey = new RsaSecurityKey(trustedKey) { KeyId = "trusted-key" };
@@ -92,13 +118,18 @@ public sealed class JwtBearerHandlerOidcTests
                 context.User.FindFirst("tenant_id")?.Value,
                 context.User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value))
             .RequireAuthorization();
+        app.MapGet("/worker", (HttpContext context) =>
+                ExternalTaskWorkerPrincipal.TryCreate(context.User, out _, out _)
+                    ? Results.Ok()
+                    : Results.Forbid())
+            .RequireAuthorization("ExternalTaskWorker");
         await app.StartAsync(TestContext.Current.CancellationToken);
         return app;
     }
 
-    private static async Task<HttpResponseMessage> SendAsync(WebApplication app, string token)
+    private static async Task<HttpResponseMessage> SendAsync(WebApplication app, string token, string path = "/secured")
     {
-        var request = new HttpRequestMessage(HttpMethod.Get, "/secured");
+        var request = new HttpRequestMessage(HttpMethod.Get, path);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         return await app.GetTestClient().SendAsync(request, TestContext.Current.CancellationToken);
     }
@@ -121,6 +152,12 @@ public sealed class JwtBearerHandlerOidcTests
         if (includeTenant)
             claims["tenant_id"] = "tenant-a";
 
+        return Token(key, issuer, audience, expires, claims);
+    }
+
+    private static string Token(RSA key, string issuer, string audience, DateTime expires,
+        IDictionary<string, object> claims)
+    {
         return new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
         {
             Issuer = issuer,

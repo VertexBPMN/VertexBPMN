@@ -423,6 +423,8 @@ public partial class ProcessEngine : IProcessEngine
         bool allowEventSubprocessStarts = false)
     {
         ArgumentNullException.ThrowIfNull(model);
+        VertexBPMN.Engine.Parsing.ExternalTaskValidation.RejectUnsupported(model,
+            key => _registeredModels.GetValueOrDefault(key));
         var executionId = Guid.NewGuid().ToString("N");
         var startedAt = DateTime.UtcNow;
         _lastExecutionId = executionId;

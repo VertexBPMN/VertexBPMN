@@ -4,13 +4,13 @@
     <ProjectReference Include="..\VertexBPMN.Domain\VertexBPMN.Domain.csproj" />
   </ItemGroup>
 <ItemGroup>
-		<PackageReference Include="Confluent.Kafka" Version="2.15.0" />
-		<PackageReference Include="Jint" Version="4.16.1" />
+		<PackageReference Include="Confluent.Kafka" Version="2.15.1" />
+		<PackageReference Include="Jint" Version="4.16.2" />
         <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="5.9.0" />
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.9.0" />
-        <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.11" />
-        <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.11" />
-        <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.11" />
+        <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.12" />
+        <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.12" />
+        <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.12" />
 		<PackageReference Include="Microsoft.SemanticKernel" Version="1.80.1" />
 		<PackageReference Include="Microsoft.SemanticKernel.Connectors.AzureOpenAI" Version="1.80.1" />
 		<PackageReference Include="Microsoft.SemanticKernel.Connectors.OpenAI" Version="1.80.1" />

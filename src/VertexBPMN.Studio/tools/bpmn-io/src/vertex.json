@@ -112,6 +112,16 @@
         { "name": "id", "isAttr": true, "type": "String" },
         { "name": "kind", "isAttr": true, "type": "String" }
       ]
+    },
+    {
+      "name": "ExternalTask",
+      "superClass": ["Element"],
+      "properties": [
+        { "name": "topic", "isAttr": true, "type": "String" },
+        { "name": "agentProfileRef", "isAttr": true, "type": "String" },
+        { "name": "maxRetries", "isAttr": true, "type": "Integer" },
+        { "name": "deadlineSeconds", "isAttr": true, "type": "Integer" }
+      ]
     }
   ]
 }

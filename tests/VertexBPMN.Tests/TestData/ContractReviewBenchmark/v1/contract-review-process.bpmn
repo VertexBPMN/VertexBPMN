@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  xmlns:vertex="https://vertexbpmn.io/schema/bpmn/1.0"
+                  id="Definitions_ContractReview_v1"
+                  targetNamespace="https://vertexbpmn.io/examples/contract-review/v1">
+  <bpmn:process id="contract-review-v1" name="Contract review with mandatory human decision" isExecutable="true">
+    <bpmn:startEvent id="start" name="Contract received" />
+    <bpmn:serviceTask id="agent-review" name="Read-only agent pre-review">
+      <bpmn:extensionElements>
+        <vertex:externalTask topic="agent.contract-review"
+                             agentProfileRef="contract-reviewer.v1"
+                             maxRetries="1"
+                             deadlineSeconds="300" />
+        <vertex:ioMapping>
+          <vertex:input name="document" expression="document" />
+          <vertex:input name="documentId" expression="documentId" />
+          <vertex:input name="documentVersion" expression="documentVersion" />
+          <vertex:output name="result" target="contractReview" />
+        </vertex:ioMapping>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+    <bpmn:boundaryEvent id="review-timeout" name="Agent deadline reached" attachedToRef="agent-review" cancelActivity="true">
+      <bpmn:timerEventDefinition>
+        <bpmn:timeDuration>PT5M</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+    <bpmn:userTask id="human-review" name="Human contract review">
+      <bpmn:extensionElements>
+        <vertex:assignment candidateGroups="contract-reviewers" />
+      </bpmn:extensionElements>
+    </bpmn:userTask>
+    <bpmn:userTask id="manual-recovery" name="Manual review after agent failure">
+      <bpmn:extensionElements>
+        <vertex:assignment candidateGroups="contract-reviewers" />
+      </bpmn:extensionElements>
+    </bpmn:userTask>
+    <bpmn:endEvent id="reviewed" name="Human decision recorded" />
+    <bpmn:endEvent id="recovered" name="Manual recovery recorded" />
+    <bpmn:sequenceFlow id="flow-start-agent" sourceRef="start" targetRef="agent-review" />
+    <bpmn:sequenceFlow id="flow-agent-human" sourceRef="agent-review" targetRef="human-review" />
+    <bpmn:sequenceFlow id="flow-human-end" sourceRef="human-review" targetRef="reviewed" />
+    <bpmn:sequenceFlow id="flow-timeout-manual" sourceRef="review-timeout" targetRef="manual-recovery" />
+    <bpmn:sequenceFlow id="flow-manual-end" sourceRef="manual-recovery" targetRef="recovered" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="Diagram_ContractReview_v1">
+    <bpmndi:BPMNPlane id="Plane_ContractReview_v1" bpmnElement="contract-review-v1">
+      <bpmndi:BPMNShape id="start_di" bpmnElement="start"><dc:Bounds x="100" y="150" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="agent_di" bpmnElement="agent-review"><dc:Bounds x="190" y="128" width="120" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="timeout_di" bpmnElement="review-timeout"><dc:Bounds x="256" y="190" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="human_di" bpmnElement="human-review"><dc:Bounds x="370" y="80" width="120" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="manual_di" bpmnElement="manual-recovery"><dc:Bounds x="370" y="230" width="140" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="reviewed_di" bpmnElement="reviewed"><dc:Bounds x="560" y="102" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="recovered_di" bpmnElement="recovered"><dc:Bounds x="560" y="252" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="flow-start-agent_di" bpmnElement="flow-start-agent"><di:waypoint x="136" y="168" /><di:waypoint x="190" y="168" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow-agent-human_di" bpmnElement="flow-agent-human"><di:waypoint x="310" y="168" /><di:waypoint x="340" y="168" /><di:waypoint x="340" y="120" /><di:waypoint x="370" y="120" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow-human-end_di" bpmnElement="flow-human-end"><di:waypoint x="490" y="120" /><di:waypoint x="560" y="120" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow-timeout-manual_di" bpmnElement="flow-timeout-manual"><di:waypoint x="274" y="226" /><di:waypoint x="274" y="270" /><di:waypoint x="370" y="270" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow-manual-end_di" bpmnElement="flow-manual-end"><di:waypoint x="510" y="270" /><di:waypoint x="560" y="270" /></bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

@@ -1,6 +1,7 @@
 @page "/execution-details"
 @using System.Text.Json
 @inject IExecutionDetailsService ExecutionDetailsService
+@inject IExternalTaskOperationsService ExternalTaskOperationsService
 @inject StudioTenantContext TenantContext
 
 <PageTitle>Execution Details</PageTitle>
@@ -15,6 +16,7 @@
     <MudDivider Vertical="true" FlexItem="true" Class="studio-toolbar-divider" />
     <MudTextField @bind-Value="_processInstanceIdText" Label="Process instance id for variables" Variant="Variant.Outlined" Margin="Margin.Dense" Class="studio-query-field" />
     <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.DataObject" OnClick="LoadVariablesAsync" Disabled="_isLoading">Load variables</MudButton>
+    <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Outlined.SmartToy" OnClick="LoadExternalTasksAsync" Disabled="_isLoading">Load agent jobs</MudButton>
 </StudioToolbar>
 
 @if (_isLoading)
@@ -27,6 +29,39 @@
     <StudioStatePanel Title="Execution details could not be loaded"
                       Description="@_error"
                       Icon="@Icons.Material.Outlined.ErrorOutline" />
+}
+else if (_externalTasks is not null)
+{
+    <MudPaper Class="studio-result-card" Elevation="0" data-testid="external-task-operations-result">
+        <div class="studio-content-card__header">
+            <div>
+                <MudText Typo="Typo.overline" Color="Color.Secondary">Process-scoped external work</MudText>
+                <MudText Typo="Typo.h6">Agent jobs</MudText>
+            </div>
+        </div>
+        @if (_externalTasks.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info">No external agent job exists for this process instance. A configured profile does not prove that a worker is currently online.</MudAlert>
+        }
+        else
+        {
+            <MudTable Items="_externalTasks" Dense="true" Hover="true">
+                <HeaderContent>
+                    <MudTh>Process / element</MudTh><MudTh>Status</MudTh><MudTh>Attempts</MudTh><MudTh>Deadline (UTC)</MudTh><MudTh>Error code</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Process / element">
+                        <MudLink Href="/process-instances">@context.ProcessInstanceId</MudLink><br />
+                        <MudText Typo="Typo.caption">@context.ActivityId · @context.Topic · @(context.AgentProfileVersion ?? context.AgentProfileRef ?? "external worker")</MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Status">@ExternalTaskStateLabel(context.State)</MudTd>
+                    <MudTd DataLabel="Attempts">@context.AttemptsStarted / @context.MaxAttempts</MudTd>
+                    <MudTd DataLabel="Deadline">@FromUnixMilliseconds(context.Deadline)</MudTd>
+                    <MudTd DataLabel="Error code">@(context.ErrorCode ?? "—")</MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudPaper>
 }
 else if (_result is not null)
 {
@@ -53,6 +88,7 @@ else
     private string _processInstanceIdText = string.Empty;
     private string? _error;
     private bool _isLoading;
+    private IReadOnlyList<StudioExternalTaskOperation>? _externalTasks;
 
     private Task LoadJobsAsync() => LoadAsync("Jobs", () => ExecutionDetailsService.GetJobsAsync(TenantContext.CurrentTenantId));
 
@@ -68,12 +104,45 @@ else
         return LoadAsync("Variables", () => ExecutionDetailsService.GetVariablesAsync(processInstanceId));
     }
 
+    private async Task LoadExternalTasksAsync()
+    {
+        if (!Guid.TryParse(_processInstanceIdText, out var processInstanceId))
+        {
+            _error = "Enter a valid process instance id.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(TenantContext.CurrentTenantId))
+        {
+            _error = "Select a tenant before loading agent jobs.";
+            return;
+        }
+
+        _isLoading = true;
+        _error = null;
+        _result = null;
+        try
+        {
+            _externalTasks = await ExternalTaskOperationsService.ListForProcessAsync(
+                TenantContext.CurrentTenantId, processInstanceId);
+        }
+        catch (Exception exception)
+        {
+            _externalTasks = null;
+            _error = $"Agent jobs could not be loaded: {exception.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
     private async Task LoadAsync(string title, Func<Task<JsonElement>> load)
     {
         _isLoading = true;
         _error = null;
         try
         {
+            _externalTasks = null;
             _resultTitle = title;
             _result = await load();
         }
@@ -89,4 +158,14 @@ else
 
     private static string Format(JsonElement value) =>
         JsonSerializer.Serialize(value, new JsonSerializerOptions { WriteIndented = true });
+
+    private static string FromUnixMilliseconds(long value) =>
+        DateTimeOffset.FromUnixTimeMilliseconds(value).UtcDateTime.ToString("u");
+
+    private static string ExternalTaskStateLabel(string state) => state switch
+    {
+        "Ready" => "Ready — waiting for worker",
+        "RetryScheduled" => "Retry scheduled — waiting",
+        _ => state
+    };
 }

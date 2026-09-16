@@ -248,6 +248,7 @@ builder.Services.AddScoped<IMigrationService, HttpMigrationService>();
 builder.Services.AddScoped<IMessageSignalService, HttpMessageSignalService>();
 builder.Services.AddScoped<StudioTenantContext>();
 builder.Services.AddScoped<IExecutionDetailsService, HttpExecutionDetailsService>();
+builder.Services.AddScoped<IExternalTaskOperationsService, HttpExternalTaskOperationsService>();
 builder.Services.AddScoped<IPluginService, HttpPluginService>();
 builder.Services.AddScoped<IWorkflowTriggerService, HttpWorkflowTriggerService>();
 

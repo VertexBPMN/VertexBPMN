@@ -47,6 +47,8 @@ public record BpmnSequenceFlow(string Id,string SourceRef,string TargetRef,bool 
 }
 public record BpmnTask(string Id,string Type, string? SubprocessId = null,  Dictionary<string,string>? Attributes=null, string? Implementation = null)
 {
+    public ExternalTaskDefinition? ExternalTask => ExternalTaskDefinition.FromAttributes(Attributes);
+    public LoopCharacteristics? Loop { get; init; }
     public string? ProcessId { get; init; }
     // Add Name property for compatibility
     public string Name { get; init; } = string.Empty;

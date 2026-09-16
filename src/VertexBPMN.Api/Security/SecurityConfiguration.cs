@@ -135,6 +135,14 @@ public static class SecurityConfiguration
 
             options.AddPolicy("ApiKeyRequired", policy =>
                 policy.RequireAuthenticatedUser().AddAuthenticationSchemes("ApiKey"));
+
+            options.AddPolicy("ExternalTaskWorker", policy => policy
+                .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
+                .RequireAuthenticatedUser()
+                .RequireRole("ExternalTaskWorker")
+                .RequireClaim(VertexOidcClaims.SubjectClaimType)
+                .RequireClaim(VertexOidcClaims.TenantClaimType)
+                .RequireClaim(VertexOidcClaims.ExternalTaskTopicClaimType));
         });
 
         // CORS

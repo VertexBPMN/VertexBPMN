@@ -25,6 +25,7 @@
     [Parameter] public string Xml { get; set; } = string.Empty;
     [Parameter] public IReadOnlyList<StudioConnectorTemplate> ConnectorTemplates { get; set; } = [];
     [Parameter] public IReadOnlyList<StudioDecisionOption> DecisionOptions { get; set; } = [];
+    [Parameter] public IReadOnlyList<StudioExternalTaskProfile> AgentProfiles { get; set; } = [];
 
     private readonly string _canvasId = $"bpmn-modeler-{Guid.NewGuid():N}";
     private readonly string _propertiesPanelId = $"bpmn-properties-{Guid.NewGuid():N}";
@@ -53,6 +54,7 @@
         _initialized = true;
         await ConfigureQuickInsertAsync(ConnectorTemplates);
         await ConfigureDecisionPickerAsync(DecisionOptions);
+        await ConfigureAgentProfilesAsync(AgentProfiles);
     }
 
     protected override async Task OnParametersSetAsync()
@@ -67,6 +69,7 @@
         {
             await ConfigureQuickInsertAsync(ConnectorTemplates);
             await ConfigureDecisionPickerAsync(DecisionOptions);
+            await ConfigureAgentProfilesAsync(AgentProfiles);
         }
     }
 
@@ -111,6 +114,14 @@
             return;
 
         await _module.InvokeVoidAsync("BpmnModelerInterop.configureDecisionPicker", decisions);
+    }
+
+    public async Task ConfigureAgentProfilesAsync(IReadOnlyList<StudioExternalTaskProfile> profiles)
+    {
+        if (_module is null)
+            return;
+
+        await _module.InvokeVoidAsync("BpmnModelerInterop.configureAgentProfiles", profiles);
     }
 
     public async Task<string> GetXmlAsync()

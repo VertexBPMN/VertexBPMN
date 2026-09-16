@@ -15,14 +15,20 @@ public class RepositoryService : IRepositoryService
     private readonly IBpmnParser _parser;
     private readonly bool _scriptsEnabled;
     private readonly bool _allowCSharp;
+    private readonly bool _externalTasksEnabled;
+    private readonly IExternalTaskContractResolver? _externalContracts;
 
     public RepositoryService(
         IProcessDefinitionRepository repo,
         IBpmnParser parser,
-        Microsoft.Extensions.Configuration.IConfiguration configuration)
+        Microsoft.Extensions.Configuration.IConfiguration configuration,
+        IExternalTaskContractResolver? externalContracts = null)
     {
         _repo = repo;
         _parser = parser;
+        _externalContracts = externalContracts;
+        _externalTasksEnabled = configuration.GetValue<bool>("ExternalTasks:Enabled")
+            || configuration.GetValue<bool>("ExternalTasks:EnableSchedulingPreview");
         _scriptsEnabled = configuration.GetValue("Runtime:Scripts:Enabled", true);
         // Roslyn C# script execution is NOT sandboxed. Keep it off unless an operator
         // explicitly opts in, so untrusted tenant-deployed BPMN cannot get RCE.
@@ -37,7 +43,17 @@ public class RepositoryService : IRepositoryService
             throw new VertexBPMN.Domain.Exceptions.SecurityException("A redacted export cannot be deployed. Replace inline credentials with credential references first.");
         tenantId = string.IsNullOrWhiteSpace(tenantId) ? null : tenantId.Trim();
 
-        var model = await _parser.ParseAsync(bpmnXml, cancellationToken);
+        BpmnModel model;
+        try
+        {
+            model = await _parser.ParseAsync(bpmnXml, cancellationToken);
+        }
+        catch (InvalidOperationException error) when (error.Message.StartsWith("external_task_", StringComparison.Ordinal))
+        {
+            throw new BpmnDeploymentValidationException([new ValidationDiagnostic(
+                Code: "VEN-EXTERNAL-TASK-CONTRACT", Severity: ValidationSeverity.Error,
+                Message: error.Message, Category: "Vertex")]);
+        }
         if (string.IsNullOrWhiteSpace(model.ProcessId))
             throw new InvalidOperationException("The BPMN model does not contain a process id.");
 
@@ -47,6 +63,29 @@ public class RepositoryService : IRepositoryService
             .ToArray();
         if (errors.Length > 0)
             throw new BpmnDeploymentValidationException(errors);
+
+        foreach (var task in model.Tasks.Where(task => task.ExternalTask is not null))
+        {
+            try
+            {
+                if (!_externalTasksEnabled || _externalContracts is null)
+                    throw new InvalidOperationException("external_task_feature_not_enabled");
+                if (tenantId is null)
+                    throw new InvalidOperationException("external_task_tenant_required");
+                var inputs = (task.Attributes ?? []).Where(item => item.Key.StartsWith("vertex:ioMapping.input.", StringComparison.Ordinal)).ToArray();
+                if (inputs.Any(item => string.IsNullOrWhiteSpace(item.Value)
+                    || item.Value.Any(character => !(char.IsLetterOrDigit(character) || character == '_'))))
+                    throw new InvalidOperationException("external_task_input_expression_unsupported");
+                await _externalContracts.ValidateDeploymentAsync(tenantId, task.ExternalTask!,
+                    inputs.Select(item => item.Key["vertex:ioMapping.input.".Length..]).ToArray(), cancellationToken);
+            }
+            catch (InvalidOperationException error)
+            {
+                throw new BpmnDeploymentValidationException([new ValidationDiagnostic(
+                    Code: "VEN-EXTERNAL-TASK-CONTRACT", Severity: ValidationSeverity.Error,
+                    Message: error.Message, ElementId: task.Id, Category: "Vertex")]);
+            }
+        }
 
         if (!_scriptsEnabled && model.Tasks.Any(task => task.Type.Equals("scriptTask", StringComparison.OrdinalIgnoreCase)))
             throw new InvalidOperationException("BPMN script tasks are disabled for the in-process production runtime.");

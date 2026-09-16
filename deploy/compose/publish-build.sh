@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Publish API + Studio on the HOST, then (re)build/start the compose stack.
+# Publish API + Studio + AgentWorker on the HOST, then (re)build/start the compose stack.
 #
 # Why host-publish? The original repo Dockerfiles do a solution-wide
 # `dotnet restore VertexBPMN.sln` + publish *inside* the container, which needs
@@ -20,6 +20,10 @@ dotnet publish "../../src/VertexBPMN.Api/VertexBPMN.Api.csproj" \
 echo "== Host-publish VertexBPMN.Studio =="
 dotnet publish "../../src/VertexBPMN.Studio/VertexBPMN.Studio.csproj" \
     -c Release -o publish/studio /p:UseAppHost=false /p:SkipBpmnIoAssetBuild=true
+
+echo "== Host-publish VertexBPMN.AgentWorker =="
+dotnet publish "../../src/VertexBPMN.AgentWorker/VertexBPMN.AgentWorker.csproj" \
+    -c Release -o publish/agent-worker /p:UseAppHost=false
 
 echo "== docker compose up -d --build =="
 docker compose up -d --build "$@"

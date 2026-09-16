@@ -10,6 +10,7 @@
 @inject VertexBPMN.Studio.Services.IConnectorTemplateService ConnectorTemplateService
 @inject VertexBPMN.Studio.Services.ICredentialService CredentialService
 @inject VertexBPMN.Studio.Services.IDmnService DmnService
+@inject VertexBPMN.Studio.Services.IExternalTaskOperationsService ExternalTaskOperationsService
 @inject VertexBPMN.Studio.Services.StudioTenantContext TenantContext
 @inject MudBlazor.ISnackbar Snackbar
 @inject NavigationManager Navigation
@@ -117,7 +118,7 @@
             </div>
             <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.Edit">Editing</MudChip>
         </div>
-        <BpmnModelerSurface @ref="_modeler" Xml="@_bpmnXml" ConnectorTemplates="_templates" DecisionOptions="_decisions" />
+        <BpmnModelerSurface @ref="_modeler" Xml="@_bpmnXml" ConnectorTemplates="_templates" DecisionOptions="_decisions" AgentProfiles="_agentProfiles" />
     </MudPaper>
 
     <div class="studio-bpmn-tools">
@@ -244,6 +245,7 @@
     private IReadOnlyList<StudioConnectorTemplate> _templates = [];
     private IReadOnlyList<StudioCredential> _credentials = [];
     private IReadOnlyList<StudioDecisionOption> _decisions = [];
+    private IReadOnlyList<StudioExternalTaskProfile> _agentProfiles = [];
     private bool _showNodeCatalog;
     private string _nodeSearch = string.Empty;
     private string _xmlPreview = FallbackBpmn;
@@ -352,7 +354,8 @@
         new("cron-batch-db", "Cron → Batch → DB"),
         new("user-approval", "User approval with form"),
         new("decision-routing", "Decision table routing"),
-        new("case-start", "Case start from BPMN")
+        new("case-start", "Case start from BPMN"),
+        new("agent-contract-review", "Agent contract review → human review")
     ];
 
     private IEnumerable<LowCodeNode> FilteredNodes => LowCodeNodes.Where(node =>
@@ -385,6 +388,7 @@
         await LoadBpmnXml(showNotification: false);
         await LoadConnectorTemplatesAsync();
         await LoadDecisionOptionsAsync();
+        await LoadAgentProfilesAsync();
         await LoadDeployedDefinitionsAsync();
     }
 
@@ -400,6 +404,7 @@
         {
             await LoadConnectorTemplatesAsync();
             await LoadDecisionOptionsAsync();
+            await LoadAgentProfilesAsync();
             await LoadDeployedDefinitionsAsync();
             StateHasChanged();
         });
@@ -585,6 +590,24 @@
         _versionDiff = added == 0 && removed == 0
             ? "The editor and deployed version are equivalent after whitespace normalization."
             : $"Compared with deployed version: {added} changed/added line(s), {removed} removed line(s).";
+    }
+
+    private async Task LoadAgentProfilesAsync()
+    {
+        var tenantId = TenantContext.CurrentTenantId;
+        try
+        {
+            _agentProfiles = string.IsNullOrWhiteSpace(tenantId)
+                ? []
+                : await ExternalTaskOperationsService.ListProfilesAsync(tenantId);
+        }
+        catch
+        {
+            _agentProfiles = [];
+        }
+
+        if (_modeler is not null)
+            await _modeler.ConfigureAgentProfilesAsync(_agentProfiles);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

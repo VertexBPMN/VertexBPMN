@@ -84,7 +84,29 @@ public sealed class KeycloakRealmTemplateTests
             .EnumerateArray()
             .Select(role => role.GetProperty("name").GetString())
             .ToArray();
-        Assert.Equal(["Admin", "ProcessManager", "ReadOnly"], roleNames);
+        Assert.Equal(["Admin", "ProcessManager", "ReadOnly", "ExternalTaskWorker"], roleNames);
+    }
+
+    [Fact]
+    public void RealmTemplate_DefinesLeastPrivilegeContractReviewServiceAccount()
+    {
+        using var document = JsonDocument.Parse(File.ReadAllText(RealmTemplatePath));
+        var worker = FindByName(document.RootElement.GetProperty("clients"), "clientId",
+            "vertexbpmn-contract-reviewer");
+
+        Assert.True(worker.GetProperty("serviceAccountsEnabled").GetBoolean());
+        Assert.False(worker.GetProperty("standardFlowEnabled").GetBoolean());
+        Assert.False(worker.GetProperty("implicitFlowEnabled").GetBoolean());
+        Assert.False(worker.GetProperty("directAccessGrantsEnabled").GetBoolean());
+        var mappers = worker.GetProperty("protocolMappers");
+        AssertHardcodedClaim(mappers, "roles", "ExternalTaskWorker");
+        AssertHardcodedClaim(mappers, "tenant_id", "tenant-a");
+        AssertHardcodedClaim(mappers, "external_task_topic", "agent.contract-review");
+        AssertHardcodedClaim(mappers, "external_task_profile", "contract-reviewer.v1");
+        Assert.Contains(mappers.EnumerateArray(), mapper =>
+            mapper.GetProperty("protocolMapper").GetString() == "oidc-audience-mapper"
+            && mapper.GetProperty("config").GetProperty("included.client.audience").GetString()
+                == "vertexbpmn-api");
     }
 
     [Fact]
@@ -115,6 +137,15 @@ public sealed class KeycloakRealmTemplateTests
     private static JsonElement FindByName(JsonElement array, string propertyName, string expectedValue) =>
         array.EnumerateArray().Single(item =>
             string.Equals(item.GetProperty(propertyName).GetString(), expectedValue, StringComparison.Ordinal));
+
+    private static void AssertHardcodedClaim(JsonElement mappers, string claim, string value)
+    {
+        Assert.Contains(mappers.EnumerateArray(), mapper =>
+            mapper.GetProperty("protocolMapper").GetString() == "oidc-hardcoded-claim-mapper"
+            && mapper.GetProperty("config").GetProperty("claim.name").GetString() == claim
+            && mapper.GetProperty("config").GetProperty("claim.value").GetString() == value
+            && mapper.GetProperty("config").GetProperty("access.token.claim").GetString() == "true");
+    }
 
     private static IEnumerable<string> EnumeratePropertyNames(JsonElement element)
     {

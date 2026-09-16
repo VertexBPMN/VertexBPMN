@@ -21,6 +21,7 @@ const xml = `<?xml version="1.0" encoding="UTF-8"?>
               <vertex:decision decisionRef="shipping.decision" binding="latest" />
         <vertex:form formRef="approval-form" formVersion="2" />
         <vertex:case caseRef="claims-case" />
+        <vertex:externalTask topic="agent.contract-review" agentProfileRef="contract-reviewer.v1" maxRetries="1" deadlineSeconds="300" />
       </bpmn:extensionElements>
     </bpmn:serviceTask>
   </bpmn:process>
@@ -37,9 +38,12 @@ if (!connector) {
 }
 connector.set('timeoutMs', 15000);
 const { xml: out } = await moddle.toXML(rootElement, { format: true });
-for (const token of ['vertex:connector', 'vertex:decision', 'vertex:form', 'vertex:case', 'operationId="http.request"', 'timeoutMs="15000"', 'vertex:input', 'name="url"', 'https://vertexbpmn.io/schema/bpmn/1.0']) {
+for (const token of ['vertex:connector', 'vertex:decision', 'vertex:form', 'vertex:case', 'vertex:externalTask', 'agentProfileRef="contract-reviewer.v1"', 'maxRetries="1"', 'deadlineSeconds="300"', 'operationId="http.request"', 'timeoutMs="15000"', 'vertex:input', 'name="url"', 'https://vertexbpmn.io/schema/bpmn/1.0']) {
   if (!out.includes(token)) {
     throw new Error(`roundtrip XML missing ${token}\n${out}`);
   }
+}
+for (const forbidden of ['apiKey', 'secret', 'providerUrl', 'accessToken']) {
+  if (out.includes(forbidden)) throw new Error(`roundtrip XML leaked forbidden agent configuration '${forbidden}'`);
 }
 console.log('vertex-moddle roundtrip ok');

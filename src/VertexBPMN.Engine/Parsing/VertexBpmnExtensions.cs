@@ -22,6 +22,13 @@ public static class VertexBpmnExtensions
         var local = child.Name.LocalName;
         switch (local)
         {
+            case "externalTask":
+                if (child.Name.NamespaceName != NamespaceUri)
+                    throw new InvalidOperationException("external_task_invalid_namespace");
+                bucket["vertex:externalTask"] = "true";
+                CopyAttributes(child, bucket, "vertex:externalTask");
+                _ = ExternalTaskDefinition.FromAttributes(bucket);
+                break;
             case "connector":
                 CopyAttributes(child, bucket, "vertex:connector");
                 break;

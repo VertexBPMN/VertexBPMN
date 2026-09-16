@@ -185,7 +185,12 @@ public static class VertexBpmnAppHostTopology
             builder.Configuration["VertexBPMN:AuthenticationMode"],
             "OidcTest",
             StringComparison.OrdinalIgnoreCase);
+        var contractReviewerEnabled = bool.TryParse(
+            builder.Configuration["VertexBPMN:ContractReviewer:Enabled"], out var enabled) && enabled;
         var oidcAuthority = builder.Configuration["VertexBPMN:Oidc:Authority"];
+        if (contractReviewerEnabled && !useOidcTest)
+            throw new InvalidOperationException(
+                "VertexBPMN:ContractReviewer:Enabled requires the OidcTest external-services profile.");
         if (useOidcTest)
         {
             if (!Uri.TryCreate(oidcAuthority, UriKind.Absolute, out var authorityUri)
@@ -199,6 +204,9 @@ public static class VertexBpmnAppHostTopology
         }
         var studioClientSecret = useOidcTest
             ? builder.AddParameter("oidcStudioClientSecret", secret: true)
+            : null;
+        var workerClientSecret = contractReviewerEnabled
+            ? builder.AddParameter("oidcWorkerClientSecret", secret: true)
             : null;
 
         var bpmnDb = builder.AddConnectionString("BpmnDbContext");
@@ -242,6 +250,48 @@ public static class VertexBpmnAppHostTopology
                 .WithEnvironment("OperationalMode", "Development");
         }
 
+        if (contractReviewerEnabled)
+        {
+            var tenant = builder.Configuration["VertexBPMN:ContractReviewer:TenantId"]?.Trim();
+            var model = builder.Configuration["VertexBPMN:ContractReviewer:Model"]?.Trim();
+            var modelEndpoint = builder.Configuration["VertexBPMN:ContractReviewer:Endpoint"]?.Trim()
+                ?? "http://127.0.0.1:11434/";
+            if (string.IsNullOrWhiteSpace(tenant) || string.IsNullOrWhiteSpace(model))
+                throw new InvalidOperationException(
+                    "VertexBPMN:ContractReviewer:TenantId and Model are required when the worker is enabled.");
+
+            api.WithEnvironment("ExternalTasks__Enabled", "true")
+                .WithEnvironment("ExternalTasks__EnableSchedulingPreview", "false")
+                .WithEnvironment("ExternalTasks__Contracts__0__TenantId", tenant)
+                .WithEnvironment("ExternalTasks__Contracts__0__Enabled", "true")
+                .WithEnvironment("ExternalTasks__Contracts__0__Topic", "agent.contract-review")
+                .WithEnvironment("ExternalTasks__Contracts__0__Version", "contract-review.v1")
+                .WithEnvironment("ExternalTasks__Contracts__0__AgentProfileRef", "contract-reviewer.v1")
+                .WithEnvironment("ExternalTasks__Contracts__0__AgentProfileVersion", "contract-reviewer.v1")
+                .WithEnvironment("ExternalTasks__Contracts__0__MaxAttempts", "2")
+                .WithEnvironment("ExternalTasks__Contracts__0__MaxDeadlineSeconds", "300");
+            ConfigureContractFields(api);
+
+            builder.AddProject<Projects.VertexBPMN_AgentWorker>("agent-worker")
+                .WithReference(api)
+                .WaitFor(api)
+                .WithEnvironment("ExternalTaskWorker__Enabled", "true")
+                .WithEnvironment("ExternalTaskWorker__BaseAddress", api.GetEndpoint("http"))
+                .WithEnvironment("ExternalTaskWorker__TokenEndpoint",
+                    $"{oidcAuthority!.TrimEnd('/')}/protocol/openid-connect/token")
+                .WithEnvironment("ExternalTaskWorker__ClientId", "vertexbpmn-contract-reviewer")
+                .WithEnvironment("ExternalTaskWorker__ClientSecret", workerClientSecret!)
+                .WithEnvironment("ExternalTaskWorker__Scope", "openid")
+                .WithEnvironment("ExternalTaskWorker__Topics__0", "agent.contract-review")
+                .WithEnvironment("ExternalTaskWorker__MaxConcurrency", "1")
+                .WithEnvironment("ExternalTaskWorker__MaxTasksPerClaim", "1")
+                .WithEnvironment("ExternalTaskWorker__LeaseSeconds", "60")
+                .WithEnvironment("ExternalTaskWorker__HeartbeatSeconds", "20")
+                .WithEnvironment("ContractReviewer__Enabled", "true")
+                .WithEnvironment("ContractReviewer__Endpoint", modelEndpoint)
+                .WithEnvironment("ContractReviewer__Model", model);
+        }
+
         var studio = builder
             .AddProject<Projects.VertexBPMN_Studio>("studio")
             .WithHttpEndpoint(
@@ -270,6 +320,37 @@ public static class VertexBpmnAppHostTopology
         {
             studio.WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development")
                 .WithEnvironment("StudioAuthentication__LocalDevelopmentEnabled", "true");
+        }
+    }
+
+    private static void ConfigureContractFields<T>(IResourceBuilder<T> api) where T : IResourceWithEnvironment
+    {
+        var inputs = new[]
+        {
+            ("document", "string", 65536), ("documentId", "string", 256),
+            ("documentVersion", "string", 256)
+        };
+        var outputs = new[]
+        {
+            ("schemaVersion", "string", 64), ("documentVersion", "string", 256),
+            ("summary", "string", 4096), ("findings", "string", 65536),
+            ("uncertainties", "string", 32768), ("requiresHumanReview", "boolean", 1),
+            ("promptVersion", "string", 128), ("documentHash", "string", 64)
+        };
+        ConfigureFields(api, "Inputs", inputs);
+        ConfigureFields(api, "Outputs", outputs);
+    }
+
+    private static void ConfigureFields<T>(IResourceBuilder<T> api, string group,
+        IReadOnlyList<(string Name, string Type, int MaxLength)> fields) where T : IResourceWithEnvironment
+    {
+        for (var index = 0; index < fields.Count; index++)
+        {
+            var prefix = $"ExternalTasks__Contracts__0__{group}__{index}";
+            api.WithEnvironment($"{prefix}__Name", fields[index].Name)
+                .WithEnvironment($"{prefix}__Type", fields[index].Type)
+                .WithEnvironment($"{prefix}__MaxLength", fields[index].MaxLength.ToString())
+                .WithEnvironment($"{prefix}__AllowExternalTransfer", "true");
         }
     }
 }

@@ -11,6 +11,7 @@ KCADM=/opt/keycloak/bin/kcadm.sh
 admin_user="${KEYCLOAK_ADMIN_USER:-vertexbpmn-admin}"
 admin_pw="${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD required}"
 studio_secret="${KEYCLOAK_STUDIO_CLIENT_SECRET:?KEYCLOAK_STUDIO_CLIENT_SECRET required}"
+worker_secret="${KEYCLOAK_WORKER_CLIENT_SECRET:?KEYCLOAK_WORKER_CLIENT_SECRET required}"
 test_user="${KEYCLOAK_TEST_USER:-vertexbpmn-user}"
 test_pw="${KEYCLOAK_TEST_USER_PASSWORD:?KEYCLOAK_TEST_USER_PASSWORD required}"
 test_tenant="${KEYCLOAK_TEST_USER_TENANT:-tenant-a}"
@@ -33,6 +34,11 @@ echo "Set studio client secret ..."
 studio_id="$(json_id_for clients clientId vertexbpmn-studio)"
 [ -n "$studio_id" ] || { echo "ERROR: studio client vertexbpmn-studio not found" >&2; exit 2; }
 "$KCADM" update "clients/$studio_id" -r vertexbpmn -s "secret=$studio_secret" >/dev/null
+
+echo "Set contract-review worker client secret ..."
+worker_id="$(json_id_for clients clientId vertexbpmn-contract-reviewer)"
+[ -n "$worker_id" ] || { echo "ERROR: worker client vertexbpmn-contract-reviewer not found" >&2; exit 2; }
+"$KCADM" update "clients/$worker_id" -r vertexbpmn -s "secret=$worker_secret" >/dev/null
 
 echo "Ensuring test user '$test_user' ..."
 uid="$(json_id_for users username "$test_user")"

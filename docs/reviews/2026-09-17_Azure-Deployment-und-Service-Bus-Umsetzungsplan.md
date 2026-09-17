@@ -104,6 +104,19 @@ Provider für Registry, Schlüsselring und Messaging unabhängig konfigurieren. 
 
 **Abnahmekriterium:** Versand und erneuter Versand verwenden dieselbe ID (`Guid.ToString("N")` wie RabbitMQ). Auch bei verlorener Brokerbestätigung oder Absturz vor DB-Statusupdate geht keine Nachricht verloren. Duplikate sind zulässig; Broker-Deduplizierung ist zeitlich begrenzt und ersetzt die Inbox nicht.
 
+#### Umsetzungsstand P1 (2026-09-17)
+
+Implementiert und committet (lokal, `master`, nicht gepusht): `84d3b5c` (`feat(infra): Azure Service Bus runtime-outbox transport (P1)`) + `3d9d9be` (Konfig-Beispiele).
+
+- Azure-SDK-Pakete `Azure.Messaging.ServiceBus` (7.18.2) + `Azure.Identity` (1.17.1) ergänzt.
+- `RuntimeOutboxOptions` erweitert um `FullyQualifiedNamespace`, `EntityName`, `EntityType` (Topic/Queue), `AuthenticationMode` (ManagedIdentity/ConnectionString), `ManagedIdentityClientId`, `OperationTimeoutSeconds` (+ Enum-Typen). Bestehende RabbitMQ-/Kafka-Optionen unverändert.
+- `AzureServiceBusRuntimeOutboxTransport` implementiert (`IRuntimeOutboxTransport`, `IAsyncDisposable`): langlebiger Client/Sender mit sauberer Dispose; JSON-Envelope identisch zu RabbitMQ/Kafka; deterministische `MessageId` = Outbox-ID (`N`), Correlation/Tenant/Eventtyp als Application Properties; transiente Fehler → Outbox-Retry, `MessageSizeExceeded` → nichttransient mit diagnostischem Grund; Health = zeitlich begrenzter TCP-Erreichbarkeitstest des Namespace (5671) ohne Managementrechte; Send mit Op-Timeout. Managed-Identity-Credential explizit (optional User-Assigned), keine unbeabsichtigte Fallback-Kette.
+- `InfrastructureModule`: `AzureServiceBus` als Production-/Stage-Provider erlaubt; Managed Identity verlangt keinen ConnectionString, wohl aber Namespace+Entity; RabbitMQ-Inbox-Konsument nur noch beim `rabbitmq`-Provider registriert (ASB/Kafka startet keinen RabbitMQ-Consumer; Inbox folgt in P2).
+- Konfig-Beleispiele (auskommentiert) in API `appsettings.json` + `appsettings.Stage.json` und env-var-Beispiel + Betriebshinweis im `production-deployment.md`-Runbook; keine echten Namen/Secrets committet.
+- **Gate:** Debug Unit-Tests für Guard-/Wiring (5 Tests) grün; CI-äquivalente volle Suite **0 Failed**; Solution-Build 0 Fehler.
+
+**Offen (extern/Stage, nicht ohne Freigabe):** echte End-to-End-Sende-/Empfangsprobe gegen einen realen Service-Bus-Namespace (Stage-Abnahme, benötigt Azure-Budget-/SKU-Freigabe) sowie die License/RG-IaC-Anlage. Inbox-Empfang ist P2.
+
 ### P2 – Transportneutrale Runtime-Inbox und Azure-Service-Bus-Empfang
 
 **Priorität:** Muss  

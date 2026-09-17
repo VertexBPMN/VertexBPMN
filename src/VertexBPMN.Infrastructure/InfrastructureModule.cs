@@ -108,16 +108,22 @@ public static class InfrastructureModule
             configuration.GetConnectionString("messaging");
         var productionMode = mode is "Production" or "Stage";
         var provider = options.Provider.Trim().ToLowerInvariant();
+        var azureManagedIdentity =
+            provider == "azureservicebus"
+            && options.AuthenticationMode == RuntimeOutboxAuthenticationMode.ManagedIdentity;
 
         if (productionMode && !options.Enabled)
             throw new InvalidOperationException(
                 "Runtime:Outbox:Enabled must be true in Production and Stage.");
-        if (options.Enabled && string.IsNullOrWhiteSpace(options.ConnectionString))
+        if (options.Enabled
+            && string.IsNullOrWhiteSpace(options.ConnectionString)
+            && !azureManagedIdentity)
             throw new InvalidOperationException(
-                "Runtime:Outbox:ConnectionString is required when the outbox publisher is enabled.");
-        if (productionMode && provider is not ("kafka" or "rabbitmq"))
+                "Runtime:Outbox:ConnectionString is required when the outbox publisher is enabled, " +
+                "unless AuthenticationMode=ManagedIdentity is used with Azure Service Bus.");
+        if (productionMode && provider is not ("kafka" or "rabbitmq" or "azureservicebus"))
             throw new InvalidOperationException(
-                "Runtime:Outbox:Provider must be Kafka or RabbitMq in Production and Stage.");
+                "Runtime:Outbox:Provider must be Kafka, RabbitMq or AzureServiceBus in Production and Stage.");
 
         services.AddSingleton(options);
         services.AddSingleton<IRuntimeOutboxTransport>(sp =>
@@ -125,6 +131,7 @@ public static class InfrastructureModule
             {
                 "kafka" => new KafkaRuntimeOutboxTransport(options),
                 "rabbitmq" => new RabbitMqRuntimeOutboxTransport(options),
+                "azureservicebus" => new AzureServiceBusRuntimeOutboxTransport(options),
                 _ => new DisabledRuntimeOutboxTransport()
             });
         if (options.Enabled)
@@ -135,7 +142,10 @@ public static class InfrastructureModule
         // auf den Outbox-Enabled-Zustand, damit der at-least-once-Zustellungs-
         // und Wiederanlauf-Kreis im Produktivpfad geschlossen ist.
         var inboxEnabled = configuration.GetValue("Runtime:Inbox:Enabled", options.Enabled);
-        if (inboxEnabled && !string.IsNullOrWhiteSpace(options.ConnectionString))
+        // Der RabbitMQ-Inbox-Konsument wird ausschliesslich fuer den RabbitMQ-Provider
+        // registriert: Eine Azure-Service-Bus- oder Kafka-Distribution darf keinen
+        // RabbitMQ-Consumer starten (Service-Bus-Inbox folgt in P2).
+        if (inboxEnabled && provider == "rabbitmq" && !string.IsNullOrWhiteSpace(options.ConnectionString))
             services.AddHostedService<RuntimeInboxConsumerService>();
     }
 

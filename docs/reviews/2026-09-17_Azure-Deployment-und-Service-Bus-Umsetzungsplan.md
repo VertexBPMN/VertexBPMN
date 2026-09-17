@@ -71,6 +71,11 @@ Provider für Registry, Schlüsselring und Messaging unabhängig konfigurieren. 
 
 **Abnahmekriterium:** ADR ist freigegeben; alle Parameter stehen als nicht-geheime Konfiguration mit klaren Besitzer:innen fest.
 
+#### Umsetzungsstand P0 (2026-09-14)
+
+- ADR `docs/architecture/adr/ADR-0001-Azure-Produktionshosting.md` angelegt und mit Entscheider Yova verbindlich beschlossen: Region **germanywestcentral**, RG **vertexbpmnRg** (eine prod-Umgebung, Suffix-Namen), Runtime ACA, PostgreSQL Flexible Server (5 Engine-DBs + Registry), Service Bus **Standard** (nur Outbox/Inbox, keine Remote-Service-Tasks), Key Vault Standard, Blob-LSR-Hot-Key-Ring, Monitor/Log Analytics/App Insights, Entra ID als OIDC, Front Door (Standard) + WAF als öffentlicher Einstieg für Studio **und** API (CLI/SDK/Webhooks), SLOs RPO ≤ 15 min / RTO ≤ 4 h, Domain `studio.vertexbpmn.com` mit DNS-Verbleib bei IONOS (keine Azure-DNS-Zone).
+- Budget/SKUs noch **nicht freigegeben**: monatliche Kostenschätzung (Stage/Einstieg vs. Production) in Arbeit (`docs/reviews/2026-09-14_Azure-Kostenschaetzung.md`); **keine kostenpflichtigen Azure-Ressourcen** bis zur Freigabe.
+
 ### P1 – Azure-Service-Bus-Adapter für die persistierte Runtime-Outbox
 
 **Priorität:** Muss  

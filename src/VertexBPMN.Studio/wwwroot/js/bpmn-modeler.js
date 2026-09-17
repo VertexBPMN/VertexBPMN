@@ -76,6 +76,13 @@ async function exportXml(instance) {
         return instance.payload || '';
     }
 
+    // Finish trimming the active properties-panel field before taking the
+    // authoritative snapshot used by validation, export and deployment.
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement && activeElement.closest('.bio-properties-panel')) {
+        activeElement.blur();
+    }
+
     if (typeof instance.saveXML === 'function') {
         const result = await instance.saveXML({ format: true });
         return result.xml || '';

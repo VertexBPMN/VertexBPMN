@@ -48,6 +48,7 @@ else
         <ToolBarContent>
             <MudTextField @bind-Value="_searchString" 
                          Placeholder="Search instances..." 
+                         Immediate="true"
                          Adornment="Adornment.Start" 
                          AdornmentIcon="@Icons.Material.Filled.Search" 
                          IconSize="Size.Medium" 
@@ -196,7 +197,7 @@ else
                (instance.ProcessId?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
                (instance.BusinessKey?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
                instance.Status.ToString().Contains(_searchString, StringComparison.OrdinalIgnoreCase) ||
-               instance.State.Contains(_searchString, StringComparison.OrdinalIgnoreCase);
+               (instance.State?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false);
     }
 
     private static bool HasIncident(ProcessInstance instance) =>

@@ -3392,7 +3392,8 @@ public sealed partial class PersistentProcessExecutionRuntime : IProcessExecutio
                 var activationCondition = element.Elements().FirstOrDefault(child =>
                     child.Name.LocalName == "activationCondition")?.Value.Trim();
                 foreach (var extension in element.Elements().Where(child => child.Name.LocalName == "extensionElements")
-                             .SelectMany(root => root.Elements()).Where(child => child.Name.NamespaceName == VertexBPMN.Engine.Parsing.VertexBpmnExtensions.NamespaceUri))
+                             .SelectMany(root => root.Elements()).Where(child =>
+                                 VertexBPMN.Engine.Parsing.VertexBpmnExtensions.IsVertexNamespace(child.Name.NamespaceName)))
                     VertexBPMN.Engine.Parsing.VertexBpmnExtensions.Flatten(extension, attributes);
                 if (!string.IsNullOrWhiteSpace(activationCondition))
                     attributes["activationCondition"] = activationCondition;
@@ -3446,13 +3447,18 @@ public sealed partial class PersistentProcessExecutionRuntime : IProcessExecutio
                     if (!string.IsNullOrWhiteSpace(scriptBody)) attributes["script"] = scriptBody;
                     if (!string.IsNullOrWhiteSpace(resultVariable)) attributes["resultVariable"] = resultVariable;
                 }
+                var implementation = (string?)element.Attribute("implementation")
+                                     ?? attributes.GetValueOrDefault("type")
+                                     ?? attributes.GetValueOrDefault("taskDefinitionType");
+                if (element.Name.LocalName == "serviceTask"
+                    && attributes.ContainsKey("vertex:connector.type"))
+                    implementation = "vertex:connector";
+
                 nodes[id] = new ExecutionNode(
                     id,
                     element.Name.LocalName,
                     (string?)element.Attribute("name") ?? id,
-                    (string?)element.Attribute("implementation")
-                    ?? attributes.GetValueOrDefault("type")
-                    ?? attributes.GetValueOrDefault("taskDefinitionType"),
+                    implementation,
                     (string?)element.Attribute("attachedToRef"),
                     (string?)parentSubprocess?.Attribute("id"),
                     eventType,

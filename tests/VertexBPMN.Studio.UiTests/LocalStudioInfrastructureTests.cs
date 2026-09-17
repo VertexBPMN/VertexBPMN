@@ -672,6 +672,11 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
             var failureRow = page.Locator("tr").Filter(new() { HasText = failureBusinessKey }).First;
             await failureRow.GetByText("Incident", new() { Exact = true }).WaitForAsync();
             Assert.Equal(0, await failureRow.GetByRole(AriaRole.Button, new() { Name = "Resume Instance", Exact = true }).CountAsync());
+            await failureRow.GetByRole(AriaRole.Button, new() { Name = "View Details", Exact = true }).ClickAsync();
+            var failureDetails = page.GetByRole(AriaRole.Dialog);
+            await failureDetails.GetByText("Incident", new() { Exact = true }).WaitForAsync();
+            Assert.Equal(0, await failureDetails.GetByText("Suspended", new() { Exact = true }).CountAsync());
+            await failureDetails.GetByRole(AriaRole.Button, new() { Name = "Close", Exact = true }).ClickAsync();
             using var incidentsResponse = await apiClient.GetAsync(
                 $"api/vertex/incident?tenantId={Uri.EscapeDataString(tenantId)}",
                 TestContext.Current.CancellationToken);
@@ -1332,6 +1337,10 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
             var versionsDialog = page.GetByRole(AriaRole.Dialog);
             await versionsDialog.GetByText($"Process Versions: {processKey}", new() { Exact = true }).WaitForAsync();
             await versionsDialog.GetByText("(Latest)", new() { Exact = false }).First.WaitForAsync();
+            var versionsText = await versionsDialog.InnerTextAsync();
+            Assert.Contains("v1", versionsText, StringComparison.Ordinal);
+            Assert.Contains("v2", versionsText, StringComparison.Ordinal);
+            Assert.DoesNotContain("v@context.Version", versionsText, StringComparison.Ordinal);
             await versionsDialog.GetByRole(AriaRole.Button, new() { Name = "Close", Exact = true }).ClickAsync();
 
             // Delete the definition through the UI and confirm the removal is durable.
@@ -1428,7 +1437,7 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
                 // The instance is listed, findable by business key, and shows its single active task.
                 await page.GotoAsync($"{host.StudioBaseAddress}process-instances");
                 await SelectTenantAsync(page, tenantName, tenantId!);
-                await FillBoundInputAsync(page.GetByPlaceholder("Search instances..."), businessKey);
+                await page.GetByPlaceholder("Search instances...").FillAsync(businessKey);
                 var instanceRow = page.Locator("tr").Filter(new() { HasText = businessKey }).First;
                 await instanceRow.GetByText("1 task(s)", new() { Exact = true }).WaitForAsync(new() { Timeout = 120_000 });
 

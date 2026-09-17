@@ -22,7 +22,7 @@
                 <MudTd DataLabel="Version">
                     <MudChip T="string" Color="@(context.Version == Versions.Max(v => v.Version) ? Color.Success : Color.Default)" 
                             Size="Size.Small">
-                        v@context.Version
+                        @($"v{context.Version}")
                         @if (context.Version == Versions.Max(v => v.Version))
                         {
                             <span class="ml-1">(Latest)</span>

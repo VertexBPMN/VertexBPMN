@@ -52,6 +52,59 @@ public sealed partial class LocalStudioInfrastructureTests
         finally { await host.ClosePageAsync(page); }
     }
 
+    [Fact]
+    public async Task EditorCorrections_DeployCommitsTheFocusedPropertiesFieldAndPersistsTheCurrentXml()
+    {
+        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local Studio E2E only.");
+        var key = $"EditorDeploySnapshot_{host.RunId}";
+        host.RegisterProcessDefinitionCleanup(key);
+        using var client = host.CreateApiClient();
+        var page = await host.CreatePageAsync();
+        try
+        {
+            await page.SetViewportSizeAsync(1440, 900);
+            await OpenBpmnModelerAsync(page);
+            await ImportBpmnAsync(page, CreateBpmn(key));
+            await InsertCatalogNodeIntoFirstFlowAsync(page, "HTTP request");
+
+            var operationId = $"snapshot-{host.RunId}";
+            var operationIdField = page.GetByLabel("Operation ID", new() { Exact = true });
+            if (!await operationIdField.IsVisibleAsync())
+            {
+                await page.Locator(".bio-properties-panel-group")
+                    .Filter(new() { HasText = "Vertex" })
+                    .Locator(".bio-properties-panel-group-header-button")
+                    .ClickAsync();
+            }
+            await operationIdField.FillAsync(operationId);
+            await page.GetByLabel("Timeout (ms)", new() { Exact = true }).FillAsync("5000");
+            await page.GetByLabel("Retry max attempts", new() { Exact = true }).FillAsync("3");
+            await page.GetByLabel("Retry strategy", new() { Exact = true }).FillAsync("fixed");
+            // Leave the final field focused and deploy immediately. Every rapid
+            // edit must already be reflected in the moddle model.
+            await page.GetByLabel("Retry base delay (ms)", new() { Exact = true }).FillAsync("250");
+            await page.GetByRole(AriaRole.Button, new() { Name = "Deploy BPMN", Exact = true }).ClickAsync();
+            await page.GetByText("BPMN deployed successfully.", new() { Exact = true }).WaitForAsync();
+
+            var definitions = await client.GetFromJsonAsync<JsonElement[]>(
+                $"api/repository?key={Uri.EscapeDataString(key)}",
+                TestContext.Current.CancellationToken);
+            var deployed = Assert.Single(definitions!);
+            var persistedXml = deployed.GetProperty("bpmnXml").GetString();
+            Assert.NotNull(persistedXml);
+            Assert.Contains($"operationId=\"{operationId}\"", persistedXml, StringComparison.Ordinal);
+            Assert.Contains("timeoutMs=\"5000\"", persistedXml, StringComparison.Ordinal);
+            Assert.Contains("maxAttempts=\"3\"", persistedXml, StringComparison.Ordinal);
+            Assert.Contains("strategy=\"fixed\"", persistedXml, StringComparison.Ordinal);
+            Assert.Contains("baseDelayMs=\"250\"", persistedXml, StringComparison.Ordinal);
+
+            await OpenBpmnToolTabAsync(page, "Versions");
+            await page.GetByRole(AriaRole.Combobox, new() { Name = "Deployed process version", Exact = true }).ClickAsync();
+            await page.GetByRole(AriaRole.Option, new() { NameRegex = new System.Text.RegularExpressions.Regex(key) }).WaitForAsync();
+        }
+        finally { await host.ClosePageAsync(page); }
+    }
+
     [Theory]
     [InlineData("userTask")]
     [InlineData("exclusiveGateway")]

@@ -90,5 +90,16 @@ Ein Schema-Downgrade wird nicht automatisch ausgeführt. Für Rollback muss die 
 Gesamt-p95 ≈ 351 ms (< Ziel 1 s), Gesamt-p99 ≈ 574 ms (< Ziel 3 s), Fehlerrate 0; DB-Verbindungen 5→16, Locks 9→12 (kein unbegrenztes Wachstum); Speicher über die Lastphase stabil ≈ 232 MB. Die Rampen-Instant-Tiefpunkte des Outbox-Pending wachsen nur, weil die Burst-Erzeugung kurzzeitig schneller ist als die Drain-Rate des Publishers (50/s je Poll); nach Lastende drainet der Rückstau innerhalb von 90 s auf ≤ 25 (Peak 1150 → final 14) – kein dauerhaft zunehmender Rückstand. **Abnahme-Zielprofil (Phase 0):** 1–10 Starts/s, 50–500 parallele Benutzer. **Kapazitätsprofil:** `docs/reviews/2026-09-09_Phase6_Last_Abnahme.md` (Hardware/Replikazahl, gemessene Sättigung, Grenzen).
 
 - Der API-Outbox-Transport benötigt `Runtime__Outbox__Enabled=true`, `Runtime__Outbox__Provider=RabbitMq` und `Runtime__Outbox__ConnectionString=<AMQP>`; ohne diese Konfiguration fällt der Publisher auf den Disabled-Transport zurück und `Pending`-Nachrichten würden dauerhaft akkumulieren (kein Produktdefekt, aber Betriebsfehler).
+- **Azure Service Bus als Outbox-Provider (P1).** Beim Provider `AzureServiceBus` verwendet der Transport Managed Identity, wenn `Runtime__Outbox__AuthenticationMode=ManagedIdentity` gesetzt ist — dann ist **kein** `ConnectionString` nötig, wohl aber `FullyQualifiedNamespace` und `EntityName`. Beispiel-Env-Variablen (Platzhalter, keine realen Werte einchecken):
+  ```
+  Runtime__Outbox__Enabled=true
+  Runtime__Outbox__Provider=AzureServiceBus
+  Runtime__Outbox__FullyQualifiedNamespace=<yourns>.servicebus.windows.net
+  Runtime__Outbox__EntityName=vertexbpmn-runtime
+  Runtime__Outbox__EntityType=Topic
+  Runtime__Outbox__AuthenticationMode=ManagedIdentity
+  Runtime__Outbox__ManagedIdentityClientId=<user-assigned-client-id>   # optional; Default = System-Assigned
+  ```
+  `AuthenticationMode=ConnectionString` ist nur für lokale Integrationstests gedacht und verlangt dann `Runtime__Outbox__ConnectionString`. Die Health-/Readiness-Probe ist ein zeitlich begrenzter TCP-Erreichbarkeitstest des Namespace (AMQP-TLS 5671) ohne Managementrechte; eine echte End-to-End-Sende-/Empfangsprobe ist die separate Stage-Abnahme. Broker-Ausfall führt zu sichtbarer `LastError`/Readiness-Einschränkung, nicht zu einer Liveness-Neustartschleife.
 - Das globale ASP.NET-Rate-Limit (`RateLimiting:PermitLimit`, Standard 120/60 s je IP) schützt vor Überlast. Für Lasttests muss es (wie in `P6_AC_02`) angehoben werden, damit die Engine-Latenz statt des Limits gemessen wird; in der Produktion ist der Wert als Kapazitätsparameter zu belegen.
 - Ein **voller 24–72 h-Dauerlauf** mit Langzeit-Drift/Warmzeit wurde nicht gefahren (kurzer Dauerlauf-Abschnitt mit Lastspitze + kontrollierter Unterbrechung in `P6_AC_03`); er ist nach Zielprofil in der Zielumgebung zu betreiben, bevor eine Kapazitätszusage auf die absoluten Grenzen getroffen wird.

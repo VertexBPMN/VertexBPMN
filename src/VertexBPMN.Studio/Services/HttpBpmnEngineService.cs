@@ -85,7 +85,7 @@ public class HttpBpmnEngineService : IBpmnEngineService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error fetching process definitions");
-            return Enumerable.Empty<ProcessDefinition>();
+            throw;
         }
     }
 
@@ -107,7 +107,7 @@ public class HttpBpmnEngineService : IBpmnEngineService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error fetching process instances");
-            return Enumerable.Empty<ProcessInstance>();
+            throw;
         }
     }
 
@@ -203,7 +203,7 @@ public class HttpBpmnEngineService : IBpmnEngineService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error fetching process definition versions for {Key}", key);
-            return Enumerable.Empty<ProcessDefinition>();
+            throw;
         }
     }
 

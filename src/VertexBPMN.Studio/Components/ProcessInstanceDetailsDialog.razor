@@ -52,10 +52,10 @@
                                     
                                     <MudField Label="State" Variant="Variant.Text">
                                         <MudChip T="string" 
-                                                Color="GetStateColor(ProcessInstance.Status.ToString())" 
+                                                Color="GetStateColor(GetDisplayState(ProcessInstance))" 
                                                 Size="Size.Small" 
                                                 Variant="Variant.Filled">
-                                            @ProcessInstance.Status
+                                            @GetDisplayState(ProcessInstance)
                                         </MudChip>
                                     </MudField>
                                 </MudPaper>
@@ -345,12 +345,18 @@
 
     private Color GetStateColor(string state) => state?.ToLower() switch
     {
-        "active" => Color.Success,
+        "active" or "running" => Color.Success,
+        "incident" => Color.Error,
         "suspended" => Color.Warning,
         "completed" => Color.Info,
         "terminated" => Color.Error,
         _ => Color.Default
     };
+
+    private static string GetDisplayState(ProcessInstance instance) =>
+        string.Equals(instance.State, "Incident", StringComparison.OrdinalIgnoreCase)
+            ? "Incident"
+            : instance.Status.ToString();
 
     private string GetDuration()
     {

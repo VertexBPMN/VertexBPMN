@@ -571,7 +571,6 @@
         }
         catch (Exception exception)
         {
-            _deployedDefinitions = [];
             Snackbar.Add($"Process versions could not be loaded: {exception.Message}", Severity.Warning);
         }
     }
@@ -682,6 +681,11 @@
         {
             var deployed = await RepositoryService.DeployXmlAsync(xml, "studio-model.bpmn", TenantContext.CurrentTenantId);
             _createdWebhooks = deployed.CreatedWebhooks;
+            _deployedDefinitions = [
+                deployed.Definition,
+                .. _deployedDefinitions.Where(definition => definition.Id != deployed.Definition.Id)
+            ];
+            _selectedVersionId = deployed.Definition.Id.ToString();
             await LoadDeployedDefinitionsAsync();
             if (_createdWebhooks.Count > 0)
                 Snackbar.Add($"{_createdWebhooks.Count} webhook trigger(s) created. Save the shown secrets now.", Severity.Warning);

@@ -9,6 +9,11 @@ const CONNECTOR_HOSTS = [
   'bpmn:CallActivity'
 ];
 
+// Vertex extension fields are small configuration values. Committing them
+// immediately prevents a command-stack update in one field from unmounting
+// another field while that field still has a debounced write pending.
+const commitImmediately = callback => callback;
+
 function isConnectorHost(element) {
   return CONNECTOR_HOSTS.some(type => is(element, type));
 }
@@ -96,7 +101,6 @@ function textEntry(id, label, type, property) {
     id,
     component: function VertexTextEntry(props) {
       const { element } = props;
-      const debounce = useService('debounceInput');
       const bpmnFactory = useService('bpmnFactory');
       const commandStack = useService('commandStack');
 
@@ -116,7 +120,7 @@ function textEntry(id, label, type, property) {
         label,
         getValue,
         setValue,
-        debounce
+        debounce: commitImmediately
       });
     },
     isEdited: isTextFieldEntryEdited
@@ -152,7 +156,6 @@ function ioMappingEntry(id, label, collectionName, childType, leftName, rightNam
     id,
     component: function VertexIoMappingEntry(props) {
       const { element } = props;
-      const debounce = useService('debounceInput');
       const bpmnFactory = useService('bpmnFactory');
       const commandStack = useService('commandStack');
 
@@ -186,7 +189,7 @@ function ioMappingEntry(id, label, collectionName, childType, leftName, rightNam
         description: 'One mapping per line: name=value',
         getValue,
         setValue,
-        debounce
+        debounce: commitImmediately
       });
     },
     isEdited: isTextFieldEntryEdited
@@ -231,7 +234,6 @@ function externalTaskResultTargetEntry() {
     id: 'vertex-external-task-result-target',
     component: function VertexExternalTaskResultTargetEntry(props) {
       const { element } = props;
-      const debounce = useService('debounceInput');
       const bpmnFactory = useService('bpmnFactory');
       const commandStack = useService('commandStack');
 
@@ -264,7 +266,7 @@ function externalTaskResultTargetEntry() {
         description: 'Stores the complete schema-validated agent response in one process variable.',
         getValue,
         setValue,
-        debounce
+        debounce: commitImmediately
       });
     },
     isEdited: isTextFieldEntryEdited

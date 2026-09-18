@@ -45,8 +45,10 @@ public static class InfrastructureModule
         if (mode is "Production" or "Stage" && string.IsNullOrWhiteSpace(configuredDependencyRegistry))
             throw new InvalidOperationException(
                 "ConnectionStrings:DependencyRegistry is required in Production and Stage; the local file fallback is forbidden.");
+        var depRegistryCs = DependencyConfigurationLoader.ResolveConnectionString(configuration);
+        var depRegistryProvider = DependencyRegistryProvider.Resolve(depRegistryCs, configuration["DependencyRegistry:Provider"]);
         services.AddDbContext<DependencyRegistryDbContext>(options =>
-            options.UseSqlite(DependencyConfigurationLoader.ResolveConnectionString(configuration)));
+            DependencyRegistryProvider.Configure(options, depRegistryProvider, depRegistryCs));
         services.AddScoped<IDependencyRegistry, DependencyRegistryService>();
         services.AddScoped<IDesignTimeDbContextFactory<ProcessMiningEventDbContext>, ProcessMiningEventDbContextFactory>();
         services.AddScoped<IProcessInstanceStore, ProductionProcessInstanceStore>();

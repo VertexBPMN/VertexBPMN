@@ -36,7 +36,7 @@ public class InMemoryMessageDispatcher : IMessageDispatcher
     /// Remote Simulation = No-Op.
     /// </summary>
     public Task DispatchServiceTaskAsync(string targetWorkerId, string implementation, Dictionary<string, string> attributes, Dictionary<string, object> variables,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, Guid? processInstanceId = null, string? tenantId = null)
     {
         if (_registry.TryResolve(implementation, out var handler) && handler is not null)
         {
@@ -114,7 +114,7 @@ public class InMemoryMessageDispatcher : IMessageDispatcher
     }
 
     public Task DispatchAiTaskAsync(string targetWorkerId, string aiProvider, string aiModel, Dictionary<string, string> attributes,
-        Dictionary<string, object> variables, CancellationToken cancellationToken = default)
+        Dictionary<string, object> variables, CancellationToken cancellationToken = default, Guid? processInstanceId = null, string? tenantId = null)
         => Task.CompletedTask;
 
     // ---------- Helpers / Safe Invocation ----------

@@ -16,9 +16,9 @@ public sealed class PersistentMessageDispatcher(BpmnDbContext db) : IMessageDisp
 {
     public Task DispatchServiceTaskAsync(string targetWorkerId, string implementation,
         Dictionary<string, string> attributes, Dictionary<string, object> variables,
-        CancellationToken cancellationToken = default) =>
-        EnqueueAsync("ServiceTaskDispatch", Guid.Empty,
-            new { targetWorkerId, implementation, attributes, variables }, cancellationToken);
+        CancellationToken cancellationToken = default, Guid? processInstanceId = null, string? tenantId = null) =>
+        EnqueueAsync("ServiceTaskDispatch", processInstanceId ?? Guid.Empty,
+            new { targetWorkerId, implementation, attributes, variables }, cancellationToken, tenantId);
 
     public Task PublishTokenAsync(ExecutionToken token, CancellationToken cancellationToken = default) =>
         EnqueueAsync("ExecutionTokenPublished", token.ProcessInstanceId, token, cancellationToken);
@@ -52,12 +52,12 @@ public sealed class PersistentMessageDispatcher(BpmnDbContext db) : IMessageDisp
 
     public Task DispatchAiTaskAsync(string targetWorkerId, string aiProvider, string aiModel,
         Dictionary<string, string> attributes, Dictionary<string, object> variables,
-        CancellationToken cancellationToken = default) =>
-        EnqueueAsync("AiTaskDispatch", Guid.Empty,
-            new { targetWorkerId, aiProvider, aiModel, attributes, variables }, cancellationToken);
+        CancellationToken cancellationToken = default, Guid? processInstanceId = null, string? tenantId = null) =>
+        EnqueueAsync("AiTaskDispatch", processInstanceId ?? Guid.Empty,
+            new { targetWorkerId, aiProvider, aiModel, attributes, variables }, cancellationToken, tenantId);
 
     private async Task EnqueueAsync(string eventType, Guid processInstanceId, object payload,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, string? tenantId = null)
     {
         db.RuntimeOutbox.Add(new RuntimeOutboxMessage
         {
@@ -66,6 +66,7 @@ public sealed class PersistentMessageDispatcher(BpmnDbContext db) : IMessageDisp
             EventType = eventType,
             Payload = JsonSerializer.Serialize(payload),
             State = "Pending",
+            TenantId = tenantId,
             OccurredAt = DateTime.UtcNow
         });
         await db.SaveChangesAsync(cancellationToken);

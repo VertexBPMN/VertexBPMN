@@ -193,6 +193,12 @@ Im uncommitteten Arbeitsbaum (lokales `master`); bewusst nicht committet/gepusht
 5. `OidcSessionTokenStore` für Azure auf einen gemeinsamen verschlüsselten Session-Store (bevorzugt PostgreSQL zur Vermeidung einer weiteren Pflichtressource) umstellen. Refresh pro Session mit verteiltem Lease/Fencing und Versionsprüfung serialisieren; Logout/Revocation und TTL replikaübergreifend umsetzen. Crash nach IdP-Tokenrotation muss zu definiertem Wiederanmelden führen, nicht zur Wiederverwendung veralteter Refresh-Tokens. Lokaler In-Process-Store bleibt verfügbar.
 6. Studio verwendet Blazor Interactive Server: WebSockets und Affinität in ACA nachweisen. Ziel ist zunächst Single-Revision-Modus mit Sticky Sessions; ACA-Affinität unterstützt keinen Multi-Revision-Traffic-Split. Circuit-Verlust bei Replikatausch ist möglich: Wiederverbindung, Wiederanmelden und Schutz ungespeicherter Editorarbeit explizit testen. Ein gemeinsamer Token-/Key-Store migriert keine laufenden Circuits.
 
+**Stand P4 (2026-09-18):** Punkt 1 und 5 code-seitig umgesetzt und gepusht (`e36ba37`, `45cdd30`), gegen echtes lokales PostgreSQL verifiziert:
+- **Punkt 1:** `DependencyRegistryProvider` providerneutral (SQLite lokal, Npgsql Azure); `DependencyConfigurationLoader.LoadInto` liest ohne Auto-Migration, die CLI ist providerneutral über `IDependencyRegistry`; 4 Postgres-Acceptance-Tests grün (Migration/CRUD/LoadInto-offen/Rollback/parallele Writes).
+- **Punkt 5:** `OidcSessionTokenStore` auf `ISharedOidcSessionStore` umgestellt — lokal `InMemorySharedOidcSessionStore`, Azure `PersistentOidcSessionStore` (verschlüsselt mit DataProtection, monotone Revision für verteiltes Fencing, Logout/Revocation + TTL replikaübergreifend). Providerneutrale Migration (SQLite + Npgsql); lokaler In-Process-Store bleibt Fallback. Postgres- und SQLite-Acceptance/Unit-Tests grün.
+- CI-Gate am 2026-09-18: **1177 Tests, 0 Failed** (5 skipped nur wegen fehlender `VERTEXBPMN_TEST_POSTGRES_ADMIN` in CI; lokal alle 5 gegen Postgres grün).
+- **Offen (Azure-Budget, unverändert):** Punkt 2 (Data Protection → Blob+Key Vault), Punkt 3 (fünf Engine-DBs auf Flexible Server), Punkt 4 (Secrets über Key Vault), Punkt 6 (ACA-WebSockets/Affinität).
+
 **Abnahmekriterium:** Zwei API-/Studio-Replikas bestehen parallelen Login/Refresh, Logout, Restart und Credential-Entschlüsselung. Replikatausch hat einen getesteten UI-Recovery-Pfad; lokale Profile funktionieren ohne Azure-Zugang weiterhin.
 
 ### P5 – Infrastruktur als Code und Netzwerk
@@ -302,7 +308,7 @@ Im uncommitteten Arbeitsbaum (lokales `master`); bewusst nicht committet/gepusht
 
 1. **P0** Architektur- und Betriebsentscheidungen.
 2. **P1/P2** Service-Bus-Outbox und -Inbox samt Vertrags- und Fehlersemantik.
-3. **P4** PostgreSQL-Dependency-Registry und Azure-tauglicher Key-Ring – Blocker für Replikas.
+3. **P4** PostgreSQL-Dependency-Registry (Punkt 1 ✅) und geteilter OIDC-Session-Store (Punkt 5 ✅) fertig; offen: Azure-tauglicher Key-Ring (Blob+Key Vault), Engine-DBs auf Flexible Server, Key-Vault-Secrets, ACA-Affinität – Blocker für Mehrreplika-Freigabe.
 4. **P5** Bicep, Netzwerk, Identitäten und Azure-Ressourcen.
 5. **P6** Produktionskonfiguration und OIDC/Proxy-Härtung.
 6. **P7** revisionssicherer Delivery-Prozess und Migration Job.

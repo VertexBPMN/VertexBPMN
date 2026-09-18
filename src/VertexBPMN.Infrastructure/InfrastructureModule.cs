@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using VertexBPMN.Application.Configuration;
 using VertexBPMN.Application.Messaging;
 using VertexBPMN.Application;
@@ -146,6 +147,21 @@ public static class InfrastructureModule
         var inboxOptions = new RuntimeInboxOptions();
         configuration.GetSection("Runtime:Inbox").Bind(inboxOptions);
         services.AddSingleton(inboxOptions);
+        // Optionales TypeSafe-Envelope-Konformitäts-Judgment (P3, config-gated via Runtime:TypeSafeConformance).
+        // Standardmäßig deaktiviert => der Inbox-Pfad bleibt unverändert; Aktivierung erst mit explizitem
+        // TypeSafe:Enabled + ApiKey (server-seitig). Der Key steht niemals in Repos/Clients.
+        var tsOptions = new TypeSafeConformanceOptions();
+        configuration.GetSection("Runtime:TypeSafeConformance").Bind(tsOptions);
+        services.AddSingleton(tsOptions);
+        services.AddSingleton<ITypeSafeConformanceClient>(sp =>
+        {
+            var o = sp.GetRequiredService<TypeSafeConformanceOptions>();
+            return new TypeSafeConformanceClient(
+                null,
+                o,
+                sp.GetRequiredService<global::Microsoft.Extensions.Logging.ILogger<TypeSafeConformanceClient>>());
+        });
+        services.AddSingleton<ITypeSafeEnvelopeConformanceValidator, TypeSafeEnvelopeConformanceValidator>();
         var inboxEnabled = inboxOptions.Enabled ?? options.Enabled;
         if (inboxEnabled)
         {

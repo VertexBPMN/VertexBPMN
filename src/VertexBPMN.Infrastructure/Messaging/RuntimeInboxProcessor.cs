@@ -150,6 +150,27 @@ public sealed class RuntimeInboxProcessor
             return new(RuntimeInboxOutcome.Rejected,
                 "No IRuntimeInboxHandler or IInboxEventSink is registered; refusing to acknowledge the message as processed.");
 
+        // 2b) Optionales semantisches Konformitäts-Judgment (TypeSafe System One), config-gated.
+        //     Nur aktiv, wenn ein Validator registriert UND aktiviert ist; sonst NotEvaluated -> weiter wie bisher.
+        //     Falsch/vertragswidrig => permanent ablehnen (DLQ); unklar => transient requeuen (Review).
+        var conformance = scope.ServiceProvider.GetService<ITypeSafeEnvelopeConformanceValidator>();
+        if (conformance is not null)
+        {
+            var judgment = await conformance.EvaluateAsync(envelope, cancellationToken);
+            switch (judgment.Verdict)
+            {
+                case EnvelopeConformanceVerdict.Malformed:
+                case EnvelopeConformanceVerdict.WrongContract:
+                    return new(RuntimeInboxOutcome.Rejected,
+                        $"Envelope contract conformance failed ({judgment.Verdict}): {judgment.Reason}");
+                case EnvelopeConformanceVerdict.Unclear:
+                    return new(RuntimeInboxOutcome.RetryableFailure,
+                        $"Contract conformance unclear (confidence {judgment.Confidence:0.00}); requeue for review.");
+                default:
+                    break; // Conforms / NotEvaluated: weiter zur Geschäftsverarbeitung.
+            }
+        }
+
         // 3) Shared transaction: business effect + completion marker commit atomically.
         await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
         try

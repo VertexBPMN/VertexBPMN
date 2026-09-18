@@ -104,9 +104,9 @@ Provider für Registry, Schlüsselring und Messaging unabhängig konfigurieren. 
 
 **Abnahmekriterium:** Versand und erneuter Versand verwenden dieselbe ID (`Guid.ToString("N")` wie RabbitMQ). Auch bei verlorener Brokerbestätigung oder Absturz vor DB-Statusupdate geht keine Nachricht verloren. Duplikate sind zulässig; Broker-Deduplizierung ist zeitlich begrenzt und ersetzt die Inbox nicht.
 
-#### Umsetzungsstand P1 (2026-09-17)
+#### Umsetzungsstand P1 (2026-09-17 / gepusht 2026-09-18)
 
-Implementiert und committet (lokal, `master`, nicht gepusht): `84d3b5c` (`feat(infra): Azure Service Bus runtime-outbox transport (P1)`) + `3d9d9be` (Konfig-Beispiele).
+Implementiert, committet und auf `origin/master` gepusht: `84d3b5c` (`feat(infra): Azure Service Bus runtime-outbox transport (P1)`), `3d9d9be` (Konfig-Beispiele) und `eba9818` (Plan-Status).
 
 - Azure-SDK-Pakete `Azure.Messaging.ServiceBus` (7.18.2) + `Azure.Identity` (1.17.1) ergänzt.
 - `RuntimeOutboxOptions` erweitert um `FullyQualifiedNamespace`, `EntityName`, `EntityType` (Topic/Queue), `AuthenticationMode` (ManagedIdentity/ConnectionString), `ManagedIdentityClientId`, `OperationTimeoutSeconds` (+ Enum-Typen). Bestehende RabbitMQ-/Kafka-Optionen unverändert.
@@ -143,7 +143,7 @@ Implementiert und committet (lokal, `master`, nicht gepusht): `84d3b5c` (`feat(i
 
 #### Umsetzungsstand P2 (2026-09-17)
 
-Im uncommitteten Arbeitsbaum (lokales `master`); bewusst nicht committet/gepusht (Freigabe-Praxis: erst Review + explizites OK). Stand/Verifikation unten mit exakten, am 2026-09-18 frisch ausgeführten Ergebnissen.
+Committet und auf `origin/master` gepusht: `923c4a6` (`feat(infra): P2 transportneutrale Runtime-Inbox + Azure Service Bus Empfang`) und `bb1a729` (Phase-4-Folgeschluss, 8/8 grün). Verifikation unten mit exakten, am 2026-09-18 frisch ausgeführten Ergebnissen.
 
 - **Gemeinsame Verarbeitung extrahiert:** `RuntimeInboxProcessor` (Infrastructure/Messaging) — providerneutral für RabbitMQ- und Azure-Service-Bus-Konsument. Payload wird via `JsonElement.Clone()` vom Quell-`JsonDocument` gelöst (Regression: vorher `ObjectDisposedException`). Ergebnis-Klassifizierung `Completed` / `CompletedDuplicate` / `Busy` / `RetryableFailure` / `Rejected`; nur ein echter Unique-Key-Konflikt gilt als Duplikat. Geschäftswirkung + Abschlussmarker in EINER gemeinsamen Transaktion committet. Fehlender Handler, unparsbares Payload, fehlender EventType, `RuntimeInboxRejectException` (unbekannte Vertragsversion / unzulässige Tenant-Zuordnung) → `Rejected` (nie Fake-Success). `Busy` bei frisch gehaltenem Claim; inkompletter Claim nach konfigurierbarem `Runtime:Inbox:ClaimTimeoutSeconds` wird reclaimt (Wiederaufnahme nach Claim-Absturz). `RuntimeInboxOptions` neu (Enabled, Subscription, MaxConcurrentCalls, PrefetchCount, MaxDeliveryCount, LockRenewalSeconds, ClaimTimeoutSeconds) unter `Runtime:Inbox`.
 - **RabbitMQ:** `RuntimeInboxConsumerService` auf den Processor umgestellt; Ack-Semantik Completed/CompletedDuplicate→Ack, Busy/Retryable→Nack(requeue), Rejected→Nack(no-requeue) in DLQ via Dead-Letter-Exchange (`inbox:<dest>.dlq`). Envelope-Parse-Fehler → DLQ.
@@ -169,6 +169,13 @@ Im uncommitteten Arbeitsbaum (lokales `master`); bewusst nicht committet/gepusht
 5. Neue Service-Bus-Worker und Request/Reply sind eine gesonderte Erweiterung, falls fachlich benötigt. Bestehende ausdrücklich nicht unterstützte Dispatcher-Methoden werden durch den Transport nicht implizit implementiert.
 
 **Abnahmekriterium:** Jeder für Azure freigegebene Ereignistyp hat einen dokumentierten und getesteten Verarbeitungsweg; HTTP-External-Tasks funktionieren unverändert.
+
+#### Umsetzungsstand P3 (2026-09-18)
+
+Committet und auf `origin/master` gepusht; Detaildokument: `docs/reviews/2026-09-18_P3_Ereignisvertraege.md`.
+- **Inventar:** `81be21d` — Ereignisvertrags-Inventar der Runtime-Outbox (Schema, Tenant, Routing, Konsument/Abschluss) dokumentiert + `P3EventContractTests` (181 Zeilen) für Service/Ai-Task-Durability.
+- **Korrelation:** `8129433` — `ProcessInstanceId`/Tenant-Korrelation in `ServiceTaskDispatch`/`AiTaskDispatch` durchgereicht (alle Dispatcher, `PersistentMessageDispatcher`, `DistributedProcessEngine`).
+- **Envelope-Konformität (config-gated):** `7e33435` — `TypeSafeEnvelopeConformanceValidator` + `TypeSafeConformanceClient` im Inbox-Pfad (nur wenn `TypeSafe:Enabled`), `TypeSafeConformanceTests` (204) + Acceptance (66).
 
 ### P4 – Azure-taugliche Zustands- und Schlüsselverwaltung
 
@@ -205,6 +212,8 @@ Im uncommitteten Arbeitsbaum (lokales `master`); bewusst nicht committet/gepusht
 
 ### P5 – Infrastruktur als Code und Netzwerk
 
+**Umsetzungsstand P5 (2026-09-18):** **Offen / nicht begonnen.** Es existiert noch **keine Bicep-Struktur** (`infra/` fehlt). Die Azure-Ressourcen (Key Vault `<keyvault>`, Storage `<blob-storage>`, Flexible Server `<postgres>`, UAMI `<dev-mi>`) wurden am 2026-09-18 manuell provisioniert — **noch nicht als IaC erfasst**; Flexible Server wurde zur Kostenbegrenzung wieder gestoppt. Dieser Punkt ist der nächste Arbeitsschritt.
+
 **Priorität:** Muss  
 **Aufwand:** L  
 **Abhängigkeiten:** P0, P4
@@ -238,6 +247,8 @@ Im uncommitteten Arbeitsbaum (lokales `master`); bewusst nicht committet/gepusht
 
 ### P6 – Produktionskonfiguration, Identity und sichere Exposition
 
+**Umsetzungsstand P6 (2026-09-18):** **Offen / nicht begonnen.** Keine Produktionskonfigurationsmatrix, kein ACA-Proxy/OIDC-Härtung, keine öffentliche Exposition umgesetzt.
+
 **Priorität:** Muss  
 **Aufwand:** M  
 **Abhängigkeiten:** P4, P5
@@ -253,6 +264,8 @@ Im uncommitteten Arbeitsbaum (lokales `master`); bewusst nicht committet/gepusht
 **Abnahmekriterium:** Ein externer Benutzer kann sich nur über den echten OIDC-Provider anmelden; interne API-Endpunkte und Secrets sind aus dem Internet nicht erreichbar.
 
 ### P7 – CI/CD, Migration und revisionssicheres Release
+
+**Umsetzungsstand P7 (2026-09-18):** **Offen / nicht begonnen.** Kein Azure-Release-Workflow, keine OIDC-Federation, kein Migration-Job, kein Rollback-Prozess.
 
 **Priorität:** Muss  
 **Aufwand:** L  
@@ -279,6 +292,8 @@ Im uncommitteten Arbeitsbaum (lokales `master`); bewusst nicht committet/gepusht
 **Abnahmekriterium:** Ein Stage-Release und ein kontrollierter Rollback sind ohne Portal-Klicks, mit nachvollziehbaren Digests und auditierbaren Logs reproduzierbar.
 
 ### P8 – Tests, Betriebsnachweis und Cutover
+
+**Umsetzungsstand P8 (2026-09-18):** **Offen / nicht begonnen.** Kein Stage-E2E, keine Restore-Übung, kein Cutover.
 
 **Priorität:** Muss  
 **Aufwand:** L  
@@ -310,12 +325,12 @@ Im uncommitteten Arbeitsbaum (lokales `master`); bewusst nicht committet/gepusht
 
 1. **P0** Architektur- und Betriebsentscheidungen.
 2. **P1/P2** Service-Bus-Outbox und -Inbox samt Vertrags- und Fehlersemantik.
-3. **P4** PostgreSQL-Dependency-Registry (Punkt 1 ✅) und geteilter OIDC-Session-Store (Punkt 5 ✅) fertig; offen: Azure-tauglicher Key-Ring (Blob+Key Vault), Engine-DBs auf Flexible Server, Key-Vault-Secrets, ACA-Affinität – Blocker für Mehrreplika-Freigabe.
+3. **P4** PostgreSQL-Dependency-Registry (Punkt 1 ✅), geteilter OIDC-Session-Store (Punkt 5 ✅) und Azure-Data-Protection-Key-Ring via Blob+Key Vault (Punkt 2 ✅) verifiziert/gepusht; offen: Engine-DBs als Runtime-Verbindungsstrings+TLS (Punkt 3), alle Secrets über Key-Vault-Referenzen (Punkt 4), ACA-WebSockets/Affinität (Punkt 6) – Blocker für Mehrreplika-Freigabe.
 4. **P5** Bicep, Netzwerk, Identitäten und Azure-Ressourcen.
 5. **P6** Produktionskonfiguration und OIDC/Proxy-Härtung.
 6. **P7** revisionssicherer Delivery-Prozess und Migration Job.
 7. **P8** Stage-Nachweis, Restore-Probe und kontrollierter Cutover.
-8. **P3** Vertragsinventar beginnt mit P0 und begleitet P1/P2; zusätzliche Broker-Worker bleiben bedarfsabhängig. IaC kann parallel vorbereitet werden, Azure-Ressourcen erst nach Budget-/Abonnementfreigabe anlegen.
+8. **P3** Vertragsinventar, Korrelation + TypeSafe-Envelope-Konformität (2026-09-18 ✅); zusätzliche Broker-Worker bleiben bedarfsabhängig. **P5 (IaC) ist der nächste aktive Arbeitsschritt**; Azure-Ressourcen erst nach Budget-/Abonnementfreigabe anlegen.
 
 ## 5. Definition of Done
 

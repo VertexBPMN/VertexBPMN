@@ -59,6 +59,36 @@ Bei einem Broker-Ausfall:
 3. Sicherstellen, dass `outbox_pending` fällt und keine neuen permanenten Fehler entstehen.
 4. Nachrichten im Zustand `DeadLetter` erst nach Ursachenbehebung kontrolliert auf `Pending` zurücksetzen; Payload und Message-ID dürfen dabei nicht verändert werden.
 
+## Dead-Letter-Queue (Inbox, P2)
+
+Runtime-Ereignisse, die dauerhaft nicht zu verarbeiten sind (poison messages), landen statt in einem
+Recovery-Loop in der Dead-Letter-Queue:
+
+- **RabbitMQ:** permanent abgelehnte Nachrichten (`Rejected` — fehlender Handler, unparsbares Envelope,
+  unbekannte Vertragsversion, unzulässige Tenant-Zuordnung) werden per `BasicNack(requeue=false)` über den
+  Dead-Letter-Exchange in die Queue `inbox:<destination>.dlq` geleitet. Transiente Fehler und „Busy“-Claims
+  werden requeued (at-least-once) und nach Claim-Timeout erneut übernommen.
+- **Azure Service Bus:** `Rejected` wird per `DeadLetter` mit strukturiertem `reason` getrennt; `Retryable`/
+  `Busy` per `Abandon` redelivered, bis `MaxDeliveryCount` (Server-seitig konfiguriert) erreicht ist, dann DLQ.
+
+**Sichtung & Korrelation:**
+1. Broker-eigene DLQ anzeigen; `MessageId` (= Runtime-Outbox-ID, `N`-Format) und `eventType`/`tenantId` aus
+   den Application Properties bzw. dem Envelope notieren.
+2. Zur Prozessinstanz/Outbox korrelieren: `SELECT * FROM runtime_outbox WHERE id = '<MessageId>';` und den
+   zugehörigen Inbox-Eintrag prüfen (`RuntimeInbox` mit `IdempotencyKey = MessageId`, `Result`/`CompletedAt`).
+
+**Ursache beheben:** Fehlenden/fehlerhaften Inbox-Handler, Vertragsversion oder Tenant-Mapping & Registry
+korrigieren (bevor ein Replay erfolgt). Bearbeitung von `Rejected`, ohne die Ursache zu beheben, erzeugt
+beim Replay denselben DLQ-Eintrag.
+
+**Kontrolliertes Replay oder Verwerfen:**
+3. Replay nur mit einer **neuen Transport-ID bei unveränderter fachlicher Idempotenz-ID** (MessageId) —
+   sonst kann Broker-Duplicate-Detection das Replay verwerfen. Replay-Auditdatum und Operator protokollieren.
+4. Verwerfen nur nach expliziter fachlicher Freigabe; im Audit festhalten, warum verworfen wurde.
+
+**Audit-Nachweis:** Log-Ausgabe „permanently rejected; dead-lettered. Reason: …“ (+ MessageId/CorrelationId)
+und der DLQ-Eintrag selbst sind der Nachweis; im Incident-Log Referenz auf Broker-DLQ und Reason speichern.
+
 ## Datenbank-Recovery
 
 **Zielwerte (Phase 0, entschieden 2026-09-08):** RPO ≤ 15 min (maximaler Datenverlust), RTO ≤ 4 h (Wiederherstellungszeit).

@@ -158,8 +158,11 @@ public sealed class OperationalReadinessPhase3AcceptanceTests : IDisposable
     public void P3_AC_06_Stage_configuration_and_kubernetes_manifest_are_hardened()
     {
         var root = RepositoryRoot();
-        using var stage = JsonDocument.Parse(File.ReadAllText(Path.Combine(
-            root, "src", "VertexBPMN.Api", "appsettings.Stage.json")));
+        // The runtime reads appsettings as JSONC (the .NET config provider skips comments), so the
+        // hardening check parses with the same comment handling.
+        using var stage = JsonDocument.Parse(
+            File.ReadAllText(Path.Combine(root, "src", "VertexBPMN.Api", "appsettings.Stage.json")),
+            new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip });
         Assert.Equal("Stage", stage.RootElement.GetProperty("OperationalMode").GetString());
 
         var manifests = new[]

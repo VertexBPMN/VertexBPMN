@@ -212,7 +212,7 @@ Committet und auf `origin/master` gepusht; Detaildokument: `docs/reviews/2026-09
 
 ### P5 – Infrastruktur als Code und Netzwerk
 
-**Umsetzungsstand P5 (2026-09-18):** **Offen / nicht begonnen.** Es existiert noch **keine Bicep-Struktur** (`infra/` fehlt). Die Azure-Ressourcen (Key Vault `vbpnrgkv`, Storage `vbpnrgsa`, Flexible Server `vbpnrgpsql`, UAMI `vertexbpmn-dev-mi`) wurden am 2026-09-18 manuell provisioniert — **noch nicht als IaC erfasst**; Flexible Server wurde zur Kostenbegrenzung wieder gestoppt. Dieser Punkt ist der nächste Arbeitsschritt.
+**Umsetzungsstand P5 (2026-09-18):** **IaC implementiert, committet und gepusht (`ea04c39`)** — aber **noch nicht provisioniert** (echtes Deployment ist kostenpflichtig und wartet auf explizites OK). Umfasst `infra/` mit `main.bicep` + 11 Modulen: Netzwerk (VNet-integrierte ACA-Umgebung, Private Endpoints + Private DNS für PostgreSQL/Key Vault/Service Bus/ACR), Observability (Log Analytics + App Insights), Service Bus (Topic `vertexbpmn-runtime`, Subscriptions api/agent-worker), PostgreSQL (PG16 Flexible Server, 5 Engine-DBs, Firewall), Key Vault (RBAC + `dataprotection-key`), Storage (Data-Protection-Blob-Container), ACR, Container-Apps-Umgebung, Container-Apps (studio extern/Affinität, api intern, agent-worker intern), Migration-Job (`--migrate-only`, 1 Instanz) und Identity/UAMI mit Least-Privilege-RBAC. Connection-Strings der Engine-DBs und weitere Secrets werden als Key-Vault-Referenzen (`secretref:`) verdrahtet, nie als Klartext; Parameterdateien (`stage`/`prod`) enthalten nur nicht-geheime Werte. Verifiziert: `az bicep build` + `what-if` (52 create / 0 Fehler) + CI-Gate 1179/0/6; ein Bicep-Validierungsschritt ist im CI (`ci.yml`) verankert.
 
 **Priorität:** Muss  
 **Aufwand:** L  

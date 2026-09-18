@@ -54,5 +54,17 @@ Legende Producer: **D** = `PersistentMessageDispatcher`, **R** = `PersistentProc
 
 `ServiceTaskDispatch`/`AiTaskDispatch` um Prozessinstanz + Tenant angereichert. Rückwärtskompatibel: beide `Dispatch*Async`-Methoden in `IMessageDispatcher` erhalten optionale Parameter `Guid? processInstanceId = null, string? tenantId = null` (Default unverändert → `Guid.Empty`/`null`, wie bisher). Alle Implementierungen (`PersistentMessageDispatcher`, `InMemory`, `NoOp`, `RabbitMq`, `Kafka`) wurden angepasst; die Engine reicht `token.ProcessInstanceId` am Service-Task-Dispatch durch. `PersistentMessageDispatcher` schreibt `ProcessInstanceId`/`TenantId` in die Outbox-Zeile → Draht-Envelope trägt die Korrelation. Kein direkter Broker-Dispatcher eingeführt. Verifikation: `P3EventContractTests` (Service- + AiTask-Dispatch setzen die Korrelation/Tenant; stabile `MessageId` = Outbox-Id).
 
+## 7. Semantische Envelope-Konformitätsprüfung (TypeSafe System One)
+
+Auf Wunsch von Yova wird für P3 der **TypeSafe**-Skill eingesetzt: Ein eingehendes Outbox-Envelope wird im Inbox-Pfad zusätzlich zu den deterministischen Checks (Envelope-Version, Idempotenz, Tenant) semantisch gegen seinen deklerierten Ereignisvertrag geprüft — als Choice-Judgment von TypeSafe System One (`jev-latest`), nicht als Freitext-LLM.
+
+- **Komponenten (Infrastructure/Messaging):** `TypeSafeConformanceOptions`, `ITypeSafeConformanceClient`/`TypeSafeConformanceClient` (POST `/v1/systemone`, Antwort-`choice`/`confidence`/`probabilities`), `ITypeSafeEnvelopeConformanceValidator`/`TypeSafeEnvelopeConformanceValidator` (State = `{eventType, processInstanceId, tenantId, declaredContract, payload}`, Choice-Kriterien `conforms|malformed|wrong_contract|unclear`).
+- **Verdict-Mapping:** `conforms`→weitermachen; `malformed`/`wrong_contract`→`Rejected` (DLQ); `unclear` (Konfidenz < Schwelle) →`RetryableFailure` (Requeue/Review); Client nicht erreichbar/absent → `NotEvaluated` (**fail-open**, ein Prüfdienst-Ausfall blockiert die Fachverarbeitung nicht).
+- **Inbox-Anbindung (RuntimeInboxProcessor, Schritt 2b):** librarieregeln via `scope.ServiceProvider.GetService<ITypeSafeEnvelopeConformanceValidator>()` — **nur aktiv, wenn registriert UND `Runtime:TypeSafeConformance:Enabled=true`**; sonst `NotEvaluated` und der bestehende Pfad bleibt byteidentisch. Aktivierung + `ApiKey` erfolgen ausschließlich server-seitig (niemals in Repos/Clients); standardmäßig deaktiv.
+- **Tests:** `TypeSafeConformanceTests` (deterministisch, Fake-Client: Verdict-Mapping, Disabled, Low-Confidence→Unclear, Fail-open, Prozessor-Integration Malformed/WrongContract→Rejected, Unclear→Retryable, Conforms/NotEvaluated→Completed). `TypeSafeConformanceAcceptanceTests` (live gegen echte TypeSafe-API, `Category=ContractReviewTypeSafe`, ohne `TYPESAFE_API_KEY` übersprungen).
+- **Grenze (ehrlich):** TypeSafe akzeptiert nur Text; die Payload wird als JSON in den State gegeben. Es ist ein externer, kostenpflichtiger Dienst — Produktionsaktivierung erfordert explizite Freigabe (Budget/Latency/Nicht-Determinismus) in P5–P8.
+
+
+
 
 

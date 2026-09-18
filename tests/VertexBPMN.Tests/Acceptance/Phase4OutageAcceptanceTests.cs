@@ -663,6 +663,7 @@ public sealed class Phase4OutageAcceptanceTests(ITestOutputHelper output)
             using (var consumer = new RuntimeInboxConsumerService(
                 provider.GetRequiredService<IServiceScopeFactory>(),
                 options,
+                new RuntimeInboxOptions(),
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<RuntimeInboxConsumerService>.Instance))
             {
                 await consumer.StartAsync(TestContext.Current.CancellationToken);

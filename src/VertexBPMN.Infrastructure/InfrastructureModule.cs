@@ -141,12 +141,37 @@ public static class InfrastructureModule
         // zuschaltbar ueber Runtime:Inbox:Enabled; faellt ohne Flag zurueck
         // auf den Outbox-Enabled-Zustand, damit der at-least-once-Zustellungs-
         // und Wiederanlauf-Kreis im Produktivpfad geschlossen ist.
-        var inboxEnabled = configuration.GetValue("Runtime:Inbox:Enabled", options.Enabled);
-        // Der RabbitMQ-Inbox-Konsument wird ausschliesslich fuer den RabbitMQ-Provider
-        // registriert: Eine Azure-Service-Bus- oder Kafka-Distribution darf keinen
-        // RabbitMQ-Consumer starten (Service-Bus-Inbox folgt in P2).
-        if (inboxEnabled && provider == "rabbitmq" && !string.IsNullOrWhiteSpace(options.ConnectionString))
-            services.AddHostedService<RuntimeInboxConsumerService>();
+        // Registrierung pro aktivem Provider: genau EIN Inbox-Konsument. Ein Service-Bus-
+        // oder Kafka-Deployment darf keinen RabbitMQ-Consumer starten.
+        var inboxOptions = new RuntimeInboxOptions();
+        configuration.GetSection("Runtime:Inbox").Bind(inboxOptions);
+        services.AddSingleton(inboxOptions);
+        var inboxEnabled = inboxOptions.Enabled ?? options.Enabled;
+        if (inboxEnabled)
+        {
+            switch (provider)
+            {
+                case "rabbitmq":
+                    if (string.IsNullOrWhiteSpace(options.ConnectionString))
+                        throw new InvalidOperationException(
+                            "Runtime:Outbox:ConnectionString is required for the RabbitMQ inbox consumer.");
+                    services.AddHostedService<RuntimeInboxConsumerService>();
+                    break;
+                case "azureservicebus":
+                    services.AddHostedService<AzureServiceBusRuntimeInboxConsumerService>();
+                    break;
+                case "kafka":
+                    // Kafka-Outbox-Publisher bleibt; ein Kafka-Inbox-Konsument existiert nicht.
+                    // Kein stiller Fallback auf einen anderen Consumer - explizit validieren.
+                    throw new InvalidOperationException(
+                        "Runtime inbox consumption is not supported for Provider=Kafka. "
+                        + "Use RabbitMQ or AzureServiceBus for inbox; the Kafka outbox publisher remains available.");
+                default:
+                    throw new InvalidOperationException(
+                        $"Runtime inbox consumer cannot be enabled for Provider '{options.Provider}'. "
+                        + "Use RabbitMQ or AzureServiceBus.");
+            }
+        }
     }
 
     /// <summary>

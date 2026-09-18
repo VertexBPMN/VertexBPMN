@@ -88,6 +88,7 @@ builder.Services.AddControllers();
 builder.Services.AddMudServices();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton(TimeProvider.System);
+RegisterOidcSessionStore(builder);
 builder.Services.AddSingleton<OidcSessionTokenStore>();
 builder.Services.AddScoped<OidcCookieRefreshEvents>();
 
@@ -370,5 +371,27 @@ static bool IsLocalReturnUrl(string? returnUrl) =>
     && (returnUrl.Length == 1 || (returnUrl[1] != '/' && returnUrl[1] != '\\'))
     && !returnUrl.Contains('\r', StringComparison.Ordinal)
     && !returnUrl.Contains('\n', StringComparison.Ordinal);
+
+static void RegisterOidcSessionStore(WebApplicationBuilder builder)
+{
+    var connectionString = builder.Configuration.GetConnectionString("OidcSessionStore")
+        ?? builder.Configuration["OidcSessionStore:ConnectionString"];
+    var provider = OidcSessionStoreProvider.Resolve(
+        connectionString,
+        builder.Configuration["OidcSessionStore:Provider"]);
+
+    if (OidcSessionStoreProvider.IsSqlite(provider) || string.IsNullOrWhiteSpace(connectionString))
+    {
+        // Lokaler Standard: In-Process-Store (kein Azure-Zugang nötig, identisches Verhalten).
+        builder.Services.AddSingleton<ISharedOidcSessionStore, InMemorySharedOidcSessionStore>();
+        return;
+    }
+
+    // Geteilter, verschlüsselter Store auf PostgreSQL (Azure): alle Replikas teilen
+    // denselben Sitzungszustand und dieselben Refresh-Locks (P4.5).
+    builder.Services.AddDbContextFactory<OidcSessionStoreDbContext>(options =>
+        OidcSessionStoreProvider.Configure(options, provider, connectionString!));
+    builder.Services.AddSingleton<ISharedOidcSessionStore, PersistentOidcSessionStore>();
+}
 
 public partial class Program;

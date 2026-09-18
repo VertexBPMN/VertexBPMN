@@ -1,0 +1,74 @@
+{
+  "analyzers": {
+    "core": {
+      "rules": {
+        "adminusername-should-not-be-literal": {
+          "level": "warning"
+        },
+        "artifacts-parameters": {
+          "level": "warning"
+        },
+        "decompiler-cleanup": {
+          "level": "warning"
+        },
+        "explicit-values-for-loc-params": {
+          "level": "off"
+        },
+        "max-params": {
+          "level": "warning"
+        },
+        "max-outputs": {
+          "level": "warning"
+        },
+        "max-resources": {
+          "level": "warning"
+        },
+        "no-hardcoded-env-urls": {
+          "level": "warning"
+        },
+        "no-hardcoded-location": {
+          "level": "warning"
+        },
+        "no-loc-expr-outside-params": {
+          "level": "warning"
+        },
+        "no-unnecessary-dependson": {
+          "level": "warning"
+        },
+        "outputs-should-not-contain-secrets": {
+          "level": "warning"
+        },
+        "prefer-interpolation": {
+          "level": "warning"
+        },
+        "prefer-unquoted-property-names": {
+          "level": "warning"
+        },
+        "protect-commandtoexecute-secrets": {
+          "level": "warning"
+        },
+        "secure-params": {
+          "level": "error"
+        },
+        "secure-secrets-in-params": {
+          "level": "warning"
+        },
+        "secure-outputs": {
+          "level": "warning"
+        },
+        "simplify-interpolation": {
+          "level": "warning"
+        }
+      }
+    }
+  },
+  "experimentalFeaturesEnabled": {
+    "extensibility": false,
+    "resourceTypedParamsAndOutputs": false,
+    "sourceMapping": false,
+    "symbolicNameCodegen": false,
+    "testFramework": false,
+    "userDefinedTypes": false,
+    "providerNamespace": false
+  }
+}

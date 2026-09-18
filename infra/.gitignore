@@ -1,0 +1,3 @@
+# Compiled ARM template output from `az bicep build` — never committed.
+*.json
+!bicepconfig.json

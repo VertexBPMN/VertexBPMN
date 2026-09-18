@@ -15,6 +15,12 @@ using VertexBPMN.Infrastructure.Persistence.Services;
 using VertexBPMN.Infrastructure.Messaging;
 using VertexBPMN.Infrastructure.Operational;
 using VertexBPMN.Infrastructure.Stores;
+using Azure.Identity;
+
+using Azure.Extensions.AspNetCore.DataProtection.Blobs;
+
+using Azure.Extensions.AspNetCore.DataProtection.Keys;
+
 
 namespace VertexBPMN.Infrastructure;
 
@@ -80,14 +86,42 @@ public static class InfrastructureModule
         services.AddScoped<IDecisionRepository, DecisionRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
         var dataProtection = services.AddDataProtection().SetApplicationName("VertexBPMN");
+        var dataProtectionProvider = configuration["DataProtection:Provider"];
+        var dataProtectionIsAzure = string.Equals(
+            dataProtectionProvider, "AzureBlobKeyVault", StringComparison.OrdinalIgnoreCase);
         if (mode is "Production" or "Stage")
         {
-            var keyRingPath = configuration["DataProtection:KeyRingPath"];
-            if (string.IsNullOrWhiteSpace(keyRingPath))
-                throw new InvalidOperationException(
-                    "DataProtection:KeyRingPath is required in Production and Stage so replicas share durable keys.");
-            var directory = Directory.CreateDirectory(Path.GetFullPath(keyRingPath));
-            dataProtection.PersistKeysToFileSystem(directory);
+            if (dataProtectionIsAzure)
+            {
+                if (string.IsNullOrWhiteSpace(configuration["DataProtection:BlobUri"])
+                    || string.IsNullOrWhiteSpace(configuration["DataProtection:KeyVaultKeyIdentifier"]))
+                    throw new InvalidOperationException(
+                        "DataProtection:BlobUri and DataProtection:KeyVaultKeyIdentifier are required in Production/Stage "
+                        + "when DataProtection:Provider=AzureBlobKeyVault so replicas share durable, encrypted keys.");
+            }
+            else
+            {
+                var keyRingPath = configuration["DataProtection:KeyRingPath"];
+                if (string.IsNullOrWhiteSpace(keyRingPath))
+                    throw new InvalidOperationException(
+                        "DataProtection:KeyRingPath is required in Production and Stage so replicas share durable keys.");
+                var directory = Directory.CreateDirectory(Path.GetFullPath(keyRingPath));
+                dataProtection.PersistKeysToFileSystem(directory);
+            }
+        }
+        if (dataProtectionIsAzure)
+        {
+            var blobUri = configuration["DataProtection:BlobUri"]!;
+            var keyIdentifier = new Uri(configuration["DataProtection:KeyVaultKeyIdentifier"]!);
+            var credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions
+            {
+                ExcludeSharedTokenCacheCredential = true,
+                ExcludeVisualStudioCredential = true,
+                ExcludeVisualStudioCodeCredential = true,
+                ExcludeInteractiveBrowserCredential = true,
+            });
+            dataProtection.PersistKeysToAzureBlobStorage(new Uri(blobUri), credential);
+            dataProtection.ProtectKeysWithAzureKeyVault(keyIdentifier, credential);
         }
         services.AddScoped<ICredentialService, PersistentCredentialService>();
         services.AddScoped<IConnectorService, PersistentConnectorService>();

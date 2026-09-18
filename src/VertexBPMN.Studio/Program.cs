@@ -11,6 +11,9 @@ using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using MudBlazor.Services;
 using System.Net;
 using System.Security.Claims;
+using Azure.Identity;
+using Azure.Extensions.AspNetCore.DataProtection.Blobs;
+using Azure.Extensions.AspNetCore.DataProtection.Keys;
 using VertexBPMN.ServiceDefaults.Security;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -30,17 +33,45 @@ var httpsRedirectionEnabled = builder.Configuration.GetValue(
     true);
 var operationalMode = builder.Configuration["OperationalMode"] ?? builder.Environment.EnvironmentName;
 var dataProtection = builder.Services.AddDataProtection().SetApplicationName("VertexBPMN.Studio");
+var dataProtectionProvider = builder.Configuration["DataProtection:Provider"];
 var dataProtectionKeyRingPath = builder.Configuration["DataProtection:KeyRingPath"];
+var dataProtectionIsAzure = string.Equals(
+    dataProtectionProvider, "AzureBlobKeyVault", StringComparison.OrdinalIgnoreCase);
 if (operationalMode.Equals("Production", StringComparison.OrdinalIgnoreCase)
     || operationalMode.Equals("Stage", StringComparison.OrdinalIgnoreCase))
 {
-    if (string.IsNullOrWhiteSpace(dataProtectionKeyRingPath))
+    if (dataProtectionIsAzure)
+    {
+        // In Azure, the filesystem fallback is forbidden. Blob + Key Vault via Managed Identity only.
+        if (string.IsNullOrWhiteSpace(builder.Configuration["DataProtection:BlobUri"])
+            || string.IsNullOrWhiteSpace(builder.Configuration["DataProtection:KeyVaultKeyIdentifier"]))
+        {
+            throw new InvalidOperationException(
+                "DataProtection:BlobUri and DataProtection:KeyVaultKeyIdentifier are required in Production/Stage "
+                + "when DataProtection:Provider=AzureBlobKeyVault so Studio replicas share durable, encrypted keys.");
+        }
+    }
+    else if (string.IsNullOrWhiteSpace(dataProtectionKeyRingPath))
     {
         throw new InvalidOperationException(
             "DataProtection:KeyRingPath is required in Production and Stage so Studio replicas share durable authentication keys.");
     }
 }
-if (!string.IsNullOrWhiteSpace(dataProtectionKeyRingPath))
+if (dataProtectionIsAzure)
+{
+    var blobUri = builder.Configuration["DataProtection:BlobUri"]!;
+    var keyIdentifier = new Uri(builder.Configuration["DataProtection:KeyVaultKeyIdentifier"]!);
+    var credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions
+    {
+        ExcludeSharedTokenCacheCredential = true,
+        ExcludeVisualStudioCredential = true,
+        ExcludeVisualStudioCodeCredential = true,
+        ExcludeInteractiveBrowserCredential = true,
+    });
+    dataProtection.PersistKeysToAzureBlobStorage(new Uri(blobUri), credential);
+    dataProtection.ProtectKeysWithAzureKeyVault(keyIdentifier, credential);
+}
+else if (!string.IsNullOrWhiteSpace(dataProtectionKeyRingPath))
 {
     dataProtection.PersistKeysToFileSystem(
         Directory.CreateDirectory(Path.GetFullPath(dataProtectionKeyRingPath)));

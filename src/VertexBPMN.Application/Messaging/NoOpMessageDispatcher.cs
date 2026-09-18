@@ -7,7 +7,7 @@ namespace VertexBPMN.Application.Messaging;
 
 public class NoOpMessageDispatcher : IMessageDispatcher
 {
-    public Task DispatchServiceTaskAsync(string targetWorker, string implementation, Dictionary<string, string> attributes, Dictionary<string, object> variables, CancellationToken cancellationToken = default)
+    public Task DispatchServiceTaskAsync(string targetWorker, string implementation, Dictionary<string, string> attributes, Dictionary<string, object> variables, CancellationToken cancellationToken = default, Guid? processInstanceId = null, string? tenantId = null)
         => Task.CompletedTask;
 
     public Task<Dictionary<string, object>> DispatchDmnTaskAsync(string targetWorker, string decisionRef, Dictionary<string, object> variables, CancellationToken cancellationToken = default)
@@ -39,7 +39,7 @@ public class NoOpMessageDispatcher : IMessageDispatcher
     }
 
     public Task DispatchAiTaskAsync(string targetWorkerId, string aiProvider, string aiModel, Dictionary<string, string> attributes,
-        Dictionary<string, object> variables, CancellationToken cancellationToken = default)
+        Dictionary<string, object> variables, CancellationToken cancellationToken = default, Guid? processInstanceId = null, string? tenantId = null)
     {
         return Task.CompletedTask;
     }

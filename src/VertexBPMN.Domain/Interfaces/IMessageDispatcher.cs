@@ -15,7 +15,7 @@ public interface IMessageDispatcher
     /// Returns when dispatch is accepted (not necessarily when remote finished).
     /// For testing you can implement sync behavior that actually executes the handler.
     /// </summary>
-    Task DispatchServiceTaskAsync(string targetWorkerId, string implementation, Dictionary<string, string> attributes, Dictionary<string, object> variables, CancellationToken cancellationToken = default);
+    Task DispatchServiceTaskAsync(string targetWorkerId, string implementation, Dictionary<string, string> attributes, Dictionary<string, object> variables, CancellationToken cancellationToken = default, Guid? processInstanceId = null, string? tenantId = null);
     Task PublishTokenAsync(ExecutionToken token, CancellationToken cancellationToken = default);
     Task PublishCaseTokenAsync(CaseToken token, CancellationToken cancellationToken = default);
     Task QueueTaskAsync(string taskId, string taskType, Dictionary<string, object> variables, CancellationToken cancellationToken = default);
@@ -24,5 +24,5 @@ public interface IMessageDispatcher
     Task SubscribeToMessageAsync(string messageName, Func<Message, Task> handler, CancellationToken cancellationToken = default);
     Task PublishCaseFileUpdateAsync(CaseFileUpdateEvent updateEvent, CancellationToken cancellationToken = default);
     Task SubscribeToCaseFileUpdateAsync(string caseId, Func<CaseFileUpdateEvent, Task> handler, CancellationToken cancellationToken = default);
-    Task DispatchAiTaskAsync(string targetWorkerId, string aiProvider, string aiModel, Dictionary<string, string> attributes, Dictionary<string, object> variables, CancellationToken cancellationToken = default);
+    Task DispatchAiTaskAsync(string targetWorkerId, string aiProvider, string aiModel, Dictionary<string, string> attributes, Dictionary<string, object> variables, CancellationToken cancellationToken = default, Guid? processInstanceId = null, string? tenantId = null);
 }

@@ -18,8 +18,8 @@ Legende Producer: **D** = `PersistentMessageDispatcher`, **R** = `PersistentProc
 
 | EventType | Prod | ProzessInstanz | Tenant | Payload (gekürzt) | Bestimmungsort / Consumer | Fachl. Abschluss |
 |---|---|---|---|---|---|---|
-| `ServiceTaskDispatch` | D | **Guid.Empty** ⚠️ | **null** ⚠️ | `targetWorkerId, implementation, attributes, variables` | Outbox→Broker; **kein registrierter Inbox-Handler i. Prod** | Service-Task über HTTP-External-Task (AgentWorker), nicht über Broker ⇐ P3-Gap |
-| `AiTaskDispatch` | D | **Guid.Empty** ⚠️ | **null** ⚠️ | `targetWorkerId, aiProvider, aiModel, attributes, variables` | Outbox→Broker; **kein registrierter Inbox-Handler** | s. o. ⇐ P3-Gap |
+| `ServiceTaskDispatch` | D | ✓ (Engine reicht `token.ProcessInstanceId`) | tenant-optional | `targetWorkerId, implementation, attributes, variables` | Outbox→Broker; **kein registrierter Inbox-Handler i. Prod** | Service-Task über HTTP-External-Task (AgentWorker), nicht über Broker |
+| `AiTaskDispatch` | D | ✓ (optional `processInstanceId`) | tenant-optional | `targetWorkerId, aiProvider, aiModel, attributes, variables` | Outbox→Broker; **kein registrierter Inbox-Handler** | s. o. |
 | `ExecutionTokenPublished` | D | token.ProcessInstanceId | null | `ExecutionToken` | Outbox→Broker | Ankündigungs-/Replay-Vertrag |
 | `CaseTokenPublished` | D | Guid.Empty | null | `CaseToken` | Outbox→Broker | CMMN-Event-Ankündigung |
 | `TaskQueued` | D | Guid.Empty | null | `taskId, taskType, variables` | Outbox→Broker | Queue-Ankündigung |
@@ -46,12 +46,13 @@ Legende Producer: **D** = `PersistentMessageDispatcher`, **R** = `PersistentProc
 
 ## 5. Befunde / offene Punkte
 
-1. **Tenant-/Korrelations-Gap (ServiceTaskDispatch/AiTaskDispatch)** — zu beheben, sobald du die Schnittstellen-Erweiterung freigibst (Vorschlag in § 6).
+1. **Tenant-/Korrelations-Gap (ServiceTaskDispatch/AiTaskDispatch)** — ✅ **behoben** (Commit unten, § 6): die beiden Dispatch-Methoden akzeptieren jetzt optional `processInstanceId`+`tenantId`; die Engine reicht `token.ProcessInstanceId` durch. `PersistentMessageDispatcher` schreibt beide in die Outbox-Zeile, sodass das Draht-Envelope (`{id,eventType,processInstanceId,tenantId,...}`) die Korrelation trägt. Tenant wird weiterhin verfügbar-optional gesetzt (die Distributed-Engine besitzt keinen Tenant-Kontext).
 2. **Kein produktiver Inbox-Geschäftshandler** — bewusste, sichere Absicherung (Reject statt Fake-Success). Für Azure freigegebene Ereignistypen ist ein dokumentierter Verarbeitungsweg erforderlich; solange nur Weiterleitung/Historisierung genutzt wird, gilt: Maximal-Abnahme für Broker-Fachkonsumption erst nach expliziter Handler-Anbindung.
 3. **Extern/Stage (E2E am Ende, wie besprochen):** HTTP-External-Task-Lease/-Completion/-Recovery gegen `VertexBPMN.AgentWorker` auf Azure; E2E-Sende-/Empfangs-/DLQ-Lauf gegen echten Service-Bus-Namespace; Phase4-Suiten gegen echte RabbitMQ.
 
-## 6. Vorgeschlagene Korrektur (wartet auf Freigabe)
+## 6. Korrektur (umgesetzt)
 
-`ServiceTaskDispatch`/`AiTaskDispatch` um Prozessinstanz + Tenant anreichern. Kleiner, sicherer Pfad: die beiden `Dispatch*Async`-Signaturen bleiben unverändert; der Korrelations-/Tenant-Kontext kommt aus der Engine mithilfe eines optionalen Aufrufs (`DispatchServiceTaskAsync(..., processInstanceId, tenantId)`-Overload bzw. Kontext via `AsyncLocal`/explizitem Parameter) und wird im Envelope gesetzt. Genaue API-Form in Absprache; kein direkter Broker-Dispatcher wird eingeführt.
+`ServiceTaskDispatch`/`AiTaskDispatch` um Prozessinstanz + Tenant angereichert. Rückwärtskompatibel: beide `Dispatch*Async`-Methoden in `IMessageDispatcher` erhalten optionale Parameter `Guid? processInstanceId = null, string? tenantId = null` (Default unverändert → `Guid.Empty`/`null`, wie bisher). Alle Implementierungen (`PersistentMessageDispatcher`, `InMemory`, `NoOp`, `RabbitMq`, `Kafka`) wurden angepasst; die Engine reicht `token.ProcessInstanceId` am Service-Task-Dispatch durch. `PersistentMessageDispatcher` schreibt `ProcessInstanceId`/`TenantId` in die Outbox-Zeile → Draht-Envelope trägt die Korrelation. Kein direkter Broker-Dispatcher eingeführt. Verifikation: `P3EventContractTests` (Service- + AiTask-Dispatch setzen die Korrelation/Tenant; stabile `MessageId` = Outbox-Id).
+
 
 

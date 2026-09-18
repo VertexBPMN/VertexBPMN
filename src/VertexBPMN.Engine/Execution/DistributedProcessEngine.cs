@@ -1532,7 +1532,7 @@ namespace VertexBPMN.Engine.Execution
                         var targetWorker = token.AssignedWorker ?? (await FindBestWorkerAsync(task.Type))?.Id;
                         await _messageDispatcher.DispatchServiceTaskAsync(targetWorker ?? "",
                             attributes.GetValueOrDefault("implementation", ""), attributes, variables,
-                            cancellationToken);
+                            cancellationToken, token.ProcessInstanceId);
                         trace.Add($"ServiceTaskDispatched: {task.Id} -> {targetWorker ?? "none"}");
                     }
 

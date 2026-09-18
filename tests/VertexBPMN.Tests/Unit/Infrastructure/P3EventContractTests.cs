@@ -75,8 +75,11 @@ public sealed class P3EventContractTests
             ["vertex:mode"] = "verify"
         };
         var variables = new Dictionary<string, object> { ["applicantName"] = "Yova", ["age"] = 40 };
+        var processInstanceId = Guid.NewGuid();
+        const string tenantId = "tenant-a";
 
-        await dispatcher.DispatchServiceTaskAsync("worker-1", "calculateScore", attributes, variables);
+        await dispatcher.DispatchServiceTaskAsync("worker-1", "calculateScore", attributes, variables,
+            CancellationToken.None, processInstanceId, tenantId);
 
         // 1) Durable write happens first: exactly one Pending outbox row, no broker send yet.
         var pending = await h.ReadOutboxAsync();
@@ -84,6 +87,9 @@ public sealed class P3EventContractTests
         Assert.Equal("ServiceTaskDispatch", row.EventType);
         Assert.Equal("Pending", row.State);
         Assert.NotEqual(Guid.Empty, row.Id);
+        // P3 correlation/tenant fix: the dispatch is now bound to its process instance and tenant.
+        Assert.Equal(processInstanceId, row.ProcessInstanceId);
+        Assert.Equal(tenantId, row.TenantId);
 
         using var doc = JsonDocument.Parse(row.Payload);
         var root = doc.RootElement;
@@ -118,12 +124,17 @@ public sealed class P3EventContractTests
         var dispatcher = scope.ServiceProvider.GetRequiredService<IMessageDispatcher>();
         var attributes = new Dictionary<string, string> { ["implementation"] = "classify" };
         var variables = new Dictionary<string, object> { ["text"] = "hello" };
+        var processInstanceId = Guid.NewGuid();
+        const string tenantId = "tenant-a";
 
-        await dispatcher.DispatchAiTaskAsync("ai-worker", "openai", "gpt-4o-mini", attributes, variables);
+        await dispatcher.DispatchAiTaskAsync("ai-worker", "openai", "gpt-4o-mini", attributes, variables,
+            CancellationToken.None, processInstanceId, tenantId);
 
         var row = Assert.Single(await h.ReadOutboxAsync());
         Assert.Equal("AiTaskDispatch", row.EventType);
         Assert.Equal("Pending", row.State);
+        Assert.Equal(processInstanceId, row.ProcessInstanceId);
+        Assert.Equal(tenantId, row.TenantId);
 
         using var doc = JsonDocument.Parse(row.Payload);
         var root = doc.RootElement;

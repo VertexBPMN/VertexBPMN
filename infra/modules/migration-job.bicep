@@ -45,7 +45,7 @@ resource migrationJob 'Microsoft.App/jobs@2024-02-02-preview' = {
       registries: [
         {
           server: registryServer
-          identity: appMiId != '' ? '${appMiId}/userAssignedIdentities/${appMiClientId}' : ''
+          identity: appMiId != '' ? appMiId : ''
         }
       ]
     }

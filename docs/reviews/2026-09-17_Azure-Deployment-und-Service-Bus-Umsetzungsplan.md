@@ -265,7 +265,7 @@ Committet und auf `origin/master` gepusht; Detaildokument: `docs/reviews/2026-09
 
 ### P7 – CI/CD, Migration und revisionssicheres Release
 
-**Umsetzungsstand P7 (2026-09-18):** **Offen / nicht begonnen.** Kein Azure-Release-Workflow, keine OIDC-Federation, kein Migration-Job, kein Rollback-Prozess.
+**Umsetzungsstand P7 (2026-09-19):** **Image-Build/-Push DONE — Stage-Container-Apps LAUFEN.** 3 Images (`vertexbpmn-api`, `vertexbpmn-studio`, `vertexbpmn-agent-worker`, Tag `1.0.0`) lokal gebaut (Host-`dotnet publish` → schlanke Runtime-Images, da der Multi-Stage-Docker-Build die volle Solution im Container-restoren und an fehlender VM-Disk scheiterte) und per temporär aktiviertem ACR-Admin-Account + temporärer Public-IP-Firewall-Regel (VM-IP) nach `vertexbpmnstageacr.azurecr.io` gepusht; danach beides **sofort wieder deaktiviert** (Admin `false`, Public `Disabled`, IP-Regel entfernt) — Security vollständig rückgebaut. Bei Re-Deploy (Run 8/9) einen weiteren Deployment-Zeit-Bug gefunden und behoben: **`migration-job.bicep`** hatte die ACR-Registry-Identity fälschlich als `appMiId/userAssignedIdentities/<clientId>` zusammengesetzt (`ContainerAppRegistryInvalidIdentityValue`) → auf reine UAMI-Ressourcen-ID korrigiert. **Container Apps sind `Running`/`Succeeded`**: api + studio je 1 Replica, agent-worker `Running` (scale-to-zero, min 0), Migrations-Job `vertexbpmn-stage-migrate` `Succeeded`, Image `vertexbpmnstageacr.azurecr.io/vertexbpmn-api:1.0.0`. **Offen:** GitHub-Actions-Release-Workflow mit OIDC-Federation, Versionierung per Commit-SHA/Digest, Rollback-Prozess und der eigentliche Migrationslauf (Job manuell anstoßen) sind noch nicht umgesetzt.
 
 **Priorität:** Muss  
 **Aufwand:** L  

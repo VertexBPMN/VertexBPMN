@@ -49,49 +49,31 @@ resource vnet 'Microsoft.Network/virtualNetworks@2023-11-01' = {
         '10.10.0.0/16'
       ]
     }
-    subnets: [
-      {
-        name: 'aca-subnet'
-        properties: {
-          addressPrefix: '10.10.1.0/24'
-          delegations: [
-            {
-              name: 'aca-infra-delegation'
-              properties: {
-                serviceName: 'Microsoft.App/environments'
-              }
-            }
-          ]
-        }
-      }
-      {
-        name: 'private-endpoints-subnet'
-        properties: {
-          addressPrefix: '10.10.2.0/24'
-          privateEndpointNetworkPolicies: 'Disabled'
-        }
-      }
-    ]
   }
 }
 
 resource acaSubnet 'Microsoft.Network/virtualNetworks/subnets@2023-11-01' = {
   parent: vnet
   name: 'aca-subnet'
+  properties: {
+    addressPrefix: '10.10.1.0/24'
+    delegations: [
+      {
+        name: 'aca-infra-delegation'
+        properties: {
+          serviceName: 'Microsoft.App/environments'
+        }
+      }
+    ]
+  }
 }
 
 resource privateEndpointsSubnet 'Microsoft.Network/virtualNetworks/subnets@2023-11-01' = {
   parent: vnet
   name: 'private-endpoints-subnet'
-}
-
-#disable-next-line BCP081 // serviceAssociationLinks has no published types for this API version
-resource acaServiceAssociationLink 'Microsoft.Network/virtualNetworks/subnets/serviceAssociationLinks@2023-11-01' = {
-  parent: acaSubnet
-  name: 'aca-service-association'
   properties: {
-    linkedResourceType: 'Microsoft.App/environments'
-    link: '${subscription().id}/resourceGroups/${resourceGroup().name}/providers/Microsoft.App/environments/${caName}'
+    addressPrefix: '10.10.2.0/24'
+    privateEndpointNetworkPolicies: 'Disabled'
   }
 }
 

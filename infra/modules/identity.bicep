@@ -29,12 +29,12 @@ param sbNamespaceId string
 param storageAccountId string
 
 // ---- built-in role definition GUIDs (ids embedded as strings) ----
-var acrPullRoleId = '7f951dda-4ed3-4680-a7ca-43fe162d65d5'
+var acrPullRoleId = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
 var kvSecretsUserRoleId = '4633458b-17de-408a-b874-0445c86b69e6'
 var kvCryptoUserRoleId = '12338af0-0e69-4776-bea7-57ae8d297424'
 var sbDataSenderRoleId = '69a216fc-b8fb-44d8-bc22-1f3c2cd27a39'
-var sbDataReceiverRoleId = '4f6d3b9c-6f7f-4cf2-a3e4-11e90a21f522'
-var sbBlobDataContributorRoleId = 'ba92f5b4-2d11-453d-a403-e64bce8c011d'
+var sbDataReceiverRoleId = '4f6d3b9b-027b-4f4c-9142-0e5a2a2247e0'
+var blobDataContributorRoleId = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
 
 // Full roleDefinitionId ARM path built from the current subscription.
 // e.g. /subscriptions/<sub>/providers/Microsoft.Authorization/roleDefinitions/<guid>
@@ -127,10 +127,10 @@ resource sbDataReceiverRole 'Microsoft.Authorization/roleAssignments@2022-04-01'
 
 // Storage Blob Data Contributor on the storage account (Data Protection key ring)
 resource sbBlobDataContributorRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(storageAccountId, sbBlobDataContributorRoleId, 'sbcontrib')
+  name: guid(storageAccountId, blobDataContributorRoleId, 'sbcontrib')
   scope: storage
   properties: {
-    roleDefinitionId: '${roleDefinitionsRoot}/${sbBlobDataContributorRoleId}'
+    roleDefinitionId: '${roleDefinitionsRoot}/${blobDataContributorRoleId}'
     principalId: identity.properties.principalId
     principalType: 'ServicePrincipal'
   }

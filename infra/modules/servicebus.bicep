@@ -31,7 +31,7 @@ resource topic 'Microsoft.ServiceBus/namespaces/topics@2022-10-01-preview' = {
   parent: namespace
   name: 'vertexbpmn-runtime'
   properties: {
-    defaultMessageTimeToLive: 'PT14D'
+    defaultMessageTimeToLive: 'P14D'
     maxSizeInMegabytes: 1024
     requiresDuplicateDetection: false
     duplicateDetectionHistoryTimeWindow: 'PT10M'
@@ -48,7 +48,7 @@ resource apiSubscription 'Microsoft.ServiceBus/namespaces/topics/subscriptions@2
     deadLetteringOnFilterEvaluationExceptions: false
     deadLetteringOnMessageExpiration: true
     maxDeliveryCount: 10
-    defaultMessageTimeToLive: 'PT14D'
+    defaultMessageTimeToLive: 'P14D'
     lockDuration: 'PT1M'
     autoDeleteOnIdle: 'P10675199DT2H48M5.4775807S'
   }
@@ -61,7 +61,7 @@ resource agentWorkerSubscription 'Microsoft.ServiceBus/namespaces/topics/subscri
     deadLetteringOnFilterEvaluationExceptions: false
     deadLetteringOnMessageExpiration: true
     maxDeliveryCount: 10
-    defaultMessageTimeToLive: 'PT14D'
+    defaultMessageTimeToLive: 'P14D'
     lockDuration: 'PT1M'
     autoDeleteOnIdle: 'P10675199DT2H48M5.4775807S'
   }

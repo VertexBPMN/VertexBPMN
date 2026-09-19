@@ -46,7 +46,8 @@ resource flexibleServer 'Microsoft.DBforPostgreSQL/flexibleServers@2023-06-01-pr
 }
 
 // Create a firewall rule for each IP in the comma-separated allowVmTestIp list.
-resource firewallRule 'Microsoft.DBforPostgreSQL/flexibleServers/firewallRules@2023-06-01-preview' = [for ipAddress in split(allowVmTestIp, ','): {
+// Empty entries (split on empty string) are skipped.
+resource firewallRule 'Microsoft.DBforPostgreSQL/flexibleServers/firewallRules@2023-06-01-preview' = [for ipAddress in split(allowVmTestIp, ','): if (!empty(trim(ipAddress))) {
   parent: flexibleServer
   name: 'AllowVmTest-${replace(replace(trim(ipAddress), '.', '-'), ':', '-')}'
   properties: {

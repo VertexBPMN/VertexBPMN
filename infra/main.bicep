@@ -22,6 +22,10 @@ param namePrefix string
 @description('PostgreSQL admin username (non-secret; password lives in Key Vault as pg-admin-password).')
 param postgresAdminUsername string = 'vbpnadmin'
 
+@description('PostgreSQL admin password. SECURE — supply at deploy time via a Key Vault reference (never in repo or parameterfile). Empty = server created with placeholder (deploy-time reference recommended).')
+@secure()
+param postgresAdminPassword string = ''
+
 @description('Optional VM public IP to allow in the Postgres firewall for acceptance tests (empty = no rule).')
 @minLength(0)
 param allowVmTestIp string = ''
@@ -109,6 +113,7 @@ module postgres './modules/postgresql.bicep' = {
     serverName: psqlName
     environment: environment
     adminUsername: postgresAdminUsername
+    adminPassword: postgresAdminPassword
     allowVmTestIp: allowVmTestIp
   }
 }

@@ -45,7 +45,6 @@ resource apisContainer 'Microsoft.Storage/storageAccounts/blobServices/container
   parent: blobService
   properties: {
     publicAccess: 'None'
-    defaultEncryptionScope: '$account-encryption-key'
   }
 }
 
@@ -54,7 +53,6 @@ resource studioContainer 'Microsoft.Storage/storageAccounts/blobServices/contain
   parent: blobService
   properties: {
     publicAccess: 'None'
-    defaultEncryptionScope: '$account-encryption-key'
   }
 }
 

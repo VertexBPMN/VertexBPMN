@@ -17,9 +17,6 @@ resource managedEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' = {
     Environment: environment
   }
   properties: {
-    appLogsConfiguration: {
-      destination: 'none'
-    }
     vnetConfiguration: {
       infrastructureSubnetId: acaSubnetId
     }

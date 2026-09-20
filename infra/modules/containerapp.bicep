@@ -76,6 +76,10 @@ var envVars = concat([
     value: string(applyMigrationsOnStartup)
   }
   {
+    name: 'Modules__Plugins'
+    value: (environment == 'stage' || environment == 'prod') ? 'false' : 'true'
+  }
+  {
     name: 'OperationalMode'
     value: (environment == 'prod') ? 'Production' : ((environment == 'stage') ? 'Stage' : 'Development')
   }
@@ -163,6 +167,10 @@ var envVars = concat([
     value: 'ManagedIdentity'
   }
   {
+    name: 'Runtime__Outbox__ManagedIdentityClientId'
+    value: appMiClientId
+  }
+  {
     name: 'Runtime__Inbox__Enabled'
     value: 'true'
   }
@@ -173,6 +181,10 @@ var envVars = concat([
   {
     name: 'Runtime__Inbox__FullyQualifiedNamespace'
     value: serviceBusFullyQualifiedNamespace
+  }
+  {
+    name: 'Runtime__Inbox__ManagedIdentityClientId'
+    value: appMiClientId
   }
 ], connectionStringEnvVars)
 

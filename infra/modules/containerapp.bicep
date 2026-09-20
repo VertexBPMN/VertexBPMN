@@ -49,8 +49,16 @@ param memory string = '1.0Gi'
 param connectionSecretRefs array = []
 
 // secretref format: <ConfigKey>:secretref:<KeyVaultSecretName>
-@description('Key Vault that holds the secret references (used to build secret URLs).')
+@description('Key Value that holds the secret references (used to build secret URLs).')
 param keyVaultName string = ''
+
+@description('Full Key Vault URI (https://<vault>.vault.azure.net) used by the app to resolve secretref tokens at runtime.')
+param keyVaultUri string = ''
+
+@description('Key Vault secret name holding the symmetric JWT signing key (Stage before P6 OIDC). Empty = not configured.')
+param jwtSecretKeySecretName string = ''
+@description('JWT audience for Stage (before P6 OIDC). Empty = not configured.')
+param jwtAudience string = ''
 
 var identityType = empty(appMiId) ? 'SystemAssigned' : 'UserAssigned'
 var identityId = empty(appMiId) ? null : {
@@ -70,6 +78,10 @@ var envVars = concat([
   {
     name: 'OperationalMode'
     value: (environment == 'prod') ? 'Production' : ((environment == 'stage') ? 'Stage' : 'Development')
+  }
+  {
+    name: 'KeyVault__Uri'
+    value: keyVaultUri
   }
 ], empty(appMiClientId) ? [] : [
   {
@@ -106,6 +118,15 @@ var envVars = concat([
   {
     name: 'DataProtection__KeyVaultKeyIdentifier'
     value: dataProtectionKeyId
+  }
+], empty(jwtSecretKeySecretName) ? [] : [
+  {
+    name: 'Jwt__SecretKey'
+    value: 'secretref:${jwtSecretKeySecretName}'
+  }
+  {
+    name: 'Jwt__Audience'
+    value: jwtAudience
   }
 ], empty(sessionStoreConnectionStringSecretName) ? [] : [
   {
@@ -157,8 +178,20 @@ var envVars = concat([
 
 var connectionStringEnvVars = [for cs in connectionSecretRefs: {
   name: 'ConnectionStrings__${split(cs, ':')[0]}'
-  value: cs
+  value: 'secretref:${split(cs, ':')[2]}'
 }]
+
+var dbSecrets = [for cs in connectionSecretRefs: {
+  name: split(cs, ':')[2]
+  keyVaultUrl: 'https://${keyVaultName}.vault.azure.net/secrets/${split(cs, ':')[2]}'
+}]
+
+var jwtSecrets = empty(jwtSecretKeySecretName) ? [] : [{
+  name: jwtSecretKeySecretName
+  keyVaultUrl: 'https://${keyVaultName}.vault.azure.net/secrets/${jwtSecretKeySecretName}'
+}]
+
+var appSecrets = concat(dbSecrets, jwtSecrets)
 
 resource app 'Microsoft.App/containerApps@2024-03-01' = {
   name: name
@@ -171,9 +204,9 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
     managedEnvironmentId: managedEnvironmentId
     configuration: {
       activeRevisionsMode: 'Single'
-      secrets: [for cs in connectionSecretRefs: {
-        name: split(cs, ':')[2]
-        keyVaultUrl: 'https://${keyVaultName}.vault.azure.net/secrets/${split(cs, ':')[2]}'
+      secrets: [for s in appSecrets: {
+        name: s.name
+        keyVaultUrl: s.keyVaultUrl
         identity: appMiId
       }]
       ingress: {

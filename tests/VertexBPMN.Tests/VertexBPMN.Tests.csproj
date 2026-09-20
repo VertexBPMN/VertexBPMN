@@ -149,6 +149,7 @@
                     IsAspireProjectResource="false" />
   <ProjectReference Include="..\..\src\VertexBPMN.Sdk\VertexBPMN.Sdk.csproj" />
   <ProjectReference Include="..\..\src\VertexBPMN.AgentWorker\VertexBPMN.AgentWorker.csproj" />
+  <ProjectReference Include="..\..\src\VertexBPMN.ServiceDefaults\VertexBPMN.ServiceDefaults.csproj" />
 </ItemGroup>
 <ItemGroup Condition="'$(ExternalTaskVerificationBuild)' == 'true'">
   <Compile Remove="Unit\Cli\**\*.cs" />

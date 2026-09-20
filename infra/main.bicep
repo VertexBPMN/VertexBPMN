@@ -186,6 +186,9 @@ module studio './modules/containerapp.bicep' = {
     dataProtectionKeyId: keyvault.outputs.dataprotectionKeyId
     sessionStoreConnectionStringSecretName: 'oidc-session-store-connectionstring'
     keyVaultName: kvName
+    keyVaultUri: vaultUri
+    jwtSecretKeySecretName: 'jwt-secret-key'
+    jwtAudience: 'vertexbpmn-api'
     applyMigrationsOnStartup: false
     replicas: studioReplicas
     minReplicas: 1
@@ -217,6 +220,9 @@ module api './modules/containerapp.bicep' = {
     serviceBusTopicName: servicebus.outputs.topicName
     serviceBusSubscriptionName: servicebus.outputs.apiSubscriptionName
     keyVaultName: kvName
+    keyVaultUri: vaultUri
+    jwtSecretKeySecretName: 'jwt-secret-key'
+    jwtAudience: 'vertexbpmn-api'
     connectionSecretRefs: [
       'BpmnDbContext:secretref:pg-bpmn'
       'TenantDbContext:secretref:pg-tenants'
@@ -272,6 +278,23 @@ module migrationJob './modules/migration-job.bicep' = {
     registryServer: acr.outputs.registryLoginServer
     appMiClientId: identity.outputs.appMiClientId
     appMiId: identity.outputs.appMiResourceId
+    keyVaultName: kvName
+    keyVaultUri: vaultUri
+    serviceBusFullyQualifiedNamespace: servicebus.outputs.fullyQualifiedNamespace
+    serviceBusTopicName: servicebus.outputs.topicName
+    serviceBusSubscriptionName: servicebus.outputs.apiSubscriptionName
+    dataProtectionBlobUri: storage.outputs.dataprotectionApiBlobUri
+    dataProtectionKeyId: keyvault.outputs.dataprotectionKeyId
+    jwtSecretKeySecretName: 'jwt-secret-key'
+    jwtAudience: 'vertexbpmn-api'
+    connectionSecretRefs: [
+      'BpmnDbContext:secretref:pg-bpmn'
+      'TenantDbContext:secretref:pg-tenants'
+      'SimulationScenarioDbContext:secretref:pg-simulation'
+      'ProcessMiningEvents:secretref:pg-processminingevents'
+      'DecisionDbContext:secretref:pg-decision'
+      'DependencyRegistry:secretref:pg-registry'
+    ]
   }
   dependsOn: [
     containerAppsEnvironment

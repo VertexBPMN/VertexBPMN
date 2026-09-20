@@ -99,6 +99,10 @@ var serviceBusEnvVars = empty(serviceBusFullyQualifiedNamespace) ? [] : [
     value: 'ManagedIdentity'
   }
   {
+    name: 'Runtime__Outbox__ManagedIdentityClientId'
+    value: appMiClientId
+  }
+  {
     name: 'Runtime__Inbox__Enabled'
     value: 'true'
   }
@@ -109,6 +113,10 @@ var serviceBusEnvVars = empty(serviceBusFullyQualifiedNamespace) ? [] : [
   {
     name: 'Runtime__Inbox__FullyQualifiedNamespace'
     value: serviceBusFullyQualifiedNamespace
+  }
+  {
+    name: 'Runtime__Inbox__ManagedIdentityClientId'
+    value: appMiClientId
   }
 ]
 
@@ -126,6 +134,12 @@ var containerEnvVars = concat(
     {
       name: 'KeyVault__Uri'
       value: keyVaultUri
+    }
+  ],
+  empty(appMiClientId) ? [] : [
+    {
+      name: 'AZURE_CLIENT_ID'
+      value: appMiClientId
     }
   ],
   dataProtectionEnvVars,

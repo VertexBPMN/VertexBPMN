@@ -85,6 +85,34 @@ public sealed class AzureServiceBusRuntimeOutboxTransport : IRuntimeOutboxTransp
 
     public async ValueTask PublishAsync(RuntimeOutboxMessage message, CancellationToken cancellationToken = default)
     {
+        var serviceBusMessage = BuildServiceBusMessage(message);
+
+        var timeoutSeconds = Math.Clamp(_options.OperationTimeoutSeconds, 1, 600);
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+
+        try
+        {
+            await GetSender().SendMessageAsync(serviceBusMessage, timeoutCts.Token).ConfigureAwait(false);
+        }
+        catch (ServiceBusException ex) when (ex.Reason == ServiceBusFailureReason.MessageSizeExceeded)
+        {
+            // Nontransient, diagnostically clear: give the publisher a concrete reason in LastError.
+            throw new InvalidOperationException(
+                $"Azure Service Bus message size limit exceeded for outbox message {message.Id}. " +
+                $"Inspect payload size including application properties.", ex);
+        }
+    }
+
+    /// <summary>
+    /// Pure mapping from a runtime-outbox record to the wire format (P8.1 contract).
+    /// The JSON envelope matches RabbitMQ/Kafka exactly so downstream inbox consumers see the same
+    /// shape regardless of provider. The stable MessageId is the outbox id ("N" format), enabling
+    /// de-duplication across retries; correlation/tenant/event-type/posted metadata travel as
+    /// Application Properties. Extracted so the contract is unit-testable without a live broker.
+    /// </summary>
+    internal static ServiceBusMessage BuildServiceBusMessage(RuntimeOutboxMessage message)
+    {
         var envelope = JsonSerializer.Serialize(new
         {
             id = message.Id,
@@ -106,21 +134,7 @@ public sealed class AzureServiceBusRuntimeOutboxTransport : IRuntimeOutboxTransp
         serviceBusMessage.ApplicationProperties["tenantId"] = message.TenantId ?? string.Empty;
         serviceBusMessage.ApplicationProperties["processInstanceId"] = message.ProcessInstanceId.ToString("N");
 
-        var timeoutSeconds = Math.Clamp(_options.OperationTimeoutSeconds, 1, 600);
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
-
-        try
-        {
-            await GetSender().SendMessageAsync(serviceBusMessage, timeoutCts.Token).ConfigureAwait(false);
-        }
-        catch (ServiceBusException ex) when (ex.Reason == ServiceBusFailureReason.MessageSizeExceeded)
-        {
-            // Nontransient, diagnostically clear: give the publisher a concrete reason in LastError.
-            throw new InvalidOperationException(
-                $"Azure Service Bus message size limit exceeded for outbox message {message.Id}. " +
-                $"Inspect payload size including application properties.", ex);
-        }
+        return serviceBusMessage;
     }
 
     /// <summary>

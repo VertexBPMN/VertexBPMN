@@ -249,6 +249,12 @@ Committet und auf `origin/master` gepusht; Detaildokument: `docs/reviews/2026-09
 
 **Umsetzungsstand P6 (2026-09-18):** **Offen / nicht begonnen.** Keine Produktionskonfigurationsmatrix, kein ACA-Proxy/OIDC-Härtung, keine öffentliche Exposition umgesetzt.
 
+**Teilstand P6 (2026-09-21, Commit `c2be5fc`, gepusht):** Punkte 1, 2 und 5 (nicht-entscheidungsabhängiger Teil) umgesetzt:
+- **P6.1 Konfigurationsmatrix:** `docs/runbooks/azure-config-matrix.md` (generisch, keine privaten Kennungen) — API, Studio, Agent Worker, Migration Job, Key-Vault-Referenzen, erzwungene Produktionshärtung, offene Entscheidungen.
+- **P6.2 Prod-Härtungs-Gate:** `environment`-Param in `main.bicep` + `containerapp.bicep` auf `dev|stage|prod` whitelisted; `Database__ApplyMigrationsOnStartup` wird für Stage/Prod hart auf `false` erzwungen (überschreibt jeden Flag), `OperationalMode` weiter aus `environment` abgeleitet. `az bicep build` + `what-if` sauber (keine destruktiven Änderungen).
+- **P6.5 Forwarded Headers: API** `UseForwardedHeaders`-Härtung eingebaut (symmetrisch zur Studio gehärteten Konfiguration): konsumiert nur `X-Forwarded-For`/`X-Forwarded-Proto` von expliziten `ReverseProxy:KnownProxies`, nie `X-Forwarded-Host` (Host-Header bleibt erhalten, kein OIDC-Origin-Rewrite); `ForwardLimit=1`, `RequireHeaderSymmetry=true`. Inert solange `ReverseProxy:Enabled=true` mit mind. einem Proxy-IP. Build 0 Fehler; Tests 4/4 grün.
+- **Noch offen (entscheidungsabhängig):** P6.3 (finaler OIDC-Provider + öffentliche Studio-Domain + Redirect/Logout/API-Audience/Rollen), P6.4 (Provider-Anforderung), P6.6 (Front Door/WAF + CLI/SDK/Webhook-Erreichbarkeit), P6.7 (Keycloak-Selbstbetrieb) — warten auf Product/Security-Entscheidungen aus Abschnitt 6 (siehe oben).
+
 **Priorität:** Muss  
 **Aufwand:** M  
 **Abhängigkeiten:** P4, P5

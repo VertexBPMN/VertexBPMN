@@ -61,9 +61,9 @@ az deployment group create -g <rg> -f infra/main.bicep -p infra/params/stage.bic
 
 ## Notes / known plan decisions
 
-- **PostgreSQL region**: this subscription has Flexible Server restricted in
-  `<your-region>`/`westeurope`; deploy in `<your-region>` (EU, DSGVO-compliant). The
-  `postgresLocation` parameter is separate from the general `location` for this reason.
+- **PostgreSQL region**: some subscriptions have Flexible Server region
+  restrictions; pass a supported region via the separate `postgresLocation`
+  parameter (EU/DSGVO-compliant), independent of the general `location`.
 - **MI-only access**: the user-assigned identity (`<prefix>-mi`) carries only the roles it
   needs (ACR Pull, KV Secrets/Crypto User, Service Bus Sender/Receiver, Blob Data
   Contributor). No interactive credentials in the production path.

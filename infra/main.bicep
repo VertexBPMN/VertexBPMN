@@ -20,7 +20,7 @@ param postgresLocation string = location
 param namePrefix string
 
 @description('PostgreSQL admin username (non-secret; password lives in Key Vault as pg-admin-password).')
-param postgresAdminUsername string = '<db-admin>'
+param postgresAdminUsername string = 'pgadmin'
 
 @description('PostgreSQL admin password. SECURE — supply at deploy time via a Key Vault reference (never in repo or parameterfile). Empty = server created with placeholder (deploy-time reference recommended).')
 @secure()

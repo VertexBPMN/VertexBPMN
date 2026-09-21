@@ -9,8 +9,8 @@
 
 | Bereich | Entscheidung | Begründung |
 |---|---|---|
-| Region | **<your-region>** | Datenresidenz DE, niedrige Latenz |
-| Resource Group | **<RG>** (eine prod-Umgebung) | Alles wird darunter angelegt; Namen mit Suffixen `-api`/`-studio`/`-worker` |
+| Region | **`<your-deployment-region>`** | Datenresidenz DE/niedrige Latenz nach Wahl (siehe Kostenschätzung) |
+| Resource Group | **`<your-rg>`** (eine prod-Umgebung) | Alles wird darunter angelegt; Namen mit Suffixen `-api`/`-studio`/`-worker` |
 | Container-Images | **Azure Container Registry (Basic)** | Versionierte Images per Digest; keine Builds im Zielsystem |
 | Laufzeit | **Azure Container Apps (ACA)** | Getrennte Revisionen, HTTPS, KEDA, Managed Identities, CA-Jobs |
 | Persistenz | **Azure Database for PostgreSQL Flexible Server** | Eine Instanz, **5 Engine-DBs** (bpmn, tenants, simulation, events, decision) + Dependency-Registry |
@@ -27,7 +27,7 @@
 - Öffentlich: **Studio** (`studio.<your-domain>`) **und API** (CLI/SDK/Webhooks) — jeweils mit eigenen Rate-Limits und WAF.
 - Kein direkter öffentlicher Ingress auf ACA für API/Worker; nur Hinter Front Door.
 - **Custom-Domain:** `studio.<your-domain>`.
-- **DNS bleibt bei 1&1/IONOS** in `vertexbpmn.com`. **Keine Azure-DNS-Zone, kein Domain-Umzug.** Bestehende Website `vertexbpmn.com` und E-Mail-Konfiguration bleiben unverändert.
+- **DNS bleibt beim bestehenden Registrar** in `<your-domain>`. **Keine Azure-DNS-Zone, kein Domain-Umzug.** Bestehende Website `<your-domain>` und E-Mail-Konfiguration bleiben unverändert.
 - Beim Deployment werden die konkreten **DNS-Einträge zum Eintragen bei IONOS** geliefert (siehe unten), z. B. CNAME auf den Front-Door-Endpunkt.
 
 ## Betriebsziele (SLOs)

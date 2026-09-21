@@ -17,11 +17,11 @@ public sealed class AzureDataProtectionKeyRingAcceptanceTests
 {
     private const string Category = "AzureKeyRingAcceptance";
 
-    // Full blob URI, e.g. https://<blob-storage>.blob.core.windows.net/dataprotection-api/keys.xml
+    // Full blob URI, e.g. https://<your-storage>.blob.core.windows.net/dataprotection-api/keys.xml
     private static string BlobUri =>
         Environment.GetEnvironmentVariable("VERTEXBPMN_TEST_AZURE_DP_BLOB_URI") ?? "";
 
-    // Full key identifier, e.g. https://<keyvault>.vault.azure.net/keys/dataprotection-key/<version>
+    // Full key identifier, e.g. https://<your-keyvault>.vault.azure.net/keys/dataprotection-key/<version>
     private static string KeyIdentifier =>
         Environment.GetEnvironmentVariable("VERTEXBPMN_TEST_AZURE_DP_KEY_ID") ?? "";
 

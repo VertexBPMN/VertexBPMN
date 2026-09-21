@@ -1,4 +1,4 @@
-@description('Azure region where the Flexible Server is deployed. This subscription has Flexible Server RESTRICTED in <your-region>/westeurope, so the caller must pass a supported region such as <your-region>.')
+@description('Azure region where the Flexible Server is deployed. Some subscriptions restrict Flexible Server to specific regions; pass a supported region as a parameter.')
 param location string
 
 @description('Name of the PostgreSQL Flexible Server resource.')
@@ -8,7 +8,7 @@ param serverName string
 param environment string
 
 @description('Administrator login name for the PostgreSQL server.')
-param adminUsername string = '<db-admin>'
+param adminUsername string = 'pgadmin'
 
 @description('Administrator password. Never hardcode secrets in the repository; leave empty to supply at deployment time (e.g. via a deployment-time reference to the Key Vault secret).')
 @secure()

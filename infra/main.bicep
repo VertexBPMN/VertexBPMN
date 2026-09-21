@@ -5,9 +5,12 @@
 // =====================================================================
 targetScope = 'resourceGroup'
 
-@description('Unique deployment environment, e.g. dev | stage | prod. Drives resource names and sku.')
-@minLength(2)
-@maxLength(10)
+@description('Unique deployment environment: dev | stage | prod. Drives resource names and sku; prod forces Production hardening.')
+@allowed([
+  'dev'
+  'stage'
+  'prod'
+])
 param environment string
 
 @description('Primary Azure location (all resources unless overridden).')

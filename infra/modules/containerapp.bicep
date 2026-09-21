@@ -4,6 +4,11 @@
 targetScope = 'resourceGroup'
 
 param location string
+@allowed([
+  'dev'
+  'stage'
+  'prod'
+])
 param environment string
 param name string
 param managedEnvironmentId string
@@ -66,6 +71,10 @@ var identityId = empty(appMiId) ? null : {
 }
 
 // ---- environment variables ----
+// Production hardening (P6.2): migration-on-startup is forced OFF for
+// stage and prod regardless of any passed flag; only 'dev' may apply on
+// startup. OperationalMode is derived from environment (never free-form).
+var effectiveApplyMigrationsOnStartup = (environment == 'prod' || environment == 'stage') ? false : applyMigrationsOnStartup
 var envVars = concat([
   {
     name: 'ASPNETCORE_HTTP_PORTS'
@@ -73,7 +82,7 @@ var envVars = concat([
   }
   {
     name: 'Database__ApplyMigrationsOnStartup'
-    value: string(applyMigrationsOnStartup)
+    value: string(effectiveApplyMigrationsOnStartup)
   }
   {
     name: 'Modules__Plugins'

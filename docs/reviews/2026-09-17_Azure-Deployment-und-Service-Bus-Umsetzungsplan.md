@@ -304,10 +304,11 @@ Committet und auf `origin/master` gepusht; Detaildokument: `docs/reviews/2026-09
 
 **Umsetzungsstand P8 (2026-09-18):** **Offen / nicht begonnen.** Kein Stage-E2E, keine Restore-Übung, kein Cutover.
 
-**Teilstand P8 (2026-09-21, Commit `4a27061`):** P8.1 (automatische Tests) — Teilbereich Wire-Format-Vertrag umgesetzt:
+**Teilstand P8 (2026-09-21, Commit `4a27061` + `20621cd`):** P8.1 (automatische Tests) — Wire-Format-Vertrag Outbox **und** Inbox umgesetzt:
 - **ASB-Outbox-Wire-Format extrahiert:** `BuildServiceBusMessage` (intern, statisch) aus `PublishAsync` gezogen. Envelope (`id`/`eventType`/`processInstanceId`/`tenantId`/`occurredAt`/`payload`), stabile `MessageId` (Outbox-Guid in `N`-Format → De-Dupe über Retries), `CorrelationId`, `Application Properties` waren inline und ohne Live-Broker untestbar; jetzt rein und unit-testbar. Kein Verhaltenswechsel.
 - `InternalsVisibleTo(VertexBPMN.Tests)` in `VertexBPMN.Infrastructure.csproj` ergänzt.
 - **5 neue Unit-Tests** (`AzureServiceBusOutboxWireFormatTests`): stabile MessageId, Envelope-Shape, CorrelationId, App-Properties, leerer ProcessInstanceId → CorrelationId null. Grün; bestehende ASB-Outbox-Tests (8) unverändert grün.
+- **12 neue Inbox-Parsing-Tests** (`InboxEnvelopeParseTests`): N-/D-Format-IDs, EventType/Tenant/ProcessInstance/OccurredAt, Payload-Klon überdauert Source-Document, fehlende/ungültige id → null, null-Tenant-Normalisierung, fehlendes Payload → null, malformtes/leeres Body wirft `JsonException` (Consumer dead-lettered als `unparseable_envelope`). Grün; alle betroffenen Klassen regressiv grün (38 Tests).
 - **Noch offen (P8.1 Rest):** Nachrichten-Mapping/Fehlerklassifikation für Inbox, echte ASB-Integrationstests gegen isolierten Namespace (manuell/Stage-gesteuert, kurzlebige Credentials, nicht im schnellen PR-Workflow), RabbitMQ-/Kafka-Regression, lokale Profile abnehmen. **P8.2–4 (E2E-Stage, Betrieb/Dashboards/Alarme, Restore-Übung, Cutover)** hängen stark an P6-Entscheidungen (OIDC-Provider für Studio-Login) und laufender Infrastruktur.
 
 **Priorität:** Muss  

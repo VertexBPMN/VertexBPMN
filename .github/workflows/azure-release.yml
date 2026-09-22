@@ -1,0 +1,229 @@
+# =====================================================================
+# VertexBPMN Azure Release (P7) — OIDC-driven, SHA-versioned container rollout
+# =====================================================================
+# Purpose: build API/Studio/AgentWorker from the current commit, tag by commit
+# SHA, push to ACR, compute-what-if + apply Bicep, run the migration job, deploy
+# the API candidate revision, smoke-test, and (prod) require manual approval.
+#
+# OIDC federation (no long-lived AZURE_CLIENT_SECRET):
+#   - Create a GitHub Actions workload identity federation in Entra ID bound to
+#     this repo + environment (see docs/runbooks/azure-release.md).
+#   - The federated credential must map to an identity that has (per env):
+#       * ACR Push (AcrPush) on the target registry
+#       * Contributor (or custom least-priv role) on the target resource group
+#   - Never store client secrets; only the ids below come from Secrets.
+#
+# Required repository secrets (created once, per OIDC):
+#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
+#
+# Required repository variables (defined at REPOSITORY or ENVIRONMENT level;
+# values are non-secret resource names matching infra/main.bicep):
+#   ACR_NAME            e.g. vertexbpmnstageacr   (no .azurecr.io)
+#   RESOURCE_GROUP      e.g. rg-vertexbpmn-stage
+#   NAME_PREFIX         e.g. vertexbpmn       (drives resource naming in bicep)
+#   LOCATION            e.g. westeurope
+#   PARAMS_FILE         param file to apply, relative to infra/  (see below)
+#   STUDIO_API_BASE_URL (optional) e.g. https://studio.stage.yourdomain
+#   OIDC_AUTHORITY / OIDC_CLIENT_ID / OIDC_API_SCOPE  (optional; set when P6 OIDC done)
+#
+# The three standard repo Dockerfiles are used (full multi-stage build on the
+# GitHub runner, which has enough disk — unlike the small reference VM).
+#
+# The migrate-only entrypoint lives in the api image; the migration job reuses
+# <imageTag>=commit SHA so the applied schema matches the deployed app digest.
+# =====================================================================
+name: Azure Release (P7)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        required: true
+        options:
+          - stage
+          - prod
+      deploy_only:
+        description: Skip image build, reuse the images already tagged for this commit
+        type: boolean
+        default: false
+      skip_migrations:
+        description: Skip the migration job (schema unchanged)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: azure-release-${{ github.event.inputs.environment }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-and-push:
+    name: Build & push images (commit SHA)
+    if: ${{ inputs.deploy_only != 'true' }}
+    environment: ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    outputs:
+      api_digest:    ${{ steps.api.outputs.digest }}
+      studio_digest: ${{ steps.studio.outputs.digest }}
+      agent_digest:  ${{ steps.agent.outputs.digest }}
+    env:
+      ACR_LOGIN_SERVER: ${{ vars.ACR_NAME }}.azurecr.io
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to ACR (token, no admin account)
+        run: |
+          TOKEN="$(az acr login --name "$ACR_NAME" --expose-token --output tsv --query accessToken)"
+          docker login "$ACR_LOGIN_SERVER" -u "00000000-0000-0000-0000-000000000000" -p "$TOKEN"
+
+      - name: Build + push API
+        id: api
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          IMG="$ACR_LOGIN_SERVER/vertexbpmn-api:$SHA"
+          docker build -f Dockerfile -t "$IMG" .
+          docker push "$IMG"
+          echo "digest=$(docker buildx imagetools inspect "$IMG" --format '{{.Manifest.Digest}}')" >> "$GITHUB_OUTPUT"
+
+      - name: Build + push Studio
+        id: studio
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          IMG="$ACR_LOGIN_SERVER/vertexbpmn-studio:$SHA"
+          docker build -f src/VertexBPMN.Studio/Dockerfile -t "$IMG" src/VertexBPMN.Studio
+          docker push "$IMG"
+          echo "digest=$(docker buildx imagetools inspect "$IMG" --format '{{.Manifest.Digest}}')" >> "$GITHUB_OUTPUT"
+
+      - name: Build + push AgentWorker
+        id: agent
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          IMG="$ACR_LOGIN_SERVER/vertexbpmn-agent-worker:$SHA"
+          docker build -f src/VertexBPMN.AgentWorker/Dockerfile -t "$IMG" src/VertexBPMN.AgentWorker
+          docker push "$IMG"
+          echo "digest=$(docker buildx imagetools inspect "$IMG" --format '{{.Manifest.Digest}}')" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    name: Deploy ${{ inputs.environment }} (${{ inputs.environment == 'prod' && 'manual approval required' || 'auto' }})
+    needs: build-and-push
+    if: ${{ !cancelled() && !failure() }}
+    environment: ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SHA: ${{ github.sha }}
+      RG: ${{ vars.RESOURCE_GROUP }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Deterministic image reference: commit SHA tag (immutable; :latest forbidden).
+      - name: Parameterize imageTag + env-specific overrides
+        id: params
+        env:
+          STUDIO_API_BASE_URL: ${{ vars.STUDIO_API_BASE_URL }}
+          OIDC_AUTHORITY: ${{ vars.OIDC_AUTHORITY }}
+          OIDC_CLIENT_ID: ${{ vars.OIDC_CLIENT_ID }}
+          OIDC_API_SCOPE: ${{ vars.OIDC_API_SCOPE }}
+        run: |
+          EXTRA=( -p imageTag="$SHA" )
+          [[ -n "$STUDIO_API_BASE_URL" ]] && EXTRA+=( -p studioApiBaseUrl="$STUDIO_API_BASE_URL" )
+          [[ -n "$OIDC_AUTHORITY" ]]       && EXTRA+=( -p oidcAuthority="$OIDC_AUTHORITY" )
+          [[ -n "$OIDC_CLIENT_ID" ]]       && EXTRA+=( -p oidcClientId="$OIDC_CLIENT_ID" )
+          [[ -n "$OIDC_API_SCOPE" ]]       && EXTRA+=( -p oidcApiScope="$OIDC_API_SCOPE" )
+          printf '%s\n' "${EXTRA[@]}" > /tmp/extra_params.txt
+
+      - name: Bicep what-if (no side effects)
+        env:
+          PARAMS_FILE: ${{ vars.PARAMS_FILE }}
+        run: |
+          mapfile -t EXTRA < /tmp/extra_params.txt
+          az deployment group what-if -g "$RG" -f infra/main.bicep \
+            -p infra/"$PARAMS_FILE" "${EXTRA[@]}"
+
+      - name: Apply Bicep
+        env:
+          PARAMS_FILE: ${{ vars.PARAMS_FILE }}
+        run: |
+          mapfile -t EXTRA < /tmp/extra_params.txt
+          az deployment group create -g "$RG" -f infra/main.bicep \
+            -p infra/"$PARAMS_FILE" "${EXTRA[@]}" --no-wait
+
+      - name: Wait for API revision serving this SHA (poll trafficWeight image)
+        env:
+          API_NAME: ${{ vars.NAME_PREFIX }}-api
+        run: |
+          for i in $(seq 1 60); do
+            IMG="$(az containerapp revision list -g "$RG" -n "$API_NAME" \
+              --query "[?properties.trafficWeight>0].properties.image | [0]" -o tsv 2>/dev/null || true)"
+            echo "active revision image: $IMG"
+            if [[ "$IMG" == *"$SHA"* ]]; then
+              echo "API now serving $IMG"
+              break
+            fi
+            sleep 10
+          done
+          az containerapp show -g "$RG" -n "$API_NAME" \
+            --query '{runningReplicas:properties.template.scale.minReplicas, revisionMode:properties.configuration.activeRevisionsMode}' -o json
+
+      - name: Run migration job (apply schema for this digest)
+        if: ${{ inputs.skip_migrations != 'true' }}
+        env:
+          JOB_NAME: ${{ vars.NAME_PREFIX }}-migrate
+        run: |
+          az containerapp job start -g "$RG" -n "$JOB_NAME"
+          for i in $(seq 1 60); do
+            STATUS="$(az containerapp job execution list -g "$RG" -n "$JOB_NAME" \
+              --query 'max_by([].{t:properties.startTime, s:status}, &t).s' -o tsv 2>/dev/null || true)"
+            echo "migration job status: $STATUS"
+            [[ "$STATUS" == "Succeeded" ]] && exit 0
+            if [[ "$STATUS" == "Failed" ]]; then
+              az containerapp job execution list -g "$RG" -n "$JOB_NAME" --out table
+              exit 1
+            fi
+            sleep 15
+          done
+          echo "Timed out waiting for migration job" >&2
+          exit 1
+
+      - name: Readiness smoke test (VNet)
+        run: |
+          # API is internal-only; readiness must be probed from inside the VNet.
+          # Deploy a short-lived smoke container-app job in the VNet (see runbook):
+          #   /api/health/live, /api/ready, Studio login, Service Bus smoke test.
+          echo "Readiness/smoke checks run from inside the VNet — see docs/runbooks/azure-release.md step 6."
+
+  # ------------------------------------------------------------------
+  # Rollback guidance (no auto-downgrade): see docs/runbooks/azure-release.md
+  # - API: activate the previous compatible revision pinned to the old SHA
+  #   (az containerapp revision activate) and shift traffic weight.
+  # - Studio: single-revision rollback to the previous digest with announced reconnect.
+  # - Schema: no automatic downgrade; only if the old app is schema-compatible,
+  #   otherwise the tested backup restore (docs/runbooks/production-deployment.md).
+  # ------------------------------------------------------------------

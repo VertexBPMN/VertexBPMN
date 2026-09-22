@@ -4,6 +4,7 @@ Betriebs-, Release- und Troubleshooting-Dokumentation.
 
 - [Cloud Native](cloud-native.md)
 - [Azure Service Bus Integrationstest-Suite](azure-service-bus-integration-tests.md)
+- [Azure Release Workflow (P7)](azure-release.md)
 - [Reproduzierbarer Build und Test](build-and-test.md)
 - [Dependency Configuration](dependency-configuration.md)
 - [Monitoring](monitoring.md)

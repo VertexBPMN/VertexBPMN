@@ -47,7 +47,9 @@ Die Full-Product-Support-Suite umfasst 51 konkrete Acceptance-Fälle: 47 regulä
 | Low-Code Studio | BPMN-/DMN-/CMMN-/Form-Modellierung, Import/Export, Properties, Quick Insert, Runtime-Overlay, Token-Simulation und Fehleranzeige | ✅ Supported |
 | Persistenz | EF Core für Instanzen, Tokens, Variablen, Tasks, Jobs, Subscriptions, Incidents, Inbox, Outbox und Worker | ✅ Supported |
 | Datenbanken | SQLite für lokale/Container-Profile sowie PostgreSQL und SQL Server für relationale Deployments | ✅ Supported |
-| Messaging | RabbitMQ- und Kafka-Auslieferung aus der Outbox mit Retry, Dead Letter und Readiness | ✅ Supported |
+| Messaging | Persistente Outbox mit RabbitMQ-, Kafka- oder Azure-Service-Bus-Transport; Inbox-Verarbeitung mit Idempotenz, Wiederanlauf und Dead Letter | ✅ Supported |
+| Azure-Betrieb | Optionale Azure-Adapter für Service Bus, PostgreSQL-Registry und OIDC-Sitzungen, Blob-/Key-Vault-Data-Protection sowie Key-Vault-Secrets | ✅ Implementiert; Azure-Laufzeitabnahme separat |
+| Azure-Infrastruktur | Bicep-Module für Container Apps, ACR, PostgreSQL, Service Bus, Key Vault, Netzwerk, Storage und Observability | ✅ Vorhanden; Bereitstellung umgebungsspezifisch |
 | Workflow-Trigger | Persistente, tenantisolierte Webhook-Starts mit einmalig ausgegebenem Secret und serverseitigem Hash | ✅ Supported |
 | Credentials und Connectoren | Secret-geschützte Credentials, Rotation, Connector-Verwaltung und wiederverwendbare Connector-Templates | ✅ Supported |
 | Process Mining und Analytics | Transaktionale, idempotente Projektion, tenantfähige APIs, Prozessmetriken, Traces und Zeitreihen | ✅ Supported |
@@ -86,13 +88,21 @@ Studio / CLI / .NET SDK / REST / gRPC / MCP
                       |
        SQLite / PostgreSQL / SQL Server
                       |
-             RabbitMQ / Kafka
+       RabbitMQ / Kafka / Azure Service Bus
 
 VertexBPMN.AppHost orchestriert API, Studio, PostgreSQL,
 RabbitMQ, Health Checks, Logs, Traces und Metriken.
 ```
 
 Die Runtime speichert ihren Zustand dauerhaft. Jobs werden über Leases, Retry/Backoff und Dead Letter verarbeitet; Inbox/Outbox und idempotente Operationen schützen die Ausführung bei Neustarts und mehreren API-Replikaten.
+
+### Azure- und Self-Hosting-Profile
+
+Azure ist ein optionales Deployment- und Integrationsprofil. Der Code enthält Bicep-Infrastruktur für Azure Container Apps, Container Registry, PostgreSQL, Service Bus, Key Vault, Storage, Identitäten und Observability. Die Runtime kann Ereignisse über die persistente Outbox und Inbox mindestens einmal an Azure Service Bus zustellen; die Verarbeitung ist idempotent. AgentWorker-Remote-Service-Tasks bleiben HTTP-basiert.
+
+Für Azure-Replikate gibt es PostgreSQL-Speicher für Dependency Registry und OIDC-Sitzungen, einen über Blob Storage und Key Vault geschützten Data-Protection-Keyring sowie Key-Vault-Secret-Referenzen. Lokale und selbst gehostete Profile mit SQLite, PostgreSQL, RabbitMQ, Aspire, Docker/Podman oder WSLC bleiben verfügbar.
+
+Das Deployment wird durch ein manuell startbares GitHub-Actions-Workflow-Gerüst mit OIDC und SHA-getaggten Images unterstützt. Der Workflow und die Azure-Ende-zu-Ende-Abnahme müssen vor einem Produktivbetrieb noch vervollständigt werden. Die Azure-Ressourcen der bisherigen Stage-Umgebung sind gelöscht; es läuft derzeit keine VertexBPMN-Azure-Umgebung. Infrastrukturcode im Repository ist daher kein Nachweis für ein aktives Hosting oder eine aktuelle Azure-Abnahme.
 
 ## Schnellstart mit Aspire
 
@@ -266,7 +276,7 @@ Persistiert wird ausschließlich ein Hash des Secrets. Verwaltung und Aufrufe si
 - **REST/OpenAPI:** Prozessdefinitionen und -instanzen, User Tasks, Decisions, Cases, Forms, Migration, Simulation, Analytics, Trigger, Credentials, Connectoren und Administration
 - **gRPC:** typisierte Runtime- und Verwaltungsverträge
 - **MCP:** Werkzeugzugriff für KI-Agenten auf BPMN-, DMN- und CMMN-Funktionen
-- **RabbitMQ/Kafka:** zuverlässige externe Event-Auslieferung über die persistente Outbox
+- **RabbitMQ/Kafka/Azure Service Bus:** persistente Runtime-Outbox mit Wiederholungen; RabbitMQ und Azure Service Bus unterstützen zusätzlich Runtime-Inbox-Verarbeitung mit idempotenter Zustellung und Dead-Letter-Pfaden
 - **n8n Import:** Workflow-Import mit Credential-Referenzen, Mapping und Review-Markierungen
 - **External Workers:** Registrierung, Heartbeats, Load-Balancing und Zustandsabfragen
 

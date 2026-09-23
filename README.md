@@ -63,7 +63,7 @@ Die Full-Product-Support-Suite umfasst 51 konkrete Acceptance-Fälle: 47 regulä
 ### Weitere Produktfunktionen
 
 - **Form Lifecycle:** tenantbezogene Form-Definitionen erstellen, lesen, aktualisieren, löschen, im Studio bearbeiten und zur Laufzeit anzeigen
-- **AI Service Tasks:** Handler für OpenAI, Anthropic, Gemini, generische AI-Endpunkte, Context Enrichment und MCP-basierte Aufgaben
+- **KI- und Agenten-Integration:** AI-Service-Tasks mit Providerpfaden für OpenAI, Anthropic und Gemini, Context Enrichment und MCP; ein lokaler Ollama-Contract-Review-Worker ist separat und standardmäßig deaktiviert. Generische AI-Handler-Aliase sind aktuell Platzhalter und keine produktiven Provideradapter.
 - **Plug-in-System:** validierte Plug-in-Assemblies, kontrollierte Aktivierung und fail-closed Produktionskonfiguration
 - **External Worker Control Plane:** Worker-Registrierung, Heartbeats, Health, Pending Work, Rebalancing und Lastverteilung
 - **Operations und Diagnose:** Instanzen suspendieren/fortsetzen, Incidents, Jobs, Variablen, History, Audit, Runtime Inspector, Performance- und Visual-Debug-Endpunkte
@@ -329,6 +329,7 @@ Normale CI-Läufe erzeugen beide Pakete als Artefakte, veröffentlichen sie aber
 - [Getting Started](docs/getting-started/README.md)
 - [API Quickstart](docs/getting-started/api-quickstart.md)
 - [Produktions-Deployment](docs/runbooks/production-deployment.md)
+- [KI- und Agenten-Integration](docs/guide/ai-service-task-handler-examples.md)
 - [Security- und Release-Gates](docs/runbooks/security-and-release-gates.md)
 - [Monitoring und Observability](docs/runbooks/monitoring.md)
 - [Workflow-Trigger](docs/runbooks/workflow-triggers.md)

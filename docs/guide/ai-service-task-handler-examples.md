@@ -1,178 +1,61 @@
-# AIServiceTaskHandler Usage Examples
+# KI- und Agenten-Integration
 
-## 1. Basic AI Service Task in BPMN
+VertexBPMN integriert externe KI als BPMN-Service-Task, über MCP oder als separaten External Task Worker. Die Prozesssteuerung bleibt explizit im BPMN-Modell. Es gibt derzeit keinen eingebauten Chat-/Copilot-Assistenten im Studio und kein mitgeliefertes LLM.
+
+## AI-Service-Task
+
+Ein BPMN-Service-Task kann mit dem Typ `aiServiceTask` registriert werden. Der Providerpfad des `AIServiceTaskHandler` verarbeitet OpenAI, Anthropic und Google Gemini. Zugangsdaten und Modelle müssen vom Betreiber passend zum Anbieter eingerichtet werden.
 
 ```xml
-<serviceTask id="ai-task-1" name="AI Analysis Task">
+<serviceTask id="classify-request" name="Anfrage klassifizieren">
   <extensionElements>
     <zeebe:taskDefinition type="aiServiceTask" />
     <zeebe:taskHeaders>
       <zeebe:header key="ai:provider" value="openai" />
-      <zeebe:header key="ai:model" value="gpt-4" />
-      <zeebe:header key="ai:prompt" value="Analyze customer sentiment" />
-      <zeebe:header key="ai:contextEnrichment" value="true" />
-      <zeebe:header key="ai:mcpIntegration" value="true" />
+      <zeebe:header key="ai:model" value="&lt;provider-model-id&gt;" />
+      <zeebe:header key="ai:prompt" value="Ordne die Anfrage einer Kategorie zu." />
+      <zeebe:header key="ai:inputVariables" value="requestText" />
+      <zeebe:header key="ai:resultVariable" value="requestCategory" />
+      <zeebe:header key="ai:temperature" value="0" />
+      <zeebe:header key="ai:maxTokens" value="200" />
     </zeebe:taskHeaders>
   </extensionElements>
 </serviceTask>
 ```
 
-## 2. Advanced Configuration
+Der Handler kann außerdem `ai:systemMessage`, `ai:timeout`, `ai:retryCount`, `ai:includeMetadata`, `ai:contextEnrichment`, `ai:mcpIntegration`, `ai:mcpServerUrl` und `ai:mcpMethod` auswerten. Das Ergebnis landet in `ai:resultVariable` (Standard: `aiResult`); bei Fehlern werden `aiTask_error` und `aiTask_failed` gesetzt und der Service-Task schlägt fehl.
 
-```xml
-<serviceTask id="ai-task-advanced" name="Advanced AI Processing">
-  <extensionElements>
-    <zeebe:taskDefinition type="aiServiceTask" />
-    <zeebe:taskHeaders>
-      <zeebe:header key="ai:provider" value="anthropic" />
-      <zeebe:header key="ai:model" value="claude-3-sonnet-20240229" />
-      <zeebe:header key="ai:taskType" value="analysis" />
-      <zeebe:header key="ai:prompt" value="Perform detailed risk assessment for loan application" />
-      <zeebe:header key="ai:systemMessage" value="You are a financial risk analyst with 20 years of experience." />
-      <zeebe:header key="ai:temperature" value="0.3" />
-      <zeebe:header key="ai:maxTokens" value="2000" />
-      <zeebe:header key="ai:resultVariable" value="riskAssessment" />
-      <zeebe:header key="ai:inputVariables" value="customerData,financialHistory,creditScore" />
-      <zeebe:header key="ai:contextEnrichment" value="true" />
-      <zeebe:header key="ai:includeMetadata" value="true" />
-      <zeebe:header key="ai:timeout" value="120" />
-      <zeebe:header key="ai:retryCount" value="3" />
-    </zeebe:taskHeaders>
-  </extensionElements>
-</serviceTask>
-```
+### Provider und Schlüssel
 
-## 3. Multi-Step AI Workflow
+| Provider | Wert von `ai:provider` | Schlüsselname |
+| --- | --- | --- |
+| OpenAI | `openai` | `OPENAI_API_KEY` oder konfigurierte `ApiKeyEnvironmentVariable` |
+| Anthropic | `anthropic` | `ANTHROPIC_API_KEY` oder konfigurierte `ApiKeyEnvironmentVariable` |
+| Google Gemini | `gemini` oder `google` | `GEMINI_API_KEY` oder `GOOGLE_API_KEY` |
 
-```xml
-<!-- Step 1: Data Enrichment -->
-<serviceTask id="enrich-context" name="Enrich Customer Context">
-  <extensionElements>
-    <zeebe:taskDefinition type="contextEnrichment" />
-    <zeebe:taskHeaders>
-      <zeebe:header key="context:sourceType" value="api" />
-      <zeebe:header key="context:sourceUrl" value="https://api.crm.company.com/customer/{customerId}" />
-    </zeebe:taskHeaders>
-  </extensionElements>
-</serviceTask>
+Die universelle `AIServiceTaskHandler`-Konfiguration kann Provider-Modelle unter `Dependencies:Ai:Models` definieren, einschließlich `Provider`, `Model`, `Endpoint` und `ApiKeyEnvironmentVariable`; sie liest den Schlüssel aus der angegebenen Umgebungsvariable. Die separaten OpenAI-/Anthropic-Handler unterstützen zusätzlich den `ISecretProvider`. Keine API-Schlüssel in BPMN-XML, Repository-Dateien oder Prozessvariablen eintragen. Provider-Modellnamen und API-Verträge ändern sich; einen für das eigene Anbieterkonto gültigen Modellbezeichner verwenden.
 
-<!-- Step 2: AI Analysis -->
-<serviceTask id="ai-analysis" name="AI Customer Analysis">
-  <extensionElements>
-    <zeebe:taskDefinition type="aiServiceTask" />
-    <zeebe:taskHeaders>
-      <zeebe:header key="ai:provider" value="openai" />
-      <zeebe:header key="ai:model" value="gpt-4" />
-      <zeebe:header key="ai:prompt" value="Based on the enriched customer data, provide a comprehensive analysis including sentiment, risk level, and recommendations." />
-      <zeebe:header key="ai:inputVariables" value="enrichedContext,customerData,transactionHistory" />
-      <zeebe:header key="ai:resultVariable" value="customerAnalysis" />
-      <zeebe:header key="ai:mcpIntegration" value="true" />
-      <zeebe:header key="ai:mcpMethod" value="store_analysis_result" />
-    </zeebe:taskHeaders>
-  </extensionElements>
-</serviceTask>
+### Grenzen der generischen Aliase
 
-<!-- Step 3: Decision Based on AI Result -->
-<exclusiveGateway id="decision-gateway" name="Analysis Result?">
-  <incoming>Flow_from_ai</incoming>
-  <outgoing>Flow_positive</outgoing>
-  <outgoing>Flow_negative</outgoing>
-</exclusiveGateway>
+Die Aliase `ai:generic`, `ai:cohere`, `ai:huggingface`, `ai:ollama`, `ai:local` und `ai:custom` sind derzeit dem `GenericAiServiceTaskHandler` zugeordnet. Dieser Handler liefert aktuell nur einen lokalen Platzhaltertext und ruft keinen Modellanbieter auf. Diese Aliase sind daher keine produktiven Providerintegrationen. `mock`/`test`-Modi sind nur für Tests und Entwicklung gedacht.
 
-<sequenceFlow id="Flow_positive" sourceRef="decision-gateway" targetRef="approve-task">
-  <conditionExpression xsi:type="tFormalExpression">
-    #{customerAnalysis != null and customerAnalysis.contains("low risk")}
-  </conditionExpression>
-</sequenceFlow>
-```
+Die Provider-Tests simulieren HTTP-Antworten. Sie belegen weder Live-Kompatibilität mit einem Anbieter noch Konto-, Modell-, Rate-Limit- oder Verfügbarkeitsverhalten.
 
-## 4. Provider-Specific Examples
+## MCP und KI-Agenten
 
-### OpenAI GPT-4 Example
-```xml
-<zeebe:header key="ai:provider" value="openai" />
-<zeebe:header key="ai:model" value="gpt-4" />
-<zeebe:header key="ai:temperature" value="0.7" />
-```
+MCP kann KI-Clients beziehungsweise Agenten mit VertexBPMN-Funktionen verbinden. Ein BPMN-`mcpServiceTask` sendet eine JSON-RPC-Anfrage an den in `mcpServerUrl` angegebenen Endpunkt und verwendet `mcpMethod`; Prozessvariablen werden als Parameter mitgegeben und ein erfolgreiches Ergebnis wird zurück in Variablen geschrieben. Der MCP-Endpunkt und seine Authentifizierung müssen separat bereitgestellt und abgesichert werden.
 
-### Anthropic Claude Example
-```xml
-<zeebe:header key="ai:provider" value="anthropic" />
-<zeebe:header key="ai:model" value="claude-3-opus-20240229" />
-<zeebe:header key="ai:temperature" value="0.5" />
-```
+`ai:mcpIntegration=true` kann nach dem Provideraufruf eine konfigurierte MCP-Aktion auslösen. Das ist kein autonomer, unbeschränkter Agenten-Loop: Das BPMN-Modell kontrolliert Reihenfolge und erlaubte Prozessschritte.
 
-### Google Gemini Example
-```xml
-<zeebe:header key="ai:provider" value="gemini" />
-<zeebe:header key="ai:model" value="gemini-pro" />
-<zeebe:header key="ai:temperature" value="0.8" />
-```
+## Lokaler Ollama-External-Task-Worker
 
-## 5. Error Handling
+`VertexBPMN.AgentWorker` enthält einen Contract-Review-Handler für einen Ollama-kompatiblen lokalen Modellserver. Er ist über `ContractReviewer:Enabled` standardmäßig deaktiviert. Bei Aktivierung verlangt die Konfiguration ein Modell und einen Loopback-Endpunkt; Dokumentgröße, Abschnitte, Tool-Aufrufe, Laufzeit, Antwortgröße und Tokenbudget sind begrenzt.
 
-The handler automatically sets error variables that can be used in BPMN error handling:
+Der Reviewer darf nur Dokumentabschnitte lesen und literal durchsuchen. Er muss Befunde mit Zitaten und Zeilenbereichen ausgeben und darf einen Vertrag nicht genehmigen oder ablehnen. Die Entscheidung bleibt bei einem Menschen. Siehe [External Tasks und Agent-Vertragsprüfung](../runbooks/external-agent-contract-review.md).
 
-```xml
-<boundaryEvent id="ai-error" attachedToRef="ai-task-1">
-  <errorEventDefinition id="ErrorEventDefinition_ai" />
-</boundaryEvent>
+## Daten- und Sicherheitsgrenzen
 
-<serviceTask id="handle-ai-error" name="Handle AI Error">
-  <extensionElements>
-    <zeebe:taskDefinition type="logError" />
-    <zeebe:taskHeaders>
-      <zeebe:header key="errorMessage" value="#{aiTask_error}" />
-      <zeebe:header key="taskFailed" value="#{aiTask_failed}" />
-    </zeebe:taskHeaders>
-  </extensionElements>
-</serviceTask>
-```
-
-## 6. Environment Variables Required
-
-```bash
-# For OpenAI
-OPENAI_API_KEY=sk-your-openai-api-key
-
-# For Anthropic
-ANTHROPIC_API_KEY=your-anthropic-api-key
-
-# For Gemini
-GEMINI_API_KEY=your-gemini-api-key
-# OR
-GOOGLE_API_KEY=your-google-api-key
-```
-
-## 7. Process Variables Usage
-
-### Input Variables
-- `customerId`: Customer identifier for context enrichment
-- `customerData`: Customer information object
-- `transactionHistory`: Array of customer transactions
-- `riskFactors`: Risk assessment parameters
-
-### Output Variables
-- `aiResult`: Main AI response (default variable name)
-- `aiResult_metadata`: Token usage and model information (if `ai:includeMetadata=true`)
-- `aiTask_error`: Error message (set on failure)
-- `aiTask_failed`: Boolean indicating task failure
-
-## 8. MCP Integration
-
-When `ai:mcpIntegration=true`, the handler will call the configured MCP server after AI processing:
-
-```xml
-<zeebe:header key="ai:mcpIntegration" value="true" />
-<zeebe:header key="ai:mcpServerUrl" value="http://mcp-server:8080/api/mcp" />
-<zeebe:header key="ai:mcpMethod" value="process_ai_result" />
-```
-
-The MCP server receives:
-- `aiResult`: The AI response
-- `aiMetadata`: Token usage and model info
-- `processVariables`: All process variables
-- `provider`: AI provider used
-- `model`: AI model used
-
-This enables sophisticated AI workflows with external processing and storage of AI results.
+- Prompts und ausgewählte Prozessvariablen können an einen externen Modellanbieter übertragen werden. Datenklassifikation und Datenschutz vor Aktivierung prüfen.
+- Credentials nur über Secret-/Environment-Konfiguration bereitstellen; Logs und Traces auf sensible Prompts und Antworten kontrollieren.
+- MCP-Werkzeuge und Agenten mit minimalen Berechtigungen, authentifizierten Endpunkten und expliziten Allow-Lists betreiben.
+- Modellantworten sind nicht vertrauenswürdige Eingaben. Vor kritischen Aktionen müssen BPMN-Validierung und gegebenenfalls menschliche Freigabe stehen.

@@ -22,7 +22,7 @@ Die Inhalte sind jetzt nach ihrem Zweck getrennt:
 ## Nutzeranleitungen
 
 - [BPMN ausfuehren](guide/bpmn-ausfuehren.md)
-- [AI Service Task Handler Beispiele](guide/ai-service-task-handler-examples.md)
+- [KI- und Agenten-Integration](guide/ai-service-task-handler-examples.md)
 - [Tipps und Tricks](guide/tipps-und-tricks.md)
 
 ## Referenz

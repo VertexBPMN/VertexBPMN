@@ -22,6 +22,10 @@ public static class Extensions
     public static TBuilder AddServiceDefaults<TBuilder>(this TBuilder builder)
         where TBuilder : IHostApplicationBuilder
     {
+        // Resolve secretref:<name> env-var tokens from Key Vault via the host's
+        // managed identity before any other config/Db access.
+        builder.AddKeyVaultSecretReferences();
+
         builder.ConfigureOpenTelemetry();
         builder.AddDefaultHealthChecks();
         builder.Services.AddServiceDiscovery();

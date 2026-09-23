@@ -74,7 +74,7 @@ namespace VertexBPMN.Application.Messaging
         }
 
         public Task DispatchServiceTaskAsync(string targetWorkerId, string implementation, Dictionary<string, string> attributes, Dictionary<string, object> variables,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default, Guid? processInstanceId = null, string? tenantId = null)
         {
             return DispatchServiceTaskAsync(targetWorkerId, implementation, attributes, variables, cancellationToken);
         }
@@ -123,7 +123,7 @@ namespace VertexBPMN.Application.Messaging
         }
 
         public Task DispatchAiTaskAsync(string targetWorkerId, string aiProvider, string aiModel, Dictionary<string, string> attributes,
-            Dictionary<string, object> variables, CancellationToken cancellationToken = default)
+            Dictionary<string, object> variables, CancellationToken cancellationToken = default, Guid? processInstanceId = null, string? tenantId = null)
         {
             return Task.CompletedTask;
         }

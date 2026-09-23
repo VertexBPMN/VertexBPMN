@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using VertexBPMN.Application.Configuration;
 using VertexBPMN.Application.Messaging;
 using VertexBPMN.Application;
@@ -14,6 +15,12 @@ using VertexBPMN.Infrastructure.Persistence.Services;
 using VertexBPMN.Infrastructure.Messaging;
 using VertexBPMN.Infrastructure.Operational;
 using VertexBPMN.Infrastructure.Stores;
+using Azure.Identity;
+
+using Azure.Extensions.AspNetCore.DataProtection.Blobs;
+
+using Azure.Extensions.AspNetCore.DataProtection.Keys;
+
 
 namespace VertexBPMN.Infrastructure;
 
@@ -44,8 +51,10 @@ public static class InfrastructureModule
         if (mode is "Production" or "Stage" && string.IsNullOrWhiteSpace(configuredDependencyRegistry))
             throw new InvalidOperationException(
                 "ConnectionStrings:DependencyRegistry is required in Production and Stage; the local file fallback is forbidden.");
+        var depRegistryCs = DependencyConfigurationLoader.ResolveConnectionString(configuration);
+        var depRegistryProvider = DependencyRegistryProvider.Resolve(depRegistryCs, configuration["DependencyRegistry:Provider"]);
         services.AddDbContext<DependencyRegistryDbContext>(options =>
-            options.UseSqlite(DependencyConfigurationLoader.ResolveConnectionString(configuration)));
+            DependencyRegistryProvider.Configure(options, depRegistryProvider, depRegistryCs));
         services.AddScoped<IDependencyRegistry, DependencyRegistryService>();
         services.AddScoped<IDesignTimeDbContextFactory<ProcessMiningEventDbContext>, ProcessMiningEventDbContextFactory>();
         services.AddScoped<IProcessInstanceStore, ProductionProcessInstanceStore>();
@@ -77,14 +86,42 @@ public static class InfrastructureModule
         services.AddScoped<IDecisionRepository, DecisionRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
         var dataProtection = services.AddDataProtection().SetApplicationName("VertexBPMN");
+        var dataProtectionProvider = configuration["DataProtection:Provider"];
+        var dataProtectionIsAzure = string.Equals(
+            dataProtectionProvider, "AzureBlobKeyVault", StringComparison.OrdinalIgnoreCase);
         if (mode is "Production" or "Stage")
         {
-            var keyRingPath = configuration["DataProtection:KeyRingPath"];
-            if (string.IsNullOrWhiteSpace(keyRingPath))
-                throw new InvalidOperationException(
-                    "DataProtection:KeyRingPath is required in Production and Stage so replicas share durable keys.");
-            var directory = Directory.CreateDirectory(Path.GetFullPath(keyRingPath));
-            dataProtection.PersistKeysToFileSystem(directory);
+            if (dataProtectionIsAzure)
+            {
+                if (string.IsNullOrWhiteSpace(configuration["DataProtection:BlobUri"])
+                    || string.IsNullOrWhiteSpace(configuration["DataProtection:KeyVaultKeyIdentifier"]))
+                    throw new InvalidOperationException(
+                        "DataProtection:BlobUri and DataProtection:KeyVaultKeyIdentifier are required in Production/Stage "
+                        + "when DataProtection:Provider=AzureBlobKeyVault so replicas share durable, encrypted keys.");
+            }
+            else
+            {
+                var keyRingPath = configuration["DataProtection:KeyRingPath"];
+                if (string.IsNullOrWhiteSpace(keyRingPath))
+                    throw new InvalidOperationException(
+                        "DataProtection:KeyRingPath is required in Production and Stage so replicas share durable keys.");
+                var directory = Directory.CreateDirectory(Path.GetFullPath(keyRingPath));
+                dataProtection.PersistKeysToFileSystem(directory);
+            }
+        }
+        if (dataProtectionIsAzure)
+        {
+            var blobUri = configuration["DataProtection:BlobUri"]!;
+            var keyIdentifier = new Uri(configuration["DataProtection:KeyVaultKeyIdentifier"]!);
+            var credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions
+            {
+                ExcludeSharedTokenCacheCredential = true,
+                ExcludeVisualStudioCredential = true,
+                ExcludeVisualStudioCodeCredential = true,
+                ExcludeInteractiveBrowserCredential = true,
+            });
+            dataProtection.PersistKeysToAzureBlobStorage(new Uri(blobUri), credential);
+            dataProtection.ProtectKeysWithAzureKeyVault(keyIdentifier, credential);
         }
         services.AddScoped<ICredentialService, PersistentCredentialService>();
         services.AddScoped<IConnectorService, PersistentConnectorService>();
@@ -108,16 +145,22 @@ public static class InfrastructureModule
             configuration.GetConnectionString("messaging");
         var productionMode = mode is "Production" or "Stage";
         var provider = options.Provider.Trim().ToLowerInvariant();
+        var azureManagedIdentity =
+            provider == "azureservicebus"
+            && options.AuthenticationMode == RuntimeOutboxAuthenticationMode.ManagedIdentity;
 
         if (productionMode && !options.Enabled)
             throw new InvalidOperationException(
                 "Runtime:Outbox:Enabled must be true in Production and Stage.");
-        if (options.Enabled && string.IsNullOrWhiteSpace(options.ConnectionString))
+        if (options.Enabled
+            && string.IsNullOrWhiteSpace(options.ConnectionString)
+            && !azureManagedIdentity)
             throw new InvalidOperationException(
-                "Runtime:Outbox:ConnectionString is required when the outbox publisher is enabled.");
-        if (productionMode && provider is not ("kafka" or "rabbitmq"))
+                "Runtime:Outbox:ConnectionString is required when the outbox publisher is enabled, " +
+                "unless AuthenticationMode=ManagedIdentity is used with Azure Service Bus.");
+        if (productionMode && provider is not ("kafka" or "rabbitmq" or "azureservicebus"))
             throw new InvalidOperationException(
-                "Runtime:Outbox:Provider must be Kafka or RabbitMq in Production and Stage.");
+                "Runtime:Outbox:Provider must be Kafka, RabbitMq or AzureServiceBus in Production and Stage.");
 
         services.AddSingleton(options);
         services.AddSingleton<IRuntimeOutboxTransport>(sp =>
@@ -125,6 +168,7 @@ public static class InfrastructureModule
             {
                 "kafka" => new KafkaRuntimeOutboxTransport(options),
                 "rabbitmq" => new RabbitMqRuntimeOutboxTransport(options),
+                "azureservicebus" => new AzureServiceBusRuntimeOutboxTransport(options),
                 _ => new DisabledRuntimeOutboxTransport()
             });
         if (options.Enabled)
@@ -134,9 +178,52 @@ public static class InfrastructureModule
         // zuschaltbar ueber Runtime:Inbox:Enabled; faellt ohne Flag zurueck
         // auf den Outbox-Enabled-Zustand, damit der at-least-once-Zustellungs-
         // und Wiederanlauf-Kreis im Produktivpfad geschlossen ist.
-        var inboxEnabled = configuration.GetValue("Runtime:Inbox:Enabled", options.Enabled);
-        if (inboxEnabled && !string.IsNullOrWhiteSpace(options.ConnectionString))
-            services.AddHostedService<RuntimeInboxConsumerService>();
+        // Registrierung pro aktivem Provider: genau EIN Inbox-Konsument. Ein Service-Bus-
+        // oder Kafka-Deployment darf keinen RabbitMQ-Consumer starten.
+        var inboxOptions = new RuntimeInboxOptions();
+        configuration.GetSection("Runtime:Inbox").Bind(inboxOptions);
+        services.AddSingleton(inboxOptions);
+        // Optionales TypeSafe-Envelope-Konformitäts-Judgment (P3, config-gated via Runtime:TypeSafeConformance).
+        // Standardmäßig deaktiviert => der Inbox-Pfad bleibt unverändert; Aktivierung erst mit explizitem
+        // TypeSafe:Enabled + ApiKey (server-seitig). Der Key steht niemals in Repos/Clients.
+        var tsOptions = new TypeSafeConformanceOptions();
+        configuration.GetSection("Runtime:TypeSafeConformance").Bind(tsOptions);
+        services.AddSingleton(tsOptions);
+        services.AddSingleton<ITypeSafeConformanceClient>(sp =>
+        {
+            var o = sp.GetRequiredService<TypeSafeConformanceOptions>();
+            return new TypeSafeConformanceClient(
+                null,
+                o,
+                sp.GetRequiredService<global::Microsoft.Extensions.Logging.ILogger<TypeSafeConformanceClient>>());
+        });
+        services.AddSingleton<ITypeSafeEnvelopeConformanceValidator, TypeSafeEnvelopeConformanceValidator>();
+        var inboxEnabled = inboxOptions.Enabled ?? options.Enabled;
+        if (inboxEnabled)
+        {
+            switch (provider)
+            {
+                case "rabbitmq":
+                    if (string.IsNullOrWhiteSpace(options.ConnectionString))
+                        throw new InvalidOperationException(
+                            "Runtime:Outbox:ConnectionString is required for the RabbitMQ inbox consumer.");
+                    services.AddHostedService<RuntimeInboxConsumerService>();
+                    break;
+                case "azureservicebus":
+                    services.AddHostedService<AzureServiceBusRuntimeInboxConsumerService>();
+                    break;
+                case "kafka":
+                    // Kafka-Outbox-Publisher bleibt; ein Kafka-Inbox-Konsument existiert nicht.
+                    // Kein stiller Fallback auf einen anderen Consumer - explizit validieren.
+                    throw new InvalidOperationException(
+                        "Runtime inbox consumption is not supported for Provider=Kafka. "
+                        + "Use RabbitMQ or AzureServiceBus for inbox; the Kafka outbox publisher remains available.");
+                default:
+                    throw new InvalidOperationException(
+                        $"Runtime inbox consumer cannot be enabled for Provider '{options.Provider}'. "
+                        + "Use RabbitMQ or AzureServiceBus.");
+            }
+        }
     }
 
     /// <summary>

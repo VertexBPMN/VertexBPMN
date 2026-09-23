@@ -1,0 +1,21 @@
+# Slim runtime-only image: consumes a host-produced `dotnet publish` output
+# (avoids in-container solution restore that fails on small VM disk).
+# Build: docker build -f infra/Dockerfile.runtime -t <name>:<tag> \
+#          --build-arg APP_DIR=../../publish/api --build-arg ENTRY_DLL=VertexBPMN.Api.dll .
+ARG ASPNET_RUNTIME=mcr.microsoft.com/dotnet/aspnet:10.0.11
+FROM ${ASPNET_RUNTIME} AS base
+WORKDIR /app
+ENV ASPNETCORE_HTTP_PORTS=8080 \
+    DOTNET_EnableDiagnostics=0
+EXPOSE 8080
+
+FROM base AS final
+ARG APP_DIR
+ARG ENTRY_DLL
+USER root
+COPY $APP_DIR /app
+RUN printf '#!/bin/sh\nexec dotnet /app/%s "$@"\n' "$ENTRY_DLL" > /entry.sh \
+    && chmod +x /entry.sh \
+    && chown -R $APP_UID /app
+USER $APP_UID
+ENTRYPOINT ["/entry.sh"]

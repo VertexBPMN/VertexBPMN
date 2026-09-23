@@ -26,6 +26,8 @@ using VertexBPMN.Infrastructure.Persistence.Repositories;
 using VertexBPMN.Infrastructure.Persistence.Services;
 using System.Security.Cryptography;
 using SendGrid;
+using Microsoft.AspNetCore.HttpOverrides;
+using System.Net;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -219,8 +221,49 @@ if (opMode == OperationalMode.Production && moduleOptions.Emails)
 	builder.Services.AddOptionalEmailNotifications(builder.Configuration);
 }
 
+// Reverse-proxy (forwarded-headers) hardening for external ingress (P6.5).
+// When the API sits behind a trusted proxy / Front Door / WAF, it must consume
+// X-Forwarded-For and X-Forwarded-Proto so rate limiting, logging and URL/Https
+// decisions see the real client. Only enabled when explicit proxy IPs are set —
+// we never accept forwarded headers from arbitrary senders.
+var reverseProxyEnabled = builder.Configuration.GetValue<bool>("ReverseProxy:Enabled");
+var apiKnownProxyValues = builder.Configuration
+    .GetSection("ReverseProxy:KnownProxies")
+    .Get<string[]>() ?? [];
+var apiKnownProxies = new List<IPAddress>();
+foreach (var value in apiKnownProxyValues)
+{
+    if (!IPAddress.TryParse(value, out var address))
+        throw new InvalidOperationException($"ReverseProxy:KnownProxies contains invalid IP address '{value}'.");
+    apiKnownProxies.Add(address);
+}
+if (reverseProxyEnabled && apiKnownProxies.Count == 0)
+{
+    throw new InvalidOperationException(
+        "ReverseProxy:KnownProxies must contain at least one explicit proxy IP when ReverseProxy:Enabled is true.");
+}
+if (reverseProxyEnabled)
+{
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        // Do not consume X-Forwarded-Host: the proxy must preserve the public
+        // Host header so OIDC callback / token origins cannot be rewritten.
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        options.ForwardLimit = 1;
+        options.RequireHeaderSymmetry = true;
+        options.KnownProxies.Clear();
+        options.KnownIPNetworks.Clear();
+        foreach (var address in apiKnownProxies)
+            options.KnownProxies.Add(address);
+    });
+}
+
+
 var app = builder.Build();
 app.MapDefaultEndpoints();
+
+if (reverseProxyEnabled)
+    app.UseForwardedHeaders();
 
 var migrateOnly = args.Any(argument =>
 	string.Equals(argument, "--migrate-only", StringComparison.OrdinalIgnoreCase));

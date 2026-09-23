@@ -71,7 +71,9 @@ public class KafkaMessageDispatcher : IMessageDispatcher, IDisposable
         string implementation,
         Dictionary<string, string> attributes,
         Dictionary<string, object> variables,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Guid? processInstanceId = null,
+        string? tenantId = null)
     {
         if (string.IsNullOrWhiteSpace(targetWorkerId)) throw new ArgumentException("Target worker id required", nameof(targetWorkerId));
         if (string.IsNullOrWhiteSpace(implementation)) throw new ArgumentException("Implementation required", nameof(implementation));
@@ -501,7 +503,7 @@ public class KafkaMessageDispatcher : IMessageDispatcher, IDisposable
     }
 
     public Task DispatchAiTaskAsync(string targetWorkerId, string aiProvider, string aiModel, Dictionary<string, string> attributes,
-        Dictionary<string, object> variables, CancellationToken cancellationToken = default)
+        Dictionary<string, object> variables, CancellationToken cancellationToken = default, Guid? processInstanceId = null, string? tenantId = null)
     {
         return Task.CompletedTask;
     }

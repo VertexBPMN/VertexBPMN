@@ -1,41 +1,49 @@
 using System.Text;
 using System.Text.Json;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
-using VertexBPMN.Domain.Entities;
 using VertexBPMN.Infrastructure.Persistence;
 
 namespace VertexBPMN.Infrastructure.Messaging;
 
 /// <summary>
-/// Produktioneller Inbox-Konsument: bindet eine durable Queue an die
-/// Runtime-Outbox-Destination-Exchange und verarbeitet eingehende Envelopes
-/// idempotent. Jede Nachricht trägt eine stabile Message-ID; die
-/// Idempotenz wird über den Unique-Index (TenantScope, Operation,
-/// IdempotencyKey) der <see cref="RuntimeInboxMessage"/>-Tabelle gesichert.
-/// Dadurch bleibt at-least-once-Zustellung (Duplikate erlaubt von der
-/// Broker-API) von der garantiert-einmaligen Geschäftsverarbeitung getrennt.
+/// Produktioneller RabbitMQ-Inbox-Konsument: bindet eine durable Queue an die
+/// Runtime-Outbox-Destination-Exchange und verarbeitet eingehende Envelopes idempotent
+/// über den geteilten <see cref="RuntimeInboxProcessor"/>.
+///
+/// Ack-/Nack-Semantik (at-least-once + Last-Recovery via Claim-Timeout):
+///  - Completed / CompletedDuplicate  -> Ack (abgeschlossene Verarbeitung / bereits abgeschlossen)
+///  - Busy                            -> Nack(requeue)  (Claim noch nicht abgelaufen; spaeter uebernehmbar)
+///  - RetryableFailure                -> Nack(requeue)  (transienter Fehler)
+///  - Rejected                        -> Nack(no-requeue) -> Dead-Letter-Queue (DLX)
 /// </summary>
 public sealed class RuntimeInboxConsumerService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly RuntimeOutboxOptions _options;
     private readonly ILogger<RuntimeInboxConsumerService> _logger;
+    private readonly RuntimeInboxProcessor _processor;
     private readonly string _queueName;
+    private readonly string _dlxName;
+    private readonly string _dlqName;
 
     public RuntimeInboxConsumerService(
         IServiceScopeFactory scopeFactory,
         RuntimeOutboxOptions options,
+        RuntimeInboxOptions inboxOptions,
         ILogger<RuntimeInboxConsumerService> logger)
     {
         _scopeFactory = scopeFactory;
         _options = options;
         _logger = logger;
+        _processor = new RuntimeInboxProcessor(scopeFactory, inboxOptions, NullLogger<RuntimeInboxProcessor>.Instance);
         _queueName = $"inbox:{SanitizeQueueSuffix(options.Destination)}";
+        _dlxName = $"{_queueName}.dlx";
+        _dlqName = $"{_queueName}.dlq";
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -78,18 +86,26 @@ public sealed class RuntimeInboxConsumerService : BackgroundService
             autoDelete: false,
             cancellationToken: stoppingToken);
 
-        // Durable, shared queue so work survives a restart and can be shared
-        // across replicas (competing consumers).
-        await channel.QueueDeclareAsync(
-            _queueName,
-            durable: true,
-            exclusive: false,
-            autoDelete: false,
+        // Dead-letter exchange + queue for permanently rejected (poison) messages.
+        await channel.ExchangeDeclareAsync(_dlxName, ExchangeType.Direct, durable: true, autoDelete: false,
             cancellationToken: stoppingToken);
+        await channel.QueueDeclareAsync(_dlqName, durable: true, exclusive: false, autoDelete: false,
+            cancellationToken: stoppingToken);
+        await channel.QueueBindAsync(_dlqName, _dlxName, _dlqName, cancellationToken: stoppingToken);
+
+        // Durable, shared queue so work survives a restart and can be shared across replicas
+        // (competing consumers). Permanent rejects are routed to the DLQ by the DLX argument.
+        var queueArguments = new Dictionary<string, object?>
+        {
+            ["x-dead-letter-exchange"] = _dlxName,
+            ["x-dead-letter-routing-key"] = _dlqName
+        };
+        await channel.QueueDeclareAsync(_queueName, durable: true, exclusive: false, autoDelete: false,
+            arguments: queueArguments, cancellationToken: stoppingToken);
         await channel.QueueBindAsync(_queueName, _options.Destination, "#", cancellationToken: stoppingToken);
 
-        _logger.LogInformation("Runtime inbox consumer listening on queue '{Queue}' for exchange '{Destination}'.",
-            _queueName, _options.Destination);
+        _logger.LogInformation("Runtime inbox consumer listening on queue '{Queue}' for exchange '{Destination}' (DLQ '{Dlq}').",
+            _queueName, _options.Destination, _dlqName);
 
         var consumer = new AsyncEventingBasicConsumer(channel);
         var deliverChannel = channel;
@@ -99,7 +115,6 @@ public sealed class RuntimeInboxConsumerService : BackgroundService
         };
         await channel.BasicConsumeAsync(_queueName, autoAck: false, consumer: consumer, cancellationToken: stoppingToken);
 
-        // Keep reading until shutdown.
         while (!stoppingToken.IsCancellationRequested)
             await Task.Delay(TimeSpan.FromMilliseconds(_options.PollIntervalMilliseconds), stoppingToken);
     }
@@ -109,24 +124,65 @@ public sealed class RuntimeInboxConsumerService : BackgroundService
         BasicDeliverEventArgs deliverEventArgs,
         CancellationToken stoppingToken)
     {
-        // We ack manually so a transient processing failure requeues the message
-        // (at-least-once). Idempotency guarantees the business effect still runs
-        // exactly once even when the same envelope is delivered again.
+        InboxEnvelope envelope;
+        string messageId;
         try
         {
-            var envelope = InboxEnvelope.Parse(deliverEventArgs.Body.ToArray());
-            var messageId = deliverEventArgs.BasicProperties.MessageId;
+            envelope = InboxEnvelope.Parse(deliverEventArgs.Body.ToArray());
+            messageId = deliverEventArgs.BasicProperties.MessageId;
             if (string.IsNullOrWhiteSpace(messageId))
                 messageId = envelope.Id?.ToString("N") ?? Guid.NewGuid().ToString("N");
+        }
+        catch (Exception ex)
+        {
+            // Unparseable envelope: permanent, cannot ever succeed -> dead-letter.
+            _logger.LogError(ex, "Inbox envelope could not be parsed; dead-lettering (DeliveryTag {Tag}).",
+                deliverEventArgs.DeliveryTag);
+            await channel.BasicNackAsync(deliverEventArgs.DeliveryTag, multiple: false, requeue: false,
+                cancellationToken: stoppingToken);
+            return;
+        }
 
-            var processed = await ProcessIdempotentlyAsync(envelope, messageId, stoppingToken);
-
-            await channel.BasicAckAsync(
-                deliverEventArgs.DeliveryTag, multiple: false, cancellationToken: stoppingToken);
-
-            if (processed)
-                _logger.LogInformation("Inbox message {MessageId} ({EventType}) processed exactly once.",
-                    messageId, envelope.EventType);
+        try
+        {
+            var result = await _processor.ProcessAsync(envelope, messageId, stoppingToken);
+            switch (result.Outcome)
+            {
+                case RuntimeInboxOutcome.Completed:
+                    await channel.BasicAckAsync(deliverEventArgs.DeliveryTag, multiple: false, cancellationToken: stoppingToken);
+                    _logger.LogInformation("Inbox message {MessageId} ({Event}) processed exactly once.",
+                        messageId, envelope.EventType);
+                    break;
+                case RuntimeInboxOutcome.CompletedDuplicate:
+                    await channel.BasicAckAsync(deliverEventArgs.DeliveryTag, multiple: false, cancellationToken: stoppingToken);
+                    _logger.LogDebug("Inbox message {MessageId} ({Event}) already completed; idempotent no-op.",
+                        messageId, envelope.EventType);
+                    break;
+                case RuntimeInboxOutcome.Busy:
+                    // Claim not yet expired and held by another worker -> leave in queue so a later
+                    // redelivery can reclaim it once the claim times out.
+                    await channel.BasicNackAsync(deliverEventArgs.DeliveryTag, multiple: false, requeue: true,
+                        cancellationToken: stoppingToken);
+                    _logger.LogDebug("Inbox message {MessageId} ({Event}) busy (claim held); requeueing.", messageId, envelope.EventType);
+                    break;
+                case RuntimeInboxOutcome.RetryableFailure:
+                    await channel.BasicNackAsync(deliverEventArgs.DeliveryTag, multiple: false, requeue: true,
+                        cancellationToken: stoppingToken);
+                    _logger.LogWarning("Inbox message {MessageId} ({Event}) failed transiently; requeueing (at-least-once). Reason: {Reason}",
+                        messageId, envelope.EventType, result.Reason);
+                    break;
+                case RuntimeInboxOutcome.Rejected:
+                    await channel.BasicNackAsync(deliverEventArgs.DeliveryTag, multiple: false, requeue: false,
+                        cancellationToken: stoppingToken);
+                    _logger.LogError("Inbox message {MessageId} ({Event}) permanently rejected; dead-lettered. Reason: {Reason}",
+                        messageId, envelope.EventType, result.Reason);
+                    break;
+                default:
+                    // Unknown outcome: treat as transient so nothing is silently acked.
+                    await channel.BasicNackAsync(deliverEventArgs.DeliveryTag, multiple: false, requeue: true,
+                        cancellationToken: stoppingToken);
+                    break;
+            }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
@@ -134,111 +190,17 @@ public sealed class RuntimeInboxConsumerService : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Inbox message processing failed; requeuing (at-least-once).");
-            // Negative ack with requeue => message goes back to the queue and will be
-            // redelivered; the idempotency key prevents duplicate business effects.
-            await channel.BasicNackAsync(
-                deliverEventArgs.DeliveryTag, multiple: false, requeue: true, cancellationToken: stoppingToken);
+            _logger.LogError(ex, "Inbox message {MessageId} ({Event}) could not be settled after processing; requeueing.",
+                messageId, envelope.EventType);
+            await channel.BasicNackAsync(deliverEventArgs.DeliveryTag, multiple: false, requeue: true,
+                cancellationToken: stoppingToken);
         }
-    }
-
-    private async Task<bool> ProcessIdempotentlyAsync(
-        InboxEnvelope envelope,
-        string idempotencyKey,
-        CancellationToken cancellationToken)
-    {
-        await using var scope = _scopeFactory.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<BpmnDbContext>();
-        var tenantId = envelope.TenantId;
-        var tenantScope = string.IsNullOrWhiteSpace(tenantId) ? "$global" : tenantId.Trim();
-
-        // Try to insert the claim; unique (TenantScope, Operation, IdempotencyKey)
-        // constraint throws on a concurrent/duplicate claim.
-        var claim = new RuntimeInboxMessage
-        {
-            Id = Guid.NewGuid(),
-            Operation = string.IsNullOrWhiteSpace(envelope.EventType) ? "inbox" : envelope.EventType,
-            IdempotencyKey = idempotencyKey,
-            TenantId = tenantId,
-            TenantScope = tenantScope,
-            ReceivedAt = DateTime.UtcNow
-        };
-        db.RuntimeInbox.Add(claim);
-        try
-        {
-            await db.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateException)
-        {
-            db.ChangeTracker.Clear();
-            var existing = await db.RuntimeInbox.AsNoTracking().SingleOrDefaultAsync(
-                item => item.Operation == claim.Operation
-                        && item.IdempotencyKey == claim.IdempotencyKey
-                        && item.TenantScope == claim.TenantScope,
-                cancellationToken);
-            if (existing is { CompletedAt: not null })
-                return false; // already processed exactly once -> idempotent no-op
-            return false; // claimed/owned by another replica -> skip
-        }
-
-        // Business handler: exact-once. Resolve via the registered inbox handler.
-        var handler = scope.ServiceProvider.GetService<IRuntimeInboxHandler>();
-        if (handler is not null)
-        {
-            await handler.HandleAsync(envelope.EventType, envelope.Payload, envelope.ProcessInstanceId, tenantId, cancellationToken);
-        }
-        else if (scope.ServiceProvider.GetService<IInboxEventSink>() is { } sink)
-        {
-            await sink.HandleAsync(envelope, cancellationToken);
-        }
-
-        claim.Result = "Processed";
-        claim.CompletedAt = DateTime.UtcNow;
-        db.Attach(claim);
-        db.Entry(claim).State = EntityState.Modified;
-        await db.SaveChangesAsync(cancellationToken);
-        return true;
     }
 
     private static string SanitizeQueueSuffix(string destination)
     {
         var invalid = destination.Where(ch => !char.IsLetterOrDigit(ch) && ch != '-' && ch != '_').ToArray();
-        var cleaned = invalid.Length == 0 ? destination : new string(destination.Select(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_' ? ch : '-').ToArray());
-        return cleaned;
+        return invalid.Length == 0 ? destination
+            : new string(destination.Select(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_' ? ch : '-').ToArray());
     }
-}
-
-/// <summary>Parsed shape of the runtime outbox envelope published by the transport.</summary>
-public sealed record InboxEnvelope(
-    Guid? Id,
-    string? EventType,
-    Guid? ProcessInstanceId,
-    string? TenantId,
-    DateTimeOffset? OccurredAt,
-    JsonElement? Payload)
-{
-    public static InboxEnvelope Parse(byte[] body)
-    {
-        using var document = JsonDocument.Parse(body);
-        var root = document.RootElement;
-        return new InboxEnvelope(
-            root.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String && Guid.TryParse(id.GetString(), out var g) ? g : null,
-            root.TryGetProperty("eventType", out var et) ? et.GetString() : null,
-            root.TryGetProperty("processInstanceId", out var pi) && pi.ValueKind == JsonValueKind.String ? (Guid?)Guid.Parse(pi.GetString()!) : null,
-            root.TryGetProperty("tenantId", out var t) && t.ValueKind is JsonValueKind.String or JsonValueKind.Null ? (t.ValueKind == JsonValueKind.Null ? null : t.GetString()) : null,
-            root.TryGetProperty("occurredAt", out var oa) ? (DateTimeOffset?)oa.GetDateTimeOffset() : null,
-            root.TryGetProperty("payload", out var p) ? p : null);
-    }
-}
-
-/// <summary>Idempotent business handler invoked exactly once per stable message id.</summary>
-public interface IRuntimeInboxHandler
-{
-    Task HandleAsync(string? eventType, JsonElement? payload, Guid? processInstanceId, string? tenantId, CancellationToken cancellationToken);
-}
-
-/// <summary>Alternative sink (test seams / external forwarding) invoked exactly once.</summary>
-public interface IInboxEventSink
-{
-    Task HandleAsync(InboxEnvelope envelope, CancellationToken cancellationToken);
 }

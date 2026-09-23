@@ -14,7 +14,21 @@
     <PackageReference Include="Grpc.Tools" Version="2.83.0" PrivateAssets="All" />
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.10.0" />
     <PackageReference Include="MudBlazor" Version="9.10.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.12" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
+      <PrivateAssets>All</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Azure.Extensions.AspNetCore.DataProtection.Blobs" Version="1.5.4" />
+    <PackageReference Include="Azure.Extensions.AspNetCore.DataProtection.Keys" Version="1.6.4" />
+    <PackageReference Include="Azure.Identity" Version="1.21.0" />
+    <PackageReference Include="Azure.Core" Version="1.62.0" />
+    <PackageReference Include="Azure.Storage.Blobs" Version="12.29.2" />
   </ItemGroup>
+
 
   <ItemGroup>
     <ProjectReference Include="..\VertexBPMN.Domain\VertexBPMN.Domain.csproj" />

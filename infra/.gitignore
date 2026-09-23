@@ -1,0 +1,8 @@
+# Compiled ARM template output from `az bicep build` — never committed.
+*.json
+!bicepconfig.json
+
+# Local/private environment parameter files — never committed.
+# Copy params/<env>.bicepparam to params/<env>.local.bicepparam and fill in
+# your real resource names (namePrefix), region, admin username, etc.
+params/*.local.bicepparam

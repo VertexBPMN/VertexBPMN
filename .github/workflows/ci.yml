@@ -33,6 +33,14 @@ jobs:
       - name: Build
         run: dotnet build VertexBPMN.sln --configuration Release --no-restore -p:SkipBpmnIoAssetBuild=true -m:1 --disable-build-servers
 
+      - name: Validate Bicep IaC (P5)
+        run: |
+          az bicep install || true
+          az bicep version
+          (cd infra && az bicep build -f main.bicep)
+          (cd infra && az bicep build-params -f params/stage.bicepparam)
+          (cd infra && az bicep build-params -f params/prod.bicepparam)
+
       - name: Test (CI-safe suite)
         run: >-
           dotnet test tests/VertexBPMN.Tests/VertexBPMN.Tests.csproj

@@ -59,6 +59,36 @@ Bei einem Broker-Ausfall:
 3. Sicherstellen, dass `outbox_pending` fällt und keine neuen permanenten Fehler entstehen.
 4. Nachrichten im Zustand `DeadLetter` erst nach Ursachenbehebung kontrolliert auf `Pending` zurücksetzen; Payload und Message-ID dürfen dabei nicht verändert werden.
 
+## Dead-Letter-Queue (Inbox, P2)
+
+Runtime-Ereignisse, die dauerhaft nicht zu verarbeiten sind (poison messages), landen statt in einem
+Recovery-Loop in der Dead-Letter-Queue:
+
+- **RabbitMQ:** permanent abgelehnte Nachrichten (`Rejected` — fehlender Handler, unparsbares Envelope,
+  unbekannte Vertragsversion, unzulässige Tenant-Zuordnung) werden per `BasicNack(requeue=false)` über den
+  Dead-Letter-Exchange in die Queue `inbox:<destination>.dlq` geleitet. Transiente Fehler und „Busy“-Claims
+  werden requeued (at-least-once) und nach Claim-Timeout erneut übernommen.
+- **Azure Service Bus:** `Rejected` wird per `DeadLetter` mit strukturiertem `reason` getrennt; `Retryable`/
+  `Busy` per `Abandon` redelivered, bis `MaxDeliveryCount` (Server-seitig konfiguriert) erreicht ist, dann DLQ.
+
+**Sichtung & Korrelation:**
+1. Broker-eigene DLQ anzeigen; `MessageId` (= Runtime-Outbox-ID, `N`-Format) und `eventType`/`tenantId` aus
+   den Application Properties bzw. dem Envelope notieren.
+2. Zur Prozessinstanz/Outbox korrelieren: `SELECT * FROM runtime_outbox WHERE id = '<MessageId>';` und den
+   zugehörigen Inbox-Eintrag prüfen (`RuntimeInbox` mit `IdempotencyKey = MessageId`, `Result`/`CompletedAt`).
+
+**Ursache beheben:** Fehlenden/fehlerhaften Inbox-Handler, Vertragsversion oder Tenant-Mapping & Registry
+korrigieren (bevor ein Replay erfolgt). Bearbeitung von `Rejected`, ohne die Ursache zu beheben, erzeugt
+beim Replay denselben DLQ-Eintrag.
+
+**Kontrolliertes Replay oder Verwerfen:**
+3. Replay nur mit einer **neuen Transport-ID bei unveränderter fachlicher Idempotenz-ID** (MessageId) —
+   sonst kann Broker-Duplicate-Detection das Replay verwerfen. Replay-Auditdatum und Operator protokollieren.
+4. Verwerfen nur nach expliziter fachlicher Freigabe; im Audit festhalten, warum verworfen wurde.
+
+**Audit-Nachweis:** Log-Ausgabe „permanently rejected; dead-lettered. Reason: …“ (+ MessageId/CorrelationId)
+und der DLQ-Eintrag selbst sind der Nachweis; im Incident-Log Referenz auf Broker-DLQ und Reason speichern.
+
 ## Datenbank-Recovery
 
 **Zielwerte (Phase 0, entschieden 2026-09-08):** RPO ≤ 15 min (maximaler Datenverlust), RTO ≤ 4 h (Wiederherstellungszeit).
@@ -90,5 +120,16 @@ Ein Schema-Downgrade wird nicht automatisch ausgeführt. Für Rollback muss die 
 Gesamt-p95 ≈ 351 ms (< Ziel 1 s), Gesamt-p99 ≈ 574 ms (< Ziel 3 s), Fehlerrate 0; DB-Verbindungen 5→16, Locks 9→12 (kein unbegrenztes Wachstum); Speicher über die Lastphase stabil ≈ 232 MB. Die Rampen-Instant-Tiefpunkte des Outbox-Pending wachsen nur, weil die Burst-Erzeugung kurzzeitig schneller ist als die Drain-Rate des Publishers (50/s je Poll); nach Lastende drainet der Rückstau innerhalb von 90 s auf ≤ 25 (Peak 1150 → final 14) – kein dauerhaft zunehmender Rückstand. **Abnahme-Zielprofil (Phase 0):** 1–10 Starts/s, 50–500 parallele Benutzer. **Kapazitätsprofil:** `docs/reviews/2026-09-09_Phase6_Last_Abnahme.md` (Hardware/Replikazahl, gemessene Sättigung, Grenzen).
 
 - Der API-Outbox-Transport benötigt `Runtime__Outbox__Enabled=true`, `Runtime__Outbox__Provider=RabbitMq` und `Runtime__Outbox__ConnectionString=<AMQP>`; ohne diese Konfiguration fällt der Publisher auf den Disabled-Transport zurück und `Pending`-Nachrichten würden dauerhaft akkumulieren (kein Produktdefekt, aber Betriebsfehler).
+- **Azure Service Bus als Outbox-Provider (P1).** Beim Provider `AzureServiceBus` verwendet der Transport Managed Identity, wenn `Runtime__Outbox__AuthenticationMode=ManagedIdentity` gesetzt ist — dann ist **kein** `ConnectionString` nötig, wohl aber `FullyQualifiedNamespace` und `EntityName`. Beispiel-Env-Variablen (Platzhalter, keine realen Werte einchecken):
+  ```
+  Runtime__Outbox__Enabled=true
+  Runtime__Outbox__Provider=AzureServiceBus
+  Runtime__Outbox__FullyQualifiedNamespace=<yourns>.servicebus.windows.net
+  Runtime__Outbox__EntityName=vertexbpmn-runtime
+  Runtime__Outbox__EntityType=Topic
+  Runtime__Outbox__AuthenticationMode=ManagedIdentity
+  Runtime__Outbox__ManagedIdentityClientId=<user-assigned-client-id>   # optional; Default = System-Assigned
+  ```
+  `AuthenticationMode=ConnectionString` ist nur für lokale Integrationstests gedacht und verlangt dann `Runtime__Outbox__ConnectionString`. Die Health-/Readiness-Probe ist ein zeitlich begrenzter TCP-Erreichbarkeitstest des Namespace (AMQP-TLS 5671) ohne Managementrechte; eine echte End-to-End-Sende-/Empfangsprobe ist die separate Stage-Abnahme. Broker-Ausfall führt zu sichtbarer `LastError`/Readiness-Einschränkung, nicht zu einer Liveness-Neustartschleife.
 - Das globale ASP.NET-Rate-Limit (`RateLimiting:PermitLimit`, Standard 120/60 s je IP) schützt vor Überlast. Für Lasttests muss es (wie in `P6_AC_02`) angehoben werden, damit die Engine-Latenz statt des Limits gemessen wird; in der Produktion ist der Wert als Kapazitätsparameter zu belegen.
 - Ein **voller 24–72 h-Dauerlauf** mit Langzeit-Drift/Warmzeit wurde nicht gefahren (kurzer Dauerlauf-Abschnitt mit Lastspitze + kontrollierter Unterbrechung in `P6_AC_03`); er ist nach Zielprofil in der Zielumgebung zu betreiben, bevor eine Kapazitätszusage auf die absoluten Grenzen getroffen wird.

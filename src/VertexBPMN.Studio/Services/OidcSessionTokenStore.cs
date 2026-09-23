@@ -11,21 +11,34 @@ using VertexBPMN.ServiceDefaults.Security;
 
 namespace VertexBPMN.Studio.Services;
 
-public sealed class OidcSessionTokenStore(
-    IOptionsMonitor<OpenIdConnectOptions> oidcOptions,
-    TimeProvider timeProvider,
-    ILogger<OidcSessionTokenStore> logger)
+public sealed class OidcSessionTokenStore
 {
+    public OidcSessionTokenStore(
+        IOptionsMonitor<OpenIdConnectOptions> oidcOptions,
+        TimeProvider timeProvider,
+        ILogger<OidcSessionTokenStore> logger,
+        ISharedOidcSessionStore? sharedStore = null)
+    {
+        _oidcOptions = oidcOptions;
+        _timeProvider = timeProvider;
+        _logger = logger;
+        _sharedStore = sharedStore ?? new InMemorySharedOidcSessionStore();
+    }
+
     public const string SessionIdClaim = "vertexbpmn_session_id";
     public const string SessionRenewedItem = "VertexBPMN.OidcSessionRenewed";
     private static readonly TimeSpan RefreshWindow = TimeSpan.FromMinutes(1);
+    private readonly IOptionsMonitor<OpenIdConnectOptions> _oidcOptions;
+    private readonly TimeProvider _timeProvider;
+    private readonly ILogger<OidcSessionTokenStore> _logger;
+    private readonly ISharedOidcSessionStore _sharedStore;
     private readonly ConcurrentDictionary<string, SessionEntry> _sessions = new(StringComparer.Ordinal);
 
     public void Register(ClaimsPrincipal principal, AuthenticationProperties properties)
     {
         var sessionId = GetSessionId(principal);
         var tokenSet = ReadTokenSet(principal, properties, revision: 0);
-        _sessions.AddOrUpdate(
+        var entry = _sessions.AddOrUpdate(
             sessionId,
             _ => new SessionEntry(tokenSet),
             (_, existing) =>
@@ -33,6 +46,8 @@ public sealed class OidcSessionTokenStore(
                 existing.State = tokenSet with { Revision = existing.State.Revision + 1 };
                 return existing;
             });
+        _ = entry;
+        WriteThrough(sessionId, tokenSet with { Revision = tokenSet.Revision }, principal);
     }
 
     public async Task<string> GetAccessTokenAsync(
@@ -42,7 +57,7 @@ public sealed class OidcSessionTokenStore(
     {
         var sessionId = GetSessionId(principal);
         var entry = GetOrRegister(sessionId, principal, fallbackProperties);
-        var state = await EnsureFreshAsync(sessionId, entry, cancellationToken);
+        var state = await EnsureFreshAsync(sessionId, entry, principal, cancellationToken);
         return state.AccessToken;
     }
 
@@ -53,7 +68,7 @@ public sealed class OidcSessionTokenStore(
     {
         var sessionId = GetSessionId(principal);
         var entry = GetOrRegister(sessionId, principal, properties);
-        var state = await EnsureFreshAsync(sessionId, entry, cancellationToken);
+        var state = await EnsureFreshAsync(sessionId, entry, principal, cancellationToken);
         var ticketAccessToken = properties.GetTokenValue("access_token");
 
         if (string.Equals(ticketAccessToken, state.AccessToken, StringComparison.Ordinal))
@@ -66,7 +81,14 @@ public sealed class OidcSessionTokenStore(
     public ClaimsPrincipal GetCurrentPrincipal(ClaimsPrincipal fallback)
     {
         var sessionId = GetSessionId(fallback);
-        return _sessions.TryGetValue(sessionId, out var entry)
+        var shared = _sharedStore.TryGetAsync(sessionId, CancellationToken.None).GetAwaiter().GetResult();
+        if (shared is not null)
+        {
+            if (_sessions.TryGetValue(sessionId, out var local) && local.State.Principal is not null)
+                return ClonePrincipal(local.State.Principal);
+            return fallback;
+        }
+        return _sessions.TryGetValue(sessionId, out var entry) && entry.State.Principal is not null
             ? ClonePrincipal(entry.State.Principal)
             : fallback;
     }
@@ -74,6 +96,9 @@ public sealed class OidcSessionTokenStore(
     public string? GetIdToken(ClaimsPrincipal principal)
     {
         var sessionId = GetSessionId(principal);
+        var shared = _sharedStore.TryGetAsync(sessionId, CancellationToken.None).GetAwaiter().GetResult();
+        if (shared is not null)
+            return shared.IdToken;
         return _sessions.TryGetValue(sessionId, out var entry) ? entry.State.IdToken : null;
     }
 
@@ -81,7 +106,10 @@ public sealed class OidcSessionTokenStore(
     {
         var sessionId = principal.FindFirstValue(SessionIdClaim);
         if (!string.IsNullOrWhiteSpace(sessionId))
+        {
             _sessions.TryRemove(sessionId, out _);
+            _sharedStore.RemoveAsync(sessionId).GetAwaiter().GetResult();
+        }
     }
 
     private SessionEntry GetOrRegister(
@@ -95,33 +123,60 @@ public sealed class OidcSessionTokenStore(
             throw new OidcSessionExpiredException("The OIDC session is no longer available. Sign in again.");
 
         var created = new SessionEntry(ReadTokenSet(principal, properties, revision: 0));
-        return _sessions.GetOrAdd(sessionId, created);
+        var winner = _sessions.GetOrAdd(sessionId, created);
+        WriteThrough(sessionId, winner.State, principal);
+        return winner;
     }
 
     private async Task<SessionTokenSet> EnsureFreshAsync(
         string sessionId,
         SessionEntry entry,
+        ClaimsPrincipal principal,
         CancellationToken cancellationToken)
     {
-        var now = timeProvider.GetUtcNow();
+        var now = _timeProvider.GetUtcNow();
         if (entry.State.ExpiresAt > now.Add(RefreshWindow))
             return entry.State;
 
         await entry.Gate.WaitAsync(cancellationToken);
         try
         {
-            now = timeProvider.GetUtcNow();
+            now = _timeProvider.GetUtcNow();
             if (entry.State.ExpiresAt > now.Add(RefreshWindow))
                 return entry.State;
 
             var refreshed = await RefreshAsync(entry.State, cancellationToken);
-            entry.State = refreshed with { Revision = entry.State.Revision + 1 };
+            var next = refreshed with { Revision = entry.State.Revision + 1 };
+            var expectedRevision = entry.State.Revision;
+            entry.State = next;
+            try
+            {
+                await WriteWithFencingAsync(sessionId, next, principal, expectedRevision, cancellationToken);
+            }
+            catch (OidcSessionRevisionConflictException)
+            {
+                // Eine andere Replika hat die Sitzung bereits mit frischeren Tokens
+                // aktualisiert. Die frische Darstellung (Fencing-Gewinner) übernehmen
+                // und die lokale veraltete Token-Rotation verwerfen.
+                var winner = await _sharedStore.TryGetAsync(sessionId, cancellationToken);
+                if (winner is not null)
+                {
+                    entry.State = new SessionTokenSet(
+                        winner.AccessToken,
+                        winner.RefreshToken,
+                        winner.IdToken,
+                        winner.ExpiresAt,
+                        ClonePrincipal(principal),
+                        winner.Revision);
+                }
+            }
             return entry.State;
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             _sessions.TryRemove(sessionId, out _);
-            logger.LogWarning(exception, "OIDC token refresh failed for session {SessionId}.", sessionId);
+            await _sharedStore.RemoveAsync(sessionId, cancellationToken);
+            _logger.LogWarning(exception, "OIDC token refresh failed for session {SessionId}.", sessionId);
             throw new OidcSessionExpiredException("The OIDC session could not be refreshed. Sign in again.", exception);
         }
         finally
@@ -130,11 +185,60 @@ public sealed class OidcSessionTokenStore(
         }
     }
 
+    private void WriteThrough(string sessionId, SessionTokenSet tokenSet, ClaimsPrincipal principal)
+    {
+        try
+        {
+            _sharedStore.PutAsync(
+                sessionId,
+                principal,
+                tokenSet.AccessToken,
+                tokenSet.RefreshToken,
+                tokenSet.IdToken,
+                tokenSet.ExpiresAt,
+                tokenSet.Revision,
+                CancellationToken.None).GetAwaiter().GetResult();
+        }
+        catch (OidcSessionRevisionConflictException)
+        {
+            // Registrierung darf eine bereits existierende frischere Sitzung überschreiben;
+            // der Login ist die Autorität für den initialen Zustand.
+            _sharedStore.RemoveAsync(sessionId).GetAwaiter().GetResult();
+            _sharedStore.PutAsync(
+                sessionId,
+                principal,
+                tokenSet.AccessToken,
+                tokenSet.RefreshToken,
+                tokenSet.IdToken,
+                tokenSet.ExpiresAt,
+                tokenSet.Revision,
+                CancellationToken.None).GetAwaiter().GetResult();
+        }
+    }
+
+    private async Task WriteWithFencingAsync(
+        string sessionId,
+        SessionTokenSet tokenSet,
+        ClaimsPrincipal principal,
+        long expectedRevision,
+        CancellationToken cancellationToken)
+    {
+        await _sharedStore.PutAsync(
+            sessionId,
+            principal,
+            tokenSet.AccessToken,
+            tokenSet.RefreshToken,
+            tokenSet.IdToken,
+            tokenSet.ExpiresAt,
+            expectedRevision,
+            cancellationToken);
+    }
+
     private async Task<SessionTokenSet> RefreshAsync(
         SessionTokenSet current,
         CancellationToken cancellationToken)
     {
-        var options = oidcOptions.Get(OpenIdConnectDefaults.AuthenticationScheme);
+        var options = _oidcOptions.Get(OpenIdConnectDefaults.AuthenticationScheme);
         var configuration = options.Configuration;
         if (configuration is null)
         {
@@ -199,7 +303,7 @@ public sealed class OidcSessionTokenStore(
             accessToken,
             refreshToken,
             idToken,
-            timeProvider.GetUtcNow().AddSeconds(expiresIn),
+            _timeProvider.GetUtcNow().AddSeconds(expiresIn),
             ClonePrincipal(accessPrincipal),
             current.Revision);
     }

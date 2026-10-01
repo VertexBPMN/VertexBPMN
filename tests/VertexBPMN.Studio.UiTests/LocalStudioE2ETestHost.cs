@@ -31,6 +31,7 @@ public sealed class LocalStudioE2ETestHost : IAsyncLifetime
     private IPlaywright? _playwright;
     private string? _workingDirectory;
     private string? _apiKey;
+    private StudioUseCaseTraceability? _traceability;
 
     public static bool IsEnabled =>
         string.Equals(
@@ -66,7 +67,8 @@ public sealed class LocalStudioE2ETestHost : IAsyncLifetime
         });
 
         var page = await context.NewPageAsync();
-        var session = new BrowserArtifactSession(scenarioName, context);
+        // Theories otherwise share CallerMemberName and overwrite one another's traces.
+        var session = new BrowserArtifactSession(scenarioName, context, Guid.NewGuid().ToString("N"));
         page.PageError += (_, error) => session.BrowserConsole.Enqueue($"page-error: {error}");
         page.Console += (_, message) => session.BrowserConsole.Enqueue($"{message.Type}: {message.Text}");
         page.RequestFailed += (_, request) => session.FailedRequests.Enqueue(
@@ -86,9 +88,13 @@ public sealed class LocalStudioE2ETestHost : IAsyncLifetime
             return;
         }
 
-        var artifactDirectory = GetScenarioArtifactDirectory(session.ScenarioName);
+        var artifactDirectory = GetScenarioArtifactDirectory($"{session.ScenarioName}--{session.SessionId}");
         Directory.CreateDirectory(artifactDirectory);
         var diagnosticErrors = new List<string>();
+
+        if (_traceability is not null)
+            await File.WriteAllTextAsync(Path.Combine(artifactDirectory, "scenario.json"),
+                _traceability.Describe(RunId, session.ScenarioName, session.SessionId, TestContext.Current.Test?.TestDisplayName));
 
         try
         {
@@ -187,6 +193,7 @@ public sealed class LocalStudioE2ETestHost : IAsyncLifetime
 
         var repositoryRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../.."));
         var configuration = new DirectoryInfo(AppContext.BaseDirectory).Parent?.Name ?? "Release";
+        _traceability = StudioUseCaseTraceability.Load(repositoryRoot, configuration);
         var apiProject = Path.Combine(repositoryRoot, "src", "VertexBPMN.Api", "VertexBPMN.Api.csproj");
         var studioProject = Path.Combine(repositoryRoot, "src", "VertexBPMN.Studio", "VertexBPMN.Studio.csproj");
         _apiKey = $"local-studio-e2e-{RunId}";
@@ -736,7 +743,7 @@ public sealed class LocalStudioE2ETestHost : IAsyncLifetime
         return ((IPEndPoint)listener.LocalEndpoint).Port;
     }
 
-    private sealed record BrowserArtifactSession(string ScenarioName, IBrowserContext Context)
+    private sealed record BrowserArtifactSession(string ScenarioName, IBrowserContext Context, string SessionId)
     {
         public ConcurrentQueue<string> BrowserConsole { get; } = new();
 

@@ -1,0 +1,2 @@
+deploy/compose/*.sh text eol=lf
+deploy/compose/*.sql text eol=lf

@@ -1,5 +1,5 @@
 @inherits LayoutComponentBase
-@inject VertexBPMN.Studio.Services.IEngineAdministrationService EngineAdministrationService
+@implements IDisposable
 @inject VertexBPMN.Studio.Services.ActiveEngineService ActiveEngineService
 @inject VertexBPMN.Studio.Services.IIdentityService IdentityService
 @inject VertexBPMN.Studio.Services.StudioTenantContext TenantContext
@@ -50,13 +50,11 @@
             <MudSelect T="string"
                        Label="Engine"
                        @bind-Value="ActiveEngineService.ActiveEngineId"
+                       Disabled="true"
                        Variant="Variant.Outlined"
                        Margin="Margin.Dense"
                        Class="studio-context__select studio-context__engine">
-                @foreach (var engine in _engineConnections)
-                {
-                    <MudSelectItem Value="@engine.Id">@engine.Name</MudSelectItem>
-                }
+                <MudSelectItem Value="@ActiveEngineService.ActiveEngineId">Configured API</MudSelectItem>
             </MudSelect>
 
             <MudChip T="string"
@@ -65,13 +63,14 @@
                      Size="Size.Small"
                      Icon="@(ActiveEngineService.IsConnected ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Error)"
                      Class="studio-connection-status">
-                @(ActiveEngineService.IsConnected ? "Connected" : "Disconnected")
+                @ActiveEngineService.ConnectionStatus
             </MudChip>
 
             <MudIconButton Icon="@Icons.Material.Filled.Refresh"
                            Color="Color.Inherit"
                            Class="studio-context__refresh"
                            aria-label="Refresh engines"
+                           Disabled="ActiveEngineService.IsChecking"
                            OnClick="RefreshEngines" />
 
             <form method="post" action="/authentication/logout" class="studio-logout-form">
@@ -107,13 +106,15 @@
 
     private bool _drawerOpen = true;
     private bool _interactiveReady;
-    private List<VertexBPMN.Studio.Services.EngineConnection> _engineConnections = new();
     private IReadOnlyList<VertexBPMN.Studio.Services.StudioTenant> _tenants = Array.Empty<VertexBPMN.Studio.Services.StudioTenant>();
     private bool _tenantsLoaded;
     private bool _canSelectTenant;
 
     protected override async Task OnInitializedAsync()
     {
+        TenantContext.TenantsChanged += OnTenantsChanged;
+        ActiveEngineService.OnChange += OnEngineStatusChanged;
+        AuthenticationStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
         var principal = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
         _canSelectTenant = principal.IsInRole("Admin");
         if (!_canSelectTenant)
@@ -137,11 +138,11 @@
                 _tenantsLoaded = true;
                 return;
             }
-            catch (OperationCanceledException) when (timeout.IsCancellationRequested && attempt < 3)
+            catch (OperationCanceledException) when (timeout.IsCancellationRequested)
             {
                 Logger.LogWarning("Loading tenants timed out on attempt {Attempt}; retrying", attempt);
             }
-            catch (Exception exception) when (attempt < 3)
+            catch (Exception exception)
             {
                 Logger.LogWarning(exception, "Loading tenants failed on attempt {Attempt}; retrying", attempt);
             }
@@ -154,34 +155,17 @@
         _tenantsLoaded = true;
     }
 
-    protected override void OnAfterRender(bool firstRender)
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender)
             return;
 
         _interactiveReady = true;
         StateHasChanged();
+        await ActiveEngineService.CheckConnectionAsync();
     }
 
-    private async Task LoadEngineConnections()
-    {
-        try
-        {
-            StateHasChanged();
-            var connections = await EngineAdministrationService.GetEngineConnectionsAsync();
-            _engineConnections = connections.ToList();
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Failed to load engine connections");
-        }
-        finally
-        {
-            StateHasChanged();
-        }
-    }
-
-    private Task RefreshEngines() => LoadEngineConnections();
+    private Task RefreshEngines() => ActiveEngineService.CheckConnectionAsync();
 
     private void DrawerToggle() => _drawerOpen = !_drawerOpen;
 
@@ -191,6 +175,54 @@
             return;
         TenantContext.SetTenant(tenantId);
         StateHasChanged();
+    }
+
+    private async void OnTenantsChanged()
+    {
+        if (!_canSelectTenant) return;
+        await InvokeAsync(async () =>
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            try
+            {
+                _tenants = await IdentityService.ListTenantsAsync(timeout.Token);
+                if (TenantContext.CurrentTenantId is { } selected && !_tenants.Any(tenant => tenant.Id == selected))
+                    TenantContext.SetTenant(null);
+                StateHasChanged();
+            }
+            catch (Exception exception)
+            {
+                Logger.LogWarning(exception, "Refreshing tenant selection failed");
+            }
+        });
+    }
+
+    private void OnEngineStatusChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private async void OnAuthenticationStateChanged(Task<AuthenticationState> stateTask)
+    {
+        await InvokeAsync(async () =>
+        {
+            var principal = (await stateTask).User;
+            var wasAdmin = _canSelectTenant;
+            _canSelectTenant = principal.IsInRole("Admin");
+            if (!_canSelectTenant)
+            {
+                var tenantId = principal.Identity?.IsAuthenticated == true ? principal.FindFirst("tenant_id")?.Value : null;
+                TenantContext.SetTenant(tenantId);
+                _tenants = string.IsNullOrWhiteSpace(tenantId) ? [] : [new StudioTenant(tenantId, tenantId)];
+            }
+            else if (!wasAdmin)
+                OnTenantsChanged();
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        TenantContext.TenantsChanged -= OnTenantsChanged;
+        ActiveEngineService.OnChange -= OnEngineStatusChanged;
+        AuthenticationStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
     }
 
     private string ContentClass => IsWorkspaceRoute()

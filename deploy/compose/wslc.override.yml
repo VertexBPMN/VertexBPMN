@@ -1,0 +1,42 @@
+# Local WSLC only: bridge networking instead of unsupported host networking.
+# Always combine with docker-compose.yml. No automatic restart policy on WSLC.
+services:
+  postgres:
+    restart: "no"
+    ports: !override ["127.0.0.1:${WSLC_POSTGRES_PORT:-55432}:5432"]
+  rabbitmq:
+    restart: "no"
+    ports: !override ["127.0.0.1:${WSLC_AMQP_PORT:-55672}:5672", "127.0.0.1:${WSLC_RABBIT_MANAGEMENT_PORT:-15672}:15672"]
+  keycloak-postgres:
+    restart: "no"
+  keycloak:
+    restart: "no"
+    ports: !override ["127.0.0.1:58080:8080"]
+  api:
+    network_mode: !reset null
+    restart: "no"
+    ports: ["127.0.0.1:51870:51870"]
+    environment:
+      ConnectionStrings__Bpmn: "Host=postgres;Port=5432;Username=${POSTGRES_USER:-vertexbpmn};Password=${POSTGRES_PASSWORD};Database=vertexbpmn_bpmn"
+      ConnectionStrings__Tenants: "Host=postgres;Port=5432;Username=${POSTGRES_USER:-vertexbpmn};Password=${POSTGRES_PASSWORD};Database=vertexbpmn_tenants"
+      ConnectionStrings__Simulation: "Host=postgres;Port=5432;Username=${POSTGRES_USER:-vertexbpmn};Password=${POSTGRES_PASSWORD};Database=vertexbpmn_simulation"
+      ConnectionStrings__ProcessMiningEvents: "Host=postgres;Port=5432;Username=${POSTGRES_USER:-vertexbpmn};Password=${POSTGRES_PASSWORD};Database=vertexbpmn_events"
+      ConnectionStrings__Decision: "Host=postgres;Port=5432;Username=${POSTGRES_USER:-vertexbpmn};Password=${POSTGRES_PASSWORD};Database=vertexbpmn_decision"
+      Runtime__Outbox__ConnectionString: "amqp://${WSLC_RABBITMQ_USER_URI:?start via wslc.ps1}:${WSLC_RABBITMQ_PASSWORD_URI:?start via wslc.ps1 to encode the RabbitMQ password}@rabbitmq:5672"
+      Jwt__BackchannelAuthority: http://keycloak:8080/realms/vertexbpmn
+  studio:
+    network_mode: !reset null
+    restart: "no"
+    ports: ["127.0.0.1:5263:5263"]
+    environment:
+      ApiBaseUrl: http://api:51870/
+      StudioAuthentication__BackchannelAuthority: http://keycloak:8080/realms/vertexbpmn
+  agent-worker:
+    network_mode: !reset null
+    restart: "no"
+    profiles: [agent]
+    environment:
+      ExternalTaskWorker__BaseAddress: http://api:51870/
+      ExternalTaskWorker__TokenEndpoint: http://keycloak:8080/realms/vertexbpmn/protocol/openid-connect/token
+      # Explicit reachable Ollama required for the optional agent profile.
+      ContractReviewer__Endpoint: ${OLLAMA_ENDPOINT:-http://ollama:11434/}

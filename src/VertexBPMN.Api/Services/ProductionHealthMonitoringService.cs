@@ -5,6 +5,8 @@ using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Infrastructure.Persistence;
+using VertexBPMN.Infrastructure.Persistence.Services;
 
 namespace VertexBPMN.Api.Services;
 
@@ -43,28 +45,34 @@ public class ProductionHealthMonitoringService : IHealthMonitoringService
         {
             using var scope = _serviceProvider.CreateScope();
             
-            // Check if we can get database context services
-            var dbContextServices = scope.ServiceProvider.GetServices<DbContext>();
-            var healthyDatabases = new List<string>();
-            var unhealthyDatabases = new List<string>();
-
-            foreach (var dbContext in dbContextServices)
+            Type[] databaseTypes = [typeof(BpmnDbContext), typeof(TenantDbContext),
+                typeof(SimulationScenarioDbContext), typeof(ProcessMiningEventDbContext), typeof(DecisionDbContext)];
+            // Separate contexts can be checked concurrently. Bound the entire database check
+            // instead of accumulating five provider timeouts in the Studio HTTP pipeline.
+            var checks = await Task.WhenAll(databaseTypes.Select(async databaseType =>
             {
+                var dbName = databaseType.Name;
                 try
                 {
+                    if (scope.ServiceProvider.GetService(databaseType) is not DbContext dbContext)
+                    {
+                        return (Healthy: false, Message: $"{dbName}: Not registered");
+                    }
                     var stopwatch = Stopwatch.StartNew();
-                    await dbContext.Database.CanConnectAsync();
+                    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                    var connected = await dbContext.Database.CanConnectAsync(timeout.Token);
                     stopwatch.Stop();
-                    
-                    var dbName = dbContext.GetType().Name;
-                    healthyDatabases.Add($"{dbName} ({stopwatch.ElapsedMilliseconds}ms)");
+                    return (Healthy: connected, Message: connected
+                        ? $"{dbName} ({stopwatch.ElapsedMilliseconds}ms)" : $"{dbName}: Cannot connect");
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
-                    var dbName = dbContext.GetType().Name;
-                    unhealthyDatabases.Add($"{dbName}: {ex.Message}");
+                    // Provider messages can contain hosts, usernames or connection data.
+                    return (Healthy: false, Message: $"{dbName}: Connection check failed or timed out");
                 }
-            }
+            }));
+            var healthyDatabases = checks.Where(check => check.Healthy).Select(check => check.Message).ToList();
+            var unhealthyDatabases = checks.Where(check => !check.Healthy).Select(check => check.Message).ToList();
 
             if (unhealthyDatabases.Any())
             {
@@ -115,16 +123,16 @@ public class ProductionHealthMonitoringService : IHealthMonitoringService
             };
 
             // Check thresholds
-            if (workingSetMB > 1000) // Over 1GB working set
-            {
-                return HealthCheckResult.Degraded(
-                    $"High memory usage: {workingSetMB}MB working set", data: data);
-            }
-
-            if (workingSetMB > 2000) // Over 2GB working set
+            if (workingSetMB > 2000) // Check the critical threshold before the warning.
             {
                 return HealthCheckResult.Unhealthy(
                     $"Critical memory usage: {workingSetMB}MB working set", data: data);
+            }
+
+            if (workingSetMB > 1000)
+            {
+                return HealthCheckResult.Degraded(
+                    $"High memory usage: {workingSetMB}MB working set", data: data);
             }
 
             return HealthCheckResult.Healthy(
@@ -219,7 +227,7 @@ public class ProductionHealthMonitoringService : IHealthMonitoringService
             try
             {
                 using var ping = new Ping();
-                var reply = await ping.SendPingAsync(service.Host, 5000);
+                var reply = await ping.SendPingAsync(service.Host, 1000);
                 
                 if (reply.Status == IPStatus.Success)
                 {
@@ -323,7 +331,7 @@ public class ProductionHealthMonitoringService : IHealthMonitoringService
             PrivateMemoryMB = process.PrivateMemorySize64 / 1024 / 1024,
             ThreadCount = process.Threads.Count,
             HandleCount = process.HandleCount,
-            UptimeSeconds = (DateTime.UtcNow - process.StartTime).TotalSeconds,
+            UptimeSeconds = GetUptime(process).TotalSeconds,
             GCMemoryMB = GC.GetTotalMemory(false) / 1024 / 1024,
             Gen0Collections = GC.CollectionCount(0),
             Gen1Collections = GC.CollectionCount(1),
@@ -373,8 +381,11 @@ public class ProductionHealthMonitoringService : IHealthMonitoringService
             OperatingSystem = Environment.OSVersion.ToString(),
             MachineName = Environment.MachineName,
             ProcessorCount = Environment.ProcessorCount,
-            StartTime = process.StartTime,
-            Uptime = DateTime.UtcNow - process.StartTime
+            StartTime = process.StartTime.ToUniversalTime(),
+            Uptime = GetUptime(process)
         };
     }
+
+    private static TimeSpan GetUptime(Process process) =>
+        TimeSpan.FromSeconds(Math.Max(0, (DateTime.UtcNow - process.StartTime.ToUniversalTime()).TotalSeconds));
 }

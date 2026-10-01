@@ -26,8 +26,8 @@ public sealed class HttpHealthService(
         try
         {
             using var response = await _httpClient.GetAsync(endpoint, cancellationToken);
+            await ApiResponseErrors.EnsureSuccessAsync(response, cancellationToken);
             var payload = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken);
-            response.EnsureSuccessStatusCode();
             return payload;
         }
         catch (Exception exception)

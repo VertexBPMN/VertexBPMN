@@ -14,6 +14,14 @@ const CONNECTOR_HOSTS = [
 // another field while that field still has a debounced write pending.
 const commitImmediately = callback => callback;
 
+// Entries are rebuilt on model writes. Keep their component type stable so
+// Preact retains the focused input. Never capture a model/element in this map.
+const entryComponents = new Map();
+function stableComponent(id, component) {
+  if (!entryComponents.has(id)) entryComponents.set(id, component);
+  return entryComponents.get(id);
+}
+
 function isConnectorHost(element) {
   return CONNECTOR_HOSTS.some(type => is(element, type));
 }
@@ -99,7 +107,7 @@ function setExtensionProperty(element, type, property, value, bpmnFactory, comma
 function textEntry(id, label, type, property) {
   return {
     id,
-    component: function VertexTextEntry(props) {
+    component: stableComponent(id, function VertexTextEntry(props) {
       const { element } = props;
       const bpmnFactory = useService('bpmnFactory');
       const commandStack = useService('commandStack');
@@ -122,7 +130,7 @@ function textEntry(id, label, type, property) {
         setValue,
         debounce: commitImmediately
       });
-    },
+    }),
     isEdited: isTextFieldEntryEdited
   };
 }
@@ -154,7 +162,7 @@ function formatPairs(items, leftName, rightName) {
 function ioMappingEntry(id, label, collectionName, childType, leftName, rightName) {
   return {
     id,
-    component: function VertexIoMappingEntry(props) {
+    component: stableComponent(id, function VertexIoMappingEntry(props) {
       const { element } = props;
       const bpmnFactory = useService('bpmnFactory');
       const commandStack = useService('commandStack');
@@ -191,7 +199,7 @@ function ioMappingEntry(id, label, collectionName, childType, leftName, rightNam
         setValue,
         debounce: commitImmediately
       });
-    },
+    }),
     isEdited: isTextFieldEntryEdited
   };
 }
@@ -232,7 +240,7 @@ function startEventEntries() {
 function externalTaskResultTargetEntry() {
   return {
     id: 'vertex-external-task-result-target',
-    component: function VertexExternalTaskResultTargetEntry(props) {
+    component: stableComponent('vertex-external-task-result-target', function VertexExternalTaskResultTargetEntry(props) {
       const { element } = props;
       const bpmnFactory = useService('bpmnFactory');
       const commandStack = useService('commandStack');
@@ -268,7 +276,7 @@ function externalTaskResultTargetEntry() {
         setValue,
         debounce: commitImmediately
       });
-    },
+    }),
     isEdited: isTextFieldEntryEdited
   };
 }
@@ -276,7 +284,7 @@ function externalTaskResultTargetEntry() {
 function externalTaskProfileEntry() {
   return {
     id: 'vertex-external-task-profile',
-    component: function VertexExternalTaskProfileEntry(props) {
+    component: stableComponent('vertex-external-task-profile', function VertexExternalTaskProfileEntry(props) {
       const { element } = props;
       const bpmnFactory = useService('bpmnFactory');
       const commandStack = useService('commandStack');
@@ -306,7 +314,7 @@ function externalTaskProfileEntry() {
         description: 'Tenant-owned execution profile. Provider endpoints and credentials are never stored in BPMN XML.',
         getValue, setValue, getOptions
       });
-    },
+    }),
     isEdited: isSelectEntryEdited
   };
 }
@@ -325,7 +333,7 @@ function externalTaskEntries() {
 function decisionReferenceEntry() {
   return {
     id: 'vertex-decision-ref',
-    component: function VertexDecisionReferenceEntry(props) {
+    component: stableComponent('vertex-decision-ref', function VertexDecisionReferenceEntry(props) {
       const { element } = props;
       const bpmnFactory = useService('bpmnFactory');
       const commandStack = useService('commandStack');
@@ -358,7 +366,7 @@ function decisionReferenceEntry() {
         setValue: value => setExtensionProperty(element, 'vertex:Decision', 'decisionRef', value, bpmnFactory, commandStack),
         getOptions
       });
-    },
+    }),
     isEdited: isSelectEntryEdited
   };
 }

@@ -8,7 +8,7 @@ public sealed class HttpIdentityService(IHttpClientFactory httpClientFactory) : 
     {
         var client = httpClientFactory.CreateClient("VertexBPMN.Api");
         var tenants = await client.GetFromJsonAsync<List<StudioTenant>>(
-            "/api/identity/list-tenants",
+            "/api/tenant",
             cancellationToken);
 
         return tenants ?? [];

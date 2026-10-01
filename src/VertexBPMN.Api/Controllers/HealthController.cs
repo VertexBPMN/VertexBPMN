@@ -5,6 +5,7 @@ using IHealthMonitoringService = VertexBPMN.Domain.Interfaces.IHealthMonitoringS
 using IRateLimitingService = VertexBPMN.Domain.Interfaces.IRateLimitingService;
 using IResilienceService = VertexBPMN.Domain.Interfaces.IResilienceService;
 using Microsoft.AspNetCore.Authorization;
+using VertexBPMN.Api.Health;
 
 namespace VertexBPMN.Api.Controllers;
 
@@ -64,12 +65,20 @@ public class HealthController : ControllerBase
                 _ => 500
             };
 
-            return StatusCode(statusCode, report);
+            return StatusCode(statusCode, new
+            {
+                report.OverallStatus, report.CheckDuration, report.Timestamp,
+                DatabaseHealth = HealthCheckResponse.From(report.DatabaseHealth),
+                MemoryHealth = HealthCheckResponse.From(report.MemoryHealth),
+                DiskSpaceHealth = HealthCheckResponse.From(report.DiskSpaceHealth),
+                ExternalServicesHealth = HealthCheckResponse.From(report.ExternalServicesHealth),
+                report.SystemInfo
+            });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Comprehensive health check failed");
-            return StatusCode(503, new { status = "unhealthy", error = ex.Message });
+            return StatusCode(503, new { status = "unhealthy", error = "Health check failed. See server diagnostics." });
         }
     }
 
@@ -88,16 +97,16 @@ public class HealthController : ControllerBase
 
             return result.Status switch
             {
-                HealthStatus.Healthy => Ok(result),
-                HealthStatus.Degraded => Ok(result),
-                HealthStatus.Unhealthy => StatusCode(503, result),
-                _ => StatusCode(500, result)
+                HealthStatus.Healthy => Ok(HealthCheckResponse.From(result)),
+                HealthStatus.Degraded => Ok(HealthCheckResponse.From(result)),
+                HealthStatus.Unhealthy => StatusCode(503, HealthCheckResponse.From(result)),
+                _ => StatusCode(500, HealthCheckResponse.From(result))
             };
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Database health check failed");
-            return StatusCode(503, new { status = "unhealthy", error = ex.Message });
+            return StatusCode(503, new { status = "unhealthy", error = "Health check failed. See server diagnostics." });
         }
     }
 
@@ -114,16 +123,16 @@ public class HealthController : ControllerBase
             
             return result.Status switch
             {
-                HealthStatus.Healthy => Ok(result),
-                HealthStatus.Degraded => Ok(result),
-                HealthStatus.Unhealthy => StatusCode(503, result),
-                _ => StatusCode(500, result)
+                HealthStatus.Healthy => Ok(HealthCheckResponse.From(result)),
+                HealthStatus.Degraded => Ok(HealthCheckResponse.From(result)),
+                HealthStatus.Unhealthy => StatusCode(503, HealthCheckResponse.From(result)),
+                _ => StatusCode(500, HealthCheckResponse.From(result))
             };
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Memory health check failed");
-            return StatusCode(503, new { status = "unhealthy", error = ex.Message });
+            return StatusCode(503, new { status = "unhealthy", error = "Health check failed. See server diagnostics." });
         }
     }
 
@@ -140,16 +149,16 @@ public class HealthController : ControllerBase
             
             return result.Status switch
             {
-                HealthStatus.Healthy => Ok(result),
-                HealthStatus.Degraded => Ok(result),
-                HealthStatus.Unhealthy => StatusCode(503, result),
-                _ => StatusCode(500, result)
+                HealthStatus.Healthy => Ok(HealthCheckResponse.From(result)),
+                HealthStatus.Degraded => Ok(HealthCheckResponse.From(result)),
+                HealthStatus.Unhealthy => StatusCode(503, HealthCheckResponse.From(result)),
+                _ => StatusCode(500, HealthCheckResponse.From(result))
             };
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Disk health check failed");
-            return StatusCode(503, new { status = "unhealthy", error = ex.Message });
+            return StatusCode(503, new { status = "unhealthy", error = "Health check failed. See server diagnostics." });
         }
     }
 
@@ -166,16 +175,16 @@ public class HealthController : ControllerBase
             
             return result.Status switch
             {
-                HealthStatus.Healthy => Ok(result),
-                HealthStatus.Degraded => Ok(result),
-                HealthStatus.Unhealthy => StatusCode(503, result),
-                _ => StatusCode(500, result)
+                HealthStatus.Healthy => Ok(HealthCheckResponse.From(result)),
+                HealthStatus.Degraded => Ok(HealthCheckResponse.From(result)),
+                HealthStatus.Unhealthy => StatusCode(503, HealthCheckResponse.From(result)),
+                _ => StatusCode(500, HealthCheckResponse.From(result))
             };
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "External services health check failed");
-            return StatusCode(503, new { status = "unhealthy", error = ex.Message });
+            return StatusCode(503, new { status = "unhealthy", error = "Health check failed. See server diagnostics." });
         }
     }
 

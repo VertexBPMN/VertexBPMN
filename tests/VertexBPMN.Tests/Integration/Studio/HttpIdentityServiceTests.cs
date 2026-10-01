@@ -8,13 +8,13 @@ namespace VertexBPMN.Tests.Integration.Studio;
 public sealed class HttpIdentityServiceTests
 {
     [Fact]
-    public async Task ListTenantsAsync_UsesIdentityEndpoint()
+    public async Task ListTenantsAsync_UsesCompleteTenantEndpointAndPreservesDescription()
     {
         var requests = new List<HttpRequestMessage>();
         var client = new HttpClient(new RecordingHandler(requests, new[]
         {
-            new { id = "tenant-a", name = "Tenant A" },
-            new { id = "tenant-b", name = "Tenant B" }
+            new { id = "tenant-a", name = "Tenant A", description = "Must survive name-only edits" },
+            new { id = "tenant-b", name = "Tenant B", description = "Second tenant" }
         }))
         {
             BaseAddress = new Uri("http://api.test/")
@@ -28,9 +28,10 @@ public sealed class HttpIdentityServiceTests
         Assert.Equal(2, tenants.Count);
         Assert.Equal("tenant-a", tenants[0].Id);
         Assert.Equal("Tenant B", tenants[1].Name);
+        Assert.Equal("Must survive name-only edits", tenants[0].Description);
         var request = Assert.Single(requests);
         Assert.Equal(HttpMethod.Get, request.Method);
-        Assert.Equal("http://api.test/api/identity/list-tenants", request.RequestUri!.ToString());
+        Assert.Equal("http://api.test/api/tenant", request.RequestUri!.ToString());
     }
 
     [Fact]

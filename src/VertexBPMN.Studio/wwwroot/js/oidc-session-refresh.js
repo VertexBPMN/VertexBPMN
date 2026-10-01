@@ -32,10 +32,13 @@
                 return;
             }
 
-            const result = await response.json();
-            if (result.renewed === true) {
-                window.location.reload();
-            }
+            // Consume the response without triggering a navigation or resetting drafts.
+            await response.json();
+
+            // This response renews the HttpOnly cookie. The circuit revalidates
+            // its principal separately, without destroying editor drafts.
+        } catch {
+            // Retry transient network failures next time. Only 401 starts login.
         } finally {
             refreshInProgress = false;
         }

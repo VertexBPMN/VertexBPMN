@@ -10,8 +10,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="13.5.3" />
-    <PackageReference Include="Aspire.Hosting.RabbitMQ" Version="13.5.3" />
+    <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="13.5.4" />
+    <PackageReference Include="Aspire.Hosting.RabbitMQ" Version="13.5.4" />
+    <PackageReference Include="Grpc.Net.Client" Version="2.84.0" />
   </ItemGroup>
 
   <ItemGroup>

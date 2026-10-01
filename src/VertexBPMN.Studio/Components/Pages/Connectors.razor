@@ -18,8 +18,8 @@ else
     <MudPaper Class="studio-content-card mb-4" Elevation="0">
         <MudText Typo="Typo.h6">Create connector</MudText>
         <MudGrid>
-            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_name" Label="Name" Variant="Variant.Outlined" /></MudItem>
-            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_type" Label="Type" Variant="Variant.Outlined" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_name" Label="Name" Required="true" RequiredError="Name is required." Variant="Variant.Outlined" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_type" Label="Type" Required="true" RequiredError="Type is required." Variant="Variant.Outlined" /></MudItem>
             <MudItem xs="12" sm="6"><MudTextField @bind-Value="_endpoint" Label="Endpoint (optional)" Variant="Variant.Outlined" /></MudItem>
             <MudItem xs="12" sm="6">
                 <MudSelect T="string" @bind-Value="_credentialId" Label="Credential reference" Variant="Variant.Outlined">
@@ -33,12 +33,17 @@ else
             <MudItem xs="12" sm="6"><MudSelect T="string" @bind-Value="_templateId" Label="Connector template" Variant="Variant.Outlined"><MudSelectItem T="string" Value="@string.Empty">No template</MudSelectItem>@foreach (var template in _templates) { <MudSelectItem T="string" Value="@template.Id">@template.Name</MudSelectItem> }</MudSelect></MudItem>
             <MudItem xs="12"><MudTextField @bind-Value="_description" Label="Description (optional)" Variant="Variant.Outlined" /></MudItem>
         </MudGrid>
-        <MudButton Class="mt-3" Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateAsync" Disabled="@_busy">Create</MudButton>
+        <MudButton Class="mt-3" Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateAsync" Disabled="@(_busy || string.IsNullOrWhiteSpace(_name) || string.IsNullOrWhiteSpace(_type))">Create</MudButton>
     </MudPaper>
 
     @if (!string.IsNullOrWhiteSpace(_error))
     {
         <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mb-4">@_error</MudAlert>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(_success))
+    {
+        <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="mb-4">@_success</MudAlert>
     }
 
     <MudPaper Class="studio-data-card" Elevation="0">
@@ -61,11 +66,11 @@ else
                 <MudTd DataLabel="Template">@TemplateName(context.TemplateId)</MudTd>
                 <MudTd DataLabel="Status">@(context.Enabled ? "Enabled" : "Disabled")</MudTd>
                 <MudTd DataLabel="Actions">
-                    <MudButton Size="Size.Small" Color="@(context.Enabled ? Color.Warning : Color.Success)" OnClick="@(() => SetEnabledAsync(context))">
+                    <MudButton Size="Size.Small" Color="@(context.Enabled ? Color.Warning : Color.Success)" OnClick="@(() => SetEnabledAsync(context))" Disabled="_busy">
                         @(context.Enabled ? "Disable" : "Enable")
                     </MudButton>
-                    <MudButton Size="Size.Small" OnClick="@(() => TestAsync(context))">Test</MudButton>
-                    <MudButton Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteAsync(context))">Delete</MudButton>
+                    <MudButton Size="Size.Small" OnClick="@(() => TestAsync(context))" Disabled="_busy">Check configuration</MudButton>
+                    <MudButton Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteAsync(context))" Disabled="_busy">Delete</MudButton>
                 </MudTd>
             </RowTemplate>
             <NoRecordsContent><StudioStatePanel Title="No connectors found" Description="Create a connector to configure the first tenant integration." Icon="@Icons.Material.Outlined.Cable" /></NoRecordsContent>
@@ -84,6 +89,7 @@ else
     private string _credentialId = string.Empty;
     private string _templateId = string.Empty;
     private string? _error;
+    private string? _success;
     private bool _busy;
 
     protected override async Task OnInitializedAsync()
@@ -104,6 +110,7 @@ else
     private async Task LoadAsync()
     {
         _error = null;
+        _success = null;
         var tenantId = TenantContext.CurrentTenantId;
         if (string.IsNullOrWhiteSpace(tenantId))
         {
@@ -136,6 +143,7 @@ else
         if (string.IsNullOrWhiteSpace(tenantId)) return;
         _busy = true;
         _error = null;
+        _success = null;
         try
         {
             await ConnectorService.CreateAsync(tenantId, _name, _type, _description, _endpoint,
@@ -154,14 +162,16 @@ else
         }
     }
 
-    private async Task TestAsync(StudioConnector connector)
+        private async Task TestAsync(StudioConnector connector)
     {
         _busy = true;
         _error = null;
+        _success = null;
         try
         {
             var result = await ConnectorService.TestAsync(connector.TenantId, connector.Id);
-            _error = result.Success ? $"Test passed for {result.EndpointHost}. {result.Message}" : result.Message;
+            _success = result.Success ? $"Configuration valid for {result.EndpointHost}. {result.Message}" : null;
+            _error = result.Success ? null : result.Message;
         }
         catch (Exception exception)
         {
@@ -184,10 +194,11 @@ else
         await MutateAsync(() => ConnectorService.DeleteAsync(connector.TenantId, connector.Id));
     }
 
-    private async Task MutateAsync(Func<Task> mutation)
+        private async Task MutateAsync(Func<Task> mutation)
     {
         _busy = true;
         _error = null;
+        _success = null;
         try
         {
             await mutation();

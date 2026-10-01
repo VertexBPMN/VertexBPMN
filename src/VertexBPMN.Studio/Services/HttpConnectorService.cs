@@ -15,7 +15,7 @@ public sealed class HttpConnectorService(IHttpClientFactory httpClientFactory) :
         var client = httpClientFactory.CreateClient("VertexBPMN.Api");
         using var response = await client.PostAsJsonAsync("/api/connectors",
             new { tenantId, name, type, description, endpoint, credentialId, templateId, enabled }, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await ApiResponseErrors.EnsureSuccessAsync(response, cancellationToken);
         return await response.Content.ReadFromJsonAsync<StudioConnector>(cancellationToken)
             ?? throw new InvalidOperationException("The API returned no connector metadata.");
     }
@@ -25,14 +25,14 @@ public sealed class HttpConnectorService(IHttpClientFactory httpClientFactory) :
         var client = httpClientFactory.CreateClient("VertexBPMN.Api");
         using var response = await client.PutAsJsonAsync($"/api/connectors/{Uri.EscapeDataString(id)}",
             new { tenantId, name, type, description, endpoint, credentialId, templateId, enabled }, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await ApiResponseErrors.EnsureSuccessAsync(response, cancellationToken);
     }
 
     public async Task<StudioConnectorTestResult> TestAsync(string tenantId, string id, CancellationToken cancellationToken = default)
     {
         var client = httpClientFactory.CreateClient("VertexBPMN.Api");
         using var response = await client.PostAsJsonAsync($"/api/connectors/{Uri.EscapeDataString(id)}/test", new { tenantId }, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await ApiResponseErrors.EnsureSuccessAsync(response, cancellationToken);
         return await response.Content.ReadFromJsonAsync<StudioConnectorTestResult>(cancellationToken) ?? throw new InvalidOperationException("The API returned no connector test result.");
     }
 
@@ -41,13 +41,13 @@ public sealed class HttpConnectorService(IHttpClientFactory httpClientFactory) :
         var client = httpClientFactory.CreateClient("VertexBPMN.Api");
         using var response = await client.PutAsJsonAsync($"/api/connectors/{Uri.EscapeDataString(id)}/enabled",
             new { tenantId, enabled }, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await ApiResponseErrors.EnsureSuccessAsync(response, cancellationToken);
     }
 
     public async Task DeleteAsync(string tenantId, string id, CancellationToken cancellationToken = default)
     {
         var client = httpClientFactory.CreateClient("VertexBPMN.Api");
         using var response = await client.DeleteAsync($"/api/connectors/{Uri.EscapeDataString(id)}?tenantId={Uri.EscapeDataString(tenantId)}", cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await ApiResponseErrors.EnsureSuccessAsync(response, cancellationToken);
     }
 }

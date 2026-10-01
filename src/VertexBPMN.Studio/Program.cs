@@ -124,6 +124,8 @@ builder.Services.AddSingleton<OidcSessionTokenStore>();
 builder.Services.AddScoped<OidcCookieRefreshEvents>();
 
 var oidcAuthority = builder.Configuration["StudioAuthentication:Authority"];
+var oidcBackchannelAuthority = builder.Configuration["StudioAuthentication:BackchannelAuthority"];
+LocalOidcBackchannelHandler.Validate(oidcBackchannelAuthority, oidcAuthority, builder.Environment.IsEnvironment("OidcTest"));
 var oidcClientId = builder.Configuration["StudioAuthentication:ClientId"];
 var oidcClientSecret = builder.Configuration["StudioAuthentication:ClientSecret"];
 var oidcApiScope = builder.Configuration["StudioAuthentication:ApiScope"];
@@ -182,6 +184,9 @@ else
     .AddOpenIdConnect(options =>
     {
         options.Authority = oidcAuthority;
+        if (!string.IsNullOrWhiteSpace(oidcBackchannelAuthority))
+            options.BackchannelHttpHandler = new LocalOidcBackchannelHandler(oidcAuthority!, oidcBackchannelAuthority,
+                builder.Environment.IsEnvironment("OidcTest"), new HttpClientHandler());
         options.ClientId = oidcClientId;
         options.ClientSecret = oidcClientSecret;
         options.RequireHttpsMetadata = oidcRequireHttpsMetadata;
@@ -238,6 +243,9 @@ else
 }
 builder.Services.AddAuthorization();
 builder.Services.AddCascadingAuthenticationState();
+if (!isUiTest && !isLocalDevelopment)
+    builder.Services.AddScoped<Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider,
+        OidcCircuitAuthenticationStateProvider>();
 
 // Configure HTTP clients
 
@@ -289,7 +297,7 @@ builder.Services.AddScoped<IConnectorTemplateService, HttpConnectorTemplateServi
 builder.Services.AddScoped<IDebuggingService, HttpDebuggingService>();
 builder.Services.AddScoped<ICaseManagementService, HttpCaseManagementService>();
 builder.Services.AddScoped<NotificationClient>();
-builder.Services.AddSingleton<ActiveEngineService>();
+builder.Services.AddScoped<ActiveEngineService>();
 
 // Add logging
 builder.Services.AddLogging();

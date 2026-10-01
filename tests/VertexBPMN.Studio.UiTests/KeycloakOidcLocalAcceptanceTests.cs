@@ -25,18 +25,23 @@ public sealed class KeycloakOidcLocalAcceptanceTests
             ExecutablePath = global::Chromium.Path
         });
         var page = await browser.NewPageAsync();
+        TestContext.Current.TestOutputHelper!.WriteLine("OIDC: browser launched");
 
         await GotoStudioAsync(page, studioUrl);
+        TestContext.Current.TestOutputHelper!.WriteLine("OIDC: login page opened");
         await page.Locator("#username").FillAsync(username);
         await page.Locator("#password").FillAsync(password);
-        await page.Locator("#kc-login").EvaluateAsync("element => element.click()");
+        await page.Locator("#kc-login").ClickAsync();
+        TestContext.Current.TestOutputHelper!.WriteLine("OIDC: login submitted");
 
         await page.GetByRole(AriaRole.Heading, new() { Name = "Dashboard", Exact = true }).WaitForAsync();
         await page.Locator("[data-testid='dashboard-refresh']").WaitForAsync();
+        TestContext.Current.TestOutputHelper!.WriteLine("OIDC: dashboard loaded");
         Assert.DoesNotContain("Failed to load dashboard data", await page.Locator("body").InnerTextAsync());
 
         await page.GotoAsync(new Uri(new Uri(studioUrl), "process-definitions").ToString());
         await page.GetByRole(AriaRole.Heading, new() { Name = "Process Definitions", Exact = true }).First.WaitForAsync();
+        TestContext.Current.TestOutputHelper!.WriteLine("OIDC: process definitions loaded");
         Assert.DoesNotContain("Failed to load", await page.Locator("body").InnerTextAsync());
 
         // The local orchestrator configures a deliberately short token lifetime.
@@ -64,6 +69,7 @@ public sealed class KeycloakOidcLocalAcceptanceTests
         await page.GetByRole(AriaRole.Heading, new() { Name = "Process Definitions", Exact = true }).First.WaitForAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "Sign out", Exact = true }).ClickAsync();
         await page.Locator("#username").WaitForAsync();
+        TestContext.Current.TestOutputHelper!.WriteLine("OIDC: logout completed");
         Assert.Contains("/realms/vertexbpmn/", page.Url, StringComparison.Ordinal);
     }
 
@@ -89,6 +95,54 @@ public sealed class KeycloakOidcLocalAcceptanceTests
                 await Task.Delay(TimeSpan.FromMilliseconds(500 * attempt), TestContext.Current.CancellationToken);
             }
         }
+    }
+
+    [Fact]
+    [Trait("Category", "KeycloakOidcLocalAcceptance")]
+    public async Task AutomaticSessionRenewal_PreservesUnsavedEditorDraft_AndTenantContext()
+    {
+        var studioUrl = RequiredEnvironment("VERTEXBPMN_OIDC_TEST_STUDIO_URL");
+        using var playwright = await Playwright.CreateAsync();
+        await using var browser = await playwright.Chromium.LaunchAsync(new()
+        {
+            Headless = true, ExecutablePath = global::Chromium.Path
+        });
+        var page = await browser.NewPageAsync();
+        await GotoStudioAsync(page, studioUrl);
+        TestContext.Current.TestOutputHelper!.WriteLine("OIDC draft: login page opened");
+        await page.Locator("#username").FillAsync(RequiredEnvironment("VERTEXBPMN_KEYCLOAK_TEST_USER"));
+        await page.Locator("#password").FillAsync(RequiredEnvironment("VERTEXBPMN_KEYCLOAK_TEST_USER_PASSWORD"));
+        await page.Locator("#kc-login").ClickAsync();
+        TestContext.Current.TestOutputHelper!.WriteLine("OIDC draft: login submitted");
+        await page.GetByRole(AriaRole.Heading, new() { Name = "Dashboard", Exact = true }).WaitForAsync();
+        await page.GotoAsync(new Uri(new Uri(studioUrl), "form-builder").ToString());
+        await page.Locator(".studio-layout[data-interactive-ready='true']").WaitForAsync();
+        var formName = page.GetByLabel("Form name", new() { Exact = true });
+        var draftName = $"Unsaved OIDC acceptance draft {Guid.NewGuid():N}";
+        await formName.FillAsync(draftName);
+        await formName.PressAsync("Tab");
+        await Assertions.Expect(formName).ToHaveValueAsync(draftName);
+        TestContext.Current.TestOutputHelper!.WriteLine("OIDC draft: unsaved form entered");
+        var tenant = page.GetByRole(AriaRole.Combobox, new() { Name = "Tenant", Exact = true });
+        var originalTenant = await tenant.InnerTextAsync();
+        var navigations = 0;
+        page.FrameNavigated += (_, frame) => { if (frame == page.MainFrame) Interlocked.Increment(ref navigations); };
+
+        // Wait for the real periodic browser renewal, not an artificial fetch/reload.
+        // A short token lifetime (e.g. 70 s) ensures this renews a token/cookie.
+        var renewed = await page.WaitForResponseAsync(response => response.Url.EndsWith("/authentication/session/refresh", StringComparison.Ordinal)
+            && response.Request.Method == "POST", new() { Timeout = 75_000 });
+        Assert.Equal(200, renewed.Status);
+        TestContext.Current.TestOutputHelper!.WriteLine("OIDC draft: automatic renewal received");
+        using var renewal = JsonDocument.Parse(await renewed.TextAsync().WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        TestContext.Current.TestOutputHelper!.WriteLine("OIDC draft: renewal body read");
+        Assert.True(renewal.RootElement.GetProperty("renewed").GetBoolean(), "Use the isolated Keycloak test realm with a short token lifetime.");
+        await Task.Delay(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
+        Assert.Equal(0, navigations);
+        await Assertions.Expect(formName).ToHaveValueAsync(draftName);
+        Assert.Equal(originalTenant, await tenant.InnerTextAsync());
+        Assert.DoesNotContain("Sign in to your account", await page.Locator("body").InnerTextAsync());
+        TestContext.Current.TestOutputHelper!.WriteLine("OIDC draft: draft and tenant preserved without navigation");
     }
 
     private static string RequiredEnvironment(string name) =>

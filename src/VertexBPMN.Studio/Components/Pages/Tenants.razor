@@ -1,5 +1,6 @@
 @page "/tenants"
 @inject IIdentityService IdentityService
+@inject StudioTenantContext TenantContext
 
 <PageTitle>Tenants</PageTitle>
 
@@ -16,6 +17,19 @@
         </MudButton>
     </MudPaper>
 </AuthorizeView>
+
+@if (_editingId is not null)
+{
+    <AuthorizeView Roles="Admin">
+        <MudPaper Class="studio-content-card mb-4" Elevation="0" data-testid="tenant-edit">
+            <MudText Typo="Typo.h6">Edit tenant</MudText>
+            <MudTextField @bind-Value="_editName" Label="Edit tenant name" Variant="Variant.Outlined" Class="mb-3" />
+            <MudTextField @bind-Value="_editDescription" Label="Edit description" Variant="Variant.Outlined" Class="mb-3" />
+            <MudButton Color="Color.Primary" OnClick="SaveEditAsync" Disabled="_isLoading || string.IsNullOrWhiteSpace(_editName)">Save tenant</MudButton>
+            <MudButton OnClick="CancelEdit" Disabled="_isLoading">Cancel edit</MudButton>
+        </MudPaper>
+    </AuthorizeView>
+}
 
 @if (_error is not null)
 {
@@ -36,7 +50,7 @@ else if (_tenants is not null)
             <MudTd DataLabel="Description">@context.Description</MudTd>
             <AuthorizeView Roles="Admin" Context="rowAuth">
                 <MudTd DataLabel="Actions" data-testid="tenant-admin-actions">
-                    <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="() => UpdateAsync(context)" Disabled="_isLoading">Update</MudButton>
+                    <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="() => BeginEdit(context)" Disabled="_isLoading">Update</MudButton>
                     <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="() => DeleteAsync(context.Id)" Disabled="_isLoading">Delete</MudButton>
                 </MudTd>
             </AuthorizeView>
@@ -51,6 +65,9 @@ else if (_tenants is not null)
     private string? _error;
     private string _name = string.Empty;
     private string _description = string.Empty;
+    private string? _editingId;
+    private string _editName = string.Empty;
+    private string? _editDescription;
 
     protected override Task OnInitializedAsync() => RefreshAsync();
 
@@ -80,12 +97,29 @@ else if (_tenants is not null)
             _name = string.Empty;
             _description = string.Empty;
             await RefreshAsync();
+            TenantContext.NotifyTenantsChanged();
         });
     }
 
-    private async Task UpdateAsync(StudioTenant tenant)
+    private void BeginEdit(StudioTenant tenant)
     {
-        await RunAdminOperationAsync(() => IdentityService.UpdateTenantAsync(tenant.Id, tenant.Name, tenant.Description));
+        _editingId = tenant.Id;
+        _editName = tenant.Name;
+        _editDescription = tenant.Description;
+    }
+
+    private void CancelEdit() => _editingId = null;
+
+    private async Task SaveEditAsync()
+    {
+        if (_editingId is null || string.IsNullOrWhiteSpace(_editName)) return;
+        await RunAdminOperationAsync(async () =>
+        {
+            await IdentityService.UpdateTenantAsync(_editingId, _editName.Trim(), _editDescription);
+            CancelEdit();
+            await RefreshAsync();
+            TenantContext.NotifyTenantsChanged();
+        });
     }
 
     private async Task DeleteAsync(string id)
@@ -94,6 +128,8 @@ else if (_tenants is not null)
         {
             await IdentityService.DeleteTenantAsync(id);
             await RefreshAsync();
+            if (_editingId == id) CancelEdit();
+            TenantContext.NotifyTenantsChanged();
         });
     }
 

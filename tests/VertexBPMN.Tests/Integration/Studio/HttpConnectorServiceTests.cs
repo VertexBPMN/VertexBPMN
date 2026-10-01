@@ -38,6 +38,36 @@ public sealed class HttpConnectorServiceTests
         Assert.Equal($"http://api.test{path}", request.RequestUri!.ToString());
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task InvalidMutation_PreservesStatusAndUsefulProblemDetails(bool problemJson)
+    {
+        using var client = new HttpClient(new ErrorHandler(problemJson)) { BaseAddress = new Uri("http://api.test/") };
+        var factory = new Mock<IHttpClientFactory>();
+        factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
+        var service = new HttpConnectorService(factory.Object);
+        var error = await Assert.ThrowsAsync<HttpRequestException>(() => service.CreateAsync(
+            "tenant-a", "invalid", "http", null, "not-a-url", null, null,
+            cancellationToken: TestContext.Current.CancellationToken));
+        Assert.Equal(HttpStatusCode.BadRequest, error.StatusCode);
+        if (problemJson)
+        {
+            Assert.Contains("Invalid connector", error.Message);
+            Assert.Contains("Endpoint must be an absolute HTTP or HTTPS URI.", error.Message);
+        }
+    }
+
+    private sealed class ErrorHandler(bool problemJson) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.BadRequest)
+            {
+                Content = problemJson ? JsonContent.Create(new { title = "Invalid connector", detail = "Endpoint must be an absolute HTTP or HTTPS URI." })
+                    : new StringContent("Bad request")
+            });
+    }
+
     private sealed class RecordingHandler(List<HttpRequestMessage> requests, StudioConnector responseBody) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)

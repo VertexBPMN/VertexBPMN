@@ -8,22 +8,23 @@
 # host disk), then the lean `runtime-api.Dockerfile` / `runtime-studio.Dockerfile`
 # only COPY the finished output into a slim aspnet image.
 #
-# Requires: dotnet SDK 10.0.302 (global.json), docker + compose, .env present.
+# Requires: SDK from global.json, docker + compose, .env present.
 set -euo pipefail
 cd "$(dirname "$0")"
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
+runtime="${VERTEXBPMN_CONTAINER_RUNTIME:-linux-x64}"
 
 echo "== Host-publish VertexBPMN.Api =="
 dotnet publish "../../src/VertexBPMN.Api/VertexBPMN.Api.csproj" \
-    -c Release -o publish/api /p:UseAppHost=false
+    -c Release -r "$runtime" --self-contained false -o publish/api /p:UseAppHost=false
 
 echo "== Host-publish VertexBPMN.Studio =="
 dotnet publish "../../src/VertexBPMN.Studio/VertexBPMN.Studio.csproj" \
-    -c Release -o publish/studio /p:UseAppHost=false /p:SkipBpmnIoAssetBuild=true
+    -c Release -r "$runtime" --self-contained false -o publish/studio /p:UseAppHost=false /p:SkipBpmnIoAssetBuild=true
 
 echo "== Host-publish VertexBPMN.AgentWorker =="
 dotnet publish "../../src/VertexBPMN.AgentWorker/VertexBPMN.AgentWorker.csproj" \
-    -c Release -o publish/agent-worker /p:UseAppHost=false
+    -c Release -r "$runtime" --self-contained false -o publish/agent-worker /p:UseAppHost=false
 
 echo "== docker compose up -d --build =="
 docker compose up -d --build "$@"

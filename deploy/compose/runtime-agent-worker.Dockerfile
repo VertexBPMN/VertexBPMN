@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/dotnet/aspnet:10.0.11 AS base
+FROM mcr.microsoft.com/dotnet/aspnet:10.0.12 AS base
 WORKDIR /app
 ENV DOTNET_EnableDiagnostics=0
 

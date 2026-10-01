@@ -5,7 +5,7 @@
 #
 # Build context: deploy/compose/
 #   docker build -f runtime-api.Dockerfile -t vertexbpmn-api:local .
-FROM mcr.microsoft.com/dotnet/aspnet:10.0.11 AS base
+FROM mcr.microsoft.com/dotnet/aspnet:10.0.12 AS base
 WORKDIR /app
 ENV ASPNETCORE_HTTP_PORTS=8080 \
     DOTNET_EnableDiagnostics=0

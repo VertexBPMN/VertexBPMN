@@ -5,6 +5,8 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
@@ -137,6 +139,41 @@ public sealed class OidcSessionTokenStoreTests
             TimeProvider.System,
             NullLogger<OidcSessionTokenStore>.Instance);
         return new StoreContext(store, options.Backchannel);
+    }
+
+    [Fact]
+    public async Task Circuit_Revalidation_Updates_Revoked_Roles_And_Tenant_Without_Page_Reload()
+    {
+        using var signingKey = RSA.Create(2048);
+        using var storeContext = CreateStore(signingKey,
+            _ => Task.FromResult(RefreshResponse(Token(signingKey, "user-1", "tenant-new"))));
+        var principal = Principal("session-a", "user-1", "tenant-old");
+        ((ClaimsIdentity)principal.Identity!).AddClaim(new Claim(ClaimTypes.Role, "Admin"));
+        storeContext.Store.Register(principal, ExpiredProperties("old-access", "refresh-a"));
+        using var provider = new CircuitProbe(NullLoggerFactory.Instance, storeContext.Store);
+        provider.SetAuthenticationState(Task.FromResult(new AuthenticationState(principal)));
+
+        Assert.True(await provider.ValidateAsync(new AuthenticationState(principal), TestContext.Current.CancellationToken));
+        var current = (await provider.GetAuthenticationStateAsync()).User;
+        Assert.False(current.IsInRole("Admin"));
+        Assert.Equal("tenant-new", current.FindFirstValue("tenant_id"));
+        Assert.Equal("session-a", current.FindFirstValue(OidcSessionTokenStore.SessionIdClaim));
+        Assert.True(current.Identity!.IsAuthenticated);
+    }
+
+    [Fact]
+    public async Task Circuit_Revalidation_Fails_Closed_When_Session_Is_Missing()
+    {
+        using var signingKey = RSA.Create(2048);
+        using var storeContext = CreateStore(signingKey, _ => throw new InvalidOperationException("Must not refresh an unknown session"));
+        using var provider = new CircuitProbe(NullLoggerFactory.Instance, storeContext.Store);
+        Assert.False(await provider.ValidateAsync(new AuthenticationState(Principal("missing", "user-1", "tenant-a")), TestContext.Current.CancellationToken));
+    }
+
+    private sealed class CircuitProbe(ILoggerFactory loggerFactory, OidcSessionTokenStore store)
+        : OidcCircuitAuthenticationStateProvider(loggerFactory, store)
+    {
+        public Task<bool> ValidateAsync(AuthenticationState state, CancellationToken token) => ValidateAuthenticationStateAsync(state, token);
     }
 
     private static ClaimsPrincipal Principal(string sessionId, string subject, string tenant)

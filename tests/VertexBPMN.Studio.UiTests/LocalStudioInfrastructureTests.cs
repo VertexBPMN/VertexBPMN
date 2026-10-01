@@ -87,9 +87,13 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
 
             var propertiesPanel = page.GetByLabel("BPMN properties panel", new() { Exact = true });
             await propertiesPanel.GetByText("Vertex", new() { Exact = true }).ClickAsync();
-            await FillBoundInputAsync(
-                propertiesPanel.GetByRole(AriaRole.Textbox, new() { Name = "Credential ref", Exact = true }),
-                $"credential-{host.RunId}");
+            var credentialInput = propertiesPanel.GetByRole(AriaRole.Textbox, new() { Name = "Credential ref", Exact = true });
+            var credentialRef = $"credential-{host.RunId}";
+            await credentialInput.FillAsync(string.Empty);
+            await credentialInput.PressSequentiallyAsync(credentialRef, new() { Delay = 25 });
+            await Assertions.Expect(credentialInput).ToBeFocusedAsync();
+            await Assertions.Expect(credentialInput).ToHaveValueAsync(credentialRef);
+            await credentialInput.PressAsync("Tab");
 
             await OpenBpmnToolTabAsync(page, "XML");
             await page.GetByTestId("bpmn-xml-preview")
@@ -125,6 +129,7 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
             var persisted = Assert.Single(definitions ?? []);
             Assert.Equal(ProcessKey, persisted.GetProperty("key").GetString());
             Assert.Contains("serviceTask", persisted.GetProperty("bpmnXml").GetString(), StringComparison.Ordinal);
+            Assert.Contains(credentialRef, persisted.GetProperty("bpmnXml").GetString(), StringComparison.Ordinal);
 
             await page.GotoAsync($"{host.StudioBaseAddress}process-definitions");
             await FillBoundInputAsync(page.GetByTestId("process-definition-search"), ProcessKey);
@@ -143,6 +148,7 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
             await page.GetByText("Deployed BPMN version loaded into the editor.", new() { Exact = true }).WaitForAsync();
             var reloadedXml = await WaitForPreviewXmlAsync(page, ProcessKey);
             Assert.Contains("serviceTask", reloadedXml, StringComparison.Ordinal);
+            Assert.Contains(credentialRef, reloadedXml, StringComparison.Ordinal);
             XDocument.Parse(reloadedXml);
 
             var download = await page.RunAndWaitForDownloadAsync(() =>
@@ -151,6 +157,7 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
                 await download.PathAsync(),
                 TestContext.Current.CancellationToken);
             Assert.Contains("serviceTask", downloadedXml, StringComparison.Ordinal);
+            Assert.Contains(credentialRef, downloadedXml, StringComparison.Ordinal);
             Assert.Contains(
                 XDocument.Parse(downloadedXml).Descendants(),
                 element => element.Name.LocalName == "process"
@@ -588,8 +595,8 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
 
             await definitionRow.GetByRole(AriaRole.Button, new() { Name = "View Versions", Exact = true }).ClickAsync();
             var versionsDialog = page.GetByRole(AriaRole.Dialog);
-            await versionsDialog.GetByText("v1", new() { Exact = false }).WaitForAsync();
-            await versionsDialog.GetByText("v2", new() { Exact = false }).WaitForAsync();
+            await versionsDialog.GetByText("v1", new() { Exact = true }).WaitForAsync();
+            await versionsDialog.Locator("[data-label='Version']").Filter(new() { HasText = "v2" }).WaitForAsync();
             await versionsDialog.GetByRole(AriaRole.Button, new() { Name = "Close", Exact = true }).ClickAsync();
 
             await definitionRow.GetByRole(AriaRole.Button, new() { Name = "Delete Process Definition", Exact = true }).ClickAsync();
@@ -2514,13 +2521,45 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
             tenantBId = await WaitForTenantAsync(apiClient, tenantB);
             host.RegisterApiCleanup(HttpMethod.Delete, $"api/tenant/{Uri.EscapeDataString(tenantBId!)}");
 
-            // Update: the update button re-persists the row's (display-only) values; assert it
-            // succeeds without surfacing an error. Name/description cells are display-only text,
-            // so the GUI exposes no in-place rename path.
+            // A real edit must preserve the description. Cancellation must not write.
             var rowA = page.Locator("tr").Filter(new() { HasText = tenantA }).First;
+            await rowA.GetByText("Tenant A description", new() { Exact = true }).WaitForAsync();
             await rowA.GetByRole(AriaRole.Button, new() { Name = "Update", Exact = true }).ClickAsync();
-            await Task.Delay(500, TestContext.Current.CancellationToken);
+            Assert.Equal("Tenant A description", await page.GetByLabel("Edit description", new() { Exact = true }).InputValueAsync());
+            await FillBoundInputAndVerifyAsync(page.GetByLabel("Edit tenant name", new() { Exact = true }), tenantA + " cancelled");
+            await page.GetByRole(AriaRole.Button, new() { Name = "Cancel edit", Exact = true }).ClickAsync();
+            using (var cancelled = await apiClient.GetFromJsonAsync<JsonDocument>($"api/tenant/{tenantAId}", TestContext.Current.CancellationToken))
+                Assert.Equal(tenantA, cancelled!.RootElement.GetProperty("name").GetString());
+            await rowA.GetByRole(AriaRole.Button, new() { Name = "Update", Exact = true }).ClickAsync();
+            tenantA += " renamed";
+            await FillBoundInputAndVerifyAsync(page.GetByLabel("Edit tenant name", new() { Exact = true }), tenantA);
+            await page.GetByRole(AriaRole.Button, new() { Name = "Save tenant", Exact = true }).ClickAsync();
+            await page.Locator("tr").Filter(new() { HasText = tenantA }).GetByText("Tenant A description", new() { Exact = true }).WaitForAsync();
+            using (var updated = await apiClient.GetFromJsonAsync<JsonDocument>($"api/tenant/{tenantAId}", TestContext.Current.CancellationToken))
+            {
+                Assert.Equal(tenantA, updated!.RootElement.GetProperty("name").GetString());
+                Assert.Equal("Tenant A description", updated.RootElement.GetProperty("description").GetString());
+            }
             Assert.Equal(0, await page.GetByText("Tenant operation failed", new() { Exact = false }).CountAsync());
+
+            var editedRow = page.Locator("tr").Filter(new() { HasText = tenantA });
+            await editedRow.GetByRole(AriaRole.Button, new() { Name = "Update", Exact = true }).ClickAsync();
+            await FillBoundInputAndVerifyAsync(page.GetByLabel("Edit description", new() { Exact = true }), "Description explicitly changed");
+            await page.GetByRole(AriaRole.Button, new() { Name = "Save tenant", Exact = true }).ClickAsync();
+            await Assertions.Expect(editedRow.Locator("[data-label='Description']")).ToHaveTextAsync("Description explicitly changed");
+            using (var changed = await apiClient.GetFromJsonAsync<JsonDocument>($"api/tenant/{tenantAId}", TestContext.Current.CancellationToken))
+                Assert.Equal("Description explicitly changed", changed!.RootElement.GetProperty("description").GetString());
+            await editedRow.GetByRole(AriaRole.Button, new() { Name = "Update", Exact = true }).ClickAsync();
+            await FillBoundInputAndVerifyAsync(page.GetByLabel("Edit description", new() { Exact = true }), string.Empty);
+            await page.GetByRole(AriaRole.Button, new() { Name = "Save tenant", Exact = true }).ClickAsync();
+            await Assertions.Expect(editedRow.Locator("[data-label='Description']")).ToHaveTextAsync(string.Empty);
+            using (var cleared = await apiClient.GetFromJsonAsync<JsonDocument>($"api/tenant/{tenantAId}", TestContext.Current.CancellationToken))
+                Assert.True(string.IsNullOrEmpty(cleared!.RootElement.GetProperty("description").GetString()));
+
+            // Verify the existing header updates without navigating or reloading the circuit.
+            await page.GetByRole(AriaRole.Combobox, new() { Name = "Tenant", Exact = true }).ClickAsync();
+            await page.GetByRole(AriaRole.Option, new() { Name = tenantA, Exact = true }).ClickAsync();
+            await Assertions.Expect(page.GetByRole(AriaRole.Combobox, new() { Name = "Tenant", Exact = true })).ToContainTextAsync(tenantA);
 
             // Isolation: deploy a distinct BPMN under each tenant via the API, then verify via
             // the GUI process-definitions page that selecting a tenant shows only its own data.
@@ -2659,7 +2698,7 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
         Assert.DoesNotContain(secret, bodyText);
     }
 
-    [Fact(DisplayName = "Phase 5 - Connectors: create, test (failure path), enable/disable, delete")]
+    [Fact(DisplayName = "Phase 5 - Connectors: create, configuration success/failure, enable/disable, delete")]
     public async Task Connectors_CreateTestToggleAndDelete_ThroughTheRealEngine()
     {
         Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
@@ -2681,8 +2720,7 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
                 await page.GetByRole(AriaRole.Heading, new() { Name = "Connectors", Exact = true }).WaitForAsync();
                 await SelectTenantAsync(page, tenantName, tenantId!);
 
-                // Create a connector through the GUI, bound to an unreachable endpoint so "Test"
-                // deterministically exercises the failure path.
+                // This safe check validates configuration only; it does not contact this endpoint.
                 await FillBoundInputAndVerifyAsync(page.GetByLabel("Name", new() { Exact = true }), connectorName);
                 await FillBoundInputAndVerifyAsync(page.GetByLabel("Type", new() { Exact = true }), "http");
                 await FillBoundInputAndVerifyAsync(page.GetByLabel("Endpoint (optional)", new() { Exact = true }), "http://127.0.0.1:9/");
@@ -2692,19 +2730,9 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
                 await row.WaitForAsync();
                 Assert.Contains("Enabled", await row.InnerTextAsync());
 
-                // Test (failure path): clicking Test must surface an alert with content. The
-                // connector targets an unreachable endpoint, so the alert carries the failure
-                // message. Poll for any non-empty MudAlert (robust to severity-specific classes).
-                await row.GetByRole(AriaRole.Button, new() { Name = "Test", Exact = true }).ClickAsync();
-                string testMsg = string.Empty;
-                for (var attempt = 0; attempt < 30; attempt++)
-                {
-                    var alerts = await page.Locator(".mud-alert").AllInnerTextsAsync();
-                    testMsg = string.Join(" ", alerts).Trim();
-                    if (!string.IsNullOrWhiteSpace(testMsg)) break;
-                    await Task.Delay(1000, TestContext.Current.CancellationToken);
-                }
-                Assert.False(string.IsNullOrWhiteSpace(testMsg), "Expected the connector Test to surface an alert but none appeared.");
+                await row.GetByRole(AriaRole.Button, new() { Name = "Check configuration", Exact = true }).ClickAsync();
+                await page.Locator(".mud-alert-outlined-success").Filter(new() { HasText = "Configuration valid" }).WaitForAsync();
+                Assert.Equal(0, await page.Locator(".mud-alert-outlined-error").CountAsync());
 
                 // Disable then re-enable through the GUI; the status label must flip. The reload is
                 // async, so poll for the flipped label rather than asserting on a racy snapshot.
@@ -2717,6 +2745,10 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
                     await Task.Delay(500, TestContext.Current.CancellationToken);
                 }
                 Assert.Contains("Disabled", await row.InnerTextAsync());
+
+                await row.GetByRole(AriaRole.Button, new() { Name = "Check configuration", Exact = true }).ClickAsync();
+                await page.Locator(".mud-alert-outlined-error").Filter(new() { HasText = "Enable the connector before testing." }).WaitForAsync();
+                Assert.Equal(0, await page.Locator(".mud-alert-outlined-success").CountAsync());
 
                 await row.GetByRole(AriaRole.Button, new() { Name = "Enable", Exact = true }).ClickAsync();
                 row = page.Locator("tr").Filter(new() { HasText = connectorName }).First;
@@ -3731,7 +3763,10 @@ public sealed partial class LocalStudioInfrastructureTests(LocalStudioE2ETestHos
         value = NormalizeBrowserText(value);
         await input.ClickAsync();
         await input.PressAsync("ControlOrMeta+A");
-        await input.PressSequentiallyAsync(value, new() { Delay = 1 });
+        if (value.Length == 0)
+            await input.PressAsync("Backspace");
+        else
+            await input.PressSequentiallyAsync(value, new() { Delay = 1 });
         await input.BlurAsync();
         await Task.Delay(500, TestContext.Current.CancellationToken);
     }

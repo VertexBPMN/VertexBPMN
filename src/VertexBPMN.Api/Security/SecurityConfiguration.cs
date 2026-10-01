@@ -31,6 +31,8 @@ public static class SecurityConfiguration
         var clockSkewSeconds = configuration.GetValue<int?>("Jwt:ClockSkewSeconds") ?? 30;
         var metadataRefreshIntervalSeconds = configuration.GetValue<int?>("Jwt:MetadataRefreshIntervalSeconds") ?? 30;
         var blockOnMetadataRefresh = configuration.GetValue<bool?>("Jwt:BlockOnMetadataRefresh") ?? true;
+        var backchannelAuthority = configuration["Jwt:BackchannelAuthority"];
+        LocalOidcBackchannelHandler.Validate(backchannelAuthority, authority, isOidcTest);
 
         if (clockSkewSeconds is < 0 or > 300)
             throw new InvalidOperationException("Jwt:ClockSkewSeconds must be between 0 and 300 seconds.");
@@ -77,6 +79,9 @@ public static class SecurityConfiguration
             {
                 options.MapInboundClaims = false;
                 options.RequireHttpsMetadata = requireHttpsMetadata;
+                if (!string.IsNullOrWhiteSpace(backchannelAuthority))
+                    options.BackchannelHttpHandler = new LocalOidcBackchannelHandler(authority!, backchannelAuthority,
+                        isOidcTest, new HttpClientHandler());
                 options.RefreshOnIssuerKeyNotFound = true;
                 options.RefreshInterval = TimeSpan.FromSeconds(metadataRefreshIntervalSeconds);
                 if (!string.IsNullOrWhiteSpace(authority))

@@ -1,6 +1,34 @@
 # Plan: Vollständige lokale GUI-End-to-End-Tests
 
-## Fortschrittsstand (2026-09-02)
+## Maßgeblicher Fortschrittsstand (2026-10-01)
+
+Die verbindliche Zuordnung ist jetzt in der
+[Acceptance-Abdeckungsmatrix](../testing/studio-acceptance-coverage.md) und dem
+[maschinenlesbaren Use-Case-Katalog](../testing/studio-use-cases.tsv) hinterlegt.
+Alle 115 Testmethoden sind inventarisiert. Fünf neue Playwright-Methoden mit zehn
+konkreten Fällen ergänzen Gateway-/MI-/Subprocess-Inboxabläufe, Call-Activity-
+Parent/Child-Verknüpfung, laufende v1/v2-Versionierung und positiven CSV-Download.
+**Diese Ergänzungen wurden nicht ausgeführt**; der Nutzer hat erneute Testläufe
+ausdrücklich ausgeschlossen. Es wurde nur kompiliert und statisch geprüft.
+
+Von 128 Acceptance-Anforderungen haben 44 noch keine implementierte primäre
+Testzuordnung; 55 zugeordnete Anforderungen haben fehlende Teilabläufe.
+API-Laufzeittests, Render-Smokes und Stub-Browserprüfungen sind separat markiert.
+Ein importiertes BPMN ersetzt kein grafisches Erstellen im Editor.
+
+- [x] Versionierte IDs, Datei-/Methoden-/Variantenverweise und Restarbeit dokumentiert.
+- [x] Lesender statischer Zuordnungsprüfer ohne Infrastruktur oder Testausführung.
+- [x] Eindeutige Browserartefakte und Metadaten implementiert; Theorie-Traces überschreiben sich nicht mehr.
+- [x] Positive CSV-, Call-Activity- und Version-Pinning-Tests implementiert, noch nicht ausgeführt.
+- [ ] Fehlende grafische Schritte und alle `gap`-/`Remaining`-Anforderungen abschließen.
+- [ ] Aktuellen Gesamtstand auf ausdrücklichen Wunsch lokal abnehmen; nicht im CI.
+
+Die folgenden Tabellen und Laufberichte beschreiben **historische Teilstände**.
+Sie sind kein vollständiger Abnahmebeleg der heutigen Suite. Insbesondere
+bedeutet „zweimal vollständig“ dort nur vollständig bezüglich des damaligen
+Suiteumfangs, nicht aller Anforderungen dieses Plans.
+
+## Historischer Fortschrittsstand (2026-09-02; durch obige Matrix ergänzt)
 
 Legende:
 
@@ -45,7 +73,7 @@ noch fehlschlägt oder der im Plan geforderte Use Case nur teilweise abgedeckt i
 - ✅ Phase 4 Migration: Preview, Execute, Status, Snapshot/Restore, Rollback und verständliche Ablehnung unzulässiger Migration über die GUI.
 - ✅ Persistente Isolation über fünf run-spezifische PostgreSQL-Datenbanken einschließlich verifiziertem Drop im Erfolgs- und Fehlerfall.
 
-### Letzter vollständiger Lauf
+### Historische vollständige Läufe des damaligen Suiteumfangs
 
 - ✅ WSLC-Lauf `aaff96a9e156431fa63f0e2187aaa0f4`: 8 erfolgreich, 0 fehlgeschlagen, 0 übersprungen.
 - ✅ WSLC-Lauf `0abcfd75e01540ccad56f85185e5a74b`: 8 erfolgreich, 0 fehlgeschlagen, 0 übersprungen.
@@ -436,7 +464,7 @@ VertexBPMN Studio gilt erst als lokal GUI-verifiziert, wenn:
 Aktueller Erfüllungsstand:
 
 - ⬜ Kriterien 1–4, 6 und 8 sind noch nicht vollständig erfüllt.
-- ✅ Kriterium 7 ist erfüllt: Die vollständigen WSLC-Läufe `aaff96a9e156431fa63f0e2187aaa0f4` und `0abcfd75e01540ccad56f85185e5a74b` waren mit jeweils 8/8 Tests grün; alle fünf Laufdatenbanken wurden danach verifiziert entfernt.
+- 🟡 Kriterium 7 bleibt für den heutigen Gesamtumfang offen. Die historischen WSLC-Läufe `aaff96a9e156431fa63f0e2187aaa0f4` und `0abcfd75e01540ccad56f85185e5a74b` waren mit jeweils 8/8 damaligen Tests grün; alle fünf Laufdatenbanken wurden danach verifiziert entfernt. Das ist kein doppelter Lauf aller heutigen Acceptance-Anforderungen.
 - ✅ Kriterium 5 ist erfüllt: Die Real-E2E-Suite verwendet keine Stub-API.
 - ✅ Kriterium 9 ist erfüllt: Die Suite wird nur über den lokalen Runner aktiviert und ist nicht Teil des CI-Workflows.
 

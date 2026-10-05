@@ -12,6 +12,7 @@ namespace VertexBPMN.Tests.Parsing.Hardening;
 /// These tests will FAIL until we implement the hardening infrastructure.
 /// Focus: Fuzz testing, stress testing, security, and memory profiling.
 /// </summary>
+[Collection("ProcessMemoryMeasurements")]
 public class Phase11HardeningTests
 {
     private readonly ITestOutputHelper _output;

@@ -132,6 +132,8 @@
 </ItemGroup>
 <ItemGroup>
   <Folder Include="Integration\Services\" />
+  <!-- Run the same pure contracts in the existing CI-safe suite, without Git or services. -->
+  <Compile Include="..\VertexBPMN.SourceControl.Tests\SourceControlContractTests.cs" Link="Unit\SourceControl\SourceControlContractTests.cs" />
 </ItemGroup>
 <ItemGroup>
   <ProjectReference Include="..\..\src\VertexBPMN.Cli\VertexBPMN.Cli.csproj"

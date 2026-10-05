@@ -1,7 +1,9 @@
 namespace VertexBPMN.Domain.Model.Security;
 
 /// <summary>
-/// Snapshot of memory usage during a parse operation.
+/// Process-wide managed-memory snapshot during a parse operation, not parser-exclusive
+/// allocation or native working set. Peak is sampled and includes the final readings.
+/// Use a quiescent process for comparative measurements.
 /// </summary>
 public sealed record MemoryProfileSnapshot
 {

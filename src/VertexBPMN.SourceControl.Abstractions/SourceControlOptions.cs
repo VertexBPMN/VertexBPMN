@@ -1,14 +1,15 @@
 namespace VertexBPMN.SourceControl.Abstractions;
 
 /// <summary>
-/// Configuration contract only: not yet bound or registered with any host.
-/// G02 must validate enabled options; G03/G04 enforce these quotas in actual operations.
+/// Application binds and validates configuration on startup; disabled by default.
+/// G03/G04 must still enforce these quotas at the actual storage/transport boundaries.
 /// </summary>
 public sealed class SourceControlOptions
 {
     public const string SectionName = "SourceControl";
     public bool Enabled { get; init; }
     public string? GitExecutablePath { get; init; }
+    public string? AuthHelperExecutablePath { get; init; }
     public string? WorkspaceRoot { get; init; }
     public IReadOnlyList<string> AllowedHosts { get; init; } = [];
     public string WorkBranchPrefix { get; init; } = "vertex/";

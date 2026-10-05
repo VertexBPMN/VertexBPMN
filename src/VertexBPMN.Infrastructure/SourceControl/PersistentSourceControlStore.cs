@@ -1,0 +1,395 @@
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using VertexBPMN.Application.SourceControl;
+using VertexBPMN.Domain.Entities;
+using VertexBPMN.Infrastructure.Persistence;
+using VertexBPMN.SourceControl.Abstractions;
+using System.Data;
+using System.Data.Common;
+
+namespace VertexBPMN.Infrastructure.SourceControl;
+
+/// <summary>Relational-only store. Each worker/request uses its own scoped DbContext.</summary>
+public sealed class PersistentSourceControlStore(BpmnDbContext db, IDataProtectionProvider protection, IOptions<SourceControlOptions> options)
+    : ISourceControlAccessStore
+{
+    private void Relational()
+    {
+        if (!options.Value.Enabled || !db.Database.IsRelational()) throw new SourceControlSecurityException(SourceControlErrorCode.Disabled);
+    }
+
+    public async Task<RepositoryAccessSnapshot> CreateBindingAsync(SourceControlContext context,
+        IReadOnlyCollection<string> authenticatedRoles, RepositoryBinding binding, CancellationToken cancellationToken)
+    {
+        Relational();
+        if (!authenticatedRoles.Contains("Admin", StringComparer.Ordinal) || binding.TenantId != context.TenantId)
+            throw new SourceControlSecurityException(SourceControlErrorCode.Forbidden);
+        if (binding.Id == Guid.Empty || binding.ModelRoots.Count == 0)
+            throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+        SourceControlHttps.ValidateTarget(binding.Remote, options.Value.AllowedHosts);
+        SourceControlInputPolicy.ValidateBranch(binding.DefaultBranch);
+        SourceControlInputPolicy.ValidateBranch(binding.ReleaseBranch);
+        foreach (var root in binding.ModelRoots) SourceControlInputPolicy.ValidateRelativePath(root);
+        var bindingJson = JsonSerializer.Serialize(binding);
+        var grants = new[] { new RepositoryGrant(context.ActorId, RepositoryPermission.Read | RepositoryPermission.Manage) };
+        db.SourceControlBindings.Add(new() { Id = binding.Id, TenantId = context.TenantId,
+            Revision = 1, BindingJson = bindingJson, GrantsJson = JsonSerializer.Serialize(grants) });
+        await db.SaveChangesAsync(cancellationToken);
+        return new(JsonSerializer.Deserialize<RepositoryBinding>(bindingJson)!, 1, grants);
+    }
+
+    public async Task<bool> ReplaceGrantsAsync(SourceControlContext context, Guid repositoryId,
+        IReadOnlyCollection<string> roles, long expectedRevision, IReadOnlyList<RepositoryGrant> grants,
+        CancellationToken cancellationToken)
+    {
+        Relational();
+        var copiedGrants = grants.ToArray();
+        const RepositoryPermission allowed = RepositoryPermission.Read | RepositoryPermission.Manage
+            | RepositoryPermission.Commit | RepositoryPermission.Push | RepositoryPermission.PullRequest | RepositoryPermission.Deploy;
+        if (copiedGrants.Length > 1000 || copiedGrants.Select(x => x.ActorId).Distinct(StringComparer.Ordinal).Count() != copiedGrants.Length
+            || copiedGrants.Any(x => string.IsNullOrWhiteSpace(x.ActorId) || x.ActorId.Length > 512
+                || x.ActorId.Any(char.IsControl) || (x.Permissions & ~allowed) != 0))
+            throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+        var json = JsonSerializer.Serialize(copiedGrants);
+        var access = await FindAsync(context.TenantId, repositoryId, cancellationToken)
+            ?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
+        RepositoryAccessPolicy.Demand(context, access.Binding, roles, access.Grants, RepositoryPermission.Manage);
+        if (access.Revision != expectedRevision) return false;
+        return await db.SourceControlBindings.Where(x => x.Id == repositoryId && x.TenantId == context.TenantId
+            && x.Revision == expectedRevision).ExecuteUpdateAsync(update => update
+                .SetProperty(x => x.GrantsJson, json).SetProperty(x => x.Revision, x => x.Revision + 1), cancellationToken) == 1;
+    }
+
+    public async Task<Guid> CreateSessionAsync(SourceControlContext context, Guid repositoryId,
+        IReadOnlyCollection<string> roles, GitCommitId baseCommit, Guid generation,
+        CancellationToken cancellationToken)
+    {
+        Relational();
+        if (generation == Guid.Empty) throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+        var access = await FindAsync(context.TenantId, repositoryId, cancellationToken)
+            ?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
+        RepositoryAccessPolicy.Demand(context, access.Binding, roles, access.Grants, RepositoryPermission.Commit);
+        var row = new SourceControlSessionRecord { Id = Guid.NewGuid(), TenantId = context.TenantId,
+            ActorId = context.ActorId, RepositoryId = repositoryId, BaseCommit = baseCommit.Value,
+            DocumentGeneration = generation, Revision = 0,
+            ExpiresUtcTicks = DateTimeOffset.UtcNow.Add(options.Value.Limits.SessionIdleRetention).UtcTicks };
+        db.SourceControlSessions.Add(row);
+        await db.SaveChangesAsync(cancellationToken);
+        return row.Id;
+    }
+
+    public async Task<bool> SaveSnapshotsAsync(SourceControlContext context, Guid sessionId,
+        IReadOnlyCollection<string> roles, long expectedRevision, IReadOnlyList<ModelSnapshot> snapshots,
+        CancellationToken cancellationToken)
+    {
+        Relational();
+        if (snapshots.Count == 0 || snapshots.Count > options.Value.Limits.MaxCommitFiles)
+            throw new SourceControlSecurityException(SourceControlErrorCode.PayloadTooLarge);
+        if (snapshots.Any(x => x.ContentLength > options.Value.Limits.MaxModelBytes)
+            || snapshots.Sum(x => (long)x.ContentLength) > options.Value.Limits.MaxRepositoryBytes)
+            throw new SourceControlSecurityException(SourceControlErrorCode.PayloadTooLarge);
+        var copies = snapshots.Select(s => new SavedSnapshot(s.Path, s.Kind, s.DocumentGeneration,
+            s.LocalRevision, s.CopyContent())).ToArray();
+        if (copies.Sum(x => (long)x.Bytes.Length) > options.Value.Limits.MaxRepositoryBytes)
+            throw new SourceControlSecurityException(SourceControlErrorCode.PayloadTooLarge);
+        var row = await db.SourceControlSessions.AsNoTracking().SingleOrDefaultAsync(x => x.Id == sessionId
+            && x.TenantId == context.TenantId && x.ActorId == context.ActorId, cancellationToken)
+            ?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
+        var access = await FindAsync(context.TenantId, row.RepositoryId, cancellationToken)
+            ?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
+        RepositoryAccessPolicy.Demand(context, access.Binding, roles, access.Grants, RepositoryPermission.Commit);
+        if (row.Revision != expectedRevision || row.ExpiresUtcTicks <= DateTimeOffset.UtcNow.UtcTicks) return false;
+        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var previous = row.ProtectedSnapshots.Length == 0 ? [] :
+            JsonSerializer.Deserialize<SavedSnapshot[]>(Unprotect(context, row.RepositoryId, row.ProtectedSnapshots))!;
+        foreach (var copy in copies)
+        {
+            var earlier = previous.SingleOrDefault(x => string.Equals(x.Path, copy.Path, StringComparison.OrdinalIgnoreCase));
+            if (copy.Generation != row.DocumentGeneration || !paths.Add(copy.Path)
+                || earlier is not null && (copy.Revision < earlier.Revision
+                    || copy.Revision == earlier.Revision && !copy.Bytes.AsSpan().SequenceEqual(earlier.Bytes)))
+                throw new SourceControlSecurityException(SourceControlErrorCode.RevisionConflict);
+            SourceControlInputPolicy.DemandSafeBpmn(new(copy.Path, copy.Kind, copy.Generation, copy.Revision, copy.Bytes),
+                access.Binding, options.Value.Limits);
+        }
+        var protectedSnapshots = Protect(context, row.RepositoryId, JsonSerializer.SerializeToUtf8Bytes(copies));
+        var nowTicks = DateTimeOffset.UtcNow.UtcTicks;
+        var expiresTicks = DateTimeOffset.UtcNow.Add(options.Value.Limits.SessionIdleRetention).UtcTicks;
+        return await db.SourceControlSessions.Where(x => x.Id == sessionId && x.TenantId == context.TenantId
+            && x.ActorId == context.ActorId && x.Revision == expectedRevision
+            && x.ExpiresUtcTicks > nowTicks).ExecuteUpdateAsync(update => update
+                .SetProperty(x => x.ProtectedSnapshots, protectedSnapshots)
+                .SetProperty(x => x.ExpiresUtcTicks, expiresTicks)
+                .SetProperty(x => x.Revision, x => x.Revision + 1), cancellationToken) == 1;
+    }
+
+    private sealed record SavedSnapshot(string Path, SourceModelKind Kind, Guid Generation, long Revision, byte[] Bytes);
+
+    public async Task<RepositoryAccessSnapshot?> FindAsync(string tenantId, Guid repositoryId, CancellationToken cancellationToken)
+    {
+        Relational();
+        var row = await db.SourceControlBindings.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == repositoryId && x.TenantId == tenantId, cancellationToken);
+        if (row is null) return null;
+        var binding = JsonSerializer.Deserialize<RepositoryBinding>(row.BindingJson)!;
+        if (binding.Id != row.Id || binding.TenantId != row.TenantId)
+            throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
+        return new(binding, row.Revision, JsonSerializer.Deserialize<RepositoryGrant[]>(row.GrantsJson)!);
+    }
+
+    public async Task<Guid> EnqueueAsync(SourceControlContext context, Guid repositoryId,
+        IReadOnlyCollection<string> authenticatedRoles, SourceControlOperationKind kind,
+        SourceControlIdempotencyKey key, ReadOnlyMemory<byte> canonicalRequest, CancellationToken cancellationToken)
+    {
+        Relational();
+        var request = canonicalRequest.ToArray();
+        if (request.Length == 0 || request.Length > 3 * 1024 * 1024)
+            throw new SourceControlSecurityException(SourceControlErrorCode.PayloadTooLarge);
+        var access = await FindAsync(context.TenantId, repositoryId, cancellationToken)
+            ?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
+        var permission = kind switch
+        {
+            SourceControlOperationKind.OpenSession or SourceControlOperationKind.Commit => RepositoryPermission.Commit,
+            SourceControlOperationKind.Push => RepositoryPermission.Push,
+            SourceControlOperationKind.PullRequest => RepositoryPermission.PullRequest,
+            SourceControlOperationKind.Deploy => RepositoryPermission.Deploy,
+            _ => throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput)
+        };
+        RepositoryAccessPolicy.Demand(context, access.Binding, authenticatedRoles, access.Grants, permission);
+        // The application supplies a canonical, validated request; snapshot-copy before any await.
+        var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
+            $"{access.Revision}:{Convert.ToHexStringLower(SHA256.HashData(request))}")));
+        var existing = await LookupAsync();
+        if (existing is not null) return Check(existing);
+        var row = new SourceControlOperationRecord
+        {
+            Id = Guid.NewGuid(), RepositoryId = repositoryId, TenantId = context.TenantId,
+            ActorId = context.ActorId, Kind = (int)kind, IdempotencyKey = key.Value, RequestHash = hash,
+            ProtectedRequest = Protect(context, repositoryId, request),
+            State = (int)SourceControlOperationState.Queued, UpdatedUtcTicks = DateTimeOffset.UtcNow.UtcTicks
+        };
+        db.SourceControlOperations.Add(row);
+        try { await db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateException)
+        {
+            db.Entry(row).State = EntityState.Detached;
+            // Unique constraint arbitrates concurrent acceptance. Other DB errors are not hidden.
+            existing = await LookupAsync();
+            if (existing is null) throw;
+            return Check(existing);
+        }
+        return row.Id;
+
+        Task<SourceControlOperationRecord?> LookupAsync() => db.SourceControlOperations.AsNoTracking().SingleOrDefaultAsync(
+            x => x.TenantId == context.TenantId && x.RepositoryId == repositoryId
+                && x.Kind == (int)kind && x.IdempotencyKey == key.Value, cancellationToken);
+        Guid Check(SourceControlOperationRecord existing)
+        {
+            if (existing.ActorId != context.ActorId)
+                throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
+            if (existing.RequestHash != hash)
+                throw new SourceControlSecurityException(SourceControlErrorCode.IdempotencyConflict);
+            return existing.Id;
+        }
+    }
+
+    public async Task<long?> TryClaimAsync(string tenantId, Guid id, string worker, DateTimeOffset now,
+        TimeSpan duration, CancellationToken cancellationToken)
+    {
+        Relational();
+        if (string.IsNullOrWhiteSpace(worker) || worker.Length > 128 || worker.Any(char.IsControl)
+            || duration <= TimeSpan.Zero || duration > TimeSpan.FromMinutes(5))
+            throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        try
+        {
+        var active = db.SourceControlOperations.AsNoTracking().Where(x => x.LeaseUntilUtcTicks > now.UtcTicks
+            && (x.State == (int)SourceControlOperationState.Running || x.State == (int)SourceControlOperationState.Reconciling));
+        if (await active.CountAsync(cancellationToken) >= options.Value.Limits.MaxConcurrentJobsTotal
+            || await active.CountAsync(x => x.TenantId == tenantId, cancellationToken) >= options.Value.Limits.MaxConcurrentJobsPerTenant)
+            return null;
+        var row = await db.SourceControlOperations.AsNoTracking().SingleOrDefaultAsync(
+            x => x.TenantId == tenantId && x.Id == id, cancellationToken);
+        if (row is null) return null;
+        // Expired running jobs are reconciliation work, NEVER blindly queued writes.
+        var queued = row.State == (int)SourceControlOperationState.Queued;
+        var recoverable = (row.State == (int)SourceControlOperationState.Running
+            || row.State == (int)SourceControlOperationState.ResultUnknown
+            || row.State == (int)SourceControlOperationState.Reconciling)
+            && (!row.LeaseUntilUtcTicks.HasValue || row.LeaseUntilUtcTicks <= now.UtcTicks);
+        if (!queued && !recoverable) return null;
+        var changed = await db.SourceControlOperations.Where(x => x.Id == id && x.TenantId == tenantId
+            && x.Fence == row.Fence && x.State == row.State
+            && (!x.LeaseUntilUtcTicks.HasValue || x.LeaseUntilUtcTicks <= now.UtcTicks))
+            .ExecuteUpdateAsync(update => update
+                .SetProperty(x => x.State, queued ? (int)SourceControlOperationState.Running : (int)SourceControlOperationState.Reconciling)
+                .SetProperty(x => x.Fence, x => x.Fence + 1)
+                .SetProperty(x => x.LeaseOwner, worker)
+                .SetProperty(x => x.LeaseUntilUtcTicks, now.Add(duration).UtcTicks)
+                .SetProperty(x => x.UpdatedUtcTicks, now.UtcTicks), cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return changed == 1 ? row.Fence + 1 : null;
+        }
+        catch (Exception exception) when (IsClaimContention(exception))
+        {
+            // Serializable arbitration rejects a contender; leave it queued for a later poll.
+            // Other provider failures must not be confused with an unavailable slot.
+            return null;
+        }
+    }
+
+    private static bool IsClaimContention(Exception exception) => exception switch
+    {
+        Npgsql.PostgresException postgres => postgres.SqlState is "40001" or "40P01",
+        Microsoft.Data.Sqlite.SqliteException sqlite => sqlite.SqliteErrorCode is 5 or 6,
+        Microsoft.Data.SqlClient.SqlException sql => sql.Number is 1205 or 3960,
+        InvalidOperationException wrapped when wrapped.InnerException is DbException inner => IsClaimContention(inner),
+        _ => false
+    };
+
+    public async Task<bool> RenewLeaseAsync(string tenantId, Guid id, string worker, long fence,
+        DateTimeOffset now, TimeSpan duration, CancellationToken cancellationToken)
+    {
+        Relational();
+        if (duration <= TimeSpan.Zero || duration > TimeSpan.FromMinutes(5))
+            throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+        return await db.SourceControlOperations.Where(x => x.TenantId == tenantId && x.Id == id
+            && x.LeaseOwner == worker && x.Fence == fence && x.LeaseUntilUtcTicks > now.UtcTicks
+            && (x.State == (int)SourceControlOperationState.Running || x.State == (int)SourceControlOperationState.Reconciling))
+            .ExecuteUpdateAsync(update => update.SetProperty(x => x.LeaseUntilUtcTicks, now.Add(duration).UtcTicks)
+                .SetProperty(x => x.UpdatedUtcTicks, now.UtcTicks), cancellationToken) == 1;
+    }
+
+    /// <summary>Worker-only access to the accepted immutable input, fenced by its current lease.</summary>
+    public async Task<byte[]> ReadAcceptedRequestAsync(string tenantId, Guid id, string worker, long fence,
+        DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        Relational();
+        var row = await db.SourceControlOperations.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId
+            && x.Id == id && x.LeaseOwner == worker && x.Fence == fence && x.LeaseUntilUtcTicks > now.UtcTicks
+            && (x.State == (int)SourceControlOperationState.Running || x.State == (int)SourceControlOperationState.Reconciling), cancellationToken)
+            ?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
+        return Unprotect(new(row.TenantId, row.ActorId), row.RepositoryId, row.ProtectedRequest);
+    }
+
+    public async Task<bool> SaveResultAsync(string tenantId, Guid id, string worker, long fence,
+        ReadOnlyMemory<byte> canonicalResult, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        Relational();
+        if (canonicalResult.Length == 0 || canonicalResult.Length > 3 * 1024 * 1024)
+            throw new SourceControlSecurityException(SourceControlErrorCode.PayloadTooLarge);
+        var result = canonicalResult.ToArray();
+        var row = await db.SourceControlOperations.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId
+            && x.Id == id && x.LeaseOwner == worker && x.Fence == fence && x.LeaseUntilUtcTicks > now.UtcTicks, cancellationToken);
+        if (row is null) return false;
+        var payload = Protect(new(row.TenantId, row.ActorId), row.RepositoryId, result);
+        return await db.SourceControlOperations.Where(x => x.TenantId == tenantId && x.Id == id
+            && x.LeaseOwner == worker && x.Fence == fence && x.LeaseUntilUtcTicks > now.UtcTicks
+            && x.ProtectedResult == null
+            && (x.State == (int)SourceControlOperationState.Running || x.State == (int)SourceControlOperationState.Reconciling))
+            .ExecuteUpdateAsync(update => update.SetProperty(x => x.ProtectedResult, payload), cancellationToken) == 1;
+    }
+
+    public async Task<byte[]?> ReadSavedResultAsync(string tenantId, Guid id, string worker, long fence,
+        DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        Relational();
+        var row = await db.SourceControlOperations.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId
+            && x.Id == id && x.LeaseOwner == worker && x.Fence == fence && x.LeaseUntilUtcTicks > now.UtcTicks
+            && (x.State == (int)SourceControlOperationState.Running || x.State == (int)SourceControlOperationState.Reconciling), cancellationToken)
+            ?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
+        return row.ProtectedResult is null ? null : Unprotect(new(row.TenantId, row.ActorId), row.RepositoryId, row.ProtectedResult);
+    }
+
+    public async Task<bool> FinishAsync(string tenantId, Guid id, string worker, long fence,
+        SourceControlOperationState state, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        Relational();
+        if (state is not (SourceControlOperationState.CommittedLocal or SourceControlOperationState.Pushed
+            or SourceControlOperationState.Succeeded or SourceControlOperationState.Conflict
+            or SourceControlOperationState.Failed or SourceControlOperationState.Cancelled
+            or SourceControlOperationState.ResultUnknown))
+            throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+        return await db.SourceControlOperations.Where(x => x.TenantId == tenantId && x.Id == id
+            && x.LeaseOwner == worker && x.Fence == fence && x.LeaseUntilUtcTicks > now.UtcTicks
+            && (x.State == (int)SourceControlOperationState.Running || x.State == (int)SourceControlOperationState.Reconciling))
+            .Where(x => (state != SourceControlOperationState.CommittedLocal || x.Kind == (int)SourceControlOperationKind.Commit)
+                && (state != SourceControlOperationState.Pushed || x.Kind == (int)SourceControlOperationKind.Push)
+                && (state != SourceControlOperationState.Succeeded || x.Kind != (int)SourceControlOperationKind.Commit && x.Kind != (int)SourceControlOperationKind.Push))
+            .ExecuteUpdateAsync(update => update.SetProperty(x => x.State, (int)state)
+                .SetProperty(x => x.LeaseOwner, (string?)null).SetProperty(x => x.LeaseUntilUtcTicks, (long?)null)
+                .SetProperty(x => x.UpdatedUtcTicks, now.UtcTicks), cancellationToken) == 1;
+    }
+
+    public async Task<IReadOnlyList<ModelSnapshot>> ReadSnapshotsAsync(SourceControlContext context, Guid sessionId,
+        IReadOnlyCollection<string> roles, CancellationToken cancellationToken)
+    {
+        Relational();
+        var row = await db.SourceControlSessions.AsNoTracking().SingleOrDefaultAsync(x => x.Id == sessionId
+            && x.TenantId == context.TenantId && x.ActorId == context.ActorId, cancellationToken)
+            ?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
+        var access = await FindAsync(context.TenantId, row.RepositoryId, cancellationToken)
+            ?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
+        RepositoryAccessPolicy.Demand(context, access.Binding, roles, access.Grants, RepositoryPermission.Read);
+        if (row.ExpiresUtcTicks <= DateTimeOffset.UtcNow.UtcTicks)
+            throw new SourceControlSecurityException(SourceControlErrorCode.RevisionConflict);
+        if (row.ProtectedSnapshots.Length == 0) return [];
+        var bytes = Unprotect(context, row.RepositoryId, row.ProtectedSnapshots);
+        var snapshots = JsonSerializer.Deserialize<SavedSnapshot[]>(bytes)!;
+        return snapshots.Select(x => new ModelSnapshot(x.Path, x.Kind, x.Generation, x.Revision, x.Bytes)).ToArray();
+    }
+
+    public async Task<SourceControlOperation?> GetOperationAsync(SourceControlContext context, Guid id,
+        IReadOnlyCollection<string> roles, CancellationToken cancellationToken)
+    {
+        Relational();
+        var row = await db.SourceControlOperations.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id
+            && x.TenantId == context.TenantId, cancellationToken);
+        if (row is null) return null;
+        var access = await FindAsync(context.TenantId, row.RepositoryId, cancellationToken);
+        if (access is null) return null;
+        RepositoryAccessPolicy.Demand(context, access.Binding, roles, access.Grants,
+            row.ActorId == context.ActorId ? RepositoryPermission.Read : RepositoryPermission.Manage);
+        return new(row.Id, row.TenantId, row.ActorId, row.RepositoryId, (SourceControlOperationKind)row.Kind,
+            (SourceControlOperationState)row.State, new DateTimeOffset(row.UpdatedUtcTicks, TimeSpan.Zero),
+            row.ErrorCode.HasValue ? (SourceControlErrorCode)row.ErrorCode : null);
+    }
+
+    private byte[] Unprotect(SourceControlContext context, Guid repositoryId, string payload)
+    {
+        try
+        {
+            return protection.CreateProtector("VertexBPMN.SourceControl.Request.v1",
+                context.TenantId, repositoryId.ToString("N"), context.ActorId).Unprotect(Convert.FromBase64String(payload));
+        }
+        catch { throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe); }
+    }
+
+    /// <summary>Internal maintenance: durable idempotency hashes and result/provenance are retained.</summary>
+    public async Task<int> PruneExpiredDetailsAsync(DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        Relational();
+        var cutoff = now.Subtract(options.Value.Limits.CompletedJobRetention).UtcTicks;
+        var count = await db.SourceControlSessions.Where(x => x.ExpiresUtcTicks <= now.UtcTicks
+            && !db.SourceControlOperations.Any(job => job.RepositoryId == x.RepositoryId && job.TenantId == x.TenantId
+                && job.ActorId == x.ActorId && (job.State == (int)SourceControlOperationState.Queued
+                    || job.State == (int)SourceControlOperationState.Running || job.State == (int)SourceControlOperationState.Reconciling
+                    || job.State == (int)SourceControlOperationState.ResultUnknown)))
+            .ExecuteDeleteAsync(cancellationToken);
+        count += await db.SourceControlOperations.Where(x => x.UpdatedUtcTicks <= cutoff
+            && x.ProtectedRequest != ""
+            && (x.State == (int)SourceControlOperationState.CommittedLocal || x.State == (int)SourceControlOperationState.Pushed
+                || x.State == (int)SourceControlOperationState.Succeeded || x.State == (int)SourceControlOperationState.Conflict
+                || x.State == (int)SourceControlOperationState.Failed || x.State == (int)SourceControlOperationState.Cancelled))
+            .ExecuteUpdateAsync(update => update.SetProperty(x => x.ProtectedRequest, ""), cancellationToken);
+        return count;
+    }
+
+    private string Protect(SourceControlContext context, Guid repositoryId, byte[] request) =>
+        Convert.ToBase64String(protection.CreateProtector("VertexBPMN.SourceControl.Request.v1",
+            context.TenantId, repositoryId.ToString("N"), context.ActorId).Protect(request));
+}

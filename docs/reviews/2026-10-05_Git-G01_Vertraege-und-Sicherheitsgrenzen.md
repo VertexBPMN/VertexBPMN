@@ -101,7 +101,7 @@ Generisches/offline Git ohne Hostingnachweis bleibt in A für Lesen/Commit nutzb
 
 ## 6. Konfiguration, Quoten und Performanceziele
 
-`SourceControlOptions` ist jetzt ein **C#-Vertrag**, noch keine gebundene/verfügbare Hostkonfiguration. G02 implementiert das Binding/Validation; G03/G04 erzwingen die Limits.
+Ursprünglicher G01-Stand: `SourceControlOptions` war ausschließlich ein C#-Vertrag. Seit dem [G02-Teilstand](2026-10-05_Git-G02_Sicherheitsbasis.md) sind Hostbinding und Konfigurationsvalidation implementiert. G03/G04 müssen Limits weiterhin an tatsächlichen Speicher-/Transportgrenzen erzwingen; daraus folgt noch keine benutzbare Git-Integration.
 
 Standard: `Enabled=false`, kein automatisch gewählter Git-Pfad/Workspace, leere Hostallowlist. Aktivierung verlangt absoluten validierten Git-Pfad, private dedizierte Workspace-Root und explizite HTTPS-Hostfreigaben. Linuxcontainer installieren Git nur für aktivierte Profile. Qualifizierungsbaseline: Git 2.56.0 oder neuer, gewarteter Sicherheitsstand; hier ausschließlich Windowsversion 2.56.0 geprüft, kein Linuxnachweis.
 

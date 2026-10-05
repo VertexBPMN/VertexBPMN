@@ -124,6 +124,12 @@ public static class InfrastructureModule
             dataProtection.ProtectKeysWithAzureKeyVault(keyIdentifier, credential);
         }
         services.AddScoped<ICredentialService, PersistentCredentialService>();
+        services.AddScoped<SourceControl.PersistentSourceControlStore>();
+        services.AddScoped<SourceControl.GitHubAppTokenBroker>();
+        services.AddScoped<SourceControl.ControlledGitProcess>();
+        services.AddScoped<SourceControl.SourceControlWorkspace>();
+        services.AddScoped<VertexBPMN.Application.SourceControl.ISourceControlAccessStore>(sp =>
+            sp.GetRequiredService<SourceControl.PersistentSourceControlStore>());
         services.AddScoped<IConnectorService, PersistentConnectorService>();
         services.AddScoped<IConnectorTemplateService, PersistentConnectorTemplateService>();
         services.AddScoped<IFormDefinitionService, PersistentFormDefinitionService>();

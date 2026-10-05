@@ -2,9 +2,9 @@
 
 Stand: 2026-10-05. Planungsbasis: `master`, Commit `cb88bee0f83807cd0d7906a4d092807a56b49969`.
 
-Status: **Phase 1 abgeschlossen: G00-Inventur und verfügbare lokale Baseline dokumentiert; G01-Verträge implementiert und mit 44 isolierten Tests geprüft. OpenAPI und Profiler korrigiert, Solution-Build und gezielte Swagger-/Editor-Vertragsprüfungen erfolgreich. Finale CI-safe Suite: 1.279 bestanden, 0 Fehler, 8 externe Fälle übersprungen. Keine externe Git-/Produktabnahme. G02–G11 nicht begonnen.**
+Status: **Phase 1 abgeschlossen. Phase 2/G02 und G03 in Arbeit: Sicherheitsbasis, persistenter Credentialanschluss, GitHub-App-Tokenbroker, HTTPS-Zielprüfung sowie persistente Bindungen/ACLs/Sessions/Operations und Migration implementiert. SQLite: 5 Persistenztests bestanden; PostgreSQL unter WSLC: echte Migration/Upgrade, Idempotenz und Claims/Fencing bestanden. Native Git-Prozessintegration, Quoten-/Recovery-/Cleanup-Abnahme und weitere Pflichtgrenzen noch offen. G02/G03 nicht abgeschlossen; G04–G11 nicht begonnen. Nachweise: G00/G01, G02-Sicherheitsbasisbericht und [G03-WSLC-Abnahme](2026-10-05_Git-G03_WSLC-Abnahme.md).**
 
-Dieser Plan ist ein eigenständiger Arbeitsauftrag für Menschen und Coding-Agents. Vorheriger Chatverlauf ist nicht erforderlich. Pfade sind repository-relativ. Die in [G01](2026-10-05_Git-G01_Vertraege-und-Sicherheitsgrenzen.md) aufgeführten C#-Verträge existieren jetzt; Provider, Routen und Host-Konfigurationsbinding noch nicht. Weitere neue Typen, Dateien, Routen und Kategorien sind **Vorschläge, keine bereits vorhandenen APIs**. Vor ihrer Implementierung den aktuellen Checkout erneut prüfen.
+Dieser Plan ist ein eigenständiger Arbeitsauftrag für Menschen und Coding-Agents. Vorheriger Chatverlauf ist nicht erforderlich. Pfade sind repository-relativ. G01-C#-Verträge sowie die in [G02](2026-10-05_Git-G02_Sicherheitsbasis.md) dokumentierte Sicherheitsbasis und das Optionsbinding existieren; Produktprovider und neue HTTP-Routen noch nicht. Weitere neue Typen, Dateien, Routen und Kategorien sind **Vorschläge, keine bereits vorhandenen APIs**. Vor ihrer Implementierung den aktuellen Checkout erneut prüfen.
 
 ## 1. Ziel und Lieferumfang
 
@@ -160,6 +160,8 @@ Abnahme: überprüfbarer Vertrag mit Beispielen für Erfolg, Konflikt, fehlende 
 Stand: [G01-Vertrag](2026-10-05_Git-G01_Vertraege-und-Sicherheitsgrenzen.md), 44/44 isolierte Vertragstests bestanden; Application-Teilbuild ohne Warnung/Fehler. G01-Vertragsumfang und Phase-1-Baseline abgeschlossen, nicht gleichbedeutend mit Git-/Security-/Produktabnahme.
 
 ### G02 – Authentifizierung und Schutz
+
+Teilstand: [G02-Sicherheitsbasis](2026-10-05_Git-G02_Sicherheitsbasis.md) und aktueller [Phase-2-Abschlussstand](2026-10-05_Git-Phase2_Abschlussstand.md). Credentialadapter, kurzlebiger GitHub-App-Broker, echter Helper-Prozess, HTTPS-Handler und Native-Git-Prozessgrenze implementiert; lokale Vertrags-/Negativfälle bestanden. Vollständige Transport-/Recovery-Abnahme bleibt offen. Die folgenden Paketcheckboxen bleiben bis zur vollständigen Umsetzung/Abnahme offen.
 
 - [ ] Vorhandenen Credential-Dienst über tenantgeprüften internen Adapter verwenden. Für GitHub bevorzugt repositorybegrenzte GitHub-App-Installation mit kurzlebigen Installationstokens; kein verpflichtender globaler PAT.
 - [ ] Git- und Hosting-Tokenkanal, Rotation/Ablauf/Widerruf sowie Rechteentzug implementieren. App-Schlüssel nur geschützt serverseitig; Studio zeigt Metadaten, nie Secretwerte.
@@ -346,8 +348,8 @@ Commit/Push/PR, Plugininstallation und externe Ressourcenerstellung erfolgen nur
 - [x] Plan erstellt und Einstiegspunkte gegen aktuellen Quellcode geprüft.
 - [x] G00 – Inventur, Solution-Build, CI-safe Gesamtbaseline und verfügbare Editor-Vertragsbaseline fertig; externe Voraussetzungen dokumentiert.
 - [x] G01 – Verträge/Rechte/Freigabe definiert, Bibliothek und 44 isolierte Tests implementiert/geprüft.
-- [ ] G02 – Credentials/Sicherheit.
-- [ ] G03 – Persistenz/Jobs/Arbeitsbereiche.
+- [ ] G02 – in Arbeit: Credential-/HTTPS-/Prozess-/Helpergrenzen implementiert und lokal teilweise abgenommen; Gesamttransport-/Angriffs-/Abbruchnachweise offen.
+- [ ] G03 – Persistenz/Jobs/Arbeitsbereiche implementiert und unter SQLite/WSLC-PostgreSQL teilweise abgenommen; SQL Server, Recovery-/Cleanup-Orchestrierung und spätere Provenienz offen.
 - [ ] G04 – Git-Provider.
 - [ ] G05 – API.
 - [ ] G06 – BPMN-Studio.
@@ -357,7 +359,7 @@ Commit/Push/PR, Plugininstallation und externe Ressourcenerstellung erfolgen nur
 - [ ] G10 – DMN/CMMN/Formulare, eigene Lieferstufe.
 - [ ] G11 – dynamisches DLL-Plugin, eigene Lieferstufe.
 
-**Nächster Schritt: mit entsprechendem Auftrag Phase 2 mit G02/G03.** Phase 1 ist abgeschlossen; OpenAPI-/Profilerkorrektur und erfolgreiche Baseline sind in G00 belegt. G01 muss nicht neu implementiert werden. Keine Produktionsreife aus diesen Vertrags-/Baselineprüfungen ableiten.
+**Nächster Schritt: verbleibende Transport-/Recovery-/Cleanup-Grenzen und SQL-Server-Abnahme gemäß [Phase-2-Abschlussstand](2026-10-05_Git-Phase2_Abschlussstand.md) schließen.** Phase 1 ist abgeschlossen; G02/G03 noch nicht vollständig abgenommen. Keine Produktionsreife aus isolierten Sicherheitsregeln, Optionsbinding oder bestandenem Teiltest ableiten.
 
 Kopierbarer Startauftrag für einen Agent:
 

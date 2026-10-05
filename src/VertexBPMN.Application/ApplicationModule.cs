@@ -21,6 +21,12 @@ public static class ApplicationModule
     /// <param name="useInMemory">If true, register in-memory implementations instead of persistent ones (for tests).</param>
     public static IServiceCollection AddApplicationServices(this IServiceCollection services, IConfiguration configuration)
     {
+        services.AddSingleton<Microsoft.Extensions.Options.IValidateOptions<VertexBPMN.SourceControl.Abstractions.SourceControlOptions>,
+            SourceControl.SourceControlOptionsValidator>();
+        services.AddOptions<VertexBPMN.SourceControl.Abstractions.SourceControlOptions>()
+            .Bind(configuration.GetSection(VertexBPMN.SourceControl.Abstractions.SourceControlOptions.SectionName))
+            .ValidateOnStart();
+        services.AddScoped<SourceControl.SourceControlCredentialResolver>();
         var dependencies = new DependencyOptions();
         configuration.GetSection("Dependencies").Bind(dependencies);
         var productionMode = string.Equals(configuration["OperationalMode"], "Production", StringComparison.OrdinalIgnoreCase)

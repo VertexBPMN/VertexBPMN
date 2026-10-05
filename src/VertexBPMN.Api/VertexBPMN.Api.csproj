@@ -59,4 +59,9 @@
     </None>
   </ItemGroup>
 
+  <Target Name="PublishSourceControlAuthHelper" AfterTargets="Publish">
+    <MSBuild Projects="../VertexBPMN.SourceControl.AuthHelper/VertexBPMN.SourceControl.AuthHelper.csproj"
+      Targets="Restore;Publish"
+      Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(SelfContained);PublishDir=$([System.IO.Path]::GetFullPath('$(PublishDir)'))source-control-auth/" />
+  </Target>
 </Project>

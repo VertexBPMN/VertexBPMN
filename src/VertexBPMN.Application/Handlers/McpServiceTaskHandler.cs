@@ -60,8 +60,8 @@ public class McpServiceTaskHandler : IServiceTaskHandler
 				@params = mcpParams,
 				id = Guid.NewGuid().ToString()
 			};
-			var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
-			var response = await _httpClient.PostAsync(mcpServerUrl, content, ct);
+			using var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
+			using var response = await _httpClient.PostAsync(mcpServerUrl, content, ct);
 			response.EnsureSuccessStatusCode();
 
 			var responseContent = await response.Content.ReadAsStringAsync(ct);

@@ -41,7 +41,7 @@ Die fachliche Bedeutung der Parameter und die Tenant-Prüfungen bleiben unverän
 - Die strikte Analyzer-Konfiguration ist weiterhin aktiv.
 - Strikte Builds von Domain, ServiceDefaults, SourceControl.AuthHelper,
   EntityGenerator und MCP-Client: jeweils 0 Warnungen und 0 Fehler.
-- Strikter Application-Build: noch 289 Fehler. Dies ist kein erfolgreicher
+- Strikter Application-Build: noch 284 Fehler. Dies ist kein erfolgreicher
   Solution-Build; nachgelagerte Projekte bleiben vollständig zu prüfen.
 - Aktueller Compiler-Diagnoselauf des Haupttestprojekts: 0 Fehler,
   338 Warnungen bei deaktivierten Analyzern und deaktivierter Warnungseskalation.
@@ -56,6 +56,17 @@ Die fachliche Bedeutung der Parameter und die Tenant-Prüfungen bleiben unverän
   Die vollständige CI-sichere Wiederholung ist bestanden: 1395 Tests,
   1387 bestanden, 0 fehlgeschlagen, 8 übersprungen; Dauer 1m 22s.
   Infrastrukturabhängige übersprungene Tests sind damit nicht abgenommen.
+- Weitere MCP-Ressourcenfreigaben in `McpAgentService.CallAgentAsync` und
+  `McpServiceTaskHandler.ExecuteAsync` korrigiert. Neue Tests prüfen freigegebene
+  Anfrage-/Antwortinhalte bei erfolgreichem Aufruf und HTTP-Fehlern. Gezielter
+  MCP-Lauf: 6 bestanden. Ein unbenutzter privater Parameter der DMN-Tabellen-
+  auswertung wurde ohne Änderung der fachlichen Logik entfernt.
+- CI-sichere Regression nach diesen Änderungen: 1397 Tests, 1389 bestanden,
+  0 fehlgeschlagen, 8 übersprungen; Dauer 1m 26s. Die Tests wurden weiterhin
+  aus einem Compiler-Diagnosebuild ohne Analyzer ausgeführt.
+- Bestehende Einschränkung außerhalb der geänderten Pfade:
+  `McpAgentService.WaitForAgentResponseAsync` erzeugt weiterhin `DemoResponse`;
+  dies ist kein Nachweis echter korrelierter MCP-Antwortverarbeitung.
 - Vollständiger strikter Solution-Build: weiterhin offen. Die grüne Regression
   verwendet einen Compiler-Diagnosebuild ohne Analyzer und ersetzt diesen nicht.
 - Ein separater Compiler-Diagnoselauf mit deaktivierten Analyzern ist ausdrücklich

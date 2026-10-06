@@ -608,7 +608,7 @@ public sealed class DmnDecisionGraph
 
 		var expression = DecisionExpression(decision);
 		var variables = expression.Name.LocalName == "decisionTable"
-			? EvaluateDecisionTable(decision, expression, context)
+			? EvaluateDecisionTable(expression, context)
 			: EvaluateBoxedExpression(decision, expression, context, suppliedDecisions);
 		var value = variables.Count == 1
 			? variables.Values.Single()
@@ -759,7 +759,6 @@ public sealed class DmnDecisionGraph
 	}
 
 	private Dictionary<string, object> EvaluateDecisionTable(
-		XElement decision,
 		XElement table,
 		IReadOnlyDictionary<string, object> context)
 	{

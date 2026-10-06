@@ -51,8 +51,8 @@ public class McpAgentService : IMcpAgentService
 			throw new ArgumentException($"Agent '{agentName}' nicht gefunden.");
 		}
 
-		var req = new StringContent(input.ToJsonString(), Encoding.UTF8, "application/json");
-		var resp = await _httpClient.PostAsync(agent.Url, req, ct);
+		using var req = new StringContent(input.ToJsonString(), Encoding.UTF8, "application/json");
+		using var resp = await _httpClient.PostAsync(agent.Url, req, ct);
 		resp.EnsureSuccessStatusCode();
 		var respJson = await resp.Content.ReadAsStringAsync(ct);
 		return JsonNode.Parse(respJson)!;

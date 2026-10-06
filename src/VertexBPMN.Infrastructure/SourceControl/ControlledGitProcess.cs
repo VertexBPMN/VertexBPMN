@@ -206,9 +206,78 @@ internal sealed class ControlledGitProcess(IOptions<SourceControlOptions> option
         }
     }
 
+    internal async Task<ModelSnapshot> ReadModelAsync(GitWorkspace workspace, RepositoryBinding binding,
+        FileReadRequest request, Guid documentGeneration, CancellationToken cancellationToken)
+    {
+        SourceControlInputPolicy.DemandModelPath(request.Path, binding.ModelRoots);
+        if (documentGeneration == Guid.Empty)
+            throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+        var limits = options.Value.Limits;
+        if (limits.MaxModelBytes <= 0)
+            throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+        var prefix = "--git-dir=" + Path.Combine(workspace.Directory, "repository.git");
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(limits.ReadTimeout);
+        try
+        {
+            await VersionAsync(workspace, deadline.Token);
+            var resolved = await RunAsync(workspace, [prefix, "rev-parse", "--verify", request.Commit.Value + "^{commit}"],
+                null, limits.ReadTimeout, deadline.Token);
+            if (System.Text.Encoding.UTF8.GetString(resolved).Trim() != request.Commit.Value)
+                throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+            var tree = await RunAsync(workspace, [prefix, "ls-tree", "-r", "-t", "-z", request.Commit.Value],
+                null, limits.ReadTimeout, deadline.Token);
+            var objectId = FindModelBlob(tree, request.Path);
+            var size = await RunAsync(workspace, [prefix, "cat-file", "-s", objectId], null, limits.ReadTimeout, deadline.Token);
+            if (!long.TryParse(System.Text.Encoding.UTF8.GetString(size).Trim(),
+                System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var length)
+                || length <= 0 || length > limits.MaxModelBytes)
+                throw new SourceControlSecurityException(SourceControlErrorCode.PayloadTooLarge);
+            var bytes = await RunAsync(workspace, [prefix, "cat-file", "blob", objectId], null,
+                limits.ReadTimeout, deadline.Token, outputLimit: limits.MaxModelBytes);
+            var snapshot = new ModelSnapshot(request.Path, SourceModelKind.Bpmn, documentGeneration, 0, bytes);
+            SourceControlInputPolicy.DemandSafeBpmn(snapshot, binding, limits);
+            return snapshot;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new SourceControlSecurityException(SourceControlErrorCode.TimedOut);
+        }
+    }
+
+    private static string FindModelBlob(byte[] tree, string requestedPath)
+    {
+        string? objectId = null;
+        foreach (var entry in System.Text.Encoding.UTF8.GetString(tree).Split('\0', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var tab = entry.IndexOf('\t');
+            if (tab < 0)
+            {
+                throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
+            }
+            var path = entry[(tab + 1)..];
+            var metadata = entry[..tab].Split(' ');
+            if (path.Equals(requestedPath, StringComparison.OrdinalIgnoreCase))
+            {
+                if (path != requestedPath || objectId is not null || metadata.Length != 3
+                    || metadata[0] is not ("100644" or "100755") || metadata[1] != "blob")
+                {
+                    throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
+                }
+                objectId = new GitCommitId(metadata[2]).Value;
+            }
+            else if (requestedPath.StartsWith(path + "/", StringComparison.OrdinalIgnoreCase)
+                && (metadata[0] != "040000" || !requestedPath.StartsWith(path + "/", StringComparison.Ordinal)))
+            {
+                throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
+            }
+        }
+        return objectId ?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
+    }
+
     private async Task<byte[]> RunAsync(GitWorkspace workspace, IReadOnlyList<string> arguments,
         IReadOnlyDictionary<string, string>? extra, TimeSpan timeout, CancellationToken cancellationToken,
-        byte[]? input = null, IReadOnlyDictionary<string, string>? trustedEnvironment = null)
+        byte[]? input = null, IReadOnlyDictionary<string, string>? trustedEnvironment = null, int? outputLimit = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var executable = options.Value.GitExecutablePath;
@@ -225,6 +294,8 @@ internal sealed class ControlledGitProcess(IOptions<SourceControlOptions> option
         start.Environment["HOME"] = workspace.ControlDirectory;
         start.Environment["XDG_CONFIG_HOME"] = workspace.ControlDirectory;
         start.Environment["GIT_CONFIG_NOSYSTEM"] = "1";
+        // Object replacements must not substitute content behind a pinned commit ID.
+        start.Environment["GIT_NO_REPLACE_OBJECTS"] = "1";
         // Git for Windows rejects NUL as a config file. Use a known empty file
         // in the private control directory instead of an ambient user config.
         var globalConfig = Path.Combine(workspace.ControlDirectory, "empty-global.config");
@@ -261,7 +332,7 @@ internal sealed class ControlledGitProcess(IOptions<SourceControlOptions> option
         try
         {
             if (!process.Start()) throw new SourceControlSecurityException(SourceControlErrorCode.GitUnavailable);
-            var output = ReadBoundedAsync(process.StandardOutput.BaseStream, options.Value.Limits.MaxDiffBytes, stop.Token);
+            var output = ReadBoundedAsync(process.StandardOutput.BaseStream, outputLimit ?? options.Value.Limits.MaxDiffBytes, stop.Token);
             var errors = ReadBoundedAsync(process.StandardError.BaseStream, 64 * 1024, stop.Token);
             var completed = process.WaitForExitAsync(stop.Token);
             var supplied = input is null ? Task.CompletedTask : SupplyAsync(process.StandardInput.BaseStream, input, stop.Token);

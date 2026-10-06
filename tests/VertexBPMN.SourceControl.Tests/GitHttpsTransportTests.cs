@@ -146,6 +146,77 @@ public sealed class GitHttpsTransportTests
         Assert.False(File.Exists(fixture.ExecutionMarker));
     }
 
+    [Fact]
+    public async Task Revision_bound_model_read_preserves_bytes_and_rejects_paths_and_limits()
+    {
+        await using var fixture = await HttpsFixture.CreateAsync(hostile: true);
+        using var lease = new GitHubTokenLease(fixture.Token, DateTimeOffset.UtcNow.AddMinutes(2));
+        var token = TestContext.Current.CancellationToken;
+        await fixture.Runner.FetchLocalAcceptanceAsync(fixture.Workspace, fixture.Remote, "master", lease, fixture.CaFile, token);
+        var repository = "--git-dir=" + Path.Combine(fixture.Workspace.Directory, "repository.git");
+        var commit = new GitCommitId(Encoding.UTF8.GetString(await fixture.GitAsync([repository, "rev-parse", "refs/heads/vertex-source"])).Trim());
+        var binding = new RepositoryBinding(Guid.NewGuid(), "test", fixture.Remote, null, "master", "release", ["models", "Models", "modules"]);
+        var generation = Guid.NewGuid();
+        var request = new FileReadRequest(commit, "models/example.bpmn");
+        var snapshot = await fixture.Runner.ReadModelAsync(fixture.Workspace, binding, request, generation, token);
+        Assert.Equal(fixture.ModelBytes, snapshot.CopyContent());
+        Assert.Equal(generation, snapshot.DocumentGeneration);
+        Assert.Equal(0, snapshot.LocalRevision);
+        Assert.False(File.Exists(fixture.ExecutionMarker));
+        Assert.False(Directory.Exists(Path.Combine(fixture.Workspace.Directory, "models")));
+        foreach (var (path, expected) in new[]
+        {
+            ("models/missing.bpmn", SourceControlErrorCode.NotFound),
+            ("models/link.bpmn", SourceControlErrorCode.ContentUnsafe),
+            ("modules/unsafe/example.bpmn", SourceControlErrorCode.ContentUnsafe),
+            ("Models/example.bpmn", SourceControlErrorCode.ContentUnsafe),
+            ("models/../example.bpmn", SourceControlErrorCode.InvalidInput),
+            ("other/example.bpmn", SourceControlErrorCode.InvalidInput)
+        })
+        {
+            var error = await Assert.ThrowsAsync<SourceControlSecurityException>(() =>
+                fixture.Runner.ReadModelAsync(fixture.Workspace, binding, request with { Path = path }, generation, token));
+            Assert.Equal(expected, error.Code);
+        }
+        var limited = new ControlledGitProcess(Options.Create(new SourceControlOptions
+        {
+            Enabled = true, GitExecutablePath = Environment.GetEnvironmentVariable("VERTEXBPMN_TEST_GIT"),
+            Limits = new() { MaxModelBytes = 8 }
+        }));
+        var oversized = await Assert.ThrowsAsync<SourceControlSecurityException>(() =>
+            limited.ReadModelAsync(fixture.Workspace, binding, request, generation, token));
+        Assert.Equal(SourceControlErrorCode.PayloadTooLarge, oversized.Code);
+    }
+
+    [Fact]
+    public async Task Model_read_uses_model_byte_limit_and_fixed_commit_not_moving_ref()
+    {
+        await using var fixture = await HttpsFixture.CreateAsync();
+        using var lease = new GitHubTokenLease(fixture.Token, DateTimeOffset.UtcNow.AddMinutes(2));
+        var token = TestContext.Current.CancellationToken;
+        await fixture.Runner.FetchLocalAcceptanceAsync(fixture.Workspace, fixture.Remote, "master", lease, fixture.CaFile, token);
+        var repository = "--git-dir=" + Path.Combine(fixture.Workspace.Directory, "repository.git");
+        var basis = new GitCommitId(Encoding.UTF8.GetString(await fixture.GitAsync([repository, "rev-parse", "refs/heads/vertex-source"])).Trim());
+        var binding = new RepositoryBinding(Guid.NewGuid(), "test", fixture.Remote, null, "master", "release", ["models"]);
+        var generation = Guid.NewGuid();
+        var session = Guid.NewGuid();
+        var bytes = Encoding.UTF8.GetBytes("<definitions xmlns=\"http://www.omg.org/spec/BPMN/20100524/MODEL\">"
+            + new string(' ', 1024 * 1024) + "<process id=\"large\"/></definitions>\r\n");
+        var command = new CommitCommand(Guid.NewGuid(), new SourceControlIdempotencyKey("large-read"), session,
+            basis, SourceControlInputPolicy.WorkBranch(session), "Large model",
+            [new ModelSnapshot("models/example.bpmn", SourceModelKind.Bpmn, generation, 1, bytes)]);
+        var commit = await fixture.Runner.BuildCommitAsync(fixture.Workspace, binding, command, DateTimeOffset.UtcNow, token);
+        await fixture.Runner.PublishLocalCommitAsync(fixture.Workspace, command.WorkBranch, commit, token);
+        await fixture.GitAsync([repository, "update-ref", "refs/replace/" + basis.Value, commit.Value]);
+        var current = await fixture.Runner.ReadModelAsync(fixture.Workspace, binding,
+            new(commit, "models/example.bpmn"), generation, token);
+        var original = await fixture.Runner.ReadModelAsync(fixture.Workspace, binding,
+            new(basis, "models/example.bpmn"), generation, token);
+        Assert.Equal(bytes, current.CopyContent());
+        Assert.Equal(fixture.ModelBytes, original.CopyContent());
+        Assert.Equal(bytes, await fixture.GitAsync([repository, "cat-file", "blob", commit.Value + ":models/example.bpmn"]));
+    }
+
     private sealed class HttpsFixture : IAsyncDisposable
     {
         private readonly string _root = Path.Combine(Path.GetTempPath(), "vertex-git-https-" + Guid.NewGuid().ToString("N"));
@@ -200,6 +271,9 @@ public sealed class GitHttpsTransportTests
                 var oid = Encoding.UTF8.GetString(await GitAsync(["-C", source, "rev-parse", "HEAD"])).Trim();
                 await GitAsync(["-C", source, "add", "--", ".gitattributes", ".gitmodules"]);
                 await GitAsync(["-C", source, "update-index", "--add", "--cacheinfo", "160000", oid, "modules/unsafe"]);
+                var blob = Encoding.UTF8.GetString(await GitAsync(["-C", source, "rev-parse", "HEAD:models/example.bpmn"])).Trim();
+                // A link-mode tree entry is enough to verify that protected readers never follow it.
+                await GitAsync(["-C", source, "update-index", "--add", "--cacheinfo", "120000", blob, "models/link.bpmn"]);
                 await GitAsync(["-C", source, "-c", "user.name=Acceptance", "-c", "user.email=acceptance@example.invalid", "commit", "-m", "hostile metadata"]);
             }
             var repositories = Path.Combine(_root, "remote");

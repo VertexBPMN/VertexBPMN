@@ -245,6 +245,42 @@ internal sealed class ControlledGitProcess(IOptions<SourceControlOptions> option
         }
     }
 
+    internal async Task<SourceControlPage<RepositoryFile>> ListModelsAsync(GitWorkspace workspace,
+        RepositoryBinding binding, TreeRequest request, CancellationToken cancellationToken)
+    {
+        SourceControlInputPolicy.ValidateRelativePath(request.Root);
+        foreach (var root in binding.ModelRoots)
+        {
+            SourceControlInputPolicy.ValidateRelativePath(root);
+        }
+        var limits = options.Value.Limits;
+        if (!binding.ModelRoots.Any(root => request.Root == root || request.Root.StartsWith(root + "/", StringComparison.Ordinal))
+            || request.PageSize <= 0 || request.PageSize > limits.MaxPageSize)
+        {
+            throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+        }
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(limits.ReadTimeout);
+        var prefix = "--git-dir=" + Path.Combine(workspace.Directory, "repository.git");
+        try
+        {
+            await VersionAsync(workspace, deadline.Token);
+            var resolved = await RunAsync(workspace, [prefix, "rev-parse", "--verify", request.Commit.Value + "^{commit}"],
+                null, limits.ReadTimeout, deadline.Token);
+            if (System.Text.Encoding.UTF8.GetString(resolved).Trim() != request.Commit.Value)
+            {
+                throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+            }
+            var tree = await RunAsync(workspace, [prefix, "ls-tree", "-r", "-t", "-l", "-z", request.Commit.Value],
+                null, limits.ReadTimeout, deadline.Token);
+            return GitModelTree.ReadPage(tree, binding, request, limits, deadline.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new SourceControlSecurityException(SourceControlErrorCode.TimedOut);
+        }
+    }
+
     private static string FindModelBlob(byte[] tree, string requestedPath)
     {
         string? objectId = null;

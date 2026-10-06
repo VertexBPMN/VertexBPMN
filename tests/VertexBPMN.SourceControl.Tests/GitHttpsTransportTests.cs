@@ -217,6 +217,75 @@ public sealed class GitHttpsTransportTests
         Assert.Equal(bytes, await fixture.GitAsync([repository, "cat-file", "blob", commit.Value + ":models/example.bpmn"]));
     }
 
+    [Fact]
+    public async Task Model_tree_pages_are_revision_bound_ordered_and_quota_limited()
+    {
+        await using var fixture = await HttpsFixture.CreateAsync();
+        using var lease = new GitHubTokenLease(fixture.Token, DateTimeOffset.UtcNow.AddMinutes(2));
+        var token = TestContext.Current.CancellationToken;
+        await fixture.Runner.FetchLocalAcceptanceAsync(fixture.Workspace, fixture.Remote, "master", lease, fixture.CaFile, token);
+        var repository = "--git-dir=" + Path.Combine(fixture.Workspace.Directory, "repository.git");
+        var basis = new GitCommitId(Encoding.UTF8.GetString(await fixture.GitAsync([repository, "rev-parse", "refs/heads/vertex-source"])).Trim());
+        var binding = new RepositoryBinding(Guid.NewGuid(), "test", fixture.Remote, null, "master", "release", ["models"]);
+        var session = Guid.NewGuid();
+        var snapshots = new[] { "models/z.bpmn", "models/a.bpmn", "models/nested/b.bpmn" }
+            .Select(path => new ModelSnapshot(path, SourceModelKind.Bpmn, Guid.NewGuid(), 1, fixture.ModelBytes)).ToArray();
+        var command = new CommitCommand(Guid.NewGuid(), new SourceControlIdempotencyKey("tree-pages"), session,
+            basis, SourceControlInputPolicy.WorkBranch(session), "Tree pages", snapshots);
+        var commit = await fixture.Runner.BuildCommitAsync(fixture.Workspace, binding, command, DateTimeOffset.UtcNow, token);
+        var request = new TreeRequest(commit, "models", 2, null);
+        var first = await fixture.Runner.ListModelsAsync(fixture.Workspace, binding, request, token);
+        Assert.Equal(new[] { "models/a.bpmn", "models/example.bpmn" }, first.Items.Select(file => file.Path));
+        Assert.All(first.Items, file => Assert.Equal(fixture.ModelBytes.Length, file.ByteLength));
+        Assert.NotNull(first.NextCursor);
+        var second = await fixture.Runner.ListModelsAsync(fixture.Workspace, binding, request with { Cursor = first.NextCursor }, token);
+        Assert.Equal(new[] { "models/nested/b.bpmn", "models/z.bpmn" }, second.Items.Select(file => file.Path));
+        Assert.Null(second.NextCursor);
+        var original = await fixture.Runner.ListModelsAsync(fixture.Workspace, binding, request with { Commit = basis }, token);
+        Assert.Equal("models/example.bpmn", Assert.Single(original.Items).Path);
+        foreach (var invalid in new[]
+        {
+            request with { Cursor = first.NextCursor, Commit = basis },
+            request with { Cursor = "invalid" },
+            request with { PageSize = 0 },
+            request with { PageSize = 101 },
+            request with { Root = "../models" },
+            request with { Root = "other" }
+        })
+        {
+            var error = await Assert.ThrowsAsync<SourceControlSecurityException>(() =>
+                fixture.Runner.ListModelsAsync(fixture.Workspace, binding, invalid, token));
+            Assert.Equal(SourceControlErrorCode.InvalidInput, error.Code);
+        }
+        var limited = new ControlledGitProcess(Options.Create(new SourceControlOptions
+        {
+            Enabled = true, GitExecutablePath = Environment.GetEnvironmentVariable("VERTEXBPMN_TEST_GIT"),
+            Limits = new() { MaxModelFiles = 2 }
+        }));
+        var quota = await Assert.ThrowsAsync<SourceControlSecurityException>(() =>
+            limited.ListModelsAsync(fixture.Workspace, binding, request, token));
+        Assert.Equal(SourceControlErrorCode.PayloadTooLarge, quota.Code);
+    }
+
+    [Fact]
+    public async Task Model_tree_rejects_link_entries_in_allowed_roots()
+    {
+        await using var fixture = await HttpsFixture.CreateAsync(hostile: true);
+        using var lease = new GitHubTokenLease(fixture.Token, DateTimeOffset.UtcNow.AddMinutes(2));
+        var token = TestContext.Current.CancellationToken;
+        await fixture.Runner.FetchLocalAcceptanceAsync(fixture.Workspace, fixture.Remote, "master", lease, fixture.CaFile, token);
+        var repository = "--git-dir=" + Path.Combine(fixture.Workspace.Directory, "repository.git");
+        var commit = new GitCommitId(Encoding.UTF8.GetString(await fixture.GitAsync([repository, "rev-parse", "refs/heads/vertex-source"])).Trim());
+        foreach (var root in new[] { "models", "modules" })
+        {
+            var binding = new RepositoryBinding(Guid.NewGuid(), "test", fixture.Remote, null, "master", "release", [root]);
+            var error = await Assert.ThrowsAsync<SourceControlSecurityException>(() =>
+                fixture.Runner.ListModelsAsync(fixture.Workspace, binding, new(commit, root, 10, null), token));
+            Assert.Equal(SourceControlErrorCode.ContentUnsafe, error.Code);
+        }
+        Assert.False(File.Exists(fixture.ExecutionMarker));
+    }
+
     private sealed class HttpsFixture : IAsyncDisposable
     {
         private readonly string _root = Path.Combine(Path.GetTempPath(), "vertex-git-https-" + Guid.NewGuid().ToString("N"));

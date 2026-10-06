@@ -7,6 +7,11 @@ mit Originalbytes, Größenlimit, Pfad-/Modusprüfung und deaktivierten Git-Repl
 Dies ist noch kein registrierter Produktprovider oder HTTP-/Studio-Pfad.
 Prüfergebnisse und offene Grenzen: [G04-Modelllesen](2026-10-06_Git-G04_Revisionsgebundenes-Modelllesen.md).
 
+Folgepaket auf `a9d16c8`: revisionsgebundene, sortierte und paginierte BPMN-Dateiliste
+mit Repository-/Commit-/Root-gebundenem Cursor und Quotenprüfung implementiert.
+Noch kein produktiver Provider-/API-/Studio-Anschluss; Bericht:
+[G04-Dateiliste](2026-10-06_Git-G04_Revisionsgebundene-Dateiliste.md).
+
 Aktueller G03-Folgestand nach `a5ecdce`: [Claimed-Runner und Abnahme](2026-10-06_Git-G03_Claimed-Runner-und-Abnahme.md). Endliche Commit-Ausführung, separate DB-Scopes für Erstverlängerung/Heartbeat/Fehlerabschluss und dauerhafter Ergebnisabgleich verbunden. Abschlussrennen zwischen DB-Erfolg und Heartbeat anhand des gefenceten Commitbelegs korrigiert; Assertions erhalten. G03 bleibt wegen automatischem Dispatch/Identitätsauflösung, Prozessneustart, weiterer Write-Reconciliation und späterer Provenienz offen. SQL Server weiterhin ausdrücklich ungeprüft.
 
 Folgepaket nach `c98dea9`: `SourceControlLeaseRunner` ergänzt einen begrenzten Heartbeat für einzelne Claims. Leaseverlust oder Verlängerungsfehler lösen Cancellation aus; unbekannte Write-Ergebnisse werden nicht als Erfolg gemeldet. Keine automatische Worker-Aktivierung: Der Host muss separate DbContexts für Heartbeat/Ausführung sowie eine vertrauenswürdige Actor-/Tenant-/Aktivstatus-/Rollenauflösung liefern. `IIdentityService.UserInfo` enthält weder Aktivstatus noch Rollen; lokale `User`-Daten allein beweisen keine aktuelle externe OIDC-Berechtigung. Tests und verbleibende Grenzen im Commit-/Reconciliation-Bericht.

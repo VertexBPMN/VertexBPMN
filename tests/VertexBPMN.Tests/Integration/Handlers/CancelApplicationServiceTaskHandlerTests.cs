@@ -9,9 +9,8 @@ public class CancelApplicationServiceTaskHandlerTests
     public async Task ExecuteAsync_ShouldCancelApplicationSuccessfully()
     {
         // Arrange
-        List<LogLevel> logLevels = new List<LogLevel>();
-        List<string> logMessages = new List<string>();
         var loggerMock = new Mock<ILogger<CancelApplicationServiceTaskHandler>>();
+        loggerMock.Setup(logger => logger.IsEnabled(LogLevel.Information)).Returns(true);
 
         var handler = new CancelApplicationServiceTaskHandler(loggerMock.Object);
         var variables = new Dictionary<string, object>

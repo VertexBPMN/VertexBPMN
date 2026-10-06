@@ -27,9 +27,30 @@ public class McpClientTests
                     Encoding.UTF8,
                     "application/json")
             });
-        var client = new McpClient.McpClient("http://localhost:5000", new HttpClient(handler.Object));
+        using var httpClient = new HttpClient(handler.Object);
+        using var client = new McpClient.McpClient(new Uri("http://localhost:5000"), httpClient);
         var token = "<JWT-Token>"; // Test-Token einfügen
-        var result = await client.CallJsonRpcAsync("bpmn.listProcesses", null, token);
-        Assert.Contains("invoice", result.ToString());
+        var result = await client.CallJsonRpcAsync("bpmn.listProcesses", null, token, TestContext.Current.CancellationToken);
+        Assert.Contains("invoice", result.ToString(), StringComparison.Ordinal);
+        Assert.Equal("invoice", result.GetProperty("result")[0].GetProperty("key").GetString());
+    }
+
+    [Fact]
+    public async Task DisposingMcpClient_DoesNotDisposeInjectedHttpClient()
+    {
+        var handler = new Mock<HttpMessageHandler>();
+        handler.Protected().Setup<Task<HttpResponseMessage>>("SendAsync",
+            ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(() => new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{}", Encoding.UTF8, "application/json")
+            });
+        using var httpClient = new HttpClient(handler.Object);
+        using (var client = new McpClient.McpClient(new Uri("https://example.org"), httpClient))
+        {
+            await client.CallJsonRpcAsync("test", cancellationToken: TestContext.Current.CancellationToken);
+        }
+        using var response = await httpClient.GetAsync(new Uri("https://example.org"), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 }

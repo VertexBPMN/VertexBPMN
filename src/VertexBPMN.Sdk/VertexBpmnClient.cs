@@ -7,12 +7,13 @@ namespace VertexBPMN.Sdk;
 
 public sealed class VertexBpmnClient
 {
-    private static readonly JsonSerializerOptions JsonOptions;
+    private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
 
-    static VertexBpmnClient()
+    private static JsonSerializerOptions CreateJsonOptions()
     {
-        JsonOptions = new(JsonSerializerDefaults.Web);
-        JsonOptions.Converters.Add(new JsonStringEnumConverter());
+        var jsonOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        jsonOptions.Converters.Add(new JsonStringEnumConverter());
+        return jsonOptions;
     }
     private readonly HttpClient httpClient;
     private readonly VertexBpmnClientOptions options;
@@ -139,8 +140,8 @@ public sealed class VertexBpmnClient
             HttpMethod.Post,
             $"api/triggers/{triggerId}/invoke",
             new InvokeWorkflowTriggerRequest(variables, businessKey),
-            cancellationToken,
-            secret);
+            secret,
+            cancellationToken);
     }
 
     public async Task<IReadOnlyList<UserTask>> ListTasksAsync(
@@ -246,24 +247,18 @@ public sealed class VertexBpmnClient
         => await SendForNullableAsync<T>(method, uri, null, cancellationToken);
 
     private async Task<T?> SendForNullableAsync<T>(HttpMethod method, string uri, object? body, CancellationToken cancellationToken)
-        => await SendForNullableAsync<T>(method, uri, body, cancellationToken, null);
+        => await SendForNullableAsync<T>(method, uri, body, null, cancellationToken);
 
-    private async Task<T?> SendForNullableAsync<T>(HttpMethod method, string uri, object? body, CancellationToken cancellationToken, string? triggerSecret)
+    private async Task<T?> SendForNullableAsync<T>(HttpMethod method, string uri, object? body, string? triggerSecret, CancellationToken cancellationToken)
     {
         using var request = CreateRequest(method, uri, body, triggerSecret);
         using var response = await httpClient.SendAsync(request, cancellationToken);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
-            return default;
+		{
+			return default;
+		}
 
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken);
-    }
-
-    private async Task<T?> SendAsync<T>(HttpMethod method, string uri, object body, CancellationToken cancellationToken)
-    {
-        using var request = CreateRequest(method, uri, body);
-        using var response = await httpClient.SendAsync(request, cancellationToken);
-        response.EnsureSuccessStatusCode();
+		response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken);
     }
 
@@ -286,14 +281,26 @@ public sealed class VertexBpmnClient
     {
         var request = new HttpRequestMessage(method, uri);
         if (!string.IsNullOrWhiteSpace(options.BearerToken))
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", options.BearerToken);
-        if (!string.IsNullOrWhiteSpace(options.ApiKey))
-            request.Headers.Add("X-API-Key", options.ApiKey);
-        if (!string.IsNullOrWhiteSpace(triggerSecret))
-            request.Headers.Add("X-VertexBPMN-Trigger-Secret", triggerSecret);
-        if (body is not null)
-            request.Content = JsonContent.Create(body, options: JsonOptions);
-        return request;
+		{
+			request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", options.BearerToken);
+		}
+
+		if (!string.IsNullOrWhiteSpace(options.ApiKey))
+		{
+			request.Headers.Add("X-API-Key", options.ApiKey);
+		}
+
+		if (!string.IsNullOrWhiteSpace(triggerSecret))
+		{
+			request.Headers.Add("X-VertexBPMN-Trigger-Secret", triggerSecret);
+		}
+
+		if (body is not null)
+		{
+			request.Content = JsonContent.Create(body, options: JsonOptions);
+		}
+
+		return request;
     }
 
     private static string BuildUri(string path, params (string Name, string? Value)[] query)

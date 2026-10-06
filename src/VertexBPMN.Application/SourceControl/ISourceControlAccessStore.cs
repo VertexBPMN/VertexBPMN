@@ -2,10 +2,7 @@ using VertexBPMN.SourceControl.Abstractions;
 
 namespace VertexBPMN.Application.SourceControl;
 
-public sealed record RepositoryAccessSnapshot(RepositoryBinding Binding, long Revision,
-    IReadOnlyList<RepositoryGrant> Grants);
-
 public interface ISourceControlAccessStore
 {
-    Task<RepositoryAccessSnapshot?> FindAsync(string tenantId, Guid repositoryId, CancellationToken cancellationToken);
+	Task<RepositoryAccessSnapshot?> FindAsync(string tenantId, Guid repositoryId, CancellationToken cancellationToken);
 }

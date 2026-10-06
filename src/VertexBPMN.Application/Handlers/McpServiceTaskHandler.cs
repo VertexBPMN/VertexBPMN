@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using OpenTelemetry.Trace;
@@ -10,87 +10,97 @@ namespace VertexBPMN.Application.Handlers;
 
 public class McpServiceTaskHandler : IServiceTaskHandler
 {
-    private readonly HttpClient _httpClient;
-    private readonly ILogger<McpServiceTaskHandler> _logger;
-    private readonly Tracer _tracer;
+	private readonly HttpClient _httpClient;
+	private readonly ILogger<McpServiceTaskHandler> _logger;
+	private readonly Tracer _tracer;
 
-    public McpServiceTaskHandler(HttpClient httpClient, ILogger<McpServiceTaskHandler> logger, TracerProvider tracerProvider)
-    {
-        _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _tracer = tracerProvider.GetTracer("VertexBPMN");
-    }
+	public McpServiceTaskHandler(HttpClient httpClient, ILogger<McpServiceTaskHandler> logger, TracerProvider tracerProvider)
+	{
+		_httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+		_logger = logger ?? throw new ArgumentNullException(nameof(logger));
+		_tracer = tracerProvider.GetTracer("VertexBPMN");
+	}
 
-    public async Task ExecuteAsync(IDictionary<string, string> attributes, IDictionary<string, object> variables, CancellationToken ct = default)
-    {
-        using var span = _tracer.StartActiveSpan("McpServiceTask");
-        span.SetAttribute("mcpMethod", attributes.TryGetValue("mcpMethod", out var mcpMethodAttr) ? mcpMethodAttr : "unknown");
-        span.SetAttribute("mcpServerUrl", attributes.TryGetValue("mcpServerUrl", out var mcpServerUrlAttr) ? mcpServerUrlAttr : "unknown");
+	public async Task ExecuteAsync(IDictionary<string, string> attributes, IDictionary<string, object> variables, CancellationToken ct = default)
+	{
+		using var span = _tracer.StartActiveSpan("McpServiceTask");
+		span.SetAttribute("mcpMethod", attributes.TryGetValue("mcpMethod", out var mcpMethodAttr) ? mcpMethodAttr : "unknown");
+		span.SetAttribute("mcpServerUrl", attributes.TryGetValue("mcpServerUrl", out var mcpServerUrlAttr) ? mcpServerUrlAttr : "unknown");
 
-        try
-        {
-            // Erforderliche Attribute aus BPMN-Definition
-            if (!attributes.TryGetValue("mcpServerUrl", out var mcpServerUrl) || string.IsNullOrEmpty(mcpServerUrl))
-                throw new DistributedTokenException("MCP ServiceTask requires 'mcpServerUrl' attribute");
-            if (!attributes.TryGetValue("mcpMethod", out var mcpMethod) || string.IsNullOrEmpty(mcpMethod))
-                throw new DistributedTokenException("MCP ServiceTask requires 'mcpMethod' attribute");
+		try
+		{
+			// Erforderliche Attribute aus BPMN-Definition
+			if (!attributes.TryGetValue("mcpServerUrl", out var mcpServerUrl) || string.IsNullOrEmpty(mcpServerUrl))
+			{
+				throw new DistributedTokenException("MCP ServiceTask requires 'mcpServerUrl' attribute");
+			}
 
-            // Parameter aus Prozessvariablen oder Attributen
-            var mcpParams = new Dictionary<string, object>();
-            if (attributes.TryGetValue("mcpParams", out var paramsJson))
-            {
-                mcpParams = JsonSerializer.Deserialize<Dictionary<string, object>>(paramsJson)
-                    ?? throw new DistributedTokenException("Invalid 'mcpParams' format");
-            }
-            foreach (var variable in variables)
-            {
-                mcpParams[variable.Key] = variable.Value;
-            }
+			if (!attributes.TryGetValue("mcpMethod", out var mcpMethod) || string.IsNullOrEmpty(mcpMethod))
+			{
+				throw new DistributedTokenException("MCP ServiceTask requires 'mcpMethod' attribute");
+			}
 
-            // JSON-RPC 2.0-Anfrage
-            var request = new
-            {
-                jsonrpc = "2.0",
-                method = mcpMethod,
-                @params = mcpParams,
-                id = Guid.NewGuid().ToString()
-            };
-            var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
-            var response = await _httpClient.PostAsync(mcpServerUrl, content, ct);
-            response.EnsureSuccessStatusCode();
+			// Parameter aus Prozessvariablen oder Attributen
+			var mcpParams = new Dictionary<string, object>(StringComparer.Ordinal);
+			if (attributes.TryGetValue("mcpParams", out var paramsJson))
+			{
+				mcpParams = JsonSerializer.Deserialize<Dictionary<string, object>>(paramsJson)
+					?? throw new DistributedTokenException("Invalid 'mcpParams' format");
+			}
+			foreach (var variable in variables)
+			{
+				mcpParams[variable.Key] = variable.Value;
+			}
 
-            var responseContent = await response.Content.ReadAsStringAsync(ct);
-            var jsonResponse = JsonSerializer.Deserialize<JsonRpcResponse>(responseContent)
-                ?? throw new DistributedTokenException("Invalid MCP response");
+			// JSON-RPC 2.0-Anfrage
+			var request = new
+			{
+				jsonrpc = "2.0",
+				method = mcpMethod,
+				@params = mcpParams,
+				id = Guid.NewGuid().ToString()
+			};
+			var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
+			var response = await _httpClient.PostAsync(mcpServerUrl, content, ct);
+			response.EnsureSuccessStatusCode();
 
-            if (jsonResponse.Error != null)
-                throw new DistributedTokenException($"MCP error: {jsonResponse.Error.Message}");
+			var responseContent = await response.Content.ReadAsStringAsync(ct);
+			var jsonResponse = JsonSerializer.Deserialize<JsonRpcResponse>(responseContent)
+				?? throw new DistributedTokenException("Invalid MCP response");
 
-            // Ergebnisse in Prozessvariablen speichern
-            if (jsonResponse.Result != null)
-            {
-                var result = JsonSerializer.Deserialize<Dictionary<string, object>>(jsonResponse.Result.ToString() ?? "{}");
-                if (result != null)
-                {
-                    foreach (var kvp in result)
-                    {
-                        variables[kvp.Key] = kvp.Value;
-                    }
-                }
-            }
+			if (jsonResponse.Error != null)
+			{
+				throw new DistributedTokenException($"MCP error: {jsonResponse.Error.Message}");
+			}
 
-            _logger.LogInformation("Executed MCP ServiceTask {McpMethod} on {McpServerUrl}", mcpMethod, mcpServerUrl);
-            span.SetStatus(Status.Ok);
-        }
-        catch (Exception ex)
-        {
-            span.SetStatus(Status.Error.WithDescription(ex.Message));
-            _logger.LogError(ex, "Failed to execute MCP ServiceTask {McpMethod} on {McpServerUrl}",
-                attributes.TryGetValue("mcpMethod", out var mcpMethodLog) ? mcpMethodLog : "unknown",
-                attributes.TryGetValue("mcpServerUrl", out var mcpServerUrlLog) ? mcpServerUrlLog : "unknown");
-            throw new DistributedTokenException($"Failed to execute MCP ServiceTask: {ex.Message}", ex);
-        }
-    }
+			// Ergebnisse in Prozessvariablen speichern
+			if (jsonResponse.Result != null)
+			{
+				var result = JsonSerializer.Deserialize<Dictionary<string, object>>(jsonResponse.Result.ToString() ?? "{}");
+				if (result != null)
+				{
+					foreach (var kvp in result)
+					{
+						variables[kvp.Key] = kvp.Value;
+					}
+				}
+			}
+
+			if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
+			{
+				_logger.LogInformation("Executed MCP ServiceTask {McpMethod} on {McpServerUrl}", mcpMethod, mcpServerUrl);
+			}
+			span.SetStatus(Status.Ok);
+		}
+		catch (Exception ex)
+		{
+			span.SetStatus(Status.Error.WithDescription(ex.Message));
+			_logger.LogError(ex, "Failed to execute MCP ServiceTask {McpMethod} on {McpServerUrl}",
+				attributes.TryGetValue("mcpMethod", out var mcpMethodLog) ? mcpMethodLog : "unknown",
+				attributes.TryGetValue("mcpServerUrl", out var mcpServerUrlLog) ? mcpServerUrlLog : "unknown");
+			throw new DistributedTokenException($"Failed to execute MCP ServiceTask: {ex.Message}", ex);
+		}
+	}
 }
 
 //public class McpServiceTaskHandler

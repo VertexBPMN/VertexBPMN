@@ -11,8 +11,12 @@ public sealed class LocalOidcBackchannelHandler : DelegatingHandler
 
     public static void Validate(string? backchannelAuthority, string? publicAuthority, bool isOidcTest)
     {
-        if (string.IsNullOrWhiteSpace(backchannelAuthority)) return;
-        if (!isOidcTest
+        if (string.IsNullOrWhiteSpace(backchannelAuthority))
+		{
+			return;
+		}
+
+		if (!isOidcTest
             || !Uri.TryCreate(publicAuthority, UriKind.Absolute, out var external)
             || external.Scheme != Uri.UriSchemeHttp || !external.IsLoopback
             || !Uri.TryCreate(backchannelAuthority, UriKind.Absolute, out var internalUri)
@@ -21,8 +25,10 @@ public sealed class LocalOidcBackchannelHandler : DelegatingHandler
             || external.AbsolutePath.TrimEnd('/') != "/realms/vertexbpmn"
             || !string.IsNullOrEmpty(internalUri.UserInfo + internalUri.Query + internalUri.Fragment)
             || !string.IsNullOrEmpty(external.UserInfo + external.Query + external.Fragment))
-            throw new InvalidOperationException("OIDC BackchannelAuthority is supported only in OidcTest from an HTTP loopback vertexbpmn realm to http://keycloak:8080/realms/vertexbpmn.");
-    }
+		{
+			throw new InvalidOperationException("OIDC BackchannelAuthority is supported only in OidcTest from an HTTP loopback vertexbpmn realm to http://keycloak:8080/realms/vertexbpmn.");
+		}
+	}
 
     public LocalOidcBackchannelHandler(string publicAuthority, string internalAuthority, bool isOidcTest, HttpMessageHandler innerHandler)
         : base(innerHandler)

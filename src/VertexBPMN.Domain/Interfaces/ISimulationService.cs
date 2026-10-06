@@ -1,11 +1,10 @@
 using VertexBPMN.Domain.Entities;
 
-namespace VertexBPMN.Domain.Interfaces
+namespace VertexBPMN.Domain.Interfaces;
+
+public interface ISimulationService
 {
-    public interface ISimulationService
-    {
-        Task<SimulationResult> SimulateAsync(
-            SimulationRequest request,
-            CancellationToken cancellationToken = default);
-    }
+	Task<SimulationResult> SimulateAsync(
+		SimulationRequest request,
+		CancellationToken cancellationToken = default);
 }

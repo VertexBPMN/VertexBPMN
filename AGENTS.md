@@ -112,3 +112,28 @@ its implementation status on each new session. Key constraints:
 After an authorized package is complete, update its plan status with files,
 commands/results and outstanding external checks. Do not mark an entire phase
 complete when any mandatory acceptance criterion remains unverified.
+
+# Codex repository guidance
+
+## Working agreements
+
+- Before editing, inspect the existing solution/projects, README, applicable local instructions, `.editorconfig`, `global.json`, `Directory.Build.props` and CI workflows if present. Derive SDK/language versions, architecture and build/test commands from actual files; do not assume paths or versions.
+- Preserve existing architecture, public contracts and user changes. Keep diffs small and focused; no opportunistic repository-wide refactoring or new dependencies without a justified task requirement.
+- Prefer meaningful domain names, cohesive methods, existing abstractions and explicit error behavior. Use async contracts and propagate cancellation for cancellable I/O. Avoid async void except genuine required event handlers.
+- Choose collection return types by their semantics; preserve intentional lazy/async streams. Avoid unclear boolean mode switches. Do not remove interfaces solely because they have one implementation.
+- Do not weaken authentication, authorization, token validation, tenant boundaries or tests to make a build pass. Do not implement custom OAuth/OIDC/cryptographic protocols as a shortcut.
+- Do not expose secrets, rotate keys, apply database migrations, deploy, push or perform destructive Git operations unless the user specifically authorizes them.
+
+## Clean-code workflow
+
+- For explicit C# clean-code reviews, use `$dotnet-clean-code-review` from `.agents/skills/dotnet-clean-code-review/SKILL.md`.
+- After implementing or refactoring C# code, use that skill for a final review of the files changed in this task. Do not require a repository-wide sweep. Fix confirmed issues in your own changes when within the authorized implementation scope; leave unrelated user changes intact.
+- For general code/PR reviews, prioritize correctness, regressions, security and missing tests. Use the clean-code skill as a supplement, not a substitute. Review-only requests do not authorize edits.
+- If skill discovery is unavailable, read the SKILL.md at the path above and follow its workflow using available tools; report this fallback.
+
+## Verification and handoff
+
+- For implementation tasks, discover and run the relevant existing build, test and formatting verification commands. Use check-only formatting. Start with affected projects/tests, then broaden when necessary.
+- Do not install missing SDKs/tools, perform restores requiring unapproved network access, run tests against production, or bypass sandbox policy. Report blockers.
+- State exactly what changed, what was checked, the actual command results and remaining risks. Never claim tests/build succeeded if they did not run.
+- Product documentation is not proof of implementation. For feature audits, provide code/config/test evidence and distinguish implemented, partial, documented-only and not found within the inspected scope. An OIDC client or Data Protection keyring does not by itself establish an OIDC authority or signing-key rotation.

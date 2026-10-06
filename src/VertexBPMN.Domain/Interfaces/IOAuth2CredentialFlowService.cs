@@ -6,35 +6,14 @@ namespace VertexBPMN.Domain.Interfaces;
 /// </summary>
 public interface IOAuth2CredentialFlowService
 {
-    Task<OAuth2AuthorizationStart> StartAuthorizationAsync(
-        string tenantId,
-        string credentialId,
-        OAuth2AuthorizationConfig config,
-        CancellationToken cancellationToken = default,
-        OAuth2FlowBinding? binding = null);
+	Task<OAuth2AuthorizationStart> StartAuthorizationAsync(
+		string tenantId, string credentialId, OAuth2AuthorizationConfig config, OAuth2FlowBinding? binding = null, CancellationToken cancellationToken = default);
 
-    Task<bool> CompleteAuthorizationAsync(
-        string state,
-        string code,
-        CancellationToken cancellationToken = default,
-        OAuth2FlowBinding? binding = null);
+	Task<bool> CompleteAuthorizationAsync(
+		string state, string code, OAuth2FlowBinding? binding = null, CancellationToken cancellationToken = default);
 
-    Task<string?> ResolveValidAccessTokenAsync(
-        string tenantId,
-        string credentialId,
-        CancellationToken cancellationToken = default);
+	Task<string?> ResolveValidAccessTokenAsync(
+		string tenantId,
+		string credentialId,
+		CancellationToken cancellationToken = default);
 }
-
-public sealed record OAuth2AuthorizationConfig(
-    string AuthorizationUrl,
-    string TokenUrl,
-    string ClientId,
-    string RedirectUri,
-    string Scopes);
-
-public sealed record OAuth2AuthorizationStart(
-    string RedirectUrl,
-    string State);
-
-/// <summary>Identity comes from authenticated claims; browser proof is a random, per-flow secret.</summary>
-public sealed record OAuth2FlowBinding(string Subject, string BrowserProof);

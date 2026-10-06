@@ -5,6 +5,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.ML;
+using Microsoft.ML.Trainers;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Entities.ML;
 using VertexBPMN.Domain.Interfaces;
@@ -78,9 +79,9 @@ public sealed class HistoricalPredictiveAnalyticsService : IPredictiveAnalyticsS
             _models[modelKey] = model;
         }
 
-        var prediction = _mlContext.Model
-            .CreatePredictionEngine<DurationFeatures, DurationPredictionOutput>(model.Model)
-            .Predict(new DurationFeatures
+        using var predictionEngine = _mlContext.Model
+            .CreatePredictionEngine<DurationFeatures, DurationPredictionOutput>(model.Model);
+        var prediction = predictionEngine.Predict(new DurationFeatures
             {
                 VariableCount = variables?.Count ?? 0,
                 StartHour = DateTimeOffset.UtcNow.Hour,
@@ -295,9 +296,15 @@ public sealed class HistoricalPredictiveAnalyticsService : IPredictiveAnalyticsS
                 nameof(DurationFeatures.StartHour),
                 nameof(DurationFeatures.StartDayOfWeek),
                 nameof(DurationFeatures.ActivityCount))
-            .Append(_mlContext.Regression.Trainers.Sdca(
-                labelColumnName: nameof(DurationFeatures.Label),
-                featureColumnName: "Features"));
+            .Append(_mlContext.Regression.Trainers.Sdca(new SdcaRegressionTrainer.Options
+            {
+                LabelColumnName = nameof(DurationFeatures.Label),
+                FeatureColumnName = "Features",
+                // On-demand training runs inside a request. ML.NET's CPU-count default
+                // oversubscribes large hosts, especially for very small training sets.
+                NumberOfThreads = 1,
+                MaximumNumberOfIterations = 100
+            }));
         var model = pipeline.Fit(data);
         var metrics = _mlContext.Regression.Evaluate(
             model.Transform(data),

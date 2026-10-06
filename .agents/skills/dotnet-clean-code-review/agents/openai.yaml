@@ -1,0 +1,6 @@
+interface:
+  display_name: ".NET Clean Code Review"
+  short_description: "Evidence-based C# maintainability review"
+  default_prompt: "Use $dotnet-clean-code-review to review my C# changes. Report all eight rules with file and line evidence; do not edit source."
+policy:
+  allow_implicit_invocation: true

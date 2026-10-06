@@ -1,10 +1,9 @@
-namespace VertexBPMN.Domain.Entities
+namespace VertexBPMN.Domain.Entities;
+
+public class ProcessMigrationPlan
 {
-    public class ProcessMigrationPlan
-    {
-        public string SourceProcessDefinitionId { get; set; }
-        public string TargetProcessDefinitionId { get; set; }
-        public Guid? QualifiedPlanId { get; set; }
-        public Dictionary<string, string> ActivityMappings { get; set; } = new(); // oldActivityId -> newActivityId
-    }
+	public string SourceProcessDefinitionId { get; set; } = string.Empty;
+	public string TargetProcessDefinitionId { get; set; } = string.Empty;
+	public Guid? QualifiedPlanId { get; set; }
+	public Dictionary<string, string> ActivityMappings { get; set; } = new(StringComparer.Ordinal); // oldActivityId -> newActivityId
 }

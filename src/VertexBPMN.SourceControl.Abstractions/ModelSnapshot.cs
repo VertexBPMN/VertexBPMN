@@ -2,8 +2,6 @@ using System.Security.Cryptography;
 
 namespace VertexBPMN.SourceControl.Abstractions;
 
-public enum SourceModelKind { Bpmn, Dmn, Cmmn, Form }
-
 /// <summary>
 /// Immutable bytes captured for one document generation/revision. The host still validates
 /// the repository path, content policy, size and tenant rights before storing or executing it.
@@ -23,11 +21,23 @@ public sealed class ModelSnapshot
         long localRevision, ReadOnlySpan<byte> content)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        if (!Enum.IsDefined(kind)) throw new ArgumentOutOfRangeException(nameof(kind));
-        if (documentGeneration == Guid.Empty) throw new ArgumentException("Document generation is required.", nameof(documentGeneration));
-        ArgumentOutOfRangeException.ThrowIfNegative(localRevision);
-        if (content.IsEmpty) throw new ArgumentException("Model bytes are required.", nameof(content));
-        Path = path;
+        if (!Enum.IsDefined(kind))
+		{
+			throw new ArgumentOutOfRangeException(nameof(kind));
+		}
+
+		if (documentGeneration == Guid.Empty)
+		{
+			throw new ArgumentException("Document generation is required.", nameof(documentGeneration));
+		}
+
+		ArgumentOutOfRangeException.ThrowIfNegative(localRevision);
+        if (content.IsEmpty)
+		{
+			throw new ArgumentException("Model bytes are required.", nameof(content));
+		}
+
+		Path = path;
         Kind = kind;
         DocumentGeneration = documentGeneration;
         LocalRevision = localRevision;

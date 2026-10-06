@@ -10,7 +10,7 @@ namespace VertexBPMN.Tests.Unit.Api;
 
 public sealed class HistoricalPredictiveAnalyticsServiceTests
 {
-    [Fact]
+    [Fact(Timeout = 30_000)]
     public async Task PredictDuration_UsesCompletedHistoricalInstancesForCurrentTenant()
     {
         await using var db = CreateContext();
@@ -38,6 +38,33 @@ public sealed class HistoricalPredictiveAnalyticsServiceTests
         Assert.InRange(prediction.EstimatedDurationMinutes, 0.1f, 60f);
         Assert.InRange(prediction.ConfidenceScore, 0.1f, 0.95f);
         Assert.Contains("2 completed historical instances", prediction.InfluencingFactors);
+    }
+
+    [Fact(Timeout = 30_000)]
+    public async Task PredictDuration_TrainsRegressionForThreeSamples()
+    {
+        await using var db = CreateContext();
+        var started = DateTimeOffset.UtcNow.AddHours(-2);
+        for (var index = 1; index <= 3; index++)
+        {
+            var variables = Enumerable.Range(1, index).ToDictionary(
+                number => $"variable-{number}", number => (object)number, StringComparer.Ordinal);
+            var payload = System.Text.Json.JsonSerializer.Serialize(new { processDefinitionKey = "invoice", variables });
+            db.Events.AddRange(
+                Event("tenant-a", $"regression-{index}", "ProcessStarted", started, payload),
+                Event("tenant-a", $"regression-{index}", "ProcessEnded", started.AddMinutes(index * 10), payload));
+        }
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        var prediction = await CreateService(db, "tenant-a").PredictProcessDurationAsync(
+            "invoice", new Dictionary<string, object> { ["amount"] = 50, ["priority"] = "high" });
+
+        Assert.True(float.IsFinite(prediction.EstimatedDurationMinutes));
+        Assert.True(prediction.EstimatedDurationMinutes > 0);
+        Assert.InRange(prediction.ConfidenceScore, 0.1f, 0.95f);
+        Assert.Contains("3 completed historical instances", prediction.InfluencingFactors);
+        Assert.True(prediction.MinDuration <= prediction.EstimatedDurationMinutes);
+        Assert.True(prediction.MaxDuration >= prediction.EstimatedDurationMinutes);
     }
 
     [Fact]

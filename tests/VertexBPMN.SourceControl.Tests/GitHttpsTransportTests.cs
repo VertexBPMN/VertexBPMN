@@ -20,6 +20,51 @@ namespace VertexBPMN.SourceControl.Tests;
 public sealed class GitHttpsTransportTests
 {
     [Fact]
+    public async Task Snapshot_diff_uses_pinned_bytes_without_filters_refs_or_runtime_changes()
+    {
+        await using var fixture = await HttpsFixture.CreateAsync(hostile: true);
+        using var lease = new GitHubTokenLease(fixture.Token, DateTimeOffset.UtcNow.AddMinutes(2));
+        var token = TestContext.Current.CancellationToken;
+        await fixture.Runner.FetchLocalAcceptanceAsync(fixture.Workspace, fixture.Remote, "master", lease, fixture.CaFile, token);
+        var repository = "--git-dir=" + Path.Combine(fixture.Workspace.Directory, "repository.git");
+        var basis = new GitCommitId(Encoding.UTF8.GetString(await fixture.GitAsync([repository, "rev-parse", "refs/heads/vertex-source"])).Trim());
+        var binding = new RepositoryBinding(Guid.NewGuid(), "test", fixture.Remote, null, "master", "release", ["models"]);
+        var original = new ModelSnapshot("models/example.bpmn", SourceModelKind.Bpmn, Guid.NewGuid(), 1, fixture.ModelBytes);
+        var unchanged = await fixture.Runner.CompareModelAsync(fixture.Workspace, binding, new DiffRequest(basis, original), token);
+        Assert.Empty(unchanged.UnifiedText);
+        Assert.False(unchanged.Truncated);
+        var changed = new ModelSnapshot(original.Path, SourceModelKind.Bpmn, original.DocumentGeneration, 2,
+            Encoding.UTF8.GetBytes("<definitions xmlns=\"http://www.omg.org/spec/BPMN/20100524/MODEL\">\n<process id=\"diff_updated\"/>\n</definitions>\n"));
+        var diff = await fixture.Runner.CompareModelAsync(fixture.Workspace, binding, new DiffRequest(basis, changed), token);
+        Assert.Equal(original.Path, diff.Path);
+        Assert.Contains("+<process id=\"diff_updated\"/>", diff.UnifiedText);
+        Assert.Contains("@@", diff.UnifiedText);
+        Assert.False(diff.Truncated);
+        Assert.Equal(fixture.ModelBytes, await fixture.GitAsync([repository, "show", basis.Value + ":models/example.bpmn"]));
+        Assert.Equal(basis.Value, Encoding.UTF8.GetString(await fixture.GitAsync([repository, "rev-parse", "refs/heads/vertex-source"])).Trim());
+        Assert.False(File.Exists(fixture.ExecutionMarker));
+        Assert.False(Directory.Exists(Path.Combine(fixture.Workspace.Directory, "models")));
+        var invalid = new ModelSnapshot("other/example.bpmn", SourceModelKind.Bpmn, Guid.NewGuid(), 0, changed.CopyContent());
+        Assert.Equal(SourceControlErrorCode.InvalidInput, (await Assert.ThrowsAsync<SourceControlSecurityException>(() =>
+            fixture.Runner.CompareModelAsync(fixture.Workspace, binding, new DiffRequest(basis, invalid), token))).Code);
+        var limited = new ControlledGitProcess(Options.Create(new SourceControlOptions
+        {
+            Enabled = true, GitExecutablePath = Environment.GetEnvironmentVariable("VERTEXBPMN_TEST_GIT"),
+            Limits = new() { MaxDiffBytes = 4096 }
+        }));
+        var large = new ModelSnapshot(original.Path, SourceModelKind.Bpmn, original.DocumentGeneration, 3,
+            Encoding.UTF8.GetBytes("<definitions xmlns=\"http://www.omg.org/spec/BPMN/20100524/MODEL\">\n<process id=\""
+                + new string('x', 10000) + "\"/>\n</definitions>\n"));
+        Assert.Empty((await limited.CompareModelAsync(fixture.Workspace, binding, new DiffRequest(basis, original), token)).UnifiedText);
+        Assert.Equal(SourceControlErrorCode.PayloadTooLarge, (await Assert.ThrowsAsync<SourceControlSecurityException>(() =>
+            limited.CompareModelAsync(fixture.Workspace, binding, new DiffRequest(basis, large), token))).Code);
+        using var cancelled = new CancellationTokenSource();
+        await cancelled.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            fixture.Runner.CompareModelAsync(fixture.Workspace, binding, new DiffRequest(basis, changed), cancelled.Token));
+    }
+
+    [Fact]
     public async Task Real_TLS_challenge_helper_and_fetch_preserve_exact_bytes_without_secret_artifacts()
     {
         await using var fixture = await HttpsFixture.CreateAsync();

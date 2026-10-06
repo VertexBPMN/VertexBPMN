@@ -2,6 +2,11 @@
 
 Stand: 2026-10-05. Planungsbasis: `master`, Commit `cb88bee0f83807cd0d7906a4d092807a56b49969`.
 
+Folgeauftrag auf `9db4cb8`: G03/G04 bis API/Studio weiterführen. Sicherer interner
+Snapshot-Diff ergänzt; noch kein paginierter Produkt-Diff oder Provider-/API-Anschluss.
+Aktuelle offene Identitätsentscheidung und lokale Nachweise:
+[G04-Snapshot-Diff](2026-10-06_Git-G04_Snapshot-Diff.md).
+
 Fortschritt nach `02e7a42`: G04 erhält einen internen revisionsgebundenen BPMN-Lesebaustein
 mit Originalbytes, Größenlimit, Pfad-/Modusprüfung und deaktivierten Git-Replace-Refs.
 Dies ist noch kein registrierter Produktprovider oder HTTP-/Studio-Pfad.

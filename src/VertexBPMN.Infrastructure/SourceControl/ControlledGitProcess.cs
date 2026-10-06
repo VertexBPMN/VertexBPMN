@@ -281,6 +281,45 @@ internal sealed class ControlledGitProcess(IOptions<SourceControlOptions> option
         }
     }
 
+    internal async Task<ModelDiff> CompareModelAsync(GitWorkspace workspace, RepositoryBinding binding,
+        DiffRequest request, CancellationToken cancellationToken)
+    {
+        var limits = options.Value.Limits;
+        SourceControlInputPolicy.DemandSafeBpmn(request.Snapshot, binding, limits);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(limits.ReadTimeout);
+        try
+        {
+            var basis = await ReadModelAsync(workspace, binding,
+                new FileReadRequest(request.BaseCommit, request.Snapshot.Path), request.Snapshot.DocumentGeneration, deadline.Token);
+            if (basis.CopyContent().AsSpan().SequenceEqual(request.Snapshot.CopyContent()))
+            {
+                return new ModelDiff(request.Snapshot.Path, string.Empty, false);
+            }
+            var prefix = "--git-dir=" + Path.Combine(workspace.Directory, "repository.git");
+            // Only immutable blobs are written in this isolated workspace. No index, ref,
+            // checkout, attributes, filters or runtime definition is changed by comparison.
+            async Task<string> StoreBlobAsync(byte[] content)
+            {
+                var bytes = await RunAsync(workspace, [prefix, "hash-object", "-w", "--no-filters", "--stdin"],
+                    null, limits.ReadTimeout, deadline.Token, content);
+                return new GitCommitId(System.Text.Encoding.UTF8.GetString(bytes).Trim()).Value;
+            }
+            var before = await StoreBlobAsync(basis.CopyContent());
+            var after = await StoreBlobAsync(request.Snapshot.CopyContent());
+            var patch = await RunAsync(workspace, [prefix, "diff", "--no-ext-diff", "--no-textconv",
+                "--no-color", "--no-renames", "--text", "--unified=3", before, after, "--"],
+                null, limits.ReadTimeout, deadline.Token);
+            // Oversized patches fail closed through RunAsync; never return a partial diff
+            // whose omitted changes could be mistaken for a complete review.
+            return new ModelDiff(request.Snapshot.Path, System.Text.Encoding.UTF8.GetString(patch), false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new SourceControlSecurityException(SourceControlErrorCode.TimedOut);
+        }
+    }
+
     private static string FindModelBlob(byte[] tree, string requestedPath)
     {
         string? objectId = null;

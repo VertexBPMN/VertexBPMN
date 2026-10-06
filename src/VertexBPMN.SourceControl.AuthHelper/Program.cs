@@ -17,7 +17,12 @@ try
         total += line.Length;
         if (total > 16 * 1024) return 2;
         var separator = line.IndexOf('=');
-        if (separator <= 0 || !fields.TryAdd(line[..separator], line[(separator + 1)..])) return 2;
+        if (separator <= 0) return 2;
+        var name = line[..separator];
+        // Git's credential protocol has repeatable, advisory metadata arrays.
+        // They are not identity or authorization input; never retain/echo them.
+        if (name is "capability[]" or "wwwauth[]" or "state[]") continue;
+        if (!fields.TryAdd(name, line[(separator + 1)..])) return 2;
     }
     if (!fields.TryGetValue("protocol", out var protocol) || protocol != "https"
         || !fields.TryGetValue("host", out var host) || !fields.TryGetValue("path", out var path)) return 2;

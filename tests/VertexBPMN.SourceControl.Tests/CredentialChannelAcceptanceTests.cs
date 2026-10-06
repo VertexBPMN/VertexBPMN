@@ -7,17 +7,23 @@ public sealed class CredentialChannelAcceptanceTests
 {
     [Theory]
     [InlineData("github.com", "example/models.git", 0)]
+    [InlineData("github.com", "example/models.git/", 0)]
+    [InlineData("github.com", "example/models.git/child", 2)]
+    [InlineData("github.com", "example/models.git\ncapability[]=authtype\ncapability[]=state\nwwwauth[]=Basic\nwwwauth[]=Bearer", 0)]
+    [InlineData("github.com", "example/models.git\nhost=attacker.example", 2)]
     [InlineData("attacker.example", "example/models.git", 2)]
     [InlineData("github.com", "other/models.git", 2)]
     [InlineData("github.com", "example/models.git\npassword=forged", 2)]
     public async Task Native_helper_receives_only_repository_bound_ephemeral_credential(string host, string path, int expectedExit)
     {
-        var helper = Path.Combine(AppContext.BaseDirectory, "auth-helper", "VertexBPMN.SourceControl.AuthHelper.dll");
+        var helper = Path.Combine(AppContext.BaseDirectory, "auth-helper", "VertexBPMN.SourceControl.AuthHelper" + (OperatingSystem.IsWindows() ? ".exe" : ""));
         Assert.True(File.Exists(helper), "Build must package the real helper for local acceptance.");
         using var lease = new GitHubTokenLease("local-test-not-a-real-token", DateTimeOffset.UtcNow.AddMinutes(2));
         await using var channel = new GitCredentialChannel(new Uri("https://github.com/example/models.git"), lease, TestContext.Current.CancellationToken);
-        var start = new ProcessStartInfo("dotnet") { UseShellExecute = false, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true };
-        start.ArgumentList.Add(helper);
+        var start = new ProcessStartInfo(helper) { UseShellExecute = false, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        start.Environment.Clear();
+        foreach (var name in new[] { "SystemRoot", "WINDIR" })
+            if (Environment.GetEnvironmentVariable(name) is { } value) start.Environment[name] = value;
         start.ArgumentList.Add(channel.Name);
         start.ArgumentList.Add("get");
         Assert.DoesNotContain(start.ArgumentList, x => x.Contains("local-test-not-a-real-token"));

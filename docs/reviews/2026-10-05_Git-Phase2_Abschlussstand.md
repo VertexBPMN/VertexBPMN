@@ -1,6 +1,8 @@
 # Phase 2 – Implementierung und verbleibende Pflichtabnahmen
 
-Stand: 2026-10-05; Branch `codex/git-source-control-phase-1`, Basiscommit `4c30df17d7d819ab50c776cf326f12556d54e77d`. Änderungen nicht committed/published. **Kein vollständiger Phase-2-Abschluss behauptet.**
+Stand: 2026-10-05; Branch `codex/git-source-control-phase-1`, Basiscommit `4c30df17d7d819ab50c776cf326f12556d54e77d`. Der ursprünglich unten dokumentierte Teilstand wurde als `59c131d` committed und gepusht. Nachfolgende Änderungen noch nicht committed/published. **Kein vollständiger Phase-2-Abschluss behauptet.**
+
+Aktualisierung: SQL Server wird auf ausdrücklichen Nutzerwunsch nicht getestet; kein Container und keine weitere Zugangsdatenanforderung. Das ist keine bestandene SQL-Server-Abnahme. Maintenance-Host, Crash-Erkennung/Fencing und sicherer Terminal-Workspace-Cleanup unter SQLite einschließlich echtem Hoststart geprüft; siehe [G03-Maintenance](2026-10-05_Git-G03_Maintenance.md). Der zuvor fehlgeschlagene echte HTTPS-Git-Gesamttest ist inzwischen behoben: lokale Adapter-Suite mit TLS/Helper, Hooks/Filter/Gitlink und laufendem Timeout/Cancel **62/62 bestanden**. Typisierte Commit-Annahme mit bestätigtem Snapshot ergänzt: [aktueller Transport-/Annahmebericht](2026-10-05_Git-G02_Transport-und-G03_Annahme.md). Die folgenden älteren Zahlen sind historische Teilnachweise, nicht die aktuelle Gesamtauswahl.
 
 ## Implementierte Ergänzungen
 
@@ -38,9 +40,9 @@ dotnet test tests/VertexBPMN.SourceControl.Tests/VertexBPMN.SourceControl.Tests.
 
 ## Warum Phase 2 noch nicht als vollständig abgenommen gilt
 
-1. SQL-Server-Migration/Upgrade real nicht geprüft; weder Dienst noch Image noch Testverbindung vorhanden. Nutzer nach isolierter Verbindung oder zusätzlichem WSLC-Testaufbau gefragt. SQLite und PostgreSQL sind nachgewiesen, SQL Server ist nicht automatisch mitbewiesen.
-2. Vollständiger Git-Fetch mit tatsächlichem TLS/Helper-Zusammenspiel sowie Hooks-/Filter-/Submodule-Angriffsfälle und laufender Timeout/Prozessbaumabbruch noch nicht vollständig ausgeführt. Bare-Init und Helper getrennt bestanden sind kein Gesamttransportnachweis.
-3. Recovery-/Cleanup-Hostorchestrierung und typisierte kanonische Annahme-/Reconciliation-Verträge fehlen noch. Die gespeicherten Inputs/Results und Claims sind reale Basis, aber keine bereits funktionierende Recovery-Schleife. Erwartete Git-IDs/Hashes müssen am G04-Adapter verglichen werden; `ResultUnknown` darf niemals blind erneut schreiben.
+1. SQL-Server-Migration/Upgrade real nicht geprüft; Nutzer hat diese Abnahme ausdrücklich aus dem laufenden Auftrag ausgenommen. Keine weitere Verbindung anfordern oder Infrastruktur bereitstellen. SQLite und PostgreSQL sind nachgewiesen, SQL Server ist nicht automatisch mitbewiesen.
+2. Der lokale echte TLS-/Helper-Fetch einschließlich Hooks-/Filter-/Gitlinkfällen und laufendem Timeout/Abbruch ist jetzt nachgewiesen. Linux- und reale GitHub-App-/Remotequalifikation bleiben offen; lokal bestanden heißt nicht live GitHub abgenommen.
+3. Maintenance-Host mit Crash-Erkennung/Fencing und sicherem Cleanup sowie typisierte Commit-Annahme sind inzwischen angeschlossen und geprüft. Weitere typisierte Write-Annahmepfade und der externe Effektabgleich fehlen weiterhin. Erwartete Git-IDs/Hashes müssen am G04-Adapter verglichen werden; `ResultUnknown` darf niemals blind erneut schreiben. Die Wartung erkennt Unsicherheit, führt aber keinen Push erneut aus.
 4. Spätere Deployment-Provenienz bisher als Vertrags-/geschützte Ergebnisbasis vorhanden, noch keine typisierte Persistenz/Orchestrierung für G08. Keine Deploymentabnahme behaupten.
 
-Nächster Schritt: diese konkreten Implementierungs-/Adaptergrenzen schließen und fehlende DB-Abnahme nachweisen; erst dann G02/G03-Checkboxen vollständig markieren. Keine Abnahmekriterien nachträglich streichen, um einen Abschluss zu behaupten.
+Nächster Schritt: verbleibende Implementierungs-/Adaptergrenzen schließen. SQL Server bleibt gemäß ausdrücklicher Nutzerentscheidung ungetestet. G02/G03 nicht vollständig markieren, solange die übrigen Pflichtnachweise fehlen; keine ausgesetzte Abnahme als bestanden umdeuten.

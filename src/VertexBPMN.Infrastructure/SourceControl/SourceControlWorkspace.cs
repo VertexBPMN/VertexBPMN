@@ -120,7 +120,48 @@ internal sealed class SourceControlWorkspace(BpmnDbContext db, IDataProtectionPr
         catch { Reject(); }
         // Enumerate/validate entire tree first. Private ACLs exclude untrusted writers.
         _ = MeasureBytes(path, long.MaxValue);
+        // Git's immutable object files may be read-only on Windows. Only change
+        // attributes after validating ownership, lease and every path in the tree.
+        foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var attributes = File.GetAttributes(file);
+            if ((attributes & FileAttributes.ReadOnly) != 0)
+                File.SetAttributes(file, attributes & ~FileAttributes.ReadOnly);
+        }
         Directory.Delete(path, recursive: true);
+    }
+
+    /// <summary>Retain unknown effects and unpublished local commits; delete only verified owned terminal workspaces.</summary>
+    internal async Task<int> PruneCompletedAsync(DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        // Disabled/unused integration must not create a directory or require Git.
+        if (!options.Value.Enabled || !Directory.Exists(options.Value.WorkspaceRoot)) return 0;
+        var root = Root();
+        var cutoff = now.Subtract(options.Value.Limits.CompletedJobRetention).UtcTicks;
+        var count = 0;
+        foreach (var path in Directory.EnumerateDirectories(root))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var parts = Path.GetFileName(path).Split('-');
+            if (parts.Length != 2 || !Guid.TryParseExact(parts[0], "N", out var id)
+                || !long.TryParse(parts[1], System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture, out var fence) || fence <= 0)
+                continue; // No guessing ownership of unknown directories.
+            if (!string.Equals(Path.GetFileName(path), $"{id:N}-{fence}", StringComparison.Ordinal)) continue;
+            var row = await db.SourceControlOperations.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id
+                && x.UpdatedUtcTicks <= cutoff && x.Fence >= fence
+                && (!x.LeaseUntilUtcTicks.HasValue || x.LeaseUntilUtcTicks <= now.UtcTicks)
+                && (x.State == (int)SourceControlOperationState.Pushed
+                    || x.State == (int)SourceControlOperationState.Succeeded
+                    || x.State == (int)SourceControlOperationState.Conflict
+                    || x.State == (int)SourceControlOperationState.Failed
+                    || x.State == (int)SourceControlOperationState.Cancelled), cancellationToken);
+            if (row is null) continue;
+            await CleanupAsync(new(row.TenantId, row.ActorId), id, fence, cancellationToken);
+            if (++count == 100) break;
+        }
+        return count;
     }
 
     internal static long MeasureBytes(string root, long limit)
@@ -131,13 +172,23 @@ internal sealed class SourceControlWorkspace(BpmnDbContext db, IDataProtectionPr
         pending.Push(root);
         while (pending.TryPop(out var directory))
         {
-            foreach (var entry in Directory.EnumerateFileSystemEntries(directory))
+            string[] entries;
+            try { entries = Directory.GetFileSystemEntries(directory); }
+            catch (DirectoryNotFoundException) when (directory != root) { continue; }
+            foreach (var entry in entries)
             {
-                var attributes = File.GetAttributes(entry);
-                if ((attributes & FileAttributes.ReparsePoint) != 0) Reject();
-                if ((attributes & FileAttributes.Directory) != 0) pending.Push(entry);
-                else bytes = checked(bytes + new FileInfo(entry).Length);
-                if (bytes > limit) throw new SourceControlSecurityException(SourceControlErrorCode.QuotaExceeded);
+                try
+                {
+                    var attributes = File.GetAttributes(entry);
+                    if ((attributes & FileAttributes.ReparsePoint) != 0) Reject();
+                    if ((attributes & FileAttributes.Directory) != 0) pending.Push(entry);
+                    else bytes = checked(bytes + new FileInfo(entry).Length);
+                    if (bytes > limit) throw new SourceControlSecurityException(SourceControlErrorCode.QuotaExceeded);
+                }
+                // Git atomically renames/deletes its own locks/temp objects while we measure.
+                // Do not turn normal disappearance into GitUnavailable; security and access errors still fail closed.
+                catch (FileNotFoundException) { }
+                catch (DirectoryNotFoundException) { }
             }
         }
         return bytes;

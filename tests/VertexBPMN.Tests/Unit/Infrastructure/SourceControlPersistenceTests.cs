@@ -6,6 +6,9 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Moq;
 using VertexBPMN.Application.SourceControl;
 using VertexBPMN.Domain.Interfaces;
@@ -21,6 +24,215 @@ public sealed class SourceControlPersistenceTests
 {
     private static readonly SourceControlContext Actor = new("tenant-a", "issuer|alice");
     private static CancellationToken Cancellation => TestContext.Current.CancellationToken;
+
+    [Fact]
+    public async Task Typed_commit_acceptance_freezes_confirmed_bytes_and_retries_after_later_edits()
+    {
+        await using var fixture = new StoreFixture();
+        var binding = await fixture.InitializeAsync();
+        await using var db = fixture.Db();
+        var store = fixture.Store(db);
+        var generation = Guid.NewGuid();
+        var basis = new GitCommitId(new string('a', 40));
+        var session = await store.CreateSessionAsync(Actor, binding.Id, ["Admin"], basis, generation, Cancellation);
+        var original = Encoding.UTF8.GetBytes("<definitions xmlns=\"http://www.omg.org/spec/BPMN/20100524/MODEL\">\r\n<process id=\"first\"/>\r\n</definitions>");
+        var first = new ModelSnapshot("models/first.bpmn", SourceModelKind.Bpmn, generation, 1, original);
+        var second = new ModelSnapshot("models/second.bpmn", SourceModelKind.Bpmn, generation, 1, original);
+        Assert.True(await store.SaveSnapshotsAsync(Actor, session, ["Admin"], 0, [first, second], Cancellation));
+        var submission = new CommitJobSubmission(session, 1, basis, SourceControlInputPolicy.WorkBranch(session), "Confirmed snapshot", [second, first]);
+        var id = await store.EnqueueCommitAsync(Actor, binding.Id, ["Admin"], new("typed-commit"), submission, Cancellation);
+        var next = new ModelSnapshot(first.Path, first.Kind, generation, 2,
+            Encoding.UTF8.GetBytes("<definitions xmlns=\"http://www.omg.org/spec/BPMN/20100524/MODEL\"><process id=\"later\"/></definitions>"));
+        Assert.True(await store.SaveSnapshotsAsync(Actor, session, ["Admin"], 1, [next, second], Cancellation));
+        Assert.Equal(id, await store.EnqueueCommitAsync(Actor, binding.Id, ["Admin"], new("typed-commit"),
+            submission with { Snapshots = [first, second] }, Cancellation)); // Order-independent canonical input.
+        var conflict = await Assert.ThrowsAsync<SourceControlSecurityException>(() => store.EnqueueCommitAsync(Actor, binding.Id,
+            ["Admin"], new("typed-commit"), submission with { Message = "Different request" }, Cancellation));
+        Assert.Equal(SourceControlErrorCode.IdempotencyConflict, conflict.Code);
+        var stale = await Assert.ThrowsAsync<SourceControlSecurityException>(() => store.EnqueueCommitAsync(Actor, binding.Id,
+            ["Admin"], new("typed-stale"), submission, Cancellation));
+        Assert.Equal(SourceControlErrorCode.RevisionConflict, stale.Code);
+        var now = DateTimeOffset.UtcNow;
+        Assert.Equal(1L, await store.TryClaimAsync(Actor.TenantId, id, "worker", now, TimeSpan.FromMinutes(1), Cancellation));
+        using var accepted = System.Text.Json.JsonDocument.Parse(await store.ReadAcceptedRequestAsync(Actor.TenantId, id, "worker", 1, now, Cancellation));
+        Assert.Equal(1, accepted.RootElement.GetProperty("SchemaVersion").GetInt32());
+        Assert.Equal(basis.Value, accepted.RootElement.GetProperty("BaseCommit").GetString());
+        var acceptedFirst = accepted.RootElement.GetProperty("Snapshots")[0];
+        Assert.Equal(first.Path, acceptedFirst.GetProperty("Path").GetString());
+        Assert.Equal(original, acceptedFirst.GetProperty("Bytes").GetBytesFromBase64());
+        Assert.Equal(first.ContentSha256, acceptedFirst.GetProperty("ContentSha256").GetString());
+        Assert.Equal(1, acceptedFirst.GetProperty("Revision").GetInt64());
+        Assert.Equal(2, (await store.ReadSnapshotsAsync(Actor, session, ["Admin"], Cancellation)).Single(x => x.Path == first.Path).LocalRevision);
+        Assert.Single(await db.SourceControlOperations.AsNoTracking().ToArrayAsync(Cancellation));
+    }
+
+    [Fact]
+    public async Task Typed_commit_acceptance_rejects_unconfirmed_content_branch_and_revoked_rights()
+    {
+        await using var fixture = new StoreFixture();
+        var binding = await fixture.InitializeAsync();
+        await using var db = fixture.Db();
+        var store = fixture.Store(db);
+        var generation = Guid.NewGuid();
+        var basis = new GitCommitId(new string('a', 40));
+        var session = await store.CreateSessionAsync(Actor, binding.Id, ["Admin"], basis, generation, Cancellation);
+        var bytes = Encoding.UTF8.GetBytes("<definitions xmlns=\"http://www.omg.org/spec/BPMN/20100524/MODEL\"/>");
+        var snapshot = new ModelSnapshot("models/safe.bpmn", SourceModelKind.Bpmn, generation, 1, bytes);
+        Assert.True(await store.SaveSnapshotsAsync(Actor, session, ["Admin"], 0, [snapshot], Cancellation));
+        var submission = new CommitJobSubmission(session, 1, basis, SourceControlInputPolicy.WorkBranch(session), "Commit", [snapshot]);
+        var unconfirmed = new ModelSnapshot(snapshot.Path, snapshot.Kind, generation, 1,
+            Encoding.UTF8.GetBytes("<definitions xmlns=\"http://www.omg.org/spec/BPMN/20100524/MODEL\"><process id=\"not-saved\"/></definitions>"));
+        var error = await Assert.ThrowsAsync<SourceControlSecurityException>(() => store.EnqueueCommitAsync(Actor, binding.Id,
+            ["Admin"], new("unconfirmed"), submission with { Snapshots = [unconfirmed] }, Cancellation));
+        Assert.Equal(SourceControlErrorCode.RevisionConflict, error.Code);
+        error = await Assert.ThrowsAsync<SourceControlSecurityException>(() => store.EnqueueCommitAsync(Actor, binding.Id,
+            ["Admin"], new("default-branch"), submission with { WorkBranch = "master" }, Cancellation));
+        Assert.Equal(SourceControlErrorCode.InvalidInput, error.Code);
+        error = await Assert.ThrowsAsync<SourceControlSecurityException>(() => store.EnqueueCommitAsync(Actor, binding.Id,
+            ["Admin"], new("duplicate-path"), submission with { Snapshots = [snapshot, snapshot] }, Cancellation));
+        Assert.Equal(SourceControlErrorCode.InvalidInput, error.Code);
+        Assert.True(await store.ReplaceGrantsAsync(Actor, binding.Id, ["Admin"], 2,
+            [new(Actor.ActorId, RepositoryPermission.Read | RepositoryPermission.Manage)], Cancellation));
+        error = await Assert.ThrowsAsync<SourceControlSecurityException>(() => store.EnqueueCommitAsync(Actor, binding.Id,
+            ["Admin"], new("revoked"), submission, Cancellation));
+        Assert.Equal(SourceControlErrorCode.Forbidden, error.Code);
+        Assert.Empty(await db.SourceControlOperations.AsNoTracking().ToArrayAsync(Cancellation));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Real_host_startup_detects_crashed_jobs_only_when_integration_is_enabled(bool enabled)
+    {
+        await using var fixture = new StoreFixture();
+        var binding = await fixture.InitializeAsync();
+        Guid id;
+        await using (var db = fixture.Db())
+        {
+            var store = fixture.Store(db);
+            id = await store.EnqueueAsync(Actor, binding.Id, ["Admin"], SourceControlOperationKind.Push,
+                new("host-startup"), new byte[] { 1 }, Cancellation);
+            Assert.Equal(1L, await store.TryClaimAsync(Actor.TenantId, id, "crashed", DateTimeOffset.UtcNow.AddMinutes(-1),
+                TimeSpan.FromSeconds(1), Cancellation));
+        }
+        var unusedRoot = Path.Combine(Path.GetTempPath(), "vertex-unused-maintenance-" + Guid.NewGuid().ToString("N"));
+        using var host = Host.CreateDefaultBuilder().ConfigureLogging(logging => logging.ClearProviders())
+            .ConfigureServices(services =>
+            {
+                services.AddSingleton(Options.Create(new SourceControlOptions { Enabled = enabled, WorkspaceRoot = unusedRoot }));
+                services.AddScoped(_ => fixture.Db());
+                services.AddScoped(sp => fixture.Store(sp.GetRequiredService<BpmnDbContext>()));
+                services.AddScoped(sp => fixture.Workspace(sp.GetRequiredService<BpmnDbContext>(), unusedRoot));
+                services.AddHostedService<SourceControlMaintenanceHostedService>();
+            }).Build();
+        await host.StartAsync(Cancellation);
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(Cancellation);
+            timeout.CancelAfter(TimeSpan.FromSeconds(10));
+            if (!enabled)
+            {
+                var service = Assert.IsType<SourceControlMaintenanceHostedService>(Assert.Single(host.Services.GetServices<IHostedService>()));
+                await service.ExecuteTask!.WaitAsync(timeout.Token);
+            }
+            while (true)
+            {
+                await using var db = fixture.Db();
+                var row = await db.SourceControlOperations.AsNoTracking().SingleAsync(x => x.Id == id, timeout.Token);
+                if (!enabled) { Assert.Equal((int)SourceControlOperationState.Running, row.State); break; }
+                if (row.State == (int)SourceControlOperationState.ResultUnknown) { Assert.Equal(2L, row.Fence); break; }
+                await Task.Delay(25, timeout.Token); // Condition polling, not an assumed completion sleep.
+            }
+            Assert.False(Directory.Exists(unusedRoot));
+        }
+        finally { await host.StopAsync(Cancellation); }
+    }
+
+    [Fact]
+    public async Task Maintenance_fences_expired_workers_without_replaying_or_pruning_unknown_effects()
+    {
+        await using var fixture = new StoreFixture();
+        var binding = await fixture.InitializeAsync();
+        Guid expired, active, queued;
+        var now = DateTimeOffset.UtcNow;
+        await using (var db = fixture.Db())
+        {
+            var store = fixture.Store(db);
+            expired = await store.EnqueueAsync(Actor, binding.Id, ["Admin"], SourceControlOperationKind.Push,
+                new("expired-worker"), new byte[] { 1 }, Cancellation);
+            active = await store.EnqueueAsync(Actor, binding.Id, ["Admin"], SourceControlOperationKind.Push,
+                new("active-worker"), new byte[] { 2 }, Cancellation);
+            queued = await store.EnqueueAsync(Actor, binding.Id, ["Admin"], SourceControlOperationKind.Push,
+                new("queued-worker"), new byte[] { 3 }, Cancellation);
+            Assert.Equal(1L, await store.TryClaimAsync(Actor.TenantId, expired, "old", now, TimeSpan.FromSeconds(1), Cancellation));
+            Assert.Equal(1L, await store.TryClaimAsync(Actor.TenantId, active, "active", now, TimeSpan.FromMinutes(5), Cancellation));
+        }
+        // New DB scope emulates maintenance after the original request scope has ended.
+        await using var reopened = fixture.Db();
+        var maintenance = fixture.Store(reopened);
+        Assert.Equal(1, await maintenance.DetectExpiredLeasesAsync(now.AddSeconds(2), Cancellation));
+        Assert.Equal(0, await maintenance.DetectExpiredLeasesAsync(now.AddSeconds(2), Cancellation));
+        var receipt = await reopened.SourceControlOperations.AsNoTracking().SingleAsync(x => x.Id == expired, Cancellation);
+        Assert.Equal((int)SourceControlOperationState.ResultUnknown, receipt.State);
+        Assert.Equal(2L, receipt.Fence);
+        Assert.Null(receipt.LeaseOwner);
+        Assert.NotEmpty(receipt.ProtectedRequest);
+        Assert.Equal(SourceControlOperationState.Running, (await maintenance.GetOperationAsync(Actor, active, ["Admin"], Cancellation))!.State);
+        Assert.Equal(SourceControlOperationState.Queued, (await maintenance.GetOperationAsync(Actor, queued, ["Admin"], Cancellation))!.State);
+        Assert.False(await maintenance.FinishAsync(Actor.TenantId, expired, "old", 1, SourceControlOperationState.Pushed, now.AddSeconds(2), Cancellation));
+        Assert.Equal(0, await maintenance.PruneExpiredDetailsAsync(now.AddDays(40), Cancellation));
+        Assert.Equal(3L, await maintenance.TryClaimAsync(Actor.TenantId, expired, "reconciler", now.AddSeconds(2), TimeSpan.FromSeconds(10), Cancellation));
+        Assert.Equal(SourceControlOperationState.Reconciling, (await maintenance.GetOperationAsync(Actor, expired, ["Admin"], Cancellation))!.State);
+        Assert.Equal(new byte[] { 1 }, await maintenance.ReadAcceptedRequestAsync(Actor.TenantId, expired, "reconciler", 3, now.AddSeconds(3), Cancellation));
+    }
+
+    [Fact]
+    public async Task Maintenance_cleans_only_expired_owned_terminal_workspaces_and_preserves_local_commits()
+    {
+        await using var fixture = new StoreFixture();
+        var binding = await fixture.InitializeAsync();
+        await using var db = fixture.Db();
+        var store = fixture.Store(db);
+        var root = Path.Combine(Path.GetTempPath(), "vertex-maintenance-" + Guid.NewGuid().ToString("N"));
+        var workspace = fixture.Workspace(db, root);
+        var now = DateTimeOffset.UtcNow;
+        var retained = new List<string>();
+        string? completedPath = null;
+        try
+        {
+            foreach (var state in new[] { SourceControlOperationState.Pushed, SourceControlOperationState.CommittedLocal,
+                SourceControlOperationState.ResultUnknown })
+            {
+                var kind = state == SourceControlOperationState.CommittedLocal ? SourceControlOperationKind.Commit : SourceControlOperationKind.Push;
+                var id = await store.EnqueueAsync(Actor, binding.Id, ["Admin"], kind, new("cleanup-" + state), new byte[] { 1 }, Cancellation);
+                Assert.Equal(1L, await store.TryClaimAsync(Actor.TenantId, id, "owner", now, TimeSpan.FromMinutes(1), Cancellation));
+                var created = await workspace.CreateAsync(Actor, id, "owner", 1, Cancellation);
+                await File.WriteAllTextAsync(Path.Combine(created.Directory, "fixture.txt"), "preserve", Cancellation);
+                File.SetAttributes(Path.Combine(created.Directory, "fixture.txt"), FileAttributes.ReadOnly);
+                Assert.True(await store.FinishAsync(Actor.TenantId, id, "owner", 1, state, now, Cancellation));
+                if (state == SourceControlOperationState.Pushed) completedPath = created.Directory;
+                else retained.Add(created.Directory);
+            }
+            var foreign = Path.Combine(root, "unknown-directory");
+            Directory.CreateDirectory(foreign);
+            retained.Add(foreign);
+            Assert.Equal(0, await workspace.PruneCompletedAsync(now, Cancellation));
+            Assert.Equal(1, await workspace.PruneCompletedAsync(now.AddDays(40), Cancellation));
+            Assert.False(Directory.Exists(completedPath));
+            Assert.All(retained, path => Assert.True(Directory.Exists(path)));
+            Assert.Equal(0, await workspace.PruneCompletedAsync(now.AddDays(40), Cancellation));
+            Assert.Equal(3, await db.SourceControlOperations.CountAsync(Cancellation)); // Durable receipts remain.
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                _ = SourceControlWorkspace.MeasureBytes(root, long.MaxValue);
+                foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)) File.SetAttributes(file, FileAttributes.Normal);
+                Directory.Delete(root, recursive: true); // Exact generated fixture, never user repositories.
+            }
+        }
+    }
 
     [Fact]
     public async Task Retention_keeps_active_input_and_durable_idempotency_after_completion()
@@ -260,6 +472,8 @@ public sealed class SourceControlPersistenceTests
         internal BpmnDbContext Db() => new(new DbContextOptionsBuilder<BpmnDbContext>()
             .UseSqlite($"Data Source={_database};Pooling=False").Options);
         internal PersistentSourceControlStore Store(BpmnDbContext db) => new(db, _protection, _options);
+        internal SourceControlWorkspace Workspace(BpmnDbContext db, string root) => new(db, _protection,
+            Options.Create(new SourceControlOptions { Enabled = true, WorkspaceRoot = root }));
         internal PersistentCredentialService Credentials(BpmnDbContext db) => new(db, _protection,
             Mock.Of<IAuditLogService>(), NullLogger<PersistentCredentialService>.Instance);
         internal RepositoryBinding Binding(string? credential = null) => new(Guid.NewGuid(), Actor.TenantId,

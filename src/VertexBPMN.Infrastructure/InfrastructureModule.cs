@@ -128,6 +128,8 @@ public static class InfrastructureModule
         services.AddScoped<SourceControl.GitHubAppTokenBroker>();
         services.AddScoped<SourceControl.ControlledGitProcess>();
         services.AddScoped<SourceControl.SourceControlWorkspace>();
+        if (mode != "Test" && configuration.GetValue<bool>("SourceControl:Enabled"))
+            services.AddHostedService<SourceControl.SourceControlMaintenanceHostedService>();
         services.AddScoped<VertexBPMN.Application.SourceControl.ISourceControlAccessStore>(sp =>
             sp.GetRequiredService<SourceControl.PersistentSourceControlStore>());
         services.AddScoped<IConnectorService, PersistentConnectorService>();

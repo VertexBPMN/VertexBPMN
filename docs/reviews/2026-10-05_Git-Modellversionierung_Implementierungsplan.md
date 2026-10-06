@@ -2,6 +2,10 @@
 
 Stand: 2026-10-05. Planungsbasis: `master`, Commit `cb88bee0f83807cd0d7906a4d092807a56b49969`.
 
+Aktuelle Nutzerentscheidung: SQL-Server-Abnahme am 2026-10-05 ausdrücklich aus dem laufenden Arbeitsauftrag ausgenommen. Keine Testinstanz bereitstellen und keine Verbindung mehr anfordern. Das ursprüngliche Kriterium bleibt nachvollziehbar, ist aber **nicht geprüft / nicht bestanden**. Die übrigen G02/G03-Aufgaben laufen weiter. Wartungs-/Hoststart-Nachweise: [G03-Maintenance](2026-10-05_Git-G03_Maintenance.md).
+
+Aktueller Folgestand: echter TLS-/Helper-Git-Fetch mit bytegetreuem Readback, hostile Hooks/Filter/Gitlink, laufendem Timeout/Cancel und typisierte Commit-Annahme lokal bestanden; siehe [Transport-/Annahmebericht](2026-10-05_Git-G02_Transport-und-G03_Annahme.md). Die ältere Statuszusammenfassung darunter beschreibt den vorherigen Teilstand. G02/G03 bleiben offen bis zu den verbleibenden Write-/Reconciliation-/Provenienzgrenzen; SQL Server bleibt ausdrücklich ungetestet.
+
 Status: **Phase 1 abgeschlossen. Phase 2/G02 und G03 in Arbeit: Sicherheitsbasis, persistenter Credentialanschluss, GitHub-App-Tokenbroker, HTTPS-Zielprüfung sowie persistente Bindungen/ACLs/Sessions/Operations und Migration implementiert. SQLite: 5 Persistenztests bestanden; PostgreSQL unter WSLC: echte Migration/Upgrade, Idempotenz und Claims/Fencing bestanden. Native Git-Prozessintegration, Quoten-/Recovery-/Cleanup-Abnahme und weitere Pflichtgrenzen noch offen. G02/G03 nicht abgeschlossen; G04–G11 nicht begonnen. Nachweise: G00/G01, G02-Sicherheitsbasisbericht und [G03-WSLC-Abnahme](2026-10-05_Git-G03_WSLC-Abnahme.md).**
 
 Dieser Plan ist ein eigenständiger Arbeitsauftrag für Menschen und Coding-Agents. Vorheriger Chatverlauf ist nicht erforderlich. Pfade sind repository-relativ. G01-C#-Verträge sowie die in [G02](2026-10-05_Git-G02_Sicherheitsbasis.md) dokumentierte Sicherheitsbasis und das Optionsbinding existieren; Produktprovider und neue HTTP-Routen noch nicht. Weitere neue Typen, Dateien, Routen und Kategorien sind **Vorschläge, keine bereits vorhandenen APIs**. Vor ihrer Implementierung den aktuellen Checkout erneut prüfen.
@@ -348,8 +352,8 @@ Commit/Push/PR, Plugininstallation und externe Ressourcenerstellung erfolgen nur
 - [x] Plan erstellt und Einstiegspunkte gegen aktuellen Quellcode geprüft.
 - [x] G00 – Inventur, Solution-Build, CI-safe Gesamtbaseline und verfügbare Editor-Vertragsbaseline fertig; externe Voraussetzungen dokumentiert.
 - [x] G01 – Verträge/Rechte/Freigabe definiert, Bibliothek und 44 isolierte Tests implementiert/geprüft.
-- [ ] G02 – in Arbeit: Credential-/HTTPS-/Prozess-/Helpergrenzen implementiert und lokal teilweise abgenommen; Gesamttransport-/Angriffs-/Abbruchnachweise offen.
-- [ ] G03 – Persistenz/Jobs/Arbeitsbereiche implementiert und unter SQLite/WSLC-PostgreSQL teilweise abgenommen; SQL Server, Recovery-/Cleanup-Orchestrierung und spätere Provenienz offen.
+- [ ] G02 – in Arbeit: Credential-/HTTPS-/Prozess-/Helpergrenzen sowie echter lokaler TLS-Fetch, Hooks/Filter/Gitlink und laufender Timeout/Cancel bestanden; Linux-/Live-Remotequalifikation noch offen.
+- [ ] G03 – Persistenz/Jobs/Arbeitsbereiche implementiert und unter SQLite/WSLC-PostgreSQL teilweise abgenommen; Maintenance-Host mit Crash-Erkennung/Fencing und sicherem Cleanup ergänzt. Effekt-Reconciliation und spätere Provenienz offen; SQL Server auf Nutzerwunsch nicht geprüft.
 - [ ] G04 – Git-Provider.
 - [ ] G05 – API.
 - [ ] G06 – BPMN-Studio.
@@ -359,7 +363,7 @@ Commit/Push/PR, Plugininstallation und externe Ressourcenerstellung erfolgen nur
 - [ ] G10 – DMN/CMMN/Formulare, eigene Lieferstufe.
 - [ ] G11 – dynamisches DLL-Plugin, eigene Lieferstufe.
 
-**Nächster Schritt: verbleibende Transport-/Recovery-/Cleanup-Grenzen und SQL-Server-Abnahme gemäß [Phase-2-Abschlussstand](2026-10-05_Git-Phase2_Abschlussstand.md) schließen.** Phase 1 ist abgeschlossen; G02/G03 noch nicht vollständig abgenommen. Keine Produktionsreife aus isolierten Sicherheitsregeln, Optionsbinding oder bestandenem Teiltest ableiten.
+**Nächster Schritt: verbleibende Transportgrenzen sowie typisierte Annahme und providergebundene Effekt-Reconciliation gemäß [Phase-2-Abschlussstand](2026-10-05_Git-Phase2_Abschlussstand.md) schließen. SQL-Server-Abnahme wird auf Nutzerwunsch nicht ausgeführt.** Phase 1 ist abgeschlossen; G02/G03 noch nicht vollständig abgenommen. Keine Produktionsreife aus isolierten Sicherheitsregeln, Optionsbinding oder bestandenem Teiltest ableiten.
 
 Kopierbarer Startauftrag für einen Agent:
 

@@ -141,7 +141,80 @@ public sealed class PersistentSourceControlStore(BpmnDbContext db, IDataProtecti
         return new(binding, row.Revision, JsonSerializer.Deserialize<RepositoryGrant[]>(row.GrantsJson)!);
     }
 
-    public async Task<Guid> EnqueueAsync(SourceControlContext context, Guid repositoryId,
+    /// <summary>Accept only the confirmed persisted session snapshot; later edits cannot change this request.</summary>
+    public async Task<Guid> EnqueueCommitAsync(SourceControlContext context, Guid repositoryId,
+        IReadOnlyCollection<string> roles, SourceControlIdempotencyKey key, CommitJobSubmission submission,
+        CancellationToken cancellationToken)
+    {
+        Relational();
+        if (submission is null || submission.BaseCommit is null || submission.Snapshots is null
+            || submission.Snapshots.Any(x => x is null)
+            || submission.SessionId == Guid.Empty || submission.SessionRevision < 1
+            || string.IsNullOrWhiteSpace(submission.Message)
+            || submission.Message.Length > options.Value.Limits.MaxCommitMessageCharacters
+            || submission.Message.Any(c => char.IsControl(c) && c is not ('\r' or '\n' or '\t'))
+            || submission.Snapshots.Count == 0 || submission.Snapshots.Count > options.Value.Limits.MaxCommitFiles)
+            throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+        // Freeze caller-owned collections before the first await. ModelSnapshot already owns its bytes.
+        var snapshots = submission.Snapshots.OrderBy(x => x.Path, StringComparer.Ordinal).ToArray();
+        if (snapshots.Select(x => x.Path).Distinct(StringComparer.OrdinalIgnoreCase).Count() != snapshots.Length)
+            throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+        var copiedRoles = roles.ToArray();
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        var access = await FindAsync(context.TenantId, repositoryId, cancellationToken)
+            ?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
+        RepositoryAccessPolicy.Demand(context, access.Binding, copiedRoles, access.Grants, RepositoryPermission.Commit);
+        foreach (var snapshot in snapshots) SourceControlInputPolicy.DemandSafeBpmn(snapshot, access.Binding, options.Value.Limits);
+        if (snapshots.Sum(x => (long)x.ContentLength) > options.Value.Limits.MaxRepositoryBytes)
+            throw new SourceControlSecurityException(SourceControlErrorCode.PayloadTooLarge);
+        SourceControlInputPolicy.ValidateBranch(submission.WorkBranch);
+        if (submission.WorkBranch != SourceControlInputPolicy.WorkBranch(submission.SessionId)
+            || submission.WorkBranch == access.Binding.DefaultBranch || submission.WorkBranch == access.Binding.ReleaseBranch)
+            throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+        var canonical = JsonSerializer.SerializeToUtf8Bytes(new AcceptedCommit(1, submission.SessionId,
+            submission.SessionRevision, submission.BaseCommit.Value, submission.WorkBranch, submission.Message,
+            snapshots.Select(x => new AcceptedSnapshot(x.Path, x.Kind, x.DocumentGeneration, x.LocalRevision, x.ContentSha256, x.CopyContent())).ToArray()));
+        var existing = await db.SourceControlOperations.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == context.TenantId
+            && x.RepositoryId == repositoryId && x.Kind == (int)SourceControlOperationKind.Commit
+            && x.IdempotencyKey == key.Value, cancellationToken);
+        if (existing is not null)
+        {
+            if (existing.ActorId != context.ActorId) throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
+            if (existing.RequestHash != RequestHash(access.Revision, canonical))
+                throw new SourceControlSecurityException(SourceControlErrorCode.IdempotencyConflict);
+            await transaction.CommitAsync(cancellationToken);
+            return existing.Id; // An identical retry remains valid after the editor advances to N+1.
+        }
+        var session = await db.SourceControlSessions.AsNoTracking().SingleOrDefaultAsync(x => x.Id == submission.SessionId
+            && x.RepositoryId == repositoryId && x.TenantId == context.TenantId && x.ActorId == context.ActorId, cancellationToken)
+            ?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
+        if (session.Revision != submission.SessionRevision || session.BaseCommit != submission.BaseCommit.Value
+            || session.ExpiresUtcTicks <= DateTimeOffset.UtcNow.UtcTicks || session.ProtectedSnapshots.Length == 0)
+            throw new SourceControlSecurityException(SourceControlErrorCode.RevisionConflict);
+        var saved = JsonSerializer.Deserialize<SavedSnapshot[]>(Unprotect(context, repositoryId, session.ProtectedSnapshots))!;
+        foreach (var snapshot in snapshots)
+        {
+            var persisted = saved.SingleOrDefault(x => x.Path == snapshot.Path);
+            if (persisted is null || persisted.Kind != snapshot.Kind || persisted.Generation != snapshot.DocumentGeneration
+                || snapshot.DocumentGeneration != session.DocumentGeneration || persisted.Revision != snapshot.LocalRevision
+                || !persisted.Bytes.AsSpan().SequenceEqual(snapshot.CopyContent()))
+                throw new SourceControlSecurityException(SourceControlErrorCode.RevisionConflict);
+        }
+        var id = await EnqueueAsync(context, repositoryId, copiedRoles, SourceControlOperationKind.Commit, key, canonical, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return id;
+    }
+
+    private sealed record AcceptedCommit(int SchemaVersion, Guid SessionId, long SessionRevision,
+        string BaseCommit, string WorkBranch, string Message, AcceptedSnapshot[] Snapshots);
+    private sealed record AcceptedSnapshot(string Path, SourceModelKind Kind, Guid Generation,
+        long Revision, string ContentSha256, byte[] Bytes);
+
+    private static string RequestHash(long revision, byte[] request) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
+        $"{revision}:{Convert.ToHexStringLower(SHA256.HashData(request))}")));
+
+    // Internal storage primitive only. Public application callers must use typed validated acceptance.
+    internal async Task<Guid> EnqueueAsync(SourceControlContext context, Guid repositoryId,
         IReadOnlyCollection<string> authenticatedRoles, SourceControlOperationKind kind,
         SourceControlIdempotencyKey key, ReadOnlyMemory<byte> canonicalRequest, CancellationToken cancellationToken)
     {
@@ -161,8 +234,7 @@ public sealed class PersistentSourceControlStore(BpmnDbContext db, IDataProtecti
         };
         RepositoryAccessPolicy.Demand(context, access.Binding, authenticatedRoles, access.Grants, permission);
         // The application supplies a canonical, validated request; snapshot-copy before any await.
-        var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
-            $"{access.Revision}:{Convert.ToHexStringLower(SHA256.HashData(request))}")));
+        var hash = RequestHash(access.Revision, request);
         var existing = await LookupAsync();
         if (existing is not null) return Check(existing);
         var row = new SourceControlOperationRecord
@@ -357,6 +429,31 @@ public sealed class PersistentSourceControlStore(BpmnDbContext db, IDataProtecti
         return new(row.Id, row.TenantId, row.ActorId, row.RepositoryId, (SourceControlOperationKind)row.Kind,
             (SourceControlOperationState)row.State, new DateTimeOffset(row.UpdatedUtcTicks, TimeSpan.Zero),
             row.ErrorCode.HasValue ? (SourceControlErrorCode)row.ErrorCode : null);
+    }
+
+    /// <summary>Crash detection only: uncertain effects require provider reconciliation, never replay.</summary>
+    internal async Task<int> DetectExpiredLeasesAsync(DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        Relational();
+        var candidates = await db.SourceControlOperations.AsNoTracking()
+            .Where(x => (x.State == (int)SourceControlOperationState.Running
+                || x.State == (int)SourceControlOperationState.Reconciling)
+                && (!x.LeaseUntilUtcTicks.HasValue || x.LeaseUntilUtcTicks <= now.UtcTicks))
+            .OrderBy(x => x.UpdatedUtcTicks).Take(100).ToArrayAsync(cancellationToken);
+        var changed = 0;
+        foreach (var row in candidates)
+        {
+            changed += await db.SourceControlOperations.Where(x => x.Id == row.Id && x.TenantId == row.TenantId
+                && x.State == row.State && x.Fence == row.Fence
+                && (!x.LeaseUntilUtcTicks.HasValue || x.LeaseUntilUtcTicks <= now.UtcTicks))
+                .ExecuteUpdateAsync(update => update
+                    .SetProperty(x => x.State, (int)SourceControlOperationState.ResultUnknown)
+                    .SetProperty(x => x.Fence, x => x.Fence + 1)
+                    .SetProperty(x => x.LeaseOwner, (string?)null)
+                    .SetProperty(x => x.LeaseUntilUtcTicks, (long?)null)
+                    .SetProperty(x => x.UpdatedUtcTicks, now.UtcTicks), cancellationToken);
+        }
+        return changed;
     }
 
     private byte[] Unprotect(SourceControlContext context, Guid repositoryId, string payload)

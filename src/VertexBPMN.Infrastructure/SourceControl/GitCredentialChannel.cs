@@ -33,7 +33,11 @@ internal sealed class GitCredentialChannel : IAsyncDisposable
                 var protocol = await BoundedProtocol.ReadLineAsync(reader, 16, _stop.Token);
                 var host = await BoundedProtocol.ReadLineAsync(reader, 256, _stop.Token);
                 var path = await BoundedProtocol.ReadLineAsync(reader, 4096, _stop.Token);
-                if (protocol == "https" && host == remote.Authority && path == remote.AbsolutePath.TrimStart('/'))
+                var repositoryPath = remote.AbsolutePath.TrimStart('/').TrimEnd('/');
+                // Git canonicalizes smart-HTTP remotes with one terminal slash.
+                // Accept that spelling only, never subpaths or a different repository.
+                if (protocol == "https" && host == remote.Authority
+                    && (path == repositoryPath || path == repositoryPath + "/"))
                 {
                     await writer.WriteLineAsync("x-access-token".AsMemory(), _stop.Token);
                     await writer.WriteLineAsync(lease.Authorization().Parameter!.AsMemory(), _stop.Token);

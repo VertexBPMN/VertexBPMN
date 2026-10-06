@@ -40,6 +40,24 @@ internal sealed class ControlledGitProcess(IOptions<SourceControlOptions> option
         var addresses = await Dns.GetHostAddressesAsync(remote.IdnHost, deadline.Token);
         if (addresses.Length == 0 || addresses.Any(x => !SourceControlHttps.IsPublicAddress(x)))
             throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+        await FetchCoreAsync(workspace, remote, branch, lease, addresses, null, deadline.Token);
+    }
+
+    // Explicitly isolated acceptance adapter, not a configurable production SSRF bypass.
+    internal Task FetchLocalAcceptanceAsync(GitWorkspace workspace, Uri remote, string branch, GitHubTokenLease lease,
+        string certificateAuthorityFile, CancellationToken cancellationToken)
+    {
+        if (!remote.IsAbsoluteUri || remote.Scheme != "https" || remote.Host != "localhost" || remote.Port == 443
+            || remote.UserInfo.Length != 0 || remote.Query.Length != 0 || remote.Fragment.Length != 0
+            || !Path.IsPathFullyQualified(certificateAuthorityFile) || !File.Exists(certificateAuthorityFile))
+            throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+        SourceControlInputPolicy.ValidateBranch(branch);
+        return FetchCoreAsync(workspace, remote, branch, lease, [IPAddress.Loopback], certificateAuthorityFile, cancellationToken);
+    }
+
+    private async Task FetchCoreAsync(GitWorkspace workspace, Uri remote, string branch, GitHubTokenLease lease,
+        IPAddress[] addresses, string? certificateAuthorityFile, CancellationToken cancellationToken)
+    {
         var helper = options.Value.AuthHelperExecutablePath ?? Path.Combine(AppContext.BaseDirectory,
             "source-control-auth", "VertexBPMN.SourceControl.AuthHelper" + (OperatingSystem.IsWindows() ? ".exe" : ""));
         if (string.IsNullOrEmpty(helper) || !Path.IsPathFullyQualified(helper) || !File.Exists(helper)
@@ -52,15 +70,21 @@ internal sealed class ControlledGitProcess(IOptions<SourceControlOptions> option
                 || helper.Any(c => c is '\r' or '\n' or '\'' or '"' or '$' or '`'))
                 throw new SourceControlSecurityException(SourceControlErrorCode.GitUnavailable);
         }
-        await using var channel = new GitCredentialChannel(remote, lease, deadline.Token);
+        await using var channel = new GitCredentialChannel(remote, lease, cancellationToken);
         var configuration = new Dictionary<string, string>
         {
-            ["credential.helper"] = $"'{helper}' {channel.Name}",
-            ["http.curloptResolve"] = $"{remote.IdnHost}:443:{string.Join(',', addresses.Select(x => x.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 ? $"[{x}]" : x.ToString()))}"
+            ["credential.helper"] = $"!'{helper}' {channel.Name}",
+            ["http.curloptResolve"] = $"{remote.IdnHost}:{remote.Port}:{string.Join(',', addresses.Select(x => x.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 ? $"[{x}]" : x.ToString()))}"
         };
+        if (certificateAuthorityFile is not null)
+        {
+            configuration["http.sslCAInfo"] = certificateAuthorityFile.Replace('\\', '/');
+            configuration["http.schannelUseSSLCAInfo"] = "true";
+            if (OperatingSystem.IsWindows()) configuration["http.sslBackend"] = "schannel";
+        }
         await RunAsync(workspace, ["--git-dir=" + Path.Combine(workspace.Directory, "repository.git"),
             "fetch", "--no-recurse-submodules", "--no-tags", "--depth=1", "--", remote.AbsoluteUri,
-            $"refs/heads/{branch}:refs/heads/vertex-source"], configuration, options.Value.Limits.WriteTimeout, deadline.Token);
+            $"refs/heads/{branch}:refs/heads/vertex-source"], configuration, options.Value.Limits.WriteTimeout, cancellationToken);
     }
 
     private async Task<byte[]> RunAsync(GitWorkspace workspace, IReadOnlyList<string> arguments,
@@ -73,7 +97,6 @@ internal sealed class ControlledGitProcess(IOptions<SourceControlOptions> option
         _ = SourceControlWorkspace.MeasureBytes(workspace.Directory, options.Value.Limits.MaxRepositoryBytes);
         var start = new ProcessStartInfo(executable) { WorkingDirectory = workspace.Directory, UseShellExecute = false,
             CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
-        foreach (var argument in arguments) start.ArgumentList.Add(argument);
         start.Environment.Clear();
         // Windows process loading needs these OS paths, not arbitrary inherited settings.
         foreach (var name in new[] { "SystemRoot", "WINDIR" })
@@ -97,16 +120,19 @@ internal sealed class ControlledGitProcess(IOptions<SourceControlOptions> option
             new("core.hooksPath", Path.Combine(workspace.ControlDirectory, "hooks").Replace('\\', '/')),
             new("core.fsmonitor", "false"), new("core.pager", ""), new("protocol.allow", "never"),
             new("protocol.https.allow", "always"), new("http.sslVerify", "true"), new("http.followRedirects", "false"),
+            new("http.schannelCheckRevoke", "true"), new("transfer.bundleURI", "false"),
             new("http.proxy", ""), new("submodule.recurse", "false"), new("fetch.recurseSubmodules", "false"),
             new("transfer.fsckObjects", "true"), new("fetch.fsckObjects", "true")
         };
         if (extra is not null) config.AddRange(extra);
-        start.Environment["GIT_CONFIG_COUNT"] = config.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        for (var i = 0; i < config.Count; i++)
+        // Fixed non-secret command configuration must also reach Git's HTTPS subprocess.
+        // Tokens stay exclusively in IPC; these arguments contain only policies and channel IDs.
+        foreach (var setting in config)
         {
-            start.Environment[$"GIT_CONFIG_KEY_{i}"] = config[i].Key;
-            start.Environment[$"GIT_CONFIG_VALUE_{i}"] = config[i].Value;
+            start.ArgumentList.Add("-c");
+            start.ArgumentList.Add(setting.Key + "=" + setting.Value);
         }
+        foreach (var argument in arguments) start.ArgumentList.Add(argument);
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         stop.CancelAfter(timeout);
         using var process = new Process { StartInfo = start };
@@ -125,7 +151,7 @@ internal sealed class ControlledGitProcess(IOptions<SourceControlOptions> option
             }
             await completed;
             var bytes = await output;
-            _ = await errors; // Never include stderr in diagnostics or public results.
+            _ = await errors; // Never expose provider stderr; it may contain credentials.
             _ = SourceControlWorkspace.MeasureBytes(workspace.Directory, options.Value.Limits.MaxRepositoryBytes);
             if (process.ExitCode != 0) throw new SourceControlSecurityException(SourceControlErrorCode.ProviderUnavailable);
             return bytes;

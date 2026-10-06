@@ -20,6 +20,88 @@ namespace VertexBPMN.SourceControl.Tests;
 public sealed class GitHttpsTransportTests
 {
     [Fact]
+    public async Task History_fetch_is_revision_pinned_complete_paged_and_rejects_shallow_or_over_limit_graphs()
+    {
+        await using var fixture = await HttpsFixture.CreateAsync(hostile: true);
+        using var lease = new GitHubTokenLease(fixture.Token, DateTimeOffset.UtcNow.AddMinutes(2));
+        var token = TestContext.Current.CancellationToken;
+        var firstCommit = await fixture.AddRemoteModelRevisionAsync("history-one");
+        var selectedCommit = await fixture.AddRemoteModelRevisionAsync("history-two");
+        var binding = new RepositoryBinding(Guid.NewGuid(), "test", fixture.Remote, null, "master", "release", ["models"]);
+        var request = new HistoryRequest("models/example.bpmn", selectedCommit, 1, null);
+        await fixture.Runner.FetchLocalAcceptanceAsync(fixture.Workspace, fixture.Remote, "master", lease, fixture.CaFile, token);
+        Assert.Equal(SourceControlErrorCode.PayloadTooLarge, (await Assert.ThrowsAsync<SourceControlSecurityException>(() =>
+            fixture.Runner.ReadModelHistoryAsync(fixture.Workspace, binding, request, token))).Code);
+        await fixture.MoveDefaultBranchAsync(); // Fetch must not substitute the now older master head.
+        await fixture.Runner.FetchHistoryLocalAcceptanceAsync(fixture.Workspace, fixture.Remote, selectedCommit, lease, fixture.CaFile, token);
+        var first = await fixture.Runner.ReadModelHistoryAsync(fixture.Workspace, binding, request, token);
+        Assert.Single(first.Items);
+        Assert.Equal(selectedCommit, first.Items[0].Commit);
+        Assert.Equal("history-two", first.Items[0].Subject);
+        Assert.True(first.Items[0].CommittedAt > DateTimeOffset.UnixEpoch);
+        Assert.NotNull(first.NextCursor);
+        var second = await fixture.Runner.ReadModelHistoryAsync(fixture.Workspace, binding, request with { Cursor = first.NextCursor }, token);
+        Assert.Single(second.Items);
+        Assert.Equal(firstCommit, second.Items[0].Commit);
+        Assert.Equal("history-one", second.Items[0].Subject);
+        Assert.NotNull(second.NextCursor);
+        var third = await fixture.Runner.ReadModelHistoryAsync(fixture.Workspace, binding, request with { Cursor = second.NextCursor }, token);
+        Assert.Single(third.Items);
+        Assert.Equal("fixture", third.Items[0].Subject);
+        Assert.Null(third.NextCursor);
+        Assert.Equal(SourceControlErrorCode.InvalidInput, (await Assert.ThrowsAsync<SourceControlSecurityException>(() =>
+            fixture.Runner.ReadModelHistoryAsync(fixture.Workspace, binding,
+                request with { Commit = firstCommit, Cursor = first.NextCursor }, token))).Code);
+        var limited = new ControlledGitProcess(Options.Create(new SourceControlOptions
+        {
+            Enabled = true, GitExecutablePath = Environment.GetEnvironmentVariable("VERTEXBPMN_TEST_GIT"),
+            Limits = new() { MaxHistoryCommits = 1 }
+        }));
+        Assert.Equal(SourceControlErrorCode.PayloadTooLarge, (await Assert.ThrowsAsync<SourceControlSecurityException>(() =>
+            limited.ReadModelHistoryAsync(fixture.Workspace, binding, request, token))).Code);
+        Assert.False(File.Exists(fixture.ExecutionMarker));
+        var repository = "--git-dir=" + Path.Combine(fixture.Workspace.Directory, "repository.git");
+        Assert.Equal(selectedCommit.Value, Encoding.UTF8.GetString(await fixture.GitAsync([repository, "rev-parse", "refs/heads/vertex-source"])).Trim());
+    }
+
+    [Fact]
+    public async Task Remote_branch_pages_use_authenticated_heads_and_reject_stale_or_foreign_cursors()
+    {
+        await using var fixture = await HttpsFixture.CreateAsync(hostile: true);
+        using var lease = new GitHubTokenLease(fixture.Token, DateTimeOffset.UtcNow.AddMinutes(2));
+        var token = TestContext.Current.CancellationToken;
+        var binding = new RepositoryBinding(Guid.NewGuid(), "test", fixture.Remote, null, "master", "release", ["models"]);
+        var initial = await fixture.Runner.ListRemoteBranchesLocalAcceptanceAsync(fixture.Workspace, binding, lease, 1, null, fixture.CaFile, token);
+        Assert.Equal(["master"], initial.Items);
+        Assert.Null(initial.NextCursor);
+        await fixture.MoveDefaultBranchAsync();
+        var first = await fixture.Runner.ListRemoteBranchesLocalAcceptanceAsync(fixture.Workspace, binding, lease, 1, null, fixture.CaFile, token);
+        Assert.Equal(["alternate"], first.Items);
+        Assert.NotNull(first.NextCursor);
+        var second = await fixture.Runner.ListRemoteBranchesLocalAcceptanceAsync(fixture.Workspace, binding, lease, 1, first.NextCursor, fixture.CaFile, token);
+        Assert.Equal(["master"], second.Items);
+        Assert.Null(second.NextCursor);
+        Assert.True(fixture.Challenges > 0);
+        Assert.True(fixture.AuthenticatedRequests > 0);
+        Assert.Equal(SourceControlErrorCode.RevisionConflict, (await Assert.ThrowsAsync<SourceControlSecurityException>(() =>
+            fixture.Runner.ListRemoteBranchesLocalAcceptanceAsync(fixture.Workspace, binding with { Id = Guid.NewGuid() }, lease,
+                1, first.NextCursor, fixture.CaFile, token))).Code);
+        await fixture.AddRemoteBranchAsync("z-new");
+        Assert.Equal(SourceControlErrorCode.RevisionConflict, (await Assert.ThrowsAsync<SourceControlSecurityException>(() =>
+            fixture.Runner.ListRemoteBranchesLocalAcceptanceAsync(fixture.Workspace, binding, lease, 1, first.NextCursor, fixture.CaFile, token))).Code);
+        var requests = fixture.AuthenticatedRequests;
+        Assert.Equal(SourceControlErrorCode.InvalidInput, (await Assert.ThrowsAsync<SourceControlSecurityException>(() =>
+            fixture.Runner.ListRemoteBranchesLocalAcceptanceAsync(fixture.Workspace, binding, lease, 0, null, fixture.CaFile, token))).Code);
+        Assert.Equal(requests, fixture.AuthenticatedRequests);
+        Assert.False(File.Exists(fixture.ExecutionMarker));
+        Assert.Null(await fixture.Runner.ReadLocalBranchAsync(fixture.Workspace, "vertex-source", token));
+        foreach (var path in Directory.EnumerateFiles(fixture.Workspace.Directory, "*", SearchOption.AllDirectories))
+        {
+            Assert.DoesNotContain(fixture.Token, Encoding.UTF8.GetString(await File.ReadAllBytesAsync(path, token)));
+        }
+    }
+
+    [Fact]
     public async Task Snapshot_diff_uses_pinned_bytes_without_filters_refs_or_runtime_changes()
     {
         await using var fixture = await HttpsFixture.CreateAsync(hostile: true);
@@ -557,6 +639,26 @@ public sealed class GitHttpsTransportTests
             await GitAsync([repository, "update-ref", "refs/heads/alternate", accepted.Value]);
             await GitAsync([repository, "update-ref", "refs/heads/master", previous, accepted.Value]);
             return accepted;
+        }
+
+        internal async Task AddRemoteBranchAsync(string branch)
+        {
+            var repository = "--git-dir=" + Path.Combine(_root, "remote", "models.git");
+            var commit = Encoding.UTF8.GetString(await GitAsync([repository, "rev-parse", "refs/heads/master"])).Trim();
+            await GitAsync([repository, "update-ref", "refs/heads/" + branch, commit]);
+            await GitAsync([repository, "update-ref", "refs/tags/not-a-branch", commit]);
+        }
+
+        internal async Task<GitCommitId> AddRemoteModelRevisionAsync(string id)
+        {
+            var source = Path.Combine(_root, "source");
+            var bytes = Encoding.UTF8.GetBytes("<definitions xmlns=\"http://www.omg.org/spec/BPMN/20100524/MODEL\"><process id=\"" + id + "\"/></definitions>\n");
+            await File.WriteAllBytesAsync(Path.Combine(source, "models", "example.bpmn"), bytes, TestContext.Current.CancellationToken);
+            await GitAsync(["-C", source, "add", "--", "models/example.bpmn"]);
+            await GitAsync(["-C", source, "-c", "user.name=Acceptance", "-c", "user.email=acceptance@example.invalid", "commit", "-m", id]);
+            var repository = "--git-dir=" + Path.Combine(_root, "remote", "models.git");
+            await GitAsync([repository, "fetch", "--no-tags", "--", source, "refs/heads/master:refs/heads/master"]);
+            return new GitCommitId(Encoding.UTF8.GetString(await GitAsync([repository, "rev-parse", "refs/heads/master"])).Trim());
         }
 
         internal async Task<byte[]> GitAsync(IReadOnlyList<string> arguments)

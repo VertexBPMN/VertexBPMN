@@ -69,7 +69,103 @@ internal sealed class ControlledGitProcess(IOptions<SourceControlOptions> option
     }
 
     private async Task FetchCoreAsync(GitWorkspace workspace, Uri remote, string branch, GitHubTokenLease lease,
-        IPAddress[] addresses, string? certificateAuthorityFile, CancellationToken cancellationToken, GitCommitId? revision = null)
+        IPAddress[] addresses, string? certificateAuthorityFile, CancellationToken cancellationToken, GitCommitId? revision = null,
+        int depth = 1)
+    {
+        await RunAuthenticatedRemoteAsync(workspace, remote, lease, addresses, certificateAuthorityFile,
+            ["fetch", "--no-recurse-submodules", "--no-tags", "--depth=" + depth.ToString(System.Globalization.CultureInfo.InvariantCulture), "--", remote.AbsoluteUri,
+                $"{revision?.Value ?? "refs/heads/" + branch}:refs/heads/vertex-source"],
+            options.Value.Limits.WriteTimeout, cancellationToken);
+    }
+
+    internal async Task FetchHistoryAsync(GitWorkspace workspace, Uri remote, GitCommitId revision,
+        GitHubTokenLease lease, CancellationToken cancellationToken)
+    {
+        SourceControlHttps.ValidateTarget(remote, options.Value.AllowedHosts);
+        GitModelHistory.ValidateLimit(options.Value.Limits);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(options.Value.Limits.WriteTimeout);
+        try
+        {
+            await VersionAsync(workspace, deadline.Token);
+            var addresses = await Dns.GetHostAddressesAsync(remote.IdnHost, deadline.Token);
+            if (addresses.Length == 0 || addresses.Any(address => !SourceControlHttps.IsPublicAddress(address)))
+            {
+                throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+            }
+            await FetchCoreAsync(workspace, remote, "", lease, addresses, null, deadline.Token,
+                revision, options.Value.Limits.MaxHistoryCommits + 1);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new SourceControlSecurityException(SourceControlErrorCode.TimedOut);
+        }
+    }
+
+    internal Task FetchHistoryLocalAcceptanceAsync(GitWorkspace workspace, Uri remote, GitCommitId revision,
+        GitHubTokenLease lease, string certificateAuthorityFile, CancellationToken cancellationToken)
+    {
+        GitModelHistory.ValidateLimit(options.Value.Limits);
+        if (!remote.IsAbsoluteUri || remote.Scheme != "https" || remote.Host != "localhost" || remote.Port == 443
+            || remote.UserInfo.Length != 0 || remote.Query.Length != 0 || remote.Fragment.Length != 0
+            || !Path.IsPathFullyQualified(certificateAuthorityFile) || !File.Exists(certificateAuthorityFile))
+        {
+            throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+        }
+        return FetchCoreAsync(workspace, remote, "", lease, [IPAddress.Loopback], certificateAuthorityFile,
+            cancellationToken, revision, options.Value.Limits.MaxHistoryCommits + 1);
+    }
+
+    internal async Task<SourceControlPage<string>> ListRemoteBranchesAsync(GitWorkspace workspace,
+        RepositoryBinding binding, GitHubTokenLease lease, int pageSize, string? cursor, CancellationToken cancellationToken)
+    {
+        SourceControlHttps.ValidateTarget(binding.Remote, options.Value.AllowedHosts);
+        GitRemoteReferences.ValidatePage(pageSize, cursor, options.Value.Limits);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(options.Value.Limits.ReadTimeout);
+        try
+        {
+            var addresses = await Dns.GetHostAddressesAsync(binding.Remote.IdnHost, deadline.Token);
+            if (addresses.Length == 0 || addresses.Any(address => !SourceControlHttps.IsPublicAddress(address)))
+            {
+                throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+            }
+            return await ListRemoteBranchesCoreAsync(workspace, binding, lease, pageSize, cursor, addresses, null, deadline.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new SourceControlSecurityException(SourceControlErrorCode.TimedOut);
+        }
+    }
+
+    internal Task<SourceControlPage<string>> ListRemoteBranchesLocalAcceptanceAsync(GitWorkspace workspace,
+        RepositoryBinding binding, GitHubTokenLease lease, int pageSize, string? cursor,
+        string certificateAuthorityFile, CancellationToken cancellationToken)
+    {
+        if (binding.Remote.Scheme != "https" || binding.Remote.Host != "localhost" || binding.Remote.Port == 443
+            || binding.Remote.UserInfo.Length != 0 || binding.Remote.Query.Length != 0 || binding.Remote.Fragment.Length != 0
+            || !Path.IsPathFullyQualified(certificateAuthorityFile) || !File.Exists(certificateAuthorityFile))
+        {
+            throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+        }
+        return ListRemoteBranchesCoreAsync(workspace, binding, lease, pageSize, cursor, [IPAddress.Loopback], certificateAuthorityFile, cancellationToken);
+    }
+
+    private async Task<SourceControlPage<string>> ListRemoteBranchesCoreAsync(GitWorkspace workspace,
+        RepositoryBinding binding, GitHubTokenLease lease, int pageSize, string? cursor, IPAddress[] addresses,
+        string? certificateAuthorityFile, CancellationToken cancellationToken)
+    {
+        var limits = options.Value.Limits;
+        GitRemoteReferences.ValidatePage(pageSize, cursor, limits);
+        await VersionAsync(workspace, cancellationToken);
+        var output = await RunAuthenticatedRemoteAsync(workspace, binding.Remote, lease, addresses, certificateAuthorityFile,
+            ["ls-remote", "--quiet", "--branches", "--refs", "--", binding.Remote.AbsoluteUri], limits.ReadTimeout, cancellationToken);
+        return GitRemoteReferences.ReadPage(output, binding, pageSize, cursor, limits, cancellationToken);
+    }
+
+    private async Task<byte[]> RunAuthenticatedRemoteAsync(GitWorkspace workspace, Uri remote, GitHubTokenLease lease,
+        IPAddress[] addresses, string? certificateAuthorityFile, IReadOnlyList<string> command,
+        TimeSpan timeout, CancellationToken cancellationToken)
     {
         var helper = options.Value.AuthHelperExecutablePath ?? Path.Combine(AppContext.BaseDirectory,
             "source-control-auth", "VertexBPMN.SourceControl.AuthHelper" + (OperatingSystem.IsWindows() ? ".exe" : ""));
@@ -95,9 +191,8 @@ internal sealed class ControlledGitProcess(IOptions<SourceControlOptions> option
             configuration["http.schannelUseSSLCAInfo"] = "true";
             if (OperatingSystem.IsWindows()) configuration["http.sslBackend"] = "schannel";
         }
-        await RunAsync(workspace, ["--git-dir=" + Path.Combine(workspace.Directory, "repository.git"),
-            "fetch", "--no-recurse-submodules", "--no-tags", "--depth=1", "--", remote.AbsoluteUri,
-            $"{revision?.Value ?? "refs/heads/" + branch}:refs/heads/vertex-source"], configuration, options.Value.Limits.WriteTimeout, cancellationToken);
+        return await RunAsync(workspace, ["--git-dir=" + Path.Combine(workspace.Directory, "repository.git"), .. command],
+            configuration, timeout, cancellationToken);
     }
 
     // Builds an immutable object only; publication still requires a fenced worker and ref CAS.
@@ -274,6 +369,47 @@ internal sealed class ControlledGitProcess(IOptions<SourceControlOptions> option
             var tree = await RunAsync(workspace, [prefix, "ls-tree", "-r", "-t", "-l", "-z", request.Commit.Value],
                 null, limits.ReadTimeout, deadline.Token);
             return GitModelTree.ReadPage(tree, binding, request, limits, deadline.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new SourceControlSecurityException(SourceControlErrorCode.TimedOut);
+        }
+    }
+
+    internal async Task<SourceControlPage<CommitSummary>> ReadModelHistoryAsync(GitWorkspace workspace,
+        RepositoryBinding binding, HistoryRequest request, CancellationToken cancellationToken)
+    {
+        var limits = options.Value.Limits;
+        GitModelHistory.ValidateLimit(limits);
+        GitRemoteReferences.ValidatePage(request.PageSize, request.Cursor, limits);
+        SourceControlInputPolicy.DemandModelPath(request.Path, binding.ModelRoots);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(limits.ReadTimeout);
+        try
+        {
+            // Reuse pinned commit/path/mode/content guards before exposing any history.
+            await ReadModelAsync(workspace, binding, new(request.Commit, request.Path), Guid.NewGuid(), deadline.Token);
+            var prefix = "--git-dir=" + Path.Combine(workspace.Directory, "repository.git");
+            var shallow = await RunAsync(workspace, [prefix, "rev-parse", "--is-shallow-repository"],
+                null, limits.ReadTimeout, deadline.Token);
+            if (System.Text.Encoding.UTF8.GetString(shallow).Trim() != "false")
+            {
+                // A clipped ancestor graph is not a complete history, even for paths whose
+                // visible commits happen to fit in one page. The caller must fetch the bounded graph.
+                throw new SourceControlSecurityException(SourceControlErrorCode.PayloadTooLarge);
+            }
+            var countLimit = (limits.MaxHistoryCommits + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var ancestors = await RunAsync(workspace, [prefix, "rev-list", "--max-count=" + countLimit, request.Commit.Value, "--"],
+                null, limits.ReadTimeout, deadline.Token);
+            if (System.Text.Encoding.UTF8.GetString(ancestors).Split('\n', StringSplitOptions.RemoveEmptyEntries).Length > limits.MaxHistoryCommits)
+            {
+                throw new SourceControlSecurityException(SourceControlErrorCode.PayloadTooLarge);
+            }
+            var history = await RunAsync(workspace, [prefix, "--literal-pathspecs", "log", "--no-decorate", "--no-show-signature",
+                "--no-notes", "--no-color", "--encoding=UTF-8", "--topo-order", "--full-history", "--max-count=" + countLimit,
+                "-z", "--format=tformat:%H%x00%ct%x00%s", request.Commit.Value, "--", request.Path],
+                null, limits.ReadTimeout, deadline.Token);
+            return GitModelHistory.ReadPage(history, binding, request, limits, deadline.Token);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {

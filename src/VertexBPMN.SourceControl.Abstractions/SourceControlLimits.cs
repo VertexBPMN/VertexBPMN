@@ -7,6 +7,7 @@ public sealed class SourceControlLimits
     public int MaxModelFiles { get; init; } = 1_000;
     public int MaxDiffBytes { get; init; } = 1024 * 1024;
     public int MaxPageSize { get; init; } = 100;
+    public int MaxHistoryCommits { get; init; } = 1_000;
     public int MaxCommitFiles { get; init; } = 20;
     public int MaxCommitMessageCharacters { get; init; } = 2_000;
     public int MaxConcurrentJobsPerTenant { get; init; } = 2;

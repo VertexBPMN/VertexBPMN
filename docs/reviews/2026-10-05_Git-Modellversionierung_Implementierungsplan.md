@@ -2,6 +2,11 @@
 
 Stand: 2026-10-05. Planungsbasis: `master`, Commit `cb88bee0f83807cd0d7906a4d092807a56b49969`.
 
+Folgepaket auf `c8073f8`: echte geschützte Remote-Branchabfrage mit snapshotgebundenem
+Paging sowie begrenzt nachgeladene, revisionsgebundene BPMN-Historie implementiert und
+lokal geprüft. Gesamtprovider/API/Studio bleiben offen; Nachweise und Grenzen:
+[G04-Branches/History](2026-10-06_Git-G04_Remote-Branches-und-History.md).
+
 Folgeauftrag auf `9db4cb8`: G03/G04 bis API/Studio weiterführen. Sicherer interner
 Snapshot-Diff ergänzt; noch kein paginierter Produkt-Diff oder Provider-/API-Anschluss.
 Aktuelle offene Identitätsentscheidung und lokale Nachweise:

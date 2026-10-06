@@ -49,6 +49,7 @@ public sealed class SourceControlOptionsValidator : IValidateOptions<SourceContr
 		var limits = options.Limits;
 		if (limits is null || limits.MaxRepositoryBytes <= 0 || limits.MaxModelBytes <= 0
 			|| limits.MaxModelFiles <= 0 || limits.MaxDiffBytes <= 0 || limits.MaxPageSize <= 0
+			|| limits.MaxHistoryCommits is <= 0 or > 10_000
 			|| limits.MaxCommitFiles <= 0 || limits.MaxCommitMessageCharacters <= 0
 			|| limits.MaxConcurrentJobsPerTenant <= 0 || limits.MaxConcurrentJobsTotal <= 0
 			|| limits.MaxWorkspaceBytesTotal <= 0 || limits.ReadTimeout <= TimeSpan.Zero

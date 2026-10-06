@@ -58,6 +58,20 @@ public sealed class SourceControlOptionsTests
         }).Failed);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(10001)]
+    public void History_limits_reject_unbounded_or_invalid_graphs(int maximum)
+    {
+        var basis = Enabled(["github.com"]);
+        Assert.True(new SourceControlOptionsValidator().Validate(null, new SourceControlOptions
+        {
+            Enabled = true, GitExecutablePath = basis.GitExecutablePath, WorkspaceRoot = basis.WorkspaceRoot,
+            AllowedHosts = basis.AllowedHosts, Limits = new() { MaxHistoryCommits = maximum }
+        }).Failed);
+    }
+
     private static SourceControlOptions Enabled(string[] hosts) => new()
     {
         Enabled = true, GitExecutablePath = Path.Combine(Path.GetTempPath(), "git"),

@@ -98,6 +98,40 @@ public sealed class GitHttpsTransportTests
         Assert.True(File.Exists(fixture.ExecutionMarker));
     }
 
+    [Fact]
+    public async Task Commit_objects_preserve_exact_bytes_other_files_and_are_deterministic_without_checkout()
+    {
+        await using var fixture = await HttpsFixture.CreateAsync(hostile: true);
+        using var lease = new GitHubTokenLease(fixture.Token, DateTimeOffset.UtcNow.AddMinutes(2));
+        await fixture.Runner.FetchLocalAcceptanceAsync(fixture.Workspace, fixture.Remote, "master", lease,
+            fixture.CaFile, TestContext.Current.CancellationToken);
+        var repository = "--git-dir=" + Path.Combine(fixture.Workspace.Directory, "repository.git");
+        var basis = new GitCommitId(Encoding.UTF8.GetString(await fixture.GitAsync([repository, "rev-parse", "refs/heads/vertex-source"])).Trim());
+        var session = Guid.NewGuid();
+        var bytes = Encoding.UTF8.GetBytes("<definitions xmlns=\"http://www.omg.org/spec/BPMN/20100524/MODEL\">\r\n<process id=\"updated\"/>\r\n</definitions>\r\n");
+        var binding = new RepositoryBinding(Guid.NewGuid(), "test", fixture.Remote, null, "master", "release", ["models"]);
+        var command = new CommitCommand(Guid.NewGuid(), new SourceControlIdempotencyKey("commit-test"), session,
+            basis, SourceControlInputPolicy.WorkBranch(session), "Exact snapshot", [new ModelSnapshot("models/example.bpmn", SourceModelKind.Bpmn, Guid.NewGuid(), 7, bytes)]);
+        var accepted = DateTimeOffset.FromUnixTimeSeconds(1800000000);
+        var first = await fixture.Runner.BuildCommitAsync(fixture.Workspace, binding, command, accepted, TestContext.Current.CancellationToken);
+        var second = await fixture.Runner.BuildCommitAsync(fixture.Workspace, binding, command, accepted, TestContext.Current.CancellationToken);
+        Assert.Equal(first, second);
+        Assert.Equal(bytes, await fixture.GitAsync([repository, "show", first.Value + ":models/example.bpmn"]));
+        Assert.Equal(basis.Value, Encoding.UTF8.GetString(await fixture.GitAsync([repository, "rev-parse", first.Value + "^"])).Trim());
+        foreach (var path in new[] { ".gitattributes", ".gitmodules", "modules" })
+            Assert.Equal(await fixture.GitAsync([repository, "ls-tree", basis.Value, "--", path]),
+                await fixture.GitAsync([repository, "ls-tree", first.Value, "--", path]));
+        Assert.False(File.Exists(fixture.ExecutionMarker));
+        Assert.Empty(Directory.GetFiles(fixture.Workspace.ControlDirectory, "commit-index-*"));
+        var unsafeSnapshot = new ModelSnapshot("Models/example.bpmn", SourceModelKind.Bpmn, Guid.NewGuid(), 1, bytes);
+        Assert.Equal(SourceControlErrorCode.ContentUnsafe, (await Assert.ThrowsAsync<SourceControlSecurityException>(() =>
+            fixture.Runner.BuildCommitAsync(fixture.Workspace, binding with { ModelRoots = ["Models"] },
+                command with { Snapshots = [unsafeSnapshot] }, accepted, TestContext.Current.CancellationToken))).Code);
+        Assert.Equal(SourceControlErrorCode.InvalidInput, (await Assert.ThrowsAsync<SourceControlSecurityException>(() =>
+            fixture.Runner.BuildCommitAsync(fixture.Workspace, binding, command with { WorkBranch = "master" },
+                accepted, TestContext.Current.CancellationToken))).Code);
+    }
+
     private sealed class HttpsFixture : IAsyncDisposable
     {
         private readonly string _root = Path.Combine(Path.GetTempPath(), "vertex-git-https-" + Guid.NewGuid().ToString("N"));
@@ -183,7 +217,7 @@ public sealed class GitHttpsTransportTests
 
             using var rsa = RSA.Create(2048);
             using var issuerKey = RSA.Create(2048);
-            var issuerRequest = new CertificateRequest("CN=Vertex isolated test CA", issuerKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+            var issuerRequest = new CertificateRequest("CN=Vertex isolated test CA " + Guid.NewGuid().ToString("N"), issuerKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
             issuerRequest.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
             issuerRequest.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, true));
             issuerRequest.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(issuerRequest.PublicKey, false));

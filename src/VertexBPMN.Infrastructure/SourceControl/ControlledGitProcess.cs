@@ -87,8 +87,71 @@ internal sealed class ControlledGitProcess(IOptions<SourceControlOptions> option
             $"refs/heads/{branch}:refs/heads/vertex-source"], configuration, options.Value.Limits.WriteTimeout, cancellationToken);
     }
 
+    // Builds an immutable object only; publication still requires a fenced worker and ref CAS.
+    internal async Task<GitCommitId> BuildCommitAsync(GitWorkspace workspace, RepositoryBinding binding,
+        CommitCommand command, DateTimeOffset acceptedAt, CancellationToken cancellationToken)
+    {
+        if (command.OperationId == Guid.Empty || command.SessionId == Guid.Empty
+            || command.WorkBranch != SourceControlInputPolicy.WorkBranch(command.SessionId)
+            || command.WorkBranch == binding.DefaultBranch || command.WorkBranch == binding.ReleaseBranch
+            || string.IsNullOrWhiteSpace(command.Message) || command.Message.Any(char.IsControl)
+            || command.Message.Length > options.Value.Limits.MaxCommitMessageCharacters
+            || command.Snapshots.Count == 0 || command.Snapshots.Count > options.Value.Limits.MaxCommitFiles)
+            throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+        var snapshots = command.Snapshots.OrderBy(x => x.Path, StringComparer.Ordinal).ToArray();
+        if (snapshots.Select(x => x.Path).Distinct(StringComparer.OrdinalIgnoreCase).Count() != snapshots.Length)
+            throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+        foreach (var snapshot in snapshots) SourceControlInputPolicy.DemandSafeBpmn(snapshot, binding, options.Value.Limits);
+        await VersionAsync(workspace, cancellationToken);
+        var index = Path.Combine(workspace.ControlDirectory, "commit-index-" + Guid.NewGuid().ToString("N"));
+        var environment = new Dictionary<string, string> { ["GIT_INDEX_FILE"] = index,
+            ["GIT_AUTHOR_NAME"] = "VertexBPMN", ["GIT_COMMITTER_NAME"] = "VertexBPMN",
+            ["GIT_AUTHOR_EMAIL"] = "source-control@vertexbpmn.invalid", ["GIT_COMMITTER_EMAIL"] = "source-control@vertexbpmn.invalid",
+            ["GIT_AUTHOR_DATE"] = $"@{acceptedAt.ToUnixTimeSeconds()} +0000",
+            ["GIT_COMMITTER_DATE"] = $"@{acceptedAt.ToUnixTimeSeconds()} +0000" };
+        var prefix = "--git-dir=" + Path.Combine(workspace.Directory, "repository.git");
+        Task<byte[]> Run(string[] args, byte[]? input = null) => RunAsync(workspace, [prefix, .. args],
+            null, options.Value.Limits.WriteTimeout, cancellationToken, input, environment);
+        string Text(byte[] bytes) => System.Text.Encoding.UTF8.GetString(bytes).TrimEnd('\r', '\n');
+        try
+        {
+            var entries = System.Text.Encoding.UTF8.GetString(await Run(["ls-tree", "-r", "-t", "-z", command.BaseCommit.Value]))
+                .Split('\0', StringSplitOptions.RemoveEmptyEntries);
+            var modes = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var entry in entries)
+            {
+                var tab = entry.IndexOf('\t');
+                if (tab < 0) throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
+                modes.Add(entry[(tab + 1)..], entry[..6]);
+            }
+            foreach (var snapshot in snapshots)
+                foreach (var entry in modes)
+                    if ((entry.Key.Equals(snapshot.Path, StringComparison.OrdinalIgnoreCase)
+                            && (entry.Key != snapshot.Path || entry.Value is not ("100644" or "100755")))
+                        || entry.Key.StartsWith(snapshot.Path + "/", StringComparison.OrdinalIgnoreCase)
+                        || (snapshot.Path.StartsWith(entry.Key + "/", StringComparison.OrdinalIgnoreCase)
+                            && (entry.Value != "040000" || !snapshot.Path.StartsWith(entry.Key + "/", StringComparison.Ordinal))))
+                        throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
+            await Run(["read-tree", command.BaseCommit.Value]);
+            foreach (var snapshot in snapshots)
+            {
+                var blob = new GitCommitId(Text(await Run(["hash-object", "-w", "--no-filters", "--stdin"], snapshot.CopyContent())));
+                await Run(["update-index", "--add", "--cacheinfo", modes.GetValueOrDefault(snapshot.Path, "100644"), blob.Value, snapshot.Path]);
+            }
+            var tree = new GitCommitId(Text(await Run(["write-tree"])));
+            var message = System.Text.Encoding.UTF8.GetBytes(command.Message + "\n\nVertex-Operation: " + command.OperationId.ToString("N") + "\n");
+            return new GitCommitId(Text(await Run(["commit-tree", "--no-gpg-sign", tree.Value, "-p", command.BaseCommit.Value], message)));
+        }
+        finally
+        {
+            File.Delete(index);
+            File.Delete(index + ".lock");
+        }
+    }
+
     private async Task<byte[]> RunAsync(GitWorkspace workspace, IReadOnlyList<string> arguments,
-        IReadOnlyDictionary<string, string>? extra, TimeSpan timeout, CancellationToken cancellationToken)
+        IReadOnlyDictionary<string, string>? extra, TimeSpan timeout, CancellationToken cancellationToken,
+        byte[]? input = null, IReadOnlyDictionary<string, string>? trustedEnvironment = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var executable = options.Value.GitExecutablePath;
@@ -96,7 +159,7 @@ internal sealed class ControlledGitProcess(IOptions<SourceControlOptions> option
             || !File.Exists(executable)) throw new SourceControlSecurityException(SourceControlErrorCode.GitUnavailable);
         _ = SourceControlWorkspace.MeasureBytes(workspace.Directory, options.Value.Limits.MaxRepositoryBytes);
         var start = new ProcessStartInfo(executable) { WorkingDirectory = workspace.Directory, UseShellExecute = false,
-            CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+            CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = input is not null };
         start.Environment.Clear();
         // Windows process loading needs these OS paths, not arbitrary inherited settings.
         foreach (var name in new[] { "SystemRoot", "WINDIR" })
@@ -114,6 +177,8 @@ internal sealed class ControlledGitProcess(IOptions<SourceControlOptions> option
         start.Environment["GIT_TERMINAL_PROMPT"] = "0";
         start.Environment["GIT_ASKPASS"] = "";
         start.Environment["GCM_INTERACTIVE"] = "never";
+        if (trustedEnvironment is not null)
+            foreach (var pair in trustedEnvironment) start.Environment[pair.Key] = pair.Value;
         var config = new List<KeyValuePair<string, string>>
         {
             new("credential.helper", ""), new("credential.useHttpPath", "true"),
@@ -142,14 +207,17 @@ internal sealed class ControlledGitProcess(IOptions<SourceControlOptions> option
             var output = ReadBoundedAsync(process.StandardOutput.BaseStream, options.Value.Limits.MaxDiffBytes, stop.Token);
             var errors = ReadBoundedAsync(process.StandardError.BaseStream, 64 * 1024, stop.Token);
             var completed = process.WaitForExitAsync(stop.Token);
+            var supplied = input is null ? Task.CompletedTask : SupplyAsync(process.StandardInput.BaseStream, input, stop.Token);
             while (!completed.IsCompleted)
             {
                 _ = SourceControlWorkspace.MeasureBytes(workspace.Directory, options.Value.Limits.MaxRepositoryBytes);
                 await Task.WhenAny(completed, Task.Delay(50, stop.Token));
                 stop.Token.ThrowIfCancellationRequested();
                 if (output.IsFaulted || errors.IsFaulted) throw new SourceControlSecurityException(SourceControlErrorCode.PayloadTooLarge);
+                if (supplied.IsFaulted) await supplied;
             }
             await completed;
+            await supplied;
             var bytes = await output;
             _ = await errors; // Never expose provider stderr; it may contain credentials.
             _ = SourceControlWorkspace.MeasureBytes(workspace.Directory, options.Value.Limits.MaxRepositoryBytes);
@@ -166,6 +234,12 @@ internal sealed class ControlledGitProcess(IOptions<SourceControlOptions> option
             try { if (process.Id != 0 && !process.HasExited) { process.Kill(entireProcessTree: true); await process.WaitForExitAsync(CancellationToken.None); } }
             catch (InvalidOperationException) { }
         }
+    }
+
+    private static async Task SupplyAsync(Stream stream, byte[] input, CancellationToken cancellationToken)
+    {
+        await stream.WriteAsync(input, cancellationToken);
+        await stream.DisposeAsync();
     }
 
     private static async Task<byte[]> ReadBoundedAsync(Stream stream, int limit, CancellationToken cancellationToken)

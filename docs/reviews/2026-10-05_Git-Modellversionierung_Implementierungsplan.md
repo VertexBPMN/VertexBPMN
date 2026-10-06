@@ -2,6 +2,8 @@
 
 Stand: 2026-10-05. Planungsbasis: `master`, Commit `cb88bee0f83807cd0d7906a4d092807a56b49969`.
 
+Fortschritt 2026-10-06: [deterministische echte Commitobjekte](2026-10-06_Git-G04_Commitobjekte.md) als Vorarbeit für Write-Reconciliation ergänzt. 63 lokale Adaptertests bestanden. G04 ist damit begonnen, aber nicht abgeschlossen; dauerhafter Worker, Ref-CAS und Push bleiben offen. Ältere Angaben „G04 nicht begonnen“ unten sind historische Teilstände.
+
 Aktuelle Nutzerentscheidung: SQL-Server-Abnahme am 2026-10-05 ausdrücklich aus dem laufenden Arbeitsauftrag ausgenommen. Keine Testinstanz bereitstellen und keine Verbindung mehr anfordern. Das ursprüngliche Kriterium bleibt nachvollziehbar, ist aber **nicht geprüft / nicht bestanden**. Die übrigen G02/G03-Aufgaben laufen weiter. Wartungs-/Hoststart-Nachweise: [G03-Maintenance](2026-10-05_Git-G03_Maintenance.md).
 
 Aktueller Folgestand: echter TLS-/Helper-Git-Fetch mit bytegetreuem Readback, hostile Hooks/Filter/Gitlink, laufendem Timeout/Cancel und typisierte Commit-Annahme lokal bestanden; siehe [Transport-/Annahmebericht](2026-10-05_Git-G02_Transport-und-G03_Annahme.md). Die ältere Statuszusammenfassung darunter beschreibt den vorherigen Teilstand. G02/G03 bleiben offen bis zu den verbleibenden Write-/Reconciliation-/Provenienzgrenzen; SQL Server bleibt ausdrücklich ungetestet.

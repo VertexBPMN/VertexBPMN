@@ -132,6 +132,20 @@ public sealed class GitHttpsTransportTests
                 accepted, TestContext.Current.CancellationToken))).Code);
     }
 
+    [Fact]
+    public async Task Accepted_revision_fetch_does_not_substitute_a_moved_default_branch()
+    {
+        await using var fixture = await HttpsFixture.CreateAsync(hostile: true);
+        var accepted = await fixture.MoveDefaultBranchAsync();
+        using var lease = new GitHubTokenLease(fixture.Token, DateTimeOffset.UtcNow.AddMinutes(2));
+        await fixture.Runner.FetchLocalAcceptanceAsync(fixture.Workspace, fixture.Remote, "master", lease,
+            fixture.CaFile, TestContext.Current.CancellationToken, accepted);
+        var repository = "--git-dir=" + Path.Combine(fixture.Workspace.Directory, "repository.git");
+        Assert.Equal(accepted.Value, Encoding.UTF8.GetString(await fixture.GitAsync([repository, "rev-parse", "refs/heads/vertex-source"])).Trim());
+        Assert.Equal(fixture.ModelBytes, await fixture.GitAsync([repository, "show", accepted.Value + ":models/example.bpmn"]));
+        Assert.False(File.Exists(fixture.ExecutionMarker));
+    }
+
     private sealed class HttpsFixture : IAsyncDisposable
     {
         private readonly string _root = Path.Combine(Path.GetTempPath(), "vertex-git-https-" + Guid.NewGuid().ToString("N"));
@@ -345,6 +359,16 @@ public sealed class GitHttpsTransportTests
             start.Environment["GIT_CONFIG_GLOBAL"] = Path.Combine(_root, "no-global-config");
             start.Environment["GIT_TERMINAL_PROMPT"] = "0";
             return start;
+        }
+
+        internal async Task<GitCommitId> MoveDefaultBranchAsync()
+        {
+            var repository = "--git-dir=" + Path.Combine(_root, "remote", "models.git");
+            var accepted = new GitCommitId(Encoding.UTF8.GetString(await GitAsync([repository, "rev-parse", "refs/heads/master"])).Trim());
+            var previous = Encoding.UTF8.GetString(await GitAsync([repository, "rev-parse", accepted.Value + "^"])).Trim();
+            await GitAsync([repository, "update-ref", "refs/heads/alternate", accepted.Value]);
+            await GitAsync([repository, "update-ref", "refs/heads/master", previous, accepted.Value]);
+            return accepted;
         }
 
         internal async Task<byte[]> GitAsync(IReadOnlyList<string> arguments)

@@ -43,20 +43,33 @@ internal sealed class ControlledGitProcess(IOptions<SourceControlOptions> option
         await FetchCoreAsync(workspace, remote, branch, lease, addresses, null, deadline.Token);
     }
 
+    internal async Task FetchRevisionAsync(GitWorkspace workspace, Uri remote, GitCommitId revision,
+        GitHubTokenLease lease, CancellationToken cancellationToken)
+    {
+        SourceControlHttps.ValidateTarget(remote, options.Value.AllowedHosts);
+        await VersionAsync(workspace, cancellationToken);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(options.Value.Limits.WriteTimeout);
+        var addresses = await Dns.GetHostAddressesAsync(remote.IdnHost, deadline.Token);
+        if (addresses.Length == 0 || addresses.Any(x => !SourceControlHttps.IsPublicAddress(x)))
+            throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+        await FetchCoreAsync(workspace, remote, "", lease, addresses, null, deadline.Token, revision);
+    }
+
     // Explicitly isolated acceptance adapter, not a configurable production SSRF bypass.
     internal Task FetchLocalAcceptanceAsync(GitWorkspace workspace, Uri remote, string branch, GitHubTokenLease lease,
-        string certificateAuthorityFile, CancellationToken cancellationToken)
+        string certificateAuthorityFile, CancellationToken cancellationToken, GitCommitId? revision = null)
     {
         if (!remote.IsAbsoluteUri || remote.Scheme != "https" || remote.Host != "localhost" || remote.Port == 443
             || remote.UserInfo.Length != 0 || remote.Query.Length != 0 || remote.Fragment.Length != 0
             || !Path.IsPathFullyQualified(certificateAuthorityFile) || !File.Exists(certificateAuthorityFile))
             throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
         SourceControlInputPolicy.ValidateBranch(branch);
-        return FetchCoreAsync(workspace, remote, branch, lease, [IPAddress.Loopback], certificateAuthorityFile, cancellationToken);
+        return FetchCoreAsync(workspace, remote, branch, lease, [IPAddress.Loopback], certificateAuthorityFile, cancellationToken, revision);
     }
 
     private async Task FetchCoreAsync(GitWorkspace workspace, Uri remote, string branch, GitHubTokenLease lease,
-        IPAddress[] addresses, string? certificateAuthorityFile, CancellationToken cancellationToken)
+        IPAddress[] addresses, string? certificateAuthorityFile, CancellationToken cancellationToken, GitCommitId? revision = null)
     {
         var helper = options.Value.AuthHelperExecutablePath ?? Path.Combine(AppContext.BaseDirectory,
             "source-control-auth", "VertexBPMN.SourceControl.AuthHelper" + (OperatingSystem.IsWindows() ? ".exe" : ""));
@@ -84,7 +97,7 @@ internal sealed class ControlledGitProcess(IOptions<SourceControlOptions> option
         }
         await RunAsync(workspace, ["--git-dir=" + Path.Combine(workspace.Directory, "repository.git"),
             "fetch", "--no-recurse-submodules", "--no-tags", "--depth=1", "--", remote.AbsoluteUri,
-            $"refs/heads/{branch}:refs/heads/vertex-source"], configuration, options.Value.Limits.WriteTimeout, cancellationToken);
+            $"{revision?.Value ?? "refs/heads/" + branch}:refs/heads/vertex-source"], configuration, options.Value.Limits.WriteTimeout, cancellationToken);
     }
 
     // Builds an immutable object only; publication still requires a fenced worker and ref CAS.
@@ -94,7 +107,7 @@ internal sealed class ControlledGitProcess(IOptions<SourceControlOptions> option
         if (command.OperationId == Guid.Empty || command.SessionId == Guid.Empty
             || command.WorkBranch != SourceControlInputPolicy.WorkBranch(command.SessionId)
             || command.WorkBranch == binding.DefaultBranch || command.WorkBranch == binding.ReleaseBranch
-            || string.IsNullOrWhiteSpace(command.Message) || command.Message.Any(char.IsControl)
+            || string.IsNullOrWhiteSpace(command.Message) || command.Message.Any(c => char.IsControl(c) && c is not ('\r' or '\n' or '\t'))
             || command.Message.Length > options.Value.Limits.MaxCommitMessageCharacters
             || command.Snapshots.Count == 0 || command.Snapshots.Count > options.Value.Limits.MaxCommitFiles)
             throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
@@ -146,6 +159,50 @@ internal sealed class ControlledGitProcess(IOptions<SourceControlOptions> option
         {
             File.Delete(index);
             File.Delete(index + ".lock");
+        }
+    }
+
+    internal async Task<GitCommitId?> ReadLocalBranchAsync(GitWorkspace workspace, string branch, CancellationToken cancellationToken)
+    {
+        SourceControlInputPolicy.ValidateBranch(branch);
+        var reference = "refs/heads/" + branch;
+        var bytes = await RunAsync(workspace, ["--git-dir=" + Path.Combine(workspace.Directory, "repository.git"),
+            "for-each-ref", "--format=%(refname) %(objectname) %(symref)", "--", reference], null,
+            options.Value.Limits.ReadTimeout, cancellationToken);
+        var exact = System.Text.Encoding.UTF8.GetString(bytes).Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(x => x.TrimEnd('\r')).Where(x => x.StartsWith(reference + " ", StringComparison.Ordinal)).ToArray();
+        if (exact.Length > 1) throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
+        if (exact.Length == 0) return null;
+        var value = exact[0][(reference.Length + 1)..].Split(' ', 2);
+        if (value.Length != 2 || value[1].Length != 0)
+            throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
+        return new GitCommitId(value[0]);
+    }
+
+    /// <summary>Only publishes a new private work ref; never overwrites a differing local head.</summary>
+    internal async Task PublishLocalCommitAsync(GitWorkspace workspace, string branch, GitCommitId commit,
+        CancellationToken cancellationToken)
+    {
+        SourceControlInputPolicy.ValidateBranch(branch);
+        if (!branch.StartsWith("vertex/", StringComparison.Ordinal))
+            throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+        var current = await ReadLocalBranchAsync(workspace, branch, cancellationToken);
+        if (current == commit) return; // Receipt reconciliation, no second ref effect.
+        if (current is not null) throw new SourceControlSecurityException(SourceControlErrorCode.RevisionConflict);
+        var prefix = "--git-dir=" + Path.Combine(workspace.Directory, "repository.git");
+        await RunAsync(workspace, [prefix, "rev-parse", "--verify", commit.Value + "^{commit}"], null,
+            options.Value.Limits.ReadTimeout, cancellationToken);
+        try
+        {
+            await RunAsync(workspace, [prefix, "update-ref", "--no-deref", "refs/heads/" + branch, commit.Value,
+                new string('0', commit.Value.Length)], null, options.Value.Limits.ReadTimeout, cancellationToken);
+        }
+        catch (SourceControlSecurityException exception) when (exception.Code == SourceControlErrorCode.ProviderUnavailable)
+        {
+            current = await ReadLocalBranchAsync(workspace, branch, cancellationToken);
+            if (current == commit) return;
+            if (current is not null) throw new SourceControlSecurityException(SourceControlErrorCode.RevisionConflict);
+            throw;
         }
     }
 

@@ -132,6 +132,34 @@ internal sealed class SourceControlWorkspace(BpmnDbContext db, IDataProtectionPr
         Directory.Delete(path, recursive: true);
     }
 
+    /// <summary>Only the current lease may reopen a signed prior workspace named in a durable receipt.</summary>
+    internal async Task<GitWorkspace> OpenOwnedAsync(SourceControlContext context, Guid id, string worker,
+        long currentFence, long workspaceFence, CancellationToken cancellationToken)
+    {
+        if (workspaceFence <= 0 || workspaceFence > currentFence)
+            throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+        var now = DateTimeOffset.UtcNow.UtcTicks;
+        if (!await db.SourceControlOperations.AsNoTracking().AnyAsync(x => x.Id == id && x.TenantId == context.TenantId
+            && x.ActorId == context.ActorId && x.LeaseOwner == worker && x.Fence == currentFence
+            && x.LeaseUntilUtcTicks > now
+            && (x.State == (int)SourceControlOperationState.Running || x.State == (int)SourceControlOperationState.Reconciling), cancellationToken))
+            throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
+        var root = Root();
+        var path = Path.Combine(root, $"{id:N}-{workspaceFence}");
+        NoLinks(path);
+        var marker = Path.Combine(path, ".vertex-owner");
+        if (!Directory.Exists(path) || !File.Exists(marker) || (File.GetAttributes(marker) & FileAttributes.ReparsePoint) != 0)
+            throw new SourceControlSecurityException(SourceControlErrorCode.ResultUnknown);
+        try
+        {
+            var owner = protection.CreateProtector("VertexBPMN.SourceControl.WorkspaceOwner.v1", root).Unprotect(File.ReadAllText(marker));
+            if (owner != $"{context.TenantId}|{context.ActorId}|{id:N}|{workspaceFence}") Reject();
+        }
+        catch { Reject(); }
+        _ = MeasureBytes(path, options.Value.Limits.MaxRepositoryBytes);
+        return new(path, Path.Combine(path, "control"), id, workspaceFence);
+    }
+
     /// <summary>Retain unknown effects and unpublished local commits; delete only verified owned terminal workspaces.</summary>
     internal async Task<int> PruneCompletedAsync(DateTimeOffset now, CancellationToken cancellationToken)
     {

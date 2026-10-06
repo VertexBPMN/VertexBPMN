@@ -55,7 +55,9 @@ public sealed class SourceControlPersistenceTests
         var now = DateTimeOffset.UtcNow;
         Assert.Equal(1L, await store.TryClaimAsync(Actor.TenantId, id, "worker", now, TimeSpan.FromMinutes(1), Cancellation));
         using var accepted = System.Text.Json.JsonDocument.Parse(await store.ReadAcceptedRequestAsync(Actor.TenantId, id, "worker", 1, now, Cancellation));
-        Assert.Equal(1, accepted.RootElement.GetProperty("SchemaVersion").GetInt32());
+        Assert.Equal(2, accepted.RootElement.GetProperty("SchemaVersion").GetInt32());
+        Assert.True(accepted.RootElement.GetProperty("AcceptedUtcTicks").GetInt64() > 0);
+        Assert.Equal(2, accepted.RootElement.GetProperty("BindingRevision").GetInt64());
         Assert.Equal(basis.Value, accepted.RootElement.GetProperty("BaseCommit").GetString());
         var acceptedFirst = accepted.RootElement.GetProperty("Snapshots")[0];
         Assert.Equal(first.Path, acceptedFirst.GetProperty("Path").GetString());

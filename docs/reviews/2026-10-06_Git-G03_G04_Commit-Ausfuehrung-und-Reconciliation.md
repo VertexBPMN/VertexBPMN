@@ -68,6 +68,14 @@ Für die reine Stackdiagnose wurde `dotnet-stack` 10.0.745401 ausschließlich in
 
 ## Offene Grenzen / nächster Schritt
 
+### Nachtrag: Lease-Ausführungsbaustein nach c98dea9
+
+`SourceControlLeaseRunner` verlängert über einen vertrauenswürdigen Callback periodisch die Lease einer endlichen Ausführung. Der spätere Host muss dafür einen separaten Store/DbContext verwenden, da EF keine parallele Nutzung desselben Kontexts erlaubt. Bei fehlgeschlagener Verlängerung oder Providerexception wird der Ausführungstoken abgebrochen; ein verlorener Claim liefert `ResultUnknown` statt Erfolg. Der Heartbeat wird bei Abschluss beendet und abgewartet; externe Cancellation bleibt Cancellation. Keine blinden Retries oder terminalen DB-Zustandsänderungen durch diesen Baustein.
+
+`LeaseRunnerTests` prüft erfolgreiche Verlängerung/Shutdown, Leaseverlust, Providerfehler ohne Weitergabe sensibler Fehlermeldungen und Caller-Cancellation. Das sind isolierte Lifecycle-Vertragstests, keine DB-Heartbeat- oder gehostete Worker-Abnahme. Der Baustein ist noch nicht mit dem Executor verbunden. Automatischer Dispatch bleibt offen, ebenso die produktive Identitätsauflösung: `IIdentityService.GetUserByIdAsync` liefert lediglich Id/Username/Email; eine lokale `User.IsActive`-/Rollenprüfung kann externe OIDC-Rechte nicht ungeprüft ersetzen.
+
+Lokaler Prüflauf mit demselben oben dokumentierten Adaptertest-Befehl: **78 bestanden, 0 Fehler, 0 übersprungen**, 46,353 Sekunden. Abhängige Projekte kompiliert; bestehende Warnungen bleiben. Initialer Buildfehler wegen fehlendem Namespaceimport korrigiert, danach erfolgreich. Kein erneuter PostgreSQL-/Gesamtsuite-/Remote-Lauf für dieses Teilpaket. G03/G04 bleiben offen.
+
 ### Nachtrag: Rollenentzug während der Ausführung
 
 Auf Basis `5121665` verlangt `SourceControlCommitExecutor.ExecuteAsync` einen vom vertrauenswürdigen Host gelieferten Resolver statt statischer Rollen. Nach der Commitobjekt-Erzeugung und vor der Ref-Publikation werden Rollen erneut aufgelöst; `ReadCommitWorkAsync` prüft damit die aktuellen ACLs und die Lease. Der Host muss weiterhin denselben Actor/Tenant und einen aktiven Benutzer nachweisen. Dieser Resolver ist noch nicht mit einem gehosteten Worker/Identity-Backend verbunden. Die statische Rollenüberladung bleibt ausschließlich für isolierte Prepared-Workspace-Abnahmen.

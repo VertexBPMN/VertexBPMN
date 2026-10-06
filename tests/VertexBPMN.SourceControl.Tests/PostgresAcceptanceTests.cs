@@ -14,6 +14,10 @@ namespace VertexBPMN.SourceControl.Tests;
 public sealed class PostgresAcceptanceTests
 {
     [Fact]
+    public Task Real_postgres_claimed_runner_recovers_git_effect_and_durable_error_state()
+        => CommitExecutionAcceptanceTests.RunClaimedRunnerRecoveryAsync(true);
+
+    [Fact]
     public Task Real_postgres_reconciles_git_effect_after_failed_database_finish()
         => CommitExecutionAcceptanceTests.RunRecoveryAsync(true);
 

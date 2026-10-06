@@ -448,9 +448,12 @@ public sealed class PersistentSourceControlStore(BpmnDbContext db, IDataProtecti
     }
 
     public async Task<bool> FinishAsync(string tenantId, Guid id, string worker, long fence,
-        SourceControlOperationState state, DateTimeOffset now, CancellationToken cancellationToken)
+        SourceControlOperationState state, DateTimeOffset now, CancellationToken cancellationToken,
+        SourceControlErrorCode? errorCode = null)
     {
         Relational();
+        if (errorCode.HasValue && !Enum.IsDefined(errorCode.Value))
+            throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
         if (state is not (SourceControlOperationState.CommittedLocal or SourceControlOperationState.Pushed
             or SourceControlOperationState.Succeeded or SourceControlOperationState.Conflict
             or SourceControlOperationState.Failed or SourceControlOperationState.Cancelled
@@ -463,8 +466,23 @@ public sealed class PersistentSourceControlStore(BpmnDbContext db, IDataProtecti
                 && (state != SourceControlOperationState.Pushed || x.Kind == (int)SourceControlOperationKind.Push)
                 && (state != SourceControlOperationState.Succeeded || x.Kind != (int)SourceControlOperationKind.Commit && x.Kind != (int)SourceControlOperationKind.Push))
             .ExecuteUpdateAsync(update => update.SetProperty(x => x.State, (int)state)
+                .SetProperty(x => x.ErrorCode, errorCode.HasValue ? (int?)errorCode.Value : null)
                 .SetProperty(x => x.LeaseOwner, (string?)null).SetProperty(x => x.LeaseUntilUtcTicks, (long?)null)
                 .SetProperty(x => x.UpdatedUtcTicks, now.UtcTicks), cancellationToken) == 1;
+    }
+
+    internal async Task<bool> ConfirmCompletedCommitAsync(SourceControlContext context, Guid id, long fence,
+        CommitReceipt receipt, CancellationToken cancellationToken)
+    {
+        Relational();
+        var row = await db.SourceControlOperations.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id
+            && x.TenantId == context.TenantId && x.ActorId == context.ActorId && x.Fence == fence
+            && x.Kind == (int)SourceControlOperationKind.Commit && x.State == (int)SourceControlOperationState.CommittedLocal,
+            cancellationToken);
+        if (row?.ProtectedResult is null) return false;
+        var saved = JsonSerializer.Deserialize<StoredLocalCommit>(Unprotect(context, row.RepositoryId, row.ProtectedResult));
+        return saved is not null && saved.SchemaVersion == 1 && saved.RepositoryId == row.RepositoryId
+            && JsonSerializer.SerializeToUtf8Bytes(saved.Receipt).AsSpan().SequenceEqual(JsonSerializer.SerializeToUtf8Bytes(receipt));
     }
 
     public async Task<IReadOnlyList<ModelSnapshot>> ReadSnapshotsAsync(SourceControlContext context, Guid sessionId,

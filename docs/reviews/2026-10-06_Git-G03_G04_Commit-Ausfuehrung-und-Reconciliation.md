@@ -2,6 +2,8 @@
 
 Basis: `0fb81d66fe9e32d40fd069f36943a6a364a43c83`, Branch `codex/git-source-control-phase-1`. Stand: 2026-10-06.
 
+Aktueller Folgestand nach `a5ecdce`: [Claimed-Runner mit DB-Heartbeat und Fehlerabschluss](2026-10-06_Git-G03_Claimed-Runner-und-Abnahme.md). Die Aussagen zum noch unverbundenen Lease-Baustein unten sind historische Teilstände; G03 insgesamt bleibt offen.
+
 ## Umsetzung
 
 - `PersistentSourceControlStore.EnqueueCommitAsync` speichert Annahmezeit und Bindingrevision in einem geschützten Request der Schemaversion 2. Der Idempotenzhash bleibt an den bisherigen kanonischen Nutzereingaben und der Bindingrevision gebunden; die serverseitige Zeit ist kein Grund, einen identischen Retry abzulehnen.

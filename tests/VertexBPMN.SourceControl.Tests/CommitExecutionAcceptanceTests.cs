@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using VertexBPMN.Application.SourceControl;
 using VertexBPMN.Domain.Interfaces;
@@ -183,6 +184,162 @@ public sealed class CommitExecutionAcceptanceTests
     }
 
     [Fact]
+    public async Task Claimed_runner_renews_in_separate_scopes_and_finishes_real_commit()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await using var services = fixture.Services();
+        var calls = 0;
+        async Task<IReadOnlyCollection<string>> Roles(CancellationToken token)
+        {
+            if (++calls == 1)
+            {
+                await using var db = fixture.Db();
+                var row = await db.SourceControlOperations.AsNoTracking().SingleAsync(token);
+                Assert.InRange(row.LeaseUntilUtcTicks!.Value, DateTimeOffset.UtcNow.AddMinutes(1).UtcTicks,
+                    DateTimeOffset.UtcNow.AddMinutes(3).UtcTicks);
+                await Task.Delay(TimeSpan.FromMilliseconds(150), token);
+            }
+            return ["Admin"];
+        }
+        var outcome = await new SourceControlClaimedCommitRunner(services.GetRequiredService<IServiceScopeFactory>())
+            .RunPreparedAsync(fixture.Actor, fixture.Id, "first", 1, Roles, fixture.Workspace,
+                TimeSpan.FromMilliseconds(20), Cancellation);
+        Assert.Equal(SourceControlOperationState.CommittedLocal, outcome.State);
+        Assert.NotNull(outcome.Receipt);
+        Assert.Null(outcome.Error);
+        Assert.Equal(outcome.Receipt.Commit.Value, await fixture.HeadAsync());
+        await using var db = fixture.Db();
+        var row = await db.SourceControlOperations.AsNoTracking().SingleAsync(Cancellation);
+        Assert.Null(row.LeaseOwner);
+        Assert.Equal((int)SourceControlOperationState.CommittedLocal, row.State);
+        Assert.Null(row.ErrorCode);
+    }
+
+    [Fact]
+    public async Task Claimed_runner_denial_before_intent_is_failed_without_git_effect()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await using var services = fixture.Services();
+        var outcome = await new SourceControlClaimedCommitRunner(services.GetRequiredService<IServiceScopeFactory>())
+            .RunPreparedAsync(fixture.Actor, fixture.Id, "first", 1,
+                _ => Task.FromResult<IReadOnlyCollection<string>>(["ReadOnly"]), fixture.Workspace,
+                TimeSpan.FromMilliseconds(20), Cancellation);
+        Assert.Equal(SourceControlOperationState.Failed, outcome.State);
+        Assert.Equal(SourceControlErrorCode.Forbidden, outcome.Error);
+        await using var db = fixture.Db();
+        var row = await db.SourceControlOperations.AsNoTracking().SingleAsync(Cancellation);
+        Assert.Equal((int)SourceControlErrorCode.Forbidden, row.ErrorCode);
+        Assert.Null(row.ProtectedResult);
+        Assert.Null(row.LeaseOwner);
+        Assert.Null(await fixture.Git.ReadLocalBranchAsync(fixture.Workspace, fixture.Branch, Cancellation));
+    }
+
+    [Fact]
+    public async Task Claimed_runner_lost_lease_cannot_finish_or_publish_the_old_claim()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await using var services = fixture.Services();
+        async Task<IReadOnlyCollection<string>> Roles(CancellationToken token)
+        {
+            await using var db = fixture.Db();
+            await fixture.ExpireAsync(db);
+            return ["Admin"];
+        }
+        var outcome = await new SourceControlClaimedCommitRunner(services.GetRequiredService<IServiceScopeFactory>())
+            .RunPreparedAsync(fixture.Actor, fixture.Id, "first", 1, Roles, fixture.Workspace,
+                TimeSpan.FromSeconds(1), Cancellation);
+        Assert.Equal(SourceControlOperationState.ResultUnknown, outcome.State);
+        await using var read = fixture.Db();
+        var row = await read.SourceControlOperations.AsNoTracking().SingleAsync(Cancellation);
+        Assert.Equal((int)SourceControlOperationState.Running, row.State);
+        Assert.Null(row.ProtectedResult);
+        Assert.Null(await fixture.Git.ReadLocalBranchAsync(fixture.Workspace, fixture.Branch, Cancellation));
+        Assert.Equal(1, await fixture.Store(read).DetectExpiredLeasesAsync(DateTimeOffset.UtcNow, Cancellation));
+        Assert.Equal(3L, await fixture.Store(read).TryClaimAsync(fixture.Actor.TenantId, fixture.Id, "new-worker",
+            DateTimeOffset.UtcNow, TimeSpan.FromMinutes(2), Cancellation));
+    }
+
+    [Fact]
+    public async Task Claimed_runner_denial_after_intent_preserves_unknown_effect_for_reconciliation()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await using var services = fixture.Services();
+        var calls = 0;
+        var outcome = await new SourceControlClaimedCommitRunner(services.GetRequiredService<IServiceScopeFactory>())
+            .RunPreparedAsync(fixture.Actor, fixture.Id, "first", 1,
+                _ => Task.FromResult<IReadOnlyCollection<string>>(++calls == 1 ? ["Admin"] : ["ReadOnly"]),
+                fixture.Workspace, TimeSpan.FromMilliseconds(20), Cancellation);
+        Assert.Equal(SourceControlOperationState.ResultUnknown, outcome.State);
+        await using var db = fixture.Db();
+        var row = await db.SourceControlOperations.AsNoTracking().SingleAsync(Cancellation);
+        Assert.NotNull(row.ProtectedResult);
+        Assert.Equal((int)SourceControlOperationState.ResultUnknown, row.State);
+        Assert.Null(await fixture.Git.ReadLocalBranchAsync(fixture.Workspace, fixture.Branch, Cancellation));
+    }
+
+    [Fact]
+    public Task Claimed_runner_recovers_real_ref_after_database_finish_failure() => RunClaimedRunnerRecoveryAsync(false);
+
+    internal static async Task RunClaimedRunnerRecoveryAsync(bool postgres)
+    {
+        await using var fixture = await Fixture.CreateAsync(postgres);
+        await using var services = fixture.Services();
+        var runner = new SourceControlClaimedCommitRunner(services.GetRequiredService<IServiceScopeFactory>());
+        Task<IReadOnlyCollection<string>> Roles(CancellationToken _) => Task.FromResult<IReadOnlyCollection<string>>(["Admin"]);
+        await using (var db = fixture.Db())
+            await db.Database.ExecuteSqlRawAsync(postgres
+                ? "CREATE FUNCTION acceptance_fail_runner() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.\"State\" = "
+                    + (int)SourceControlOperationState.CommittedLocal
+                    + " THEN RAISE EXCEPTION 'isolated fault'; END IF; RETURN NEW; END; $$; CREATE TRIGGER fail_runner_finish BEFORE UPDATE OF \"State\" ON \"SourceControlOperations\" FOR EACH ROW EXECUTE FUNCTION acceptance_fail_runner();"
+                : $"CREATE TRIGGER fail_runner_finish BEFORE UPDATE OF State ON SourceControlOperations WHEN NEW.State = {(int)SourceControlOperationState.CommittedLocal} BEGIN SELECT RAISE(ABORT, 'isolated fault'); END;", Cancellation);
+        var unknown = await runner.RunPreparedAsync(fixture.Actor, fixture.Id, "first", 1, Roles,
+            fixture.Workspace, TimeSpan.FromSeconds(1), Cancellation);
+        Assert.Equal(SourceControlOperationState.ResultUnknown, unknown.State);
+        var head = await fixture.HeadAsync();
+        await using (var db = fixture.Db())
+        {
+            var row = await db.SourceControlOperations.AsNoTracking().SingleAsync(Cancellation);
+            Assert.Equal((int)SourceControlOperationState.ResultUnknown, row.State);
+            Assert.NotNull(row.ProtectedResult);
+            Assert.Null(row.LeaseOwner);
+            await db.Database.ExecuteSqlRawAsync(postgres
+                ? "DROP TRIGGER fail_runner_finish ON \"SourceControlOperations\"; DROP FUNCTION acceptance_fail_runner();"
+                : "DROP TRIGGER fail_runner_finish;", Cancellation);
+            Assert.Equal(2L, await fixture.Store(db).TryClaimAsync(fixture.Actor.TenantId, fixture.Id, "recovery",
+                DateTimeOffset.UtcNow, TimeSpan.FromMinutes(2), Cancellation));
+        }
+        var recovered = await runner.RunPreparedAsync(fixture.Actor, fixture.Id, "recovery", 2, Roles,
+            fixture.Workspace, TimeSpan.FromSeconds(1), Cancellation);
+        Assert.Equal(SourceControlOperationState.CommittedLocal, recovered.State);
+        Assert.Equal(head, recovered.Receipt!.Commit.Value);
+        Assert.Equal(head, await fixture.HeadAsync());
+        Assert.Equal("2", Encoding.UTF8.GetString(await fixture.GitAsync([fixture.GitDir, "rev-list", "--count", fixture.Branch])).Trim());
+        await using var finalDb = fixture.Db();
+        Assert.True(await fixture.Store(finalDb).ConfirmCompletedCommitAsync(fixture.Actor, fixture.Id, 2, recovered.Receipt, Cancellation));
+        Assert.False(await fixture.Store(finalDb).ConfirmCompletedCommitAsync(fixture.Actor, fixture.Id, 1, recovered.Receipt, Cancellation));
+        Assert.False(await fixture.Store(finalDb).ConfirmCompletedCommitAsync(new(fixture.Actor.TenantId, "other-actor"), fixture.Id, 2, recovered.Receipt, Cancellation));
+        Assert.False(await fixture.Store(finalDb).ConfirmCompletedCommitAsync(fixture.Actor, fixture.Id, 2,
+            recovered.Receipt with { Commit = fixture.Base }, Cancellation));
+    }
+
+    [Fact]
+    public async Task Claimed_runner_wrong_actor_cannot_finish_another_actors_job()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await using var services = fixture.Services();
+        var error = await Assert.ThrowsAsync<SourceControlSecurityException>(() =>
+            new SourceControlClaimedCommitRunner(services.GetRequiredService<IServiceScopeFactory>())
+                .RunPreparedAsync(new(fixture.Actor.TenantId, "other-actor"), fixture.Id, "first", 1,
+                    _ => throw new InvalidOperationException("must not resolve"), fixture.Workspace,
+                    TimeSpan.FromMilliseconds(20), Cancellation));
+        Assert.Equal(SourceControlErrorCode.NotFound, error.Code);
+        await using var db = fixture.Db();
+        var row = await db.SourceControlOperations.AsNoTracking().SingleAsync(Cancellation);
+        Assert.Equal((int)SourceControlOperationState.Running, row.State);
+        Assert.Equal("first", row.LeaseOwner);
+    }
+
+    [Fact]
     public async Task Symbolic_work_branch_cannot_redirect_a_write_to_the_default_branch()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -270,6 +427,11 @@ public sealed class CommitExecutionAcceptanceTests
             : new DbContextOptionsBuilder<BpmnDbContext>().UseVertexNpgsql(new NpgsqlConnectionStringBuilder(_adminConnection)
                 { Database = _postgresDatabase, Pooling = false }.ConnectionString).Options);
         internal PersistentSourceControlStore Store(BpmnDbContext db) => new(db, _protection, _options);
+        internal ServiceProvider Services() => new ServiceCollection()
+            .AddScoped(_ => Db())
+            .AddScoped(sp => Store(sp.GetRequiredService<BpmnDbContext>()))
+            .AddScoped(sp => Executor(sp.GetRequiredService<BpmnDbContext>()))
+            .BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
         internal SourceControlWorkspace Workspaces(BpmnDbContext db) => new(db, _protection, _options);
         internal SourceControlCommitExecutor Executor(BpmnDbContext db)
         {

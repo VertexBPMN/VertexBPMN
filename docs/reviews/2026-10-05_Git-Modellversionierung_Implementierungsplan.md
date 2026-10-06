@@ -2,6 +2,8 @@
 
 Stand: 2026-10-05. Planungsbasis: `master`, Commit `cb88bee0f83807cd0d7906a4d092807a56b49969`.
 
+Fortschritt 2026-10-06 nach `5121665`: Der Produktions-Einstieg des Commit-Executors verlangt jetzt eine vertrauenswürdige Rollenauflösung statt einer einmal übergebenen Rollenliste. Vor Ref-Publikation werden die Rollen erneut aufgelöst und die aktuelle Repository-ACL geprüft. Native Regression `Role_revocation_during_execution_blocks_publication_and_preserves_recovery_intent` beweist: Rechteentzug während der Ausführung verhindert den Branch-Write, der dauerhafte Beleg bleibt erhalten. Lokale Adaptersuite: 74 bestanden, 0 Fehler, 0 übersprungen, 42,399 Sekunden. Kein neuer PostgreSQL-, Gesamtsuite- oder Live-Identity-Nachweis in diesem Teilpaket. Gehosteter Dispatch, realer Actor-/Tenant-/Benutzerstatus-Resolver und Heartbeat bleiben offen; keine Paketcheckbox geschlossen.
+
 Fortschritt 2026-10-06: [deterministische echte Commitobjekte](2026-10-06_Git-G04_Commitobjekte.md) als Vorarbeit für Write-Reconciliation ergänzt. 63 lokale Adaptertests bestanden. G04 ist damit begonnen, aber nicht abgeschlossen; dauerhafter Worker, Ref-CAS und Push bleiben offen. Ältere Angaben „G04 nicht begonnen“ unten sind historische Teilstände.
 
 Aktueller Folgestand 2026-10-06: [endlicher Commit-Executor, Ref-CAS und lokale Reconciliation](2026-10-06_Git-G03_G04_Commit-Ausfuehrung-und-Reconciliation.md) mit 73 lokalen Adaptertests, 16 SQLite-Storefällen und drei WSLC-PostgreSQL-Abnahmen bestanden. Git-Write mit anschließendem DB-Abschlussfehler wird anhand des vorher gespeicherten Belegs abgeglichen. Gehosteter Dispatch mit frischer Rollenauflösung/Heartbeat, Remote-Push und Provenienz bleiben offen. Kein vollständiger G02/G03/G04-Abschluss.

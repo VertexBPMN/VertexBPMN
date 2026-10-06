@@ -68,6 +68,14 @@ Für die reine Stackdiagnose wurde `dotnet-stack` 10.0.745401 ausschließlich in
 
 ## Offene Grenzen / nächster Schritt
 
+### Nachtrag: Rollenentzug während der Ausführung
+
+Auf Basis `5121665` verlangt `SourceControlCommitExecutor.ExecuteAsync` einen vom vertrauenswürdigen Host gelieferten Resolver statt statischer Rollen. Nach der Commitobjekt-Erzeugung und vor der Ref-Publikation werden Rollen erneut aufgelöst; `ReadCommitWorkAsync` prüft damit die aktuellen ACLs und die Lease. Der Host muss weiterhin denselben Actor/Tenant und einen aktiven Benutzer nachweisen. Dieser Resolver ist noch nicht mit einem gehosteten Worker/Identity-Backend verbunden. Die statische Rollenüberladung bleibt ausschließlich für isolierte Prepared-Workspace-Abnahmen.
+
+Regression: `CommitExecutionAcceptanceTests.Role_revocation_during_execution_blocks_publication_and_preserves_recovery_intent` verwendet echte Gitobjekte und SQLite. Der Resolver liefert zunächst Admin, danach ReadOnly: `Forbidden`, kein Workbranch, Status weiterhin Running und gespeicherter Beleg erhalten. Keine automatisch behauptete terminale Fehlerbehandlung; diese gehört zum offenen Host-Dispatch.
+
+Ausgeführt: `VERTEXBPMN_TEST_GIT` auf installierte Git-Datei gesetzt; `dotnet test tests/VertexBPMN.SourceControl.Tests/VertexBPMN.SourceControl.Tests.csproj --configuration Release --filter-not-class '*PostgresAcceptanceTests' --max-parallel-test-modules 1`. Ergebnis: **74 bestanden, 0 Fehler, 0 übersprungen**, 42,399 Sekunden; abhängige Projekte kompiliert, bestehende Warnungen bleiben. PostgreSQL, zentrale CI-safe Gesamtsuite und echter Identity-/GitHub-Hostpfad in diesem Nachtrag nicht erneut ausgeführt. Der oben dokumentierte Gesamtlauf gilt für den vorherigen Kandidaten.
+
 - Kein automatisch laufender Commit-BackgroundService und noch keine Source-Control-API. Der endliche Executor ist per DI verfügbar, nimmt aber eine bereits vertrauenswürdig aufgelöste Identität und aktuelle Rollen entgegen. Der Host muss Rollen und Benutzerstatus verlässlich neu prüfen; gespeicherte Browserrollen oder pauschales Admin sind kein Ersatz. Claim-Dispatch, Heartbeat und Fehler-/Cancelzustände müssen daran angeschlossen werden.
 - Der Produktionspfad mit echtem GitHub-App-Token ist nicht als kompletter gehosteter Worker abgenommen. Native Executor-Abnahmen nutzen signierte vorbereitete lokale Workspaces; Transport separat über echten lokalen HTTPS-Server. Keine externe GitHub-Schreibabnahme behauptet.
 - Reconciliation nach lokalem Prozess-/Leaseverlust ist belegt, aber nicht nach dauerhaftem Verlust des Workspace-Datenträgers oder Failover auf einen Host ohne diesen Workspace. Keine verteilte Dateisystemverfügbarkeit behauptet.

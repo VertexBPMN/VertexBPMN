@@ -162,6 +162,27 @@ public sealed class CommitExecutionAcceptanceTests
     }
 
     [Fact]
+    public async Task Role_revocation_during_execution_blocks_publication_and_preserves_recovery_intent()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await using var db = fixture.Db();
+        var resolutions = 0;
+        Task<IReadOnlyCollection<string>> Resolve(CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+            return Task.FromResult<IReadOnlyCollection<string>>(++resolutions == 1 ? ["Admin"] : ["ReadOnly"]);
+        }
+        var error = await Assert.ThrowsAsync<SourceControlSecurityException>(() => fixture.Executor(db).ExecutePreparedAsync(
+            fixture.Actor, fixture.Id, "first", 1, Resolve, fixture.Workspace, Cancellation));
+        Assert.Equal(SourceControlErrorCode.Forbidden, error.Code);
+        Assert.Equal(2, resolutions);
+        Assert.Null(await fixture.Git.ReadLocalBranchAsync(fixture.Workspace, fixture.Branch, Cancellation));
+        var row = await db.SourceControlOperations.AsNoTracking().SingleAsync(Cancellation);
+        Assert.NotNull(row.ProtectedResult);
+        Assert.Equal((int)SourceControlOperationState.Running, row.State);
+    }
+
+    [Fact]
     public async Task Symbolic_work_branch_cannot_redirect_a_write_to_the_default_branch()
     {
         await using var fixture = await Fixture.CreateAsync();

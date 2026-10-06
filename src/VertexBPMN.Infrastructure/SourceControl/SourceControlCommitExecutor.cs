@@ -12,9 +12,9 @@ internal sealed class SourceControlCommitExecutor(PersistentSourceControlStore s
     SourceControlWorkspace workspaces, ControlledGitProcess git, GitHubAppTokenBroker tokens)
 {
     internal async Task<CommitReceipt> ExecuteAsync(SourceControlContext context, Guid id, string worker,
-        long fence, IReadOnlyCollection<string> currentRoles, CancellationToken cancellationToken)
+        long fence, Func<CancellationToken, Task<IReadOnlyCollection<string>>> resolveCurrentRoles, CancellationToken cancellationToken)
     {
-        var roles = currentRoles.ToArray();
+        var roles = (await resolveCurrentRoles(cancellationToken)).ToArray();
         var work = await store.ReadCommitWorkAsync(context, id, worker, fence, roles, cancellationToken);
         var saved = await ReadIntentAsync(context, work, worker, fence, cancellationToken);
         GitWorkspace workspace;
@@ -30,14 +30,22 @@ internal sealed class SourceControlCommitExecutor(PersistentSourceControlStore s
             // No moving-head substitution: BuildCommit uses the accepted full base OID or fails.
             await git.FetchRevisionAsync(workspace, work.Binding.Remote, work.Command.BaseCommit, token, cancellationToken);
         }
-        return await ExecutePreparedAsync(context, id, worker, fence, roles, workspace, cancellationToken);
+        return await ExecutePreparedAsync(context, id, worker, fence, resolveCurrentRoles, workspace, cancellationToken);
     }
 
     // A prepared private workspace also permits local native acceptance without a live GitHub installation.
     internal async Task<CommitReceipt> ExecutePreparedAsync(SourceControlContext context, Guid id, string worker,
         long fence, IReadOnlyCollection<string> currentRoles, GitWorkspace prepared, CancellationToken cancellationToken)
+        => await ExecutePreparedAsync(context, id, worker, fence,
+            _ => Task.FromResult<IReadOnlyCollection<string>>(currentRoles.ToArray()), prepared, cancellationToken);
+
+    // Trusted host callback must resolve the same actor/tenant and reject disabled identities.
+    // The collection overload above is only for isolated prepared-workspace acceptance.
+    internal async Task<CommitReceipt> ExecutePreparedAsync(SourceControlContext context, Guid id, string worker,
+        long fence, Func<CancellationToken, Task<IReadOnlyCollection<string>>> resolveCurrentRoles,
+        GitWorkspace prepared, CancellationToken cancellationToken)
     {
-        var roles = currentRoles.ToArray();
+        var roles = (await resolveCurrentRoles(cancellationToken)).ToArray();
         var work = await store.ReadCommitWorkAsync(context, id, worker, fence, roles, cancellationToken);
         var saved = await ReadIntentAsync(context, work, worker, fence, cancellationToken);
         if (saved is null && work.State == SourceControlOperationState.Reconciling)
@@ -63,6 +71,7 @@ internal sealed class SourceControlCommitExecutor(PersistentSourceControlStore s
                 throw new SourceControlSecurityException(SourceControlErrorCode.ResultUnknown);
         }
         // Authorization/lease must still be current after Git object construction.
+        roles = (await resolveCurrentRoles(cancellationToken)).ToArray();
         work = await store.ReadCommitWorkAsync(context, id, worker, fence, roles, cancellationToken);
         await store.PublishLocalCommitAsync(context, work, worker, fence,
             token => git.PublishLocalCommitAsync(workspace, receipt.WorkBranch, receipt.Commit, token), cancellationToken);

@@ -1,9 +1,11 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 <ItemGroup>
   <InternalsVisibleTo Include="VertexBPMN.Tests" />
+  <InternalsVisibleTo Include="VertexBPMN.SourceControl.Tests" />
 </ItemGroup>
 <ItemGroup>
   <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  <Compile Include="../VertexBPMN.SourceControl.AuthHelper/BoundedProtocol.cs" Link="SourceControl/BoundedProtocol.cs" />
 </ItemGroup>
 <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.9.0" PrivateAssets="all" />

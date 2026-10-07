@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableMicrosoftTestingPlatform>true</EnableMicrosoftTestingPlatform>
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+    <TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageReference Include="xunit.v3.mtp-v2" Version="4.0.1" />
+    <ProjectReference Include="../../src/VertexBPMN.SourceControl.Abstractions/VertexBPMN.SourceControl.Abstractions.csproj" />
+    <ProjectReference Include="../../src/VertexBPMN.Infrastructure/VertexBPMN.Infrastructure.csproj" />
+    <ProjectReference Include="../../src/VertexBPMN.SourceControl.AuthHelper/VertexBPMN.SourceControl.AuthHelper.csproj" ReferenceOutputAssembly="false" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+  <Target Name="CopyAuthHelperForAcceptance" AfterTargets="Build">
+    <ItemGroup>
+      <AuthHelperFiles Include="../../src/VertexBPMN.SourceControl.AuthHelper/bin/$(Configuration)/net10.0/VertexBPMN.SourceControl.AuthHelper.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(AuthHelperFiles)" DestinationFolder="$(OutDir)auth-helper" />
+  </Target>
+</Project>

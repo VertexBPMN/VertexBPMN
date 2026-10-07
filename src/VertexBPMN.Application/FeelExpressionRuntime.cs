@@ -7,8 +7,8 @@ namespace VertexBPMN.Application;
 /// </summary>
 public static class FeelExpressionRuntime
 {
-    public static object? Evaluate(
-        string expression,
-        IReadOnlyDictionary<string, object> context) =>
-        FeelEvaluator.EvaluateExpression(expression, context);
+	public static object? Evaluate(
+		string expression,
+		IReadOnlyDictionary<string, object> context) =>
+		FeelEvaluator.EvaluateExpression(expression, context);
 }

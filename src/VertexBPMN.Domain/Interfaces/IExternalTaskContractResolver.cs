@@ -9,12 +9,9 @@ namespace VertexBPMN.Domain.Interfaces;
 /// </summary>
 public interface IExternalTaskContractResolver
 {
-    ValueTask ValidateDeploymentAsync(string tenantId, ExternalTaskDefinition definition,
-        IReadOnlyCollection<string> inputNames, CancellationToken cancellationToken = default);
+	ValueTask ValidateDeploymentAsync(string tenantId, ExternalTaskDefinition definition,
+		IReadOnlyCollection<string> inputNames, CancellationToken cancellationToken = default);
 
-    ValueTask<ResolvedExternalTaskContract> ResolveAsync(string tenantId, ExternalTaskDefinition definition,
-        IReadOnlyDictionary<string, object> inputs, CancellationToken cancellationToken = default);
+	ValueTask<ResolvedExternalTaskContract> ResolveAsync(string tenantId, ExternalTaskDefinition definition,
+		IReadOnlyDictionary<string, object> inputs, CancellationToken cancellationToken = default);
 }
-
-/// <summary>Immutable version references and safe schema snapshot, never provider credentials.</summary>
-public sealed record ResolvedExternalTaskContract(string Version, string? AgentProfileVersion, string SchemaSnapshot);

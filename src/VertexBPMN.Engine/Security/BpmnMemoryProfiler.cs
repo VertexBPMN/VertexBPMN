@@ -12,51 +12,67 @@ namespace VertexBPMN.Engine.Security;
 public sealed class BpmnMemoryProfiler
 {
     /// <summary>
-    /// Profiles memory usage during a single parse operation.
+    /// Profiles process-wide managed memory during a parse operation.
+    /// Run in a quiescent process: concurrent work cannot be attributed to this parser.
     /// </summary>
-    public async Task<MemoryProfileSnapshot> ProfileParseOperationAsync(string xml, BpmnParserOptions options)
+    public async Task<MemoryProfileSnapshot> ProfileParseOperationAsync(string xml, BpmnParserOptions options, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(xml);
+        ArgumentNullException.ThrowIfNull(options);
+        cancellationToken.ThrowIfCancellationRequested();
         // Force GC before measurement for accurate baseline
         GC.Collect();
         GC.WaitForPendingFinalizers();
         GC.Collect();
         
         var initialMemory = GC.GetTotalMemory(false);
-        var initialAllocated = GC.GetAllocatedBytesForCurrentThread();
+        var initialAllocated = GC.GetTotalAllocatedBytes(precise: true);
         
         var parser = new BpmnParser(options);
         var stopwatch = Stopwatch.StartNew();
         
         // Track peak memory during parsing
         var peakMemory = initialMemory;
+        using var trackingCancellation = new CancellationTokenSource();
         var memoryTracker = Task.Run(async () =>
         {
-            while (stopwatch.IsRunning)
+            try
             {
-                var currentMemory = GC.GetTotalMemory(false);
-                if (currentMemory > peakMemory)
+                while (true)
                 {
-                    peakMemory = currentMemory;
+                    peakMemory = Math.Max(peakMemory, GC.GetTotalMemory(false));
+                    await Task.Delay(10, trackingCancellation.Token).ConfigureAwait(false);
                 }
-                await Task.Delay(10); // Sample every 10ms
             }
+            catch (OperationCanceledException) when (trackingCancellation.IsCancellationRequested) { }
         });
         
         // Execute the parse operation
-        var model = await parser.ParseAsync(xml);
-        stopwatch.Stop();
-        
-        // Stop memory tracking
-        await memoryTracker;
+        BpmnModel model;
+        long finalAllocated;
+        try
+        {
+            model = await parser.ParseAsync(xml, cancellationToken).ConfigureAwait(false);
+            finalAllocated = GC.GetTotalAllocatedBytes(precise: true);
+        }
+        finally
+        {
+            stopwatch.Stop();
+            trackingCancellation.Cancel();
+            // Always join the tracker, including parser errors and cancellation.
+            await memoryTracker.ConfigureAwait(false);
+        }
         
         // Force GC to measure retained memory
         var beforeGc = GC.GetTotalMemory(false);
+        peakMemory = Math.Max(peakMemory, beforeGc);
         GC.Collect();
         GC.WaitForPendingFinalizers(); 
         GC.Collect();
         var afterGc = GC.GetTotalMemory(false);
         
-        var finalAllocated = GC.GetAllocatedBytesForCurrentThread();
+        peakMemory = Math.Max(peakMemory, afterGc);
+        GC.KeepAlive(model);
         
         // Calculate string interning effectiveness
         var interningEffectiveness = CalculateStringInterningEffectiveness(model, options);

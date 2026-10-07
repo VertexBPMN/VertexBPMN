@@ -8,15 +8,18 @@ namespace VertexBPMN.Application;
 /// by the CLI test-runner in <c>--use-recorded-outputs</c> mode (Plan §3.6).
 /// </summary>
 public sealed class RecordedOutputServiceTaskHandler(
-    IReadOnlyDictionary<string, object> outputs) : IServiceTaskHandler
+	IReadOnlyDictionary<string, object> outputs) : IServiceTaskHandler
 {
-    public Task ExecuteAsync(
-        IDictionary<string, string> attributes,
-        IDictionary<string, object> variables,
-        CancellationToken cancellationToken = default)
-    {
-        foreach (var kvp in outputs)
-            variables[kvp.Key] = kvp.Value;
-        return Task.CompletedTask;
-    }
+	public Task ExecuteAsync(
+		IDictionary<string, string> attributes,
+		IDictionary<string, object> variables,
+		CancellationToken cancellationToken = default)
+	{
+		foreach (var kvp in outputs)
+		{
+			variables[kvp.Key] = kvp.Value;
+		}
+
+		return Task.CompletedTask;
+	}
 }

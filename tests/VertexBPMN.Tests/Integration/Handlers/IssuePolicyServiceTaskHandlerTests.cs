@@ -11,6 +11,7 @@ public class IssuePolicyServiceTaskHandlerTests
     {
         // Arrange
         var loggerMock = new Mock<ILogger<IssuePolicyServiceTaskHandler>>();
+        loggerMock.Setup(logger => logger.IsEnabled(LogLevel.Information)).Returns(true);
         var handler = new IssuePolicyServiceTaskHandler(loggerMock.Object);
         var variables = new Dictionary<string, object>
         {

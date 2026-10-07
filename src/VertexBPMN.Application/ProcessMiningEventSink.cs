@@ -9,14 +9,14 @@ namespace VertexBPMN.Application;
 /// </summary>
 public class ProcessMiningEventSink : IProcessMiningEventSink
 {
-    private readonly ConcurrentBag<ProcessMiningEvent> _events = new();
+	private readonly ConcurrentBag<ProcessMiningEvent> _events = new();
 
-    public ValueTask<ProcessMiningEvent> EmitAsync(ProcessMiningEvent evt, CancellationToken cancellationToken = default)
-    {
-        _events.Add(evt);
-        return new ValueTask<ProcessMiningEvent>(evt);
-    }
+	public ValueTask<ProcessMiningEvent> EmitAsync(ProcessMiningEvent evt, CancellationToken cancellationToken = default)
+	{
+		_events.Add(evt);
+		return new ValueTask<ProcessMiningEvent>(evt);
+	}
 
-    public IEnumerable<ProcessMiningEvent> GetAllEvents() => _events;
+	public IEnumerable<ProcessMiningEvent> GetAllEvents() => _events;
 
 }

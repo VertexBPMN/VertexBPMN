@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\VertexBPMN.Domain\VertexBPMN.Domain.csproj" />
+    <ProjectReference Include="..\VertexBPMN.SourceControl.Abstractions\VertexBPMN.SourceControl.Abstractions.csproj" />
   </ItemGroup>
 <ItemGroup>
   <PackageReference Include="Azure.Core" Version="1.63.0" />

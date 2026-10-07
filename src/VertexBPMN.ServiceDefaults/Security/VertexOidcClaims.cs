@@ -48,9 +48,11 @@ public static class VertexOidcClaims
         // Only the explicitly mapped top-level OIDC claim may grant VertexBPMN roles.
         // In particular, arbitrary realm, management or pre-mapped role claims are ignored.
         foreach (var existing in principal.FindAll(ClaimTypes.Role).ToArray())
-            existing.Subject?.RemoveClaim(existing);
+		{
+			existing.Subject?.RemoveClaim(existing);
+		}
 
-        var normalizedRoles = principal.FindAll(RolesClaimType)
+		var normalizedRoles = principal.FindAll(RolesClaimType)
             .Select(claim => claim.Value.Trim())
             .Where(AllowedRoles.Contains)
             .Distinct(StringComparer.Ordinal)

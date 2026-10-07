@@ -197,10 +197,11 @@ if (moduleOptions.Swagger || opMode is OperationalMode.Development or Operationa
 			BearerFormat = "JWT"
 		};
 		options.AddSecurityDefinition("Bearer", securityScheme);
-		var securityRef = new Microsoft.OpenApi.OpenApiSecuritySchemeReference("Bearer", null);
-		options.AddSecurityRequirement((_) => new Microsoft.OpenApi.OpenApiSecurityRequirement
+		// References need the document containing the scheme; an unresolved reference
+		// serializes as an empty requirement and incorrectly documents anonymous access.
+		options.AddSecurityRequirement(document => new Microsoft.OpenApi.OpenApiSecurityRequirement
 		{
-			{ securityRef, new List<string>() }
+			{ new Microsoft.OpenApi.OpenApiSecuritySchemeReference("Bearer", document), new List<string>() }
 		});
 		
 		// Add Simulation API tag

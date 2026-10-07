@@ -8,40 +8,47 @@ namespace VertexBPMN.Engine.Performance;
 /// </summary>
 public sealed class LazyXElement
 {
-    private XElement? _originalElement;
-    private XElement? _clonedElement;
-    private readonly object _lock = new();
-    
-    public LazyXElement(XElement original)
-    {
-        _originalElement = original ?? throw new ArgumentNullException(nameof(original));
-    }
-    
-    /// <summary>
-    /// Gets the cloned XElement, performing deep clone on first access.
-    /// Thread-safe with double-checked locking pattern.
-    /// </summary>
-    public XElement Element
-    {
-        get
-        {
-            if (_clonedElement != null)
-                return _clonedElement;
-                
-            lock (_lock)
-            {
-                if (_clonedElement != null)
-                    return _clonedElement;
-                    
-                _clonedElement = new XElement(_originalElement!);
-                _originalElement = null; // Release reference to original
-                return _clonedElement;
-            }
-        }
-    }
-    
-    /// <summary>
-    /// Gets whether the element has been cloned yet (for diagnostics).
-    /// </summary>
-    public bool IsCloned => _clonedElement != null;
+	private XElement? _originalElement;
+	private XElement? _clonedElement;
+	private readonly Lock _lock = new();
+
+	public LazyXElement(XElement original)
+	{
+		_originalElement = original ?? throw new ArgumentNullException(nameof(original));
+	}
+
+	/// <summary>
+	/// Gets the cloned XElement, performing deep clone on first access.
+	/// Thread-safe with double-checked locking pattern.
+	/// </summary>
+	public XElement Element
+	{
+		get
+		{
+			var cloned = Volatile.Read(ref _clonedElement);
+			if (cloned != null)
+			{
+				return cloned;
+			}
+
+			lock (_lock)
+			{
+				cloned = _clonedElement;
+				if (cloned != null)
+				{
+					return cloned;
+				}
+
+				cloned = new XElement(_originalElement!);
+				Volatile.Write(ref _clonedElement, cloned);
+				_originalElement = null; // Release reference to original
+				return cloned;
+			}
+		}
+	}
+
+	/// <summary>
+	/// Gets whether the element has been cloned yet (for diagnostics).
+	/// </summary>
+	public bool IsCloned => Volatile.Read(ref _clonedElement) != null;
 }

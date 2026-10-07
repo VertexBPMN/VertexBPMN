@@ -11,6 +11,7 @@ namespace VertexBPMN.Tests.Integration.Handlers
         {
             // Arrange
             var loggerMock = new Mock<ILogger<RejectPolicyServiceTaskHandler>>();
+            loggerMock.Setup(logger => logger.IsEnabled(LogLevel.Information)).Returns(true);
             var handler = new RejectPolicyServiceTaskHandler(loggerMock.Object);
             var variables = new Dictionary<string, object>
             {

@@ -45,9 +45,13 @@ public class BpmnDbContext : DbContext
     public DbSet<CaseInstanceRecord> CaseInstances => Set<CaseInstanceRecord>();
     public DbSet<PollingTriggerRecord> PollingTriggers => Set<PollingTriggerRecord>();
     public DbSet<OAuth2FlowStateRecord> OAuth2FlowStates => Set<OAuth2FlowStateRecord>();
+    public DbSet<SourceControlBindingRecord> SourceControlBindings => Set<SourceControlBindingRecord>();
+    public DbSet<SourceControlSessionRecord> SourceControlSessions => Set<SourceControlSessionRecord>();
+    public DbSet<SourceControlOperationRecord> SourceControlOperations => Set<SourceControlOperationRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        SourceControl.SourceControlMapping.Configure(modelBuilder);
         ConfigureEngineDeployment(modelBuilder);
         ConfigureProcessDefinition(modelBuilder);
         ConfigureProcessInstance(modelBuilder);

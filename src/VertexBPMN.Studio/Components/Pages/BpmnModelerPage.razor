@@ -46,6 +46,8 @@
             <MudChip T="string" Color="Color.Info" Variant="Variant.Outlined">Tenant: @(TenantContext.CurrentTenantId ?? "default")</MudChip>
     </StudioToolbar>
 
+    <SourceControlWorkspacePanel CaptureXml="CaptureBpmnXml" OpenXml="OpenGitXmlAsync" />
+
     @if (_createdWebhooks.Count > 0)
     {
         <MudPaper Class="pa-4 mb-4" data-testid="bpmn-created-webhooks">
@@ -727,6 +729,14 @@
         if (_modeler is not null)
             _bpmnXml = await _modeler.GetXmlAsync();
         return _bpmnXml;
+    }
+
+    private async Task OpenGitXmlAsync(string xml)
+    {
+        if (_modeler is null) throw new InvalidOperationException("The BPMN editor is not ready.");
+        await _modeler.LoadDocumentAsync(xml);
+        _bpmnXml = xml;
+        _xmlPreview = xml;
     }
 
     private async Task DownloadTextAsync(string fileName, string content, string contentType)

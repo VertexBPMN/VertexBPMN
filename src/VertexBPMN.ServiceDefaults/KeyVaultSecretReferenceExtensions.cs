@@ -17,6 +17,14 @@ namespace Microsoft.Extensions.Hosting;
 /// </summary>
 public static class KeyVaultSecretReferenceExtensions
 {
+    public static TBuilder AddKeyVaultSecretReferences<TBuilder>(
+        this TBuilder builder, Uri keyVaultUri, IKeyVaultSecretResolver? resolver = null)
+        where TBuilder : IHostApplicationBuilder
+    {
+        ArgumentNullException.ThrowIfNull(keyVaultUri);
+        return builder.AddKeyVaultSecretReferences(keyVaultUri.OriginalString, resolver);
+    }
+
     /// <summary>
     /// Adds a configuration source that resolves <c>secretref:&lt;name&gt;</c>
     /// tokens found in any environment variable into the Key Vault secret value.
@@ -66,16 +74,22 @@ public static class KeyVaultSecretReferenceExtensions
             _resolver = resolver;
         }
 
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "RCS1075",
+            Justification = "Resolution failures intentionally preserve secretref tokens for the existing downstream fail-closed configuration validation; SDK exceptions must not disclose secrets.")]
         public override void Load()
         {
             if (string.IsNullOrWhiteSpace(_vaultUri))
-                return; // local/dev: no vault configured; leave values untouched
+			{
+				return; // local/dev: no vault configured; leave values untouched
+			}
 
-            var pending = ParseSecretRefTokens(Environment.GetEnvironmentVariables());
+			var pending = ParseSecretRefTokens(Environment.GetEnvironmentVariables());
             if (pending.Count == 0)
-                return;
+			{
+				return;
+			}
 
-            var resolver = _resolver ?? new AzureKeyVaultSecretResolver(_vaultUri!);
+			var resolver = _resolver ?? new AzureKeyVaultSecretResolver(_vaultUri);
 
             foreach (var (configKey, secretName) in pending)
             {
@@ -83,12 +97,14 @@ public static class KeyVaultSecretReferenceExtensions
                 {
                     var value = resolver.Resolve(secretName);
                     if (value is not null)
-                        Set(configKey, value);
-                }
+					{
+						Set(configKey, value);
+					}
+				}
                 catch (Exception)
                 {
-                    // Leave the unresolved token in place; downstream config
-                    // validation will surface a clear error naming the secret.
+                    // Leave the unresolved token for downstream configuration validation.
+                    // Do not log SDK diagnostics that may contain secret material.
                 }
             }
         }
@@ -108,16 +124,23 @@ public static class KeyVaultSecretReferenceExtensions
             var name = entry.Key?.ToString();
             var value = entry.Value?.ToString();
             if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(value))
-                continue;
-            if (!value.StartsWith("secretref:", StringComparison.Ordinal))
-                continue;
+			{
+				continue;
+			}
 
-            var secretName = value.Substring("secretref:".Length).Trim();
+			if (!value.StartsWith("secretref:", StringComparison.Ordinal))
+			{
+				continue;
+			}
+
+			var secretName = value.Substring("secretref:".Length).Trim();
             if (string.IsNullOrEmpty(secretName))
-                continue;
+			{
+				continue;
+			}
 
-            // env var KEY__SUB maps to config KEY:SUB
-            var configKey = name.Replace("__", ":", StringComparison.Ordinal);
+			// env var KEY__SUB maps to config KEY:SUB
+			var configKey = name.Replace("__", ":", StringComparison.Ordinal);
             pending.Add((configKey, secretName));
         }
 
@@ -135,10 +158,4 @@ public static class KeyVaultSecretReferenceExtensions
         public string? Resolve(string secretName)
             => _client.GetSecret(secretName).Value?.Value;
     }
-}
-
-/// <summary>Test seam for resolving a single Key Vault secret by name.</summary>
-public interface IKeyVaultSecretResolver
-{
-    string? Resolve(string secretName);
 }

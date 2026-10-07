@@ -293,6 +293,7 @@ builder.Services.AddScoped<IPluginService, HttpPluginService>();
 builder.Services.AddScoped<IWorkflowTriggerService, HttpWorkflowTriggerService>();
 
 builder.Services.AddScoped<IConnectorService, HttpConnectorService>();
+builder.Services.AddScoped<HttpSourceControlService>();
 builder.Services.AddScoped<IConnectorTemplateService, HttpConnectorTemplateService>();
 builder.Services.AddScoped<IDebuggingService, HttpDebuggingService>();
 builder.Services.AddScoped<ICaseManagementService, HttpCaseManagementService>();

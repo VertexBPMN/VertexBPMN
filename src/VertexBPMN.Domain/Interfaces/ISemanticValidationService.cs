@@ -1,10 +1,9 @@
 using VertexBPMN.Domain.Entities;
 
-namespace VertexBPMN.Domain.Interfaces
+namespace VertexBPMN.Domain.Interfaces;
+
+public interface ISemanticValidationService
 {
-    public interface ISemanticValidationService
-    {
-        Task<SemanticValidationResult> ValidateBpmnAsync(string bpmnXml, CancellationToken cancellationToken = default);
-        SemanticValidationResult ValidateDmn(string dmnXml);
-    }
+	Task<SemanticValidationResult> ValidateBpmnAsync(string bpmnXml, CancellationToken cancellationToken = default);
+	SemanticValidationResult ValidateDmn(string dmnXml);
 }

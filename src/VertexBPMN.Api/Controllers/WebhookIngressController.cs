@@ -9,28 +9,27 @@ namespace VertexBPMN.Api.Controllers;
 [Route("api/webhooks")]
 public sealed class WebhookIngressController(IWorkflowTriggerService triggerService) : ControllerBase
 {
-    [AcceptVerbs("GET", "POST", "PUT", "PATCH", "DELETE")]
-    [AllowAnonymous]
-    [Route("{**path}")]
-    public async Task<ActionResult> Invoke(
-        string? path,
-        [FromHeader(Name = "X-VertexBPMN-Trigger-Secret")] string? triggerSecret,
-        [FromHeader(Name = "X-VertexBPMN-Signature")] string? signature,
-        CancellationToken cancellationToken)
-    {
-        await using var content = new MemoryStream();
-        await Request.Body.CopyToAsync(content, cancellationToken);
-        var result = await triggerService.InvokeWebhookAsync("/" + (path ?? string.Empty), Request.Method, triggerSecret, signature, content.ToArray(), cancellationToken,
-            Request.Headers["X-VertexBPMN-Timestamp"].ToString(), Request.Headers["X-VertexBPMN-Delivery-Id"].ToString());
-        return result.Status switch
-        {
-            WorkflowTriggerInvocationStatus.Started => Created($"/api/runtime/{result.ProcessInstance!.Id}", result.ProcessInstance),
-            WorkflowTriggerInvocationStatus.InvalidSecret => Unauthorized(),
-            WorkflowTriggerInvocationStatus.ReplayRejected => Conflict(new ProblemDetails { Title = "Webhook delivery has already been accepted." }),
-            WorkflowTriggerInvocationStatus.InvalidPayload => BadRequest(new ProblemDetails { Title = "Webhook payload does not match its declared schema." }),
-            WorkflowTriggerInvocationStatus.NotFound or WorkflowTriggerInvocationStatus.Disabled => NotFound(),
-            WorkflowTriggerInvocationStatus.ProcessDefinitionNotFound => UnprocessableEntity(new ProblemDetails { Title = "Process definition not found" }),
-            _ => Problem("The webhook could not be invoked.")
-        };
-    }
+	[AcceptVerbs("GET", "POST", "PUT", "PATCH", "DELETE")]
+	[AllowAnonymous]
+	[Route("{**path}")]
+	public async Task<ActionResult> Invoke(
+		string? path,
+		[FromHeader(Name = "X-VertexBPMN-Trigger-Secret")] string? triggerSecret,
+		[FromHeader(Name = "X-VertexBPMN-Signature")] string? signature,
+		CancellationToken cancellationToken)
+	{
+		await using var content = new MemoryStream();
+		await Request.Body.CopyToAsync(content, cancellationToken);
+		var result = await triggerService.InvokeWebhookAsync("/" + (path ?? string.Empty), Request.Method, triggerSecret, signature, content.ToArray(), Request.Headers["X-VertexBPMN-Timestamp"].ToString(), Request.Headers["X-VertexBPMN-Delivery-Id"].ToString(), cancellationToken);
+		return result.Status switch
+		{
+			WorkflowTriggerInvocationStatus.Started => Created($"/api/runtime/{result.ProcessInstance!.Id}", result.ProcessInstance),
+			WorkflowTriggerInvocationStatus.InvalidSecret => Unauthorized(),
+			WorkflowTriggerInvocationStatus.ReplayRejected => Conflict(new ProblemDetails { Title = "Webhook delivery has already been accepted." }),
+			WorkflowTriggerInvocationStatus.InvalidPayload => BadRequest(new ProblemDetails { Title = "Webhook payload does not match its declared schema." }),
+			WorkflowTriggerInvocationStatus.NotFound or WorkflowTriggerInvocationStatus.Disabled => NotFound(),
+			WorkflowTriggerInvocationStatus.ProcessDefinitionNotFound => UnprocessableEntity(new ProblemDetails { Title = "Process definition not found" }),
+			_ => Problem("The webhook could not be invoked.")
+		};
+	}
 }

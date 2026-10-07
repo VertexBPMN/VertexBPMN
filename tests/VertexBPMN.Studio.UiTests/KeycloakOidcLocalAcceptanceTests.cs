@@ -12,6 +12,20 @@ public sealed class KeycloakOidcLocalAcceptanceTests
 {
     [Fact]
     [Trait("Category", "KeycloakOidcLocalAcceptance")]
+    public async Task SessionRefresh_WithoutSession_ReturnsUnauthorizedWithoutRedirect()
+    {
+        using var handler = new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false };
+        using var client = new HttpClient(handler);
+        using var request = new HttpRequestMessage(HttpMethod.Post,
+            new Uri(new Uri(RequiredEnvironment("VERTEXBPMN_OIDC_TEST_STUDIO_URL")), "authentication/session/refresh"));
+        using var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(System.Net.HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Null(response.Headers.Location);
+    }
+
+    [Fact]
+    [Trait("Category", "KeycloakOidcLocalAcceptance")]
     public async Task BrowserLogin_ApiBackedPage_SessionRefresh_AndLogout_WorkEndToEnd()
     {
         var studioUrl = RequiredEnvironment("VERTEXBPMN_OIDC_TEST_STUDIO_URL");

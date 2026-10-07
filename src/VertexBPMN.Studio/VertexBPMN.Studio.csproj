@@ -32,6 +32,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\VertexBPMN.Domain\VertexBPMN.Domain.csproj" />
+    <ProjectReference Include="..\VertexBPMN.SourceControl.Abstractions\VertexBPMN.SourceControl.Abstractions.csproj" />
     <ProjectReference Include="..\VertexBPMN.ServiceDefaults\VertexBPMN.ServiceDefaults.csproj" />
   </ItemGroup>
 

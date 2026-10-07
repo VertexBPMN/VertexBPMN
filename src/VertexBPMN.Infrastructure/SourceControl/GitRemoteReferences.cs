@@ -10,6 +10,34 @@ internal static class GitRemoteReferences
 {
 	private const int MaximumCursorCharacters = 1024;
 
+	internal static GitCommitId? ReadHead(byte[] output, string branch)
+	{
+		SourceControlInputPolicy.ValidateBranch(branch);
+		if (output.Length == 0)
+		{
+			return null;
+		}
+		try
+		{
+			var text = new UTF8Encoding(false, true).GetString(output);
+			var parts = text[..^1].Split('\t');
+			if (!text.EndsWith('\n') || parts.Length != 2 || parts[1] != "refs/heads/" + branch)
+			{
+				throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
+			}
+			var head = new GitCommitId(parts[0]);
+			if (head.Value.All(character => character == '0'))
+			{
+				throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
+			}
+			return head;
+		}
+		catch (ArgumentException)
+		{
+			throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
+		}
+	}
+
 	internal static void ValidatePage(int pageSize, string? cursor, SourceControlLimits limits)
 	{
 		if (pageSize <= 0 || pageSize > limits.MaxPageSize || cursor?.Length > MaximumCursorCharacters)

@@ -132,8 +132,13 @@ public static class InfrastructureModule
         services.AddScoped<SourceControl.SourceControlClaimedCommitRunner>();
         services.AddScoped<SourceControl.SourceControlPushExecutor>();
         services.AddScoped<SourceControl.SourceControlClaimedPushRunner>();
+        services.AddScoped<VertexBPMN.Application.SourceControl.ISourceControlActorResolver, SourceControl.KeycloakSourceControlActorResolver>();
+        services.AddScoped<VertexBPMN.SourceControl.Abstractions.IModelSourceControlProvider, SourceControl.NativeGitModelSourceControlProvider>();
         if (mode != "Test" && configuration.GetValue<bool>("SourceControl:Enabled"))
+        {
             services.AddHostedService<SourceControl.SourceControlMaintenanceHostedService>();
+            services.AddHostedService<SourceControl.SourceControlJobsHostedService>();
+        }
         services.AddScoped<VertexBPMN.Application.SourceControl.ISourceControlAccessStore>(sp =>
             sp.GetRequiredService<SourceControl.PersistentSourceControlStore>());
         services.AddScoped<IConnectorService, PersistentConnectorService>();

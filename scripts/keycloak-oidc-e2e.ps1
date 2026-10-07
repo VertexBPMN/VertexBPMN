@@ -3,6 +3,8 @@ param(
     [ValidateRange(60, 300)]
     [int]$AccessTokenLifespan = 70,
     [switch]$SecurityAcceptance,
+    [switch]$DiagnosticBuild,
+    [switch]$GitIdentityAcceptance,
     [string]$TestMethod,
     [switch]$KeepKeycloak
 )
@@ -112,11 +114,16 @@ foreach ($artifact in @(
 }
 
 Write-Host "Building API, Studio and the local browser acceptance test..."
-& dotnet build $apiProject --configuration Release --no-restore --disable-build-servers --maxcpucount:1
+$buildProperties = @('-p:SkipBpmnIoAssetBuild=true')
+if ($DiagnosticBuild) {
+    Write-Warning 'Diagnostic build: analyzers are disabled. This run is not strict-build or production acceptance.'
+    $buildProperties += @('-p:RunAnalyzers=false', '-p:EnforceCodeStyleInBuild=false', '-p:TreatWarningsAsErrors=false')
+}
+& dotnet build $apiProject --configuration Release --no-restore --disable-build-servers --maxcpucount:1 @buildProperties
 if ($LASTEXITCODE -ne 0) { throw "The API build failed with exit code $LASTEXITCODE." }
-& dotnet build $uiTestProject --configuration Release --no-restore --disable-build-servers --maxcpucount:1
+& dotnet build $uiTestProject --configuration Release --no-restore --disable-build-servers --maxcpucount:1 @buildProperties
 if ($LASTEXITCODE -ne 0) { throw "The UI acceptance test build failed with exit code $LASTEXITCODE." }
-& dotnet publish $studioProject --configuration Release --no-restore --disable-build-servers --maxcpucount:1 --output $studioPublishDirectory
+& dotnet publish $studioProject --configuration Release --no-restore --disable-build-servers --maxcpucount:1 --output $studioPublishDirectory @buildProperties
 if ($LASTEXITCODE -ne 0) { throw "The Studio publish failed with exit code $LASTEXITCODE." }
 
 try {
@@ -209,6 +216,18 @@ try {
     & dotnet $uiTestAssembly @testFilters -parallelMode none
     if ($LASTEXITCODE -ne 0) {
         throw "The Keycloak browser acceptance test failed with exit code $LASTEXITCODE."
+    }
+    if ($GitIdentityAcceptance) {
+        $gitTestProject = Join-Path $repositoryRoot 'tests/VertexBPMN.SourceControl.Tests/VertexBPMN.SourceControl.Tests.csproj'
+        & dotnet build $gitTestProject --configuration Release --no-restore --disable-build-servers --maxcpucount:1 @buildProperties
+        if ($LASTEXITCODE -ne 0) { throw 'The Git identity acceptance build failed.' }
+        $previousGitOptIn = $env:VERTEXBPMN_KEYCLOAK_GIT_ACCEPTANCE
+        try {
+            $env:VERTEXBPMN_KEYCLOAK_GIT_ACCEPTANCE = '1'
+            & dotnet test $gitTestProject --configuration Release --no-build --no-restore --filter-class '*KeycloakGitLocalAcceptanceTests' --timeout 10m
+            if ($LASTEXITCODE -ne 0) { throw 'The real Keycloak Git identity acceptance failed.' }
+        }
+        finally { $env:VERTEXBPMN_KEYCLOAK_GIT_ACCEPTANCE = $previousGitOptIn }
     }
 }
 catch {

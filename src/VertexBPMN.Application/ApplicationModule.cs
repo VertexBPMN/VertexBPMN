@@ -25,6 +25,7 @@ public static class ApplicationModule
 			SourceControl.SourceControlOptionsValidator>();
 		services.AddOptions<VertexBPMN.SourceControl.Abstractions.SourceControlOptions>()
 			.Bind(configuration.GetSection(VertexBPMN.SourceControl.Abstractions.SourceControlOptions.SectionName))
+			.PostConfigure(options => options.IdentityAuthority ??= configuration["Jwt:Authority"]?.TrimEnd('/'))
 			.ValidateOnStart();
 		services.AddScoped<SourceControl.SourceControlCredentialResolver>();
 		var dependencies = new DependencyOptions();

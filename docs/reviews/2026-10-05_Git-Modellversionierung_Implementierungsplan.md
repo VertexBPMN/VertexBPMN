@@ -2,6 +2,10 @@
 
 Stand: 2026-10-05. Planungsbasis: `master`, Commit `cb88bee0f83807cd0d7906a4d092807a56b49969`.
 
+Folgepaket auf `63a20b5`: interne authentifizierte Branchauflösung auf eine feste
+Commit-ID ergänzt; Readback bleibt nach Remote-Branchänderungen revisionsgebunden.
+Keine Provider-/API-Gesamtfreigabe: [G04-Branchauflösung](2026-10-07_Git-G04_Branchaufloesung.md).
+
 Folgekorrektur: Arbeitsrepositories verwenden das Objektformat der bestätigten
 Basisrevision; echter HTTPS-Commit/Push mit SHA-1 und SHA-256 lokal geprüft.
 Nachweise und offene Produktgrenzen: [G04-Objektformat](2026-10-07_Git-G04_Objektformat.md).

@@ -73,6 +73,14 @@
         }
     }
 
+    public async Task LoadDocumentAsync(string xml)
+    {
+        if (_module is null || _modeler is null)
+            throw new InvalidOperationException("The BPMN editor is not ready.");
+        await _module.InvokeVoidAsync("BpmnModelerInterop.loadXml", _modeler, xml);
+        _loadedXml = xml;
+    }
+
     public async Task InsertConnectorTemplateAsync(StudioConnectorTemplate template, IReadOnlyDictionary<string, string>? values = null)
     {
         if (_module is null || _modeler is null)

@@ -1,0 +1,72 @@
+@using VertexBPMN.SourceControl.Abstractions
+@implements IDisposable
+@inject HttpSourceControlService Git
+@inject StudioTenantContext TenantContext
+@inject IJSRuntime JS
+
+<MudExpansionPanels>
+    <MudExpansionPanel Text="Git model workspace" data-testid="git-workspace">
+        <MudStack Spacing="2">
+            <MudText Typo="Typo.body2">Git versions source models. Commit, push and runtime deployment are separate actions.</MudText>
+            <MudButton OnClick="RefreshRepositories" Disabled="_busy" data-testid="git-refresh">Connect / refresh repositories</MudButton>
+            @if (_error is not null) { <MudAlert Severity="Severity.Error" data-testid="git-error">@_error</MudAlert> }
+            @if (_status is not null) { <MudAlert Severity="Severity.Info" data-testid="git-status">@_status</MudAlert> }
+            @if (_busy) { <MudButton OnClick="CancelWaiting">Cancel waiting (accepted jobs continue)</MudButton> }
+            <MudSelect T="Guid" Label="Repository" Value="_repositoryId" ValueChanged="SelectRepository" Disabled="_busy" data-testid="git-repository">
+                @foreach (var repository in _repositories)
+                {
+                    <MudSelectItem T="Guid" Value="repository.Binding.Id">@repository.Binding.Remote.AbsoluteUri</MudSelectItem>
+                }
+            </MudSelect>
+            <MudSelect T="string" Label="Branch" @bind-Value="_branch" Disabled="_busy" data-testid="git-branch">
+                @foreach (var branch in _branches) { <MudSelectItem T="string" Value="branch">@branch</MudSelectItem> }
+            </MudSelect>
+            @if (_branchCursor is not null) { <MudButton OnClick="MoreBranches" Disabled="_busy">More branches</MudButton> }
+            <MudSelect T="string" Label="Model directory" @bind-Value="_root" Disabled="_busy">
+                @foreach (var root in SelectedRepository?.Binding.ModelRoots ?? []) { <MudSelectItem T="string" Value="root">@root</MudSelectItem> }
+            </MudSelect>
+            <MudButton OnClick="BrowseFiles" Disabled="@(_busy || _repositoryId == Guid.Empty || string.IsNullOrEmpty(_branch))" data-testid="git-browse">Resolve branch / browse files</MudButton>
+            @if (_browseRevision is not null) { <MudText Typo="Typo.caption">Browse commit: @_browseRevision.Commit.Value</MudText> }
+            <MudSelect T="string" Label="BPMN file" @bind-Value="_path" Disabled="_busy" data-testid="git-file">
+                @foreach (var file in _files) { <MudSelectItem T="string" Value="file.Path">@file.Path</MudSelectItem> }
+            </MudSelect>
+            @if (_fileCursor is not null) { <MudButton OnClick="MoreFiles" Disabled="_busy">More files</MudButton> }
+            <MudButton OnClick="OpenFile" Disabled="@(_busy || _browseRevision is null || string.IsNullOrEmpty(_path))" data-testid="git-open">Open in existing BPMN editor</MudButton>
+            @if (_document is not null)
+            {
+                <MudText Typo="Typo.caption" data-testid="git-source">Source: @_document.Path · base @_baseCommit?.Value</MudText>
+                <MudStack Row="true" Wrap="Wrap.Wrap">
+                    <MudButton OnClick="ShowDiff" Disabled="_busy" data-testid="git-diff">Compare current snapshot</MudButton>
+                    <MudButton OnClick="ShowHistory" Disabled="_busy" data-testid="git-history">Git history</MudButton>
+                    <MudButton OnClick="SaveSnapshot" Disabled="_busy">Save draft snapshot</MudButton>
+                </MudStack>
+                <MudTextField T="string" Label="Commit message" @bind-Value="_message" Disabled="_busy" data-testid="git-message" />
+                <MudButton OnClick="CommitSnapshot" Disabled="@(_busy || string.IsNullOrWhiteSpace(_message) || JobActive)" data-testid="git-commit">Commit confirmed editor snapshot</MudButton>
+                @if (_pendingCommit is not null) { <MudButton OnClick="RetryCommit" Disabled="_busy">Retry same accepted snapshot</MudButton> }
+                @if (_receipt is not null)
+                {
+                    <MudText Typo="Typo.caption">Local commit: @_receipt.Commit.Value · @_receipt.WorkBranch</MudText>
+                    <MudButton OnClick="PushCommit" Disabled="@(_busy || JobActive || _expectedRemote == _receipt.Commit)" data-testid="git-push">Push last confirmed commit only</MudButton>
+                }
+                @if (_jobId is not null) { <MudButton OnClick="RefreshJob" Disabled="_busy" data-testid="git-job-refresh">Refresh durable job status</MudButton> }
+                @if (_job is not null) { <MudText data-testid="git-job-state">@_job.State @(_job.Error?.ToString())</MudText> }
+                @if (_diff is not null) { <pre data-testid="git-diff-text" style="white-space:pre-wrap;overflow-wrap:anywhere">@_diff.UnifiedText</pre> }
+                @foreach (var item in _history) { <MudText Typo="Typo.caption">@item.Commit.Value — @item.Subject</MudText> }
+                @if (_historyCursor is not null) { <MudButton OnClick="MoreHistory" Disabled="_busy">More history</MudButton> }
+                <MudButton OnClick="ExportOriginal" Disabled="_busy">Download original source bytes</MudButton>
+            }
+            <AuthorizeView Roles="Admin">
+                <MudDivider />
+                <MudText Typo="Typo.subtitle2">Repository administration</MudText>
+                <MudTextField T="string" Label="HTTPS repository URL" @bind-Value="_remote" />
+                <MudTextField T="string" Label="Protected GitHubApp credential reference (not a secret)" @bind-Value="_credential" />
+                <MudTextField T="string" Label="Default branch" @bind-Value="_defaultBranch" />
+                <MudTextField T="string" Label="Release branch" @bind-Value="_releaseBranch" />
+                <MudTextField T="string" Label="Model directory" @bind-Value="_modelRoot" />
+                <MudButton OnClick="CreateRepository" Disabled="_busy">Create repository binding</MudButton>
+                <MudTextField T="string" Label="Repository grants JSON (actorId, permissions)" @bind-Value="_grantsJson" Lines="3" />
+                <MudButton OnClick="SaveGrants" Disabled="@(_busy || SelectedRepository is null)">Replace grants with revision check</MudButton>
+            </AuthorizeView>
+        </MudStack>
+    </MudExpansionPanel>
+</MudExpansionPanels>

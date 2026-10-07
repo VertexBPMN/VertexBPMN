@@ -10,7 +10,7 @@ internal sealed partial class ControlledGitProcess
 	internal Task<GitCommitId?> ReadPushHeadAsync(GitWorkspace workspace, RepositoryBinding binding,
 		PushCommand command, GitHubTokenLease lease, CancellationToken cancellationToken) =>
 		WithPushRemoteAsync(workspace, binding, command, lease,
-			(addresses, token) => ReadPushHeadCoreAsync(workspace, binding.Remote, command.WorkBranch, lease, addresses, null, token), cancellationToken);
+			(addresses, token) => ReadRemoteHeadCoreAsync(workspace, binding.Remote, command.WorkBranch, lease, addresses, null, token), cancellationToken);
 
 	internal async Task PushAsync(GitWorkspace workspace, RepositoryBinding binding, PushCommand command,
 		GitHubTokenLease lease, CancellationToken cancellationToken) =>
@@ -24,15 +24,15 @@ internal sealed partial class ControlledGitProcess
 		PushCommand command, GitHubTokenLease lease, string certificateAuthorityFile, CancellationToken cancellationToken)
 	{
 		ValidatePush(binding, command);
-		ValidatePushAcceptanceTarget(binding.Remote, certificateAuthorityFile);
-		return ReadPushHeadCoreAsync(workspace, binding.Remote, command.WorkBranch, lease, [IPAddress.Loopback], certificateAuthorityFile, cancellationToken);
+		ValidateLocalAcceptanceTarget(binding.Remote, certificateAuthorityFile);
+		return ReadRemoteHeadCoreAsync(workspace, binding.Remote, command.WorkBranch, lease, [IPAddress.Loopback], certificateAuthorityFile, cancellationToken);
 	}
 
 	internal Task PushLocalAcceptanceAsync(GitWorkspace workspace, RepositoryBinding binding, PushCommand command,
 		GitHubTokenLease lease, string certificateAuthorityFile, CancellationToken cancellationToken)
 	{
 		ValidatePush(binding, command);
-		ValidatePushAcceptanceTarget(binding.Remote, certificateAuthorityFile);
+		ValidateLocalAcceptanceTarget(binding.Remote, certificateAuthorityFile);
 		return PushCoreAsync(workspace, binding, command, lease, [IPAddress.Loopback], certificateAuthorityFile, cancellationToken);
 	}
 
@@ -59,43 +59,11 @@ internal sealed partial class ControlledGitProcess
 		}
 	}
 
-	private async Task<GitCommitId?> ReadPushHeadCoreAsync(GitWorkspace workspace, Uri remote, string branch,
-		GitHubTokenLease lease, IPAddress[] addresses, string? caFile, CancellationToken cancellationToken)
-	{
-		await VersionAsync(workspace, cancellationToken);
-		var reference = "refs/heads/" + branch;
-		var bytes = await RunAuthenticatedRemoteAsync(workspace, remote, lease, addresses, caFile,
-			["ls-remote", "--quiet", "--branches", "--refs", "--", remote.AbsoluteUri, reference], options.Value.Limits.ReadTimeout, cancellationToken);
-		if (bytes.Length == 0)
-		{
-			return null;
-		}
-		try
-		{
-			var text = new UTF8Encoding(false, true).GetString(bytes);
-			var parts = text.TrimEnd('\n').Split('\t');
-			if (!text.EndsWith('\n') || parts.Length != 2 || parts[1] != reference)
-			{
-				throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
-			}
-			var head = new GitCommitId(parts[0]);
-			if (head.Value.All(character => character == '0'))
-			{
-				throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
-			}
-			return head;
-		}
-		catch (ArgumentException)
-		{
-			throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
-		}
-	}
-
 	private async Task PushCoreAsync(GitWorkspace workspace, RepositoryBinding binding, PushCommand command,
 		GitHubTokenLease lease, IPAddress[] addresses, string? caFile, CancellationToken cancellationToken)
 	{
 		await VersionAsync(workspace, cancellationToken);
-		var before = await ReadPushHeadCoreAsync(workspace, binding.Remote, command.WorkBranch, lease, addresses, caFile, cancellationToken);
+		var before = await ReadRemoteHeadCoreAsync(workspace, binding.Remote, command.WorkBranch, lease, addresses, caFile, cancellationToken);
 		if (GitPushReconciliation.BeforeFirstWrite(command, before) != GitPushReconciliationResult.ReadyToPush)
 		{
 			throw new SourceControlSecurityException(SourceControlErrorCode.RevisionConflict);
@@ -156,13 +124,4 @@ internal sealed partial class ControlledGitProcess
 		}
 	}
 
-	private static void ValidatePushAcceptanceTarget(Uri remote, string caFile)
-	{
-		if (!remote.IsAbsoluteUri || remote.Scheme != "https" || remote.Host != "localhost" || remote.Port == 443
-			|| remote.UserInfo.Length != 0 || remote.Query.Length != 0 || remote.Fragment.Length != 0
-			|| !Path.IsPathFullyQualified(caFile) || !File.Exists(caFile))
-		{
-			throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
-		}
-	}
 }

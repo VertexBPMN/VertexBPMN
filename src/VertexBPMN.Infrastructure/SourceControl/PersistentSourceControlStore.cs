@@ -173,7 +173,8 @@ public sealed partial class PersistentSourceControlStore(BpmnDbContext db, IData
             throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
         var identity = new AcceptedCommit(1, submission.SessionId,
             submission.SessionRevision, submission.BaseCommit.Value, submission.WorkBranch, submission.Message,
-            snapshots.Select(x => new AcceptedSnapshot(x.Path, x.Kind, x.DocumentGeneration, x.LocalRevision, x.ContentSha256, x.CopyContent())).ToArray());
+            snapshots.Select(x => new AcceptedSnapshot(x.Path, x.Kind, x.DocumentGeneration, x.LocalRevision, x.ContentSha256, x.CopyContent())).ToArray(),
+            ActorAuthority: options.Value.IdentityAuthority);
         var identityBytes = JsonSerializer.SerializeToUtf8Bytes(identity);
         var existing = await db.SourceControlOperations.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == context.TenantId
             && x.RepositoryId == repositoryId && x.Kind == (int)SourceControlOperationKind.Commit
@@ -212,7 +213,8 @@ public sealed partial class PersistentSourceControlStore(BpmnDbContext db, IData
     private sealed record AcceptedCommit(int SchemaVersion, Guid SessionId, long SessionRevision,
         string BaseCommit, string WorkBranch, string Message, AcceptedSnapshot[] Snapshots,
         [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] long AcceptedUtcTicks = 0,
-        [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] long BindingRevision = 0);
+        [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] long BindingRevision = 0,
+        [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? ActorAuthority = null);
     private sealed record AcceptedSnapshot(string Path, SourceModelKind Kind, Guid Generation,
         long Revision, string ContentSha256, byte[] Bytes);
 
@@ -236,6 +238,7 @@ public sealed partial class PersistentSourceControlStore(BpmnDbContext db, IData
             ?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
         var permission = kind switch
         {
+            SourceControlOperationKind.Read => RepositoryPermission.Read,
             SourceControlOperationKind.OpenSession or SourceControlOperationKind.Commit => RepositoryPermission.Commit,
             SourceControlOperationKind.Push => RepositoryPermission.Push,
             SourceControlOperationKind.PullRequest => RepositoryPermission.PullRequest,
@@ -351,6 +354,8 @@ public sealed partial class PersistentSourceControlStore(BpmnDbContext db, IData
             if (accepted.SchemaVersion != 2 || accepted.AcceptedUtcTicks <= 0 || accepted.BindingRevision <= 0
                 || accepted.Snapshots is null || accepted.Snapshots.Length == 0)
                 throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
+            if (accepted.ActorAuthority != options.Value.IdentityAuthority)
+                throw new SourceControlSecurityException(SourceControlErrorCode.RevisionConflict);
             var identity = accepted with { SchemaVersion = 1, AcceptedUtcTicks = 0, BindingRevision = 0 };
             if (accepted.BindingRevision != access.Revision
                 || RequestHash(access.Revision, JsonSerializer.SerializeToUtf8Bytes(identity)) != row.RequestHash)

@@ -11,6 +11,8 @@ public sealed class SourceControlOptions
     public string? GitExecutablePath { get; init; }
     public string? AuthHelperExecutablePath { get; init; }
     public string? WorkspaceRoot { get; init; }
+    public string? IdentityCredentialReference { get; init; }
+    public string? IdentityAuthority { get; set; }
     public IReadOnlyList<string> AllowedHosts { get; init; } = [];
     public string WorkBranchPrefix { get; init; } = "vertex/";
     public SourceControlLimits Limits { get; init; } = new();

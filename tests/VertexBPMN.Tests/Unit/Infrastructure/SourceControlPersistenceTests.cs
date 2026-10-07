@@ -256,6 +256,24 @@ public sealed class SourceControlPersistenceTests
     }
 
     [Fact]
+    public async Task Push_envelope_has_bounded_room_for_the_original_commit_and_its_receipt()
+    {
+        await using var fixture = new StoreFixture();
+        var binding = await fixture.InitializeAsync();
+        await using var db = fixture.Db();
+        var store = fixture.Store(db);
+        var largerEnvelope = new byte[3 * 1024 * 1024 + 512];
+        Assert.NotEqual(Guid.Empty, await store.EnqueueAsync(Actor, binding.Id, ["Admin"], SourceControlOperationKind.Push,
+            new("push-envelope"), largerEnvelope, Cancellation));
+        Assert.Equal(SourceControlErrorCode.PayloadTooLarge, (await Assert.ThrowsAsync<SourceControlSecurityException>(() =>
+            store.EnqueueAsync(Actor, binding.Id, ["Admin"], SourceControlOperationKind.Commit,
+                new("oversized-commit"), largerEnvelope, Cancellation))).Code);
+        Assert.Equal(SourceControlErrorCode.PayloadTooLarge, (await Assert.ThrowsAsync<SourceControlSecurityException>(() =>
+            store.EnqueueAsync(Actor, binding.Id, ["Admin"], SourceControlOperationKind.Push,
+                new("oversized-push"), new byte[6 * 1024 * 1024 + 1], Cancellation))).Code);
+    }
+
+    [Fact]
     public async Task Global_job_quota_is_arbitrated_between_independent_workers()
     {
         await using var fixture = new StoreFixture();

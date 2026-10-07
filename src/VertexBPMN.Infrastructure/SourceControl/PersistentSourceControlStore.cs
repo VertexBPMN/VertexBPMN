@@ -14,7 +14,7 @@ using System.Data.Common;
 namespace VertexBPMN.Infrastructure.SourceControl;
 
 /// <summary>Relational-only store. Each worker/request uses its own scoped DbContext.</summary>
-public sealed class PersistentSourceControlStore(BpmnDbContext db, IDataProtectionProvider protection, IOptions<SourceControlOptions> options)
+public sealed partial class PersistentSourceControlStore(BpmnDbContext db, IDataProtectionProvider protection, IOptions<SourceControlOptions> options)
     : ISourceControlAccessStore
 {
     private void Relational()
@@ -227,7 +227,10 @@ public sealed class PersistentSourceControlStore(BpmnDbContext db, IDataProtecti
     {
         Relational();
         var request = canonicalRequest.ToArray();
-        if (request.Length == 0 || request.Length > 3 * 1024 * 1024)
+        // Push copies an already bounded commit request plus its receipt. Do not reject
+        // a valid near-limit commit merely because the immutable push envelope is larger.
+        var maximumRequestBytes = kind == SourceControlOperationKind.Push ? 6 * 1024 * 1024 : 3 * 1024 * 1024;
+        if (request.Length == 0 || request.Length > maximumRequestBytes)
             throw new SourceControlSecurityException(SourceControlErrorCode.PayloadTooLarge);
         var access = await FindAsync(context.TenantId, repositoryId, cancellationToken)
             ?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
@@ -335,6 +338,12 @@ public sealed class PersistentSourceControlStore(BpmnDbContext db, IDataProtecti
         var access = await FindAsync(context.TenantId, row.RepositoryId, cancellationToken)
             ?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
         RepositoryAccessPolicy.Demand(context, access.Binding, currentRoles, access.Grants, RepositoryPermission.Commit);
+        return DecodeCommitWork(context, row, access);
+    }
+
+    private AcceptedCommitWork DecodeCommitWork(SourceControlContext context, SourceControlOperationRecord row,
+        RepositoryAccessSnapshot access)
+    {
         try
         {
             var accepted = JsonSerializer.Deserialize<AcceptedCommit>(Unprotect(context, row.RepositoryId, row.ProtectedRequest))
@@ -350,7 +359,7 @@ public sealed class PersistentSourceControlStore(BpmnDbContext db, IDataProtecti
             for (var i = 0; i < snapshots.Length; i++)
                 if (snapshots[i].ContentSha256 != accepted.Snapshots[i].ContentSha256)
                     throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
-            return new(access.Binding, access.Revision, new(id, new(row.IdempotencyKey), accepted.SessionId,
+            return new(access.Binding, access.Revision, new(row.Id, new(row.IdempotencyKey), accepted.SessionId,
                 new(accepted.BaseCommit), accepted.WorkBranch, accepted.Message, snapshots),
                 new DateTimeOffset(accepted.AcceptedUtcTicks, TimeSpan.Zero),
                 (SourceControlOperationState)row.State);
@@ -567,7 +576,7 @@ public sealed class PersistentSourceControlStore(BpmnDbContext db, IDataProtecti
             .ExecuteDeleteAsync(cancellationToken);
         count += await db.SourceControlOperations.Where(x => x.UpdatedUtcTicks <= cutoff
             && x.ProtectedRequest != ""
-            && (x.State == (int)SourceControlOperationState.CommittedLocal || x.State == (int)SourceControlOperationState.Pushed
+            && (x.State == (int)SourceControlOperationState.Pushed
                 || x.State == (int)SourceControlOperationState.Succeeded || x.State == (int)SourceControlOperationState.Conflict
                 || x.State == (int)SourceControlOperationState.Failed || x.State == (int)SourceControlOperationState.Cancelled))
             .ExecuteUpdateAsync(update => update.SetProperty(x => x.ProtectedRequest, ""), cancellationToken);

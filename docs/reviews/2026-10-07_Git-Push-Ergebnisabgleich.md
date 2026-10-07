@@ -1,5 +1,8 @@
 # G04: Remote-Push – begonnen, nicht abgeschlossen
 
+Historischer Vorbereitungsstand. Der nachfolgende Implementierungsauftrag ist
+im [Remote-Push-Bericht](2026-10-07_Git-G04_Remote-Push.md) dokumentiert.
+
 ## Implementierter Teil
 
 `GitPushReconciliation` trennt die Bewertung vor dem ersten Schreibversuch

@@ -25,7 +25,7 @@ internal sealed class SourceControlCommitExecutor(PersistentSourceControlStore s
             if (work.State == SourceControlOperationState.Reconciling)
                 throw new SourceControlSecurityException(SourceControlErrorCode.ResultUnknown);
             workspace = await workspaces.CreateAsync(context, id, worker, fence, cancellationToken);
-            await git.InitializeAsync(workspace, cancellationToken);
+            await git.InitializeAsync(workspace, work.Command.BaseCommit, cancellationToken);
             using var token = await tokens.IssueAsync(context, work.Binding.Id, roles, RepositoryPermission.Commit, cancellationToken);
             // No moving-head substitution: BuildCommit uses the accepted full base OID or fails.
             await git.FetchRevisionAsync(workspace, work.Binding.Remote, work.Command.BaseCommit, token, cancellationToken);

@@ -130,6 +130,8 @@ public static class InfrastructureModule
         services.AddScoped<SourceControl.SourceControlWorkspace>();
         services.AddScoped<SourceControl.SourceControlCommitExecutor>();
         services.AddScoped<SourceControl.SourceControlClaimedCommitRunner>();
+        services.AddScoped<SourceControl.SourceControlPushExecutor>();
+        services.AddScoped<SourceControl.SourceControlClaimedPushRunner>();
         if (mode != "Test" && configuration.GetValue<bool>("SourceControl:Enabled"))
             services.AddHostedService<SourceControl.SourceControlMaintenanceHostedService>();
         services.AddScoped<VertexBPMN.Application.SourceControl.ISourceControlAccessStore>(sp =>

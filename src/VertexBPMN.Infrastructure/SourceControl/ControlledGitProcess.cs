@@ -7,7 +7,7 @@ using VertexBPMN.SourceControl.Abstractions;
 namespace VertexBPMN.Infrastructure.SourceControl;
 
 /// <summary>Fixed commands only. Bare repositories avoid untrusted checkout filters and hooks.</summary>
-internal sealed class ControlledGitProcess(IOptions<SourceControlOptions> options)
+internal sealed partial class ControlledGitProcess(IOptions<SourceControlOptions> options)
 {
     internal async Task<byte[]> VersionAsync(GitWorkspace workspace, CancellationToken cancellationToken)
     {
@@ -20,12 +20,18 @@ internal sealed class ControlledGitProcess(IOptions<SourceControlOptions> option
         return bytes;
     }
 
-    internal async Task<byte[]> InitializeAsync(GitWorkspace workspace, CancellationToken cancellationToken)
+    internal Task<byte[]> InitializeAsync(GitWorkspace workspace, CancellationToken cancellationToken)
+        => InitializeCoreAsync(workspace, "sha1", cancellationToken);
+
+    internal Task<byte[]> InitializeAsync(GitWorkspace workspace, GitCommitId revision, CancellationToken cancellationToken)
+        => InitializeCoreAsync(workspace, revision.Value.Length == 64 ? "sha256" : "sha1", cancellationToken);
+
+    private async Task<byte[]> InitializeCoreAsync(GitWorkspace workspace, string objectFormat, CancellationToken cancellationToken)
     {
         if (Directory.Exists(Path.Combine(workspace.Directory, "repository.git")))
             throw new SourceControlSecurityException(SourceControlErrorCode.RevisionConflict);
         await VersionAsync(workspace, cancellationToken);
-        return await RunAsync(workspace, ["init", "--bare", "--template=", Path.Combine(workspace.Directory, "repository.git")],
+        return await RunAsync(workspace, ["init", "--bare", "--template=", "--object-format=" + objectFormat, Path.Combine(workspace.Directory, "repository.git")],
             null, options.Value.Limits.ReadTimeout, cancellationToken);
     }
 
@@ -165,7 +171,8 @@ internal sealed class ControlledGitProcess(IOptions<SourceControlOptions> option
 
     private async Task<byte[]> RunAuthenticatedRemoteAsync(GitWorkspace workspace, Uri remote, GitHubTokenLease lease,
         IPAddress[] addresses, string? certificateAuthorityFile, IReadOnlyList<string> command,
-        TimeSpan timeout, CancellationToken cancellationToken)
+        TimeSpan timeout, CancellationToken cancellationToken,
+        Func<byte[], SourceControlErrorCode>? classifyFailure = null)
     {
         var helper = options.Value.AuthHelperExecutablePath ?? Path.Combine(AppContext.BaseDirectory,
             "source-control-auth", "VertexBPMN.SourceControl.AuthHelper" + (OperatingSystem.IsWindows() ? ".exe" : ""));
@@ -185,6 +192,14 @@ internal sealed class ControlledGitProcess(IOptions<SourceControlOptions> option
             ["credential.helper"] = $"!'{helper}' {channel.Name}",
             ["http.curloptResolve"] = $"{remote.IdnHost}:{remote.Port}:{string.Join(',', addresses.Select(x => x.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 ? $"[{x}]" : x.ToString()))}"
         };
+        if (command.Count > 0 && command[0] == "push")
+        {
+            // Do not reuse the advertisement connection for a non-idempotent POST: libcurl
+            // may automatically resend a request after a reused connection dies before headers.
+            configuration["http.version"] = "HTTP/1.1";
+            configuration["http.extraHeader"] = "Connection: close";
+            configuration["http.maxRetries"] = "0";
+        }
         if (certificateAuthorityFile is not null)
         {
             configuration["http.sslCAInfo"] = certificateAuthorityFile.Replace('\\', '/');
@@ -192,7 +207,7 @@ internal sealed class ControlledGitProcess(IOptions<SourceControlOptions> option
             if (OperatingSystem.IsWindows()) configuration["http.sslBackend"] = "schannel";
         }
         return await RunAsync(workspace, ["--git-dir=" + Path.Combine(workspace.Directory, "repository.git"), .. command],
-            configuration, timeout, cancellationToken);
+            configuration, timeout, cancellationToken, classifyFailure: classifyFailure);
     }
 
     // Builds an immutable object only; publication still requires a fenced worker and ref CAS.
@@ -488,7 +503,8 @@ internal sealed class ControlledGitProcess(IOptions<SourceControlOptions> option
 
     private async Task<byte[]> RunAsync(GitWorkspace workspace, IReadOnlyList<string> arguments,
         IReadOnlyDictionary<string, string>? extra, TimeSpan timeout, CancellationToken cancellationToken,
-        byte[]? input = null, IReadOnlyDictionary<string, string>? trustedEnvironment = null, int? outputLimit = null)
+        byte[]? input = null, IReadOnlyDictionary<string, string>? trustedEnvironment = null, int? outputLimit = null,
+        Func<byte[], SourceControlErrorCode>? classifyFailure = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var executable = options.Value.GitExecutablePath;
@@ -560,7 +576,8 @@ internal sealed class ControlledGitProcess(IOptions<SourceControlOptions> option
             var bytes = await output;
             _ = await errors; // Never expose provider stderr; it may contain credentials.
             _ = SourceControlWorkspace.MeasureBytes(workspace.Directory, options.Value.Limits.MaxRepositoryBytes);
-            if (process.ExitCode != 0) throw new SourceControlSecurityException(SourceControlErrorCode.ProviderUnavailable);
+            if (process.ExitCode != 0)
+                throw new SourceControlSecurityException(classifyFailure?.Invoke(bytes) ?? SourceControlErrorCode.ProviderUnavailable);
             return bytes;
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)

@@ -2,6 +2,16 @@
 
 Stand: 2026-10-05. Planungsbasis: `master`, Commit `cb88bee0f83807cd0d7906a4d092807a56b49969`.
 
+Folgekorrektur: Arbeitsrepositories verwenden das Objektformat der bestätigten
+Basisrevision; echter HTTPS-Commit/Push mit SHA-1 und SHA-256 lokal geprüft.
+Nachweise und offene Produktgrenzen: [G04-Objektformat](2026-10-07_Git-G04_Objektformat.md).
+
+Folgestand auf `39decbe`: interner Remote-Push mit typisierter persistenter Annahme,
+explizitem Remote-Ref-CAS, Fast-Forward-Schutz, gefencetem Runner und dauerhaftem
+Ergebnisabgleich implementiert. Lokale HTTPS-/SQLite-Nachweise und Grenzen:
+[G04-Remote-Push](2026-10-07_Git-G04_Remote-Push.md). G04 als Gesamtprovider,
+API/Studio und gehosteter Identitätsresolver bleiben offen.
+
 Folgepaket auf `c8073f8`: echte geschützte Remote-Branchabfrage mit snapshotgebundenem
 Paging sowie begrenzt nachgeladene, revisionsgebundene BPMN-Historie implementiert und
 lokal geprüft. Gesamtprovider/API/Studio bleiben offen; Nachweise und Grenzen:
@@ -219,10 +229,15 @@ Abnahme: parallele Replikate erzeugen pro Operation nur einen wirksamen Write; r
 
 ### G04 – Git-Provider
 
+Push-Teilpfad: [interner Adapter/Jobs lokal abgenommen](2026-10-07_Git-G04_Remote-Push.md).
+115 lokale Adaptertests bestanden; Windows/HTTPS/SQLite, nicht Live-GitHub/Linux
+oder PostgreSQL. Produktprovider, API/Studio und automatischer Write-Dispatch
+bleiben außerhalb dieser Teilabnahme offen; G04 insgesamt nicht abgeschlossen.
+
 - [ ] Fähigkeiten/Verfügbarkeit, Clone/Fetch, Branchliste, revisionsgebundene Dateiliste, Dateiinhalt, History und paginierten Diff implementieren.
 - [ ] Explizite Änderungsliste und Commit auf isoliertem Arbeitsbranch; sonstige Repositorydateien unverändert erhalten. Keine pauschalen `add --all`-/`push --all`-Operationen.
-- [ ] Push mit erwartetem Remote-Stand, eindeutiger Zielref und atomarem Konfliktschutz implementieren; Standard-/Releasebranch nicht direkt beschreiben. Race auch für Remote-Reset/neuen Commit testen.
-- [ ] Statusmodelle `committed-local`, `pushed`, `conflict`, `result-unknown` sauber trennen. Nach verlorenem Push-Response remote Commit abgleichen, bevor Retry erfolgt.
+- [x] Push mit erwartetem Remote-Stand, eindeutiger Zielref und atomarem Konfliktschutz implementieren; Standard-/Releasebranch nicht direkt beschreiben. Race auch für Remote-Reset/neuen Commit testen.
+- [x] Statusmodelle `committed-local`, `pushed`, `conflict`, `result-unknown` sauber trennen. Nach verlorenem Push-Response remote Commit abgleichen, bevor Retry erfolgt.
 - [ ] Dateilöschung/-umbenennung zunächst nur über explizite, bestätigte Änderungen anbieten, sofern G01 sie in A freigegeben hat; sonst capabilitybedingt nicht anbieten.
 
 Abnahme: echte temporäre Repositories und unabhängiger zweiter Clone bestätigen Bytes, History und Remote-Refs. Stubs allein beweisen keinen Git-Transport. Zeitouts/Abbruch und fehlendes Git deterministisch testen.

@@ -17,7 +17,7 @@ using VertexBPMN.SourceControl.Abstractions;
 
 namespace VertexBPMN.SourceControl.Tests;
 
-public sealed class GitHttpsTransportTests
+public sealed partial class GitHttpsTransportTests
 {
     [Fact]
     public async Task History_fetch_is_revision_pinned_complete_paged_and_rejects_shallow_or_over_limit_graphs()
@@ -426,6 +426,13 @@ public sealed class GitHttpsTransportTests
         internal string Token { get; } = "test-only-" + Guid.NewGuid().ToString("N");
         internal int Challenges;
         internal int AuthenticatedRequests;
+        internal int PushRequests;
+        internal bool DropPushResponse;
+        internal Func<Task>? BeforeReceivePack;
+        internal Func<CancellationToken, Task>? AfterReceivePack;
+        internal string? ReceiveRejection;
+        internal List<int> ReceiveBodyLengths { get; } = [];
+        internal string Root => _root;
         internal TaskCompletionSource RequestStalled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal TaskCompletionSource RequestClosed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal byte[] ModelBytes { get; } = Encoding.UTF8.GetBytes("<definitions xmlns=\"http://www.omg.org/spec/BPMN/20100524/MODEL\">\r\n<process id=\"exact\"/>\r\n</definitions>");
@@ -435,17 +442,20 @@ public sealed class GitHttpsTransportTests
         internal string CaFile { get; private set; } = null!;
         internal string ExecutionMarker => Path.Combine(_root, "untrusted-program-executed");
 
-        private HttpsFixture(bool stall, bool hostile)
+        private readonly string _objectFormat;
+
+        private HttpsFixture(bool stall, bool hostile, string objectFormat)
         {
             _stall = stall;
             _hostile = hostile;
+            _objectFormat = objectFormat;
             _git = Environment.GetEnvironmentVariable("VERTEXBPMN_TEST_GIT")!;
             Assert.True(_git is not null && Path.IsPathFullyQualified(_git) && File.Exists(_git), "Configure the real Git executable for local acceptance.");
         }
 
-        internal static async Task<HttpsFixture> CreateAsync(bool stall = false, bool hostile = false)
+        internal static async Task<HttpsFixture> CreateAsync(bool stall = false, bool hostile = false, string objectFormat = "sha1")
         {
-            var fixture = new HttpsFixture(stall, hostile);
+            var fixture = new HttpsFixture(stall, hostile, objectFormat);
             try { await fixture.StartAsync(); return fixture; }
             catch { await fixture.DisposeAsync(); throw; }
         }
@@ -457,7 +467,7 @@ public sealed class GitHttpsTransportTests
             var modelDirectory = Path.Combine(source, "models");
             Directory.CreateDirectory(modelDirectory);
             await File.WriteAllBytesAsync(Path.Combine(modelDirectory, "example.bpmn"), ModelBytes, TestContext.Current.CancellationToken);
-            await GitAsync(["init", "--initial-branch=master", "--template=", source]);
+            await GitAsync(["init", "--initial-branch=master", "--template=", "--object-format=" + _objectFormat, source]);
             await GitAsync(["-C", source, "add", "--", "models/example.bpmn"]);
             await GitAsync(["-C", source, "-c", "user.name=Acceptance", "-c", "user.email=acceptance@example.invalid", "commit", "-m", "fixture"]);
             if (_hostile)
@@ -475,6 +485,7 @@ public sealed class GitHttpsTransportTests
             var repositories = Path.Combine(_root, "remote");
             Directory.CreateDirectory(repositories);
             await GitAsync(["clone", "--bare", "--no-local", source, Path.Combine(repositories, "models.git")]);
+            await GitAsync(["--git-dir=" + Path.Combine(repositories, "models.git"), "config", "http.receivepack", "true"]);
             var client = Path.Combine(_root, "client");
             var control = Path.Combine(client, "control");
             Directory.CreateDirectory(Path.Combine(control, "hooks"));
@@ -483,7 +494,8 @@ public sealed class GitHttpsTransportTests
             Assert.True(File.Exists(helper));
             Runner = new(Options.Create(new SourceControlOptions { Enabled = true, GitExecutablePath = _git,
                 AuthHelperExecutablePath = helper, Limits = new() { WriteTimeout = TimeSpan.FromSeconds(10) } }));
-            await Runner.InitializeAsync(Workspace, TestContext.Current.CancellationToken);
+            var initialRevision = new GitCommitId(Encoding.UTF8.GetString(await GitAsync(["-C", source, "rev-parse", "HEAD"])).Trim());
+            await Runner.InitializeAsync(Workspace, initialRevision, TestContext.Current.CancellationToken);
             if (_hostile)
             {
                 var hooks = Path.Combine(_root, "unsafe-hooks");
@@ -559,6 +571,18 @@ public sealed class GitHttpsTransportTests
                 return;
             }
             Interlocked.Increment(ref AuthenticatedRequests);
+            var receiving = context.Request.Path.Value?.EndsWith("/git-receive-pack", StringComparison.Ordinal) == true;
+            using var requestBody = new MemoryStream();
+            if (receiving) await context.Request.Body.CopyToAsync(requestBody, context.RequestAborted);
+            var received = requestBody.ToArray();
+            // Smart HTTP can issue a flush-only probe. Count actual ref commands, not HTTP envelopes.
+            var writing = receiving && Encoding.ASCII.GetString(received.AsSpan(0, Math.Min(received.Length, 1024))).Contains(" refs/heads/", StringComparison.Ordinal);
+            if (receiving) ReceiveBodyLengths.Add(received.Length);
+            if (writing)
+            {
+                Interlocked.Increment(ref PushRequests);
+                if (BeforeReceivePack is { } before) await before();
+            }
             if (_stall)
             {
                 RequestStalled.TrySetResult();
@@ -581,7 +605,8 @@ public sealed class GitHttpsTransportTests
             var errors = process.StandardError.ReadToEndAsync(context.RequestAborted);
             var input = Task.Run(async () =>
             {
-                await context.Request.Body.CopyToAsync(process.StandardInput.BaseStream, context.RequestAborted);
+                if (receiving) await process.StandardInput.BaseStream.WriteAsync(received, context.RequestAborted);
+                else await context.Request.Body.CopyToAsync(process.StandardInput.BaseStream, context.RequestAborted);
                 process.StandardInput.Close();
             }, context.RequestAborted);
             try
@@ -596,11 +621,22 @@ public sealed class GitHttpsTransportTests
                     if (line[..split] == "Status") context.Response.StatusCode = int.Parse(line[(split + 1)..].Trim().Split(' ')[0]);
                     else context.Response.Headers[line[..split]] = line[(split + 1)..].Trim();
                 }
-                await process.StandardOutput.BaseStream.CopyToAsync(context.Response.Body, context.RequestAborted);
+                using var discarded = new MemoryStream();
+                if (receiving)
+                {
+                    await process.StandardOutput.BaseStream.CopyToAsync(discarded, context.RequestAborted);
+                    var responseBytes = discarded.ToArray();
+                    var rejection = System.Text.RegularExpressions.Regex.Match(Encoding.ASCII.GetString(responseBytes), @"ng refs/heads/[a-z0-9/]+ ([^\n]+)");
+                    if (rejection.Success) ReceiveRejection = rejection.Groups[1].Value;
+                }
+                else await process.StandardOutput.BaseStream.CopyToAsync(context.Response.Body, context.RequestAborted);
                 await input;
                 await process.WaitForExitAsync(context.RequestAborted);
                 _ = await errors;
                 Assert.Equal(0, process.ExitCode);
+                if (writing && AfterReceivePack is { } after) await after(context.RequestAborted);
+                if (receiving && (!writing || !DropPushResponse)) await context.Response.Body.WriteAsync(discarded.ToArray(), context.RequestAborted);
+                if (writing && DropPushResponse) context.Abort();
             }
             finally { if (!process.HasExited) process.Kill(entireProcessTree: true); }
         }
@@ -648,6 +684,12 @@ public sealed class GitHttpsTransportTests
             await GitAsync([repository, "update-ref", "refs/heads/" + branch, commit]);
             await GitAsync([repository, "update-ref", "refs/tags/not-a-branch", commit]);
         }
+
+        internal async Task SetRemoteHeadAsync(string branch, GitCommitId commit) =>
+            _ = await GitAsync(["--git-dir=" + Path.Combine(_root, "remote", "models.git"), "update-ref", "refs/heads/" + branch, commit.Value]);
+
+        internal async Task<GitCommitId> RemoteHeadAsync(string branch) =>
+            new(Encoding.UTF8.GetString(await GitAsync(["--git-dir=" + Path.Combine(_root, "remote", "models.git"), "rev-parse", "refs/heads/" + branch])).Trim());
 
         internal async Task<GitCommitId> AddRemoteModelRevisionAsync(string id)
         {

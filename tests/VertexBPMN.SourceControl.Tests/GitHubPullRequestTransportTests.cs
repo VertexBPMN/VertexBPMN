@@ -8,6 +8,47 @@ namespace VertexBPMN.SourceControl.Tests;
 public sealed class GitHubPullRequestTransportTests
 {
 	[Theory]
+	[InlineData(0, false)]
+	[InlineData(1, false)]
+	[InlineData(30, false)]
+	[InlineData(101, true)]
+	public async Task Reviews_are_read_only_and_incomplete_lists_fail_closed(int count, bool rejected)
+	{
+		var binding = new RepositoryBinding(Guid.NewGuid(), "tenant-a", new("https://github.com/example/models.git"),
+			null, "master", "release", ["models"]);
+		using var handler = new ReviewHandler(count);
+		using var client = new HttpClient(handler);
+		using var token = new GitHubTokenLease("isolated-test-token", DateTimeOffset.UtcNow.AddMinutes(10));
+		var transport = new GitHubPullRequestTransport(client);
+		if (rejected)
+			await Assert.ThrowsAsync<SourceControlSecurityException>(() => transport.ReadReviewsAsync(binding,
+				7, token, TestContext.Current.CancellationToken));
+		else
+		{
+			var reviews = await transport.ReadReviewsAsync(binding, 7, token, TestContext.Current.CancellationToken);
+			Assert.Equal(count, reviews.Count);
+			if (count > 0)
+			{
+				Assert.Equal("APPROVED", reviews[0].State);
+				Assert.Equal(new string('a', 40), reviews[0].Commit.Value);
+			}
+		}
+	}
+
+	private sealed class ReviewHandler(int count) : HttpMessageHandler
+	{
+		protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+		{
+			Assert.Equal(HttpMethod.Get, request.Method);
+			Assert.Equal("https://api.github.com/repos/example/models/pulls/7/reviews?per_page=100&page=1", request.RequestUri!.AbsoluteUri);
+			return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+			{
+				Content = System.Net.Http.Json.JsonContent.Create(Enumerable.Range(1, count)
+					.Select(id => new { id, user = new { login = "reviewer" }, state = "APPROVED", commit_id = new string('a', 40) }))
+			});
+		}
+	}
+	[Theory]
 	[InlineData("open", false, PullRequestState.Open)]
 	[InlineData("closed", false, PullRequestState.Closed)]
 	[InlineData("closed", true, PullRequestState.Merged)]
@@ -40,7 +81,10 @@ public sealed class GitHubPullRequestTransportTests
 			{
 				Content = System.Net.Http.Json.JsonContent.Create(new
 				{
-					number = 7, html_url = "https://github.com/example/models/pull/7", state, merged,
+					number = 7,
+					html_url = "https://github.com/example/models/pull/7",
+					state,
+					merged,
 					merge_commit_sha = new string('b', 40),
 					head = new { sha = command.HeadCommit.Value, @ref = command.WorkBranch, repo = new { full_name = "example/models" } },
 					@base = new { @ref = command.BaseBranch, repo = new { full_name = "example/models" } }
@@ -51,13 +95,19 @@ public sealed class GitHubPullRequestTransportTests
 	[Theory]
 	[InlineData("https://api.github.com/repos/example/models/pulls?state=all&per_page=100&page=1", true)]
 	[InlineData("https://api.github.com/repos/example/models/pulls?state=all&per_page=100&page=10", true)]
+	[InlineData("https://api.github.com/repos/example/models/pulls/7/reviews?per_page=100&page=10", true)]
+	[InlineData("https://api.github.com/repos/example/models/pulls/0/reviews?per_page=100&page=1", false)]
+	[InlineData("https://api.github.com/repos/example/models/pulls/7/reviews?per_page=100&page=11", false)]
+	[InlineData("https://api.github.com/repos/example/models/pulls/7/reviews?per_page=100&page=1&token=secret", false)]
 	[InlineData("https://api.github.com/repos/example/models/pulls?state=all&per_page=100&page=11", false)]
 	[InlineData("https://api.github.com/repos/example/models/pulls?state=all&per_page=100&page=1&token=secret", false)]
 	[InlineData("https://github.com/repos/example/models/pulls?state=all&per_page=100&page=1", false)]
 	public void Only_bounded_fixed_listing_queries_are_allowed(string url, bool allowed)
 	{
-		if (allowed) SourceControlHttps.ValidateRequestTarget(new(url), ["api.github.com", "github.com"]);
-		else Assert.Throws<SourceControlSecurityException>(() =>
+		if (allowed)
+			SourceControlHttps.ValidateRequestTarget(new(url), ["api.github.com", "github.com"]);
+		else
+			Assert.Throws<SourceControlSecurityException>(() =>
 			SourceControlHttps.ValidateRequestTarget(new(url), ["api.github.com", "github.com"]));
 	}
 
@@ -87,11 +137,15 @@ public sealed class GitHubPullRequestTransportTests
 			object payload = request.RequestUri!.Query.EndsWith("page=1", StringComparison.Ordinal)
 				? Enumerable.Range(101, 100).Select(number => new { number, body = "unrelated review" }).ToArray()
 				: request.RequestUri.Query.Length > 0 ? new[] { new { number = 7, body } } : new
-			{
-				number = 7, body, html_url = "https://github.com/example/models/pull/7", state = "open", merged = false,
-				head = new { sha = command.HeadCommit.Value, @ref = command.WorkBranch, repo = new { full_name = "example/models" } },
-				@base = new { @ref = command.BaseBranch, repo = new { full_name = "example/models" } }
-			};
+				{
+					number = 7,
+					body,
+					html_url = "https://github.com/example/models/pull/7",
+					state = "open",
+					merged = false,
+					head = new { sha = command.HeadCommit.Value, @ref = command.WorkBranch, repo = new { full_name = "example/models" } },
+					@base = new { @ref = command.BaseBranch, repo = new { full_name = "example/models" } }
+				};
 			return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
 			{ Content = System.Net.Http.Json.JsonContent.Create(payload) });
 		}

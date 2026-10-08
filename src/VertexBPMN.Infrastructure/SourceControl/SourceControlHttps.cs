@@ -19,8 +19,11 @@ public static class SourceControlHttps
         var clean = new UriBuilder(target) { Query = "" }.Uri;
         ValidateTarget(clean, allowedHosts);
         var parts = target.AbsolutePath.Split('/');
-        const string prefix = "?state=all&per_page=100&page=";
-        if (target.Host != "api.github.com" || parts.Length != 5 || parts[1] != "repos" || parts[4] != "pulls"
+        var isReviews = parts.Length == 7 && parts[6] == "reviews"
+            && long.TryParse(parts[5], System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out var number) && number > 0;
+        var prefix = isReviews ? "?per_page=100&page=" : "?state=all&per_page=100&page=";
+        if (target.Host != "api.github.com" || !(parts.Length == 5 || isReviews) || parts[1] != "repos" || parts[4] != "pulls"
             || parts[2].Length == 0 || parts[3].Length == 0 || !target.Query.StartsWith(prefix, StringComparison.Ordinal)
             || !int.TryParse(target.Query[prefix.Length..], System.Globalization.NumberStyles.None,
                 System.Globalization.CultureInfo.InvariantCulture, out var page) || page is < 1 or > 10)

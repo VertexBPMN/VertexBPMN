@@ -125,3 +125,27 @@ Der Benutzer hat Test-PR #1 selbst gemergt. Im sichtbaren GitHub-Browser verifiz
 Lokale Prüfungen: 23 PR-Decoder-/Reconciliation-/Transporttests bestanden, darunter neue GET-only-Statusfälle für Open, Closed und Merged sowie Ausschluss eines Vorschau-Mergecommits. 18 SQLite-Persistenztests bestanden (11,351 Sekunden), erweitert um geschützten Auftrag und Ablehnung bei fremdem Tenant, anderem Benutzer, ReadOnly-Rolle und entzogenem PR-Grant. Diagnosebuilds: Infrastruktur 8 Warnungen, API 14, Studio 1, Adaptertests 0, Haupttests 195; jeweils 0 Fehler, Analyzer deaktiviert. Der anfängliche Aufruf mit `--filter-class` wurde vom direkten Runner abgelehnt; erfolgreiche Wiederholung mit dessen dokumentierter Option `-class`.
 
 Der neue Live-Status-Button ist noch nicht im neu gestarteten Studio sichtbar abgenommen; die laufende Browser-Sitzung verwendet weiterhin den vorherigen Publishstand. Ein sichtbarer GitHub-Merge ersetzt diese Abnahme nicht. Automatisierte HTTP-/UI-Regression, unabhängige Review-/Auditverifikation, echte Lost-Response-/Rechteentzugsabnahme und strenger Build/Gesamtregression bleiben offen. G07 bleibt offen.
+
+## Wiederaufnahme für die sichtbare Live-Abnahme
+
+Das Studio ergänzt das schreibfreie Wiederöffnen eines bestätigten eigenen PR-Auftrags über dessen Operation-ID. Die API prüft weiterhin Actor, Tenant und PR-Grant; zusätzlich muss der abgefragte Auftrag zum ausgewählten Repository gehören und erfolgreich abgeschlossen sein. Der Editorinhalt wird dabei nicht ersetzt. Beleg, Operation-ID und Live-Abfrage sind auch ohne ein geöffnetes Git-Dokument erreichbar. Repository-/Tenantwechsel entfernen den Kontext.
+
+API und Studio wurden in getrennte lokale Testverzeichnisse published und mit den bestehenden isolierten Einstellungen neu gestartet (Ports 51870/5263, keine DB- oder Credential-Neuanlage). Beide diagnostischen Publishläufe erfolgreich; Analyzer deaktiviert. Im sichtbaren Browser fordert Keycloak erneut eine Anmeldung an. Die Live-Abnahme wartet daher auf die Anmeldung des Benutzers; nicht bestanden oder abgeschlossen markieren. Bekannter gespeicherter PR-Auftrag: `0254b7f1-eba0-428e-b990-8fd57bf06892`.
+
+## Sichtbare Live-Abnahme nach erneuter Anmeldung: bestanden
+
+Nach der Anmeldung des Benutzers wurde im sichtbaren Studio das isolierte Repository ausgewählt und der gespeicherte PR-Auftrag `0254b7f1-eba0-428e-b990-8fd57bf06892` mit `Reopen stored PR receipt (read only)` wieder geöffnet. Kein Git-Modell musste geladen und kein neuer Commit/Push/PR erzeugt werden. Das bestehende Start/Done-Editorbild blieb unverändert.
+
+Der historische Beleg zeigte erwartungsgemäß weiterhin `Confirmed PR state: Open`. Nach Betätigung von `Check current GitHub PR status` zeigte das Studio separat `Last checked GitHub state: Merged`, tatsächlicher Mergecommit `616db2854e84a42e1bd656dbc1aca9ba6af810f2`, ausdrücklich ohne Deploymentfreigabe. Dieser Commit stimmt mit dem zuvor sichtbar verifizierten GitHub-Merge von PR #1 überein. Kein Merge oder Deployment durch den Agent ausgeführt.
+
+Lokaler Screenshot: `tests/VertexBPMN.Studio.UiTests/TestResults/g07-studio-live-merged.jpg`. Damit sind Wiederaufnahme nach Neustart und positive Live-Mergeabfrage über die tatsächlichen Studio-/API-/GitHub-Pfade sichtbar abgenommen. Dies schließt weder automatisierte UI-/HTTP-Regression noch Review-/Auditverifikation, echte Lost-Response-/Rechteentzugsfälle oder strenge Gesamtregression ab. G07 insgesamt bleibt offen.
+
+## Reviewhistorie: Implementierung und Adaptertests
+
+Die Live-Abfrage liest zusätzlich die echte GitHub-Reviewhistorie über `GET /repos/{owner}/{repo}/pulls/{number}/reviews`. `PullRequestReceipt.Reviews` unterscheidet nicht abgefragt (`null`) von erfolgreich abgefragt ohne Reviews (leere Liste). Jeder Eintrag enthält Review-ID, Reviewer, Zustand und Commitbezug. Das Studio zeigt diese Angaben getrennt von Mergecommit und Deploymentfreigabe. Eine Approval-Zeile bedeutet ausdrücklich keine verifizierte Branch-Protection-/Releasefreigabe.
+
+Der Transport paginiert mit 100 Einträgen je Seite und maximal zehn Seiten; nicht vollständig prüfbare, doppelte oder ungültige Antworten werden abgelehnt. Die HTTPS-Zielprüfung erlaubt ausschließlich den festen paginierten Reviews-Pfad, positive PR-Nummern und Seiten 1 bis 10; keine zusätzlichen Queryparameter. ACL-/Actor-Nachprüfung findet weiterhin nach allen Hosting-Leseaufrufen statt.
+
+Prüfungen: Diagnosebuild des Adaptertestprojekts erfolgreich (8 bestehende Warnungen, 0 Fehler; Analyzer deaktiviert). Direkter xUnit-Runner mit `-class '*GitHubPullRequest*'`: **31 bestanden**, 0 Fehler, 0 übersprungen. Studio-Diagnosebuild erfolgreich (1 bestehende Warnung, 0 Fehler). `git diff --check` ohne Whitespacefehler. Der neue Reviewpfad ist noch nicht im laufenden, veröffentlichten Studio abgenommen. Keine Behauptung eines strengen Analyzerbuilds oder vollständiger Regression.
+
+Verbindlich offen: Audit mit getrenntem Git-Commitautor, Hosting-Bot und Vertex-Anwender; reale Lost-Response-/Rechteentzugsabnahme im isolierten Repository; automatisierte HTTP-/UI-Regression und Gesamtregression. **G07 wird nicht als abgeschlossen markiert.**

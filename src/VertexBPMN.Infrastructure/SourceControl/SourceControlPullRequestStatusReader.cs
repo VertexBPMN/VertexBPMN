@@ -27,8 +27,11 @@ public sealed class SourceControlPullRequestStatusReader
 		using var lease = await tokens.IssueAsync(context, confirmed.Binding.Id, roles,
 			RepositoryPermission.Read, cancellationToken);
 		using var client = SourceControlHttps.CreateClient(options.Value.AllowedHosts, options.Value.Limits.ReadTimeout);
-		var receipt = await new GitHubPullRequestTransport(client).ReadAsync(confirmed.Binding, confirmed.Command,
+		var transport = new GitHubPullRequestTransport(client);
+		var receipt = await transport.ReadAsync(confirmed.Binding, confirmed.Command,
 			confirmed.Receipt.Number, lease, cancellationToken);
+		receipt = receipt with { Reviews = await transport.ReadReviewsAsync(confirmed.Binding,
+			confirmed.Receipt.Number, lease, cancellationToken) };
 		// A revocation during the remote read must not publish the result to the caller.
 		await store.ReadConfirmedPullRequestAsync(context, operationId,
 			await actors.ResolveAsync(context, cancellationToken), cancellationToken);

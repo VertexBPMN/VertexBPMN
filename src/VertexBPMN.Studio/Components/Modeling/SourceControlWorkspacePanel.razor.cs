@@ -36,6 +36,7 @@ public partial class SourceControlWorkspacePanel
 	private PullRequestReceipt? _pullRequestReceipt;
 	private PullRequestReceipt? _livePullRequestReceipt;
 	private string _prBase = "", _prTitle = "", _prDescription = "";
+	private string _resumePullRequestId = "";
 	private SourceControlOperation? _job;
 	private ModelDiff? _diff;
 	private string _remote = "", _credential = "", _defaultBranch = "master", _releaseBranch = "release", _modelRoot = "models", _grantsJson = "[]";
@@ -62,6 +63,7 @@ public partial class SourceControlWorkspacePanel
 		_confirmedPush = null; _pendingPullRequest = null; _pullRequestReceipt = null;
 		_livePullRequestReceipt = null;
 		_prBase = ""; _prTitle = ""; _prDescription = "";
+		_resumePullRequestId = "";
 		_branchCursor = null; _fileCursor = null; _historyCursor = null; _branch = ""; _root = ""; _path = "";
 	}
 
@@ -224,6 +226,27 @@ public partial class SourceControlWorkspacePanel
 		}
 		else if (job.State is SourceControlOperationState.Conflict or SourceControlOperationState.ResultUnknown or SourceControlOperationState.Failed)
 			_status = "Git job did not report success. Keep/export your snapshot; no automatic reset, merge or resend is performed.";
+	});
+	private Task ReopenPullRequestAsync() => RunAsync(async token =>
+	{
+		if (!Guid.TryParse(_resumePullRequestId, out var id) || _repositoryId == Guid.Empty)
+		{
+			_status = "Select a repository and enter a valid PR operation ID.";
+			return;
+		}
+		var operation = await Git.OperationAsync(id, token);
+		token.ThrowIfCancellationRequested();
+		if (operation.RepositoryId != _repositoryId || operation.Kind != SourceControlOperationKind.PullRequest
+			|| operation.State != SourceControlOperationState.Succeeded)
+		{
+			_status = "The operation is not a confirmed PR for the selected repository.";
+			return;
+		}
+		var receipt = await Git.PullRequestReceiptAsync(id, token);
+		token.ThrowIfCancellationRequested();
+		_pullRequestReceipt = receipt;
+		_livePullRequestReceipt = null;
+		_status = "Stored PR receipt reopened. Editor content is unchanged; check GitHub for current status.";
 	});
 	private Task RefreshPullRequestStatusAsync() => RunAsync(async token =>
 	{

@@ -59,21 +59,25 @@
                     <MudTextField T="string" Label="Pull request description" @bind-Value="_prDescription" Disabled="@(_busy || _pendingPullRequest is not null)" Lines="3" data-testid="git-pr-description" />
                     <MudButton OnClick="SubmitPullRequest" Disabled="@(_busy || JobActive || string.IsNullOrWhiteSpace(_prTitle) || _pullRequestReceipt is not null)" data-testid="git-pr-create">@(_pendingPullRequest is null ? "Create PR for confirmed push" : "Retry same accepted PR request")</MudButton>
                 }
-                @if (_pullRequestReceipt is not null)
-                {
-                    <MudText data-testid="git-pr-state">Confirmed PR state: @_pullRequestReceipt.State (not a live review approval)</MudText>
-                    <MudButton OnClick="RefreshPullRequestStatusAsync" Disabled="_busy" data-testid="git-pr-status-refresh">Check current GitHub PR status</MudButton>
-                    @if (_livePullRequestReceipt is not null)
-                    {
-                        <MudText data-testid="git-pr-live-state">Last checked GitHub state: @_livePullRequestReceipt.State · merge commit: @(_livePullRequestReceipt.MergeCommit?.Value ?? "none") — not a deployment approval</MudText>
-                    }
-                    <a href="@_pullRequestReceipt.Url.AbsoluteUri" target="_blank" rel="noopener noreferrer" data-testid="git-pr-link">Open pull request #@_pullRequestReceipt.Number on GitHub</a>
-                }
                 @if (_job is not null) { <MudText data-testid="git-job-state">@_job.State @(_job.Error?.ToString())</MudText> }
                 @if (_diff is not null) { <pre data-testid="git-diff-text" style="white-space:pre-wrap;overflow-wrap:anywhere">@_diff.UnifiedText</pre> }
                 @foreach (var item in _history) { <MudText Typo="Typo.caption">@item.Commit.Value — @item.Subject</MudText> }
                 @if (_historyCursor is not null) { <MudButton OnClick="MoreHistory" Disabled="_busy">More history</MudButton> }
                 <MudButton OnClick="ExportOriginal" Disabled="_busy">Download original source bytes</MudButton>
+            }
+            <MudTextField T="string" Label="Confirmed PR operation ID" @bind-Value="_resumePullRequestId" Immediate="true" Disabled="_busy" data-testid="git-pr-resume-id" />
+            <MudButton OnClick="ReopenPullRequestAsync" Disabled="@(_busy || _repositoryId == Guid.Empty || string.IsNullOrWhiteSpace(_resumePullRequestId))" data-testid="git-pr-resume">Reopen stored PR receipt (read only)</MudButton>
+            @if (_pullRequestReceipt is not null)
+            {
+                <MudText data-testid="git-pr-state">Confirmed PR state: @_pullRequestReceipt.State (not a live review approval)</MudText>
+                <MudText data-testid="git-pr-operation">PR operation: @_pullRequestReceipt.OperationId</MudText>
+                <MudButton OnClick="RefreshPullRequestStatusAsync" Disabled="_busy" data-testid="git-pr-status-refresh">Check current GitHub PR status</MudButton>
+                @if (_livePullRequestReceipt is not null)
+                {
+                    <MudText data-testid="git-pr-live-state">Last checked GitHub state: @_livePullRequestReceipt.State · merge commit: @(_livePullRequestReceipt.MergeCommit?.Value ?? "none") — not a deployment approval</MudText>
+                    <MudText data-testid="git-pr-review-state">Reviews: @(_livePullRequestReceipt.Reviews is null ? "not checked" : _livePullRequestReceipt.Reviews.Count == 0 ? "none" : string.Join("; ", _livePullRequestReceipt.Reviews.Select(review => $"{review.Reviewer}: {review.State} at {review.Commit.Value}"))) — not a release approval</MudText>
+                }
+                <a href="@_pullRequestReceipt.Url.AbsoluteUri" target="_blank" rel="noopener noreferrer" data-testid="git-pr-link">Open pull request #@_pullRequestReceipt.Number on GitHub</a>
             }
             <AuthorizeView Roles="Admin">
                 <MudDivider />

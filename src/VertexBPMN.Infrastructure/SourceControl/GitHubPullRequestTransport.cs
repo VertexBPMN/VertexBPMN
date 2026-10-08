@@ -119,6 +119,50 @@ internal sealed class GitHubPullRequestTransport(HttpClient client)
 		}
 	}
 
+	internal async Task<IReadOnlyList<PullRequestReview>> ReadReviewsAsync(RepositoryBinding binding,
+		long number, GitHubTokenLease token, CancellationToken cancellationToken)
+	{
+		if (number <= 0) throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+		var reviews = new List<PullRequestReview>();
+		var ids = new HashSet<long>();
+		try
+		{
+			for (var page = 1; page <= 10; page++)
+			{
+			using var request = Request(HttpMethod.Get, RepositoryPath(binding) + "/pulls/"
+				+ number.ToString(CultureInfo.InvariantCulture) + "/reviews?per_page=100&page="
+				+ page.ToString(CultureInfo.InvariantCulture), token);
+			var payload = await SendAsync(request, cancellationToken);
+			if (payload.ValueKind != JsonValueKind.Array || payload.GetArrayLength() > 100)
+			{
+				throw new SourceControlSecurityException(SourceControlErrorCode.ProviderUnavailable);
+			}
+			foreach (var review in payload.EnumerateArray())
+			{
+				var id = review.GetProperty("id").GetInt64();
+				var reviewer = review.GetProperty("user").GetProperty("login").GetString();
+				var state = review.GetProperty("state").GetString();
+				var commit = review.GetProperty("commit_id").GetString();
+				if (id <= 0 || !ids.Add(id) || string.IsNullOrWhiteSpace(reviewer)
+					|| state is not ("APPROVED" or "CHANGES_REQUESTED" or "COMMENTED" or "DISMISSED" or "PENDING")
+					|| string.IsNullOrWhiteSpace(commit))
+					throw new SourceControlSecurityException(SourceControlErrorCode.ProviderUnavailable);
+				reviews.Add(new(id, reviewer, state, new GitCommitId(commit)));
+			}
+			if (payload.GetArrayLength() < 100)
+			{
+				return reviews.AsReadOnly();
+			}
+			}
+		}
+		catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException or ArgumentException)
+		{
+			throw new SourceControlSecurityException(SourceControlErrorCode.ProviderUnavailable);
+		}
+		// A capped result must never be presented as the complete review history.
+		throw new SourceControlSecurityException(SourceControlErrorCode.ProviderUnavailable);
+	}
+
 	private static HttpRequestMessage Request(HttpMethod method, string path, GitHubTokenLease token)
 	{
 		var request = new HttpRequestMessage(method, "https://api.github.com/repos/" + path);

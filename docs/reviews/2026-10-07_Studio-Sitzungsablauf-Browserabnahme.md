@@ -1,5 +1,11 @@
 # Studio-Sitzungsablauf – lokale Browserabnahme
 
+## Aktueller Abschlussstand – 2026-10-08
+
+Der Nutzer bestätigt nach eigener Betätigung von `Export local BPMN draft` im Entwurfstab: „es funktioniert, ich kann es bestätigen“. Damit ist der zuvor offene Download nach echtem OIDC-Sitzungswiderruf **manuell durch den Nutzer bestätigt**. Der automatische Dateinachweis dieser konkreten Wiederholung gelang nicht; das bleibt eine Grenze der automatisierten Abnahme, kein nachgewiesener Produktfehler.
+
+Bereits separat nachgewiesen: nicht weiterleitender Ablaufhinweis bei echtem Keycloak-Widerruf; lokaler Export und Wiederimport mit konkreter Beschriftung; Export bei tatsächlich gestopptem Studio aus dem blockierenden Wiederverbindungsdialog. Der Wiederimport der zuletzt manuell exportierten Datei wurde nicht zusätzlich geprüft. Kein automatisches Wiederherstellen des alten Circuits zugesagt. G06/G09/GT09 insgesamt und der strenge Build bleiben offen; die folgenden Abschnitte dokumentieren historische Teilstände.
+
 ## Ergebnis: nicht bestanden
 
 Geprüft wurde Commit `6f63399` auf `codex/studio-session-expiry` im sichtbaren Studio unter `http://localhost:5263/bpmn-modeler` mit dem echten lokalen Keycloak. Es wurde keine 401-Antwort simuliert.
@@ -54,6 +60,10 @@ Sichtbare Browserprüfung: Start-Ereignis in `Local recovery acceptance 2026-10-
 **Ausfallfall noch offen:** Ausschließlich Studio wurde kurz gestoppt, um einen vollständig unterbrochenen Circuit zu prüfen. Die standardmäßige Wiederverbindungsoberfläche (`components-reconnect-modal`, `Rejoin failed`) erschien. Der lokale Exportknopf erzeugte in diesem Zustand keine weitere Datei. Studio wurde anschließend wieder gestartet. Der lokale Export muss auch aus der blockierenden Wiederverbindungsoberfläche zugänglich gemacht werden; diese Abnahme und der neue lokale Export nach echtem Sitzungswiderruf bleiben offen. Kein Commit/Push dieser Ergänzungen.
 
 ## Korrektur und Abnahme des Wiederverbindungsdialogs
+
+### Ergänzung: echter OIDC-Widerruf mit neuem lokalem Export
+
+Am 8. Oktober wurde im angemeldeten Editor die Beschriftung `OIDC expired draft acceptance 2026-10-08` angelegt. Ausschließlich die isolierte Testsitzung wurde in Keycloak widerrufen, kein Studio-Neustart. Das Ablaufbanner erschien ohne Navigation; die Änderung blieb sichtbar. Der lokale Export zeigte Erfolg, auch beim zweiten Versuch. Eine neue Datei mit diesem Inhalt wurde im geprüften Downloads-Ordner jedoch nicht gefunden. Damit bleiben tatsächlicher Dateinachweis und Wiederimport dieses konkreten Ablaufs offen. Die bisher nachgewiesenen normalen Downloads und der echte Serverausfalltest gelten unverändert; kein Gesamtabschluss behauptet.
 
 Am 8. Oktober wurde ein eigener, außerhalb der interaktiven Routes gerenderter Wiederverbindungsdialog ergänzt. Beim Umschalten auf `components-reconnect-show`, `-failed` oder `-rejected` verschiebt ein MutationObserver den vorhandenen lokalen Export mitsamt Browserhandler in den Dialog. Bei Verbindungswiederherstellung wandert er zurück an den Editor; beim Destroy wird der Observer entfernt. Kein zusätzlicher Serverzugriff und keine Änderung der Authentifizierung.
 

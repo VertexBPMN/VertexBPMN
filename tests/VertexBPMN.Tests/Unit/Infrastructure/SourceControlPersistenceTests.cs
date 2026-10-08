@@ -26,6 +26,53 @@ public sealed class SourceControlPersistenceTests
     private static CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
     [Fact]
+    public async Task Pull_request_acceptance_requires_grant_and_confirmed_push_and_is_idempotent()
+    {
+        await using var fixture = new StoreFixture();
+        var binding = await fixture.InitializeAsync();
+        await using var db = fixture.Db();
+        var store = fixture.Store(db);
+        var push = await store.EnqueueAsync(Actor, binding.Id, ["Admin"], SourceControlOperationKind.Push,
+            new("pr-source-push"), new byte[] { 1 }, Cancellation);
+        var submission = new PullRequestJobSubmission(push, "master", "Review model", "Model update");
+        await Assert.ThrowsAsync<SourceControlSecurityException>(() => store.EnqueuePullRequestAsync(
+            Actor, binding.Id, ["Admin"], new("pr-create"), submission, Cancellation));
+        Assert.True(await store.ReplaceGrantsAsync(Actor, binding.Id, ["Admin"], 2,
+            [new(Actor.ActorId, RepositoryPermission.Read | RepositoryPermission.Manage | RepositoryPermission.Push
+                | RepositoryPermission.PullRequest)], Cancellation));
+        await Assert.ThrowsAsync<SourceControlSecurityException>(() => store.EnqueuePullRequestAsync(
+            Actor, binding.Id, ["Admin"], new("pr-create"), submission, Cancellation));
+        var now = DateTimeOffset.UtcNow;
+        var fence = await store.TryClaimAsync(Actor.TenantId, push, "push-worker", now, TimeSpan.FromMinutes(1), Cancellation);
+        Assert.NotNull(fence);
+        var receipt = new PushReceipt(push, new(new string('a', 40)), "vertex/model-review");
+        Assert.True(await store.SaveResultAsync(Actor.TenantId, push, "push-worker", fence.Value,
+            System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new StoredRemotePush(1, binding.Id, receipt)), now, Cancellation));
+        Assert.True(await store.FinishAsync(Actor.TenantId, push, "push-worker", fence.Value,
+            SourceControlOperationState.Pushed, now, Cancellation));
+        var operation = await store.EnqueuePullRequestAsync(Actor, binding.Id, ["Admin"], new("pr-create"), submission, Cancellation);
+        Assert.Equal(operation, await store.EnqueuePullRequestAsync(Actor, binding.Id, ["Admin"], new("pr-create"), submission, Cancellation));
+        await Assert.ThrowsAsync<SourceControlSecurityException>(() => store.EnqueuePullRequestAsync(
+            Actor, binding.Id, ["Admin"], new("pr-create"), submission with { Title = "Different review" }, Cancellation));
+        Assert.Single(await db.SourceControlOperations.AsNoTracking().Where(x => x.Kind == (int)SourceControlOperationKind.PullRequest).ToArrayAsync(Cancellation));
+        var prFence = await store.TryClaimAsync(Actor.TenantId, operation, "pr-worker", DateTimeOffset.UtcNow,
+            TimeSpan.FromMinutes(1), Cancellation);
+        Assert.NotNull(prFence);
+        var work = await store.ReadPullRequestWorkAsync(Actor, operation, "pr-worker", prFence.Value, ["Admin"], Cancellation);
+        Assert.Equal(receipt.Commit, work.Command.HeadCommit);
+        Assert.Equal(receipt.WorkBranch, work.Command.WorkBranch);
+        Assert.Equal(push, work.PushOperationId);
+        await Assert.ThrowsAsync<SourceControlSecurityException>(() => store.ReadPullRequestWorkAsync(
+            Actor, operation, "pr-worker", prFence.Value + 1, ["Admin"], Cancellation));
+        await Assert.ThrowsAsync<SourceControlSecurityException>(() => store.ReadPullRequestWorkAsync(
+            new("tenant-b", Actor.ActorId), operation, "pr-worker", prFence.Value, ["Admin"], Cancellation));
+        Assert.True(await store.ReplaceGrantsAsync(Actor, binding.Id, ["Admin"], 3,
+            [new(Actor.ActorId, RepositoryPermission.Read | RepositoryPermission.Manage)], Cancellation));
+        await Assert.ThrowsAsync<SourceControlSecurityException>(() => store.ReadPullRequestWorkAsync(
+            Actor, operation, "pr-worker", prFence.Value, ["Admin"], Cancellation));
+    }
+
+    [Fact]
     public async Task Typed_commit_acceptance_freezes_confirmed_bytes_and_retries_after_later_edits()
     {
         await using var fixture = new StoreFixture();

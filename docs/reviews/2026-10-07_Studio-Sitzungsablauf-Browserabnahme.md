@@ -32,3 +32,23 @@ Der Refresh-Endpunkt prüft jetzt den durch die Authentifizierungsmiddleware val
 - Der explizite Link öffnet Keycloak in einem zweiten Tab; der Entwurfstab wird nicht weitergeleitet.
 - Da Studio für die Korrektur neu gestartet werden musste, zeigt der alte Blazor-Circuit zugleich `Rejoin failed`. Export und Wiederaufnahme des Entwurfs sind dadurch noch nicht abgenommen. Eine erneute Anmeldung und ein frischer Widerruf-Test ohne Serverneustart sind erforderlich.
 - Clean-Code-Prüfung der beiden geänderten C#-Stellen: D1–D7 und manuelle Lesbarkeit geprüft; keine bestätigten neuen Befunde. Cancellation beim HTTP-Test wird weitergegeben. Bestehende, unveränderte Befunde wurden nicht umgebaut.
+
+## Wiederholung ohne Serverneustart
+
+Nach frischer Anmeldung wurde im sichtbaren Canvas die Beschriftung `Expiry recovery draft 2026-10-07` angelegt und ausschließlich die lokale Testsitzung widerrufen. Studio wurde während dieses Tests nicht neu gestartet. Die konfigurierte Access-Token-Laufzeit beträgt 300 Sekunden und wurde nicht geändert.
+
+Nach der tatsächlichen Erneuerung erschien das Ablaufbanner. Die URL blieb unverändert und die geänderte Beschriftung war weiterhin im Accessibility-Baum enthalten. Der explizite Login-Link öffnete einen neuen Keycloak-Tab.
+
+**Offen/fehlgeschlagen:** Nach Klick auf `Export XML` wurde innerhalb von 15 Sekunden kein Download-Ereignis empfangen. Die Oberfläche zeigte keine Fehlermeldung. Damit ist der Export des Entwurfs nach Sitzungsablauf nicht nachgewiesen; die Ursache ist noch zu diagnostizieren. Wiederimport und Wiederaufnahme wurden nicht als bestanden markiert. Der Export läuft derzeit über einen Blazor-Eventhandler (`BpmnModelerPage.razor`, `ExportBpmnXml`) und ist daher kein nachgewiesen circuit-unabhängiger Notfallexport.
+
+Nach erfolgreicher Neuanmeldung im separaten Tab wurde das Dashboard sichtbar geladen. Im alten Entwurfstab blieb die geänderte Beschriftung erhalten, der Ablaufhinweis blieb ebenfalls sichtbar. Ein erneuter Klick auf `Export XML` erzeugte innerhalb von zehn Sekunden weiterhin kein Download-Ereignis. Eine Neuanmeldung im zweiten Tab stellt den ursprünglichen Editor-Circuit somit in diesem Test nicht nachweislich wieder her. Kein Reload des Entwurfstabs wurde vorgenommen.
+
+## Lokaler Export – Prüfung am 8. Oktober 2026
+
+Der zusätzliche Knopf `Export local BPMN draft` wurde implementiert. Er serialisiert das aktuelle bpmn.io-Modell im Browser, schließt aktive direkte Beschriftungsbearbeitung ab und erzeugt einen Blob-Download. Es erfolgt keine automatische persistente Browserablage oder Übertragung des Entwurfs. Der Node-Regressionstest für aktuellen Snapshot und Serialisierungsfehler besteht; diagnostischer Publish erfolgreich.
+
+Sichtbare Browserprüfung: Start-Ereignis in `Local recovery acceptance 2026-10-08` umbenannt, lokalen Export geklickt. Obwohl die Browsersteuerung kein Download-Ereignis meldete, wurde `C:\Users\yrodriguez\Downloads\vertexbpmn-local-draft.bpmn` tatsächlich geschrieben (1449 Bytes); ihr XML enthält exakt die geänderte Beschriftung. Anschließend wurde der frische Editor neu geladen und die Datei über `Import BPMN` geöffnet. Importmeldung und wiederhergestellte Beschriftung im Canvas bestätigt.
+
+**Messgrenze:** Ein Timeout beim Download-Ereignis beweist in dieser Browserumgebung allein keinen fehlgeschlagenen Download. Die früheren Exportbeobachtungen bleiben daher fehlende Nachweise, nicht allein aufgrund des Event-Timeouts bewiesene Exportdefekte.
+
+**Ausfallfall noch offen:** Ausschließlich Studio wurde kurz gestoppt, um einen vollständig unterbrochenen Circuit zu prüfen. Die standardmäßige Wiederverbindungsoberfläche (`components-reconnect-modal`, `Rejoin failed`) erschien. Der lokale Exportknopf erzeugte in diesem Zustand keine weitere Datei. Studio wurde anschließend wieder gestartet. Der lokale Export muss auch aus der blockierenden Wiederverbindungsoberfläche zugänglich gemacht werden; diese Abnahme und der neue lokale Export nach echtem Sitzungswiderruf bleiben offen. Kein Commit/Push dieser Ergänzungen.

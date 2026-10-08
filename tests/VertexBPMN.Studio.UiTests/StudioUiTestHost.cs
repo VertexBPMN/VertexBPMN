@@ -31,6 +31,10 @@ public sealed class StudioUiTestHost : IAsyncLifetime
     public IBrowser Browser { get; private set; } = null!;
     public IReadOnlyList<string> ApiRequests => _apiRequests.ToArray();
     public IReadOnlyList<string> StudioLogs => _studioLogs.ToArray();
+    public VertexBPMN.SourceControl.Abstractions.SourceControlAvailability GitAvailability { get; init; } =
+        new(false, VertexBPMN.SourceControl.Abstractions.SourceControlCapability.None,
+            VertexBPMN.SourceControl.Abstractions.SourceControlErrorCode.Disabled);
+    public HttpStatusCode GitAvailabilityStatusCode { get; init; } = HttpStatusCode.OK;
 
     public async ValueTask InitializeAsync()
     {
@@ -60,6 +64,8 @@ public sealed class StudioUiTestHost : IAsyncLifetime
             await next();
         });
         MapApiContracts(_api);
+        _api.MapGet("/api/source-control/availability", () => Results.Json(GitAvailability,
+            statusCode: (int)GitAvailabilityStatusCode));
         await _api.StartAsync();
 
         var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../.."));

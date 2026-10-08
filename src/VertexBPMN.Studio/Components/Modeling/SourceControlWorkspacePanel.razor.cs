@@ -16,6 +16,8 @@ public partial class SourceControlWorkspacePanel
 	private CancellationTokenSource? _waiting;
 	private long _contextVersion;
 	private bool _busy;
+	private bool _availabilityChecked;
+	private bool _gitDisabled;
 	private string? _error, _status, _branchCursor, _fileCursor, _historyCursor;
 	private StudioGitRepository[] _repositories = [];
 	private Guid _repositoryId;
@@ -44,6 +46,35 @@ public partial class SourceControlWorkspacePanel
 	private bool JobActive => _jobId is not null && (_job is null || _job.State is SourceControlOperationState.Queued or SourceControlOperationState.Running or SourceControlOperationState.Reconciling);
 
 	protected override void OnInitialized() => TenantContext.Changed += TenantChanged;
+	protected override async Task OnAfterRenderAsync(bool firstRender)
+	{
+		if (!firstRender)
+		{
+			return;
+		}
+		// Query the API after the interactive circuit starts, not during prerendering.
+		await RunAsync(async token =>
+		{
+			using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+			deadline.CancelAfter(TimeSpan.FromSeconds(5));
+			SourceControlAvailability availability;
+			try
+			{
+				availability = await Git.AvailabilityAsync(deadline.Token);
+			}
+			catch (OperationCanceledException) when (!token.IsCancellationRequested)
+			{
+				throw new HttpRequestException("Git availability check timed out.");
+			}
+			token.ThrowIfCancellationRequested();
+			_gitDisabled = availability.UnavailableReason == SourceControlErrorCode.Disabled;
+		});
+		if (!_lifetime.IsCancellationRequested)
+		{
+			_availabilityChecked = true;
+			StateHasChanged();
+		}
+	}
 	private void TenantChanged()
 	{
 		_contextVersion++;
@@ -85,6 +116,7 @@ public partial class SourceControlWorkspacePanel
 	{
 		var availability = await Git.AvailabilityAsync(token);
 		token.ThrowIfCancellationRequested();
+		_gitDisabled = availability.UnavailableReason == SourceControlErrorCode.Disabled;
 		if (!availability.Available) { _status = $"Git integration unavailable: {availability.UnavailableReason}. Existing editor functions remain available."; return; }
 		var repositories = await Git.RepositoriesAsync(token);
 		token.ThrowIfCancellationRequested(); _repositories = repositories;

@@ -92,8 +92,64 @@ async function exportXml(instance) {
 }
 
 function destroyInstance(instance) {
+    instance?.__vertexReconnectObserver?.disconnect();
+    instance?.__vertexLocalExport?.remove();
     if (instance && !instance.__vertexFallback && typeof instance.destroy === 'function') {
         instance.destroy();
+    }
+}
+
+function attachLocalExport(modeler, containerId) {
+    const container = getElement(containerId);
+    if (!container) return;
+    const controls = document.createElement('div');
+    controls.className = 'bpmn-local-export';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = 'Export local BPMN draft';
+    button.title = 'Download the browser draft, even when the server session has expired. Reopen it with Import BPMN after signing in.';
+    const status = document.createElement('span');
+    status.setAttribute('role', 'status');
+    button.addEventListener('click', async () => {
+        button.disabled = true;
+        let url;
+        try {
+            modeler.get?.('directEditing')?.complete();
+            const xml = await exportXml(modeler);
+            if (!xml) throw new Error('No BPMN draft is available.');
+            url = URL.createObjectURL(new Blob([xml], { type: 'application/xml;charset=utf-8' }));
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'vertexbpmn-local-draft.bpmn';
+            document.body.append(link);
+            link.click();
+            link.remove();
+            status.textContent = 'Local draft exported. After signing in, use Import BPMN to reopen this file.';
+        } catch {
+            status.textContent = 'Local export failed. Keep this tab open and try again.';
+        } finally {
+            if (url) setTimeout(() => URL.revokeObjectURL(url), 30_000);
+            button.disabled = false;
+        }
+    });
+    controls.append(button, status);
+    container.before(controls);
+    modeler.__vertexLocalExport = controls;
+    // Keep the real browser-only handler inside the blocking reconnect dialog.
+    // No server event, expired identity or duplicated model snapshot is involved.
+    const modal = getElement('components-reconnect-modal');
+    const slot = getElement('vertex-reconnect-export');
+    if (modal && slot) {
+        const relocate = () => {
+            const reconnecting = ['components-reconnect-show', 'components-reconnect-failed', 'components-reconnect-rejected']
+                .some(name => modal.classList.contains(name));
+            if (reconnecting) slot.append(controls);
+            else container.before(controls);
+        };
+        const observer = new MutationObserver(relocate);
+        observer.observe(modal, { attributes: true, attributeFilter: ['class'] });
+        modeler.__vertexReconnectObserver = observer;
+        relocate();
     }
 }
 
@@ -529,6 +585,7 @@ export const BpmnModelerInterop = {
 
         const modeler = new ctor(options);
         await importArtifact(modeler, bpmnXml, 'bpmn.io BPMN Modeler fallback');
+        attachLocalExport(modeler, containerId);
         getElement(containerId)?.setAttribute("data-modeler-ready", "true");
         return modeler;
     },

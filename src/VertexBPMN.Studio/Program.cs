@@ -371,6 +371,13 @@ app.MapPost("/authentication/logout", async (HttpContext httpContext, IAntiforge
 
 app.MapPost("/authentication/session/refresh", async (HttpContext httpContext, IAntiforgery antiforgery) =>
 {
+    // Background renewal must not challenge OIDC: fetch would follow the login
+    // redirect instead of delivering the 401 that lets the editor warn the user.
+    if (httpContext.User.Identity?.IsAuthenticated != true)
+    {
+        return Results.Unauthorized();
+    }
+
     try
     {
         await antiforgery.ValidateRequestAsync(httpContext);
@@ -384,7 +391,7 @@ app.MapPost("/authentication/session/refresh", async (HttpContext httpContext, I
     {
         renewed = httpContext.Items.ContainsKey(OidcSessionTokenStore.SessionRenewedItem)
     });
-}).RequireAuthorization();
+}).AllowAnonymous();
 
 app.MapGet("/authentication/access-denied", () => Results.Problem(
     statusCode: StatusCodes.Status403Forbidden,

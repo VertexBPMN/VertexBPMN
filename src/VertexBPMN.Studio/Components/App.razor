@@ -36,6 +36,14 @@
 </head>
 
 <body>
+    <div id="components-reconnect-modal" class="vertex-reconnect" role="dialog" aria-modal="true" aria-labelledby="vertex-reconnect-title" tabindex="-1">
+        <section class="vertex-reconnect-card">
+            <h2 id="vertex-reconnect-title">Studio connection interrupted</h2>
+            <p>Studio is trying to reconnect. Export your local BPMN draft before reloading or signing in again.</p>
+            <div id="vertex-reconnect-export"></div>
+            <a href="/authentication/login" target="_blank" rel="noopener noreferrer">Sign in in a new tab</a>
+        </section>
+    </div>
     <Routes @rendermode="InteractiveServer" />
     <script src="@Assets["lib/bpmn-js/bpmn-modeler.js"]"></script>
     <script src="@Assets["lib/bpmn-js/bpmn-viewer.js"]"></script>

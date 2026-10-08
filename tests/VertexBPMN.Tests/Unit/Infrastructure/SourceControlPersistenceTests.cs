@@ -26,6 +26,125 @@ public sealed class SourceControlPersistenceTests
     private static CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
     [Fact]
+    public async Task Pull_request_acceptance_requires_grant_and_confirmed_push_and_is_idempotent()
+    {
+        await using var fixture = new StoreFixture();
+        var binding = await fixture.InitializeAsync();
+        await using var db = fixture.Db();
+        var store = fixture.Store(db);
+        var push = await store.EnqueueAsync(Actor, binding.Id, ["Admin"], SourceControlOperationKind.Push,
+            new("pr-source-push"), new byte[] { 1 }, Cancellation);
+        var submission = new PullRequestJobSubmission(push, "master", "Review model", "Model update");
+        await Assert.ThrowsAsync<SourceControlSecurityException>(() => store.EnqueuePullRequestAsync(
+            Actor, binding.Id, ["Admin"], new("pr-create"), submission, Cancellation));
+        Assert.True(await store.ReplaceGrantsAsync(Actor, binding.Id, ["Admin"], 2,
+            [new(Actor.ActorId, RepositoryPermission.Read | RepositoryPermission.Manage | RepositoryPermission.Push
+                | RepositoryPermission.PullRequest)], Cancellation));
+        await Assert.ThrowsAsync<SourceControlSecurityException>(() => store.EnqueuePullRequestAsync(
+            Actor, binding.Id, ["Admin"], new("pr-create"), submission, Cancellation));
+        var now = DateTimeOffset.UtcNow;
+        var fence = await store.TryClaimAsync(Actor.TenantId, push, "push-worker", now, TimeSpan.FromMinutes(1), Cancellation);
+        Assert.NotNull(fence);
+        var receipt = new PushReceipt(push, new(new string('a', 40)), "vertex/model-review");
+        Assert.True(await store.SaveResultAsync(Actor.TenantId, push, "push-worker", fence.Value,
+            System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new StoredRemotePush(1, binding.Id, receipt)), now, Cancellation));
+        Assert.True(await store.FinishAsync(Actor.TenantId, push, "push-worker", fence.Value,
+            SourceControlOperationState.Pushed, now, Cancellation));
+        var operation = await store.EnqueuePullRequestAsync(Actor, binding.Id, ["Admin"], new("pr-create"), submission, Cancellation);
+        Assert.Equal(operation, await store.EnqueuePullRequestAsync(Actor, binding.Id, ["Admin"], new("pr-create"), submission, Cancellation));
+        await Assert.ThrowsAsync<SourceControlSecurityException>(() => store.EnqueuePullRequestAsync(
+            Actor, binding.Id, ["Admin"], new("pr-create"), submission with { Title = "Different review" }, Cancellation));
+        Assert.Single(await db.SourceControlOperations.AsNoTracking().Where(x => x.Kind == (int)SourceControlOperationKind.PullRequest).ToArrayAsync(Cancellation));
+        var prFence = await store.TryClaimAsync(Actor.TenantId, operation, "pr-worker", DateTimeOffset.UtcNow,
+            TimeSpan.FromMinutes(1), Cancellation);
+        Assert.NotNull(prFence);
+        var work = await store.ReadPullRequestWorkAsync(Actor, operation, "pr-worker", prFence.Value, ["Admin"], Cancellation);
+        Assert.Equal(receipt.Commit, work.Command.HeadCommit);
+        Assert.Equal(receipt.WorkBranch, work.Command.WorkBranch);
+        Assert.Equal(push, work.PushOperationId);
+        var executor = new SourceControlPullRequestExecutor(store,
+            new GitHubAppTokenBroker(new SourceControlCredentialResolver(store, fixture.Credentials(db)),
+                Options.Create(new SourceControlOptions { Enabled = true })), Options.Create(new SourceControlOptions { Enabled = true }));
+        var createCalls = 0;
+        Task<IReadOnlyCollection<string>> ResolveRoles(CancellationToken token) => Task.FromResult<IReadOnlyCollection<string>>(["Admin"]);
+        Task<PullRequestReceipt> LostCreate(AcceptedPullRequestWork current, CancellationToken token)
+        {
+            createCalls++;
+            throw new SourceControlSecurityException(SourceControlErrorCode.ResultUnknown);
+        }
+        Task<PullRequestReceipt> UnexpectedReconcile(AcceptedPullRequestWork current, CancellationToken token) =>
+            throw new InvalidOperationException("First attempt must create once.");
+        await Assert.ThrowsAsync<SourceControlSecurityException>(() => executor.ExecutePreparedAsync(Actor, operation,
+            "pr-worker", prFence.Value, ResolveRoles, LostCreate, UnexpectedReconcile, Cancellation));
+        Assert.Equal(1, createCalls);
+        Assert.False(await store.SavePullRequestIntentAsync(Actor, operation, "pr-worker", prFence.Value, ["Admin"], Cancellation));
+        await Assert.ThrowsAsync<SourceControlSecurityException>(() => store.ReadPullRequestWorkAsync(
+            Actor, operation, "pr-worker", prFence.Value + 1, ["Admin"], Cancellation));
+        await Assert.ThrowsAsync<SourceControlSecurityException>(() => store.ReadPullRequestWorkAsync(
+            new("tenant-b", Actor.ActorId), operation, "pr-worker", prFence.Value, ["Admin"], Cancellation));
+        Assert.True(await store.FinishAsync(Actor.TenantId, operation, "pr-worker", prFence.Value,
+            SourceControlOperationState.ResultUnknown, DateTimeOffset.UtcNow, Cancellation));
+        var recoveryFence = await store.TryClaimAsync(Actor.TenantId, operation, "pr-recovery", DateTimeOffset.UtcNow,
+            TimeSpan.FromMinutes(1), Cancellation);
+        Assert.NotNull(recoveryFence);
+        await Assert.ThrowsAsync<SourceControlSecurityException>(() => store.SavePullRequestIntentAsync(
+            Actor, operation, "pr-recovery", recoveryFence.Value, ["Admin"], Cancellation));
+        var prReceipt = new PullRequestReceipt(operation, "github", 7, new("https://github.com/example/models/pull/7"),
+            PullRequestState.Open, receipt.Commit, null);
+        var reconcileCalls = 0;
+        Task<PullRequestReceipt> ConfirmExisting(AcceptedPullRequestWork current, CancellationToken token)
+        {
+            reconcileCalls++;
+            return Task.FromResult(prReceipt);
+        }
+        var runnerServices = new ServiceCollection();
+        runnerServices.AddScoped(_ => fixture.Db());
+        runnerServices.AddScoped(sp => fixture.Store(sp.GetRequiredService<BpmnDbContext>()));
+        runnerServices.AddScoped(sp => new SourceControlPullRequestExecutor(sp.GetRequiredService<PersistentSourceControlStore>(),
+            new GitHubAppTokenBroker(new SourceControlCredentialResolver(sp.GetRequiredService<PersistentSourceControlStore>(),
+                fixture.Credentials(sp.GetRequiredService<BpmnDbContext>())), Options.Create(new SourceControlOptions { Enabled = true })),
+            Options.Create(new SourceControlOptions { Enabled = true })));
+        await using var runnerProvider = runnerServices.BuildServiceProvider();
+        var runner = new SourceControlClaimedPullRequestRunner(runnerProvider.GetRequiredService<IServiceScopeFactory>());
+        var outcome = await runner.RunPreparedAsync(Actor, operation, "pr-recovery", recoveryFence.Value, ResolveRoles,
+            (claimedExecutor, token) => claimedExecutor.ExecutePreparedAsync(Actor, operation, "pr-recovery", recoveryFence.Value,
+                ResolveRoles, LostCreate, ConfirmExisting, token), Cancellation);
+        Assert.Equal(SourceControlOperationState.Succeeded, outcome.State);
+        Assert.Equal(prReceipt, outcome.Receipt);
+        Assert.Equal(prReceipt, await store.GetPullRequestReceiptAsync(Actor, operation, ["Admin"], Cancellation));
+        Assert.Null(await store.GetPullRequestReceiptAsync(new("tenant-b", Actor.ActorId), operation, ["Admin"], Cancellation));
+        var confirmed = await store.ReadConfirmedPullRequestAsync(Actor, operation, ["Admin"], Cancellation);
+        Assert.Equal(binding.Id, confirmed.Binding.Id);
+        Assert.Equal(work.Command, confirmed.Command);
+        Assert.Equal(prReceipt, confirmed.Receipt);
+        await Assert.ThrowsAsync<SourceControlSecurityException>(() => store.ReadConfirmedPullRequestAsync(
+            new("tenant-b", Actor.ActorId), operation, ["Admin"], Cancellation));
+        await Assert.ThrowsAsync<SourceControlSecurityException>(() => store.ReadConfirmedPullRequestAsync(
+            new(Actor.TenantId, "other-user"), operation, ["Admin"], Cancellation));
+        await Assert.ThrowsAsync<SourceControlSecurityException>(() => store.ReadConfirmedPullRequestAsync(
+            Actor, operation, ["ReadOnly"], Cancellation));
+        Assert.Equal(1, createCalls);
+        Assert.Equal(1, reconcileCalls);
+        Assert.Equal(SourceControlOperationState.Succeeded,
+            (await store.GetOperationAsync(Actor, operation, ["Admin"], Cancellation))!.State);
+        var revokedOperation = await store.EnqueuePullRequestAsync(Actor, binding.Id, ["Admin"],
+            new("pr-revocation"), submission, Cancellation);
+        var revokedFence = await store.TryClaimAsync(Actor.TenantId, revokedOperation, "revoked-worker",
+            DateTimeOffset.UtcNow, TimeSpan.FromMinutes(1), Cancellation);
+        Assert.NotNull(revokedFence);
+        Assert.True(await store.ReplaceGrantsAsync(Actor, binding.Id, ["Admin"], 3,
+            [new(Actor.ActorId, RepositoryPermission.Read | RepositoryPermission.Manage)], Cancellation));
+        await Assert.ThrowsAsync<SourceControlSecurityException>(() => store.ReadPullRequestWorkAsync(
+            Actor, revokedOperation, "revoked-worker", revokedFence.Value, ["Admin"], Cancellation));
+        await Assert.ThrowsAsync<SourceControlSecurityException>(() => store.ReadConfirmedPullRequestAsync(
+            Actor, operation, ["Admin"], Cancellation));
+        var denied = await runner.RunPreparedAsync(Actor, revokedOperation, "revoked-worker", revokedFence.Value,
+            ResolveRoles, (_, _) => throw new InvalidOperationException("Revoked job must not reach remote execution."), Cancellation);
+        Assert.Equal(SourceControlOperationState.Failed, denied.State);
+        Assert.Equal(1, createCalls);
+    }
+
+    [Fact]
     public async Task Typed_commit_acceptance_freezes_confirmed_bytes_and_retries_after_later_edits()
     {
         await using var fixture = new StoreFixture();

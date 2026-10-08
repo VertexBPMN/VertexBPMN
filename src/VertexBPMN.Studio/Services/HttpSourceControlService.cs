@@ -35,6 +35,12 @@ public sealed class HttpSourceControlService(IHttpClientFactory clients)
 	public Task<Guid> PushAsync(Guid repositoryId, string key, Guid commitOperationId, GitCommitId? expected, CancellationToken token) =>
 		PostAsync<Guid>($"{Prefix}/repositories/{repositoryId}/pushes", new { key, commitOperationId, expectedCommit = expected?.Value }, token);
 	public Task<SourceControlOperation> OperationAsync(Guid id, CancellationToken token) => GetAsync<SourceControlOperation>($"{Prefix}/operations/{id}", token);
+	public Task<Guid> PullRequestAsync(Guid repositoryId, StudioGitPullRequestRequest request, CancellationToken token) =>
+		PostAsync<Guid>($"{Prefix}/repositories/{repositoryId}/pull-requests", request, token);
+	public Task<PullRequestReceipt> PullRequestReceiptAsync(Guid id, CancellationToken token) =>
+		GetAsync<PullRequestReceipt>($"{Prefix}/operations/{id}/pull-request-receipt", token);
+	public Task<PullRequestReceipt> PullRequestStatusAsync(Guid id, CancellationToken token) =>
+		GetAsync<PullRequestReceipt>($"{Prefix}/operations/{id}/pull-request-status", token);
 	public Task<CommitReceipt> ReceiptAsync(Guid id, CancellationToken token) => GetAsync<CommitReceipt>($"{Prefix}/operations/{id}/commit-receipt", token);
 	public Task<bool> AdvanceAsync(Guid sessionId, Guid pushOperationId, long revision, CancellationToken token) =>
 		PostAsync<bool>($"{Prefix}/sessions/{sessionId}/advance", new { pushOperationId, revision }, token);
@@ -66,3 +72,4 @@ public sealed record StudioGitRepository(RepositoryBinding Binding, long Revisio
 public sealed record StudioGitBindingRequest(string Remote, string? CredentialReference, string DefaultBranch, string ReleaseBranch, string[] ModelRoots);
 public sealed record StudioGitSnapshot(string Path, Guid Generation, long LocalRevision, byte[] Bytes, string ContentSha256);
 public sealed record StudioGitCommitRequest(string Key, Guid SessionId, long SessionRevision, string BaseCommit, string Message, StudioGitSnapshot[] Snapshots);
+public sealed record StudioGitPullRequestRequest(string Key, Guid PushOperationId, string BaseBranch, string Title, string Description);

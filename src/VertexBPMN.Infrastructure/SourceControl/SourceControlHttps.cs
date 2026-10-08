@@ -8,6 +8,29 @@ namespace VertexBPMN.Infrastructure.SourceControl;
 /// <summary>Direct TLS with DNS-to-socket pinning, no proxy, redirects or ambient credentials.</summary>
 public static class SourceControlHttps
 {
+    // Only this fixed GitHub listing query is permitted; repository remotes remain query-free.
+    internal static void ValidateRequestTarget(Uri target, IReadOnlyList<string> allowedHosts)
+    {
+        if (target.Query.Length == 0)
+        {
+            ValidateTarget(target, allowedHosts);
+            return;
+        }
+        var clean = new UriBuilder(target) { Query = "" }.Uri;
+        ValidateTarget(clean, allowedHosts);
+        var parts = target.AbsolutePath.Split('/');
+        var isReviews = parts.Length == 7 && parts[6] == "reviews"
+            && long.TryParse(parts[5], System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out var number) && number > 0;
+        var prefix = isReviews ? "?per_page=100&page=" : "?state=all&per_page=100&page=";
+        if (target.Host != "api.github.com" || !(parts.Length == 5 || isReviews) || parts[1] != "repos" || parts[4] != "pulls"
+            || parts[2].Length == 0 || parts[3].Length == 0 || !target.Query.StartsWith(prefix, StringComparison.Ordinal)
+            || !int.TryParse(target.Query[prefix.Length..], System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out var page) || page is < 1 or > 10)
+        {
+            Reject();
+        }
+    }
     public static void ValidateTarget(Uri target, IReadOnlyList<string> allowedHosts)
     {
         if (!target.IsAbsoluteUri || target.Scheme != "https" || target.Port != 443
@@ -49,7 +72,7 @@ public static class SourceControlHttps
             Credentials = null, ConnectTimeout = timeout, MaxResponseHeadersLength = 32,
             ConnectCallback = async (context, cancellation) =>
             {
-                ValidateTarget(context.InitialRequestMessage.RequestUri!, hosts);
+                ValidateRequestTarget(context.InitialRequestMessage.RequestUri!, hosts);
                 if (context.DnsEndPoint.Port != 443) Reject();
                 var addresses = await resolve(context.DnsEndPoint.Host, cancellation);
                 if (addresses.Length == 0 || addresses.Any(a => !IsPublicAddress(a))) Reject();
@@ -75,7 +98,7 @@ public static class SourceControlHttps
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            ValidateTarget(request.RequestUri!, hosts);
+            ValidateRequestTarget(request.RequestUri!, hosts);
             return base.SendAsync(request, cancellationToken);
         }
     }

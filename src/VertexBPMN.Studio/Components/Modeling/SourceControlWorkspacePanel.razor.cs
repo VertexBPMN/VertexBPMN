@@ -31,6 +31,12 @@ public partial class SourceControlWorkspacePanel
 	private long _sessionRevision, _localRevision;
 	private StudioGitCommitRequest? _pendingCommit;
 	private CommitReceipt? _receipt;
+	private Guid? _confirmedPush;
+	private StudioGitPullRequestRequest? _pendingPullRequest;
+	private PullRequestReceipt? _pullRequestReceipt;
+	private PullRequestReceipt? _livePullRequestReceipt;
+	private string _prBase = "", _prTitle = "", _prDescription = "";
+	private string _resumePullRequestId = "";
 	private SourceControlOperation? _job;
 	private ModelDiff? _diff;
 	private string _remote = "", _credential = "", _defaultBranch = "master", _releaseBranch = "release", _modelRoot = "models", _grantsJson = "[]";
@@ -54,6 +60,10 @@ public partial class SourceControlWorkspacePanel
 		_browseRevision = null; _document = null; _baseCommit = null; _receipt = null; _diff = null;
 		_sessionId = null; _sessionRevision = 0; _localRevision = 0; _jobId = null; _job = null;
 		_pendingCommit = null; _baselineXml = null; _acceptedXml = null; _expectedRemote = null; _pushKey = null;
+		_confirmedPush = null; _pendingPullRequest = null; _pullRequestReceipt = null;
+		_livePullRequestReceipt = null;
+		_prBase = ""; _prTitle = ""; _prDescription = "";
+		_resumePullRequestId = "";
 		_branchCursor = null; _fileCursor = null; _historyCursor = null; _branch = ""; _root = ""; _path = "";
 	}
 
@@ -118,6 +128,9 @@ public partial class SourceControlWorkspacePanel
 		token.ThrowIfCancellationRequested(); await OpenXml.InvokeAsync(xml);
 		token.ThrowIfCancellationRequested();
 		_document = document; _baseCommit = _browseRevision.Commit; _baselineXml = await CaptureXml();
+		_confirmedPush = null; _pendingPullRequest = null; _pullRequestReceipt = null;
+		_prBase = SelectedRepository!.Binding.DefaultBranch;
+		_livePullRequestReceipt = null;
 		_sessionId = null; _sessionRevision = 0; _localRevision = 0; _receipt = null; _jobId = null; _job = null; _pendingCommit = null;
 		_expectedRemote = null; _diff = null; _history.Clear(); _historyCursor = null;
 		_status = "Model opened at a fixed commit. Unchanged commits retain the original bytes; edited XML changes are visible in the diff.";
@@ -160,7 +173,9 @@ public partial class SourceControlWorkspacePanel
 		var acceptedXml = _capturedXml;
 		await SaveAsync(snapshot, token);
 		token.ThrowIfCancellationRequested(); _acceptedXml = acceptedXml; _pushKey = null;
+		_confirmedPush = null; _pendingPullRequest = null; _pullRequestReceipt = null;
 		_pendingCommit = new(Guid.NewGuid().ToString("N"), _sessionId!.Value, _sessionRevision, _baseCommit!.Value, _message, [snapshot]);
+		_livePullRequestReceipt = null;
 		await SubmitPendingCommitAsync(token);
 	});
 	private Task RetryCommit() => RunAsync(SubmitPendingCommitAsync);
@@ -182,6 +197,13 @@ public partial class SourceControlWorkspacePanel
 	{
 		var job = await Git.OperationAsync(_jobId!.Value, token);
 		token.ThrowIfCancellationRequested(); _job = job;
+		if (job.Kind == SourceControlOperationKind.PullRequest && job.State == SourceControlOperationState.Succeeded)
+		{
+			var receipt = await Git.PullRequestReceiptAsync(job.Id, token);
+			token.ThrowIfCancellationRequested(); _pullRequestReceipt = receipt; _livePullRequestReceipt = null;
+			_status = "Pull request confirmed. Review/merge remain separate; no runtime deployment occurred.";
+			return;
+		}
 		if (job.State == SourceControlOperationState.CommittedLocal)
 		{
 			var receipt = await Git.ReceiptAsync(job.Id, token);
@@ -200,9 +222,51 @@ public partial class SourceControlWorkspacePanel
 				_pendingCommit = null; _pushKey = null;
 			}
 			_status = "Confirmed commit pushed. Later editor edits remain uncommitted; runtime deployment is still separate.";
+			_confirmedPush = job.Id;
 		}
 		else if (job.State is SourceControlOperationState.Conflict or SourceControlOperationState.ResultUnknown or SourceControlOperationState.Failed)
 			_status = "Git job did not report success. Keep/export your snapshot; no automatic reset, merge or resend is performed.";
+	});
+	private Task ReopenPullRequestAsync() => RunAsync(async token =>
+	{
+		if (!Guid.TryParse(_resumePullRequestId, out var id) || _repositoryId == Guid.Empty)
+		{
+			_status = "Select a repository and enter a valid PR operation ID.";
+			return;
+		}
+		var operation = await Git.OperationAsync(id, token);
+		token.ThrowIfCancellationRequested();
+		if (operation.RepositoryId != _repositoryId || operation.Kind != SourceControlOperationKind.PullRequest
+			|| operation.State != SourceControlOperationState.Succeeded)
+		{
+			_status = "The operation is not a confirmed PR for the selected repository.";
+			return;
+		}
+		var receipt = await Git.PullRequestReceiptAsync(id, token);
+		token.ThrowIfCancellationRequested();
+		_pullRequestReceipt = receipt;
+		_livePullRequestReceipt = null;
+		_status = "Stored PR receipt reopened. Editor content is unchanged; check GitHub for current status.";
+	});
+	private Task RefreshPullRequestStatusAsync() => RunAsync(async token =>
+	{
+		_livePullRequestReceipt = null;
+		var receipt = await Git.PullRequestStatusAsync(_pullRequestReceipt!.OperationId, token);
+		token.ThrowIfCancellationRequested();
+		_livePullRequestReceipt = receipt;
+		_status = "GitHub status checked. This is not a review or deployment approval.";
+	});
+	private Task SubmitPullRequest() => RunAsync(async token =>
+	{
+		if (_pendingPullRequest is null)
+		{
+			if (_confirmedPush is null || string.IsNullOrWhiteSpace(_prTitle)) return;
+			if (!await JS.InvokeAsync<bool>("confirm", token, "Create a GitHub pull request for the confirmed pushed commit? Later editor edits are NOT included. No merge or deployment will occur.")) return;
+			_pendingPullRequest = new(Guid.NewGuid().ToString("N"), _confirmedPush.Value, _prBase, _prTitle, _prDescription);
+		}
+		var id = await Git.PullRequestAsync(_repositoryId, _pendingPullRequest, token);
+		token.ThrowIfCancellationRequested(); _jobId = id; _job = null;
+		_status = "Pull request job accepted. Refresh durable status; an unknown result never triggers a blind second create.";
 	});
 	private Task ExportOriginal() => RunAsync(async token =>
 	{

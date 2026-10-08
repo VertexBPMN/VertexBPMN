@@ -2,6 +2,16 @@
 
 Stand: 2026-10-05. Planungsbasis: `master`, Commit `cb88bee0f83807cd0d7906a4d092807a56b49969`.
 
+## Konsolidierter Teilstand – 2026-10-08
+
+Die nachfolgenden historischen Fortschrittsnotizen und ungeschlossenen Paketcheckboxen sind keine Aussage, dass inzwischen angeschlossene Provider/API/Studio-Komponenten fehlen. G04–G06 sind implementiert, aber nicht insgesamt abgenommen. Sichtbar geprüft wurden Öffnen, Bearbeiten, echte GitHub-Commits/Pushes und Wiederöffnen im isolierten Testrepository; diese Teilnachweise ersetzen nicht alle GT01–GT19-Kriterien.
+
+Auf `codex/studio-session-expiry` wurden mit `3b307de`, `2befa63` und `4d0764e` die nicht weiterleitende 401-Refreshantwort, browserlokaler BPMN-Export und Export im blockierenden Wiederverbindungsdialog ergänzt. Echter Serverausfall mit XML-Dateinachweis sowie normaler lokaler Export/Wiederimport bestanden. Bericht: [Studio-Sitzungsablauf](2026-10-07_Studio-Sitzungsablauf-Browserabnahme.md).
+
+Aktueller Rest: Am 8. Oktober erschien nach echtem OIDC-Widerruf das Ablaufbanner ohne Navigation. Der Nutzer bestätigte anschließend den lokalen Download durch eigene Betätigung ausdrücklich als funktionierend. Dieser Download ist manuell abgenommen; der automatisierte Dateinachweis derselben Wiederholung gelang nicht. Lokaler Export/Wiederimport wurde separat mit konkreter Beschriftung nachgewiesen; Wiederimport der zuletzt manuell exportierten Datei noch nicht zusätzlich geprüft. GT09/G06/G09 insgesamt nicht schließen: weitere Fehler-/Kontext-/Recoveryfälle und Gesamtnachweise bleiben offen.
+
+Danach G07 (GitHub-PR/Review) dependency-ordered bearbeiten, anschließend G08 (commitgebundenes Deployment/Provenienz), G09 (vollständige lokale/Remote- und saubere Checkout-Abnahme). Weitere offene Sicherheits-/Recovery-/Linux-Kriterien aus G02–G05 bleiben bestehen; SQL Server bleibt auf Nutzerwunsch ungeprüft. G10/G11 sind separate Lieferstufen. Strenger Build/Analyzer-Nachweis weiterhin offen; diagnostische Publish-Ergebnisse sind kein Ersatz.
+
 Folgepaket auf `63a20b5`: interne authentifizierte Branchauflösung auf eine feste
 Commit-ID ergänzt; Readback bleibt nach Remote-Branchänderungen revisionsgebunden.
 Keine Provider-/API-Gesamtfreigabe: [G04-Branchauflösung](2026-10-07_Git-G04_Branchaufloesung.md).
@@ -268,6 +278,8 @@ Abnahme: alle Operationen tenantisoliert; kein Secret/Serverpfad im Response; de
 Abnahme: echte lokale Playwright-Abläufe GT01–GT06, GT09, GT16; unabhängige Git-/API-Prüfung zusätzlich zur Erfolgsmeldung. Keine neuen Mock-only-Tests als Backendabnahme deklarieren.
 
 ### G07 – GitHub-Pull-Requests und Review
+
+Begonnen am 2026-10-08: [PR-Antwortvalidierung und persistente Annahme](2026-10-08_Git-G07_PR-Antwortvalidierung.md), acht isolierte Decoder-Tests bestanden. Persistente PR-Annahme und geschützte Worker-Decodierung mit aktuellen Rechten, Revision und Lease/Fence ergänzt; 18 lokale Persistenztests bestanden. Noch kein registrierter Hostingprovider, ausführender PR-Worker oder API-/Studio-Anschluss. Keine G07-Abnahmecheckbox geschlossen.
 
 - [ ] GitHub-App-Einrichtung und minimale Repositoryrechte dokumentieren; nur autorisierte Installation/Repositorybindung akzeptieren.
 - [ ] Pull Request mit Basis-/Arbeitsbranch und Commitbezug erstellen, Status lesen und Studio-Link anzeigen. Keine automatische PR-Freigabe oder Merge-Aktion in A.

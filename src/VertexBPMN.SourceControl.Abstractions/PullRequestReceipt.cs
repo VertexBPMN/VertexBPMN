@@ -5,5 +5,3 @@ public sealed record PullRequestReceipt(Guid OperationId, string ProviderId, lon
     /// <summary>Null means reviews have not been checked; an empty collection means no reviews.</summary>
     public IReadOnlyList<PullRequestReview>? Reviews { get; init; }
 }
-
-public sealed record PullRequestReview(long Id, string Reviewer, string State, GitCommitId Commit);

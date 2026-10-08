@@ -22,6 +22,7 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="../../src/VertexBPMN.Studio/VertexBPMN.Studio.csproj" />
+    <ProjectReference Include="../../src/VertexBPMN.SourceControl.Abstractions/VertexBPMN.SourceControl.Abstractions.csproj" />
     <None Include="../../docs/testing/studio-use-cases.tsv" Link="studio-use-cases.tsv" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

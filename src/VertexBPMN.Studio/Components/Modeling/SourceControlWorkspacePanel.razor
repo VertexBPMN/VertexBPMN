@@ -4,6 +4,9 @@
 @inject StudioTenantContext TenantContext
 @inject IJSRuntime JS
 
+<div data-testid="git-workspace-availability" data-checked="@(_availabilityChecked ? "true" : "false")">
+@if (_availabilityChecked && !_gitDisabled)
+{
 <MudExpansionPanels>
     <MudExpansionPanel Text="Git model workspace" data-testid="git-workspace">
         <MudStack Spacing="2">
@@ -94,3 +97,5 @@
         </MudStack>
     </MudExpansionPanel>
 </MudExpansionPanels>
+}
+</div>

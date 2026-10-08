@@ -7,6 +7,56 @@ namespace VertexBPMN.Infrastructure.SourceControl;
 
 public sealed partial class PersistentSourceControlStore
 {
+	internal async Task<(RepositoryBinding Binding, PullRequestCommand Command, PullRequestReceipt Receipt)> ReadConfirmedPullRequestAsync(
+		SourceControlContext context, Guid id, IReadOnlyCollection<string> roles, CancellationToken cancellationToken)
+	{
+		var receipt = await GetPullRequestReceiptAsync(context, id, roles, cancellationToken)
+			?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
+		var row = await db.SourceControlOperations.AsNoTracking().SingleAsync(x => x.Id == id
+			&& x.TenantId == context.TenantId && x.ActorId == context.ActorId, cancellationToken);
+		var access = await FindAsync(context.TenantId, row.RepositoryId, cancellationToken)
+			?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
+		RepositoryAccessPolicy.Demand(context, access.Binding, roles, access.Grants, RepositoryPermission.PullRequest);
+		try
+		{
+			var stored = JsonSerializer.Deserialize<StoredPullRequest>(Unprotect(context, row.RepositoryId, row.ProtectedResult ?? ""));
+			if (stored is null || stored.SchemaVersion != 1 || stored.RepositoryId != row.RepositoryId
+				|| stored.Command?.OperationId != id || stored.Receipt != receipt || stored.Command.HeadCommit != receipt.HeadCommit)
+			{
+				throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
+			}
+			return (access.Binding, stored.Command, receipt);
+		}
+		catch (Exception error) when (error is JsonException or ArgumentException)
+		{
+			throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
+		}
+	}
+	public async Task<PullRequestReceipt?> GetPullRequestReceiptAsync(SourceControlContext context, Guid id,
+		IReadOnlyCollection<string> roles, CancellationToken cancellationToken)
+	{
+		var operation = await GetOperationAsync(context, id, roles, cancellationToken);
+		if (operation?.ActorId != context.ActorId || operation.Kind != SourceControlOperationKind.PullRequest
+			|| operation.State != SourceControlOperationState.Succeeded) return null;
+		var access = await FindAsync(context.TenantId, operation.RepositoryId, cancellationToken)
+			?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
+		RepositoryAccessPolicy.Demand(context, access.Binding, roles, access.Grants, RepositoryPermission.PullRequest);
+		var row = await db.SourceControlOperations.AsNoTracking().SingleAsync(x => x.Id == id && x.TenantId == context.TenantId, cancellationToken);
+		try
+		{
+			var stored = JsonSerializer.Deserialize<StoredPullRequest>(Unprotect(context, row.RepositoryId, row.ProtectedResult ?? ""));
+			if (stored?.SchemaVersion != 1 || stored.RepositoryId != row.RepositoryId || stored.Command?.OperationId != id
+				|| stored.Receipt is null || stored.Receipt.OperationId != id || stored.Receipt.HeadCommit != stored.Command.HeadCommit)
+			{
+				throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
+			}
+			return stored.Receipt;
+		}
+		catch (Exception error) when (error is JsonException or ArgumentException)
+		{
+			throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
+		}
+	}
 	public async Task<IReadOnlyList<RepositoryAccessSnapshot>> ListBindingsAsync(SourceControlContext context,
 		IReadOnlyCollection<string> roles, CancellationToken cancellationToken)
 	{

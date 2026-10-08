@@ -12,7 +12,7 @@ namespace VertexBPMN.Api.Controllers;
 [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
 [RequestSizeLimit(3 * 1024 * 1024)]
 public sealed class SourceControlController(PersistentSourceControlStore store, IModelSourceControlProvider provider,
-	ISourceControlActorResolver actors) : ControllerBase
+	ISourceControlActorResolver actors, SourceControlPullRequestStatusReader pullRequests) : ControllerBase
 {
 	[HttpGet("availability")]
 	public Task<ActionResult<SourceControlAvailability>> Availability(CancellationToken cancellationToken) =>
@@ -90,6 +90,24 @@ public sealed class SourceControlController(PersistentSourceControlStore store, 
 		return result.Result is null ? Accepted($"/api/source-control/operations/{result.Value}", result.Value) : result;
 	}
 
+	[HttpPost("repositories/{id:guid}/pull-requests")]
+	public async Task<ActionResult<Guid>> PullRequest(Guid id, PullRequestRequest request, CancellationToken cancellationToken)
+	{
+		var result = await RunAsync(async () => await store.EnqueuePullRequestAsync(Context(), id,
+			await RolesAsync(cancellationToken), new(request.Key),
+			new(request.PushOperationId, request.BaseBranch, request.Title, request.Description), cancellationToken));
+		return result.Result is null ? Accepted($"/api/source-control/operations/{result.Value}", result.Value) : result;
+	}
+
+	[HttpGet("operations/{id:guid}/pull-request-receipt")]
+	public Task<ActionResult<PullRequestReceipt>> PullRequestReceipt(Guid id, CancellationToken cancellationToken) => RunAsync(async () =>
+		await store.GetPullRequestReceiptAsync(Context(), id, await RolesAsync(cancellationToken), cancellationToken)
+		?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound));
+
+	[HttpGet("operations/{id:guid}/pull-request-status")]
+	public Task<ActionResult<PullRequestReceipt>> PullRequestStatus(Guid id, CancellationToken cancellationToken) =>
+		RunAsync(async () => await pullRequests.ReadAsync(Context(), id, cancellationToken));
+
 	[HttpGet("operations/{id:guid}")]
 	public Task<ActionResult<SourceControlOperation>> Operation(Guid id, CancellationToken cancellationToken) => RunAsync(async () =>
 		await store.GetOperationAsync(Context(), id, await RolesAsync(cancellationToken), cancellationToken)
@@ -143,5 +161,6 @@ public sealed class SourceControlController(PersistentSourceControlStore store, 
 	public sealed record DiffBody(string BaseCommit, SnapshotResponse Snapshot);
 	public sealed record CommitRequest(string Key, Guid SessionId, long SessionRevision, string BaseCommit, string Message, SnapshotResponse[] Snapshots);
 	public sealed record PushRequest(string Key, Guid CommitOperationId, string? ExpectedCommit);
+	public sealed record PullRequestRequest(string Key, Guid PushOperationId, string BaseBranch, string Title, string Description);
 	public sealed record AdvanceRequest(Guid PushOperationId, long Revision);
 }

@@ -132,6 +132,13 @@ public static class InfrastructureModule
         services.AddScoped<SourceControl.SourceControlClaimedCommitRunner>();
         services.AddScoped<SourceControl.SourceControlPushExecutor>();
         services.AddScoped<SourceControl.SourceControlClaimedPushRunner>();
+        services.AddScoped<SourceControl.SourceControlPullRequestExecutor>();
+        services.AddScoped(sp => new SourceControl.SourceControlPullRequestStatusReader(
+            sp.GetRequiredService<SourceControl.PersistentSourceControlStore>(),
+            sp.GetRequiredService<SourceControl.GitHubAppTokenBroker>(),
+            sp.GetRequiredService<VertexBPMN.Application.SourceControl.ISourceControlActorResolver>(),
+            sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<VertexBPMN.SourceControl.Abstractions.SourceControlOptions>>()));
+        services.AddScoped<SourceControl.SourceControlClaimedPullRequestRunner>();
         services.AddScoped<VertexBPMN.Application.SourceControl.ISourceControlActorResolver, SourceControl.KeycloakSourceControlActorResolver>();
         services.AddScoped<VertexBPMN.SourceControl.Abstractions.IModelSourceControlProvider, SourceControl.NativeGitModelSourceControlProvider>();
         if (mode != "Test" && configuration.GetValue<bool>("SourceControl:Enabled"))

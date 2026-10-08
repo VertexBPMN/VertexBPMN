@@ -104,6 +104,97 @@ public sealed partial class PersistentSourceControlStore
         }
     }
 
+    internal async Task<bool> SavePullRequestIntentAsync(SourceControlContext context, Guid id, string worker,
+        long fence, IReadOnlyCollection<string> currentRoles, CancellationToken cancellationToken)
+    {
+        var work = await ReadPullRequestWorkAsync(context, id, worker, fence, currentRoles, cancellationToken);
+        if (work.State != SourceControlOperationState.Running)
+        {
+            throw new SourceControlSecurityException(SourceControlErrorCode.ResultUnknown);
+        }
+        return await SaveResultAsync(context.TenantId, id, worker, fence,
+            JsonSerializer.SerializeToUtf8Bytes(new StoredPullRequest(1, work.Binding.Id, work.Command, null)),
+            DateTimeOffset.UtcNow, cancellationToken);
+    }
+
+    internal async Task<PullRequestReceipt> InvokePullRequestRemoteAsync(SourceControlContext context, Guid id,
+        string worker, long fence, IReadOnlyCollection<string> roles,
+        Func<AcceptedPullRequestWork, CancellationToken, Task<PullRequestReceipt>> invoke, CancellationToken cancellationToken)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        var work = await ReadPullRequestWorkAsync(context, id, worker, fence, roles, cancellationToken);
+        if (await db.SourceControlBindings.Where(x => x.Id == work.Binding.Id && x.TenantId == context.TenantId
+            && x.Revision == work.BindingRevision).ExecuteUpdateAsync(update => update.SetProperty(x => x.Revision, x => x.Revision), cancellationToken) != 1)
+        {
+            throw new SourceControlSecurityException(SourceControlErrorCode.RevisionConflict);
+        }
+        var now = DateTimeOffset.UtcNow.UtcTicks;
+        if (await db.SourceControlOperations.Where(x => x.Id == id && x.TenantId == context.TenantId
+            && x.ActorId == context.ActorId && x.LeaseOwner == worker && x.Fence == fence && x.LeaseUntilUtcTicks > now
+            && x.ProtectedResult != null && x.Kind == (int)SourceControlOperationKind.PullRequest
+            && (x.State == (int)SourceControlOperationState.Running || x.State == (int)SourceControlOperationState.Reconciling))
+            .ExecuteUpdateAsync(update => update.SetProperty(x => x.Fence, x => x.Fence), cancellationToken) != 1)
+        {
+            throw new SourceControlSecurityException(SourceControlErrorCode.ResultUnknown);
+        }
+        var until = await db.SourceControlOperations.Where(x => x.Id == id).Select(x => x.LeaseUntilUtcTicks).SingleAsync(cancellationToken);
+        var remaining = new DateTimeOffset(until!.Value, TimeSpan.Zero) - DateTimeOffset.UtcNow;
+        if (remaining <= TimeSpan.Zero) throw new SourceControlSecurityException(SourceControlErrorCode.ResultUnknown);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(remaining);
+        var receipt = await invoke(work, deadline.Token);
+        await transaction.CommitAsync(deadline.Token);
+        return receipt;
+    }
+
+    internal async Task CompletePullRequestAsync(SourceControlContext context, Guid id, string worker, long fence,
+        IReadOnlyCollection<string> currentRoles, PullRequestReceipt receipt, CancellationToken cancellationToken)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        var work = await ReadPullRequestWorkAsync(context, id, worker, fence, currentRoles, cancellationToken);
+        var now = DateTimeOffset.UtcNow;
+        var bytes = await ReadSavedResultAsync(context.TenantId, id, worker, fence, now, cancellationToken)
+            ?? throw new SourceControlSecurityException(SourceControlErrorCode.ResultUnknown);
+        StoredPullRequest? intent;
+        try
+        {
+            intent = JsonSerializer.Deserialize<StoredPullRequest>(bytes);
+        }
+        catch (Exception error) when (error is JsonException or ArgumentException)
+        {
+            throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
+        }
+        if (intent is null || intent.SchemaVersion != 1 || intent.RepositoryId != work.Binding.Id
+            || intent.Command != work.Command || intent.Receipt is not null
+            || receipt.OperationId != id || receipt.HeadCommit != work.Command.HeadCommit || receipt.ProviderId != "github"
+            || receipt.Number <= 0 || receipt.Url is null)
+        {
+            throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
+        }
+        var repository = work.Binding.Remote.AbsolutePath.Trim('/');
+        if (repository.EndsWith(".git", StringComparison.Ordinal)) repository = repository[..^4];
+        var expectedUrl = new Uri($"https://github.com/{repository}/pull/{receipt.Number.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+        if (receipt.Url != expectedUrl || !Enum.IsDefined(receipt.State)
+            || receipt.State == PullRequestState.Merged && receipt.MergeCommit is null
+            || receipt.State != PullRequestState.Merged && receipt.MergeCommit is not null)
+        {
+            throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
+        }
+        var payload = Protect(context, work.Binding.Id,
+            JsonSerializer.SerializeToUtf8Bytes(intent with { Receipt = receipt }));
+        var changed = await db.SourceControlOperations.Where(x => x.Id == id && x.TenantId == context.TenantId
+            && x.ActorId == context.ActorId && x.LeaseOwner == worker && x.Fence == fence && x.LeaseUntilUtcTicks > now.UtcTicks
+            && x.Kind == (int)SourceControlOperationKind.PullRequest
+            && (x.State == (int)SourceControlOperationState.Running || x.State == (int)SourceControlOperationState.Reconciling))
+            .ExecuteUpdateAsync(update => update.SetProperty(x => x.ProtectedResult, payload), cancellationToken);
+        if (changed != 1 || !await FinishAsync(context.TenantId, id, worker, fence,
+            SourceControlOperationState.Succeeded, now, cancellationToken))
+        {
+            throw new SourceControlSecurityException(SourceControlErrorCode.ResultUnknown);
+        }
+        await transaction.CommitAsync(cancellationToken);
+    }
+
     private sealed record AcceptedPullRequest(int SchemaVersion, long BindingRevision, Guid PushOperationId,
         string WorkBranch, string BaseBranch, string HeadCommit, string Title, string Description);
 }

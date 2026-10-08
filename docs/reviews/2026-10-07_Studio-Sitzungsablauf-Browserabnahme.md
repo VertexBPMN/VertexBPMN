@@ -52,3 +52,11 @@ Sichtbare Browserprüfung: Start-Ereignis in `Local recovery acceptance 2026-10-
 **Messgrenze:** Ein Timeout beim Download-Ereignis beweist in dieser Browserumgebung allein keinen fehlgeschlagenen Download. Die früheren Exportbeobachtungen bleiben daher fehlende Nachweise, nicht allein aufgrund des Event-Timeouts bewiesene Exportdefekte.
 
 **Ausfallfall noch offen:** Ausschließlich Studio wurde kurz gestoppt, um einen vollständig unterbrochenen Circuit zu prüfen. Die standardmäßige Wiederverbindungsoberfläche (`components-reconnect-modal`, `Rejoin failed`) erschien. Der lokale Exportknopf erzeugte in diesem Zustand keine weitere Datei. Studio wurde anschließend wieder gestartet. Der lokale Export muss auch aus der blockierenden Wiederverbindungsoberfläche zugänglich gemacht werden; diese Abnahme und der neue lokale Export nach echtem Sitzungswiderruf bleiben offen. Kein Commit/Push dieser Ergänzungen.
+
+## Korrektur und Abnahme des Wiederverbindungsdialogs
+
+Am 8. Oktober wurde ein eigener, außerhalb der interaktiven Routes gerenderter Wiederverbindungsdialog ergänzt. Beim Umschalten auf `components-reconnect-show`, `-failed` oder `-rejected` verschiebt ein MutationObserver den vorhandenen lokalen Export mitsamt Browserhandler in den Dialog. Bei Verbindungswiederherstellung wandert er zurück an den Editor; beim Destroy wird der Observer entfernt. Kein zusätzlicher Serverzugriff und keine Änderung der Authentifizierung.
+
+Node-Regressionstest inklusive Umschalten in/aus dem Dialog erfolgreich (1/1); diagnostischer Publish erfolgreich, weiterhin kein strenger Analyzer-Buildnachweis.
+
+**Realer Ausfalltest bestanden:** Im sichtbaren Studio Start-Ereignis zu `Reconnect dialog acceptance 2026-10-08` geändert. Ausschließlich Studio gestoppt. Eigener Wiederverbindungsdialog erschien; dessen `Export local BPMN draft` war bedienbar. Tatsächlich geschrieben wurde `C:\Users\yrodriguez\Downloads\vertexbpmn-local-draft (1).bpmn` (1451 Bytes), mit der erwarteten Beschriftung im XML. Studio anschließend wieder gestartet. Der Export bei blockierendem Wiederverbindungsdialog ist damit nachgewiesen. Der separate neue lokale Export nach echtem OIDC-Sitzungswiderruf bleibt ein eigenständiger offener Test.

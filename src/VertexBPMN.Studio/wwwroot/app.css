@@ -563,3 +563,32 @@ a {
     .studio-variable-row .mud-grid-item { flex-basis: 100%; max-width: 100%; }
 }
 
+/* The custom reconnect dialog keeps circuit-independent draft export usable. */
+.vertex-reconnect { display: none; }
+.vertex-reconnect.components-reconnect-show,
+.vertex-reconnect.components-reconnect-failed,
+.vertex-reconnect.components-reconnect-rejected {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    z-index: 20000;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, .65);
+    padding: 1rem;
+}
+.vertex-reconnect-card {
+    background: white;
+    color: #172033;
+    border-radius: .75rem;
+    padding: 1.5rem;
+    max-width: 36rem;
+}
+.bpmn-local-export button {
+    padding: .6rem 1rem;
+    margin: .5rem;
+    border: 1px solid #526079;
+    border-radius: .4rem;
+    background: white;
+    color: #172033;
+}

@@ -92,6 +92,7 @@ async function exportXml(instance) {
 }
 
 function destroyInstance(instance) {
+    instance?.__vertexReconnectObserver?.disconnect();
     instance?.__vertexLocalExport?.remove();
     if (instance && !instance.__vertexFallback && typeof instance.destroy === 'function') {
         instance.destroy();
@@ -134,6 +135,22 @@ function attachLocalExport(modeler, containerId) {
     controls.append(button, status);
     container.before(controls);
     modeler.__vertexLocalExport = controls;
+    // Keep the real browser-only handler inside the blocking reconnect dialog.
+    // No server event, expired identity or duplicated model snapshot is involved.
+    const modal = getElement('components-reconnect-modal');
+    const slot = getElement('vertex-reconnect-export');
+    if (modal && slot) {
+        const relocate = () => {
+            const reconnecting = ['components-reconnect-show', 'components-reconnect-failed', 'components-reconnect-rejected']
+                .some(name => modal.classList.contains(name));
+            if (reconnecting) slot.append(controls);
+            else container.before(controls);
+        };
+        const observer = new MutationObserver(relocate);
+        observer.observe(modal, { attributes: true, attributeFilter: ['class'] });
+        modeler.__vertexReconnectObserver = observer;
+        relocate();
+    }
 }
 
 function templateElementType(template) {

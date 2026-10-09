@@ -50,7 +50,7 @@
     [Parameter] public string BpmnXml { get; set; } = string.Empty;
     [Parameter] public string Title { get; set; } = "BPMN Viewer";
 
-    private string _viewerContainerId = $"bpmn-viewer-{Guid.NewGuid().ToString().Replace("-", "")}";
+    private readonly string _viewerContainerId = $"bpmn-viewer-{Guid.NewGuid():N}";
     private IJSObjectReference? _module;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

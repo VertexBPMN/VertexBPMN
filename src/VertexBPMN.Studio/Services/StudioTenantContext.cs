@@ -1,13 +1,13 @@
 namespace VertexBPMN.Studio.Services;
 
-public sealed class StudioTenantContext
+internal sealed class StudioTenantContext
 {
     public string? CurrentTenantId { get; private set; }
 
-    public event Action? Changed;
-    public event Action? TenantsChanged;
+    public event EventHandler? Changed;
+    public event EventHandler? TenantsChanged;
 
-    public void NotifyTenantsChanged() => TenantsChanged?.Invoke();
+    public void NotifyTenantsChanged() => TenantsChanged?.Invoke(this, EventArgs.Empty);
 
     public void SetTenant(string? tenantId)
     {
@@ -18,6 +18,6 @@ public sealed class StudioTenantContext
         }
 
         CurrentTenantId = normalizedTenantId;
-        Changed?.Invoke();
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 }

@@ -68,7 +68,7 @@ else
         await LoadAsync();
     }
 
-    private void OnTenantChanged() => _ = InvokeAsync(async () =>
+    private void OnTenantChanged(object? sender, EventArgs args) => _ = InvokeAsync(async () =>
     {
         await LoadAsync();
         StateHasChanged();

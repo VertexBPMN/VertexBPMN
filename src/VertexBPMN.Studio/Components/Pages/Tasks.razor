@@ -57,6 +57,8 @@
 </MudPaper>
 
 @code {
+    private void OnEngineStatusChanged(object? sender, EventArgs args) => _ = InvokeAsync(StateHasChanged);
+
     private IEnumerable<UserTask> _tasks = new List<UserTask>();
     private string _searchString = "";
     private string? _currentUserName;
@@ -66,18 +68,18 @@
         var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         _currentUserName = authenticationState.User.Identity?.Name
             ?? authenticationState.User.FindFirstValue(ClaimTypes.NameIdentifier);
-        ActiveEngineService.OnChange += StateHasChanged; // Subscribe to state changes
+        ActiveEngineService.OnChange += OnEngineStatusChanged; // Subscribe to state changes
         TenantContext.Changed += OnTenantChanged;
         await LoadTasks();
     }
 
     public void Dispose()
     {
-        ActiveEngineService.OnChange -= StateHasChanged; // Unsubscribe
+        ActiveEngineService.OnChange -= OnEngineStatusChanged; // Unsubscribe
         TenantContext.Changed -= OnTenantChanged;
     }
 
-    private void OnTenantChanged() => _ = InvokeAsync(async () =>
+    private void OnTenantChanged(object? sender, EventArgs args) => _ = InvokeAsync(async () =>
     {
         await LoadTasks();
         StateHasChanged();

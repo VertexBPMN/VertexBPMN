@@ -33,9 +33,9 @@ else if (_error != null)
 {
     <MudAlert Severity="Severity.Error" Class="mb-4">
         Failed to load dashboard data: @_error
-        <MudButton OnClick="RefreshData" 
-                  Color="Color.Primary" 
-                  Size="Size.Small" 
+        <MudButton OnClick="RefreshData"
+                  Color="Color.Primary"
+                  Size="Size.Small"
                   Class="ml-2">
             Retry
         </MudButton>
@@ -104,7 +104,7 @@ else if (_error != null)
             }
         </MudPaper>
     </MudItem>
-    
+
     <MudItem xs="12" md="5">
         <MudPaper Class="studio-content-card" Elevation="0">
             <div class="studio-content-card__header">
@@ -119,7 +119,7 @@ else if (_error != null)
                     View All
                 </MudButton>
             </div>
-            
+
             @if (_recentTasks.Any())
             {
                 <MudList T="UserTask" Dense="true" Class="studio-dashboard-task-list">
@@ -133,7 +133,7 @@ else if (_error != null)
                                         @task.ProcessInstanceId
                                     </MudText>
                                 </div>
-                                <MudChip Size="Size.Small" 
+                                <MudChip Size="Size.Small"
                                         Color="@GetTaskPriorityColor(task.DueDate)">
                                     @GetTaskStatus(task.DueDate)
                                 </MudChip>
@@ -166,12 +166,12 @@ else if (_error != null)
         StartAutoRefresh();
     }
 
-    private async void OnEngineChanged(string engineId)
+    private async void OnEngineChanged(object? sender, EngineChangedEventArgs args)
     {
         await InvokeAsync(async () => await LoadDashboardData());
     }
 
-    private void OnTenantChanged() => _ = InvokeAsync(LoadDashboardData);
+    private void OnTenantChanged(object? sender, EventArgs args) => _ = InvokeAsync(LoadDashboardData);
 
     private async Task LoadDashboardData()
     {
@@ -269,7 +269,7 @@ else if (_error != null)
     private static Color GetTaskPriorityColor(DateTime? dueDate)
     {
         if (!dueDate.HasValue) return Color.Default;
-        
+
         var timeUntilDue = dueDate.Value - DateTime.Now;
         return timeUntilDue.TotalHours switch
         {
@@ -283,7 +283,7 @@ else if (_error != null)
     private static string GetTaskStatus(DateTime? dueDate)
     {
         if (!dueDate.HasValue) return "No Due Date";
-        
+
         var timeUntilDue = dueDate.Value - DateTime.Now;
         switch (timeUntilDue.TotalHours)
         {

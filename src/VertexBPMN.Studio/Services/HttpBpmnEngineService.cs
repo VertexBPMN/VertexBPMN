@@ -3,39 +3,26 @@ using System.Text.Json;
 using VertexBPMN.Domain.Entities;
 
 namespace VertexBPMN.Studio.Services;
-
-public class HttpBpmnEngineService : IBpmnEngineService
+internal class HttpBpmnEngineService : IBpmnEngineService
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<HttpBpmnEngineService> _logger;
-
     public HttpBpmnEngineService(IHttpClientFactory httpClientFactory, ILogger<HttpBpmnEngineService> logger)
     {
         _httpClient = httpClientFactory.CreateClient("VertexBPMN.Api");
         _logger = logger;
     }
 
-    public event Action<string>? OnEventEmitted;
-
+    public event EventHandler<EngineMessageEventArgs>? OnEventEmitted;
     public async Task DeployAsync(IBrowserFile file, string? tenantId = null)
     {
-        try
-        {
-            await using var stream = file.OpenReadStream(10 * 1024 * 1024);
-            using var reader = new StreamReader(stream);
-            var bpmnXml = await reader.ReadToEndAsync();
-            var request = new RepositoryDeployRequest(bpmnXml, file.Name, tenantId);
-
-            var response = await _httpClient.PostAsJsonAsync("api/repository", request);
-            response.EnsureSuccessStatusCode();
-            
-            OnEventEmitted?.Invoke($"Deployment created: {file.Name}");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error deploying file {FileName}", file.Name);
-            throw;
-        }
+        await using var stream = StudioModelUpload.OpenReadStream(file);
+        using var reader = new StreamReader(stream);
+        var bpmnXml = await reader.ReadToEndAsync();
+        var request = new RepositoryDeployRequest(bpmnXml, file.Name, tenantId);
+        var response = await _httpClient.PostAsJsonAsync("api/repository", request);
+        response.EnsureSuccessStatusCode();
+        OnEventEmitted?.Invoke(this, new EngineMessageEventArgs($"Deployment created: {file.Name}"));
     }
 
     public async Task<IEnumerable<Deployment>> GetDeploymentsAsync(string? tenantId = null)
@@ -43,13 +30,7 @@ public class HttpBpmnEngineService : IBpmnEngineService
         try
         {
             var definitions = await _httpClient.GetFromJsonAsync<IEnumerable<ProcessDefinition>>(BuildRepositoryUri(tenantId));
-            return definitions?.Select(definition => new Deployment
-            {
-                Id = definition.DeploymentId == Guid.Empty ? definition.Id.ToString() : definition.DeploymentId.ToString(),
-                Name = definition.Name,
-                DeploymentTime = definition.CreatedAt,
-                TenantId = definition.TenantId
-            }) ?? Enumerable.Empty<Deployment>();
+            return definitions?.Select(definition => new Deployment { Id = definition.DeploymentId == Guid.Empty ? definition.Id.ToString() : definition.DeploymentId.ToString(), Name = definition.Name, DeploymentTime = definition.CreatedAt, TenantId = definition.TenantId }) ?? Enumerable.Empty<Deployment>();
         }
         catch (Exception ex)
         {
@@ -60,64 +41,37 @@ public class HttpBpmnEngineService : IBpmnEngineService
 
     public async Task<StudioDeployResult> DeployXmlAsync(string xml, string name, string? tenantId = null)
     {
-        var response = await _httpClient.PostAsJsonAsync(
-            "api/repository",
-            new RepositoryDeployRequest(xml, name, tenantId));
+        var response = await _httpClient.PostAsJsonAsync("api/repository", new RepositoryDeployRequest(xml, name, tenantId));
         response.EnsureSuccessStatusCode();
-        var definition = await response.Content.ReadFromJsonAsync<ProcessDefinition>()
-            ?? throw new InvalidOperationException("The API returned no deployed process definition.");
+        var definition = await response.Content.ReadFromJsonAsync<ProcessDefinition>() ?? throw new InvalidOperationException("The API returned no deployed process definition.");
         var createdWebhooks = new List<StudioCreatedWebhook>();
-        if (response.Headers.TryGetValues("X-VertexBPMN-Created-Webhooks", out var values)
-            && values.FirstOrDefault() is { Length: > 0 } header)
+        if (response.Headers.TryGetValues("X-VertexBPMN-Created-Webhooks", out var values) && values.FirstOrDefault() is { Length: > 0 } header)
         {
             createdWebhooks = JsonSerializer.Deserialize<List<StudioCreatedWebhook>>(header) ?? [];
         }
+
         return new StudioDeployResult(definition, createdWebhooks);
     }
 
     public async Task<IEnumerable<ProcessDefinition>> GetProcessDefinitionsAsync(string? tenantId = null)
     {
-        try
-        {
-            var definitions = await _httpClient.GetFromJsonAsync<IEnumerable<ProcessDefinition>>(BuildRepositoryUri(tenantId));
-            return definitions ?? Enumerable.Empty<ProcessDefinition>();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error fetching process definitions");
-            throw;
-        }
+        var definitions = await _httpClient.GetFromJsonAsync<IEnumerable<ProcessDefinition>>(BuildRepositoryUri(tenantId));
+        return definitions ?? Enumerable.Empty<ProcessDefinition>();
     }
 
-    private static string BuildRepositoryUri(string? tenantId) =>
-        string.IsNullOrWhiteSpace(tenantId)
-            ? "api/repository"
-            : $"api/repository?tenantId={Uri.EscapeDataString(tenantId)}";
-
+    private static string BuildRepositoryUri(string? tenantId) => string.IsNullOrWhiteSpace(tenantId) ? "api/repository" : $"api/repository?tenantId={Uri.EscapeDataString(tenantId)}";
     public async Task<IEnumerable<ProcessInstance>> GetProcessInstancesAsync(string? tenantId = null)
     {
-        try
-        {
-            var uri = string.IsNullOrWhiteSpace(tenantId)
-                ? "api/runtime"
-                : $"api/runtime?tenantId={Uri.EscapeDataString(tenantId)}";
-            var instances = await _httpClient.GetFromJsonAsync<IEnumerable<ProcessInstance>>(uri);
-            return instances ?? Enumerable.Empty<ProcessInstance>();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error fetching process instances");
-            throw;
-        }
+        var uri = string.IsNullOrWhiteSpace(tenantId) ? "api/runtime" : $"api/runtime?tenantId={Uri.EscapeDataString(tenantId)}";
+        var instances = await _httpClient.GetFromJsonAsync<IEnumerable<ProcessInstance>>(uri);
+        return instances ?? Enumerable.Empty<ProcessInstance>();
     }
 
     public async Task<IEnumerable<UserTask>> GetTasksAsync(string? tenantId = null)
     {
         try
         {
-            var uri = string.IsNullOrWhiteSpace(tenantId)
-                ? "api/task"
-                : $"api/task?tenantId={Uri.EscapeDataString(tenantId)}";
+            var uri = string.IsNullOrWhiteSpace(tenantId) ? "api/task" : $"api/task?tenantId={Uri.EscapeDataString(tenantId)}";
             var tasks = await _httpClient.GetFromJsonAsync<IEnumerable<UserTask>>(uri);
             return tasks ?? Enumerable.Empty<UserTask>();
         }
@@ -144,17 +98,12 @@ public class HttpBpmnEngineService : IBpmnEngineService
         }
     }
 
-    public async Task<ProcessInstance> StartProcessAsync(
-        string processDefinitionKey,
-        IDictionary<string, object?>? variables = null,
-        string? businessKey = null,
-        string? tenantId = null)
+    public async Task<ProcessInstance> StartProcessAsync(string processDefinitionKey, IDictionary<string, object?>? variables = null, string? businessKey = null, string? tenantId = null)
     {
         var request = new StartProcessRequest(processDefinitionKey, variables, businessKey, tenantId);
         var response = await _httpClient.PostAsJsonAsync("api/runtime/start", request);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<ProcessInstance>()
-            ?? throw new InvalidOperationException("The API returned no process instance.");
+        return await response.Content.ReadFromJsonAsync<ProcessInstance>() ?? throw new InvalidOperationException("The API returned no process instance.");
     }
 
     public async Task ClaimTaskAsync(Guid taskId, string userId, string? tenantId = null)
@@ -195,16 +144,8 @@ public class HttpBpmnEngineService : IBpmnEngineService
 
     public async Task<IEnumerable<ProcessDefinition>> GetProcessDefinitionVersionsAsync(string key, string? tenantId = null)
     {
-        try
-        {
-            var versions = await _httpClient.GetFromJsonAsync<IEnumerable<ProcessDefinition>>(AddTenantQuery($"api/repository?key={Uri.EscapeDataString(key)}", tenantId));
-            return versions ?? Enumerable.Empty<ProcessDefinition>();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error fetching process definition versions for {Key}", key);
-            throw;
-        }
+        var versions = await _httpClient.GetFromJsonAsync<IEnumerable<ProcessDefinition>>(AddTenantQuery($"api/repository?key={Uri.EscapeDataString(key)}", tenantId));
+        return versions ?? Enumerable.Empty<ProcessDefinition>();
     }
 
     public async Task DeleteProcessDefinitionAsync(Guid processDefinitionId, string? tenantId = null)
@@ -220,8 +161,7 @@ public class HttpBpmnEngineService : IBpmnEngineService
 
     public async Task<EngineConfiguration> GetEngineConfigurationAsync()
     {
-        var capabilities = await _httpClient.GetFromJsonAsync<EngineCapabilities>("api/engine/capabilities")
-            ?? throw new InvalidOperationException("The API returned no engine capabilities.");
+        var capabilities = await _httpClient.GetFromJsonAsync<EngineCapabilities>("api/engine/capabilities") ?? throw new InvalidOperationException("The API returned no engine capabilities.");
         return new EngineConfiguration
         {
             StatusMessage = $"{capabilities.EngineType} engine; CMMN: {capabilities.SupportsCmmn}; Workers: {capabilities.SupportsWorkers}; Durable persistence: {capabilities.SupportsDurablePersistence}",
@@ -229,25 +169,23 @@ public class HttpBpmnEngineService : IBpmnEngineService
         };
     }
 
-    public Task UpdateEngineConfigurationAsync(EngineConfiguration configuration) =>
-        Task.FromException(new NotSupportedException("Engine configuration updates are not exposed by the API."));
-
-    public Task<IEnumerable<EngineConnection>> GetEngineConnectionsAsync() =>
-        Task.FromException<IEnumerable<EngineConnection>>(new NotSupportedException("Engine connection management is not exposed by the API."));
-
-    public Task AddEngineConnectionAsync(EngineConnection connection) =>
-        Task.FromException(new NotSupportedException("Engine connection management is not exposed by the API."));
-    public Task UpdateEngineConnectionAsync(EngineConnection connection) =>
-        Task.FromException(new NotSupportedException("Engine connection management is not exposed by the API."));
-    public Task RemoveEngineConnectionAsync(string connectionId) =>
-        Task.FromException(new NotSupportedException("Engine connection management is not exposed by the API."));
-
+    public Task UpdateEngineConfigurationAsync(EngineConfiguration configuration) => Task.FromException(new NotSupportedException("Engine configuration updates are not exposed by the API."));
+    public Task<IEnumerable<EngineConnection>> GetEngineConnectionsAsync() => Task.FromException<IEnumerable<EngineConnection>>(new NotSupportedException("Engine connection management is not exposed by the API."));
+    public Task AddEngineConnectionAsync(EngineConnection connection) => Task.FromException(new NotSupportedException("Engine connection management is not exposed by the API."));
+    public Task UpdateEngineConnectionAsync(EngineConnection connection) => Task.FromException(new NotSupportedException("Engine connection management is not exposed by the API."));
+    public Task RemoveEngineConnectionAsync(string connectionId) => Task.FromException(new NotSupportedException("Engine connection management is not exposed by the API."));
     private sealed record RepositoryDeployRequest(string BpmnXml, string Name, string? TenantId);
     private sealed record StartProcessRequest(string ProcessDefinitionKey, IDictionary<string, object?>? Variables, string? BusinessKey, string? TenantId);
-    private static string AddTenantQuery(string uri, string? tenantId) =>
-        string.IsNullOrWhiteSpace(tenantId)
-            ? uri
-            : $"{uri}{(uri.Contains('?') ? '&' : '?')}tenantId={Uri.EscapeDataString(tenantId)}";
+    private static string AddTenantQuery(string uri, string? tenantId)
+    {
+        if (string.IsNullOrWhiteSpace(tenantId))
+        {
+            return uri;
+        }
+
+        var separator = uri.Contains('?', StringComparison.Ordinal) ? '&' : '?';
+        return $"{uri}{separator}tenantId={Uri.EscapeDataString(tenantId)}";
+    }
 
     private sealed record UserRequest(string UserId, string? TenantId);
     private sealed record VariablesRequest(IDictionary<string, object?>? Variables, string? TenantId);

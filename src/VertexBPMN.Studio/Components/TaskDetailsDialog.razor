@@ -46,7 +46,7 @@
 
     private string _formJson = "{}";
 
-    private string _formContainerId = $"form-builder-{Guid.NewGuid():N}";
+    private readonly string _formContainerId = $"form-builder-{Guid.NewGuid():N}";
     private IJSObjectReference? _module;
     private IJSObjectReference? _formInstance;
     private bool _formInitialized;

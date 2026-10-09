@@ -3,11 +3,11 @@ using System.Text.Json;
 
 namespace VertexBPMN.Studio.Services;
 
-public class CacheService : ICacheService
+internal class CacheService : ICacheService
 {
     private readonly IJSRuntime _jsRuntime;
     private readonly ILogger<CacheService> _logger;
-    private readonly Dictionary<string, (object Value, DateTime Expiration)> _memoryCache = new();
+    private readonly Dictionary<string, (object Value, DateTime Expiration)> _memoryCache = new(StringComparer.Ordinal);
 
     public CacheService(IJSRuntime jsRuntime, ILogger<CacheService> logger)
     {

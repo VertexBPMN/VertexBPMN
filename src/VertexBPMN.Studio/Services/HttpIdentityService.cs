@@ -2,7 +2,7 @@ using System.Net.Http.Json;
 
 namespace VertexBPMN.Studio.Services;
 
-public sealed class HttpIdentityService(IHttpClientFactory httpClientFactory) : IIdentityService
+internal sealed class HttpIdentityService(IHttpClientFactory httpClientFactory) : IIdentityService
 {
     public async Task<IReadOnlyList<StudioTenant>> ListTenantsAsync(CancellationToken cancellationToken = default)
     {

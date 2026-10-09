@@ -7,7 +7,7 @@ namespace VertexBPMN.Studio.Services;
 /// verschlüsselt (DataProtection) gespeichert; <see cref="Revision"/> dient als
 /// Fencing-Zähler für verteiltes Refresh, <see cref="ExpiresAtUtc"/> als TTL.
 /// </summary>
-public sealed class OidcSessionRecord
+internal sealed class OidcSessionRecord
 {
     [MaxLength(64)]
     public string SessionId { get; set; } = string.Empty;

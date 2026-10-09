@@ -1,5 +1,4 @@
 using System.Net;
-using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using VertexBPMN.Studio.Services;
 
@@ -13,7 +12,7 @@ public sealed class HttpHealthServiceTests
         using var client = new HttpClient(new UnavailableHandler()) { BaseAddress = new Uri("http://api.test/") };
         var factory = new Mock<IHttpClientFactory>();
         factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
-        var service = new HttpHealthService(factory.Object, NullLogger<HttpHealthService>.Instance);
+        var service = new HttpHealthService(factory.Object);
         var exception = await Assert.ThrowsAsync<HttpRequestException>(() => service.GetComprehensiveHealthAsync(TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.ServiceUnavailable, exception.StatusCode);
     }

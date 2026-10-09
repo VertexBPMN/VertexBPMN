@@ -60,7 +60,7 @@ public sealed class HttpCredentialServiceTests
         var redirectUrl = await service.StartOAuth2AuthorizationAsync(
             "tenant-a", "credential-1",
             new OAuth2ConnectConfig("https://idp.test/authorize", "https://idp.test/token", "client-1", "https://studio.test/api/oauth2/callback", "openid"),
-            TestContext.Current.CancellationToken, new string('A', 44));
+            new string('A', 44), TestContext.Current.CancellationToken);
 
         Assert.Contains("\"browserProof\":\"" + new string('A', 44) + "\"", body, StringComparison.Ordinal);
         Assert.Equal("https://idp.test/authorize?state=abc123", redirectUrl);

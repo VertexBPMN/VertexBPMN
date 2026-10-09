@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace VertexBPMN.Studio.Services;
 
-public sealed class HttpMigrationService(IHttpClientFactory httpClientFactory) : IMigrationService
+internal sealed class HttpMigrationService(IHttpClientFactory httpClientFactory) : IMigrationService
 {
     public async Task<JsonElement> PreviewAsync(
         string sourceProcessDefinitionId,

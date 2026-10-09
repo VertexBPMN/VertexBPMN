@@ -24,9 +24,9 @@ namespace VertexBPMN.Tests.Studio
             bool propertyChanged = false;
             bool genericChanged = false;
 
-            svc.OnEngineChanged += id => raisedEngineId = id;
+            svc.OnEngineChanged += (_, id) => raisedEngineId = id.EngineId;
             svc.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(ActiveEngineService.ActiveEngineId)) propertyChanged = true; };
-            svc.OnChange += () => genericChanged = true;
+            svc.OnChange += (_, _) => genericChanged = true;
 
             svc.ActiveEngineId = "engine42";
 
@@ -43,7 +43,7 @@ namespace VertexBPMN.Tests.Studio
             int onChangeCount = 0;
 
             svc.PropertyChanged += (_, __) => propertyChangedCount++;
-            svc.OnChange += () => onChangeCount++;
+            svc.OnChange += (_, _) => onChangeCount++;
 
             // assign same value
             svc.ActiveEngineId = svc.ActiveEngineId;
@@ -118,7 +118,7 @@ namespace VertexBPMN.Tests.Studio
         {
             var svc = new ActiveEngineService();
             bool changeCalled = false;
-            svc.OnChange += () => changeCalled = true;
+            svc.OnChange += (_, _) => changeCalled = true;
             svc.Dispose();
             svc.ActiveEngineId = "another"; // would invoke if not cleared
             changeCalled.ShouldBeFalse();

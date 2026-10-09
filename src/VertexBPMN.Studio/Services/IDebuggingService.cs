@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace VertexBPMN.Studio.Services;
 
-public interface IDebuggingService
+internal interface IDebuggingService
 {
     Task<JsonElement> TraceAsync(
         string bpmnXml,

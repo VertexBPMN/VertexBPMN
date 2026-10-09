@@ -134,7 +134,7 @@
             return;
         }
 
-        await using var stream = file.OpenReadStream(10 * 1024 * 1024);
+        await using var stream = StudioModelUpload.OpenReadStream(file);
         using var reader = new StreamReader(stream);
         var json = await reader.ReadToEndAsync();
         try

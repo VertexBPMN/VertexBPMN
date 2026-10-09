@@ -92,7 +92,7 @@ else
         await LoadAsync();
     }
 
-    private async void OnTenantChanged()
+    private async void OnTenantChanged(object? sender, EventArgs args)
     {
         await InvokeAsync(async () =>
         {

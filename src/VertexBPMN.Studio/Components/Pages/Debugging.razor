@@ -53,7 +53,7 @@
                              FailedElementIds="_failedElementIds"
                              WaitingElementIds="_waitingElementIds"
                              RetryElementIds="_retryElementIds"
-                             ReplayElementId="_replayElementId" />
+                             ReplayElementId="@_replayElementId" />
     </MudPaper>
 }
 
@@ -244,13 +244,13 @@
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
-    private static Color GetTimelineColor(string eventType) => eventType.Contains("fail", StringComparison.OrdinalIgnoreCase)
-        ? Color.Error
-        : eventType.Contains("wait", StringComparison.OrdinalIgnoreCase) || eventType.Contains("retry", StringComparison.OrdinalIgnoreCase)
-            ? Color.Warning
-            : eventType.Contains("complete", StringComparison.OrdinalIgnoreCase) || eventType.Contains("end", StringComparison.OrdinalIgnoreCase)
-                ? Color.Success
-                : Color.Primary;
+    private static Color GetTimelineColor(string eventType) => eventType switch
+    {
+        var value when value.Contains("fail", StringComparison.OrdinalIgnoreCase) => Color.Error,
+        var value when value.Contains("wait", StringComparison.OrdinalIgnoreCase) || value.Contains("retry", StringComparison.OrdinalIgnoreCase) => Color.Warning,
+        var value when value.Contains("complete", StringComparison.OrdinalIgnoreCase) || value.Contains("end", StringComparison.OrdinalIgnoreCase) => Color.Success,
+        _ => Color.Primary
+    };
 
     private sealed record RuntimeTimelineEvent(string Type, string ActivityId, DateTime Timestamp, string? Details);
 }

@@ -16,9 +16,9 @@
             @if (_status is not null) { <MudAlert Severity="Severity.Info" data-testid="git-status">@_status</MudAlert> }
             @if (_busy) { <MudButton OnClick="CancelWaiting">Cancel waiting (accepted jobs continue)</MudButton> }
             <MudSelect T="Guid" Label="Repository" Value="_repositoryId" ValueChanged="SelectRepository" Disabled="_busy" data-testid="git-repository">
-                @foreach (var repository in _repositories)
+                @foreach (var binding in _repositories.Select(repository => repository.Binding))
                 {
-                    <MudSelectItem T="Guid" Value="repository.Binding.Id">@repository.Binding.Remote.AbsoluteUri</MudSelectItem>
+                    <MudSelectItem T="Guid" Value="binding.Id">@binding.Remote.AbsoluteUri</MudSelectItem>
                 }
             </MudSelect>
             <MudSelect T="string" Label="Branch" @bind-Value="_branch" Disabled="_busy" data-testid="git-branch">
@@ -31,7 +31,7 @@
             <MudButton OnClick="BrowseFiles" Disabled="@(_busy || _repositoryId == Guid.Empty || string.IsNullOrEmpty(_branch))" data-testid="git-browse">Resolve branch / browse files</MudButton>
             @if (_browseRevision is not null) { <MudText Typo="Typo.caption">Browse commit: @_browseRevision.Commit.Value</MudText> }
             <MudSelect T="string" Label="BPMN file" @bind-Value="_path" Disabled="_busy" data-testid="git-file">
-                @foreach (var file in _files) { <MudSelectItem T="string" Value="file.Path">@file.Path</MudSelectItem> }
+                @foreach (var path in _files.Select(file => file.Path)) { <MudSelectItem T="string" Value="@path">@path</MudSelectItem> }
             </MudSelect>
             @if (_fileCursor is not null) { <MudButton OnClick="MoreFiles" Disabled="_busy">More files</MudButton> }
             <MudButton OnClick="OpenFile" Disabled="@(_busy || _browseRevision is null || string.IsNullOrEmpty(_path))" data-testid="git-open">Open in existing BPMN editor</MudButton>
@@ -78,7 +78,7 @@
                 @if (_livePullRequestReceipt is not null)
                 {
                     <MudText data-testid="git-pr-live-state">Last checked GitHub state: @_livePullRequestReceipt.State · merge commit: @(_livePullRequestReceipt.MergeCommit?.Value ?? "none") — not a deployment approval</MudText>
-                    <MudText data-testid="git-pr-review-state">Reviews: @(_livePullRequestReceipt.Reviews is null ? "not checked" : _livePullRequestReceipt.Reviews.Count == 0 ? "none" : string.Join("; ", _livePullRequestReceipt.Reviews.Select(review => $"{review.Reviewer}: {review.State} at {review.Commit.Value}"))) — not a release approval</MudText>
+                    <MudText data-testid="git-pr-review-state">Reviews: @(_livePullRequestReceipt.Reviews switch { null => "not checked", { Count: 0 } => "none", var reviews => string.Join("; ", reviews.Select(review => $"{review.Reviewer}: {review.State} at {review.Commit.Value}")) }) — not a release approval</MudText>
                 }
                 <a href="@_pullRequestReceipt.Url.AbsoluteUri" target="_blank" rel="noopener noreferrer" data-testid="git-pr-link">Open pull request #@_pullRequestReceipt.Number on GitHub</a>
             }

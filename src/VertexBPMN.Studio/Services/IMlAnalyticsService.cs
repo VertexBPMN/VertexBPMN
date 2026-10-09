@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace VertexBPMN.Studio.Services;
 
-public interface IMlAnalyticsService
+internal interface IMlAnalyticsService
 {
     Task<JsonElement> PredictCompletionAsync(Guid processInstanceId, string? tenantId = null, CancellationToken cancellationToken = default);
     Task<JsonElement> PredictDurationAsync(string processDefinitionKey, IDictionary<string, object?>? variables = null, string? tenantId = null, CancellationToken cancellationToken = default);

@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace VertexBPMN.Studio.Services;
 
-public interface IAnalyticsService
+internal interface IAnalyticsService
 {
     Task<JsonElement> GetEventStatsAsync(CancellationToken cancellationToken = default);
     Task<JsonElement> GetProcessMetricsAsync(CancellationToken cancellationToken = default);

@@ -1,94 +1,107 @@
 using System.ComponentModel;
 using System.Net;
 
-namespace VertexBPMN.Studio.Services
+namespace VertexBPMN.Studio.Services;
+
+internal sealed class ActiveEngineService(IHttpClientFactory? httpClientFactory = null) : INotifyPropertyChanged, IDisposable
 {
-    public sealed class ActiveEngineService(IHttpClientFactory? httpClientFactory = null) : INotifyPropertyChanged, IDisposable
-    {
-        private string _activeEngineId = "engine1";
-        private bool _isConnected = false;
-        private DateTime _lastConnectionCheck = DateTime.MinValue;
-        private string _connectionStatus = "Not checked";
-        private readonly SemaphoreSlim _checkGate = new(1, 1);
-        public string ConnectionStatus { get => _connectionStatus; private set => SetProperty(ref _connectionStatus, value); }
-        public bool IsChecking { get; private set; }
+	private int _checking;
+	private bool _disposed;
+	public string ConnectionStatus { get; private set => SetProperty(ref field, value); } = "Not checked";
+	public bool IsChecking { get; private set; }
 
-        public event PropertyChangedEventHandler? PropertyChanged;
-        public event Action? OnChange;
-        public event Action<string>? OnEngineChanged;
+	public event PropertyChangedEventHandler? PropertyChanged;
+	public event EventHandler? OnChange;
+	public event EventHandler<EngineChangedEventArgs>? OnEngineChanged;
+	public string ActiveEngineId
+	{
+		get;
+		set
+		{
+			if (SetProperty(ref field, value))
+			{
+				OnEngineChanged?.Invoke(this, new EngineChangedEventArgs(value));
+			}
+		}
+	} = "engine1";
 
-        public string ActiveEngineId
-        {
-            get => _activeEngineId;
-            set
-            {
-                if (SetProperty(ref _activeEngineId, value))
-                {
-                    OnEngineChanged?.Invoke(value);
-                }
-            }
-        }
+	public bool IsConnected { get; private set => SetProperty(ref field, value); }
+	public DateTime LastConnectionCheck { get; private set => SetProperty(ref field, value); }
 
-        public bool IsConnected
-        {
-            get => _isConnected;
-            private set => SetProperty(ref _isConnected, value);
-        }
+	public async Task CheckConnectionAsync(CancellationToken cancellationToken = default)
+	{
+		ObjectDisposedException.ThrowIf(_disposed, this);
+		cancellationToken.ThrowIfCancellationRequested();
+		if (Interlocked.CompareExchange(ref _checking, 1, 0) != 0)
+		{
+			return;
+		}
 
-        public DateTime LastConnectionCheck
-        {
-            get => _lastConnectionCheck;
-            private set => SetProperty(ref _lastConnectionCheck, value);
-        }
+		try
+		{
+			IsChecking = true;
+			OnChange?.Invoke(this, EventArgs.Empty);
+			if (httpClientFactory is null)
+			{
+				IsConnected = false;
+				ConnectionStatus = "Disconnected";
+				return;
+			}
 
-        public async Task CheckConnectionAsync(CancellationToken cancellationToken = default)
-        {
-            if (!await _checkGate.WaitAsync(0, cancellationToken)) return;
-            try
-            {
-                IsChecking = true;
-                OnChange?.Invoke();
-                if (httpClientFactory is null)
-                { IsConnected = false; ConnectionStatus = "Disconnected"; return; }
-                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                timeout.CancelAfter(TimeSpan.FromSeconds(5));
-                using var client = httpClientFactory.CreateClient("VertexBPMN.Api");
-                using var response = await client.GetAsync("/api/ready", HttpCompletionOption.ResponseHeadersRead, timeout.Token);
-                IsConnected = response.IsSuccessStatusCode;
-                ConnectionStatus = response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
-                    ? "Unauthorized" : IsConnected ? "Connected" : "Not ready";
-            }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-            { IsConnected = false; ConnectionStatus = "Timed out"; }
-            catch (HttpRequestException)
-            { IsConnected = false; ConnectionStatus = "Disconnected"; }
-            catch (OidcSessionExpiredException)
-            { IsConnected = false; ConnectionStatus = "Unauthorized"; }
-            finally
-            {
-                LastConnectionCheck = DateTime.UtcNow;
-                IsChecking = false;
-                _checkGate.Release();
-                OnChange?.Invoke();
-            }
-        }
+			using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+			timeout.CancelAfter(TimeSpan.FromSeconds(5));
+			using var client = httpClientFactory.CreateClient("VertexBPMN.Api");
+			using var response = await client.GetAsync("/api/ready", HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+			IsConnected = response.IsSuccessStatusCode;
+			ConnectionStatus = response.StatusCode switch
+			{
+				HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => "Unauthorized",
+				_ when IsConnected => "Connected",
+				_ => "Not ready"
+			};
+		}
+		catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+		{
+			IsConnected = false;
+			ConnectionStatus = "Timed out";
+		}
+		catch (HttpRequestException)
+		{
+			IsConnected = false;
+			ConnectionStatus = "Disconnected";
+		}
+		catch (OidcSessionExpiredException)
+		{
+			IsConnected = false;
+			ConnectionStatus = "Unauthorized";
+		}
+		finally
+		{
+			LastConnectionCheck = DateTime.UtcNow;
+			IsChecking = false;
+			Volatile.Write(ref _checking, 0);
+			OnChange?.Invoke(this, EventArgs.Empty);
+		}
+	}
 
-        private bool SetProperty<T>(ref T field, T value, [System.Runtime.CompilerServices.CallerMemberName] string? propertyName = null)
-        {
-            if (EqualityComparer<T>.Default.Equals(field, value))
-                return false;
+	private bool SetProperty<T>(ref T field, T value, [System.Runtime.CompilerServices.CallerMemberName] string? propertyName = null)
+	{
+		if (EqualityComparer<T>.Default.Equals(field, value))
+		{
+			return false;
+		}
 
-            field = value;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-            OnChange?.Invoke();
-            return true;
-        }
+		field = value;
+		PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+		OnChange?.Invoke(this, EventArgs.Empty);
+		return true;
+	}
 
-        public void Dispose()
-        {
-            OnChange = null;
-            OnEngineChanged = null;
-            PropertyChanged = null;
-        }
-    }
+	public void Dispose()
+	{
+		_disposed = true;
+		OnChange = null;
+		OnEngineChanged = null;
+		PropertyChanged = null;
+	}
 }

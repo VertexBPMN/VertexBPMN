@@ -1,30 +1,12 @@
 namespace VertexBPMN.Studio.Services;
 
-public interface ICredentialService
+internal interface ICredentialService
 {
     Task<IReadOnlyList<StudioCredential>> ListAsync(string tenantId, CancellationToken cancellationToken = default);
     Task<StudioCredential> CreateAsync(string tenantId, string name, string type, string? description, string key, string value, CancellationToken cancellationToken = default);
     Task UpdateMetadataAsync(string tenantId, string id, string name, string type, string? description, CancellationToken cancellationToken = default);
     Task RotateSecretAsync(string tenantId, string id, string key, string value, CancellationToken cancellationToken = default);
     Task DeleteAsync(string tenantId, string id, CancellationToken cancellationToken = default);
-    Task<string> StartOAuth2AuthorizationAsync(string tenantId, string credentialId, OAuth2ConnectConfig config, CancellationToken cancellationToken = default, string? browserProof = null);
+    Task<string> StartOAuth2AuthorizationAsync(string tenantId, string credentialId, OAuth2ConnectConfig config, string? browserProof = null, CancellationToken cancellationToken = default);
     Task CompleteOAuth2AuthorizationAsync(string state, string code, string browserProof, CancellationToken cancellationToken = default);
 }
-
-public sealed record OAuth2ConnectConfig(
-    string AuthorizationUrl,
-    string TokenUrl,
-    string ClientId,
-    string RedirectUri,
-    string Scopes);
-
-public sealed record StudioCredential(
-    string Id,
-    string TenantId,
-    string Name,
-    string Type,
-    string? Description,
-    IReadOnlyList<string> SecretKeys,
-    DateTime CreatedAt,
-    DateTime LastModified,
-    DateTime? LastUsedAt);

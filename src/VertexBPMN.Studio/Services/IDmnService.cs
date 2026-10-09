@@ -3,7 +3,7 @@ using VertexBPMN.Domain.Model.Dmn;
 
 namespace VertexBPMN.Studio.Services;
 
-public interface IDmnService
+internal interface IDmnService
 {
     Task DeployAsync(string decisionKey, string name, string dmnXml, string? tenantId = null, CancellationToken cancellationToken = default);
     Task<DecisionDefinition?> GetByKeyAsync(string decisionKey, string? tenantId = null, CancellationToken cancellationToken = default);

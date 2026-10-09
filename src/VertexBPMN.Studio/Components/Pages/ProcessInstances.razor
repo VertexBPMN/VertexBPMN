@@ -33,7 +33,7 @@ else
 {
     <MudPaper Class="studio-data-card" Elevation="0">
     <MudTable Items="@_processInstances"
-              Hover="true" 
+              Hover="true"
               Dense="true"
               Breakpoint="Breakpoint.Md"
               Class="studio-data-table"
@@ -46,17 +46,17 @@ else
                               Icon="@Icons.Material.Outlined.PlayCircleOutline" />
         </NoRecordsContent>
         <ToolBarContent>
-            <MudTextField @bind-Value="_searchString" 
-                         Placeholder="Search instances..." 
+            <MudTextField @bind-Value="_searchString"
+                         Placeholder="Search instances..."
                          Immediate="true"
-                         Adornment="Adornment.Start" 
-                         AdornmentIcon="@Icons.Material.Filled.Search" 
-                         IconSize="Size.Medium" 
+                         Adornment="Adornment.Start"
+                         AdornmentIcon="@Icons.Material.Filled.Search"
+                         IconSize="Size.Medium"
                          Class="studio-table-search"
                          Clearable="true"/>
             <MudSpacer />
             <MudButton Variant="Variant.Outlined"
-                      Color="Color.Primary" 
+                      Color="Color.Primary"
                       StartIcon="@Icons.Material.Filled.Refresh"
                       OnClick="RefreshData">
                 Refresh
@@ -100,33 +100,33 @@ else
             </MudTd>
             <MudTd DataLabel="Actions">
                 <MudButtonGroup Size="Size.Small" Variant="Variant.Text">
-                    <MudIconButton Icon="@Icons.Material.Filled.History" 
-                                  Size="Size.Small" 
-                                  OnClick="@(() => ViewHistory(context))" 
+                    <MudIconButton Icon="@Icons.Material.Filled.History"
+                                  Size="Size.Small"
+                                  OnClick="@(() => ViewHistory(context))"
                                   aria-label="View History" />
-                    <MudIconButton Icon="@Icons.Material.Filled.Visibility" 
-                                  Size="Size.Small" 
-                                  OnClick="@(() => ViewDetails(context))" 
+                    <MudIconButton Icon="@Icons.Material.Filled.Visibility"
+                                  Size="Size.Small"
+                                  OnClick="@(() => ViewDetails(context))"
                                   aria-label="View Details" />
 
                     @if (context.Status == ProcessInstanceStatus.Running)
                     {
-                        <MudIconButton Icon="@Icons.Material.Filled.Pause" 
-                                      Size="Size.Small" 
-                                      OnClick="@(() => SuspendInstance(context.Id))" 
+                        <MudIconButton Icon="@Icons.Material.Filled.Pause"
+                                      Size="Size.Small"
+                                      OnClick="@(() => SuspendInstance(context.Id))"
                                       aria-label="Suspend Instance" />
                     }
                     else if (context.Status == ProcessInstanceStatus.Suspended && !HasIncident(context))
                     {
-                        <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" 
-                                      Size="Size.Small" 
-                                      OnClick="@(() => ResumeInstance(context.Id))" 
+                        <MudIconButton Icon="@Icons.Material.Filled.PlayArrow"
+                                      Size="Size.Small"
+                                      OnClick="@(() => ResumeInstance(context.Id))"
                                       aria-label="Resume Instance" />
                     }
-                    <MudIconButton Icon="@Icons.Material.Filled.Delete" 
-                                  Size="Size.Small" 
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                  Size="Size.Small"
                                   Color="Color.Error"
-                                  OnClick="@(() => DeleteInstance(context.Id))" 
+                                  OnClick="@(() => DeleteInstance(context.Id))"
                                   aria-label="Delete Instance" />
                 </MudButtonGroup>
             </MudTd>
@@ -139,6 +139,8 @@ else
 }
 
 @code {
+    private void OnEngineStatusChanged(object? sender, EventArgs args) => _ = InvokeAsync(StateHasChanged);
+
     private List<ProcessInstance> _processInstances = new();
     private string _searchString = "";
     private bool _isLoading = true;
@@ -146,18 +148,18 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        ActiveEngineService.OnChange += StateHasChanged;
+        ActiveEngineService.OnChange += OnEngineStatusChanged;
         TenantContext.Changed += OnTenantChanged;
         await LoadProcessInstances();
     }
 
     public void Dispose()
     {
-        ActiveEngineService.OnChange -= StateHasChanged;
+        ActiveEngineService.OnChange -= OnEngineStatusChanged;
         TenantContext.Changed -= OnTenantChanged;
     }
 
-    private void OnTenantChanged() => _ = InvokeAsync(LoadProcessInstances);
+    private void OnTenantChanged(object? sender, EventArgs args) => _ = InvokeAsync(LoadProcessInstances);
 
     private async Task LoadProcessInstances()
     {

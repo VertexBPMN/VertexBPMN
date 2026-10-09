@@ -1,0 +1,13 @@
+namespace VertexBPMN.Studio.Services;
+
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public contract used by framework-discovered MVC controllers or Razor component parameters.")]
+public sealed record StudioCredential(
+    string Id,
+    string TenantId,
+    string Name,
+    string Type,
+    string? Description,
+    IReadOnlyList<string> SecretKeys,
+    DateTime CreatedAt,
+    DateTime LastModified,
+    DateTime? LastUsedAt);

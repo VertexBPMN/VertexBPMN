@@ -5,30 +5,33 @@ using System.Security.Claims;
 using VertexBPMN.Infrastructure.Persistence.Services;
 
 namespace VertexBPMN.Api.Controllers;
-
 [ApiController]
 [Route("api/audit")]
 [Authorize(Policy = "ReadOnly")]
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public controller required for ASP.NET Core MVC discovery and activation.")]
 public sealed class AuditController(ProcessMiningEventDbContext db) : ControllerBase
 {
-    [HttpGet("logs")]
-    public async Task<ActionResult> GetLogs(
-        [FromQuery] string? action = null,
-        [FromQuery] DateTimeOffset? from = null,
-        [FromQuery] DateTimeOffset? to = null,
-        [FromQuery] int limit = 100,
-        CancellationToken cancellationToken = default)
-    {
-        var tenantId = User.FindFirstValue("tenant_id");
-        limit = Math.Clamp(limit, 1, 500);
-        var query = db.AuditLogs.AsNoTracking().Where(log => log.TenantId == tenantId);
-        if (!string.IsNullOrWhiteSpace(action))
-            query = query.Where(log => log.Action == action);
-        if (from.HasValue)
-            query = query.Where(log => log.Timestamp >= from.Value);
-        if (to.HasValue)
-            query = query.Where(log => log.Timestamp <= to.Value);
+	[HttpGet("logs")]
+	public async Task<ActionResult> GetLogs([FromQuery] string? action = null, [FromQuery] DateTimeOffset? from = null, [FromQuery] DateTimeOffset? to = null, [FromQuery] int limit = 100, CancellationToken cancellationToken = default)
+	{
+		var tenantId = User.FindFirstValue("tenant_id");
+		limit = Math.Clamp(limit, 1, 500);
+		var query = db.AuditLogs.AsNoTracking().Where(log => log.TenantId == tenantId);
+		if (!string.IsNullOrWhiteSpace(action))
+		{
+			query = query.Where(log => log.Action == action);
+		}
 
-        return Ok(await query.OrderByDescending(log => log.Id).Take(limit).ToListAsync(cancellationToken));
-    }
+		if (from.HasValue)
+		{
+			query = query.Where(log => log.Timestamp >= from.Value);
+		}
+
+		if (to.HasValue)
+		{
+			query = query.Where(log => log.Timestamp <= to.Value);
+		}
+
+		return Ok(await query.OrderByDescending(log => log.Id).Take(limit).ToListAsync(cancellationToken));
+	}
 }

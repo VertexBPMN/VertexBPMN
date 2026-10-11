@@ -1,11 +1,10 @@
 ﻿using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
+#pragma warning disable CA1861, MA0048, CA1814 // Prefer jagged arrays over multidimensional
 
-#pragma warning disable CA1814 // Prefer jagged arrays over multidimensional
+namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn;
 
-namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
-{
     /// <inheritdoc />
     public partial class AddPersistentFeatureFlags : Migration
     {
@@ -42,4 +41,3 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                 name: "FeatureFlags");
         }
     }
-}

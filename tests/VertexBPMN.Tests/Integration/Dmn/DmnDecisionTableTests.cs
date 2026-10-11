@@ -7,10 +7,10 @@ namespace VertexBPMN.Tests.Integration.Dmn;
 
 public partial class DmnDecisionTableTests
 {
-    [Fact]
-    public void Evaluate_CollectPolicy_ReturnsAllMatchingResults()
-    {
-        const string dmn = @"<definitions xmlns='http://www.omg.org/spec/DMN/20191111/MODEL/'>
+	[Fact]
+	public void Evaluate_CollectPolicy_ReturnsAllMatchingResults()
+	{
+		const string dmn = @"<definitions xmlns='http://www.omg.org/spec/DMN/20191111/MODEL/'>
   <decision id='d1' name='Test'>
     <decisionTable hitPolicy='COLLECT'>
       <input id='i1'><inputExpression>age</inputExpression></input>
@@ -30,12 +30,12 @@ public partial class DmnDecisionTableTests
     </decisionTable>
   </decision>
 </definitions>";
-        var table = DmnDecisionTable.Parse(dmn);
-        var result = table.Evaluate(new Dictionary<string, object> { { "i1", "18" } });
-        Assert.True(result.ContainsKey("result"));
-        var list = Assert.IsType<List<object>>(result["result"]);
-        Assert.Contains("adult", list);
-        Assert.Contains("voter", list);
-        Assert.DoesNotContain("teen", list);
-    }
+		var table = DmnDecisionTable.Parse(dmn);
+		var result = table.Evaluate(new Dictionary<string, object>(StringComparer.Ordinal) { { "i1", "18" } });
+		Assert.True(result.ContainsKey("result"));
+		var list = Assert.IsType<List<object>>(result["result"]);
+		Assert.Contains("adult", list);
+		Assert.Contains("voter", list);
+		Assert.DoesNotContain("teen", list);
+	}
 }

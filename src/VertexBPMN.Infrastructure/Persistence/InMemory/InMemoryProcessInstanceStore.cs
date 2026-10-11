@@ -25,7 +25,7 @@ public sealed class InMemoryProcessInstanceStore : IProcessInstanceStore
     private readonly ConcurrentDictionary<string, ConcurrentQueue<HistoricalCaseData>> _historicalCaseData = new(StringComparer.Ordinal);
     private readonly ConcurrentQueue<DeadLetterEntry> _deadLetters = new();
 
-    private record DeadLetterEntry(DateTime TimestampUtc, string TokenType, string SerializedToken, string ErrorMessage);
+    private sealed record DeadLetterEntry(DateTime TimestampUtc, string TokenType, string SerializedToken, string ErrorMessage);
 
     public Task SaveBpmnModelAsync(string processId, string bpmnXml)
     {
@@ -39,8 +39,11 @@ public sealed class InMemoryProcessInstanceStore : IProcessInstanceStore
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(processId);
         if (_processes.TryGetValue(processId, out var xml))
-            return Task.FromResult(xml);
-        throw new KeyNotFoundException($"Process with key '{processId}' not found.");
+		{
+			return Task.FromResult(xml);
+		}
+
+		throw new KeyNotFoundException($"Process with key '{processId}' not found.");
     }
 
     public Task<IEnumerable<string>> ListProcessesAsync() =>
@@ -59,8 +62,11 @@ public sealed class InMemoryProcessInstanceStore : IProcessInstanceStore
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(instanceId);
         if (_instances.TryGetValue(instanceId, out var pi))
-            return Task.FromResult(pi);
-        throw new KeyNotFoundException($"Process instance '{instanceId}' not found.");
+		{
+			return Task.FromResult(pi);
+		}
+
+		throw new KeyNotFoundException($"Process instance '{instanceId}' not found.");
     }
 
     public Task SaveTokenAsync(ExecutionToken token)
@@ -84,20 +90,15 @@ public sealed class InMemoryProcessInstanceStore : IProcessInstanceStore
     public Task<ExecutionToken> GetTokenAsync(Guid tokenId)
     {
         if (_executionTokens.TryGetValue(tokenId, out var token))
-            return Task.FromResult(token);
-        throw new KeyNotFoundException($"Execution token '{tokenId}' not found.");
+		{
+			return Task.FromResult(token);
+		}
+
+		throw new KeyNotFoundException($"Execution token '{tokenId}' not found.");
     }
 
-    public Task<List<ExecutionToken>> GetPendingTokensAsync()
-    {
-        var list = new List<ExecutionToken>();
-        foreach (var t in _executionTokens.Values)
-        {
-            if (IsTokenPending(t))
-                list.Add(t);
-        }
-        return Task.FromResult(list);
-    }
+    public Task<List<ExecutionToken>> GetPendingTokensAsync() =>
+        Task.FromResult(_executionTokens.Values.Where(IsTokenPending).ToList());
 
     public Task SaveWorkerAsync(WorkerNode worker)
     {
@@ -111,8 +112,11 @@ public sealed class InMemoryProcessInstanceStore : IProcessInstanceStore
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(workerId);
         if (_workers.TryGetValue(workerId, out var worker))
-            return Task.FromResult<WorkerNode?>(worker);
-        throw new KeyNotFoundException($"Worker '{workerId}' not found.");
+		{
+			return Task.FromResult<WorkerNode?>(worker);
+		}
+
+		throw new KeyNotFoundException($"Worker '{workerId}' not found.");
     }
 
     public Task<List<WorkerNode>> GetActiveWorkersAsync() =>
@@ -147,8 +151,11 @@ public sealed class InMemoryProcessInstanceStore : IProcessInstanceStore
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentException.ThrowIfNullOrWhiteSpace(decisionId);
         if (_dmnModels.TryGetValue(decisionId, out var xml))
-            return Task.FromResult(xml);
-        throw new KeyNotFoundException($"DMN model '{decisionId}' not found.");
+		{
+			return Task.FromResult(xml);
+		}
+
+		throw new KeyNotFoundException($"DMN model '{decisionId}' not found.");
     }
 
     public Task SaveCaseTokenAsync(CaseToken token)
@@ -161,20 +168,17 @@ public sealed class InMemoryProcessInstanceStore : IProcessInstanceStore
     public Task<CaseToken> GetCaseTokenAsync(Guid tokenId)
     {
         if (_caseTokens.TryGetValue(tokenId, out var token))
-            return Task.FromResult(token);
-        throw new KeyNotFoundException($"Case token '{tokenId}' not found.");
+		{
+			return Task.FromResult(token);
+		}
+
+		throw new KeyNotFoundException($"Case token '{tokenId}' not found.");
     }
 
     public Task<List<CaseToken>> GetPendingCaseTokensAsync()
     {
         // Lacking domain info; return all for now or filter by a reflective 'State' property == "Pending".
-        var list = new List<CaseToken>();
-        foreach (var t in _caseTokens.Values)
-        {
-            if (IsCaseTokenPending(t))
-                list.Add(t);
-        }
-        return Task.FromResult(list);
+        return Task.FromResult(_caseTokens.Values.Where(IsCaseTokenPending).ToList());
     }
 
     public Task SaveCmmnModelAsync(string caseId, string cmmnXml)
@@ -189,8 +193,11 @@ public sealed class InMemoryProcessInstanceStore : IProcessInstanceStore
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(caseId);
         if (_cmmnModels.TryGetValue(caseId, out var xml))
-            return Task.FromResult(xml);
-        throw new KeyNotFoundException($"CMMN model '{caseId}' not found.");
+		{
+			return Task.FromResult(xml);
+		}
+
+		throw new KeyNotFoundException($"CMMN model '{caseId}' not found.");
     }
 
     public Task UpdateCaseModelAsync(CaseModel model)
@@ -226,8 +233,8 @@ public sealed class InMemoryProcessInstanceStore : IProcessInstanceStore
     private static HistoricalCaseData CloneHistoricalCaseData(HistoricalCaseData data)
     {
         var caseFile = data.CaseFile != null
-            ? new Dictionary<string, object>(data.CaseFile)
-            : new Dictionary<string, object>();
+            ? new Dictionary<string, object>(data.CaseFile, StringComparer.Ordinal)
+            : new Dictionary<string, object>(StringComparer.Ordinal);
         var completedPlanItems = data.CompletedPlanItems != null
             ? new List<string>(data.CompletedPlanItems)
             : new List<string>();
@@ -245,99 +252,111 @@ public sealed class InMemoryProcessInstanceStore : IProcessInstanceStore
 
         if (model.Attributes != null)
         {
-            foreach (var attribute in model.Attributes)
-            {
-                if (!string.IsNullOrWhiteSpace(attribute.Key) && attribute.Value is not null)
-                    caseElement.SetAttributeValue(attribute.Key, attribute.Value);
-            }
+            AddAttributes(caseElement, model.Attributes);
         }
 
         foreach (var planItem in model.PlanItems ?? new List<PlanItem>())
         {
-            var planItemElement = new XElement(ns + "planItem",
-                new XAttribute("id", planItem.Id ?? string.Empty));
-
-            if (!string.IsNullOrWhiteSpace(planItem.DefinitionRef))
-                planItemElement.SetAttributeValue("definitionRef", planItem.DefinitionRef);
-
-            if (!string.IsNullOrWhiteSpace(planItem.Type))
-                planItemElement.SetAttributeValue("definitionType", planItem.Type);
-
-            if (planItem.IsDiscretionary)
-                planItemElement.SetAttributeValue("isDiscretionary", "true");
-
-            if (planItem.Attributes != null)
-            {
-                foreach (var attribute in planItem.Attributes)
-                {
-                    if (!string.IsNullOrWhiteSpace(attribute.Key) && attribute.Value is not null)
-                        planItemElement.SetAttributeValue(attribute.Key, attribute.Value);
-                }
-            }
-
-            if (planItem.EntrySentryRefs != null)
-            {
-                foreach (var sentryRef in planItem.EntrySentryRefs.Where(r => !string.IsNullOrWhiteSpace(r)))
-                {
-                    planItemElement.Add(new XElement(ns + "entryCriterion", new XAttribute("sentryRef", sentryRef!)));
-                }
-            }
-
-            if (planItem.ExitSentryRefs != null)
-            {
-                foreach (var sentryRef in planItem.ExitSentryRefs.Where(r => !string.IsNullOrWhiteSpace(r)))
-                {
-                    planItemElement.Add(new XElement(ns + "exitCriterion", new XAttribute("sentryRef", sentryRef!)));
-                }
-            }
-
-            if (!string.IsNullOrWhiteSpace(planItem.Type))
-            {
-                planItemElement.Add(new XElement(ns + "definitionRef", new XAttribute("type", planItem.Type)));
-            }
-
-            caseElement.Add(planItemElement);
+            caseElement.Add(CreatePlanItemElement(ns, planItem));
         }
 
         foreach (var sentry in model.Sentries ?? new List<Sentry>())
         {
-            var sentryElement = new XElement(ns + "sentry",
-                new XAttribute("id", sentry.Id ?? string.Empty));
-
-            if (!string.IsNullOrWhiteSpace(sentry.OnPartRef))
-            {
-                sentryElement.Add(new XElement(ns + "onPart", new XAttribute("planItemRef", sentry.OnPartRef)));
-            }
-
-            if (sentry.Conditions != null)
-            {
-                foreach (var condition in sentry.Conditions)
-                {
-                    var conditionElement = new XElement(ns + "condition");
-                    if (!string.IsNullOrWhiteSpace(condition.VariableRef))
-                        conditionElement.SetAttributeValue("variableRef", condition.VariableRef);
-                    if (!string.IsNullOrWhiteSpace(condition.OnPartEvent))
-                        conditionElement.SetAttributeValue("onPartEvent", condition.OnPartEvent);
-                    if (!string.IsNullOrWhiteSpace(condition.LogicalOperator))
-                        conditionElement.SetAttributeValue("logicalOperator", condition.LogicalOperator);
-
-                    conditionElement.Add(new XElement(ns + "expression", condition.Expression ?? string.Empty));
-                    sentryElement.Add(conditionElement);
-                }
-            }
-
-            caseElement.Add(sentryElement);
+            caseElement.Add(CreateSentryElement(ns, sentry));
         }
 
         foreach (var caseFileItem in model.CaseFileItems ?? new List<CaseFileItem>())
         {
-            var caseFileElement = new XElement(ns + "caseFileItem",
-                new XAttribute("id", caseFileItem.Id ?? string.Empty),
-                new XAttribute("name", caseFileItem.Name ?? string.Empty));
-            caseElement.Add(caseFileElement);
+            caseElement.Add(CreateCaseFileElement(ns, caseFileItem));
         }
 
         return new XDocument(caseElement).ToString(SaveOptions.DisableFormatting);
+    }
+
+    private static XElement CreateCaseFileElement(XNamespace ns, CaseFileItem caseFileItem) =>
+        new(ns + "caseFileItem",
+            new XAttribute("id", caseFileItem.Id ?? string.Empty),
+            new XAttribute("name", caseFileItem.Name ?? string.Empty));
+
+    private static XElement CreateSentryElement(XNamespace ns, Sentry sentry)
+    {
+        var sentryElement = new XElement(ns + "sentry", new XAttribute("id", sentry.Id ?? string.Empty));
+        if (!string.IsNullOrWhiteSpace(sentry.OnPartRef))
+        {
+            sentryElement.Add(new XElement(ns + "onPart", new XAttribute("planItemRef", sentry.OnPartRef)));
+        }
+
+        if (sentry.Conditions != null)
+        {
+            foreach (var condition in sentry.Conditions)
+            {
+                var conditionElement = new XElement(ns + "condition");
+                if (!string.IsNullOrWhiteSpace(condition.VariableRef))
+                {
+                    conditionElement.SetAttributeValue("variableRef", condition.VariableRef);
+                }
+                if (!string.IsNullOrWhiteSpace(condition.OnPartEvent))
+                {
+                    conditionElement.SetAttributeValue("onPartEvent", condition.OnPartEvent);
+                }
+                if (!string.IsNullOrWhiteSpace(condition.LogicalOperator))
+                {
+                    conditionElement.SetAttributeValue("logicalOperator", condition.LogicalOperator);
+                }
+                conditionElement.Add(new XElement(ns + "expression", condition.Expression ?? string.Empty));
+                sentryElement.Add(conditionElement);
+            }
+        }
+
+        return sentryElement;
+    }
+
+    private static XElement CreatePlanItemElement(XNamespace ns, PlanItem planItem)
+    {
+        var planItemElement = new XElement(ns + "planItem", new XAttribute("id", planItem.Id ?? string.Empty));
+        if (!string.IsNullOrWhiteSpace(planItem.DefinitionRef))
+        {
+            planItemElement.SetAttributeValue("definitionRef", planItem.DefinitionRef);
+        }
+        if (!string.IsNullOrWhiteSpace(planItem.Type))
+        {
+            planItemElement.SetAttributeValue("definitionType", planItem.Type);
+        }
+        if (planItem.IsDiscretionary)
+        {
+            planItemElement.SetAttributeValue("isDiscretionary", "true");
+        }
+        if (planItem.Attributes != null)
+        {
+            AddAttributes(planItemElement, planItem.Attributes);
+        }
+        if (planItem.EntrySentryRefs != null)
+        {
+            foreach (var sentryRef in planItem.EntrySentryRefs.Where(r => !string.IsNullOrWhiteSpace(r)))
+            {
+                planItemElement.Add(new XElement(ns + "entryCriterion", new XAttribute("sentryRef", sentryRef)));
+            }
+        }
+        if (planItem.ExitSentryRefs != null)
+        {
+            foreach (var sentryRef in planItem.ExitSentryRefs.Where(r => !string.IsNullOrWhiteSpace(r)))
+            {
+                planItemElement.Add(new XElement(ns + "exitCriterion", new XAttribute("sentryRef", sentryRef)));
+            }
+        }
+        if (!string.IsNullOrWhiteSpace(planItem.Type))
+        {
+            planItemElement.Add(new XElement(ns + "definitionRef", new XAttribute("type", planItem.Type)));
+        }
+        return planItemElement;
+    }
+
+    private static void AddAttributes(XElement element, IEnumerable<KeyValuePair<string, string>> attributes)
+    {
+        foreach (var attribute in attributes.Where(a => !string.IsNullOrWhiteSpace(a.Key) && a.Value is not null))
+        {
+            element.SetAttributeValue(attribute.Key, attribute.Value);
+        }
     }
 
 
@@ -354,37 +373,55 @@ public sealed class InMemoryProcessInstanceStore : IProcessInstanceStore
         var piType = instance.GetType();
         var instProp = piType.GetProperty("InstanceId");
         if (instProp?.GetValue(instance) is string s && !string.IsNullOrWhiteSpace(s))
-            return s;
-        var idProp = piType.GetProperty("Id");
+		{
+			return s;
+		}
+
+		var idProp = piType.GetProperty("Id");
         if (idProp?.GetValue(instance) is Guid g && g != Guid.Empty)
-            return g.ToString("N");
-        return Guid.NewGuid().ToString("N");
+		{
+			return g.ToString("N");
+		}
+
+		return Guid.NewGuid().ToString("N");
     }
 
     private static Guid GetCaseTokenId(CaseToken token)
     {
         var prop = token.GetType().GetProperty("Id");
         if (prop?.PropertyType == typeof(Guid) && prop.GetValue(token) is Guid g && g != Guid.Empty)
-            return g;
-        return Guid.NewGuid();
+		{
+			return g;
+		}
+
+		return Guid.NewGuid();
     }
 
     private static bool IsCaseTokenPending(CaseToken token)
     {
         var stateProp = token.GetType().GetProperty("State");
         if (stateProp?.GetValue(token) is string s)
-            return string.Equals(s, "Pending", StringComparison.OrdinalIgnoreCase);
-        return true;
+		{
+			return string.Equals(s, "Pending", StringComparison.OrdinalIgnoreCase);
+		}
+
+		return true;
     }
 
     private static string GetWorkerId(WorkerNode worker)
     {
         var prop = worker.GetType().GetProperty("Id");
         if (prop?.GetValue(worker) is string s && !string.IsNullOrWhiteSpace(s))
-            return s;
-        var guidProp = worker.GetType().GetProperty("WorkerId");
+		{
+			return s;
+		}
+
+		var guidProp = worker.GetType().GetProperty("WorkerId");
         if (guidProp?.GetValue(worker) is string s2 && !string.IsNullOrWhiteSpace(s2))
-            return s2;
-        return Guid.NewGuid().ToString("N");
+		{
+			return s2;
+		}
+
+		return Guid.NewGuid().ToString("N");
     }
 }

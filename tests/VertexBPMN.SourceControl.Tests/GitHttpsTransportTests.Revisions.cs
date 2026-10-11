@@ -52,7 +52,7 @@ public sealed partial class GitHttpsTransportTests
 		Assert.Equal(SourceControlErrorCode.InvalidInput, blocked.Code);
 		Assert.Equal(requests, fixture.AuthenticatedRequests);
 		using var cancelled = new CancellationTokenSource();
-		cancelled.Cancel();
+		await cancelled.CancelAsync();
 		await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fixture.Runner.ResolveRemoteBranchLocalAcceptanceAsync(
 			fixture.Workspace, context, binding, "master", lease, fixture.CaFile, cancelled.Token));
 		Assert.Equal(requests, fixture.AuthenticatedRequests);

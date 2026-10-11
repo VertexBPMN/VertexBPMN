@@ -9,138 +9,160 @@ namespace VertexBPMN.Engine.Execution;
 
 internal static class BpmnConditionEvaluator
 {
-    public static bool Evaluate(
-        BpmnSequenceFlow flow,
-        IEnumerable<KeyValuePair<string, object>> variables)
-    {
-        ArgumentNullException.ThrowIfNull(flow);
-        return Evaluate(flow.ConditionExpression!, variables, flow.ConditionExpressionLanguage);
-    }
+	public static bool Evaluate(
+		BpmnSequenceFlow flow,
+		IEnumerable<KeyValuePair<string, object>> variables)
+	{
+		ArgumentNullException.ThrowIfNull(flow);
+		return Evaluate(flow.ConditionExpression!, variables, flow.ConditionExpressionLanguage);
+	}
 
-    public static bool Evaluate(
-        string rawExpression,
-        IEnumerable<KeyValuePair<string, object>> variables,
-        string? expressionLanguage = null)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(rawExpression);
+	public static bool Evaluate(
+		string rawExpression,
+		IEnumerable<KeyValuePair<string, object>> variables,
+		string? expressionLanguage = null)
+	{
+		ArgumentException.ThrowIfNullOrWhiteSpace(rawExpression);
 
-        var expression = rawExpression.Trim();
-        if ((expression.StartsWith("${", StringComparison.Ordinal)
-             || expression.StartsWith("#{", StringComparison.Ordinal))
-            && expression.EndsWith('}'))
-        {
-            expression = expression[2..^1].Trim();
-        }
+		var expression = rawExpression.Trim();
+		if ((expression.StartsWith("${", StringComparison.Ordinal)
+			 || expression.StartsWith("#{", StringComparison.Ordinal))
+			&& expression.EndsWith('}'))
+		{
+			expression = expression[2..^1].Trim();
+		}
 
-        var context = variables.ToDictionary(
-            variable => variable.Key,
-            variable => NormalizeJsonValue(variable.Value)!,
-            StringComparer.Ordinal);
+		var context = variables.ToDictionary(
+			variable => variable.Key,
+			variable => NormalizeJsonValue(variable.Value)!,
+			StringComparer.Ordinal);
 
-        // Several BPMN 2.0 interchange fixtures declare XPath globally but use
-        // Signavio's data-object accessor syntax in the actual formal expression.
-        // Resolve that accessor against the process-variable context before the
-        // FEEL / fallback split, so both the FEEL runtime and the compatibility
-        // evaluator see it as a plain variable reference.
-        expression = Regex.Replace(
-            expression,
-            "(?:[A-Za-z_][\\w.-]*:)?getDataObject\\(\\s*(['\"])(?<name>[^'\"]+)\\1\\s*\\)",
-            match => match.Groups["name"].Value,
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+		// Several BPMN 2.0 interchange fixtures declare XPath globally but use
+		// Signavio's data-object accessor syntax in the actual formal expression.
+		// Resolve that accessor against the process-variable context before the
+		// FEEL / fallback split, so both the FEEL runtime and the compatibility
+		// evaluator see it as a plain variable reference.
+		expression = Regex.Replace(
+			expression,
+			"(?:[A-Za-z_][\\w.-]*:)?getDataObject\\(\\s*(?<quote>['\"])(?<name>[^'\"]+)\\k<quote>\\s*\\)",
+			match => match.Groups["name"].Value,
+			RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture, TimeSpan.FromSeconds(1));
 
-        if (IsFeel(expressionLanguage, expression))
-        {
-            if (expression.StartsWith('=') && !expression.StartsWith("==", StringComparison.Ordinal))
-                expression = expression[1..].Trim();
+		if (IsFeel(expressionLanguage, expression))
+		{
+			return EvaluateFeelCondition(rawExpression, expression, context);
+		}
 
-            // BPMN 2.0 interchange conditions are commonly XPath-flavoured and quote
-            // string literals with single quotes, whereas FEEL strings require double
-            // quotes. Normalize single-quoted literals so such conditions evaluate in
-            // the FEEL runtime instead of failing on an unrecognized token.
-            if (expression.Contains('\'') && !expression.Contains('\"'))
-            {
-                expression = Regex.Replace(
-                    expression,
-                    "'(?<lit>[^']*)'",
-                    match => "\"" + match.Groups["lit"].Value + "\"");
-            }
+		return EvaluateJavaScriptCondition(rawExpression, NormalizeCompatibilityOperators(expression), context);
+	}
 
-            var result = FeelExpressionRuntime.Evaluate(expression, context);
-            return result is bool boolean
-                ? boolean
-                : throw new InvalidOperationException(
-                    $"FEEL condition '{rawExpression}' returned '{result?.GetType().Name ?? "null"}' instead of boolean.");
-        }
+	private static bool EvaluateFeelCondition(string rawExpression, string expression, Dictionary<string, object> context)
+	{
+		if (expression.StartsWith('=') && !expression.StartsWith("==", StringComparison.Ordinal))
+		{
+			expression = expression[1..].Trim();
+		}
 
-        expression = Regex.Replace(
-            expression,
-            @"(?<![<>=!])=(?!=)",
-            "==",
-            RegexOptions.CultureInvariant);
-        expression = Regex.Replace(
-            expression,
-            @"\band\b",
-            "&&",
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-        expression = Regex.Replace(
-            expression,
-            @"\bor\b",
-            "||",
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-        expression = Regex.Replace(
-            expression,
-            @"\bnot\s+",
-            "!",
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-        // Also convert the XPath/FEEL function-call negation not(...) -> !(...);
-        // the whitespace form above only covers 'not x'. The '(' disambiguates a
-        // function call, so quoted prose containing the word "not" is unaffected.
-        expression = Regex.Replace(
-            expression,
-            @"\bnot\s*\(",
-            "!(",
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+		// BPMN 2.0 interchange conditions are commonly XPath-flavoured and quote
+		// string literals with single quotes, whereas FEEL strings require double
+		// quotes. Normalize single-quoted literals so such conditions evaluate in
+		// the FEEL runtime instead of failing on an unrecognized token.
+		if (expression.Contains('\'', StringComparison.Ordinal) && !expression.Contains('\"', StringComparison.Ordinal))
+		{
+			expression = Regex.Replace(
+				expression,
+				"'(?<lit>[^']*)'",
+				match => "\"" + match.Groups["lit"].Value + "\"", RegexOptions.None, TimeSpan.FromSeconds(1));
+		}
 
-        var engine = new Jint.Engine(options => options
-            .TimeoutInterval(TimeSpan.FromMilliseconds(100))
-            .LimitRecursion(64)
-            .MaxStatements(1_000));
-        foreach (var variable in context)
-            engine.SetValue(variable.Key, variable.Value);
+		var result = FeelExpressionRuntime.Evaluate(expression, context);
+		return result is bool boolean
+			? boolean
+			: throw new InvalidOperationException(
+				$"FEEL condition '{rawExpression}' returned '{result?.GetType().Name ?? "null"}' instead of boolean.");
+	}
 
-        try
-        {
-            return engine.Evaluate(expression).AsBoolean();
-        }
-        catch (JavaScriptException exception)
-        {
-            throw new InvalidOperationException(
-                $"BPMN condition '{rawExpression}' could not be evaluated with the available process variables.",
-                exception);
-        }
-    }
+	private static string NormalizeCompatibilityOperators(string expression)
+	{
+		expression = Regex.Replace(
+			expression,
+			"(?<![<>=!])=(?!=)",
+			"==",
+			RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+		expression = Regex.Replace(
+			expression,
+			@"\band\b",
+			"&&",
+			RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+		expression = Regex.Replace(
+			expression,
+			@"\bor\b",
+			"||",
+			RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+		expression = Regex.Replace(
+			expression,
+			@"\bnot\s+",
+			"!",
+			RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+		// Also convert the XPath/FEEL function-call negation not(...) -> !(...);
+		// the whitespace form above only covers 'not x'. The '(' disambiguates a
+		// function call, so quoted prose containing the word "not" is unaffected.
+		expression = Regex.Replace(
+			expression,
+			@"\bnot\s*\(",
+			"!(",
+			RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+		return expression;
+	}
 
-    private static bool IsFeel(string? expressionLanguage, string expression) =>
-        expression.StartsWith('=')
-        || expressionLanguage?.Contains("FEEL", StringComparison.OrdinalIgnoreCase) == true
-        || (string.IsNullOrWhiteSpace(expressionLanguage)
-            && Regex.IsMatch(
-                expression,
-                @"(?<![<>=!])\s=\s(?![=])",
-                RegexOptions.CultureInvariant));
+	private static bool EvaluateJavaScriptCondition(string rawExpression, string expression, Dictionary<string, object> context)
+	{
+		using var engine = new Jint.Engine(options => options
+			.TimeoutInterval(TimeSpan.FromMilliseconds(100))
+			.LimitRecursion(64)
+			.MaxStatements(1_000));
+		foreach (var variable in context)
+		{
+			engine.SetValue(variable.Key, variable.Value);
+		}
 
-    public static object? NormalizeJsonValue(object? value)
-    {
-        if (value is not JsonElement json) return value;
-        return json.ValueKind switch
-        {
-            JsonValueKind.String => json.GetString(),
-            JsonValueKind.Number when json.TryGetInt64(out var integer) => integer,
-            JsonValueKind.Number => json.GetDouble(),
-            JsonValueKind.True => true,
-            JsonValueKind.False => false,
-            JsonValueKind.Null or JsonValueKind.Undefined => null,
-            _ => JsonSerializer.Deserialize<object>(json.GetRawText())
-        };
-    }
+		try
+		{
+			return engine.Evaluate(expression).AsBoolean();
+		}
+		catch (JavaScriptException exception)
+		{
+			throw new InvalidOperationException(
+				$"BPMN condition '{rawExpression}' could not be evaluated with the available process variables.",
+				exception);
+		}
+	}
+
+	private static bool IsFeel(string? expressionLanguage, string expression) =>
+		expression.StartsWith('=')
+		|| expressionLanguage?.Contains("FEEL", StringComparison.OrdinalIgnoreCase) == true
+		|| (string.IsNullOrWhiteSpace(expressionLanguage)
+			&& Regex.IsMatch(
+				expression,
+				@"(?<![<>=!])\s=\s(?![=])",
+				RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1)));
+
+	public static object? NormalizeJsonValue(object? value)
+	{
+		if (value is not JsonElement json)
+		{
+			return value;
+		}
+
+		return json.ValueKind switch
+		{
+			JsonValueKind.String => json.GetString(),
+			JsonValueKind.Number when json.TryGetInt64(out var integer) => integer,
+			JsonValueKind.Number => json.GetDouble(),
+			JsonValueKind.True => true,
+			JsonValueKind.False => false,
+			JsonValueKind.Null or JsonValueKind.Undefined => null,
+			_ => JsonSerializer.Deserialize<object>(json.GetRawText())
+		};
+	}
 }

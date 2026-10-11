@@ -20,24 +20,35 @@ public sealed class PersistentProcessMiningEventSink : IProcessMiningEventSink
         _logger = logger;
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("S2139", "S2139:Exceptions should be used to identify and handle failures, not silently rethrown", Justification = "This catch logs comprehensive context and then rethrows the original exception unchanged so callers observe the real failure type; no custom persistence exception type exists and wrapping would alter callers' error handling.")]
     public async ValueTask<ProcessMiningEvent> EmitAsync(ProcessMiningEvent evt, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(evt);
         if (string.IsNullOrWhiteSpace(evt.EventType))
-            throw new ArgumentException("EventType is required", nameof(evt));
-        if (string.IsNullOrWhiteSpace(evt.ProcessInstanceId))
-            throw new ArgumentException("ProcessInstanceId is required", nameof(evt));
+		{
+			throw new ArgumentException("EventType is required", nameof(evt));
+		}
 
-        // Ensure timestamp set
-        if (evt.Timestamp == default)
-            evt.Timestamp = DateTimeOffset.UtcNow;
+		if (string.IsNullOrWhiteSpace(evt.ProcessInstanceId))
+		{
+			throw new ArgumentException("ProcessInstanceId is required", nameof(evt));
+		}
 
-        try
+		// Ensure timestamp set
+		if (evt.Timestamp == default)
+		{
+			evt.Timestamp = DateTimeOffset.UtcNow;
+		}
+
+		try
         {
             await _db.Events.AddAsync(evt, cancellationToken).ConfigureAwait(false);
             await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-            _logger.LogTrace("Persisted mining event Type={Type} ProcInst={Pid} Id={Id}",
-                evt.EventType, evt.ProcessInstanceId, evt.Id);
+            if (_logger.IsEnabled(LogLevel.Trace))
+            {
+                _logger.LogTrace("Persisted mining event Type={Type} ProcInst={Pid} Id={Id}",
+                    evt.EventType, evt.ProcessInstanceId, evt.Id);
+            }
             return evt;
         }
         catch (OperationCanceledException)
@@ -47,7 +58,8 @@ public sealed class PersistentProcessMiningEventSink : IProcessMiningEventSink
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to persist mining event Type={Type} ProcInst={Pid}", evt.EventType, evt.ProcessInstanceId);
-            // Optionally wrap in a custom PersistenceException
+            // The original exception must propagate unchanged so callers observe the real failure;
+            // comprehensive context is logged above for diagnostics.
             throw;
         }
     }

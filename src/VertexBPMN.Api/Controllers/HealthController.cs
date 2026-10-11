@@ -15,6 +15,8 @@ namespace VertexBPMN.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "S6960", Justification = "Legacy monitoring routes intentionally expose health and protected maintenance operations under one stable controller contract; all maintenance actions retain AdminOnly authorization.")]
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public controller required for ASP.NET Core MVC discovery and activation.")]
 public class HealthController : ControllerBase
 {
     private readonly IHealthMonitoringService _healthMonitoring;
@@ -39,6 +41,7 @@ public class HealthController : ControllerBase
     /// </summary>
     [HttpGet]
     [RateLimit("monitoring")]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
     public IActionResult GetHealth()
     {
         return Ok(new { status = "healthy", timestamp = DateTime.UtcNow });
@@ -193,6 +196,7 @@ public class HealthController : ControllerBase
     /// </summary>
     [HttpGet("metrics")]
     [RateLimit("monitoring")]
+    [ProducesResponseType(typeof(VertexBPMN.Domain.Entities.SystemMetrics), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetSystemMetrics()
     {
         try
@@ -212,6 +216,7 @@ public class HealthController : ControllerBase
     /// </summary>
     [HttpGet("circuit-breakers")]
     [RateLimit("monitoring")]
+    [ProducesResponseType(typeof(IEnumerable<VertexBPMN.Domain.Entities.ResilienceStatus>), StatusCodes.Status200OK)]
     public IActionResult GetCircuitBreakerStatus()
     {
         try
@@ -233,6 +238,7 @@ public class HealthController : ControllerBase
     /// </summary>
     [HttpGet("rate-limits/{identifier}")]
     [RateLimit("monitoring")]
+    [ProducesResponseType(typeof(IEnumerable<VertexBPMN.Domain.Entities.RateLimitInfo>), StatusCodes.Status200OK)]
     public IActionResult GetRateLimitStatus(string identifier)
     {
         try
@@ -255,6 +261,7 @@ public class HealthController : ControllerBase
     /// </summary>
     [HttpGet("ready")]
     [RateLimit("monitoring")]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetReadiness()
     {
         try
@@ -281,6 +288,7 @@ public class HealthController : ControllerBase
     /// </summary>
     [HttpGet("live")]
     [RateLimit("monitoring")]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
     public IActionResult GetLiveness()
     {
         // Simple liveness check - if we can respond, we're alive
@@ -293,6 +301,8 @@ public class HealthController : ControllerBase
     [HttpPost("gc")]
     [RateLimit("admin")]
     [Authorize(Policy = "AdminOnly")]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "S1215", Justification = "Explicit, AdminOnly maintenance operation whose documented purpose is forced collection; normal health checks never collect.")]
     public IActionResult ForceGarbageCollection()
     {
         try
@@ -306,7 +316,10 @@ public class HealthController : ControllerBase
             var afterMB = GC.GetTotalMemory(false) / 1024 / 1024;
             var freedMB = beforeMB - afterMB;
             
-            _logger.LogInformation("Manual GC completed. Freed {FreedMB}MB memory", freedMB);
+            if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
+            {
+	            _logger.LogInformation("Manual GC completed. Freed {FreedMB}MB memory", freedMB);
+            }
             
             return Ok(new 
             { 
@@ -330,12 +343,16 @@ public class HealthController : ControllerBase
     [HttpPost("rate-limits/{identifier}/reset")]
     [RateLimit("admin")]
     [Authorize(Policy = "AdminOnly")]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
     public IActionResult ResetRateLimit(string identifier, [FromQuery] string policy = "default")
     {
         try
         {
             _rateLimiting.ResetRateLimit(identifier, policy);
-            _logger.LogInformation("Rate limit reset for {Identifier} with policy {Policy}", identifier, policy);
+            if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
+            {
+	            _logger.LogInformation("Rate limit reset for {Identifier} with policy {Policy}", identifier, policy);
+            }
             
             return Ok(new 
             { 

@@ -15,7 +15,7 @@ public sealed class RecordedOutputReplayService(
 		BpmnModel model,
 		CancellationToken cancellationToken = default)
 	{
-		var tasks = model.Tasks is null ? null : model.Tasks.ToList();
+		var tasks = model.Tasks?.ToList();
 		if (tasks is null)
 		{
 			return model;

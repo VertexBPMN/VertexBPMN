@@ -12,6 +12,7 @@ public sealed partial class PersistentSourceControlStore
 	/// <summary>
 	/// Accept a separate push of an owned completed commit, copying immutable reconstruction data.
 	/// </summary>
+	/// <exception cref="SourceControlSecurityException"></exception>
 	public async Task<Guid> EnqueuePushAsync(SourceControlContext context, Guid repositoryId,
 		IReadOnlyCollection<string> roles, SourceControlIdempotencyKey key, PushJobSubmission submission,
 		CancellationToken cancellationToken)
@@ -162,7 +163,7 @@ public sealed partial class PersistentSourceControlStore
 			return false;
 		}
 		var saved = JsonSerializer.Deserialize<StoredRemotePush>(Unprotect(context, row.RepositoryId, row.ProtectedResult));
-		return saved is not null && saved.SchemaVersion == 1 && saved.RepositoryId == row.RepositoryId && saved.Receipt == receipt;
+		return saved?.SchemaVersion == 1 && saved.RepositoryId == row.RepositoryId && saved.Receipt == receipt;
 	}
 
 	private sealed record AcceptedPush(int SchemaVersion, long BindingRevision, Guid CommitOperationId,

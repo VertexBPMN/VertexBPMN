@@ -1,10 +1,12 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+﻿using System.Diagnostics.CodeAnalysis;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace VertexBPMN.Infrastructure.Persistence.Migrations.Decision
-{
+namespace VertexBPMN.Infrastructure.Persistence.Migrations.Decision;
+
     /// <inheritdoc />
+    [SuppressMessage("Meziantou.Analyzer", "MA0048", Justification = "EF migration snapshot / generated code.")]
     public partial class AddDmnAggregation : Migration
     {
         /// <inheritdoc />
@@ -26,4 +28,3 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Decision
                 table: "DmnDecisionTables");
         }
     }
-}

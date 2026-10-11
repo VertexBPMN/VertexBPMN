@@ -23,73 +23,73 @@ namespace VertexBPMN.Studio.UiTests;
 
 public sealed partial class LocalStudioInfrastructureTests
 {
-    [Fact]
-    [Trait("Category", "LocalStudioE2E")]
-    public async Task Tasks_ServiceTask_ExecutesRegisteredHandlerAndCompletes()
-    {
-        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
-        using var apiClient = host.CreateApiClient();
-        var processKey = $"StudioE2E_SvcT_{host.RunId}";
+	[Fact]
+	[Trait("Category", "LocalStudioE2E")]
+	public async Task Tasks_ServiceTask_ExecutesRegisteredHandlerAndCompletes()
+	{
+		Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
+		using var apiClient = host.CreateApiClient();
+		var processKey = $"StudioE2E_SvcT_{host.RunId}";
 
-        await DeployUnderTestAsync(apiClient, processKey, BuildServiceTaskBpmn(processKey));
-        host.RegisterProcessDefinitionCleanup(processKey);
+		await DeployUnderTestAsync(apiClient, processKey, BuildServiceTaskBpmn(processKey));
+		host.RegisterProcessDefinitionCleanup(processKey);
 
-        var instanceId = await StartProcessWithVariablesAsync(
-            apiClient, processKey, tenantId: null, businessKey: $"svc-{host.RunId}",
-            new Dictionary<string, object> { ["applicantName"] = "Ada", ["age"] = 42 });
+		var instanceId = await StartProcessWithVariablesAsync(
+			apiClient, processKey, tenantId: null, businessKey: $"svc-{host.RunId}",
+			new Dictionary<string, object>(StringComparer.Ordinal) { ["applicantName"] = "Ada", ["age"] = 42 });
 
-        await WaitForInstanceStateAsync(instanceId, "Completed");
+		await WaitForInstanceStateAsync(instanceId, "Completed");
 
-        var history = await GetHistoryAsync(instanceId);
-        Assert.Contains(history, e => EventHasElementId(e, "score") && IsEventType(e, "SERVICE_TASK_COMPLETED"));
-    }
+		var history = await GetHistoryAsync(instanceId);
+		Assert.Contains(history, e => EventHasElementId(e, "score") && IsEventType(e, "SERVICE_TASK_COMPLETED"));
+	}
 
-    [Fact]
-    [Trait("Category", "LocalStudioE2E")]
-    public async Task Tasks_ScriptTask_ExecutesAndCompletes()
-    {
-        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
-        using var apiClient = host.CreateApiClient();
-        var processKey = $"StudioE2E_ScriptT_{host.RunId}";
+	[Fact]
+	[Trait("Category", "LocalStudioE2E")]
+	public async Task Tasks_ScriptTask_ExecutesAndCompletes()
+	{
+		Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
+		using var apiClient = host.CreateApiClient();
+		var processKey = $"StudioE2E_ScriptT_{host.RunId}";
 
-        await DeployUnderTestAsync(apiClient, processKey, BuildScriptTaskBpmn(processKey));
-        host.RegisterProcessDefinitionCleanup(processKey);
+		await DeployUnderTestAsync(apiClient, processKey, BuildScriptTaskBpmn(processKey));
+		host.RegisterProcessDefinitionCleanup(processKey);
 
-        var instanceId = await StartProcessWithVariablesAsync(
-            apiClient, processKey, tenantId: null, businessKey: $"script-{host.RunId}",
-            new Dictionary<string, object> { ["amount"] = 21 });
+		var instanceId = await StartProcessWithVariablesAsync(
+			apiClient, processKey, tenantId: null, businessKey: $"script-{host.RunId}",
+			new Dictionary<string, object>(StringComparer.Ordinal) { ["amount"] = 21 });
 
-        await WaitForInstanceStateAsync(instanceId, "Completed");
+		await WaitForInstanceStateAsync(instanceId, "Completed");
 
-        var history = await GetHistoryAsync(instanceId);
-        Assert.Contains(history, e => EventHasElementId(e, "scr") && IsEventType(e, "SCRIPT_TASK_COMPLETED"));
-    }
+		var history = await GetHistoryAsync(instanceId);
+		Assert.Contains(history, e => EventHasElementId(e, "scr") && IsEventType(e, "SCRIPT_TASK_COMPLETED"));
+	}
 
-    [Fact]
-    [Trait("Category", "LocalStudioE2E")]
-    public async Task Tasks_ScriptTask_DefaultsToJavaScript()
-    {
-        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
-        using var apiClient = host.CreateApiClient();
-        var processKey = $"StudioE2E_ScriptJS_{host.RunId}";
+	[Fact]
+	[Trait("Category", "LocalStudioE2E")]
+	public async Task Tasks_ScriptTask_DefaultsToJavaScript()
+	{
+		Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
+		using var apiClient = host.CreateApiClient();
+		var processKey = $"StudioE2E_ScriptJS_{host.RunId}";
 
-        // No <scriptFormat> -> the runtime defaults to JavaScript (Jint), not C#.
-        await DeployUnderTestAsync(apiClient, processKey, BuildJavaScriptScriptTaskBpmn(processKey));
-        host.RegisterProcessDefinitionCleanup(processKey);
+		// No <scriptFormat> -> the runtime defaults to JavaScript (Jint), not C#.
+		await DeployUnderTestAsync(apiClient, processKey, BuildJavaScriptScriptTaskBpmn(processKey));
+		host.RegisterProcessDefinitionCleanup(processKey);
 
-        var instanceId = await StartProcessAsync(apiClient, processKey, null, $"scriptjs-{host.RunId}");
+		var instanceId = await StartProcessAsync(apiClient, processKey, null, $"scriptjs-{host.RunId}");
 
-        await WaitForInstanceStateAsync(instanceId, "Completed");
+		await WaitForInstanceStateAsync(instanceId, "Completed");
 
-        var history = await GetHistoryAsync(instanceId);
-        Assert.Contains(history, e => EventHasElementId(e, "scr") && IsEventType(e, "SCRIPT_TASK_COMPLETED"));
-    }
+		var history = await GetHistoryAsync(instanceId);
+		Assert.Contains(history, e => EventHasElementId(e, "scr") && IsEventType(e, "SCRIPT_TASK_COMPLETED"));
+	}
 
-    // ---- helpers ----
+	// ---- helpers ----
 
-    private static string BuildJavaScriptScriptTaskBpmn(string processKey)
-    {
-        return $$"""
+	private static string BuildJavaScriptScriptTaskBpmn(string processKey)
+	{
+		return $$"""
             <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
                          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                          xmlns:vertex="http://vertexbpmn.dev/schema"
@@ -106,11 +106,11 @@ public sealed partial class LocalStudioInfrastructureTests
               </process>
             </definitions>
             """;
-    }
+	}
 
-    private static string BuildScriptTaskBpmn(string processKey)
-    {
-        return $$"""
+	private static string BuildScriptTaskBpmn(string processKey)
+	{
+		return $$"""
             <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
                          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                          xmlns:vertex="http://vertexbpmn.dev/schema"
@@ -128,11 +128,11 @@ public sealed partial class LocalStudioInfrastructureTests
               </process>
             </definitions>
             """;
-    }
+	}
 
-    private static string BuildServiceTaskBpmn(string processKey)
-    {
-        return $$"""
+	private static string BuildServiceTaskBpmn(string processKey)
+	{
+		return $$"""
             <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
                          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                          xmlns:vertex="http://vertexbpmn.dev/schema"
@@ -146,5 +146,5 @@ public sealed partial class LocalStudioInfrastructureTests
               </process>
             </definitions>
             """;
-    }
+	}
 }

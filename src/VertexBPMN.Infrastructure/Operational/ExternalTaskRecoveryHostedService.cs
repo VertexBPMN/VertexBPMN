@@ -29,9 +29,16 @@ public sealed class ExternalTaskRecoveryHostedService(
                     var runtime = scope.ServiceProvider.GetRequiredService<IProcessExecutionRuntime>();
                     var recovered = await recovery.RecoverAsync(100, stoppingToken);
                     var continued = await runtime.ProcessExternalTaskContinuationsAsync(100, stoppingToken);
-                    if (recovered.Conflicts + continued.Conflicts == 0) break;
-                    if (attempt < 2) await Task.Delay(TimeSpan.FromMilliseconds(100), stoppingToken);
-                }
+                    if (recovered.Conflicts + continued.Conflicts == 0)
+					{
+						break;
+					}
+
+					if (attempt < 2)
+					{
+						await Task.Delay(TimeSpan.FromMilliseconds(100), stoppingToken);
+					}
+				}
                 consecutiveFailures = 0;
                 await Task.Delay(PollInterval, stoppingToken);
             }

@@ -1,6 +1,6 @@
 using System.Text;
-using Microsoft.AspNetCore.DataProtection;
 using Azure.Identity;
+using Microsoft.AspNetCore.DataProtection;
 using Xunit;
 
 namespace VertexBPMN.Tests.Acceptance;
@@ -15,56 +15,55 @@ namespace VertexBPMN.Tests.Acceptance;
 /// </summary>
 public sealed class AzureDataProtectionKeyRingAcceptanceTests
 {
-    private const string Category = "AzureKeyRingAcceptance";
+	private const string Category = "AzureKeyRingAcceptance";
 
-    // Full blob URI, e.g. https://<your-storage>.blob.core.windows.net/dataprotection-api/keys.xml
-    private static string BlobUri =>
-        Environment.GetEnvironmentVariable("VERTEXBPMN_TEST_AZURE_DP_BLOB_URI") ?? "";
+	// Full blob URI, e.g. https://<your-storage>.blob.core.windows.net/dataprotection-api/keys.xml
+	private static string BlobUri =>
+		Environment.GetEnvironmentVariable("VERTEXBPMN_TEST_AZURE_DP_BLOB_URI") ?? "";
 
-    // Full key identifier, e.g. https://<your-keyvault>.vault.azure.net/keys/dataprotection-key/<version>
-    private static string KeyIdentifier =>
-        Environment.GetEnvironmentVariable("VERTEXBPMN_TEST_AZURE_DP_KEY_ID") ?? "";
+	// Full key identifier, e.g. https://<your-keyvault>.vault.azure.net/keys/dataprotection-key/<version>
+	private static string KeyIdentifier =>
+		Environment.GetEnvironmentVariable("VERTEXBPMN_TEST_AZURE_DP_KEY_ID") ?? "";
 
-    private static bool AzureConfigured =>
-        !string.IsNullOrWhiteSpace(BlobUri) && !string.IsNullOrWhiteSpace(KeyIdentifier);
+	private static bool AzureConfigured =>
+		!string.IsNullOrWhiteSpace(BlobUri) && !string.IsNullOrWhiteSpace(KeyIdentifier);
 
-    private static IDataProtectionProvider BuildProvider(string blobUri, string keyId)
-    {
-        var credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions
-        {
-            ExcludeSharedTokenCacheCredential = true,
-            ExcludeVisualStudioCredential = true,
-            ExcludeVisualStudioCodeCredential = true,
-            ExcludeInteractiveBrowserCredential = true,
-        });
-        return DataProtectionProvider.Create(
-            new System.IO.DirectoryInfo(Path.Combine(Path.GetTempPath(), "vbpn-dp-" + Guid.NewGuid().ToString("N"))),
-            builder =>
-            {
-                builder.SetApplicationName("VertexBPMN.Acceptance");
-                builder.PersistKeysToAzureBlobStorage(new Uri(blobUri), credential);
-                builder.ProtectKeysWithAzureKeyVault(new Uri(keyId), credential);
-            });
-    }
+	private static IDataProtectionProvider BuildProvider(string blobUri, string keyId)
+	{
+		var credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions
+		{
+			ExcludeVisualStudioCredential = true,
+			ExcludeVisualStudioCodeCredential = true,
+			ExcludeInteractiveBrowserCredential = true,
+		});
+		return DataProtectionProvider.Create(
+			new System.IO.DirectoryInfo(Path.Combine(Path.GetTempPath(), "vbpn-dp-" + Guid.NewGuid().ToString("N"))),
+			builder =>
+			{
+				builder.SetApplicationName("VertexBPMN.Acceptance");
+				builder.PersistKeysToAzureBlobStorage(new Uri(blobUri), credential);
+				builder.ProtectKeysWithAzureKeyVault(new Uri(keyId), credential);
+			});
+	}
 
-    [Fact]
-    [Trait("Category", Category)]
-    public async Task Azure_Blob_KeyVault_RoundTrips_And_Uses_Shared_Ring()
-    {
-        Assert.SkipUnless(AzureConfigured, "Azure Key Vault + Blob configured via VERTEXBPMN_TEST_AZURE_DP_BLOB_URI.");
-        var secret = "p4.2 secret payload " + Guid.NewGuid().ToString("N");
+	[Fact]
+	[Trait("Category", Category)]
+	public async Task Azure_Blob_KeyVault_RoundTrips_And_Uses_Shared_Ring()
+	{
+		Assert.SkipUnless(AzureConfigured, "Azure Key Vault + Blob configured via VERTEXBPMN_TEST_AZURE_DP_BLOB_URI.");
+		var secret = "p4.2 secret payload " + Guid.NewGuid().ToString("N");
 
-        // Erste Instanz: erzeugt (falls nötig) und liest den Key-Ring aus dem Azure-Blob,
-        // Schlüssel mit dem Key-Vault-Key entschlüsselt (Managed Identity).
-        var p1 = BuildProvider(BlobUri, KeyIdentifier);
-        var p1Bytes = p1.CreateProtector("P4.2.Acceptance").Protect(Encoding.UTF8.GetBytes(secret));
+		// Erste Instanz: erzeugt (falls nötig) und liest den Key-Ring aus dem Azure-Blob,
+		// Schlüssel mit dem Key-Vault-Key entschlüsselt (Managed Identity).
+		var p1 = BuildProvider(BlobUri, KeyIdentifier);
+		var p1Bytes = p1.CreateProtector("P4.2.Acceptance").Protect(Encoding.UTF8.GetBytes(secret));
 
-        // Zweite Instanz über denselben Blob-Ring: muss denselben Schlüssel verwenden und
-        // den Klartext wiederherstellen. Beweist, dass der Ring in Azure persistiert und
-        // MI-aufgelöst wird (kein lokaler Filesystem-Key-Ring).
-        var p2 = BuildProvider(BlobUri, KeyIdentifier);
-        var recovered = Encoding.UTF8.GetString(p2.CreateProtector("P4.2.Acceptance").Unprotect(p1Bytes));
+		// Zweite Instanz über denselben Blob-Ring: muss denselben Schlüssel verwenden und
+		// den Klartext wiederherstellen. Beweist, dass der Ring in Azure persistiert und
+		// MI-aufgelöst wird (kein lokaler Filesystem-Key-Ring).
+		var p2 = BuildProvider(BlobUri, KeyIdentifier);
+		var recovered = Encoding.UTF8.GetString(p2.CreateProtector("P4.2.Acceptance").Unprotect(p1Bytes));
 
-        Assert.Equal(secret, recovered);
-    }
+		Assert.Equal(secret, recovered);
+	}
 }

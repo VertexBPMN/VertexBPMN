@@ -27,12 +27,17 @@ public class ExecutionTokenRepository : IExecutionTokenRepository
     {
         var query = _db.ExecutionTokens.Where(t => t.ProcessInstanceId == processInstanceId);
         await foreach (var token in query.AsAsyncEnumerable().WithCancellation(cancellationToken))
-            yield return token;
-    }
+		{
+			yield return token;
+		}
+	}
 
     public async ValueTask DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var entity = await _db.ExecutionTokens.FindAsync(new object[] { id }, cancellationToken);
-        if (entity != null) _db.ExecutionTokens.Remove(entity);
-    }
+        if (entity != null)
+		{
+			_db.ExecutionTokens.Remove(entity);
+		}
+	}
 }

@@ -1,15 +1,19 @@
 ﻿using System;
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 #pragma warning disable CA1814 // Prefer jagged arrays over multidimensional
 
-namespace VertexBPMN.Infrastructure.Persistence.Migrations.ProcessMiningEvents
-{
+namespace VertexBPMN.Infrastructure.Persistence.Migrations.ProcessMiningEvents;
+
     /// <inheritdoc />
+    [SuppressMessage("Meziantou.Analyzer", "MA0048", Justification = "EF migration snapshot / generated code.")]
     public partial class InitialCreate : Migration
     {
+        private static readonly string[] EventColumns = new[] { "Id", "ActivityId", "EventType", "PayloadJson", "ProcessInstanceId", "TaskId", "TenantId", "Timestamp", "UserId" };
+
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -37,7 +41,7 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.ProcessMiningEvents
 
             migrationBuilder.InsertData(
                 table: "Events",
-                columns: new[] { "Id", "ActivityId", "EventType", "PayloadJson", "ProcessInstanceId", "TaskId", "TenantId", "Timestamp", "UserId" },
+                columns: EventColumns,
                 values: new object[,]
                 {
                     { 1, "startEvent1", "PROCESS_STARTED", null, "33333333-3333-3333-3333-333333333333", null, "tenant-default", new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), "system" },
@@ -72,4 +76,3 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.ProcessMiningEvents
                 name: "Events");
         }
     }
-}

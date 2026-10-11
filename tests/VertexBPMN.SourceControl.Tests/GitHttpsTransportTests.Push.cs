@@ -92,7 +92,7 @@ public sealed partial class GitHttpsTransportTests
 		await using var fixture = await HttpsFixture.CreateAsync();
 		await using var durable = await DurablePushFixture.CreateAsync(fixture);
 		fixture.DropPushResponse = true;
-		var receipt = await durable.ExecuteAsync();
+		var receipt = await durable.ExecuteAsync(cancellationToken: PushCancellation);
 		Assert.Equal(durable.Commit.Commit, receipt.Commit);
 		Assert.Equal(1, fixture.PushRequests);
 		Assert.Equal(receipt.Commit, await fixture.RemoteHeadAsync(receipt.WorkBranch));
@@ -110,7 +110,7 @@ public sealed partial class GitHttpsTransportTests
 		{
 			await db.Database.ExecuteSqlRawAsync($"CREATE TRIGGER fail_push_finish BEFORE UPDATE OF State ON SourceControlOperations WHEN NEW.State = {(int)SourceControlOperationState.Pushed} BEGIN SELECT RAISE(ABORT, 'isolated finish failure'); END;", PushCancellation);
 		}
-		await Assert.ThrowsAnyAsync<Exception>(() => durable.ExecuteAsync());
+		await Assert.ThrowsAnyAsync<Exception>(() => durable.ExecuteAsync(cancellationToken: PushCancellation));
 		Assert.Equal(1, fixture.PushRequests);
 		Assert.Equal(durable.Commit.Commit, await fixture.RemoteHeadAsync(durable.Commit.WorkBranch));
 		await using (var db = durable.Db())
@@ -122,7 +122,7 @@ public sealed partial class GitHttpsTransportTests
 			Assert.Equal(3L, await durable.Store(db).TryClaimAsync(durable.Actor.TenantId, durable.Id, "recovery", DateTimeOffset.UtcNow,
 				TimeSpan.FromMinutes(5), PushCancellation));
 		}
-		var receipt = await durable.ExecuteAsync("recovery", 3);
+		var receipt = await durable.ExecuteAsync("recovery", 3, cancellationToken: PushCancellation);
 		Assert.Equal(durable.Commit.Commit, receipt.Commit);
 		Assert.Equal(1, fixture.PushRequests);
 	}
@@ -135,7 +135,7 @@ public sealed partial class GitHttpsTransportTests
 		var calls = 0;
 		Task<IReadOnlyCollection<string>> Resolve(CancellationToken _) => Task.FromResult<IReadOnlyCollection<string>>(
 			Interlocked.Increment(ref calls) == 1 ? ["Admin"] : ["ReadOnly"]);
-		var error = await Assert.ThrowsAsync<SourceControlSecurityException>(() => durable.ExecuteAsync(resolve: Resolve));
+		var error = await Assert.ThrowsAsync<SourceControlSecurityException>(() => durable.ExecuteAsync(resolve: Resolve, cancellationToken: PushCancellation));
 		Assert.Equal(SourceControlErrorCode.Forbidden, error.Code);
 		Assert.Equal(0, fixture.PushRequests);
 		await using var db = durable.Db();
@@ -198,7 +198,7 @@ public sealed partial class GitHttpsTransportTests
 			Assert.Equal(2L, await durable.Store(db).TryClaimAsync(durable.Actor.TenantId, durable.Id, "recovered", DateTimeOffset.UtcNow,
 				TimeSpan.FromMinutes(5), PushCancellation));
 		}
-		var recovered = await durable.RunClaimedAsync("recovered", 2);
+		var recovered = await durable.RunClaimedAsync("recovered", 2, cancellationToken: PushCancellation);
 		Assert.Equal(SourceControlOperationState.Pushed, recovered.State);
 		Assert.Equal(durable.Commit.Commit, recovered.Receipt!.Commit);
 		Assert.Equal(1, fixture.PushRequests);
@@ -221,7 +221,7 @@ public sealed partial class GitHttpsTransportTests
 			Assert.Equal(3L, await store.TryClaimAsync(durable.Actor.TenantId, durable.Id, "uncertain", DateTimeOffset.UtcNow,
 				TimeSpan.FromMinutes(5), PushCancellation));
 		}
-		var outcome = await durable.RunClaimedAsync("uncertain", 3);
+		var outcome = await durable.RunClaimedAsync("uncertain", 3, cancellationToken: PushCancellation);
 		Assert.Equal(SourceControlOperationState.ResultUnknown, outcome.State);
 		Assert.Equal(0, fixture.PushRequests);
 		Assert.Null(outcome.Receipt);
@@ -234,7 +234,7 @@ public sealed partial class GitHttpsTransportTests
 		await using var durable = await DurablePushFixture.CreateAsync(fixture);
 		var concurrent = await fixture.RemoteHeadAsync("master");
 		fixture.BeforeReceivePack = () => fixture.SetRemoteHeadAsync(durable.Commit.WorkBranch, concurrent);
-		var outcome = await durable.RunClaimedAsync();
+		var outcome = await durable.RunClaimedAsync(cancellationToken: PushCancellation);
 		Assert.True(outcome.State == SourceControlOperationState.Conflict, $"{outcome.State}; error: {outcome.Error}; rejection: {fixture.ReceiveRejection}");
 		Assert.Equal(SourceControlErrorCode.RevisionConflict, outcome.Error);
 		Assert.Equal(concurrent, await fixture.RemoteHeadAsync(durable.Commit.WorkBranch));
@@ -300,7 +300,7 @@ public sealed partial class GitHttpsTransportTests
 
 		internal async Task<PushReceipt> ExecuteAsync(string worker = "push", long fence = 1,
 			Func<CancellationToken, Task<IReadOnlyCollection<string>>>? resolve = null,
-			CancellationToken cancellationToken = default, SourceControlPushExecutor? executor = null)
+			SourceControlPushExecutor? executor = null, CancellationToken cancellationToken = default)
 		{
 			if (cancellationToken == default)
 			{
@@ -338,7 +338,7 @@ public sealed partial class GitHttpsTransportTests
 				.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
 			return await new SourceControlClaimedPushRunner(services.GetRequiredService<IServiceScopeFactory>()).RunPreparedAsync(
 				Actor, Id, worker, fence, _ => Task.FromResult<IReadOnlyCollection<string>>(["Admin"]),
-				(executor, token) => ExecuteAsync(worker, fence, cancellationToken: token, executor: executor), TimeSpan.FromSeconds(30), cancellationToken);
+				(executor, token) => ExecuteAsync(worker, fence, executor: executor, cancellationToken: token), TimeSpan.FromSeconds(30), cancellationToken);
 		}
 
 		// The enclosing HTTPS fixture owns this isolated root, including the DB.
@@ -347,12 +347,12 @@ public sealed partial class GitHttpsTransportTests
 
 	private sealed class PushNoRemoteCredentials : ICredentialService
 	{
-		public Task<IReadOnlyList<CredentialMetadata>> ListAsync(string t, CancellationToken c = default) => throw new InvalidOperationException();
-		public Task<CredentialMetadata?> GetAsync(string t, string i, CancellationToken c = default) => throw new InvalidOperationException();
-		public Task<CredentialMetadata> CreateAsync(string t, CredentialWriteRequest r, CancellationToken c = default) => throw new InvalidOperationException();
-		public Task<bool> UpdateMetadataAsync(string t, string i, CredentialMetadataUpdate r, CancellationToken c = default) => throw new InvalidOperationException();
-		public Task<bool> RotateSecretAsync(string t, string i, CredentialSecretRotation r, CancellationToken c = default) => throw new InvalidOperationException();
-		public Task<bool> DeleteAsync(string t, string i, CancellationToken c = default) => throw new InvalidOperationException();
-		public Task<string?> ResolveSecretAsync(string t, string i, string k, CancellationToken c = default) => throw new InvalidOperationException();
+		public Task<IReadOnlyList<CredentialMetadata>> ListAsync(string tenantId, CancellationToken cancellationToken = default) => throw new InvalidOperationException();
+		public Task<CredentialMetadata?> GetAsync(string tenantId, string id, CancellationToken cancellationToken = default) => throw new InvalidOperationException();
+		public Task<CredentialMetadata> CreateAsync(string tenantId, CredentialWriteRequest request, CancellationToken cancellationToken = default) => throw new InvalidOperationException();
+		public Task<bool> UpdateMetadataAsync(string tenantId, string id, CredentialMetadataUpdate request, CancellationToken cancellationToken = default) => throw new InvalidOperationException();
+		public Task<bool> RotateSecretAsync(string tenantId, string id, CredentialSecretRotation request, CancellationToken cancellationToken = default) => throw new InvalidOperationException();
+		public Task<bool> DeleteAsync(string tenantId, string id, CancellationToken cancellationToken = default) => throw new InvalidOperationException();
+		public Task<string?> ResolveSecretAsync(string tenantId, string id, string key, CancellationToken cancellationToken = default) => throw new InvalidOperationException();
 	}
 }

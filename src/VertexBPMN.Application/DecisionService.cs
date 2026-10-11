@@ -54,7 +54,7 @@ public class DecisionService : IDecisionService
 			if (definition == null)
 			{
 				var msg = $"Decision definition '{decisionKey}' not found for tenant '{tenantId ?? "default"}'";
-				_logger.LogWarning(msg);
+				_logger.LogWarning("Decision definition {DecisionKey} not found for tenant {TenantId}", decisionKey, tenantId ?? "default");
 				await RecordInstanceAsync(new DecisionInstance(
 					evaluationId, decisionKey, tenantId, evaluationTime,
 					variables.ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal),
@@ -73,7 +73,6 @@ public class DecisionService : IDecisionService
 		}
 		catch (Exception ex) when (ex is not KeyNotFoundException)
 		{
-			_logger.LogError(ex, "Error evaluating decision {DecisionKey}", decisionKey);
 			await RecordInstanceAsync(new DecisionInstance(
 				evaluationId, decisionKey, tenantId, evaluationTime,
 				variables.ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal),
@@ -92,8 +91,6 @@ public class DecisionService : IDecisionService
 		ArgumentException.ThrowIfNullOrWhiteSpace(name);
 		ArgumentException.ThrowIfNullOrWhiteSpace(dmnXml);
 
-		try
-		{
 			if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug))
 			{
 				_logger.LogDebug("Deploying decision {DecisionKey} for tenant {TenantId}", decisionKey, tenantId ?? "default");
@@ -108,25 +105,13 @@ public class DecisionService : IDecisionService
 			{
 				_logger.LogInformation("Successfully deployed validated DMN decision graph {DecisionKey}", decisionKey);
 			}
-		}
-		catch (Exception ex)
-		{
-			_logger.LogError(ex, "Failed to deploy decision {DecisionKey}", decisionKey);
-			throw;
-		}
-	}
-
-	private static async ValueTask RecordInstanceAsync(DecisionInstance instance, CancellationToken ct, IDecisionRepository? repo = null)
-	{
-		if (repo != null)
-		{
-			await repo.AddInstanceAsync(instance, ct);
-			await repo.SaveChangesAsync(ct);
-		}
 	}
 
 	private async ValueTask RecordInstanceAsync(DecisionInstance instance, CancellationToken ct)
-		=> await RecordInstanceAsync(instance, ct, _repository);
+	{
+		await _repository.AddInstanceAsync(instance, ct);
+		await _repository.SaveChangesAsync(ct);
+	}
 
 	private static DecisionResult EvaluateDecisionTable(DecisionDefinition definition, IDictionary<string, object> variables)
 	{

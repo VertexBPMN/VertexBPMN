@@ -8,58 +8,59 @@ namespace VertexBPMN.Tests.Parsing.Roundtrip;
 /// </summary>
 public class StrictPhaseBParserTests
 {
-    private static BpmnParser CreateStrict(BpmnParserOptions? opt = null)
-        => new(opt ?? new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict, PreserveUnknownExtensions = true, ParseDiagramInterchange = true });
+	private static BpmnParser CreateStrict(BpmnParserOptions? opt = null)
+		=> new(opt ?? new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict, PreserveUnknownExtensions = true, ParseDiagramInterchange = true });
 
-    [Fact]
-    public async Task Missing_Id_On_FlowNode_Produces_Diagnostic()
-    {
-        const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL'>
+	[Fact]
+	public async Task Missing_Id_On_FlowNode_Produces_Diagnostic()
+	{
+		const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <bpmn:process id='p1'>
     <bpmn:userTask name='NoIdTask' />
   </bpmn:process>
 </bpmn:definitions>";
-        var model = await CreateStrict().ParseAsync(xml, TestContext.Current.CancellationToken);
-        Assert.Contains(model.Diagnostics, d => d.Contains("Missing id on userTask"));
-    }
+		var model = await CreateStrict().ParseAsync(xml, TestContext.Current.CancellationToken);
+		Assert.NotNull(model.Diagnostics);
+		Assert.Contains(model.Diagnostics, d => d.Contains("Missing id on userTask", StringComparison.Ordinal));
+	}
 
-    [Fact]
-    public async Task CaptureArtifacts_False_Disables_RawArtifacts()
-    {
-        const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL'>
+	[Fact]
+	public async Task CaptureArtifacts_False_Disables_RawArtifacts()
+	{
+		const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <bpmn:process id='p1'>
     <bpmn:textAnnotation id='ta1'>
       <bpmn:text>A</bpmn:text>
     </bpmn:textAnnotation>
   </bpmn:process>
 </bpmn:definitions>";
-        var options = new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict, PreserveUnknownExtensions = true, CaptureArtifacts = false };
-        var model = await CreateStrict(options).ParseAsync(xml, TestContext.Current.CancellationToken);
-        Assert.NotNull(model.RawMetadata); // still strict
-        Assert.True(model.RawMetadata!.RawArtifacts == null || model.RawMetadata.RawArtifacts.Count == 0);
-    }
+		var options = new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict, PreserveUnknownExtensions = true, CaptureArtifacts = false };
+		var model = await CreateStrict(options).ParseAsync(xml, TestContext.Current.CancellationToken);
+		Assert.NotNull(model.RawMetadata); // still strict
+		Assert.True(model.RawMetadata.RawArtifacts == null || model.RawMetadata.RawArtifacts.Count == 0);
+	}
 
-    [Fact]
-    public async Task CaptureArtifacts_True_Captures_RawArtifacts()
-    {
-        const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL'>
+	[Fact]
+	public async Task CaptureArtifacts_True_Captures_RawArtifacts()
+	{
+		const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <bpmn:process id='p1'>
     <bpmn:textAnnotation id='ta1'>
       <bpmn:text>A</bpmn:text>
     </bpmn:textAnnotation>
   </bpmn:process>
 </bpmn:definitions>";
-        var options = new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict, PreserveUnknownExtensions = true, CaptureArtifacts = true };
-        var model = await CreateStrict(options).ParseAsync(xml, TestContext.Current.CancellationToken);
-        Assert.NotNull(model.RawMetadata);
-        Assert.NotNull(model.RawMetadata!.RawArtifacts);
-        Assert.Single(model.RawMetadata.RawArtifacts!);
-    }
+		var options = new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict, PreserveUnknownExtensions = true, CaptureArtifacts = true };
+		var model = await CreateStrict(options).ParseAsync(xml, TestContext.Current.CancellationToken);
+		Assert.NotNull(model.RawMetadata);
+		Assert.NotNull(model.RawMetadata.RawArtifacts);
+		Assert.Single(model.RawMetadata.RawArtifacts);
+	}
 
-    [Fact]
-    public async Task CaptureDiRaw_False_Suppresses_RawDiRoot()
-    {
-        const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL' xmlns:bpmndi='http://www.omg.org/spec/BPMN/20100524/DI' xmlns:omgdc='http://www.omg.org/spec/DD/20100524/DC' xmlns:omgdi='http://www.omg.org/spec/DD/20100524/DI'>
+	[Fact]
+	public async Task CaptureDiRaw_False_Suppresses_RawDiRoot()
+	{
+		const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL' xmlns:bpmndi='http://www.omg.org/spec/BPMN/20100524/DI' xmlns:omgdc='http://www.omg.org/spec/DD/20100524/DC' xmlns:omgdi='http://www.omg.org/spec/DD/20100524/DI'>
   <bpmn:process id='p1'>
     <bpmn:startEvent id='s1'/>
   </bpmn:process>
@@ -71,12 +72,12 @@ public class StrictPhaseBParserTests
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>
 </bpmn:definitions>";
-        var options = new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict, PreserveUnknownExtensions = true, ParseDiagramInterchange = true, CaptureDiRaw = false };
-        var model = await CreateStrict(options).ParseAsync(xml, TestContext.Current.CancellationToken);
-        Assert.NotNull(model.RawMetadata);
-        Assert.Null(model.RawMetadata!.RawDiRoot);
-        // Shapes still parsed because ParseDiagramInterchange true
-        Assert.NotNull(model.Shapes);
-        Assert.Single(model.Shapes!);
-    }
+		var options = new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict, PreserveUnknownExtensions = true, ParseDiagramInterchange = true, CaptureDiRaw = false };
+		var model = await CreateStrict(options).ParseAsync(xml, TestContext.Current.CancellationToken);
+		Assert.NotNull(model.RawMetadata);
+		Assert.Null(model.RawMetadata.RawDiRoot);
+		// Shapes still parsed because ParseDiagramInterchange true
+		Assert.NotNull(model.Shapes);
+		Assert.Single(model.Shapes);
+	}
 }

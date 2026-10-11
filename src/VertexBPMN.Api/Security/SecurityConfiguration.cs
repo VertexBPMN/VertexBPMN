@@ -9,270 +9,160 @@ using System.Security.Cryptography;
 using VertexBPMN.ServiceDefaults.Security;
 
 namespace VertexBPMN.Api.Security;
-
 /// <summary>
 /// Production-Grade Security Configuration
 /// Olympic-level feature: Production-Grade Features - Security
 /// </summary>
-public static class SecurityConfiguration
+internal static class SecurityConfiguration
 {
-    public static IServiceCollection AddProductionSecurity(this IServiceCollection services, IConfiguration configuration)
-    {
-        var authority = configuration["Jwt:Authority"];
-        var issuer = configuration["Jwt:Issuer"];
-        var audience = configuration["Jwt:Audience"];
-        var secretKey = configuration["Jwt:SecretKey"];
-        var isDevelopment = string.Equals(configuration["OperationalMode"], "Development", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(configuration["ASPNETCORE_ENVIRONMENT"], "Development", StringComparison.OrdinalIgnoreCase);
-        var isOidcTest = string.Equals(configuration["OperationalMode"], "OidcTest", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(configuration["ASPNETCORE_ENVIRONMENT"], "OidcTest", StringComparison.OrdinalIgnoreCase);
-        var useDevelopmentApiKey = isDevelopment && configuration.GetValue<bool>("Jwt:UseDevelopmentApiKey");
-        var requireHttpsMetadata = configuration.GetValue<bool?>("Jwt:RequireHttpsMetadata") ?? !isDevelopment;
-        var clockSkewSeconds = configuration.GetValue<int?>("Jwt:ClockSkewSeconds") ?? 30;
-        var metadataRefreshIntervalSeconds = configuration.GetValue<int?>("Jwt:MetadataRefreshIntervalSeconds") ?? 30;
-        var blockOnMetadataRefresh = configuration.GetValue<bool?>("Jwt:BlockOnMetadataRefresh") ?? true;
-        var backchannelAuthority = configuration["Jwt:BackchannelAuthority"];
-        LocalOidcBackchannelHandler.Validate(backchannelAuthority, authority, isOidcTest);
+	public static IServiceCollection AddProductionSecurity(this IServiceCollection services, IConfiguration configuration)
+	{
+		var authority = configuration["Jwt:Authority"];
+		var issuer = configuration["Jwt:Issuer"];
+		var audience = configuration["Jwt:Audience"];
+		var secretKey = configuration["Jwt:SecretKey"];
+		var isDevelopment = string.Equals(configuration["OperationalMode"], "Development", StringComparison.OrdinalIgnoreCase) || string.Equals(configuration["ASPNETCORE_ENVIRONMENT"], "Development", StringComparison.OrdinalIgnoreCase);
+		var isOidcTest = string.Equals(configuration["OperationalMode"], "OidcTest", StringComparison.OrdinalIgnoreCase) || string.Equals(configuration["ASPNETCORE_ENVIRONMENT"], "OidcTest", StringComparison.OrdinalIgnoreCase);
+		var useDevelopmentApiKey = isDevelopment && configuration.GetValue<bool>("Jwt:UseDevelopmentApiKey");
+		var requireHttpsMetadata = configuration.GetValue<bool?>("Jwt:RequireHttpsMetadata") ?? !isDevelopment;
+		var clockSkewSeconds = configuration.GetValue<int?>("Jwt:ClockSkewSeconds") ?? 30;
+		var metadataRefreshIntervalSeconds = configuration.GetValue<int?>("Jwt:MetadataRefreshIntervalSeconds") ?? 30;
+		var blockOnMetadataRefresh = configuration.GetValue<bool?>("Jwt:BlockOnMetadataRefresh") ?? true;
+		var backchannelAuthority = configuration["Jwt:BackchannelAuthority"];
+		LocalOidcBackchannelHandler.Validate(backchannelAuthority, authority, isOidcTest);
+		if (clockSkewSeconds is < 0 or > 300)
+		{
+			throw new InvalidOperationException("Jwt:ClockSkewSeconds must be between 0 and 300 seconds.");
+		}
 
-        if (clockSkewSeconds is < 0 or > 300)
-            throw new InvalidOperationException("Jwt:ClockSkewSeconds must be between 0 and 300 seconds.");
-        if (metadataRefreshIntervalSeconds is < 1 or > 300)
-            throw new InvalidOperationException("Jwt:MetadataRefreshIntervalSeconds must be between 1 and 300 seconds.");
+		if (metadataRefreshIntervalSeconds is < 1 or > 300)
+		{
+			throw new InvalidOperationException("Jwt:MetadataRefreshIntervalSeconds must be between 1 and 300 seconds.");
+		}
 
-        if (!requireHttpsMetadata
-            && !isDevelopment
-            && !(isOidcTest && IsLoopbackAuthority(authority)))
-        {
-            throw new InvalidOperationException(
-                "Jwt:RequireHttpsMetadata may be disabled outside Development only for the OidcTest profile with a loopback Authority.");
-        }
+		if (!requireHttpsMetadata && !isDevelopment && !(isOidcTest && IsLoopbackAuthority(authority)))
+		{
+			throw new InvalidOperationException("Jwt:RequireHttpsMetadata may be disabled outside Development only for the OidcTest profile with a loopback Authority.");
+		}
 
-        if (string.IsNullOrWhiteSpace(audience))
-            throw new InvalidOperationException("Jwt:Audience must be configured.");
+		if (string.IsNullOrWhiteSpace(audience))
+		{
+			throw new InvalidOperationException("Jwt:Audience must be configured.");
+		}
 
-        if (string.IsNullOrWhiteSpace(authority) && string.IsNullOrWhiteSpace(secretKey))
-        {
-            if (!isDevelopment)
-                throw new InvalidOperationException("Configure Jwt:Authority or Jwt:SecretKey before starting the API outside Development.");
+		if (string.IsNullOrWhiteSpace(authority) && string.IsNullOrWhiteSpace(secretKey))
+		{
+			if (!isDevelopment)
+			{
+				throw new InvalidOperationException("Configure Jwt:Authority or Jwt:SecretKey before starting the API outside Development.");
+			}
 
-            secretKey = "development-only-vertexbpmn-signing-key-32-bytes!";
-        }
+			secretKey = "development-only-vertexbpmn-signing-key-32-bytes!";
+		}
 
-        if (string.IsNullOrWhiteSpace(authority) && Encoding.UTF8.GetByteCount(secretKey!) < 32)
-            throw new InvalidOperationException("Jwt:SecretKey must contain at least 32 bytes.");
+		if (string.IsNullOrWhiteSpace(authority) && Encoding.UTF8.GetByteCount(secretKey!) < 32)
+		{
+			throw new InvalidOperationException("Jwt:SecretKey must contain at least 32 bytes.");
+		}
 
-        // IdentityModel 8 refreshes unknown signing keys in the background by default. That
-        // makes the first request after an IdP key rotation fail even when the new key is
-        // already published. Blocking only the rate-limited metadata refresh preserves the
-        // rotation overlap window; operators can opt out if availability is preferred over
-        // a seamless first request while their identity provider is unavailable.
-        AppContext.SetSwitch(
-            "Switch.Microsoft.IdentityModel.UpdateConfigAsBlocking",
-            blockOnMetadataRefresh);
+		// IdentityModel 8 refreshes unknown signing keys in the background by default. That
+		// makes the first request after an IdP key rotation fail even when the new key is
+		// already published. Blocking only the rate-limited metadata refresh preserves the
+		// rotation overlap window; operators can opt out if availability is preferred over
+		// a seamless first request while their identity provider is unavailable.
+		AppContext.SetSwitch("Switch.Microsoft.IdentityModel.UpdateConfigAsBlocking", blockOnMetadataRefresh);
+		ConfigureAuthentication(services, new AuthenticationSettings(authority, issuer, audience, secretKey, useDevelopmentApiKey, requireHttpsMetadata, isOidcTest, clockSkewSeconds, metadataRefreshIntervalSeconds, backchannelAuthority));
+		ConfigureAuthorizationAndCors(services, configuration);
+		// Security Headers
+		return services;
+	}
 
-        services.AddAuthentication(options =>
-            {
-                options.DefaultAuthenticateScheme = useDevelopmentApiKey ? "ApiKey" : JwtBearerDefaults.AuthenticationScheme;
-                options.DefaultChallengeScheme = options.DefaultAuthenticateScheme;
-            })
-            .AddJwtBearer(options =>
-            {
-                options.MapInboundClaims = false;
-                options.RequireHttpsMetadata = requireHttpsMetadata;
-                if (!string.IsNullOrWhiteSpace(backchannelAuthority))
-                    options.BackchannelHttpHandler = new LocalOidcBackchannelHandler(authority!, backchannelAuthority,
-                        isOidcTest, new HttpClientHandler());
-                options.RefreshOnIssuerKeyNotFound = true;
-                options.RefreshInterval = TimeSpan.FromSeconds(metadataRefreshIntervalSeconds);
-                if (!string.IsNullOrWhiteSpace(authority))
-                    options.Authority = authority;
+	private static readonly string[] DefaultCorsOrigins = ["https://localhost:5001"];
 
-                options.TokenValidationParameters = new TokenValidationParameters
-                {
-                    ValidateIssuer = !string.IsNullOrWhiteSpace(issuer) || !string.IsNullOrWhiteSpace(authority),
-                    ValidateAudience = true,
-                    ValidateLifetime = true,
-                    ValidateIssuerSigningKey = string.IsNullOrWhiteSpace(authority),
-                    ValidIssuer = issuer,
-                    ValidAudience = audience,
-                    IssuerSigningKey = string.IsNullOrWhiteSpace(authority)
-                        ? new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey!))
-                        : null,
-                    NameClaimType = "preferred_username",
-                    RoleClaimType = ClaimTypes.Role,
-                    ClockSkew = TimeSpan.FromSeconds(clockSkewSeconds)
-                };
-                if (!string.IsNullOrWhiteSpace(authority))
-                {
-                    options.Events = new JwtBearerEvents
-                    {
-                        OnTokenValidated = context =>
-                        {
-                            if (!VertexOidcClaims.TryNormalize(context.Principal!, out var error))
-                                context.Fail(error);
-                            return Task.CompletedTask;
-                        }
-                    };
-                }
-            })
-            .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>("ApiKey", _ => { });
+	private sealed record AuthenticationSettings(string? Authority, string? Issuer, string Audience, string? SecretKey, bool UseDevelopmentApiKey, bool RequireHttpsMetadata, bool IsOidcTest, int ClockSkewSeconds, int MetadataRefreshIntervalSeconds, string? BackchannelAuthority);
 
-        // Authorization Policies
-        services.AddAuthorization(options =>
-        {
-            options.FallbackPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
-                .RequireAuthenticatedUser()
-                .Build();
+	private static void ConfigureAuthentication(IServiceCollection services, AuthenticationSettings settings)
+	{
+		services.AddAuthentication(options =>
+		{
+			options.DefaultAuthenticateScheme = settings.UseDevelopmentApiKey ? "ApiKey" : JwtBearerDefaults.AuthenticationScheme;
+			options.DefaultChallengeScheme = options.DefaultAuthenticateScheme;
+		}).AddJwtBearer(options =>
+		{
+			options.MapInboundClaims = false;
+			options.RequireHttpsMetadata = settings.RequireHttpsMetadata;
+			if (!string.IsNullOrWhiteSpace(settings.BackchannelAuthority))
+			{
+				options.BackchannelHttpHandler = new LocalOidcBackchannelHandler(settings.Authority!, settings.BackchannelAuthority, settings.IsOidcTest, new HttpClientHandler());
+			}
 
-            options.AddPolicy("AdminOnly", policy => 
-                policy.RequireClaim(ClaimTypes.Role, "Admin"));
-            
-            options.AddPolicy("ProcessManager", policy => 
-                policy.RequireClaim(ClaimTypes.Role, "Admin", "ProcessManager"));
-            
-            options.AddPolicy("ReadOnly", policy =>
-                policy.RequireClaim(ClaimTypes.Role, "Admin", "ProcessManager", "ReadOnly"));
+			options.RefreshOnIssuerKeyNotFound = true;
+			options.RefreshInterval = TimeSpan.FromSeconds(settings.MetadataRefreshIntervalSeconds);
+			if (!string.IsNullOrWhiteSpace(settings.Authority))
+			{
+				options.Authority = settings.Authority;
+			}
 
-            AddTenantReadOnlyPolicy(options);
+			options.TokenValidationParameters = new TokenValidationParameters
+			{
+				ValidateIssuer = !string.IsNullOrWhiteSpace(settings.Issuer) || !string.IsNullOrWhiteSpace(settings.Authority),
+				ValidateAudience = true,
+				ValidateLifetime = true,
+				ValidateIssuerSigningKey = string.IsNullOrWhiteSpace(settings.Authority),
+				ValidIssuer = settings.Issuer,
+				ValidAudience = settings.Audience,
+				IssuerSigningKey = string.IsNullOrWhiteSpace(settings.Authority) ? new SymmetricSecurityKey(Encoding.UTF8.GetBytes(settings.SecretKey!)) : null,
+				NameClaimType = "preferred_username",
+				RoleClaimType = ClaimTypes.Role,
+				ClockSkew = TimeSpan.FromSeconds(settings.ClockSkewSeconds)
+			};
+			if (!string.IsNullOrWhiteSpace(settings.Authority))
+			{
+				options.Events = new JwtBearerEvents
+				{
+					OnTokenValidated = context =>
+					{
+						if (!VertexOidcClaims.TryNormalize(context.Principal!, out var error))
+						{
+							context.Fail(error);
+						}
 
-            options.AddPolicy("ProcessViewer", policy =>
-                policy.RequireClaim(ClaimTypes.Role, "Admin", "ProcessManager", "ReadOnly"));
+						return Task.CompletedTask;
+					}
+				};
+			}
+		}).AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>("ApiKey", _ =>
+		{
+		});
+	}
 
-            options.AddPolicy("ApiKeyRequired", policy =>
-                policy.RequireAuthenticatedUser().AddAuthenticationSchemes("ApiKey"));
+	private static void ConfigureAuthorizationAndCors(IServiceCollection services, IConfiguration configuration)
+	{
+		// Authorization Policies
+		services.AddAuthorization(options =>
+		{
+			options.FallbackPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();
+			options.AddPolicy("AdminOnly", policy => policy.RequireClaim(ClaimTypes.Role, "Admin"));
+			options.AddPolicy("ProcessManager", policy => policy.RequireClaim(ClaimTypes.Role, "Admin", "ProcessManager"));
+			options.AddPolicy("ReadOnly", policy => policy.RequireClaim(ClaimTypes.Role, "Admin", "ProcessManager", "ReadOnly"));
+			AddTenantReadOnlyPolicy(options);
+			options.AddPolicy("ProcessViewer", policy => policy.RequireClaim(ClaimTypes.Role, "Admin", "ProcessManager", "ReadOnly"));
+			options.AddPolicy("ApiKeyRequired", policy => policy.RequireAuthenticatedUser().AddAuthenticationSchemes("ApiKey"));
+			options.AddPolicy("ExternalTaskWorker", policy => policy.AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme).RequireAuthenticatedUser().RequireRole("ExternalTaskWorker").RequireClaim(VertexOidcClaims.SubjectClaimType).RequireClaim(VertexOidcClaims.TenantClaimType).RequireClaim(VertexOidcClaims.ExternalTaskTopicClaimType));
+		});
+		// CORS
+		services.AddCors(options =>
+		{
+			options.AddPolicy("Production", policy =>
+			{
+				policy.WithOrigins(configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? DefaultCorsOrigins).AllowAnyMethod().AllowAnyHeader().AllowCredentials();
+			});
+		});
+	}
 
-            options.AddPolicy("ExternalTaskWorker", policy => policy
-                .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
-                .RequireAuthenticatedUser()
-                .RequireRole("ExternalTaskWorker")
-                .RequireClaim(VertexOidcClaims.SubjectClaimType)
-                .RequireClaim(VertexOidcClaims.TenantClaimType)
-                .RequireClaim(VertexOidcClaims.ExternalTaskTopicClaimType));
-        });
-
-        // CORS
-        services.AddCors(options =>
-        {
-            options.AddPolicy("Production", policy =>
-            {
-                policy.WithOrigins(configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? new[] { "https://localhost:5001" })
-                      .AllowAnyMethod()
-                      .AllowAnyHeader()
-                      .AllowCredentials();
-            });
-        });
-
-        // Security Headers
-
-        return services;
-    }
-
-    private static bool IsLoopbackAuthority(string? authority) =>
-        Uri.TryCreate(authority, UriKind.Absolute, out var uri)
-        && uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
-        && uri.IsLoopback;
-
-    public static void AddTenantReadOnlyPolicy(Microsoft.AspNetCore.Authorization.AuthorizationOptions options)
-    {
-        options.AddPolicy("TenantReadOnly", policy => policy
-            .RequireAuthenticatedUser()
-            .RequireClaim(ClaimTypes.Role, "Admin", "ProcessManager", "ReadOnly")
-            .RequireAssertion(context => context.User.IsInRole("Admin") ||
-                !string.IsNullOrWhiteSpace(context.User.FindFirstValue("tenant_id"))));
-    }
-}
-
-/// <summary>
-/// API Key Authentication Handler
-/// </summary>
-public class ApiKeyAuthenticationHandler : AuthenticationHandler<AuthenticationSchemeOptions>
-{
-    private const string ApiKeyHeaderName = "X-API-Key";
-    private readonly IConfiguration _configuration;
-
-    public ApiKeyAuthenticationHandler(
-        IOptionsMonitor<AuthenticationSchemeOptions> options,
-        ILoggerFactory logger,
-        UrlEncoder encoder,
-        IConfiguration configuration)
-        : base(options, logger, encoder)
-    {
-        _configuration = configuration;
-    }
-
-    protected override Task<AuthenticateResult> HandleAuthenticateAsync()
-    {
-        if (!Request.Headers.ContainsKey(ApiKeyHeaderName))
-        {
-            return Task.FromResult(AuthenticateResult.Fail("API Key missing"));
-        }
-
-        var apiKey = Request.Headers[ApiKeyHeaderName].FirstOrDefault();
-        var validApiKeys = _configuration.GetSection("ApiKeys").Get<string[]>() ?? Array.Empty<string>();
-
-        if (string.IsNullOrEmpty(apiKey) || !validApiKeys.Any(configuredKey =>
-            CryptographicOperations.FixedTimeEquals(
-                Encoding.UTF8.GetBytes(configuredKey),
-                Encoding.UTF8.GetBytes(apiKey))))
-        {
-            return Task.FromResult(AuthenticateResult.Fail("Invalid API Key"));
-        }
-
-        var claims = new List<Claim>
-        {
-            new(ClaimTypes.Name, "ApiUser"),
-            new(ClaimTypes.Role, "ApiAccess")
-        };
-
-        var isDevelopment = string.Equals(
-                                _configuration["OperationalMode"],
-                                "Development",
-                                StringComparison.OrdinalIgnoreCase)
-                            || string.Equals(
-                                _configuration["ASPNETCORE_ENVIRONMENT"],
-                                "Development",
-                                StringComparison.OrdinalIgnoreCase);
-        if (isDevelopment)
-        {
-            foreach (var role in _configuration
-                         .GetSection("ApiKeyAuthentication:DevelopmentRoles")
-                         .Get<string[]>() ?? Array.Empty<string>())
-            {
-                if (!string.IsNullOrWhiteSpace(role))
-                    claims.Add(new Claim(ClaimTypes.Role, role.Trim()));
-            }
-        }
-
-        var identity = new ClaimsIdentity(claims, Scheme.Name);
-        var principal = new ClaimsPrincipal(identity);
-        var ticket = new AuthenticationTicket(principal, Scheme.Name);
-
-        return Task.FromResult(AuthenticateResult.Success(ticket));
-    }
-}
-
-/// <summary>
-/// Security Headers Middleware
-/// </summary>
-public class SecurityHeadersMiddleware
-{
-    private readonly RequestDelegate _next;
-
-    public SecurityHeadersMiddleware(RequestDelegate next)
-    {
-        _next = next;
-    }
-
-    public async Task InvokeAsync(HttpContext context)
-    {
-        // Security headers
-        context.Response.Headers["X-Content-Type-Options"] = "nosniff";
-        context.Response.Headers["X-Frame-Options"] = "DENY";
-        context.Response.Headers["X-XSS-Protection"] = "1; mode=block";
-        context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
-        context.Response.Headers["Content-Security-Policy"] = "default-src 'self'";
-        context.Response.Headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
-
-        await _next(context);
-    }
+	private static bool IsLoopbackAuthority(string? authority) => Uri.TryCreate(authority, UriKind.Absolute, out var uri) && uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) && uri.IsLoopback;
+	public static void AddTenantReadOnlyPolicy(Microsoft.AspNetCore.Authorization.AuthorizationOptions options)
+	{
+		options.AddPolicy("TenantReadOnly", policy => policy.RequireAuthenticatedUser().RequireClaim(ClaimTypes.Role, "Admin", "ProcessManager", "ReadOnly").RequireAssertion(context => context.User.IsInRole("Admin") || !string.IsNullOrWhiteSpace(context.User.FindFirstValue("tenant_id"))));
+	}
 }

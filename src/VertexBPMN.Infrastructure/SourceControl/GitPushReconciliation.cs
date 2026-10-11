@@ -2,14 +2,6 @@ using VertexBPMN.SourceControl.Abstractions;
 
 namespace VertexBPMN.Infrastructure.SourceControl;
 
-internal enum GitPushReconciliationResult
-{
-	ReadyToPush,
-	Confirmed,
-	Conflict,
-	ResultUnknown
-}
-
 /// <summary>Classifies remote evidence; never authorizes replay of an uncertain write.</summary>
 internal static class GitPushReconciliation
 {

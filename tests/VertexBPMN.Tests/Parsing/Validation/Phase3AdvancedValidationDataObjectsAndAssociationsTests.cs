@@ -5,7 +5,7 @@ namespace VertexBPMN.Tests.Parsing.Validation;
 
 public class Phase3AdvancedValidationDataObjectsAndAssociationsTests
 {
-    private const string MissingRefsXml = """
+	private const string MissingRefsXml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <bpmn:process id="p1">
     <bpmn:startEvent id="start"/>
@@ -24,7 +24,7 @@ public class Phase3AdvancedValidationDataObjectsAndAssociationsTests
 </bpmn:definitions>
 """;
 
-    private const string ValidRefsXml = """
+	private const string ValidRefsXml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <bpmn:process id="p1">
     <bpmn:startEvent id="start"/>
@@ -37,67 +37,70 @@ public class Phase3AdvancedValidationDataObjectsAndAssociationsTests
 </bpmn:definitions>
 """;
 
-    [Fact]
-    public async Task DataObjectAndAssociationRules_Disabled_NoStructuredDiagnostics()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = false
-        }).ParseAsync(MissingRefsXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task DataObjectAndAssociationRules_Disabled_NoStructuredDiagnostics()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = false
+		}).ParseAsync(MissingRefsXml, TestContext.Current.CancellationToken);
 
-        Assert.Null(model.ValidationDiagnostics);
-    }
+		Assert.Null(model.ValidationDiagnostics);
+	}
 
-    [Fact]
-    public async Task MissingReferences_Reported()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = true
-        }).ParseAsync(MissingRefsXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task MissingReferences_Reported()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = true
+		}).ParseAsync(MissingRefsXml, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(model.ValidationDiagnostics);
-        var diags = model.ValidationDiagnostics!;
+		Assert.NotNull(model.ValidationDiagnostics);
+		var diags = model.ValidationDiagnostics;
 
-        // DataObjectReference target missing
-        Assert.Contains(diags, d =>
-            d.Code == "REF-DATAOBJECTREF-TARGET-MISSING" &&
-            d.ElementId == "dorMissing" &&
-            d.Severity == ValidationSeverity.Error);
+		// DataObjectReference target missing
+		Assert.Contains(diags, d =>
+			d.Code == "REF-DATAOBJECTREF-TARGET-MISSING" &&
+			d.ElementId == "dorMissing" &&
+			d.Severity == ValidationSeverity.Error);
 
-        // Association endpoint missing (both endpoints for assoc1)
-        Assert.Contains(diags, d =>
-            d.Code == "REF-ASSOCIATION-ENDPOINT-MISSING" &&
-            d.ElementId == "assoc1" &&
-            d.Message.Contains("sourceRef", System.StringComparison.OrdinalIgnoreCase));
+		// Association endpoint missing (both endpoints for assoc1)
+		Assert.Contains(diags, d =>
+			d.Code == "REF-ASSOCIATION-ENDPOINT-MISSING" &&
+			d.ElementId == "assoc1" &&
+			d.Message.Contains("sourceRef", System.StringComparison.OrdinalIgnoreCase));
 
-        Assert.Contains(diags, d =>
-            d.Code == "REF-ASSOCIATION-ENDPOINT-MISSING" &&
-            d.ElementId == "assoc1" &&
-            d.Message.Contains("targetRef", System.StringComparison.OrdinalIgnoreCase));
+		Assert.Contains(diags, d =>
+			d.Code == "REF-ASSOCIATION-ENDPOINT-MISSING" &&
+			d.ElementId == "assoc1" &&
+			d.Message.Contains("targetRef", System.StringComparison.OrdinalIgnoreCase));
 
-        // Association second (only target missing)
-        Assert.DoesNotContain(diags, d =>
-            d.Code == "REF-ASSOCIATION-ENDPOINT-MISSING" &&
-            d.ElementId == "assoc2" &&
-            d.Message.Contains("sourceRef", System.StringComparison.OrdinalIgnoreCase)); // source is valid
+		// Association second (only target missing)
+		Assert.DoesNotContain(diags, d =>
+			d.Code == "REF-ASSOCIATION-ENDPOINT-MISSING" &&
+			d.ElementId == "assoc2" &&
+			d.Message.Contains("sourceRef", System.StringComparison.OrdinalIgnoreCase)); // source is valid
 
-        Assert.Contains(diags, d =>
-            d.Code == "REF-ASSOCIATION-ENDPOINT-MISSING" &&
-            d.ElementId == "assoc2" &&
-            d.Message.Contains("targetRef", System.StringComparison.OrdinalIgnoreCase));
-    }
+		Assert.Contains(diags, d =>
+			d.Code == "REF-ASSOCIATION-ENDPOINT-MISSING" &&
+			d.ElementId == "assoc2" &&
+			d.Message.Contains("targetRef", System.StringComparison.OrdinalIgnoreCase));
+	}
 
-    [Fact]
-    public async Task AllValid_NoDiagnosticsForTheseRules()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = true
-        }).ParseAsync(ValidRefsXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task AllValid_NoDiagnosticsForTheseRules()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = true
+		}).ParseAsync(ValidRefsXml, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(model.ValidationDiagnostics);
-        Assert.DoesNotContain(model.ValidationDiagnostics!, d =>
-            d.Code is "REF-DATAOBJECTREF-TARGET-MISSING" or "REF-ASSOCIATION-ENDPOINT-MISSING");
-    }
+		Assert.NotNull(model.ValidationDiagnostics);
+		Assert.DoesNotContain(model.ValidationDiagnostics, d =>
+			d.Code is "REF-DATAOBJECTREF-TARGET-MISSING" or "REF-ASSOCIATION-ENDPOINT-MISSING");
+	}
 }

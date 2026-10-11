@@ -21,7 +21,9 @@ public sealed class PersistentIdentityService : IIdentityService
 			.Where(user => tenantId == null || user.TenantId == tenantId)
 			.ToListAsync(cancellationToken);
 		foreach (var user in users)
+		{
 			yield return new UserInfo(user.Id, user.Username, user.Email);
+		}
 	}
 
 	public async ValueTask<UserInfo?> GetUserByIdAsync(string id, string? tenantId = null, CancellationToken cancellationToken = default)
@@ -36,7 +38,9 @@ public sealed class PersistentIdentityService : IIdentityService
 	{
 		var tenants = await _tenantDb.Tenants.AsNoTracking().ToListAsync(cancellationToken);
 		foreach (var tenant in tenants)
+		{
 			yield return new TenantInfo(tenant.Id, tenant.Name);
+		}
 	}
 
 	public ValueTask<UserInfo?> ValidateUserAsync(string username, string password, CancellationToken cancellationToken = default)
@@ -58,7 +62,9 @@ public sealed class PersistentIdentityService : IIdentityService
 			.OrderBy(group => group.Name)
 			.ToListAsync(cancellationToken);
 		foreach (var group in groups)
+		{
 			yield return new GroupInfo(group.Id, group.Name, group.Type);
+		}
 	}
 
 	public async IAsyncEnumerable<AuthorizationInfo> ListAuthorizationsAsync(
@@ -69,12 +75,14 @@ public sealed class PersistentIdentityService : IIdentityService
 			.OrderBy(authorization => authorization.Resource)
 			.ToListAsync(cancellationToken);
 		foreach (var authorization in authorizations)
+		{
 			yield return new AuthorizationInfo(
 				authorization.Id,
 				authorization.UserId,
 				authorization.GroupId,
 				authorization.Resource,
 				authorization.Permissions);
+		}
 	}
 
 	public async IAsyncEnumerable<UserInfo> ListUsersByGroupAsync(
@@ -89,6 +97,8 @@ public sealed class PersistentIdentityService : IIdentityService
 			.ToListAsync(cancellationToken);
 
 		foreach (var user in users)
+		{
 			yield return new UserInfo(user.Id, user.Username, user.Email);
+		}
 	}
 }

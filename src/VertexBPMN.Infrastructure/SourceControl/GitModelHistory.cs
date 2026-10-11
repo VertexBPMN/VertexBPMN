@@ -43,6 +43,31 @@ internal static class GitModelHistory
 		{
 			throw new SourceControlSecurityException(SourceControlErrorCode.PayloadTooLarge);
 		}
+		var commits = BuildCommits(fields, count, limits, cancellationToken);
+		var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+			binding.Id.ToString("N") + "\n" + binding.TenantId + "\n" + binding.Remote.AbsoluteUri + "\n"
+			+ request.Commit.Value + "\n" + request.Path)));
+		var prefix = fingerprint + ":";
+		var start = 0;
+		if (request.Cursor is not null)
+		{
+			if (!request.Cursor.StartsWith(prefix, StringComparison.Ordinal))
+			{
+				throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+			}
+			var previous = commits.FindIndex(commit => commit.Commit.Value == request.Cursor[prefix.Length..]);
+			if (previous < 0)
+			{
+				throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+			}
+			start = previous + 1;
+		}
+		var page = commits.Skip(start).Take(request.PageSize).ToArray();
+		return new(page, start + page.Length < commits.Count ? prefix + page[^1].Commit.Value : null);
+	}
+
+	private static List<CommitSummary> BuildCommits(string[] fields, int count, SourceControlLimits limits, CancellationToken cancellationToken)
+	{
 		var commits = new List<CommitSummary>(count);
 		var seen = new HashSet<GitCommitId>();
 		for (var offset = 0; offset < count * 3; offset += 3)
@@ -72,25 +97,6 @@ internal static class GitModelHistory
 				throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
 			}
 		}
-		var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
-			binding.Id.ToString("N") + "\n" + binding.TenantId + "\n" + binding.Remote.AbsoluteUri + "\n"
-			+ request.Commit.Value + "\n" + request.Path)));
-		var prefix = fingerprint + ":";
-		var start = 0;
-		if (request.Cursor is not null)
-		{
-			if (!request.Cursor.StartsWith(prefix, StringComparison.Ordinal))
-			{
-				throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
-			}
-			var previous = commits.FindIndex(commit => commit.Commit.Value == request.Cursor[prefix.Length..]);
-			if (previous < 0)
-			{
-				throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
-			}
-			start = previous + 1;
-		}
-		var page = commits.Skip(start).Take(request.PageSize).ToArray();
-		return new(page, start + page.Length < commits.Count ? prefix + page[^1].Commit.Value : null);
+		return commits;
 	}
 }

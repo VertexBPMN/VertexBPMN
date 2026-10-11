@@ -45,7 +45,7 @@ public class IdentityService : IIdentityService
 	public ValueTask<UserInfo?> ValidateUserAsync(string username, string password, CancellationToken cancellationToken = default)
 	{
 		// Password is ignored for in-memory stub
-		var user = System.Linq.Enumerable.FirstOrDefault(_users, u => u.Username == username);
+		var user = _users.FirstOrDefault(u => u.Username == username);
 		return ValueTask.FromResult<UserInfo?>(user);
 	}
 

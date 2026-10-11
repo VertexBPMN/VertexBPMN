@@ -24,6 +24,8 @@ public sealed class EmailNotificationService : INotificationService
         _logger = logger;
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "S5332",
+        Justification = "SMTP TLS/SSL is config-driven via EmailNotificationOptions.UseSsl to support local/dev relays.")]
     public async Task SendNotificationsAsync(IEnumerable<Notification> notifications, CancellationToken cancellationToken = default)
     {
         if (!_options.Enabled)
@@ -58,39 +60,54 @@ public sealed class EmailNotificationService : INotificationService
 
         foreach (var n in list)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            await SendOneAsync(client, n, cancellationToken);
+        }
+    }
 
-            var recipients = ResolveRecipients(n);
-            if (recipients.Length == 0)
+    private async Task SendOneAsync(SmtpClient client, Notification n, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var recipients = ResolveRecipients(n);
+        if (recipients.Length == 0)
+        {
+            if (_logger.IsEnabled(LogLevel.Debug))
             {
                 _logger.LogDebug("Skipping notification (no recipients). Category={Category} RecipientId={RecipientId}", n.Category, n.RecipientId);
-                continue;
             }
+            return;
+        }
 
-            try
+        try
+        {
+            using var message = new MailMessage
             {
-                using var message = new MailMessage
-                {
-                    From = new MailAddress(_options.From),
-                    Subject = BuildSubject(n),
-                    Body = BuildBody(n),
-                    IsBodyHtml = false
-                };
+                From = new MailAddress(_options.From),
+                Subject = BuildSubject(n),
+                Body = BuildBody(n),
+                IsBodyHtml = false
+            };
 
-                foreach (var r in recipients.Distinct(StringComparer.OrdinalIgnoreCase))
+            foreach (var r in recipients.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(r))
                 {
-                    if (string.IsNullOrWhiteSpace(r)) continue;
-                    message.To.Add(r);
+                    continue;
                 }
 
-                await Task.Run(() => client.Send(message), cancellationToken);
+                message.To.Add(r);
+            }
+
+            await Task.Run(() => client.Send(message), cancellationToken);
+            if (_logger.IsEnabled(LogLevel.Information))
+            {
                 _logger.LogInformation("Email notification sent. Category={Category} RecipientId={RecipientId}", n.Category, n.RecipientId);
             }
-            catch (Exception ex)
-            {
-                // Log and continue (email channel is auxiliary).
-                _logger.LogError(ex, "Failed to send email notification Category={Category} RecipientId={RecipientId}", n.Category, n.RecipientId);
-            }
+        }
+        catch (Exception ex)
+        {
+            // Log and continue (email channel is auxiliary).
+            _logger.LogError(ex, "Failed to send email notification Category={Category} RecipientId={RecipientId}", n.Category, n.RecipientId);
         }
     }
 
@@ -100,9 +117,11 @@ public sealed class EmailNotificationService : INotificationService
         // 1. If DefaultRecipients configured, use them (broadcast / ops style).
         // 2. Else treat RecipientId as an email if it contains '@'.
         if (_options.DefaultRecipients.Length > 0)
-            return _options.DefaultRecipients;
+		{
+			return _options.DefaultRecipients;
+		}
 
-        return n.RecipientId.Contains('@', StringComparison.Ordinal)
+		return n.RecipientId.Contains('@', StringComparison.Ordinal)
             ? new[] { n.RecipientId }
             : Array.Empty<string>();
     }

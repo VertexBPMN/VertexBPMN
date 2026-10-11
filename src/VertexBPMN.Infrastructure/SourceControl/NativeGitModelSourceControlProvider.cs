@@ -13,12 +13,26 @@ internal sealed class NativeGitModelSourceControlProvider(PersistentSourceContro
 	public Task<SourceControlAvailability> GetAvailabilityAsync(CancellationToken cancellationToken)
 	{
 		cancellationToken.ThrowIfCancellationRequested();
-		var reason = !options.Value.Enabled ? SourceControlErrorCode.Disabled
-			: !File.Exists(options.Value.GitExecutablePath) ? SourceControlErrorCode.GitUnavailable
-			: string.IsNullOrWhiteSpace(options.Value.IdentityCredentialReference) ? SourceControlErrorCode.CredentialUnavailable
-			: (SourceControlErrorCode?)null;
+		var reason = ResolveAvailabilityReason();
 		return Task.FromResult(new SourceControlAvailability(reason is null,
 			reason is null ? SourceControlCapability.Read | SourceControlCapability.Commit | SourceControlCapability.Push : SourceControlCapability.None, reason));
+	}
+
+	private SourceControlErrorCode? ResolveAvailabilityReason()
+	{
+		if (!options.Value.Enabled)
+		{
+			return SourceControlErrorCode.Disabled;
+		}
+		if (!File.Exists(options.Value.GitExecutablePath))
+		{
+			return SourceControlErrorCode.GitUnavailable;
+		}
+		if (string.IsNullOrWhiteSpace(options.Value.IdentityCredentialReference))
+		{
+			return SourceControlErrorCode.CredentialUnavailable;
+		}
+		return null;
 	}
 
 	public Task<SourceControlPage<string>> ListBranchesAsync(SourceControlContext context, RepositoryBinding binding,
@@ -52,7 +66,11 @@ internal sealed class NativeGitModelSourceControlProvider(PersistentSourceContro
 	private async Task<T> ReadAsync<T>(SourceControlContext context, RepositoryBinding supplied, GitCommitId? revision,
 		Func<GitWorkspace, RepositoryBinding, GitHubTokenLease, CancellationToken, Task<T>> execute, CancellationToken cancellationToken)
 	{
-		if (context.TenantId != supplied.TenantId) throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
+		if (context.TenantId != supplied.TenantId)
+		{
+			throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
+		}
+
 		using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 		deadline.CancelAfter(options.Value.Limits.ReadTimeout);
 		var roles = await actors.ResolveAsync(context, deadline.Token);
@@ -66,15 +84,33 @@ internal sealed class NativeGitModelSourceControlProvider(PersistentSourceContro
 		try
 		{
 			workspace = await workspaces.CreateAsync(context, id, worker, fence, deadline.Token);
-			if (revision is null) await git.InitializeAsync(workspace, deadline.Token);
-			else await git.InitializeAsync(workspace, revision, deadline.Token);
+			if (revision is null)
+			{
+				await git.InitializeAsync(workspace, deadline.Token);
+			}
+			else
+			{
+				await git.InitializeAsync(workspace, revision, deadline.Token);
+			}
+
 			using var lease = await tokens.IssueAsync(context, access.Binding.Id, roles, RepositoryPermission.Read, deadline.Token);
-			if (revision is not null) await git.FetchRevisionAsync(workspace, access.Binding.Remote, revision, lease, deadline.Token);
+			if (revision is not null)
+			{
+				await git.FetchRevisionAsync(workspace, access.Binding.Remote, revision, lease, deadline.Token);
+			}
+
 			var result = await execute(workspace, access.Binding, lease, deadline.Token);
 			var current = await AuthorizeAsync(context, supplied.Id, await actors.ResolveAsync(context, deadline.Token), RepositoryPermission.Read, deadline.Token);
-			if (current.Revision != access.Revision) throw new SourceControlSecurityException(SourceControlErrorCode.RevisionConflict);
+			if (current.Revision != access.Revision)
+			{
+				throw new SourceControlSecurityException(SourceControlErrorCode.RevisionConflict);
+			}
+
 			if (!await store.FinishAsync(context.TenantId, id, worker, fence, SourceControlOperationState.Succeeded, DateTimeOffset.UtcNow, deadline.Token))
+			{
 				throw new SourceControlSecurityException(SourceControlErrorCode.ResultUnknown);
+			}
+
 			return result;
 		}
 		finally
@@ -82,7 +118,10 @@ internal sealed class NativeGitModelSourceControlProvider(PersistentSourceContro
 			using var finish = new CancellationTokenSource(TimeSpan.FromSeconds(10));
 			// Read effects are private only; maintenance handles retained directories after failed cleanup.
 			await store.FinishAsync(context.TenantId, id, worker, fence, SourceControlOperationState.Failed, DateTimeOffset.UtcNow, finish.Token);
-			if (workspace is not null) await workspaces.CleanupAsync(context, id, fence, finish.Token);
+			if (workspace is not null)
+			{
+				await workspaces.CleanupAsync(context, id, fence, finish.Token);
+			}
 		}
 	}
 
@@ -109,7 +148,10 @@ internal sealed class NativeGitModelSourceControlProvider(PersistentSourceContro
 			|| work.Command.WorkBranch != command.WorkBranch || work.Command.Message != command.Message
 			|| !work.Command.Snapshots.Select(x => (x.Path, x.ContentSha256, x.DocumentGeneration, x.LocalRevision))
 				.SequenceEqual(command.Snapshots.Select(x => (x.Path, x.ContentSha256, x.DocumentGeneration, x.LocalRevision))))
+		{
 			throw new SourceControlSecurityException(SourceControlErrorCode.RevisionConflict);
+		}
+
 		var result = await commits.RunAsync(context, command.OperationId, worker, fence, token => actors.ResolveAsync(context, token), cancellationToken);
 		return result.Receipt ?? throw new SourceControlSecurityException(result.Error ?? SourceControlErrorCode.ResultUnknown);
 	}
@@ -124,7 +166,11 @@ internal sealed class NativeGitModelSourceControlProvider(PersistentSourceContro
 		var fence = await store.TryClaimAsync(context.TenantId, command.OperationId, worker, DateTimeOffset.UtcNow, TimeSpan.FromMinutes(2), cancellationToken)
 			?? throw new SourceControlSecurityException(SourceControlErrorCode.RevisionConflict);
 		var work = await store.ReadPushWorkAsync(context, command.OperationId, worker, fence, roles, cancellationToken);
-		if (work.Command != command) throw new SourceControlSecurityException(SourceControlErrorCode.RevisionConflict);
+		if (work.Command != command)
+		{
+			throw new SourceControlSecurityException(SourceControlErrorCode.RevisionConflict);
+		}
+
 		var result = await pushes.RunAsync(context, command.OperationId, worker, fence, token => actors.ResolveAsync(context, token), cancellationToken);
 		return result.Receipt ?? throw new SourceControlSecurityException(result.Error ?? SourceControlErrorCode.ResultUnknown);
 	}
@@ -132,9 +178,15 @@ internal sealed class NativeGitModelSourceControlProvider(PersistentSourceContro
 	private async Task DemandOwnedOperationAsync(SourceControlContext context, RepositoryBinding binding, Guid id,
 		SourceControlOperationKind kind, IReadOnlyCollection<string> roles, CancellationToken cancellationToken)
 	{
-		if (context.TenantId != binding.TenantId) throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
+		if (context.TenantId != binding.TenantId)
+		{
+			throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
+		}
+
 		var operation = await store.GetOperationAsync(context, id, roles, cancellationToken);
 		if (operation?.ActorId != context.ActorId || operation.RepositoryId != binding.Id || operation.Kind != kind)
+		{
 			throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
+		}
 	}
 }

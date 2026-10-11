@@ -29,14 +29,15 @@ public class InMemoryRuntimeService : IRuntimeService
 		_eventSink = eventSink;
 	}
 
-	public ValueTask<ProcessInstance> StartProcessByKeyAsync(string processDefinitionKey, IDictionary<string, object>? variables = null, string? businessKey = null, string? tenantId = null, string? idempotencyKey = null, CancellationToken cancellationToken = default)
+	public async ValueTask<ProcessInstance> StartProcessByKeyAsync(string processDefinitionKey, IDictionary<string, object>? variables = null, string? businessKey = null, string? tenantId = null, string? idempotencyKey = null, CancellationToken cancellationToken = default)
 	{
 		// Lookup process definition by key
-		var defTask = _repositoryService.GetLatestByKeyAsync(processDefinitionKey, tenantId, cancellationToken);
-		defTask.AsTask().Wait();
-		var def = defTask.Result;
+		var def = await _repositoryService.GetLatestByKeyAsync(processDefinitionKey, tenantId, cancellationToken);
 		if (def == null)
+		{
 			throw new InvalidOperationException($"Process definition with key '{processDefinitionKey}' not found.");
+		}
+
 		var instance = new ProcessInstance
 		{
 			Id = Guid.NewGuid(),
@@ -47,7 +48,7 @@ public class InMemoryRuntimeService : IRuntimeService
 		};
 		_instances[instance.Id] = instance;
 		// Emit process mining event
-		_eventSink.EmitAsync(new ProcessMiningEvent
+		await _eventSink.EmitAsync(new ProcessMiningEvent
 		{
 			EventType = "ProcessStarted",
 			ProcessInstanceId = instance.Id.ToString(),
@@ -55,7 +56,7 @@ public class InMemoryRuntimeService : IRuntimeService
 			Timestamp = DateTimeOffset.UtcNow,
 			PayloadJson = variables != null ? System.Text.Json.JsonSerializer.Serialize(variables) : null
 		}, cancellationToken);
-		return ValueTask.FromResult(instance);
+		return instance;
 	}
 
 	public ValueTask<ProcessInstance?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
@@ -75,11 +76,11 @@ public class InMemoryRuntimeService : IRuntimeService
 	}
 
 
-	public ValueTask SignalAsync(Guid processInstanceId, string signalName, object? payload = null, CancellationToken cancellationToken = default)
+	public async ValueTask SignalAsync(Guid processInstanceId, string signalName, object? payload = null, CancellationToken cancellationToken = default)
 	{
 		if (_instances.TryGetValue(processInstanceId, out var inst))
 		{
-			_eventSink.EmitAsync(new ProcessMiningEvent
+			await _eventSink.EmitAsync(new ProcessMiningEvent
 			{
 				EventType = "ProcessSignaled",
 				ProcessInstanceId = inst.Id.ToString(),
@@ -88,15 +89,14 @@ public class InMemoryRuntimeService : IRuntimeService
 				PayloadJson = payload is IDictionary<string, object> dict ? System.Text.Json.JsonSerializer.Serialize(dict) : null
 			}, cancellationToken);
 		}
-		return ValueTask.CompletedTask;
 	}
 
 
-	public ValueTask SuspendAsync(Guid processInstanceId, CancellationToken cancellationToken = default)
+	public async ValueTask SuspendAsync(Guid processInstanceId, CancellationToken cancellationToken = default)
 	{
 		if (_instances.TryGetValue(processInstanceId, out var inst))
 		{
-			_eventSink.EmitAsync(new ProcessMiningEvent
+			await _eventSink.EmitAsync(new ProcessMiningEvent
 			{
 				EventType = "ProcessSuspended",
 				ProcessInstanceId = inst.Id.ToString(),
@@ -104,15 +104,14 @@ public class InMemoryRuntimeService : IRuntimeService
 				Timestamp = DateTimeOffset.UtcNow
 			}, cancellationToken);
 		}
-		return ValueTask.CompletedTask;
 	}
 
 
-	public ValueTask ResumeAsync(Guid processInstanceId, CancellationToken cancellationToken = default)
+	public async ValueTask ResumeAsync(Guid processInstanceId, CancellationToken cancellationToken = default)
 	{
 		if (_instances.TryGetValue(processInstanceId, out var inst))
 		{
-			_eventSink.EmitAsync(new ProcessMiningEvent
+			await _eventSink.EmitAsync(new ProcessMiningEvent
 			{
 				EventType = "ProcessResumed",
 				ProcessInstanceId = inst.Id.ToString(),
@@ -120,14 +119,13 @@ public class InMemoryRuntimeService : IRuntimeService
 				Timestamp = DateTimeOffset.UtcNow
 			}, cancellationToken);
 		}
-		return ValueTask.CompletedTask;
 	}
 
-	public ValueTask DeleteAsync(Guid processInstanceId, CancellationToken cancellationToken = default)
+	public async ValueTask DeleteAsync(Guid processInstanceId, CancellationToken cancellationToken = default)
 	{
 		if (_instances.TryRemove(processInstanceId, out var inst))
 		{
-			_eventSink.EmitAsync(new ProcessMiningEvent
+			await _eventSink.EmitAsync(new ProcessMiningEvent
 			{
 				EventType = "ProcessDeleted",
 				ProcessInstanceId = inst.Id.ToString(),
@@ -135,15 +133,14 @@ public class InMemoryRuntimeService : IRuntimeService
 				Timestamp = DateTimeOffset.UtcNow
 			}, cancellationToken);
 		}
-		return ValueTask.CompletedTask;
 	}
 
 	// Emits a process end event (for demo, call this when removing from _instances)
-	public ValueTask EndProcessAsync(Guid processInstanceId, CancellationToken cancellationToken = default)
+	public async ValueTask EndProcessAsync(Guid processInstanceId, CancellationToken cancellationToken = default)
 	{
 		if (_instances.TryRemove(processInstanceId, out var inst))
 		{
-			_eventSink.EmitAsync(new ProcessMiningEvent
+			await _eventSink.EmitAsync(new ProcessMiningEvent
 			{
 				EventType = "ProcessEnded",
 				ProcessInstanceId = inst.Id.ToString(),
@@ -151,6 +148,5 @@ public class InMemoryRuntimeService : IRuntimeService
 				Timestamp = DateTimeOffset.UtcNow
 			}, cancellationToken);
 		}
-		return ValueTask.CompletedTask;
 	}
 }

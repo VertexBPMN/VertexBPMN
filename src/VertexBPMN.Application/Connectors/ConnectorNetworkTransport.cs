@@ -12,16 +12,17 @@ public sealed class ConnectorNetworkTransport : IConnectorNetworkTransport
 
 	public async ValueTask<Stream> ConnectAsync(IPEndPoint endpoint, CancellationToken cancellationToken)
 	{
-		var socket = new Socket(endpoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+		Socket? socket = new(endpoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
 		try
 		{
 			await socket.ConnectAsync(endpoint, cancellationToken);
-			return new NetworkStream(socket, ownsSocket: true);
+			var stream = new NetworkStream(socket, ownsSocket: true);
+			socket = null; // Ownership has transferred to the returned stream.
+			return stream;
 		}
-		catch
+		finally
 		{
-			socket.Dispose();
-			throw;
+			socket?.Dispose();
 		}
 	}
 }

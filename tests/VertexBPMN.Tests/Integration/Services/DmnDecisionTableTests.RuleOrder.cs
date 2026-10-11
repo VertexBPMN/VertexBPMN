@@ -8,10 +8,11 @@ namespace VertexBPMN.Tests.Integration.Services;
 
 public partial class DmnDecisionTableTests
 {
-    [Fact]
-    public void Evaluate_RuleOrderPolicy_ReturnsResultsInRuleOrder()
-    {
-        const string dmn = @"<definitions xmlns='http://www.omg.org/spec/DMN/20191111/MODEL/'>
+	private static readonly string[] ExpectedRuleOrderOutputs = ["adult", "voter"];
+	[Fact]
+	public void Evaluate_RuleOrderPolicy_ReturnsResultsInRuleOrder()
+	{
+		const string dmn = @"<definitions xmlns='http://www.omg.org/spec/DMN/20191111/MODEL/'>
   <decision id='d1' name='Test'>
     <decisionTable hitPolicy='RULE ORDER'>
       <input id='i1'><inputExpression>age</inputExpression></input>
@@ -31,10 +32,10 @@ public partial class DmnDecisionTableTests
     </decisionTable>
   </decision>
 </definitions>";
-        var table = DmnDecisionTable.Parse(dmn);
-        var result = table.Evaluate(new Dictionary<string, object> { { "i1", "18" } });
-        Assert.True(result.ContainsKey("result"));
-        var list = Assert.IsType<List<object>>(result["result"]);
-        Assert.Equal(new[] { "adult", "voter" }, list);
-    }
+		var table = DmnDecisionTable.Parse(dmn);
+		var result = table.Evaluate(new Dictionary<string, object>(StringComparer.Ordinal) { { "i1", "18" } });
+		Assert.True(result.ContainsKey("result"));
+		var list = Assert.IsType<List<object>>(result["result"]);
+		Assert.Equal(ExpectedRuleOrderOutputs, list);
+	}
 }

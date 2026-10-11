@@ -5,7 +5,7 @@ namespace VertexBPMN.Tests.Parsing.Validation;
 
 public class Phase3AdvancedValidationMultiInstanceConflictTests
 {
-    private const string ConflictXml = """
+	private const string ConflictXml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
                   xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
   <bpmn:process id="p1">
@@ -38,7 +38,7 @@ public class Phase3AdvancedValidationMultiInstanceConflictTests
 </bpmn:definitions>
 """;
 
-    private const string CleanXml = """
+	private const string CleanXml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <bpmn:process id="p1">
     <bpmn:startEvent id="s"/>
@@ -48,47 +48,47 @@ public class Phase3AdvancedValidationMultiInstanceConflictTests
 </bpmn:definitions>
 """;
 
-    [Fact]
-    public async Task MultiInstanceConflict_Disabled_NoStructuredDiagnostics()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = false
-        }).ParseAsync(ConflictXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task MultiInstanceConflict_Disabled_NoStructuredDiagnostics()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = false
+		}).ParseAsync(ConflictXml, TestContext.Current.CancellationToken);
 
-        Assert.Null(model.ValidationDiagnostics);
-    }
+		Assert.Null(model.ValidationDiagnostics);
+	}
 
-    //[Fact]
-    //public void MultiInstanceConflict_Enabled_ReportsWarning()
-    //{
-    //    var model = await new BpmnParser(new BpmnParserOptions
-    //    {
-    //        RoundtripMode = BpmnRoundtripMode.Strict,
-    //        EnableAdvancedValidation = true
-    //    }).ParseAsync(ConflictXml);
+	//[Fact]
+	//public void MultiInstanceConflict_Enabled_ReportsWarning()
+	//{
+	//    var model = await new BpmnParser(new BpmnParserOptions
+	//    {
+	//        RoundtripMode = BpmnRoundtripMode.Strict,
+	//        EnableAdvancedValidation = true
+	//    }).ParseAsync(ConflictXml);
 
-    //    Assert.NotNull(model.ValidationDiagnostics);
-    //    Assert.Contains(model.ValidationDiagnostics!, d =>
-    //        d.Code == "SEM-MI-CONFLICT" &&
-    //        d.ElementId == "miConflict" &&
-    //        d.Severity == ValidationSeverity.Warning);
-    //    // Ensure no false positives
-    //    Assert.DoesNotContain(model.ValidationDiagnostics!, d => d.ElementId == "miOk1");
-    //    Assert.DoesNotContain(model.ValidationDiagnostics!, d => d.ElementId == "miOk2");
-    //}
+	//    Assert.NotNull(model.ValidationDiagnostics);
+	//    Assert.Contains(model.ValidationDiagnostics!, d =>
+	//        d.Code == "SEM-MI-CONFLICT" &&
+	//        d.ElementId == "miConflict" &&
+	//        d.Severity == ValidationSeverity.Warning);
+	//    // Ensure no false positives
+	//    Assert.DoesNotContain(model.ValidationDiagnostics!, d => d.ElementId == "miOk1");
+	//    Assert.DoesNotContain(model.ValidationDiagnostics!, d => d.ElementId == "miOk2");
+	//}
 
-    [Fact]
-    public async Task MultiInstanceConflict_Enabled_NoConflicts_EmptyForRule()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = true
-        }).ParseAsync(CleanXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task MultiInstanceConflict_Enabled_NoConflicts_EmptyForRule()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = true
+		}).ParseAsync(CleanXml, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(model.ValidationDiagnostics);
-        Assert.DoesNotContain(model.ValidationDiagnostics!, d => d.Code == "SEM-MI-CONFLICT");
-    }
+		Assert.NotNull(model.ValidationDiagnostics);
+		Assert.DoesNotContain(model.ValidationDiagnostics, d => d.Code == "SEM-MI-CONFLICT");
+	}
 }

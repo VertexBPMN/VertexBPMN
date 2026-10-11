@@ -24,94 +24,109 @@ public static class ServiceTaskRegistryExtensions
 		RegisterHandlers(services);
 
 		// ✅ KORREKTE Registry-Registrierung
-		services.AddSingleton<IServiceTaskRegistry>(provider =>
-		{
-			var registry = new ServiceTaskRegistry();
-
-			// ✅ Handler werden EINMAL aus dem DI Container geholt (respektiert Singleton)
-			registry.Register("semanticKernelServiceTask", provider.GetRequiredService<SemanticKernelServiceTaskHandler>());
-			registry.Register("calculateScore", provider.GetRequiredService<CalculateScoreServiceTaskHandler>());
-			registry.Register("cancelApplication", provider.GetRequiredService<CancelApplicationServiceTaskHandler>());
-			registry.Register("issuePolicy", provider.GetRequiredService<IssuePolicyServiceTaskHandler>());
-			registry.Register("rejectPolicy", provider.GetRequiredService<RejectPolicyServiceTaskHandler>());
-			var sendGridClient = provider.GetService<ISendGridClient>();
-			if (sendGridClient is not null)
-			{
-				registry.Register("io.camunda:sendgrid:1", new SendGridServiceTaskHandler(sendGridClient));
-			}
-
-			registry.Register("informCustomerSuccessfulCancelation", provider.GetRequiredService<InformCustomerSuccessfulCancelationHandler>());
-			registry.Register("reportFraud", provider.GetRequiredService<ReportFraudHandler>());
-			registry.Register("informOperationsSuccessfulCancelation", provider.GetRequiredService<InformOperationsSuccessfulCancelationHandler>());
-			registry.Register("mcpServiceTask", provider.GetRequiredService<McpServiceTaskHandler>());
-			registry.Register("vertex:connector", provider.GetRequiredService<VertexConnectorServiceTaskHandler>());
-
-			// ✅ NEW: Universal AI Service Task Handler
-			registry.Register("aiServiceTask", provider.GetRequiredService<AIServiceTaskHandler>());
-			registry.Register("ai:universal", provider.GetRequiredService<AIServiceTaskHandler>());
-			registry.Register("ai:smart", provider.GetRequiredService<AIServiceTaskHandler>());
-
-			// ✅ Specialized AI Service Task Handlers
-			registry.Register("ai:openai", provider.GetRequiredService<OpenAiServiceTaskHandler>());
-			registry.Register("ai:openai:gpt-4", provider.GetRequiredService<OpenAiServiceTaskHandler>());
-			registry.Register("ai:openai:gpt-3.5-turbo", provider.GetRequiredService<OpenAiServiceTaskHandler>());
-			registry.Register("openAiServiceTask", provider.GetRequiredService<OpenAiServiceTaskHandler>());
-
-			registry.Register("ai:anthropic", provider.GetRequiredService<AnthropicServiceTaskHandler>());
-			registry.Register("ai:anthropic:claude-3", provider.GetRequiredService<AnthropicServiceTaskHandler>());
-			registry.Register("ai:claude", provider.GetRequiredService<AnthropicServiceTaskHandler>());
-			registry.Register("anthropicServiceTask", provider.GetRequiredService<AnthropicServiceTaskHandler>());
-
-			registry.Register("ai:google", provider.GetRequiredService<GeminiServiceTaskHandler>());
-			registry.Register("ai:gemini", provider.GetRequiredService<GeminiServiceTaskHandler>());
-			registry.Register("ai:gemini:pro", provider.GetRequiredService<GeminiServiceTaskHandler>());
-			registry.Register("geminiServiceTask", provider.GetRequiredService<GeminiServiceTaskHandler>());
-
-			registry.Register("contextEnrichment", provider.GetRequiredService<ContextEnrichmentServiceTaskHandler>());
-			registry.Register("dataEnrichment", provider.GetRequiredService<ContextEnrichmentServiceTaskHandler>());
-			registry.Register("externalDataFetch", provider.GetRequiredService<ContextEnrichmentServiceTaskHandler>());
-
-			registry.Register("ai:generic", provider.GetRequiredService<GenericAiServiceTaskHandler>());
-			registry.Register("genericAi", provider.GetRequiredService<GenericAiServiceTaskHandler>());
-
-			// Additional AI provider mappings
-			registry.Register("ai:cohere", provider.GetRequiredService<GenericAiServiceTaskHandler>());
-			registry.Register("ai:huggingface", provider.GetRequiredService<GenericAiServiceTaskHandler>());
-			registry.Register("ai:ollama", provider.GetRequiredService<GenericAiServiceTaskHandler>());
-			registry.Register("ai:local", provider.GetRequiredService<GenericAiServiceTaskHandler>());
-			registry.Register("ai:custom", provider.GetRequiredService<GenericAiServiceTaskHandler>());
-
-			var options = provider.GetService<DependencyOptions>() ?? new DependencyOptions();
-			if (!options.ServiceTasks.Enabled || !options.Ai.Enabled)
-			{
-				foreach (var implementation in new[] { "aiServiceTask", "ai:universal", "ai:smart", "ai:openai", "openAiServiceTask", "ai:anthropic", "ai:claude", "anthropicServiceTask", "ai:google", "ai:gemini", "ai:gemini:pro", "geminiServiceTask", "ai:generic", "genericAi", "ai:cohere", "ai:huggingface", "ai:ollama", "ai:local", "ai:custom" })
-				{
-					registry.Remove(implementation);
-				}
-			}
-
-			foreach (var implementation in options.ServiceTasks.Disabled)
-			{
-				registry.Remove(implementation);
-			}
-
-			foreach (var mapping in options.ServiceTasks.Mappings)
-			{
-				if (!handlers.TryGetValue(mapping.Value, out var handlerFactory))
-				{
-					throw new InvalidOperationException($"Unknown service task handler '{mapping.Value}' configured for '{mapping.Key}'.");
-				}
-
-				registry.Register(mapping.Key, handlerFactory(provider));
-			}
-
-			return registry;
-		});
+		services.AddSingleton<IServiceTaskRegistry>(CreateRegistry);
 
 		return services;
 	}
 
-	private static readonly IReadOnlyDictionary<string, Func<IServiceProvider, IServiceTaskHandler>> handlers =
+	private static ServiceTaskRegistry CreateRegistry(IServiceProvider provider)
+	{
+		var registry = new ServiceTaskRegistry();
+
+		// ✅ Handler werden EINMAL aus dem DI Container geholt (respektiert Singleton)
+		registry.Register("semanticKernelServiceTask", provider.GetRequiredService<SemanticKernelServiceTaskHandler>());
+		registry.Register("calculateScore", provider.GetRequiredService<CalculateScoreServiceTaskHandler>());
+		registry.Register("cancelApplication", provider.GetRequiredService<CancelApplicationServiceTaskHandler>());
+		registry.Register("issuePolicy", provider.GetRequiredService<IssuePolicyServiceTaskHandler>());
+		registry.Register("rejectPolicy", provider.GetRequiredService<RejectPolicyServiceTaskHandler>());
+		var sendGridClient = provider.GetService<ISendGridClient>();
+		if (sendGridClient is not null)
+		{
+			registry.Register("io.camunda:sendgrid:1", new SendGridServiceTaskHandler(sendGridClient));
+		}
+
+		registry.Register("informCustomerSuccessfulCancelation", provider.GetRequiredService<InformCustomerSuccessfulCancelationHandler>());
+		registry.Register("reportFraud", provider.GetRequiredService<ReportFraudHandler>());
+		registry.Register("informOperationsSuccessfulCancelation", provider.GetRequiredService<InformOperationsSuccessfulCancelationHandler>());
+		registry.Register("mcpServiceTask", provider.GetRequiredService<McpServiceTaskHandler>());
+		registry.Register("vertex:connector", provider.GetRequiredService<VertexConnectorServiceTaskHandler>());
+
+		// ✅ NEW: Universal AI Service Task Handler
+		registry.Register("aiServiceTask", provider.GetRequiredService<AIServiceTaskHandler>());
+		registry.Register("ai:universal", provider.GetRequiredService<AIServiceTaskHandler>());
+		registry.Register("ai:smart", provider.GetRequiredService<AIServiceTaskHandler>());
+
+		RegisterAiHandlers(registry, provider);
+
+		ApplyConfiguredHandlers(provider, registry);
+
+		return registry;
+	}
+
+	private static void RegisterAiHandlers(ServiceTaskRegistry registry, IServiceProvider provider)
+	{
+		// ✅ Specialized AI Service Task Handlers
+		registry.Register("ai:openai", provider.GetRequiredService<OpenAiServiceTaskHandler>());
+		registry.Register("ai:openai:gpt-4", provider.GetRequiredService<OpenAiServiceTaskHandler>());
+		registry.Register("ai:openai:gpt-3.5-turbo", provider.GetRequiredService<OpenAiServiceTaskHandler>());
+		registry.Register("openAiServiceTask", provider.GetRequiredService<OpenAiServiceTaskHandler>());
+
+		registry.Register("ai:anthropic", provider.GetRequiredService<AnthropicServiceTaskHandler>());
+		registry.Register("ai:anthropic:claude-3", provider.GetRequiredService<AnthropicServiceTaskHandler>());
+		registry.Register("ai:claude", provider.GetRequiredService<AnthropicServiceTaskHandler>());
+		registry.Register("anthropicServiceTask", provider.GetRequiredService<AnthropicServiceTaskHandler>());
+
+		registry.Register("ai:google", provider.GetRequiredService<GeminiServiceTaskHandler>());
+		registry.Register("ai:gemini", provider.GetRequiredService<GeminiServiceTaskHandler>());
+		registry.Register("ai:gemini:pro", provider.GetRequiredService<GeminiServiceTaskHandler>());
+		registry.Register("geminiServiceTask", provider.GetRequiredService<GeminiServiceTaskHandler>());
+
+		registry.Register("contextEnrichment", provider.GetRequiredService<ContextEnrichmentServiceTaskHandler>());
+		registry.Register("dataEnrichment", provider.GetRequiredService<ContextEnrichmentServiceTaskHandler>());
+		registry.Register("externalDataFetch", provider.GetRequiredService<ContextEnrichmentServiceTaskHandler>());
+
+		registry.Register("ai:generic", provider.GetRequiredService<GenericAiServiceTaskHandler>());
+		registry.Register("genericAi", provider.GetRequiredService<GenericAiServiceTaskHandler>());
+
+		// Additional AI provider mappings
+		registry.Register("ai:cohere", provider.GetRequiredService<GenericAiServiceTaskHandler>());
+		registry.Register("ai:huggingface", provider.GetRequiredService<GenericAiServiceTaskHandler>());
+		registry.Register("ai:ollama", provider.GetRequiredService<GenericAiServiceTaskHandler>());
+		registry.Register("ai:local", provider.GetRequiredService<GenericAiServiceTaskHandler>());
+		registry.Register("ai:custom", provider.GetRequiredService<GenericAiServiceTaskHandler>());
+	}
+
+	private static readonly string[] AiImplementations = new[] { "aiServiceTask", "ai:universal", "ai:smart", "ai:openai", "openAiServiceTask", "ai:anthropic", "ai:claude", "anthropicServiceTask", "ai:google", "ai:gemini", "ai:gemini:pro", "geminiServiceTask", "ai:generic", "genericAi", "ai:cohere", "ai:huggingface", "ai:ollama", "ai:local", "ai:custom" };
+
+	private static void ApplyConfiguredHandlers(IServiceProvider provider, ServiceTaskRegistry registry)
+	{
+		var options = provider.GetService<DependencyOptions>() ?? new DependencyOptions();
+		if (!options.ServiceTasks.Enabled || !options.Ai.Enabled)
+		{
+			foreach (var implementation in AiImplementations)
+			{
+				registry.Remove(implementation);
+			}
+		}
+
+		foreach (var implementation in options.ServiceTasks.Disabled)
+		{
+			registry.Remove(implementation);
+		}
+
+		foreach (var mapping in options.ServiceTasks.Mappings)
+		{
+			if (!handlers.TryGetValue(mapping.Value, out var handlerFactory))
+			{
+				throw new InvalidOperationException($"Unknown service task handler '{mapping.Value}' configured for '{mapping.Key}'.");
+			}
+
+			registry.Register(mapping.Key, handlerFactory(provider));
+		}
+
+	}
+
+	private static readonly Dictionary<string, Func<IServiceProvider, IServiceTaskHandler>> handlers =
 		new Dictionary<string, Func<IServiceProvider, IServiceTaskHandler>>(StringComparer.OrdinalIgnoreCase)
 		{
 			["AIServiceTaskHandler"] = p => p.GetRequiredService<AIServiceTaskHandler>(),
@@ -127,6 +142,41 @@ public static class ServiceTaskRegistryExtensions
 			["RejectPolicyServiceTaskHandler"] = p => p.GetRequiredService<RejectPolicyServiceTaskHandler>(),
 			["SendGridServiceTaskHandler"] = p => p.GetRequiredService<SendGridServiceTaskHandler>()
 		};
+
+	private static SocketsHttpHandler CreateConnectorHandler(IServiceProvider provider)
+	{
+		return new SocketsHttpHandler
+			{
+				AllowAutoRedirect = false,
+				// A proxy would resolve the ultimate destination outside our validated-IP path.
+				UseProxy = false,
+				UseCookies = false,
+				ConnectTimeout = TimeSpan.FromSeconds(10),
+				// M5: close the DNS-rebinding/TOCTOU gap between SSRF validation and the actual
+				// connection. Resolve + validate here and connect to that same validated address
+				// (SNI stays the hostname), so a post-check rebind to a private/internal address
+				// can never be reached.
+				ConnectCallback = async (context, cancellationToken) =>
+				{
+					var network = provider.GetRequiredService<IConnectorNetworkTransport>();
+					var addresses = await network.ResolveAsync(context.DnsEndPoint.Host, cancellationToken);
+					ConnectorDestinationPolicy.ValidateResolvedAddresses(context.DnsEndPoint.Host, addresses);
+					Exception? lastError = null;
+					foreach (var address in addresses)
+					{
+						try
+						{
+							return await network.ConnectAsync(new IPEndPoint(address, context.DnsEndPoint.Port), cancellationToken);
+						}
+						catch (SocketException exception)
+						{
+							lastError = exception;
+						}
+					}
+					throw lastError ?? new HttpRequestException("No reachable validated destination address.");
+				}
+			};
+	}
 
 	private static void RegisterCoreDependencies(IServiceCollection services, IConfiguration? configuration)
 	{
@@ -154,42 +204,7 @@ public static class ServiceTaskRegistryExtensions
 		// to bypass the ConnectorDestination SSRF guard (redirect back to a private
 		// address). Connectors that need redirects must handle them explicitly.
 		services.TryAddSingleton<IConnectorNetworkTransport, ConnectorNetworkTransport>();
-		services.AddSingleton<SocketsHttpHandler>(
-			provider => new SocketsHttpHandler
-			{
-				AllowAutoRedirect = false,
-				// A proxy would resolve the ultimate destination outside our validated-IP path.
-				UseProxy = false,
-				UseCookies = false,
-				ConnectTimeout = TimeSpan.FromSeconds(10),
-				// M5: close the DNS-rebinding/TOCTOU gap between SSRF validation and the actual
-				// connection. Resolve + validate here and connect to that same validated address
-				// (SNI stays the hostname), so a post-check rebind to a private/internal address
-				// can never be reached.
-				ConnectCallback = async (context, cancellationToken) =>
-				{
-					var network = provider.GetRequiredService<IConnectorNetworkTransport>();
-					var addresses = await network.ResolveAsync(context.DnsEndPoint.Host, cancellationToken);
-					ConnectorDestinationPolicy.ValidateResolvedAddresses(context.DnsEndPoint.Host, addresses);
-					Exception? lastError = null;
-					foreach (var address in addresses)
-					{
-						try
-						{
-							return await network.ConnectAsync(new IPEndPoint(address, context.DnsEndPoint.Port), cancellationToken);
-						}
-						catch (OperationCanceledException)
-						{
-							throw;
-						}
-						catch (SocketException exception)
-						{
-							lastError = exception;
-						}
-					}
-					throw lastError ?? new HttpRequestException("No reachable validated destination address.");
-				}
-			});
+		services.AddSingleton<SocketsHttpHandler>(CreateConnectorHandler);
 		services.AddSingleton<HttpClient>(
 			provider => new HttpClient(provider.GetRequiredService<SocketsHttpHandler>()));
 		services.AddHttpClient("VertexBPMN.PublicEndpoints")
@@ -214,7 +229,7 @@ public static class ServiceTaskRegistryExtensions
 		services.AddSingleton<IConnectorRuntime, ConnectorRuntime>();
 
 		// Simple TracerProvider registration (if not already present)
-		services.TryAddSingleton<TracerProvider>(provider =>
+		services.TryAddSingleton<TracerProvider>(_ =>
 			Sdk.CreateTracerProviderBuilder()
 				.AddSource("VertexBPMN")
 				.Build() ?? throw new InvalidOperationException("Failed to create TracerProvider"));

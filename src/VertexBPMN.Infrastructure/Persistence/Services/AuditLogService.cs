@@ -9,9 +9,11 @@ public sealed class AuditLogService(ProcessMiningEventDbContext db) : IAuditLogS
     {
         ArgumentNullException.ThrowIfNull(entry);
         if (string.IsNullOrWhiteSpace(entry.Action))
-            throw new ArgumentException("Audit action is required", nameof(entry));
+		{
+			throw new ArgumentException("Audit action is required", nameof(entry));
+		}
 
-        entry.Timestamp = entry.Timestamp == default ? DateTimeOffset.UtcNow : entry.Timestamp.ToUniversalTime();
+		entry.Timestamp = entry.Timestamp == default ? DateTimeOffset.UtcNow : entry.Timestamp.ToUniversalTime();
         await db.AuditLogs.AddAsync(entry, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return entry;

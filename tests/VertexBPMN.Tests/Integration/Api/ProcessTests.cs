@@ -6,89 +6,89 @@ using VertexBPMN.Tests.Infrastructure;
 
 namespace VertexBPMN.Tests.Integration.Api;
 
-[Collection("IntegratedApi")] 
-public class ProcessTests
+[Collection("IntegratedApi")]
+public class ProcessTests(CustomWebApplicationFactory factory, SharedSqliteDbFixture dbFixture, ITestOutputHelper output)
 {
-    private readonly HttpClient _client;
-    private readonly ITestOutputHelper _output;
-    private readonly CustomWebApplicationFactory _factory;
+	private readonly HttpClient _client = factory.WithSharedFixture(dbFixture).CreateClient(output);
+	private readonly ITestOutputHelper _output = output;
+	private readonly CustomWebApplicationFactory _factory = factory;
 
-    public ProcessTests(CustomWebApplicationFactory factory, SharedSqliteDbFixture dbFixture, ITestOutputHelper output)
-    {
-        _factory = factory;
-        _output = output;
+	[Fact]
+	public async Task RootEndpoint_ReturnsOk()
+	{
+		var resp = await _client.GetAsync("/api", TestContext.Current.CancellationToken);
+		Assert.True(resp.StatusCode is HttpStatusCode.OK or HttpStatusCode.NotFound);
+	}
 
-        _client = factory.WithSharedFixture(dbFixture).CreateClient(output);
-    }
+	[Fact]
+	public async Task Swagger_Is_Available()
+	{
+		_output.WriteLine($"Base address: {_client.BaseAddress}");
+		var urls = new[] { "swagger", "swagger/index.html", "api/swagger", "api/swagger/index.html" };
 
-    [Fact]
-    public async Task RootEndpoint_ReturnsOk()
-    {
-        var resp = await _client.GetAsync("/api", TestContext.Current.CancellationToken);
-        Assert.True(resp.StatusCode is HttpStatusCode.OK or HttpStatusCode.NotFound);
-    }
+		foreach (var url in urls)
+		{
+			try
+			{
+				var response = await _client.GetAsync(url, TestContext.Current.CancellationToken);
+				if (response.IsSuccessStatusCode)
+				{
+					var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+					if (html.Contains("Swagger UI", StringComparison.Ordinal))
+					{
+						Assert.Contains("Swagger UI", html, StringComparison.Ordinal);
+						return;
+					}
+				}
+			}
+			catch { /* ignore for iteration */ }
+		}
 
-    [Fact]
-    public async Task Swagger_Is_Available()
-    {
-        _output.WriteLine($"Base address: {_client.BaseAddress}");
-        var urls = new[] { "swagger", "swagger/index.html", "api/swagger", "api/swagger/index.html" };
+		var final = await _client.GetAsync("swagger", TestContext.Current.CancellationToken);
+		final.EnsureSuccessStatusCode();
+		Assert.Contains("Swagger UI", await final.Content.ReadAsStringAsync(TestContext.Current.CancellationToken), StringComparison.Ordinal);
+	}
 
-        foreach (var url in urls)
-        {
-            try
-            {
-                var response = await _client.GetAsync(url, TestContext.Current.CancellationToken);
-                if (response.IsSuccessStatusCode)
-                {
-                    var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-                    if (html.Contains("Swagger UI"))
-                        return;
-                }
-            }
-            catch { /* ignore for iteration */ }
-        }
+	[Fact]
+	public async Task ProcessDefinitions_AreSeeded()
+	{
+		var resp = await _client.GetAsync("/api/repository", TestContext.Current.CancellationToken);
+		resp.EnsureSuccessStatusCode();
+		var content = await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+		Assert.NotEmpty(content);
+		// Ensure both seeded definitions are present
+		//Assert.Contains("simpleProcess", content);
+		//Assert.Contains("advancedProcess", content);
+	}
+	[Fact]
+	public async Task Tenants_AreSeeded()
+	{
+		using var scope = _factory.Services.CreateScope();
+		var tenantDb = scope.ServiceProvider.GetRequiredService<TenantDbContext>();
 
-        var final = await _client.GetAsync("swagger", TestContext.Current.CancellationToken);
-        final.EnsureSuccessStatusCode();
-    }
+		var tableNames = await GetSqliteTableNamesAsync(tenantDb);
+		Assert.Contains("Tenants", tableNames, StringComparer.Ordinal);
+	}
 
-    [Fact]
-    public async Task ProcessDefinitions_AreSeeded()
-    {
-        var resp = await _client.GetAsync("/api/repository", TestContext.Current.CancellationToken);
-        resp.EnsureSuccessStatusCode();
-        var content = await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-        Assert.NotEmpty(content);
-        // Ensure both seeded definitions are present
-        //Assert.Contains("simpleProcess", content);
-        //Assert.Contains("advancedProcess", content);
-    }
-    [Fact]
-    public async Task Tenants_AreSeeded()
-    {
-        using var scope = _factory.Services.CreateScope();
-        var tenantDb = scope.ServiceProvider.GetRequiredService<TenantDbContext>();
+	private static async Task<List<string>> GetSqliteTableNamesAsync(DbContext ctx)
+	{
+		var result = new List<string>();
+		var conn = ctx.Database.GetDbConnection();
+		if (conn.State != System.Data.ConnectionState.Open)
+		{
+			await conn.OpenAsync();
+		}
 
-        var tableNames = await GetSqliteTableNamesAsync(tenantDb);
-        Assert.Contains("Tenants", tableNames);
-    }
-
-    private static async Task<List<string>> GetSqliteTableNamesAsync(DbContext ctx)
-    {
-        var result = new List<string>();
-        var conn = ctx.Database.GetDbConnection();
-        if (conn.State != System.Data.ConnectionState.Open)
-            await conn.OpenAsync();
-
-        await using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table';";
-        await using var reader = await cmd.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
-        {
-            if (!reader.IsDBNull(0))
-                result.Add(reader.GetString(0));
-        }
-        return result;
-    }
+		await using var cmd = conn.CreateCommand();
+		cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table';";
+		await using var reader = await cmd.ExecuteReaderAsync();
+		while (await reader.ReadAsync())
+		{
+			if (!await reader.IsDBNullAsync(0, TestContext.Current.CancellationToken))
+			{
+				result.Add(reader.GetString(0));
+			}
+		}
+		return result;
+	}
 }

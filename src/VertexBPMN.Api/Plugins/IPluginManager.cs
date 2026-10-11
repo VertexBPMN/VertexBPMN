@@ -4,6 +4,7 @@ namespace VertexBPMN.Api.Plugins;
 /// Plugin Architecture System
 /// Olympic-level feature: Innovation Differentiators - Plugin Extensions
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public plugin extension contract retained for implementations in external assemblies.")]
 public interface IPluginManager
 {
     int LoadedPluginCount { get; }

@@ -5,7 +5,7 @@ namespace VertexBPMN.Tests.Parsing.Validation;
 
 public class Phase3AdvancedValidationLaneFlowNodeRefsTests
 {
-    private const string MissingRefXml = """
+	private const string MissingRefXml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <bpmn:process id="p1">
     <bpmn:laneSet id="ls1">
@@ -20,7 +20,7 @@ public class Phase3AdvancedValidationLaneFlowNodeRefsTests
 </bpmn:definitions>
 """;
 
-    private const string ValidRefsXml = """
+	private const string ValidRefsXml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <bpmn:process id="p1">
     <bpmn:startEvent id="start"/>
@@ -36,41 +36,44 @@ public class Phase3AdvancedValidationLaneFlowNodeRefsTests
 </bpmn:definitions>
 """;
 
-    [Fact]
-    public async Task LaneFlowNodeRefs_Disabled_NoStructuredDiagnostics()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = false
-        }).ParseAsync(MissingRefXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task LaneFlowNodeRefs_Disabled_NoStructuredDiagnostics()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = false
+		}).ParseAsync(MissingRefXml, TestContext.Current.CancellationToken);
 
-        Assert.Null(model.ValidationDiagnostics);
-    }
+		Assert.Null(model.ValidationDiagnostics);
+	}
 
-    [Fact]
-    public async Task LaneFlowNodeRefs_MissingReference_ProducesWarning()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = true
-        }).ParseAsync(MissingRefXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task LaneFlowNodeRefs_MissingReference_ProducesWarning()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = true
+		}).ParseAsync(MissingRefXml, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(model.ValidationDiagnostics);
-        Assert.Contains(model.ValidationDiagnostics!, d =>
-            d.Code == "REF-LANE-FLOWNODE-MISSING" &&
-            d.ElementId == "lane1" &&
-            d.Severity == ValidationSeverity.Warning);
-    }
+		Assert.NotNull(model.ValidationDiagnostics);
+		Assert.Contains(model.ValidationDiagnostics, d =>
+			d.Code == "REF-LANE-FLOWNODE-MISSING" &&
+			d.ElementId == "lane1" &&
+			d.Severity == ValidationSeverity.Warning);
+	}
 
-    [Fact]
-    public async Task LaneFlowNodeRefs_AllValid_NoDiagnostics()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = true
-        }).ParseAsync(ValidRefsXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task LaneFlowNodeRefs_AllValid_NoDiagnostics()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = true
+		}).ParseAsync(ValidRefsXml, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(model.ValidationDiagnostics);
-        Assert.DoesNotContain(model.ValidationDiagnostics!, d => d.Code == "REF-LANE-FLOWNODE-MISSING");
-    }
+		Assert.NotNull(model.ValidationDiagnostics);
+		Assert.DoesNotContain(model.ValidationDiagnostics, d => d.Code == "REF-LANE-FLOWNODE-MISSING");
+	}
 }

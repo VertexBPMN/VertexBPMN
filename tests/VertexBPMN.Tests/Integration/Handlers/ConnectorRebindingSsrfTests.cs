@@ -14,57 +14,64 @@ namespace VertexBPMN.Tests.Integration.Handlers;
 /// </summary>
 public sealed class ConnectorRebindingSsrfTests
 {
-    [Fact]
-    public void RegisteredConnectorHandler_HasRebindingSafeConnectCallback()
-    {
-        var services = new ServiceCollection();
-        ServiceTaskRegistryExtensions.AddServiceTaskHandlers(services, null);
-        using var provider = services.BuildServiceProvider();
+	[Fact]
+	public void RegisteredConnectorHandler_HasRebindingSafeConnectCallback()
+	{
+		var services = new ServiceCollection();
+		services.AddServiceTaskHandlers(null);
+		using var provider = services.BuildServiceProvider();
 
-        var handler = provider.GetRequiredService<SocketsHttpHandler>();
+		var handler = provider.GetRequiredService<SocketsHttpHandler>();
 
-        Assert.False(handler.AllowAutoRedirect);
-        Assert.NotNull(handler.ConnectCallback);
-    }
+		Assert.False(handler.AllowAutoRedirect);
+		Assert.NotNull(handler.ConnectCallback);
+	}
 
-    [Fact]
-    public async Task ConnectorHandler_RejectsLoopbackAtConnect_WithoutReachingTarget()
-    {
-        var services = new ServiceCollection();
-        ServiceTaskRegistryExtensions.AddServiceTaskHandlers(services, null);
-        using var provider = services.BuildServiceProvider();
+	[Fact]
+	public async Task ConnectorHandler_RejectsLoopbackAtConnect_WithoutReachingTarget()
+	{
+		var services = new ServiceCollection();
+		services.AddServiceTaskHandlers(null);
+		await using var provider = services.BuildServiceProvider();
 
-        var handler = provider.GetRequiredService<SocketsHttpHandler>();
-        using var client = new HttpClient(handler);
+		var handler = provider.GetRequiredService<SocketsHttpHandler>();
+		using var client = new HttpClient(handler);
 
-        using var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        var hits = 0;
-        var acceptTask = Task.Run(async () =>
-        {
-            try
-            {
-                using var accepted = await listener.AcceptTcpClientAsync();
-                Interlocked.Increment(ref hits);
-            }
-            catch
-            {
-                // listener stopped — acceptable
-            }
-        });
+		using var listener = new TcpListener(IPAddress.Loopback, 0);
+		listener.Start();
+		var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+		var hits = 0;
+		using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+		var acceptTask = ObserveConnectionAsync();
+		try
+		{
+			// A rejected address must never reach the listening socket.
+			var exception = await Record.ExceptionAsync(() =>
+				client.GetAsync($"http://127.0.0.1:{port}/", TestContext.Current.CancellationToken));
+			Assert.NotNull(exception);
+			Assert.True(exception is HttpRequestException
+							|| exception.InnerException is HttpRequestException,
+						$"Expected an HttpRequestException, got {exception.GetType().Name}.");
+			await Task.Delay(150, TestContext.Current.CancellationToken);
+		}
+		finally
+		{
+			await cancellation.CancelAsync();
+			await acceptTask;
+		}
+		Assert.Equal(0, Volatile.Read(ref hits));
 
-        // 127.0.0.1 is loopback: ConnectCallback must reject it BEFORE any socket is created,
-        // so the local listener (which would accept a real connection) never sees a hit.
-        var exception = await Record.ExceptionAsync(() =>
-            client.GetAsync($"http://127.0.0.1:{port}/", TestContext.Current.CancellationToken));
-
-        Assert.NotNull(exception);
-        Assert.True(exception is HttpRequestException
-                        || exception!.InnerException is HttpRequestException,
-                    $"Expected an HttpRequestException, got {exception?.GetType().Name}.");
-
-        await Task.Delay(150);
-        Assert.Equal(0, Volatile.Read(ref hits));
-    }
+		async Task ObserveConnectionAsync()
+		{
+			try
+			{
+				using var accepted = await listener.AcceptTcpClientAsync(cancellation.Token);
+				Interlocked.Increment(ref hits);
+			}
+			catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+			{
+				// A rejected connection leaves the accept pending until cleanup cancels it.
+			}
+		}
+	}
 }

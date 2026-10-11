@@ -1,6 +1,7 @@
-using Microsoft.EntityFrameworkCore.Migrations;
+﻿using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
+#pragma warning disable CA1861, MA0048
 
 namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn;
 

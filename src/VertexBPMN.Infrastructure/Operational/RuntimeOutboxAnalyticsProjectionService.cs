@@ -23,8 +23,10 @@ public sealed class RuntimeOutboxAnalyticsProjectionService(
             {
                 var projected = await ProjectBatchAsync(100, stoppingToken);
                 if (projected == 0)
-                    await Task.Delay(PollInterval, stoppingToken);
-            }
+				{
+					await Task.Delay(PollInterval, stoppingToken);
+				}
+			}
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 break;
@@ -39,9 +41,12 @@ public sealed class RuntimeOutboxAnalyticsProjectionService(
 
     public async Task<int> ProjectBatchAsync(int batchSize, CancellationToken cancellationToken = default)
     {
-        if (batchSize <= 0) throw new ArgumentOutOfRangeException(nameof(batchSize));
+        if (batchSize <= 0)
+		{
+			ArgumentOutOfRangeException.ThrowIfNegativeOrZero(batchSize);
+		}
 
-        await using var discoveryScope = scopeFactory.CreateAsyncScope();
+		await using var discoveryScope = scopeFactory.CreateAsyncScope();
         var discoveryDb = discoveryScope.ServiceProvider.GetRequiredService<BpmnDbContext>();
         var candidates = await discoveryDb.RuntimeOutbox.AsNoTracking()
             .Where(message => message.AnalyticsProjectedAt == null)
@@ -76,8 +81,10 @@ public sealed class RuntimeOutboxAnalyticsProjectionService(
                     miningDb.ChangeTracker.Clear();
                     if (!await miningDb.Events.AnyAsync(
                             item => item.SourceEventId == candidate.Id, cancellationToken))
-                        throw;
-                }
+					{
+						throw;
+					}
+				}
             }
 
             var runtimeDb = scope.ServiceProvider.GetRequiredService<BpmnDbContext>();
@@ -127,12 +134,12 @@ public sealed class RuntimeOutboxAnalyticsProjectionService(
 
     private static string? PropertyText(JsonElement element, params string[] names)
     {
-        foreach (var property in element.EnumerateObject())
-            if (names.Any(name => string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase)))
-                return property.Value.ValueKind == JsonValueKind.String
-                    ? property.Value.GetString()
-                    : property.Value.ToString();
-        return null;
+        return element.EnumerateObject()
+            .Where(property => names.Any(name => string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase)))
+            .Select(property => property.Value.ValueKind == JsonValueKind.String
+                ? property.Value.GetString()
+                : property.Value.ToString())
+            .FirstOrDefault();
     }
 
     private sealed record ProjectionCandidate(

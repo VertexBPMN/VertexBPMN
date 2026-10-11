@@ -1,15 +1,16 @@
-using System;
+﻿using System;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using VertexBPMN.Infrastructure.Persistence;
 
 #nullable disable
+#pragma warning disable CA1861, MA0048
 
 namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn;
 
 [DbContext(typeof(BpmnDbContext))]
 [Migration("20260820003000_AddCaseDefinitions")]
-public partial class AddCaseDefinitions : Migration
+public class AddCaseDefinitions : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
     {

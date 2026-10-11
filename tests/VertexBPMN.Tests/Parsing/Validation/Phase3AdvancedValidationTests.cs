@@ -5,7 +5,7 @@ namespace VertexBPMN.Tests.Parsing.Validation;
 
 public class Phase3AdvancedValidationTests
 {
-    private const string DuplicateIdXml = """
+	private const string DuplicateIdXml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <bpmn:process id="p1">
     <bpmn:startEvent id="s1"/>
@@ -18,41 +18,43 @@ public class Phase3AdvancedValidationTests
 </bpmn:definitions>
 """;
 
-    [Fact]
-    public async Task AdvancedValidation_Disabled_NoStructuredDiagnostics()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = false
-        }).ParseAsync(DuplicateIdXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task AdvancedValidation_Disabled_NoStructuredDiagnostics()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = false
+		}).ParseAsync(DuplicateIdXml, TestContext.Current.CancellationToken);
 
-        Assert.Null(model.ValidationDiagnostics);
-        Assert.Contains(model.Diagnostics, m => m.StartsWith("Duplicate ID:"));
-    }
+		Assert.Null(model.ValidationDiagnostics);
+		Assert.NotNull(model.Diagnostics);
+		Assert.Contains(model.Diagnostics, m => m.StartsWith("Duplicate ID:", StringComparison.Ordinal));
+	}
 
-    [Fact]
-    public async Task AdvancedValidation_Enabled_DuplicateIdReportedStructurally()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = true
-        }).ParseAsync(DuplicateIdXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task AdvancedValidation_Enabled_DuplicateIdReportedStructurally()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = true
+		}).ParseAsync(DuplicateIdXml, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(model.ValidationDiagnostics);
-        var diag = Assert.Single(model.ValidationDiagnostics!);
-        Assert.Equal("STR-DUP-ID", diag.Code);
-        Assert.Equal("dup", diag.ElementId);
-        Assert.Equal(ValidationSeverity.Error, diag.Severity);
-        // Legacy message still present
-        Assert.Contains(model.Diagnostics, m => m.StartsWith("Duplicate ID:"));
-    }
+		Assert.NotNull(model.ValidationDiagnostics);
+		var diag = Assert.Single(model.ValidationDiagnostics);
+		Assert.Equal("STR-DUP-ID", diag.Code);
+		Assert.Equal("dup", diag.ElementId);
+		Assert.Equal(ValidationSeverity.Error, diag.Severity);
+		// Legacy message still present
+		Assert.NotNull(model.Diagnostics);
+		Assert.Contains(model.Diagnostics, m => m.StartsWith("Duplicate ID:", StringComparison.Ordinal));
+	}
 
-    [Fact]
-    public async Task AdvancedValidation_Enabled_NoDuplicates_NoStructuredDiagnostics()
-    {
-        const string cleanXml = """
+	[Fact]
+	public async Task AdvancedValidation_Enabled_NoDuplicates_NoStructuredDiagnostics()
+	{
+		const string cleanXml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <bpmn:process id="p1">
     <bpmn:startEvent id="s1"/>
@@ -61,13 +63,13 @@ public class Phase3AdvancedValidationTests
   </bpmn:process>
 </bpmn:definitions>
 """;
-        var model = await new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = true
-        }).ParseAsync(cleanXml, TestContext.Current.CancellationToken);
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = true
+		}).ParseAsync(cleanXml, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(model.ValidationDiagnostics);
-        Assert.Empty(model.ValidationDiagnostics!);
-    }
+		Assert.NotNull(model.ValidationDiagnostics);
+		Assert.Empty(model.ValidationDiagnostics);
+	}
 }

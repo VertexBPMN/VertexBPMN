@@ -5,7 +5,7 @@ namespace VertexBPMN.Tests.Parsing.Validation;
 
 public class Phase3AdvancedValidationEventBasedGatewayTests
 {
-    private const string InvalidTargetsXml = """
+	private const string InvalidTargetsXml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <bpmn:process id="p1">
     <bpmn:startEvent id="start"/>
@@ -31,7 +31,7 @@ public class Phase3AdvancedValidationEventBasedGatewayTests
 </bpmn:definitions>
 """;
 
-    private const string AllValidXml = """
+	private const string AllValidXml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <bpmn:process id="p1">
     <bpmn:startEvent id="start"/>
@@ -52,58 +52,58 @@ public class Phase3AdvancedValidationEventBasedGatewayTests
 </bpmn:definitions>
 """;
 
-    [Fact]
-    public async Task EventBasedGateway_Disabled_NoStructuredDiagnostics()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = false
-        }).ParseAsync(InvalidTargetsXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task EventBasedGateway_Disabled_NoStructuredDiagnostics()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = false
+		}).ParseAsync(InvalidTargetsXml, TestContext.Current.CancellationToken);
 
-        Assert.Null(model.ValidationDiagnostics);
-    }
+		Assert.Null(model.ValidationDiagnostics);
+	}
 
-    [Fact]
-    public async Task EventBasedGateway_InvalidTargets_Reported()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = true
-        }).ParseAsync(InvalidTargetsXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task EventBasedGateway_InvalidTargets_Reported()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = true
+		}).ParseAsync(InvalidTargetsXml, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(model.ValidationDiagnostics);
-        var diags = model.ValidationDiagnostics!;
+		Assert.NotNull(model.ValidationDiagnostics);
+		var diags = model.ValidationDiagnostics;
 
-        // Two invalid outgoing targets: task1 (userTask), throwEvt (intermediateThrowEvent)
-        Assert.Contains(diags, d =>
-            d.Code == "SEM-EVENTGW-INVALID-OUTGOING" &&
-            d.ElementId == "gw1" &&
-            d.Message.Contains("task1"));
+		// Two invalid outgoing targets: task1 (userTask), throwEvt (intermediateThrowEvent)
+		Assert.Contains(diags, d =>
+			d.Code == "SEM-EVENTGW-INVALID-OUTGOING" &&
+			d.ElementId == "gw1" &&
+			d.Message.Contains("task1", StringComparison.Ordinal));
 
-        Assert.Contains(diags, d =>
-            d.Code == "SEM-EVENTGW-INVALID-OUTGOING" &&
-            d.ElementId == "gw1" &&
-            d.Message.Contains("throwEvt"));
+		Assert.Contains(diags, d =>
+			d.Code == "SEM-EVENTGW-INVALID-OUTGOING" &&
+			d.ElementId == "gw1" &&
+			d.Message.Contains("throwEvt", StringComparison.Ordinal));
 
-        // Valid catch event target should not produce an error
-        Assert.DoesNotContain(diags, d =>
-            d.Code == "SEM-EVENTGW-INVALID-OUTGOING" &&
-            d.Message.Contains("catchEvt"));
-    }
+		// Valid catch event target should not produce an error
+		Assert.DoesNotContain(diags, d =>
+			d.Code == "SEM-EVENTGW-INVALID-OUTGOING" &&
+			d.Message.Contains("catchEvt", StringComparison.Ordinal));
+	}
 
-    [Fact]
-    public async Task EventBasedGateway_AllValid_NoDiagnostics()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = true
-        }).ParseAsync(AllValidXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task EventBasedGateway_AllValid_NoDiagnostics()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = true
+		}).ParseAsync(AllValidXml, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(model.ValidationDiagnostics);
-        Assert.DoesNotContain(model.ValidationDiagnostics!,
-            d => d.Code == "SEM-EVENTGW-INVALID-OUTGOING");
-    }
+		Assert.NotNull(model.ValidationDiagnostics);
+		Assert.DoesNotContain(model.ValidationDiagnostics,
+			d => d.Code == "SEM-EVENTGW-INVALID-OUTGOING");
+	}
 }

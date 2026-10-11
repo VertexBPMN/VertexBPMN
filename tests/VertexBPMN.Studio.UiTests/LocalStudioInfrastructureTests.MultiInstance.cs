@@ -16,78 +16,82 @@ namespace VertexBPMN.Studio.UiTests;
 
 public sealed partial class LocalStudioInfrastructureTests
 {
-    [Fact]
-    [Trait("Category", "LocalStudioE2E")]
-    public async Task MultiInstance_ParallelUserTask_OpensAllInstancesAndCompletesAfterAllDone()
-    {
-        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
-        using var apiClient = host.CreateApiClient();
-        var processKey = $"StudioE2E_MIPar_{host.RunId}";
+	[Fact]
+	[Trait("Category", "LocalStudioE2E")]
+	public async Task MultiInstance_ParallelUserTask_OpensAllInstancesAndCompletesAfterAllDone()
+	{
+		Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
+		using var apiClient = host.CreateApiClient();
+		var processKey = $"StudioE2E_MIPar_{host.RunId}";
 
-        await DeployUnderTestAsync(apiClient, processKey, BuildMultiInstanceBpmn(processKey, isSequential: false, count: 3));
-        host.RegisterProcessDefinitionCleanup(processKey);
+		await DeployUnderTestAsync(apiClient, processKey, BuildMultiInstanceBpmn(processKey, isSequential: false, count: 3));
+		host.RegisterProcessDefinitionCleanup(processKey);
 
-        var instanceId = await StartProcessAsync(apiClient, processKey, null, $"mi-par-{host.RunId}");
+		var instanceId = await StartProcessAsync(apiClient, processKey, null, $"mi-par-{host.RunId}");
 
-        // Parallel: all three review tasks are open at the same time.
-        await WaitForOpenTaskCountAsync(instanceId, 3);
+		// Parallel: all three review tasks are open at the same time.
+		await WaitForOpenTaskCountAsync(instanceId, 3);
 
-        var open = await GetOpenTasksAsync(instanceId);
-        Assert.Equal(3, open.Length);
-        foreach (var task in open)
-            Assert.Equal("mi-review", task.GetProperty("activityId").GetString());
+		var open = await GetOpenTasksAsync(instanceId);
+		Assert.Equal(3, open.Length);
+		foreach (var task in open)
+		{
+			Assert.Equal("mi-review", task.GetProperty("activityId").GetString());
+		}
 
-        // The loop must not complete until every instance is done.
-        var historyBefore = await GetHistoryAsync(instanceId);
-        Assert.DoesNotContain(historyBefore, e => EventHasElementId(e, "end") && IsEndEventReached(e));
+		// The loop must not complete until every instance is done.
+		var historyBefore = await GetHistoryAsync(instanceId);
+		Assert.DoesNotContain(historyBefore, e => EventHasElementId(e, "end") && IsEndEventReached(e));
 
-        foreach (var task in open)
-            await CompleteTaskAsync(task.GetProperty("id").GetGuid());
+		foreach (var task in open)
+		{
+			await CompleteTaskAsync(task.GetProperty("id").GetGuid());
+		}
 
-        await WaitForInstanceStateAsync(instanceId, "Completed");
+		await WaitForInstanceStateAsync(instanceId, "Completed");
 
-        // Exactly three iterations ran against the same multi-instance activity.
-        var history = await GetHistoryAsync(instanceId);
-        var created = history.Count(e => EventHasElementId(e, "mi-review") && IsEventType(e, "USER_TASK_CREATED"));
-        Assert.Equal(3, created);
-    }
+		// Exactly three iterations ran against the same multi-instance activity.
+		var history = await GetHistoryAsync(instanceId);
+		var created = history.Count(e => EventHasElementId(e, "mi-review") && IsEventType(e, "USER_TASK_CREATED"));
+		Assert.Equal(3, created);
+	}
 
-    [Fact]
-    [Trait("Category", "LocalStudioE2E")]
-    public async Task MultiInstance_SequentialUserTask_RunsOneInstanceAtATime()
-    {
-        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
-        using var apiClient = host.CreateApiClient();
-        var processKey = $"StudioE2E_MISeq_{host.RunId}";
+	[Fact]
+	[Trait("Category", "LocalStudioE2E")]
+	public async Task MultiInstance_SequentialUserTask_RunsOneInstanceAtATime()
+	{
+		Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
+		using var apiClient = host.CreateApiClient();
+		var processKey = $"StudioE2E_MISeq_{host.RunId}";
 
-        await DeployUnderTestAsync(apiClient, processKey, BuildMultiInstanceBpmn(processKey, isSequential: true, count: 3));
-        host.RegisterProcessDefinitionCleanup(processKey);
+		await DeployUnderTestAsync(apiClient, processKey, BuildMultiInstanceBpmn(processKey, isSequential: true, count: 3));
+		host.RegisterProcessDefinitionCleanup(processKey);
 
-        var instanceId = await StartProcessAsync(apiClient, processKey, null, $"mi-seq-{host.RunId}");
+		var instanceId = await StartProcessAsync(apiClient, processKey, null, $"mi-seq-{host.RunId}");
 
-        // Sequential: exactly one instance is open at a time; after the last one the loop completes.
-        for (var iteration = 1; iteration <= 3; iteration++)
-        {
-            await WaitForOpenTaskCountAsync(instanceId, 1);
-            var open = await GetOpenTasksAsync(instanceId);
-            Assert.Equal(1, open.Length);
-            Assert.Equal("mi-review", open[0].GetProperty("activityId").GetString());
-            await CompleteTaskAsync(open[0].GetProperty("id").GetGuid());
-        }
+		// Sequential: exactly one instance is open at a time; after the last one the loop completes.
+		for (var iteration = 1; iteration <= 3; iteration++)
+		{
+			await WaitForOpenTaskCountAsync(instanceId, 1);
+			var open = await GetOpenTasksAsync(instanceId);
+			Assert.Single(open);
+			Assert.Equal("mi-review", open[0].GetProperty("activityId").GetString());
+			await CompleteTaskAsync(open[0].GetProperty("id").GetGuid());
+		}
 
-        await WaitForInstanceStateAsync(instanceId, "Completed");
+		await WaitForInstanceStateAsync(instanceId, "Completed");
 
-        var history = await GetHistoryAsync(instanceId);
-        var created = history.Count(e => EventHasElementId(e, "mi-review") && IsEventType(e, "USER_TASK_CREATED"));
-        Assert.Equal(3, created);
-    }
+		var history = await GetHistoryAsync(instanceId);
+		var created = history.Count(e => EventHasElementId(e, "mi-review") && IsEventType(e, "USER_TASK_CREATED"));
+		Assert.Equal(3, created);
+	}
 
-    // ---- helpers ----
+	// ---- helpers ----
 
-    private static string BuildMultiInstanceBpmn(string processKey, bool isSequential, int count)
-    {
-        var seq = isSequential ? "true" : "false";
-        return $$"""
+	private static string BuildMultiInstanceBpmn(string processKey, bool isSequential, int count)
+	{
+		var seq = isSequential ? "true" : "false";
+		return $$"""
             <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
                          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                          xmlns:vertex="http://vertexbpmn.dev/schema"
@@ -106,5 +110,5 @@ public sealed partial class LocalStudioInfrastructureTests
               </process>
             </definitions>
             """;
-    }
+	}
 }

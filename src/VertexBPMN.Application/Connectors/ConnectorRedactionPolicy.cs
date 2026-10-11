@@ -16,6 +16,7 @@ namespace VertexBPMN.Application.Connectors;
 public sealed class ConnectorRedactionPolicy
 {
 	private static readonly string[] SensitiveFragments = ["secret", "token", "password", "authorization", "apikey", "api-key", "connectionstring"];
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S2325", Justification = "Preserve the public instance contract of the DI-provided redaction policy.")]
 	public bool IsSensitive(string key) => SensitiveFragments.Any(fragment => key.Contains(fragment, StringComparison.OrdinalIgnoreCase));
 	public IReadOnlyDictionary<string, object> Redact(IReadOnlyDictionary<string, object> values) =>
 		values.ToDictionary(pair => pair.Key, pair => IsSensitive(pair.Key) ? (object)"***" : pair.Value, StringComparer.OrdinalIgnoreCase);

@@ -5,10 +5,10 @@ using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 
 namespace VertexBPMN.Api.Controllers;
-
 [ApiController]
 [Route("api/test-runs")]
 [Authorize(Policy = "ProcessManager")]
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public controller required for ASP.NET Core MVC discovery and activation.")]
 public sealed class TestRunsController(IRepositoryService repository, IRuntimeService runtime) : ControllerBase
 {
 	[HttpPost]
@@ -16,44 +16,39 @@ public sealed class TestRunsController(IRepositoryService repository, IRuntimeSe
 	public async Task<ActionResult<TestRunResponse>> Start([FromBody] TestRunRequest request, CancellationToken cancellationToken)
 	{
 		if (string.IsNullOrWhiteSpace(request.BpmnXml) || string.IsNullOrWhiteSpace(request.Name))
+		{
 			return BadRequest(new ProblemDetails { Detail = "BpmnXml and Name are required." });
+		}
 
 		var tenantId = ResolveTenantId(request.TenantId);
 		if (tenantId is null && !User.IsInRole("Admin"))
+		{
 			return Forbid();
+		}
 
 		var definition = await repository.DeployAsync(request.BpmnXml, request.Name, tenantId, cancellationToken);
-		var instance = await runtime.StartProcessByKeyAsync(
-			definition.Key, request.Variables, request.BusinessKey ?? $"test-run-{Guid.NewGuid():N}", tenantId, null, cancellationToken);
-
-		return Created($"api/test-runs/{instance.Id}", new TestRunResponse(
-			new TestRunDefinitionResponse(
-				definition.Id.ToString(),
-				definition.Key,
-				definition.Name,
-				definition.Version,
-				definition.TenantId,
-				Suspended: false),
-			new TestRunInstanceResponse(
-				instance.Id,
-				instance.BusinessKey,
-				instance.ProcessDefinitionId.ToString(),
-				definition.Key,
-				instance.TenantId,
-				instance.State,
-				instance.Variables)));
+		var instance = await runtime.StartProcessByKeyAsync(definition.Key, request.Variables, request.BusinessKey ?? $"test-run-{Guid.NewGuid():N}", tenantId, null, cancellationToken);
+		return Created($"api/test-runs/{instance.Id}", new TestRunResponse(new TestRunDefinitionResponse(definition.Id.ToString(), definition.Key, definition.Name, definition.Version, definition.TenantId, Suspended: false), new TestRunInstanceResponse(instance.Id, instance.BusinessKey, instance.ProcessDefinitionId.ToString(), definition.Key, instance.TenantId, instance.State, instance.Variables)));
 	}
 
-	private string? ResolveTenantId(string? requestedTenantId) =>
-		User.IsInRole("Admin")
-			? string.IsNullOrWhiteSpace(requestedTenantId) ? null : requestedTenantId.Trim()
-			: User.FindFirstValue("tenant_id");
+	private string? ResolveTenantId(string? requestedTenantId)
+	{
+		if (!User.IsInRole("Admin"))
+		{
+			return User.FindFirstValue("tenant_id");
+		}
 
+		return string.IsNullOrWhiteSpace(requestedTenantId) ? null : requestedTenantId.Trim();
+	}
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public contract type TestRunRequest retained for exposed HTTP action signatures and controller activation (TestRunsController).")]
 	public sealed record TestRunRequest(string BpmnXml, string Name, IDictionary<string, object>? Variables, string? BusinessKey, string? TenantId);
 	/// <summary>
 	/// Stable transport contract for SDK consumers. Domain entities deliberately do not cross the API boundary.
 	/// </summary>
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public contract type TestRunResponse retained for exposed HTTP action signatures and controller activation (TestRunsController).")]
 	public sealed record TestRunResponse(TestRunDefinitionResponse Definition, TestRunInstanceResponse Instance);
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public contract type TestRunDefinitionResponse retained for exposed HTTP action signatures and controller activation (TestRunsController).")]
 	public sealed record TestRunDefinitionResponse(string Id, string Key, string Name, int Version, string? TenantId, bool Suspended);
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public contract type TestRunInstanceResponse retained for exposed HTTP action signatures and controller activation (TestRunsController).")]
 	public sealed record TestRunInstanceResponse(Guid Id, string? BusinessKey, string ProcessDefinitionId, string ProcessDefinitionKey, string? TenantId, string State, IDictionary<string, object> Variables);
 }

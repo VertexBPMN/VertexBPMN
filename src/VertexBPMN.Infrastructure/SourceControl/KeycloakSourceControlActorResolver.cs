@@ -14,7 +14,7 @@ public sealed class KeycloakSourceControlActorResolver(ICredentialService creden
 {
 	public async Task<IReadOnlyCollection<string>> ResolveAsync(SourceControlContext context, CancellationToken cancellationToken)
 	{
-		using var handler = new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false, UseProxy = false };
+		using var handler = new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false, UseProxy = false, CheckCertificateRevocationList = true };
 		using var client = new HttpClient(handler) { Timeout = options.Value.Limits.ReadTimeout };
 		return await ResolveAsync(context, client, cancellationToken);
 	}
@@ -22,51 +22,50 @@ public sealed class KeycloakSourceControlActorResolver(ICredentialService creden
 	internal async Task<IReadOnlyCollection<string>> ResolveAsync(SourceControlContext context, HttpClient client,
 		CancellationToken cancellationToken)
 	{
-		if (!options.Value.Enabled) throw new SourceControlSecurityException(SourceControlErrorCode.Disabled);
+		if (!options.Value.Enabled)
+		{
+			throw new SourceControlSecurityException(SourceControlErrorCode.Disabled);
+		}
+
 		using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 		deadline.CancelAfter(options.Value.Limits.ReadTimeout);
 		try
 		{
 			var authority = Authority();
 			var reference = options.Value.IdentityCredentialReference;
-			if (string.IsNullOrWhiteSpace(reference)) Fail(SourceControlErrorCode.CredentialUnavailable);
+			if (string.IsNullOrWhiteSpace(reference))
+			{
+				Fail(SourceControlErrorCode.CredentialUnavailable);
+			}
+
 			var metadata = await credentials.GetAsync(context.TenantId, reference!, deadline.Token);
-			if (metadata?.TenantId != context.TenantId || metadata.Type != "KeycloakAdmin") Fail(SourceControlErrorCode.CredentialUnavailable);
+			if (metadata?.TenantId != context.TenantId || metadata.Type != "KeycloakAdmin")
+			{
+				Fail(SourceControlErrorCode.CredentialUnavailable);
+			}
+
 			var clientId = await credentials.ResolveSecretAsync(context.TenantId, reference!, "clientId", deadline.Token);
 			var secret = await credentials.ResolveSecretAsync(context.TenantId, reference!, "clientSecret", deadline.Token);
-			if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(secret)) Fail(SourceControlErrorCode.CredentialUnavailable);
+			if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(secret))
+			{
+				Fail(SourceControlErrorCode.CredentialUnavailable);
+			}
+
 			using var exchange = new HttpRequestMessage(HttpMethod.Post, authority.AbsoluteUri.TrimEnd('/') + "/protocol/openid-connect/token")
 			{
-				Content = new FormUrlEncodedContent(new Dictionary<string, string>
+				Content = new FormUrlEncodedContent(new Dictionary<string, string>(StringComparer.Ordinal)
 				{
 					["grant_type"] = "client_credentials", ["client_id"] = clientId!, ["client_secret"] = secret!
 				})
 			};
 			using var tokenResponse = await SendJsonAsync(client, exchange, deadline.Token);
 			var token = tokenResponse.RootElement.GetProperty("access_token").GetString();
-			if (string.IsNullOrWhiteSpace(token) || token.Any(char.IsControl)) Fail(SourceControlErrorCode.CredentialUnavailable);
-			var marker = authority.AbsolutePath.LastIndexOf("/realms/", StringComparison.Ordinal);
-			var admin = authority.GetLeftPart(UriPartial.Authority) + authority.AbsolutePath[..marker] + "/admin" + authority.AbsolutePath[marker..];
-			var actor = Uri.EscapeDataString(context.ActorId);
-			using var user = await GetAsync(client, admin + "/users/" + actor, token!, deadline.Token);
-			var value = user.RootElement;
-			if (value.GetProperty("id").GetString() != context.ActorId || !value.GetProperty("enabled").GetBoolean()) Fail(SourceControlErrorCode.Forbidden);
-			var tenants = value.GetProperty("attributes").GetProperty("tenant_id");
-			if (tenants.ValueKind != JsonValueKind.Array || tenants.GetArrayLength() != 1 || tenants[0].GetString() != context.TenantId)
-				Fail(SourceControlErrorCode.NotFound);
-			var audience = configuration["Jwt:Audience"];
-			if (string.IsNullOrWhiteSpace(audience)) Fail(SourceControlErrorCode.ProviderUnavailable);
-			using var clients = await GetAsync(client, admin + "/clients?clientId=" + Uri.EscapeDataString(audience!), token!, deadline.Token);
-			if (clients.RootElement.ValueKind != JsonValueKind.Array || clients.RootElement.GetArrayLength() != 1
-				|| clients.RootElement[0].GetProperty("clientId").GetString() != audience) Fail(SourceControlErrorCode.ProviderUnavailable);
-			var apiClient = clients.RootElement[0].GetProperty("id").GetString();
-			if (string.IsNullOrWhiteSpace(apiClient)) Fail(SourceControlErrorCode.ProviderUnavailable);
-			using var roles = await GetAsync(client, admin + "/users/" + actor + "/role-mappings/clients/"
-				+ Uri.EscapeDataString(apiClient!) + "/composite", token!, deadline.Token);
-			if (roles.RootElement.ValueKind != JsonValueKind.Array) Fail(SourceControlErrorCode.ProviderUnavailable);
-			return roles.RootElement.EnumerateArray().Select(role => role.GetProperty("name").GetString())
-				.Where(role => role is "Admin" or "ProcessManager" or "ReadOnly").Select(role => role!)
-				.Distinct(StringComparer.Ordinal).ToArray();
+			if (string.IsNullOrWhiteSpace(token) || token.Any(char.IsControl))
+			{
+				Fail(SourceControlErrorCode.CredentialUnavailable);
+			}
+
+			return await ResolveRolesAsync(client, authority, context.ActorId, context.TenantId, token!, deadline.Token);
 		}
 		catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { throw new SourceControlSecurityException(SourceControlErrorCode.TimedOut); }
 		catch (OperationCanceledException) { throw; }
@@ -76,16 +75,31 @@ public sealed class KeycloakSourceControlActorResolver(ICredentialService creden
 
 	private Uri Authority()
 	{
-		if (!Uri.TryCreate(configuration["Jwt:Authority"], UriKind.Absolute, out var authority)) Fail(SourceControlErrorCode.ProviderUnavailable);
-		if (options.Value.IdentityAuthority != authority!.AbsoluteUri.TrimEnd('/')) Fail(SourceControlErrorCode.ProviderUnavailable);
-		var localTest = configuration["OperationalMode"] == "OidcTest";
-		if (authority!.UserInfo.Length != 0 || authority.Query.Length != 0 || authority.Fragment.Length != 0
-			|| authority.Scheme != "https" && !(localTest && authority.Scheme == "http" && authority.IsLoopback)
-			|| !authority.AbsolutePath.Contains("/realms/", StringComparison.Ordinal)
-			|| authority.AbsolutePath[(authority.AbsolutePath.LastIndexOf("/realms/", StringComparison.Ordinal) + 8)..].Trim('/').Contains('/'))
+		if (!Uri.TryCreate(configuration["Jwt:Authority"], UriKind.Absolute, out var authority))
+		{
 			Fail(SourceControlErrorCode.ProviderUnavailable);
+		}
+
+		if (options.Value.IdentityAuthority != authority!.AbsoluteUri.TrimEnd('/'))
+		{
+			Fail(SourceControlErrorCode.ProviderUnavailable);
+		}
+
+		var localTest = configuration["OperationalMode"] == "OidcTest";
+		if (authority.UserInfo.Length != 0 || authority.Query.Length != 0 || authority.Fragment.Length != 0
+			|| (authority.Scheme != "https" && !(localTest && authority.Scheme == "http" && authority.IsLoopback))
+			|| !authority.AbsolutePath.Contains("/realms/", StringComparison.Ordinal)
+			|| authority.AbsolutePath[(authority.AbsolutePath.LastIndexOf("/realms/", StringComparison.Ordinal) + 8)..].Trim('/').Contains('/', StringComparison.Ordinal))
+		{
+			Fail(SourceControlErrorCode.ProviderUnavailable);
+		}
+
 		var realm = authority.AbsolutePath[(authority.AbsolutePath.LastIndexOf("/realms/", StringComparison.Ordinal) + 8)..].Trim('/');
-		if (realm.Length == 0 || realm.Contains('%') || realm is "." or "..") Fail(SourceControlErrorCode.ProviderUnavailable);
+		if (realm.Length == 0 || realm.Contains('%', StringComparison.Ordinal) || realm is "." or "..")
+		{
+			Fail(SourceControlErrorCode.ProviderUnavailable);
+		}
+
 		return new(authority.AbsoluteUri.TrimEnd('/'));
 	}
 
@@ -99,18 +113,76 @@ public sealed class KeycloakSourceControlActorResolver(ICredentialService creden
 	private static async Task<JsonDocument> SendJsonAsync(HttpClient client, HttpRequestMessage request, CancellationToken cancellationToken)
 	{
 		using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-		if (!response.IsSuccessStatusCode) Fail(SourceControlErrorCode.ProviderUnavailable);
+		if (!response.IsSuccessStatusCode)
+		{
+			Fail(SourceControlErrorCode.ProviderUnavailable);
+		}
+
 		await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-		using var buffer = new MemoryStream();
+		await using var buffer = new MemoryStream();
 		var bytes = new byte[4096];
 		int read;
 		while ((read = await stream.ReadAsync(bytes, cancellationToken)) > 0)
 		{
-			if (buffer.Length + read > 128 * 1024) Fail(SourceControlErrorCode.PayloadTooLarge);
-			buffer.Write(bytes, 0, read);
+			if (buffer.Length + read > 128 * 1024)
+			{
+				Fail(SourceControlErrorCode.PayloadTooLarge);
+			}
+
+			await buffer.WriteAsync(bytes.AsMemory(0, read), cancellationToken);
 		}
 		return JsonDocument.Parse(buffer.ToArray());
 	}
 
 	private static void Fail(SourceControlErrorCode code) => throw new SourceControlSecurityException(code);
+
+	private async Task<IReadOnlyCollection<string>> ResolveRolesAsync(HttpClient client, Uri authority,
+		string actorId, string tenantId, string token, CancellationToken cancellationToken)
+	{
+		var marker = authority.AbsolutePath.LastIndexOf("/realms/", StringComparison.Ordinal);
+		var admin = authority.GetLeftPart(UriPartial.Authority) + authority.AbsolutePath[..marker] + "/admin" + authority.AbsolutePath[marker..];
+		var actor = Uri.EscapeDataString(actorId);
+		using var user = await GetAsync(client, admin + "/users/" + actor, token, cancellationToken);
+		var value = user.RootElement;
+		if (value.GetProperty("id").GetString() != actorId || !value.GetProperty("enabled").GetBoolean())
+		{
+			Fail(SourceControlErrorCode.Forbidden);
+		}
+
+		var tenants = value.GetProperty("attributes").GetProperty("tenant_id");
+		if (tenants.ValueKind != JsonValueKind.Array || tenants.GetArrayLength() != 1 || tenants[0].GetString() != tenantId)
+		{
+			Fail(SourceControlErrorCode.NotFound);
+		}
+
+		var audience = configuration["Jwt:Audience"];
+		if (string.IsNullOrWhiteSpace(audience))
+		{
+			Fail(SourceControlErrorCode.ProviderUnavailable);
+		}
+
+		using var clients = await GetAsync(client, admin + "/clients?clientId=" + Uri.EscapeDataString(audience!), token, cancellationToken);
+		if (clients.RootElement.ValueKind != JsonValueKind.Array || clients.RootElement.GetArrayLength() != 1
+			|| clients.RootElement[0].GetProperty("clientId").GetString() != audience)
+		{
+			Fail(SourceControlErrorCode.ProviderUnavailable);
+		}
+
+		var apiClient = clients.RootElement[0].GetProperty("id").GetString();
+		if (string.IsNullOrWhiteSpace(apiClient))
+		{
+			Fail(SourceControlErrorCode.ProviderUnavailable);
+		}
+
+		using var roles = await GetAsync(client, admin + "/users/" + actor + "/role-mappings/clients/"
+			+ Uri.EscapeDataString(apiClient!) + "/composite", token, cancellationToken);
+		if (roles.RootElement.ValueKind != JsonValueKind.Array)
+		{
+			Fail(SourceControlErrorCode.ProviderUnavailable);
+		}
+
+		return roles.RootElement.EnumerateArray().Select(role => role.GetProperty("name").GetString())
+			.Where(role => role is "Admin" or "ProcessManager" or "ReadOnly").Select(role => role!)
+			.Distinct(StringComparer.Ordinal).ToArray();
+	}
 }

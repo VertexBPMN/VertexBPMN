@@ -19,6 +19,9 @@ public static class ScriptTaskExecution
     ///   - "script": Script-Quelltext (aus <script>..</script> oder extensionElements)
     ///   - "resultVariable": optionaler Name der Prozessvariable für Rückgabewert
     /// </summary>
+    /// <exception cref="InvalidOperationException"></exception>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1068",
+        Justification = "CancellationToken cannot be moved to the last parameter because external callers in VertexBPMN.Engine pass it positionally.")]
     public static async Task<bool> TryHandleScriptTaskAsync(
         BpmnTask task,
         IDictionary<string, object> processVariables,
@@ -27,40 +30,52 @@ public static class ScriptTaskExecution
         bool scriptsEnabled = true)
     {
         if (!string.Equals(task.Type, "scriptTask", StringComparison.OrdinalIgnoreCase))
-            return false;
+		{
+			return false;
+		}
 
-        if (!scriptsEnabled)
-            throw new InvalidOperationException("BPMN script tasks are disabled for the in-process runtime.");
+		if (!scriptsEnabled)
+		{
+			throw new InvalidOperationException("BPMN script tasks are disabled for the in-process runtime.");
+		}
 
-        if (task.Attributes == null)
-            throw new InvalidOperationException($"ScriptTask '{task.Id}' ohne Attributes.");
+		if (task.Attributes == null)
+		{
+			throw new InvalidOperationException($"ScriptTask '{task.Id}' ohne Attributes.");
+		}
 
-        task.Attributes.TryGetValue("script", out var script);
+		task.Attributes.TryGetValue("script", out var script);
         if (string.IsNullOrWhiteSpace(script))
-            throw new InvalidOperationException($"ScriptTask '{task.Id}' hat kein Script (attributes['script']).");
+		{
+			throw new InvalidOperationException($"ScriptTask '{task.Id}' hat kein Script (attributes['script']).");
+		}
 
-        var format = "JavaScript";
+		var format = "JavaScript";
         if (task.Attributes.TryGetValue("scriptFormat", out var fmt) && !string.IsNullOrWhiteSpace(fmt))
-            format = fmt;
+		{
+			format = fmt;
+		}
 
-        object? result;
+		object? result;
         if (format.Equals("C#", StringComparison.OrdinalIgnoreCase)
             || format.Equals("CSharp", StringComparison.OrdinalIgnoreCase))
         {
             if (!allowCSharp)
-                throw new InvalidOperationException("BPMN C# script execution is disabled because Roslyn is not sandboxed.");
-            // Explicit C# (Roslyn) remains supported; not the default.
-            result = await ExecuteCSharpAsync(script!, processVariables, ct).ConfigureAwait(false);
+			{
+				throw new InvalidOperationException("BPMN C# script execution is disabled because Roslyn is not sandboxed.");
+			}
+			// Explicit C# (Roslyn) remains supported; not the default.
+			result = await ExecuteCSharpAsync(script, processVariables, ct).ConfigureAwait(false);
         }
         else
         {
             // Default: JavaScript (Jint, resource-bounded).
-            result = ExecuteJavaScript(script!, processVariables);
+            result = ExecuteJavaScript(script, processVariables);
         }
 
         if (task.Attributes.TryGetValue("resultVariable", out var rv) && !string.IsNullOrWhiteSpace(rv))
         {
-            processVariables[rv!] = result!;
+            processVariables[rv] = result!;
         }
 
         return true;
@@ -87,7 +102,7 @@ public static class ScriptTaskExecution
     private static object? ExecuteJavaScript(string code, IDictionary<string, object> variables)
     {
         // Einfache Ressourcenbegrenzungen; passe bei Bedarf an.
-        var engine = new Jint.Engine(cfg => cfg.Strict().LimitMemory(8_000_000).TimeoutInterval(TimeSpan.FromSeconds(2)));
+        using var engine = new Jint.Engine(cfg => cfg.Strict().LimitMemory(8_000_000).TimeoutInterval(TimeSpan.FromSeconds(2)));
         engine.SetValue("variables", variables);
         var eval = engine.Evaluate(code);
         return eval.ToObject();

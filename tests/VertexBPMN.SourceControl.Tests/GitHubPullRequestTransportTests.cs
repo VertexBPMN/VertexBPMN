@@ -21,8 +21,10 @@ public sealed class GitHubPullRequestTransportTests
 		using var token = new GitHubTokenLease("isolated-test-token", DateTimeOffset.UtcNow.AddMinutes(10));
 		var transport = new GitHubPullRequestTransport(client);
 		if (rejected)
+		{
 			await Assert.ThrowsAsync<SourceControlSecurityException>(() => transport.ReadReviewsAsync(binding,
-				7, token, TestContext.Current.CancellationToken));
+						7, token, TestContext.Current.CancellationToken));
+		}
 		else
 		{
 			var reviews = await transport.ReadReviewsAsync(binding, 7, token, TestContext.Current.CancellationToken);
@@ -102,13 +104,18 @@ public sealed class GitHubPullRequestTransportTests
 	[InlineData("https://api.github.com/repos/example/models/pulls?state=all&per_page=100&page=11", false)]
 	[InlineData("https://api.github.com/repos/example/models/pulls?state=all&per_page=100&page=1&token=secret", false)]
 	[InlineData("https://github.com/repos/example/models/pulls?state=all&per_page=100&page=1", false)]
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1054", Justification = "The xUnit InlineData fixture requires constant strings; production validation receives a parsed Uri, not the fixture text.")]
 	public void Only_bounded_fixed_listing_queries_are_allowed(string url, bool allowed)
 	{
 		if (allowed)
+		{
 			SourceControlHttps.ValidateRequestTarget(new(url), ["api.github.com", "github.com"]);
+		}
 		else
+		{
 			Assert.Throws<SourceControlSecurityException>(() =>
-			SourceControlHttps.ValidateRequestTarget(new(url), ["api.github.com", "github.com"]));
+					SourceControlHttps.ValidateRequestTarget(new(url), ["api.github.com", "github.com"]));
+		}
 	}
 
 	[Fact]
@@ -134,9 +141,18 @@ public sealed class GitHubPullRequestTransportTests
 			Calls++;
 			Assert.Equal(HttpMethod.Get, request.Method);
 			var body = GitHubPullRequestReconciliation.RequestBody(command);
-			object payload = request.RequestUri!.Query.EndsWith("page=1", StringComparison.Ordinal)
-				? Enumerable.Range(101, 100).Select(number => new { number, body = "unrelated review" }).ToArray()
-				: request.RequestUri.Query.Length > 0 ? new[] { new { number = 7, body } } : new
+			object payload;
+			if (request.RequestUri!.Query.EndsWith("page=1", StringComparison.Ordinal))
+			{
+				payload = Enumerable.Range(101, 100).Select(number => new { number, body = "unrelated review" }).ToArray();
+			}
+			else if (request.RequestUri.Query.Length > 0)
+			{
+				payload = new[] { new { number = 7, body } };
+			}
+			else
+			{
+				payload = new
 				{
 					number = 7,
 					body,
@@ -146,6 +162,8 @@ public sealed class GitHubPullRequestTransportTests
 					head = new { sha = command.HeadCommit.Value, @ref = command.WorkBranch, repo = new { full_name = "example/models" } },
 					@base = new { @ref = command.BaseBranch, repo = new { full_name = "example/models" } }
 				};
+			}
+
 			return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
 			{ Content = System.Net.Http.Json.JsonContent.Create(payload) });
 		}
@@ -179,7 +197,7 @@ public sealed class GitHubPullRequestTransportTests
 		var error = await Assert.ThrowsAsync<SourceControlSecurityException>(() =>
 			new GitHubPullRequestTransport(client).ReadAsync(binding, command, 7, token, TestContext.Current.CancellationToken));
 		Assert.Equal(SourceControlErrorCode.ProviderUnavailable, error.Code);
-		Assert.DoesNotContain("sensitive", error.ToString());
+		Assert.DoesNotContain("sensitive", error.ToString(), StringComparison.Ordinal);
 	}
 
 	private sealed class LostResponseHandler : HttpMessageHandler

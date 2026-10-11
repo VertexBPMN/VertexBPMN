@@ -6,22 +6,6 @@ using Microsoft.Extensions.Logging;
 
 namespace VertexBPMN.Infrastructure.Messaging;
 
-/// <summary>Parsiertes Ergebnis einer TypeSafe-Choice-Evaluierung.</summary>
-public sealed record TypeSafeJudgmentAnswer(
-    string Choice,
-    double Confidence,
-    IReadOnlyDictionary<string, double> Probabilities);
-
-/// <summary>Schmaler HTTP-Client für die TypeSafe System One Evaluierung (POST /v1/systemone).</summary>
-public interface ITypeSafeConformanceClient
-{
-    /// <summary>
-    /// Fragt ein Choice-Urteil zur Envelope-Konformität ab. Gibt null zurück, wenn die Antwort nicht
-    /// als gültige Choice geparst werden kann (Aufrufer behandelt das als NotEvaluated).
-    /// </summary>
-    Task<TypeSafeJudgmentAnswer?> AskConformanceAsync(string stateJson, CancellationToken cancellationToken);
-}
-
 /// <summary>
 /// Client für TypeSafe. Nutzt einen eigenen <see cref="HttpClient"/> (langelebig wie der Prozess);
 /// Produktions-Key kommt aus <see cref="TypeSafeConformanceOptions.ApiKey"/>, ausschließlich server-seitig.
@@ -44,9 +28,11 @@ public sealed class TypeSafeConformanceClient : ITypeSafeConformanceClient, IDis
         _http = http ?? new HttpClient();
         _http.BaseAddress = new Uri(options.Endpoint);
         if (!string.IsNullOrWhiteSpace(options.ApiKey))
-            _http.DefaultRequestHeaders.Authorization =
+		{
+			_http.DefaultRequestHeaders.Authorization =
                 new AuthenticationHeaderValue("Bearer", options.ApiKey);
-    }
+		}
+	}
 
     public async Task<TypeSafeJudgmentAnswer?> AskConformanceAsync(string stateJson, CancellationToken cancellationToken)
     {
@@ -54,14 +40,14 @@ public sealed class TypeSafeConformanceClient : ITypeSafeConformanceClient, IDis
         {
             model = _options.Model,
             state = stateJson,
-            questions = new Dictionary<string, object>
-            {
+            questions = new Dictionary<string, object>(StringComparer.Ordinal)
+			{
                 [QuestionId] = new
                 {
                     type = "choice",
                     instructions = "Konformiert die Envelope-Payload ihrem deklarierten Ereignisvertrag?",
-                    criteria = new Dictionary<string, string?>
-                    {
+                    criteria = new Dictionary<string, string?>(StringComparer.Ordinal)
+					{
                         ["conforms"] = "Alle Pflichtfelder vorhanden, korrekte Typen und semantisch passend zum Vertrag",
                         ["malformed"] = "Pflichtfelder fehlen oder haben falsche Typen",
                         ["wrong_contract"] = "Felder vorhanden, aber semantisch ein anderes Ereignis",
@@ -78,7 +64,7 @@ public sealed class TypeSafeConformanceClient : ITypeSafeConformanceClient, IDis
         var text = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            _logger.LogWarning("TypeSafe conformance call failed: {(int)} {Reason}. Body: {Body}",
+            _logger.LogWarning("TypeSafe conformance call failed: {StatusCode} {Reason}. Body: {Body}",
                 (int)response.StatusCode, response.ReasonPhrase, Truncate(text));
             return null;
         }
@@ -93,23 +79,33 @@ public sealed class TypeSafeConformanceClient : ITypeSafeConformanceClient, IDis
             using var doc = JsonDocument.Parse(json);
             if (!doc.RootElement.TryGetProperty("answers", out var answers)
                 || !answers.TryGetProperty(QuestionId, out var answer))
-                return null;
+			{
+				return null;
+			}
 
-            var choice = answer.TryGetProperty("choice", out var c) ? c.GetString() : null;
+			var choice = answer.TryGetProperty("choice", out var c) ? c.GetString() : null;
             if (choice is null)
-                return null;
+			{
+				return null;
+			}
 
-            var confidence = answer.TryGetProperty("confidence", out var conf) && conf.ValueKind == JsonValueKind.Number
+			var confidence = answer.TryGetProperty("confidence", out var conf) && conf.ValueKind == JsonValueKind.Number
                 ? conf.GetDouble()
                 : 0.0;
 
-            var probabilities = new Dictionary<string, double>();
+            var probabilities = new Dictionary<string, double>(StringComparer.Ordinal);
             if (answer.TryGetProperty("probabilities", out var probs) && probs.ValueKind == JsonValueKind.Object)
-                foreach (var p in probs.EnumerateObject())
-                    if (p.Value.ValueKind == JsonValueKind.Number)
-                        probabilities[p.Name] = p.Value.GetDouble();
+			{
+				foreach (var p in probs.EnumerateObject())
+				{
+					if (p.Value.ValueKind == JsonValueKind.Number)
+					{
+						probabilities[p.Name] = p.Value.GetDouble();
+					}
+				}
+			}
 
-            return new TypeSafeJudgmentAnswer(choice, confidence, probabilities);
+			return new TypeSafeJudgmentAnswer(choice, confidence, probabilities);
         }
         catch (JsonException ex)
         {

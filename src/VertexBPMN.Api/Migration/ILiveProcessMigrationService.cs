@@ -4,6 +4,7 @@ namespace VertexBPMN.Api.Migration;
 /// Live Process Migration System
 /// Olympic-level feature: Innovation Differentiators - Live Process Migration
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public contract type ILiveProcessMigrationService retained for exposed HTTP action signatures and controller activation (ILiveProcessMigrationService).")]
 public interface ILiveProcessMigrationService
 {
     Task<MigrationPlan> CreateMigrationPlanAsync(string fromProcessKey, string toProcessKey, MigrationOptions options, string? tenantId = null);

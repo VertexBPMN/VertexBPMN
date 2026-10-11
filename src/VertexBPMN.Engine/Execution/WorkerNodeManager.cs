@@ -8,272 +8,293 @@ namespace VertexBPMN.Engine.Execution;
 /// <summary>
 /// Worker node manager implementation
 /// </summary>
-public class WorkerNodeManager : IWorkerNodeManager
+public class WorkerNodeManager : IWorkerNodeManager, IDisposable
 {
-    private readonly Dictionary<string, WorkerNode> _workers = new();
-    private readonly Dictionary<string, WorkerPerformanceMetrics> _performance = new();
-    private readonly object _lock = new();
-    private readonly ILogger<WorkerNodeManager> _logger;
-    private readonly Timer _healthCheckTimer;
+	private readonly Dictionary<string, WorkerNode> _workers = new(StringComparer.Ordinal);
+	private readonly Dictionary<string, WorkerPerformanceMetrics> _performance = new(StringComparer.Ordinal);
+	private readonly Lock _lock = new();
+	private readonly ILogger<WorkerNodeManager> _logger;
+	private readonly Timer _healthCheckTimer;
 
-    public WorkerNodeManager(ILogger<WorkerNodeManager> logger)
-    {
-        _logger = logger;
-        
-        // Start health check timer
-        _healthCheckTimer = new Timer(CheckWorkerHealth, null, 
-            TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
-    }
+	public WorkerNodeManager(ILogger<WorkerNodeManager> logger)
+	{
+		_logger = logger;
 
-    public Task<WorkerNode> RegisterWorkerAsync(WorkerRegistrationRequest request)
-    {
-        var worker = new WorkerNode(
-            request.WorkerId,
-            request.HostName,
-            request.Port,
-            DateTime.UtcNow,
-            request.SupportedNodeTypes,
-            0,
-            request.MaxCapacity
-        );
+		// Start health check timer
+		_healthCheckTimer = new Timer(static state => { _ = ((WorkerNodeManager)state!).CheckWorkerHealthAsync(); }, this,
+			TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
+	}
 
-        lock (_lock)
-        {
-            _workers[worker.Id] = worker;
-            _performance[worker.Id] = new WorkerPerformanceMetrics
-            {
-                WorkerId = worker.Id,
-                RegisteredAt = DateTime.UtcNow,
-                TotalTasksProcessed = 0,
-                AverageProcessingTime = TimeSpan.Zero,
-                LastActivity = DateTime.UtcNow
-            };
-        }
+	public Task<WorkerNode> RegisterWorkerAsync(WorkerRegistrationRequest request)
+	{
+		var worker = new WorkerNode(
+			request.WorkerId,
+			request.HostName,
+			request.Port,
+			DateTime.UtcNow,
+			request.SupportedNodeTypes,
+			0,
+			request.MaxCapacity
+		);
 
-        _logger.LogInformation("Worker {WorkerId} registered from {HostName}:{Port} with capacity {Capacity}",
-            worker.Id, worker.HostName, worker.Port, worker.MaxCapacity);
+		lock (_lock)
+		{
+			_workers[worker.Id] = worker;
+			_performance[worker.Id] = new WorkerPerformanceMetrics
+			{
+				WorkerId = worker.Id,
+				RegisteredAt = DateTime.UtcNow,
+				TotalTasksProcessed = 0,
+				AverageProcessingTime = TimeSpan.Zero,
+				LastActivity = DateTime.UtcNow
+			};
+		}
 
-        return Task.FromResult(worker);
-    }
+		if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
+		{
+			_logger.LogInformation("Worker {WorkerId} registered from {HostName}:{Port} with capacity {Capacity}",
+				worker.Id, worker.HostName, worker.Port, worker.MaxCapacity);
+		}
 
-    public Task UnregisterWorkerAsync(string workerId)
-    {
-        WorkerNode? removedWorker = null;
-        
-        lock (_lock)
-        {
-            if (_workers.TryGetValue(workerId, out removedWorker))
-            {
-                _workers.Remove(workerId);
-                _performance.Remove(workerId);
-            }
-        }
+		return Task.FromResult(worker);
+	}
 
-        if (removedWorker != null)
-        {
-            _logger.LogInformation("Worker {WorkerId} unregistered", workerId);
-        }
-        
-        return Task.CompletedTask;
-    }
+	public Task UnregisterWorkerAsync(string workerId)
+	{
+		WorkerNode? removedWorker = null;
 
-    public Task<List<WorkerNode>> GetActiveWorkersAsync()
-    {
-        lock (_lock)
-        {
-            var cutoff = DateTime.UtcNow.AddMinutes(-2); // 2 minutes timeout
-            var activeWorkers = _workers.Values
-                .Where(w => w.LastHeartbeat > cutoff)
-                .ToList();
-            return Task.FromResult(activeWorkers);
-        }
-    }
+		lock (_lock)
+		{
+			if (_workers.TryGetValue(workerId, out removedWorker))
+			{
+				_workers.Remove(workerId);
+				_performance.Remove(workerId);
+			}
+		}
 
-    public Task<WorkerNode?> GetWorkerAsync(string workerId)
-    {
-        lock (_lock)
-        {
-            var worker = _workers.TryGetValue(workerId, out var w) ? w : null;
-            return Task.FromResult(worker);
-        }
-    }
+		if (removedWorker != null && _logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
+		{
+			_logger.LogInformation("Worker {WorkerId} unregistered", workerId);
+		}
 
-    public Task UpdateWorkerStatusAsync(string workerId, WorkerStatus status)
-    {
-        lock (_lock)
-        {
-            if (_workers.TryGetValue(workerId, out var worker))
-            {
-                _workers[workerId] = worker with 
-                { 
-                    LastHeartbeat = DateTime.UtcNow,
-                    CurrentLoad = status.CurrentLoad
-                };
+		return Task.CompletedTask;
+	}
 
-                // Update performance metrics
-                if (_performance.TryGetValue(workerId, out var metrics))
-                {
-                    _performance[workerId] = metrics with
-                    {
-                        LastActivity = DateTime.UtcNow,
-                        CpuUsage = status.CpuUsage,
-                        MemoryUsage = status.MemoryUsage,
-                        ActiveTasks = status.ActiveTasks
-                    };
-                }
-            }
-        }
+	public Task<List<WorkerNode>> GetActiveWorkersAsync()
+	{
+		lock (_lock)
+		{
+			var cutoff = DateTime.UtcNow.AddMinutes(-2); // 2 minutes timeout
+			var activeWorkers = _workers.Values
+				.Where(w => w.LastHeartbeat > cutoff)
+				.ToList();
+			return Task.FromResult(activeWorkers);
+		}
+	}
 
-        return Task.CompletedTask;
-    }
+	public Task<WorkerNode?> GetWorkerAsync(string workerId)
+	{
+		lock (_lock)
+		{
+			var worker = _workers.TryGetValue(workerId, out var w) ? w : null;
+			return Task.FromResult(worker);
+		}
+	}
 
-    public Task<WorkerCapacityInfo> GetWorkerCapacityAsync(string workerId)
-    {
-        lock (_lock)
-        {
-            if (!_workers.TryGetValue(workerId, out var worker))
-            {
-                var unavailable = new WorkerCapacityInfo(workerId, false, 0, 0, 0);
-                return Task.FromResult(unavailable);
-            }
+	public Task UpdateWorkerStatusAsync(string workerId, WorkerStatus status)
+	{
+		lock (_lock)
+		{
+			if (_workers.TryGetValue(workerId, out var worker))
+			{
+				_workers[workerId] = worker with
+				{
+					LastHeartbeat = DateTime.UtcNow,
+					CurrentLoad = status.CurrentLoad
+				};
 
-            var availableCapacity = worker.MaxCapacity - worker.CurrentLoad;
-            var utilizationPercentage = worker.MaxCapacity > 0 
-                ? (double)worker.CurrentLoad / worker.MaxCapacity * 100 
-                : 0;
+				// Update performance metrics
+				if (_performance.TryGetValue(workerId, out var metrics))
+				{
+					_performance[workerId] = metrics with
+					{
+						LastActivity = DateTime.UtcNow,
+						CpuUsage = status.CpuUsage,
+						MemoryUsage = status.MemoryUsage,
+						ActiveTasks = status.ActiveTasks
+					};
+				}
+			}
+		}
 
-            var capacity = new WorkerCapacityInfo(
-                workerId,
-                true,
-                worker.CurrentLoad,
-                worker.MaxCapacity,
-                availableCapacity,
-                Math.Round(utilizationPercentage, 1)
-            );
-            return Task.FromResult(capacity);
-        }
-    }
+		return Task.CompletedTask;
+	}
 
-    public Task<bool> IsWorkerHealthyAsync(string workerId)
-    {
-        lock (_lock)
-        {
-            if (!_workers.TryGetValue(workerId, out var worker))
-                return Task.FromResult(false);
+	public Task<WorkerCapacityInfo> GetWorkerCapacityAsync(string workerId)
+	{
+		lock (_lock)
+		{
+			if (!_workers.TryGetValue(workerId, out var worker))
+			{
+				var unavailable = new WorkerCapacityInfo(workerId, false, 0, 0, 0);
+				return Task.FromResult(unavailable);
+			}
 
-            var timeSinceHeartbeat = DateTime.UtcNow - worker.LastHeartbeat;
-            var isHealthy = timeSinceHeartbeat < TimeSpan.FromMinutes(2);
-            return Task.FromResult(isHealthy);
-        }
-    }
+			var availableCapacity = worker.MaxCapacity - worker.CurrentLoad;
+			var utilizationPercentage = worker.MaxCapacity > 0
+				? (double)worker.CurrentLoad / worker.MaxCapacity * 100
+				: 0;
 
-    public async Task<List<WorkerNode>> GetWorkersForNodeTypeAsync(string nodeType)
-    {
-        var activeWorkers = await GetActiveWorkersAsync();
-        return activeWorkers
-            .Where(w => w.SupportedNodeTypes.Contains(nodeType))
-            .OrderBy(w => w.CurrentLoad)
-            .ToList();
-    }
+			var capacity = new WorkerCapacityInfo(
+				workerId,
+				true,
+				worker.CurrentLoad,
+				worker.MaxCapacity,
+				availableCapacity,
+				Math.Round(utilizationPercentage, 1)
+			);
+			return Task.FromResult(capacity);
+		}
+	}
 
-    public Task NotifyWorkersAsync(string message)
-    {
-        List<WorkerNode> workers;
-        lock (_lock)
-        {
-            workers = _workers.Values.ToList();
-        }
+	public Task<bool> IsWorkerHealthyAsync(string workerId)
+	{
+		lock (_lock)
+		{
+			if (!_workers.TryGetValue(workerId, out var worker))
+			{
+				return Task.FromResult(false);
+			}
 
-        _logger.LogInformation("Broadcasting message to {WorkerCount} workers: {Message}", 
-            workers.Count, message);
+			var timeSinceHeartbeat = DateTime.UtcNow - worker.LastHeartbeat;
+			var isHealthy = timeSinceHeartbeat < TimeSpan.FromMinutes(2);
+			return Task.FromResult(isHealthy);
+		}
+	}
 
-        // In a real implementation, this would send HTTP notifications to workers
-        foreach (var worker in workers)
-        {
-            _logger.LogDebug("Notified worker {WorkerId} at {HostName}:{Port}", 
-                worker.Id, worker.HostName, worker.Port);
-        }
+	public async Task<List<WorkerNode>> GetWorkersForNodeTypeAsync(string nodeType)
+	{
+		var activeWorkers = await GetActiveWorkersAsync();
+		return [.. activeWorkers
+			.Where(w => w.SupportedNodeTypes.Contains(nodeType))
+			.OrderBy(w => w.CurrentLoad)];
+	}
 
-        return Task.CompletedTask;
-    }
+	public Task NotifyWorkersAsync(string message)
+	{
+		List<WorkerNode> workers;
+		lock (_lock)
+		{
+			workers = [.. _workers.Values];
+		}
 
-    public Task<WorkerPerformanceMetrics> GetWorkerPerformanceAsync(string workerId)
-    {
-        lock (_lock)
-        {
-            if (_performance.TryGetValue(workerId, out var metrics))
-            {
-                return Task.FromResult(metrics);
-            }
+		if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
+		{
+			_logger.LogInformation("Broadcasting message to {WorkerCount} workers: {Message}",
+				workers.Count, message);
+		}
 
-            var defaultMetrics = new WorkerPerformanceMetrics
-            {
-                WorkerId = workerId,
-                RegisteredAt = DateTime.UtcNow,
-                TotalTasksProcessed = 0,
-                AverageProcessingTime = TimeSpan.Zero,
-                LastActivity = DateTime.MinValue
-            };
-            return Task.FromResult(defaultMetrics);
-        }
-    }
+		// In a real implementation, this would send HTTP notifications to workers
+		if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug))
+		{
+			foreach (var worker in workers)
+			{
+				_logger.LogDebug("Notified worker {WorkerId} at {HostName}:{Port}",
+					worker.Id, worker.HostName, worker.Port);
+			}
+		}
 
-    public Task RecordTaskCompletionAsync(string workerId, TimeSpan processingTime)
-    {
-        lock (_lock)
-        {
-            if (_performance.TryGetValue(workerId, out var metrics))
-            {
-                var totalTasks = metrics.TotalTasksProcessed + 1;
-                var totalTime = metrics.AverageProcessingTime.TotalMilliseconds * metrics.TotalTasksProcessed + 
-                               processingTime.TotalMilliseconds;
-                var newAverage = TimeSpan.FromMilliseconds(totalTime / totalTasks);
+		return Task.CompletedTask;
+	}
 
-                _performance[workerId] = metrics with
-                {
-                    TotalTasksProcessed = totalTasks,
-                    AverageProcessingTime = newAverage,
-                    LastActivity = DateTime.UtcNow
-                };
-            }
-        }
-        
-        return Task.CompletedTask;
-    }
+	public Task<WorkerPerformanceMetrics> GetWorkerPerformanceAsync(string workerId)
+	{
+		lock (_lock)
+		{
+			if (_performance.TryGetValue(workerId, out var metrics))
+			{
+				return Task.FromResult(metrics);
+			}
 
-    private async void CheckWorkerHealth(object? state)
-    {
-        try
-        {
-            List<string> unhealthyWorkers = new();
-            
-            lock (_lock)
-            {
-                var cutoff = DateTime.UtcNow.AddMinutes(-2);
-                unhealthyWorkers = _workers.Values
-                    .Where(w => w.LastHeartbeat < cutoff)
-                    .Select(w => w.Id)
-                    .ToList();
-            }
+			var defaultMetrics = new WorkerPerformanceMetrics
+			{
+				WorkerId = workerId,
+				RegisteredAt = DateTime.UtcNow,
+				TotalTasksProcessed = 0,
+				AverageProcessingTime = TimeSpan.Zero,
+				LastActivity = DateTime.MinValue
+			};
+			return Task.FromResult(defaultMetrics);
+		}
+	}
 
-            foreach (var workerId in unhealthyWorkers)
-            {
-                _logger.LogWarning("Worker {WorkerId} appears unhealthy, removing from active pool", workerId);
-                await UnregisterWorkerAsync(workerId);
-            }
+	public Task RecordTaskCompletionAsync(string workerId, TimeSpan processingTime)
+	{
+		lock (_lock)
+		{
+			if (_performance.TryGetValue(workerId, out var metrics))
+			{
+				var totalTasks = metrics.TotalTasksProcessed + 1;
+				var totalTime = (metrics.AverageProcessingTime.TotalMilliseconds * metrics.TotalTasksProcessed) +
+							   processingTime.TotalMilliseconds;
+				var newAverage = TimeSpan.FromMilliseconds(totalTime / totalTasks);
 
-            var activeCount = (await GetActiveWorkersAsync()).Count;
-            _logger.LogDebug("Worker health check completed: {ActiveWorkers} active, {RemovedWorkers} removed", 
-                activeCount, unhealthyWorkers.Count);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error during worker health check");
-        }
-    }
+				_performance[workerId] = metrics with
+				{
+					TotalTasksProcessed = totalTasks,
+					AverageProcessingTime = newAverage,
+					LastActivity = DateTime.UtcNow
+				};
+			}
+		}
 
-    public void Dispose()
-    {
-        _healthCheckTimer?.Dispose();
-    }
+		return Task.CompletedTask;
+	}
+
+	private async Task CheckWorkerHealthAsync()
+	{
+		try
+		{
+			List<string> unhealthyWorkers;
+
+			lock (_lock)
+			{
+				var cutoff = DateTime.UtcNow.AddMinutes(-2);
+				unhealthyWorkers = [.. _workers.Values
+					.Where(w => w.LastHeartbeat < cutoff)
+					.Select(w => w.Id)];
+			}
+
+			foreach (var workerId in unhealthyWorkers)
+			{
+				_logger.LogWarning("Worker {WorkerId} appears unhealthy, removing from active pool", workerId);
+				await UnregisterWorkerAsync(workerId);
+			}
+
+			var activeCount = (await GetActiveWorkersAsync()).Count;
+			if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug))
+			{
+				_logger.LogDebug("Worker health check completed: {ActiveWorkers} active, {RemovedWorkers} removed",
+					activeCount, unhealthyWorkers.Count);
+			}
+		}
+		catch (Exception ex)
+		{
+			_logger.LogError(ex, "Error during worker health check");
+		}
+	}
+
+	public void Dispose()
+	{
+		Dispose(true);
+		GC.SuppressFinalize(this);
+	}
+
+	protected virtual void Dispose(bool disposing)
+	{
+		if (disposing)
+		{
+			_healthCheckTimer.Dispose();
+		}
+	}
 }

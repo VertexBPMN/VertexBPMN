@@ -8,10 +8,10 @@ namespace VertexBPMN.Tests.Integration.Dmn;
 
 public class DmnAnyCollectPolicyTests
 {
-    [Fact]
-    public void Any_HitPolicy_Returns_First_Match()
-    {
-        const string dmn = @"<definitions xmlns='http://www.omg.org/spec/DMN/20191111/MODEL/'>
+	[Fact]
+	public void Any_HitPolicy_Returns_First_Match()
+	{
+		const string dmn = @"<definitions xmlns='http://www.omg.org/spec/DMN/20191111/MODEL/'>
   <decision id='d1' name='Test'>
     <decisionTable hitPolicy='ANY'>
       <input id='i1'><inputExpression>age</inputExpression></input>
@@ -27,15 +27,15 @@ public class DmnAnyCollectPolicyTests
     </decisionTable>
   </decision>
 </definitions>";
-        var table = DmnDecisionTable.Parse(dmn);
-        var result = table.Evaluate(new Dictionary<string, object> { { "i1", "18" } });
-        Assert.Equal("adult", result["result"]);
-    }
+		var table = DmnDecisionTable.Parse(dmn);
+		var result = table.Evaluate(new Dictionary<string, object>(StringComparer.Ordinal) { { "i1", "18" } });
+		Assert.Equal("adult", result["result"]);
+	}
 
-    [Fact]
-    public void Collect_HitPolicy_Returns_All_Matches()
-    {
-        const string dmn = @"<definitions xmlns='http://www.omg.org/spec/DMN/20191111/MODEL/'>
+	[Fact]
+	public void Collect_HitPolicy_Returns_All_Matches()
+	{
+		const string dmn = @"<definitions xmlns='http://www.omg.org/spec/DMN/20191111/MODEL/'>
   <decision id='d1' name='Test'>
     <decisionTable hitPolicy='COLLECT'>
       <input id='i1'><inputExpression>age</inputExpression></input>
@@ -51,8 +51,8 @@ public class DmnAnyCollectPolicyTests
     </decisionTable>
   </decision>
 </definitions>";
-        var table = DmnDecisionTable.Parse(dmn);
-        var result = table.Evaluate(new Dictionary<string, object> { { "i1", "18" } });
-        Assert.True(result["result"] is List<object> list && list.Contains("adult") && list.Contains("duplicate"));
-    }
+		var table = DmnDecisionTable.Parse(dmn);
+		var result = table.Evaluate(new Dictionary<string, object>(StringComparer.Ordinal) { { "i1", "18" } });
+		Assert.True(result["result"] is List<object> list && list.Contains("adult") && list.Contains("duplicate"));
+	}
 }

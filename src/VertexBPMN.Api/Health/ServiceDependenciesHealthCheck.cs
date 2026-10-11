@@ -5,7 +5,7 @@ using VertexBPMN.Infrastructure.Persistence;
 
 namespace VertexBPMN.Api.Health;
 
-public sealed class ServiceDependenciesHealthCheck(IServiceProvider serviceProvider) : IHealthCheck
+internal sealed class ServiceDependenciesHealthCheck(IServiceProvider serviceProvider) : IHealthCheck
 {
     private static readonly Type[] CriticalServices =
     {
@@ -24,7 +24,7 @@ public sealed class ServiceDependenciesHealthCheck(IServiceProvider serviceProvi
     {
         var sp = serviceProvider;
         var missing = new List<string>();
-        var data = new Dictionary<string, object>();
+        var data = new Dictionary<string, object>(StringComparer.Ordinal);
 
         foreach (var t in CriticalServices)
         {

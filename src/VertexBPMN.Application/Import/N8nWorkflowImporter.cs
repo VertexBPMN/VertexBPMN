@@ -32,6 +32,22 @@ public sealed class N8nWorkflowImporter : IN8nWorkflowImporter
 		var ids = nodes.ToDictionary(node => node.Name, node => $"n8n_{Sanitize(node.Name)}", StringComparer.Ordinal);
 		var outgoing = ParseConnections(root, ids);
 		var processId = $"n8n_{Sanitize(workflowName ?? "workflow")}";
+		var process = BuildProcess(processId, workflowName, nodes, outgoing, ids, reports, credentials);
+
+		var definitions = new XDocument(new XElement(
+			Bpmn + "definitions",
+			new XAttribute(XNamespace.Xmlns + "bpmndi", BpmnDi),
+			new XAttribute(XNamespace.Xmlns + "dc", Dc),
+			new XAttribute(XNamespace.Xmlns + "di", Di),
+			new XAttribute(XNamespace.Xmlns + "vertex", Vertex),
+			new XAttribute("targetNamespace", "https://vertexbpmn.dev/import/n8n"),
+			process,
+			CreateDiagram(process, processId)));
+		return new N8nImportResult(definitions.ToString(SaveOptions.DisableFormatting), reports);
+	}
+
+	private static XElement BuildProcess(string processId, string? workflowName, N8nNode[] nodes, List<N8nFlow> outgoing, Dictionary<string, string> ids, List<N8nImportReportItem> reports, IReadOnlyList<CredentialMetadata> credentials)
+	{
 		var process = new XElement(Bpmn + "process", new XAttribute("id", processId), new XAttribute("name", workflowName ?? "Imported n8n workflow"), new XAttribute("isExecutable", "true"));
 
 		foreach (var node in nodes)
@@ -62,6 +78,20 @@ public sealed class N8nWorkflowImporter : IN8nWorkflowImporter
 			process.Add(sequenceFlow);
 		}
 
+		AddGatewayConditions(process, nodes, outgoing, ids, reports);
+
+		foreach (var terminalName in nodes.Where(node => !outgoing.Any(flow => flow.Source == node.Name)).Select(node => node.Name))
+		{
+			var endId = $"end_{Sanitize(terminalName)}";
+			process.Add(new XElement(Bpmn + "endEvent", new XAttribute("id", endId), new XAttribute("name", $"End {terminalName}"), new XElement(Bpmn + "incoming", $"end_flow_{Sanitize(terminalName)}")));
+			process.Add(new XElement(Bpmn + "sequenceFlow", new XAttribute("id", $"end_flow_{Sanitize(terminalName)}"), new XAttribute("sourceRef", ids[terminalName]), new XAttribute("targetRef", endId)));
+		}
+
+		return process;
+	}
+
+	private static void AddGatewayConditions(XElement process, N8nNode[] nodes, List<N8nFlow> outgoing, Dictionary<string, string> ids, List<N8nImportReportItem> reports)
+	{
 		foreach (var ifNode in nodes.Where(IsIfNode))
 		{
 			var branches = outgoing.Where(flow => flow.Source == ifNode.Name).OrderBy(flow => flow.Branch).ToArray();
@@ -85,24 +115,6 @@ public sealed class N8nWorkflowImporter : IN8nWorkflowImporter
 				reports.Add(new(ifNode.Name, ifNode.Type, N8nImportDisposition.NeedsReview, "Mapped to an exclusive gateway, but its condition could not be translated. Configure outgoing BPMN conditions manually."));
 			}
 		}
-
-		foreach (var terminal in nodes.Where(node => !outgoing.Any(flow => flow.Source == node.Name)))
-		{
-			var endId = $"end_{Sanitize(terminal.Name)}";
-			process.Add(new XElement(Bpmn + "endEvent", new XAttribute("id", endId), new XAttribute("name", $"End {terminal.Name}"), new XElement(Bpmn + "incoming", $"end_flow_{Sanitize(terminal.Name)}")));
-			process.Add(new XElement(Bpmn + "sequenceFlow", new XAttribute("id", $"end_flow_{Sanitize(terminal.Name)}"), new XAttribute("sourceRef", ids[terminal.Name]), new XAttribute("targetRef", endId)));
-		}
-
-		var definitions = new XDocument(new XElement(
-			Bpmn + "definitions",
-			new XAttribute(XNamespace.Xmlns + "bpmndi", BpmnDi),
-			new XAttribute(XNamespace.Xmlns + "dc", Dc),
-			new XAttribute(XNamespace.Xmlns + "di", Di),
-			new XAttribute(XNamespace.Xmlns + "vertex", Vertex),
-			new XAttribute("targetNamespace", "https://vertexbpmn.dev/import/n8n"),
-			process,
-			CreateDiagram(process, processId)));
-		return new N8nImportResult(definitions.ToString(SaveOptions.DisableFormatting), reports);
 	}
 
 	private static XElement CreateDiagram(XElement process, string processId)
@@ -122,23 +134,10 @@ public sealed class N8nWorkflowImporter : IN8nWorkflowImporter
 			var id = RequiredElementId(node);
 			var isEvent = node.Name.LocalName.EndsWith("Event", StringComparison.Ordinal);
 			var isGateway = node.Name.LocalName.EndsWith("Gateway", StringComparison.Ordinal);
-			double width;
-			if (isEvent)
-			{
-				width = 36d;
-			}
-			else if (isGateway)
-			{
-				width = 50d;
-			}
-			else
-			{
-				width = 100d;
-			}
-
-			var height = isEvent ? 36d : isGateway ? 50d : 80d;
-			var x = 120d + index * 180d;
-			var y = 120d + index % 2 * 100d;
+			var width = (isEvent, isGateway) switch { (true, _) => 36d, (_, true) => 50d, _ => 100d };
+			var height = (isEvent, isGateway) switch { (true, _) => 36d, (_, true) => 50d, _ => 80d };
+			var x = 120d + (index * 180d);
+			var y = 120d + (index % 2 * 100d);
 			bounds[id] = (x, y, width, height);
 			plane.Add(new XElement(
 				BpmnDi + "BPMNShape",
@@ -152,6 +151,16 @@ public sealed class N8nWorkflowImporter : IN8nWorkflowImporter
 					new XAttribute("height", height))));
 		}
 
+		AddEdges(plane, process, bounds);
+
+		return new XElement(
+			BpmnDi + "BPMNDiagram",
+			new XAttribute("id", $"{processId}_diagram"),
+			plane);
+	}
+
+	private static void AddEdges(XElement plane, XElement process, Dictionary<string, (double X, double Y, double Width, double Height)> bounds)
+	{
 		foreach (var flow in process.Elements(Bpmn + "sequenceFlow"))
 		{
 			var id = RequiredElementId(flow);
@@ -168,14 +177,9 @@ public sealed class N8nWorkflowImporter : IN8nWorkflowImporter
 				BpmnDi + "BPMNEdge",
 				new XAttribute("id", $"{id}_di"),
 				new XAttribute("bpmnElement", id),
-				new XElement(Di + "waypoint", new XAttribute("x", source.X + source.Width), new XAttribute("y", source.Y + source.Height / 2)),
-				new XElement(Di + "waypoint", new XAttribute("x", target.X), new XAttribute("y", target.Y + target.Height / 2))));
+				new XElement(Di + "waypoint", new XAttribute("x", source.X + source.Width), new XAttribute("y", source.Y + (source.Height / 2))),
+				new XElement(Di + "waypoint", new XAttribute("x", target.X), new XAttribute("y", target.Y + (target.Height / 2)))));
 		}
-
-		return new XElement(
-			BpmnDi + "BPMNDiagram",
-			new XAttribute("id", $"{processId}_diagram"),
-			plane);
 	}
 
 	private static string RequiredElementId(XElement element) =>
@@ -188,7 +192,7 @@ public sealed class N8nWorkflowImporter : IN8nWorkflowImporter
 		node.TryGetProperty("credentials", out var credentials) ? credentials : default,
 		node.TryGetProperty("parameters", out var parameters) ? parameters : default);
 
-	private static IReadOnlyList<N8nFlow> ParseConnections(JsonElement root, IReadOnlyDictionary<string, string> ids)
+	private static List<N8nFlow> ParseConnections(JsonElement root, Dictionary<string, string> ids)
 	{
 		if (!root.TryGetProperty("connections", out var connections) || connections.ValueKind != JsonValueKind.Object)
 		{
@@ -225,15 +229,15 @@ public sealed class N8nWorkflowImporter : IN8nWorkflowImporter
 		return flows;
 	}
 
-	private static XElement CreateElement(N8nNode node, string id, ICollection<N8nImportReportItem> reports, IReadOnlyList<CredentialMetadata> credentials)
+	private static XElement CreateElement(N8nNode node, string id, List<N8nImportReportItem> reports, IReadOnlyList<CredentialMetadata> credentials)
 	{
 		var type = node.Type.ToLowerInvariant();
-		if (type.Contains("webhook"))
+		if (type.Contains("webhook", StringComparison.Ordinal))
 		{
 			reports.Add(new(node.Name, node.Type, N8nImportDisposition.Migrated, "Mapped to a BPMN message start event."));
 			return new XElement(Bpmn + "startEvent", new XAttribute("id", id), new XAttribute("name", node.Name), new XAttribute(Vertex + "trigger", "webhook"));
 		}
-		if (type.Contains("httprequest"))
+		if (type.Contains("httprequest", StringComparison.Ordinal))
 		{
 			var element = new XElement(Bpmn + "serviceTask", new XAttribute("id", id), new XAttribute("name", node.Name), new XAttribute(Vertex + "connector", "http"));
 			var credential = ResolveCredential(node.Credentials, credentials);

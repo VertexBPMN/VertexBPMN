@@ -10,12 +10,24 @@ using VertexBPMN.Infrastructure.Persistence.Services;
 
 namespace VertexBPMN.Api.Services;
 
-public class ProductionHealthMonitoringService : IHealthMonitoringService
+internal sealed class ProductionHealthMonitoringService : IHealthMonitoringService, IDisposable
 {
     private readonly ILogger<ProductionHealthMonitoringService> _logger;
     private readonly IServiceProvider _serviceProvider;
     private readonly PerformanceCounter? _cpuCounter;
     private readonly PerformanceCounter? _memoryCounter;
+
+    public void Dispose()
+    {
+        try
+        {
+            _cpuCounter?.Dispose();
+        }
+        finally
+        {
+            _memoryCounter?.Dispose();
+        }
+    }
 
     public ProductionHealthMonitoringService(
         ILogger<ProductionHealthMonitoringService> logger,
@@ -74,11 +86,11 @@ public class ProductionHealthMonitoringService : IHealthMonitoringService
             var healthyDatabases = checks.Where(check => check.Healthy).Select(check => check.Message).ToList();
             var unhealthyDatabases = checks.Where(check => !check.Healthy).Select(check => check.Message).ToList();
 
-            if (unhealthyDatabases.Any())
+            if (unhealthyDatabases.Count > 0)
             {
                 return HealthCheckResult.Unhealthy(
                     $"Database issues: {string.Join(", ", unhealthyDatabases)}",
-                    data: new Dictionary<string, object>
+                    data: new Dictionary<string, object>(StringComparer.Ordinal)
                     {
                         ["healthy_databases"] = healthyDatabases,
                         ["unhealthy_databases"] = unhealthyDatabases
@@ -87,7 +99,7 @@ public class ProductionHealthMonitoringService : IHealthMonitoringService
 
             return HealthCheckResult.Healthy(
                 $"All databases healthy: {string.Join(", ", healthyDatabases)}",
-                data: new Dictionary<string, object>
+                data: new Dictionary<string, object>(StringComparer.Ordinal)
                 {
                     ["healthy_databases"] = healthyDatabases
                 });
@@ -112,7 +124,7 @@ public class ProductionHealthMonitoringService : IHealthMonitoringService
             // Get system memory info
             var gc = GC.GetTotalMemory(false) / 1024 / 1024;
             
-            var data = new Dictionary<string, object>
+            var data = new Dictionary<string, object>(StringComparer.Ordinal)
             {
                 ["working_set_mb"] = workingSetMB,
                 ["private_memory_mb"] = privateMemoryMB,
@@ -161,17 +173,8 @@ public class ProductionHealthMonitoringService : IHealthMonitoringService
 
             foreach (var drive in drives)
             {
-                var totalGB = drive.TotalSize / 1024 / 1024 / 1024;
-                var freeGB = drive.AvailableFreeSpace / 1024 / 1024 / 1024;
                 var usedPercentage = (double)(drive.TotalSize - drive.AvailableFreeSpace) / drive.TotalSize * 100;
-
-                driveInfos.Add(new
-                {
-                    name = drive.Name,
-                    total_gb = totalGB,
-                    free_gb = freeGB,
-                    used_percentage = Math.Round(usedPercentage, 1)
-                });
+                driveInfos.Add(GetDriveMetrics(drive, usedPercentage));
 
                 if (usedPercentage > 95)
                 {
@@ -183,18 +186,18 @@ public class ProductionHealthMonitoringService : IHealthMonitoringService
                 }
             }
 
-            var data = new Dictionary<string, object>
+            var data = new Dictionary<string, object>(StringComparer.Ordinal)
             {
                 ["drives"] = driveInfos
             };
 
-            if (criticalDrives.Any())
+            if (criticalDrives.Count > 0)
             {
                 return HealthCheckResult.Unhealthy(
                     $"Critical disk space: {string.Join(", ", criticalDrives)}", data: data);
             }
 
-            if (lowSpaceDrives.Any())
+            if (lowSpaceDrives.Count > 0)
             {
                 return HealthCheckResult.Degraded(
                     $"Low disk space: {string.Join(", ", lowSpaceDrives)}", data: data);
@@ -212,70 +215,32 @@ public class ProductionHealthMonitoringService : IHealthMonitoringService
 
     public async Task<HealthCheckResult> CheckExternalServicesHealthAsync()
     {
-        var externalServices = new List<ExternalServiceCheck>
+        var configuration = _serviceProvider.GetRequiredService<IConfiguration>();
+        var externalServices = configuration.GetSection("HealthMonitoring:ExternalServices").Get<ExternalServiceCheck[]>() ?? [];
+        if (externalServices.Length == 0)
         {
-            new("Google DNS", "8.8.8.8"),
-            new("Cloudflare DNS", "1.1.1.1"),
-            new("localhost", "127.0.0.1")
-        };
-
-        var results = new List<object>();
-        var failedServices = new List<string>();
-
-        foreach (var service in externalServices)
-        {
-            try
-            {
-                using var ping = new Ping();
-                var reply = await ping.SendPingAsync(service.Host, 1000);
-                
-                if (reply.Status == IPStatus.Success)
-                {
-                    results.Add(new
-                    {
-                        name = service.Name,
-                        host = service.Host,
-                        status = "healthy",
-                        roundtrip_ms = reply.RoundtripTime
-                    });
-                }
-                else
-                {
-                    failedServices.Add($"{service.Name} ({reply.Status})");
-                    results.Add(new
-                    {
-                        name = service.Name,
-                        host = service.Host,
-                        status = "unhealthy",
-                        error = reply.Status.ToString()
-                    });
-                }
-            }
-            catch (Exception ex)
-            {
-                failedServices.Add($"{service.Name} ({ex.Message})");
-                results.Add(new
-                {
-                    name = service.Name,
-                    host = service.Host,
-                    status = "error",
-                    error = ex.Message
-                });
-            }
+            return HealthCheckResult.Healthy("No optional external ICMP probes configured");
         }
 
-        var data = new Dictionary<string, object>
+        if (externalServices.Length > 16 || externalServices.Any(service => service is null || string.IsNullOrWhiteSpace(service.Name) || string.IsNullOrWhiteSpace(service.Host)))
         {
-            ["external_services"] = results
+            return HealthCheckResult.Unhealthy("External ICMP probe configuration is invalid (maximum 16 named hosts).");
+        }
+
+        var checks = await Task.WhenAll(externalServices.Select(CheckExternalServiceAsync));
+        var failedServices = checks.Where(check => !check.Healthy).Select(check => check.Name).ToList();
+        var data = new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            ["external_services"] = checks.Select(check => check.Result).ToList()
         };
 
-        if (failedServices.Count == externalServices.Count)
+        if (failedServices.Count == externalServices.Length)
         {
             return HealthCheckResult.Unhealthy(
                 "All external services unreachable", data: data);
         }
 
-        if (failedServices.Any())
+        if (failedServices.Count > 0)
         {
             return HealthCheckResult.Degraded(
                 $"Some external services unreachable: {string.Join(", ", failedServices)}", data: data);
@@ -283,6 +248,32 @@ public class ProductionHealthMonitoringService : IHealthMonitoringService
 
         return HealthCheckResult.Healthy(
             "All external services reachable", data: data);
+    }
+
+    private static object GetDriveMetrics(DriveInfo drive, double usedPercentage) => new
+    {
+        name = drive.Name,
+        total_gb = drive.TotalSize / 1024 / 1024 / 1024,
+        free_gb = drive.AvailableFreeSpace / 1024 / 1024 / 1024,
+        used_percentage = Math.Round(usedPercentage, 1)
+    };
+
+    private static async Task<(bool Healthy, string Name, object Result)> CheckExternalServiceAsync(ExternalServiceCheck service)
+    {
+        try
+        {
+            using var ping = new Ping();
+            var reply = await ping.SendPingAsync(service.Host, TimeSpan.FromSeconds(1)).WaitAsync(TimeSpan.FromSeconds(2));
+            var healthy = reply.Status == IPStatus.Success;
+            object result = healthy
+                ? new { name = service.Name, host = service.Host, status = "healthy", roundtrip_ms = reply.RoundtripTime }
+                : new { name = service.Name, host = service.Host, status = "unhealthy", error = reply.Status.ToString() };
+            return (healthy, service.Name, result);
+        }
+        catch (Exception)
+        {
+            return (false, service.Name, new { name = service.Name, host = service.Host, status = "error", error = "ICMP probe failed or timed out" });
+        }
     }
 
     public async Task<ComprehensiveHealthReport> GetComprehensiveHealthReportAsync()
@@ -298,11 +289,15 @@ public class ProductionHealthMonitoringService : IHealthMonitoringService
 
         stopwatch.Stop();
 
-        var overallStatus = healthChecks.All(h => h.Status == HealthStatus.Healthy) 
-            ? HealthStatus.Healthy
-            : healthChecks.Any(h => h.Status == HealthStatus.Unhealthy)
-                ? HealthStatus.Unhealthy
-                : HealthStatus.Degraded;
+        var overallStatus = HealthStatus.Degraded;
+        if (healthChecks.All(h => h.Status == HealthStatus.Healthy))
+        {
+            overallStatus = HealthStatus.Healthy;
+        }
+        else if (healthChecks.Any(h => h.Status == HealthStatus.Unhealthy))
+        {
+            overallStatus = HealthStatus.Unhealthy;
+        }
 
         return new ComprehensiveHealthReport
         {

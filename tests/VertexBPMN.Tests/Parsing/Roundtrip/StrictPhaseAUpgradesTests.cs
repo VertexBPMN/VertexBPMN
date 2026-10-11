@@ -5,12 +5,12 @@ namespace VertexBPMN.Tests.Parsing.Roundtrip;
 
 public class StrictPhaseAUpgradesTests
 {
-    private static BpmnParser CreateStrictParser() => new(new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict, PreserveUnknownExtensions = true });
+	private static BpmnParser CreateStrictParser() => new(new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict, PreserveUnknownExtensions = true });
 
-    [Fact]
-    public async Task Captures_RawMultiInstance_And_PriorityNamespace_And_FlowNodeAttributes()
-    {
-        const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL' xmlns:camunda='http://camunda.org/schema/1.0/bpmn'>
+	[Fact]
+	public async Task Captures_RawMultiInstance_And_PriorityNamespace_And_FlowNodeAttributes()
+	{
+		const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL' xmlns:camunda='http://camunda.org/schema/1.0/bpmn'>
   <bpmn:process id='p1'>
     <bpmn:userTask id='taskA' name='User Task 1'>
       <bpmn:multiInstanceLoopCharacteristics isSequential='true'>
@@ -20,26 +20,26 @@ public class StrictPhaseAUpgradesTests
     <bpmn:sequenceFlow id='f1' sourceRef='taskA' targetRef='taskA' camunda:priority='5'/>
   </bpmn:process>
 </bpmn:definitions>";
-        var parser = CreateStrictParser();
-        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
-        Assert.NotNull(model.RawMetadata);
-        // RawMultiInstance
-        Assert.NotNull(model.RawMetadata!.RawMultiInstance);
-        Assert.True(model.RawMetadata.RawMultiInstance!.ContainsKey("taskA"));
-        Assert.Equal("multiInstanceLoopCharacteristics", model.RawMetadata.RawMultiInstance!["taskA"].Name.LocalName);
-        // PriorityAttributeNamespace
-        Assert.NotNull(model.RawMetadata.PriorityAttributeNamespace);
-        Assert.Equal("http://camunda.org/schema/1.0/bpmn", model.RawMetadata.PriorityAttributeNamespace!["f1"]);
-        // FlowNodeAttributes include name
-        Assert.NotNull(model.RawMetadata.FlowNodeAttributes);
-        Assert.True(model.RawMetadata.FlowNodeAttributes!.ContainsKey("taskA"));
-        Assert.Contains("name", model.RawMetadata.FlowNodeAttributes!["taskA"].Keys);
-    }
+		var parser = CreateStrictParser();
+		var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		Assert.NotNull(model.RawMetadata);
+		// RawMultiInstance
+		Assert.NotNull(model.RawMetadata.RawMultiInstance);
+		Assert.True(model.RawMetadata.RawMultiInstance.ContainsKey("taskA"));
+		Assert.Equal("multiInstanceLoopCharacteristics", model.RawMetadata.RawMultiInstance["taskA"].Name.LocalName);
+		// PriorityAttributeNamespace
+		Assert.NotNull(model.RawMetadata.PriorityAttributeNamespace);
+		Assert.Equal("http://camunda.org/schema/1.0/bpmn", model.RawMetadata.PriorityAttributeNamespace["f1"]);
+		// FlowNodeAttributes include name
+		Assert.NotNull(model.RawMetadata.FlowNodeAttributes);
+		Assert.True(model.RawMetadata.FlowNodeAttributes.ContainsKey("taskA"));
+		Assert.Contains("name", model.RawMetadata.FlowNodeAttributes["taskA"].Keys, StringComparer.Ordinal);
+	}
 
-    [Fact]
-    public async Task Captures_Boundary_And_StartEvent_Interrupting_Flags()
-    {
-        const string xml = @"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>
+	[Fact]
+	public async Task Captures_Boundary_And_StartEvent_Interrupting_Flags()
+	{
+		const string xml = @"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <process id='p1'>
     <subProcess id='sp1'>
       <startEvent id='start1' isInterrupting='false'/>
@@ -50,20 +50,20 @@ public class StrictPhaseAUpgradesTests
     </subProcess>
   </process>
 </definitions>";
-        var parser = CreateStrictParser();
-        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
-        Assert.NotNull(model.RawMetadata);
-        var attrs = model.RawMetadata!.FlowNodeAttributes!;
-        Assert.True(attrs.ContainsKey("start1"));
-        Assert.Equal("false", attrs["start1"].First(kv => kv.Key.EndsWith("isInterrupting")).Value);
-        Assert.True(attrs.ContainsKey("b1"));
-        Assert.Equal("false", attrs["b1"].First(kv => kv.Key.EndsWith("cancelActivity")).Value);
-    }
+		var parser = CreateStrictParser();
+		var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		Assert.NotNull(model.RawMetadata);
+		var attrs = model.RawMetadata.FlowNodeAttributes!;
+		Assert.True(attrs.ContainsKey("start1"));
+		Assert.Equal("false", attrs["start1"].First(kv => kv.Key.EndsWith("isInterrupting", StringComparison.Ordinal)).Value);
+		Assert.True(attrs.ContainsKey("b1"));
+		Assert.Equal("false", attrs["b1"].First(kv => kv.Key.EndsWith("cancelActivity", StringComparison.Ordinal)).Value);
+	}
 
-    [Fact]
-    public async Task Captures_LaneSet_And_Lane()
-    {
-        const string xml = @"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>
+	[Fact]
+	public async Task Captures_LaneSet_And_Lane()
+	{
+		const string xml = @"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <process id='p1'>
     <laneSet id='ls1'>
       <lane id='lane1'>
@@ -73,28 +73,29 @@ public class StrictPhaseAUpgradesTests
     <userTask id='t1'/>
   </process>
 </definitions>";
-        var parser = CreateStrictParser();
-        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
-        Assert.NotNull(model.RawMetadata);
-        Assert.NotNull(model.RawMetadata!.RawLanes);
-        // Should contain laneSet and lane
-        Assert.Contains(model.RawMetadata.RawLanes!, x => x.Name.LocalName == "laneSet");
-        Assert.Contains(model.RawMetadata.RawLanes!, x => x.Name.LocalName == "lane");
-    }
+		var parser = CreateStrictParser();
+		var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		Assert.NotNull(model.RawMetadata);
+		Assert.NotNull(model.RawMetadata.RawLanes);
+		// Should contain laneSet and lane
+		Assert.Contains(model.RawMetadata.RawLanes, x => x.Name.LocalName == "laneSet");
+		Assert.Contains(model.RawMetadata.RawLanes, x => x.Name.LocalName == "lane");
+	}
 
-    [Fact]
-    public async Task Propagates_Task_Name_Property()
-    {
-        const string xml = @"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>
+	[Fact]
+	public async Task Propagates_Task_Name_Property()
+	{
+		const string xml = @"<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <process id='p1'>
     <userTask id='t1' name='Do Work'/>
   </process>
 </definitions>";
-        var parser = CreateStrictParser();
-        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
-        var task = Assert.Single(model.Tasks);
-        Assert.Equal("Do Work", task.Name);
-        Assert.NotNull(model.RawMetadata);
-        Assert.True(model.RawMetadata!.FlowNodeAttributes!.ContainsKey("t1"));
-    }
+		var parser = CreateStrictParser();
+		var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		Assert.NotNull(model.Tasks);
+		var task = Assert.Single(model.Tasks);
+		Assert.Equal("Do Work", task.Name);
+		Assert.NotNull(model.RawMetadata);
+		Assert.True(model.RawMetadata.FlowNodeAttributes!.ContainsKey("t1"));
+	}
 }

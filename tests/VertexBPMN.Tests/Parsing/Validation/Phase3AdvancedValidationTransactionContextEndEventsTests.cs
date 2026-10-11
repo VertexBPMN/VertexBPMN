@@ -5,8 +5,8 @@ namespace VertexBPMN.Tests.Parsing.Validation;
 
 public class Phase3AdvancedValidationTransactionContextEndEventsTests
 {
-    // Cancel & terminate outside any transaction subprocess
-    private const string OutsideTxXml = """
+	// Cancel & terminate outside any transaction subprocess
+	private const string OutsideTxXml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <bpmn:process id="p1">
     <bpmn:startEvent id="start"/>
@@ -22,8 +22,8 @@ public class Phase3AdvancedValidationTransactionContextEndEventsTests
 </bpmn:definitions>
 """;
 
-    // Cancel & terminate inside a transaction subprocess (valid → no warnings)
-    private const string InsideTxXml = """
+	// Cancel & terminate inside a transaction subprocess (valid → no warnings)
+	private const string InsideTxXml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <bpmn:process id="p1">
     <bpmn:startEvent id="start"/>
@@ -45,46 +45,49 @@ public class Phase3AdvancedValidationTransactionContextEndEventsTests
 </bpmn:definitions>
 """;
 
-    [Fact]
-    public async Task TransactionRules_Disabled_NoStructuredDiagnostics()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = false
-        }).ParseAsync(OutsideTxXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task TransactionRules_Disabled_NoStructuredDiagnostics()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = false
+		}).ParseAsync(OutsideTxXml, TestContext.Current.CancellationToken);
 
-        Assert.Null(model.ValidationDiagnostics);
-    }
+		Assert.Null(model.ValidationDiagnostics);
+	}
 
-    [Fact]
-    public async Task CancelAndTerminateOutsideTx_ProducesWarnings()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = true
-        }).ParseAsync(OutsideTxXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task CancelAndTerminateOutsideTx_ProducesWarnings()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = true
+		}).ParseAsync(OutsideTxXml, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(model.ValidationDiagnostics);
-        Assert.Contains(model.ValidationDiagnostics!, d =>
-            d.Code == "SEM-CANCEL-OUTSIDE-TX" &&
-            d.ElementId == "cancelEnd" &&
-            d.Severity == ValidationSeverity.Warning);
+		Assert.NotNull(model.ValidationDiagnostics);
+		Assert.Contains(model.ValidationDiagnostics, d =>
+			d.Code == "SEM-CANCEL-OUTSIDE-TX" &&
+			d.ElementId == "cancelEnd" &&
+			d.Severity == ValidationSeverity.Warning);
 
-        Assert.Contains(model.ValidationDiagnostics!, d =>
-            d.Code == "SEM-TERMINATE-OUTSIDE-TX" &&
-            d.ElementId == "terminateEnd" &&
-            d.Severity == ValidationSeverity.Warning);
-    }
+		Assert.Contains(model.ValidationDiagnostics, d =>
+			d.Code == "SEM-TERMINATE-OUTSIDE-TX" &&
+			d.ElementId == "terminateEnd" &&
+			d.Severity == ValidationSeverity.Warning);
+	}
 
-    [Fact]
-    public async Task CancelAndTerminateInsideTx_NoWarnings()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = true
-        }).ParseAsync(InsideTxXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task CancelAndTerminateInsideTx_NoWarnings()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = true
+		}).ParseAsync(InsideTxXml, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(model.ValidationDiagnostics);
-        Assert.DoesNotContain(model.ValidationDiagnostics!, d => d.Code is "SEM-CANCEL-OUTSIDE-TX" or "SEM-TERMINATE-OUTSIDE-TX");
-    }
+		Assert.NotNull(model.ValidationDiagnostics);
+		Assert.DoesNotContain(model.ValidationDiagnostics, d => d.Code is "SEM-CANCEL-OUTSIDE-TX" or "SEM-TERMINATE-OUTSIDE-TX");
+	}
 }

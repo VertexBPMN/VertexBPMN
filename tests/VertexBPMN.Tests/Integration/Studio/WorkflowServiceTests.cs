@@ -7,19 +7,19 @@ namespace VertexBPMN.Tests.Integration.Studio;
 
 public sealed class WorkflowServiceTests
 {
-    [Fact]
-    public async Task StartProcess_ForwardsTenantAndArgumentsToEngineService()
-    {
-        var engine = new Mock<IBpmnEngineService>(MockBehavior.Strict);
-        var variables = new Dictionary<string, object?> { ["amount"] = 42 };
-        engine
-            .Setup(service => service.StartProcessAsync("invoice", variables, "order-42", "tenant-a"))
-            .ReturnsAsync((ProcessInstance)null!);
+	[Fact]
+	public async Task StartProcess_ForwardsTenantAndArgumentsToEngineService()
+	{
+		var engine = new Mock<IBpmnEngineService>(MockBehavior.Strict);
+		var variables = new Dictionary<string, object?>(StringComparer.Ordinal) { ["amount"] = 42 };
+		engine
+			.Setup(service => service.StartProcessAsync("invoice", variables, "order-42", "tenant-a"))
+			.ReturnsAsync((ProcessInstance)null!);
 
-        var workflow = new WorkflowService(engine.Object);
+		var workflow = new WorkflowService(engine.Object);
 
-        await workflow.StartProcessAsync("invoice", variables, "order-42", "tenant-a");
+		await workflow.StartProcessAsync("invoice", variables, "order-42", "tenant-a");
 
-        engine.Verify(service => service.StartProcessAsync("invoice", variables, "order-42", "tenant-a"), Times.Once);
-    }
+		engine.Verify(service => service.StartProcessAsync("invoice", variables, "order-42", "tenant-a"), Times.Once);
+	}
 }

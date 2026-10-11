@@ -2,9 +2,10 @@
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
+#pragma warning disable CA1861, MA0048, MA0051, RCS1238, S3358
 
-namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
-{
+namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn;
+
     /// <inheritdoc />
     public partial class SourceControlPersistence : Migration
     {
@@ -116,4 +117,3 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                 name: "SourceControlSessions");
         }
     }
-}

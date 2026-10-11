@@ -5,13 +5,12 @@ namespace VertexBPMN.Tests.Parsing.Unified;
 
 public class UnifiedPhaseESequenceFlowPriorityTests
 {
-    private readonly BpmnParser _parser = new();
-    private readonly BpmnSerializer _serializer = new();
+	private readonly BpmnParser _parser = new();
 
-    [Fact]
-    public async Task Parses_Camunda_Priority_On_SequenceFlow()
-    {
-        var xml = """
+	[Fact]
+	public async Task Parses_Camunda_Priority_On_SequenceFlow()
+	{
+		const string xml = """
 <definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL' xmlns:camunda='http://camunda.org/schema/1.0/bpmn'>
   <process id='p1'>
     <startEvent id='s1'/>
@@ -20,15 +19,16 @@ public class UnifiedPhaseESequenceFlowPriorityTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
-        var flow = Assert.Single(model.SequenceFlows);
-        Assert.Equal(10, flow.Priority);
-    }
+		var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		Assert.NotNull(model.SequenceFlows);
+		var flow = Assert.Single(model.SequenceFlows);
+		Assert.Equal(10, flow.Priority);
+	}
 
-    [Fact]
-    public async Task Serializes_Vertex_Priority_On_SequenceFlow()
-    {
-        var xml = """
+	[Fact]
+	public async Task Serializes_Vertex_Priority_On_SequenceFlow()
+	{
+		const string xml = """
 <definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL' xmlns:vertexbpmn='http://vertexbpmn.io/schema/1.0/bpmn'>
   <process id='p1'>
     <startEvent id='s1'/>
@@ -38,11 +38,12 @@ public class UnifiedPhaseESequenceFlowPriorityTests
 </definitions>
 """;
 
-        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
-        var flow = Assert.Single(model.SequenceFlows);
-        Assert.Equal(5, flow.Priority);
-        //var serialized = _serializer.Serialize(model);
-        //Assert.Contains("vertexbpmn.io/schema/1.0", serialized);
-        //Assert.Contains("priority=\"5\"", serialized);
-    }
+		var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		Assert.NotNull(model.SequenceFlows);
+		var flow = Assert.Single(model.SequenceFlows);
+		Assert.Equal(5, flow.Priority);
+		//var serialized = _serializer.Serialize(model);
+		//Assert.Contains("vertexbpmn.io/schema/1.0", serialized);
+		//Assert.Contains("priority=\"5\"", serialized);
+	}
 }

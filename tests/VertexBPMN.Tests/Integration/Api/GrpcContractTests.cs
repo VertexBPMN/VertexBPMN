@@ -1,181 +1,180 @@
 extern alias api;
-
-using Grpc.Net.Client;
 using Grpc.Core;
+using Grpc.Net.Client;
 using VertexBPMN.Tests.Infrastructure;
+using ApiCaseFileUpdateRequest = api::VertexBPMN.Api.Grpc.CaseFileUpdateRequest;
 using ApiExecuteCaseRequest = api::VertexBPMN.Api.Grpc.ExecuteCaseRequest;
 using ApiGenerateAdHocSubprocessRequest = api::VertexBPMN.Api.Grpc.GenerateAdHocSubprocessRequest;
 using ApiRegisterCmmnRequest = api::VertexBPMN.Api.Grpc.RegisterCmmnRequest;
 using ApiTriggerEventRequest = api::VertexBPMN.Api.Grpc.TriggerEventRequest;
-using ApiCaseFileUpdateRequest = api::VertexBPMN.Api.Grpc.CaseFileUpdateRequest;
-using McpExecuteCaseRequest = api::VertexBPMN.Api.Grpc.Mcp.ExecuteCaseRequest;
-using McpTriggerEventRequest = api::VertexBPMN.Api.Grpc.Mcp.TriggerEventRequest;
 using McpCaseFileUpdateRequest = api::VertexBPMN.Api.Grpc.Mcp.CaseFileUpdateRequest;
+using McpExecuteCaseRequest = api::VertexBPMN.Api.Grpc.Mcp.ExecuteCaseRequest;
 using McpGenerateAdHocSubprocessRequest = api::VertexBPMN.Api.Grpc.Mcp.GenerateAdHocSubprocessRequest;
 using McpHistoricalContextRequest = api::VertexBPMN.Api.Grpc.Mcp.HistoricalContextRequest;
+using McpTriggerEventRequest = api::VertexBPMN.Api.Grpc.Mcp.TriggerEventRequest;
 
 namespace VertexBPMN.Tests.Integration.Api;
 
 public sealed class GrpcContractTests : IDisposable
 {
-    private readonly CustomWebApplicationFactory _factory;
-    private readonly GrpcChannel _channel;
+	private readonly CustomWebApplicationFactory _factory;
+	private readonly GrpcChannel _channel;
 
-    public GrpcContractTests()
-    {
-        _factory = new CustomWebApplicationFactory();
-        var httpClient = _factory.CreateClient();
-        _channel = GrpcChannel.ForAddress("http://localhost", new GrpcChannelOptions
-        {
-            HttpClient = httpClient
-        });
-    }
+	public GrpcContractTests()
+	{
+		_factory = new CustomWebApplicationFactory();
+		var httpClient = _factory.CreateClient();
+		_channel = GrpcChannel.ForAddress("http://localhost", new GrpcChannelOptions
+		{
+			HttpClient = httpClient
+		});
+	}
 
-    public void Dispose()
-    {
-        _channel.Dispose();
-        _factory.Dispose();
-    }
+	public void Dispose()
+	{
+		_channel.Dispose();
+		_factory.Dispose();
+	}
 
-    [Fact]
-    [Trait("Category", "Phase4Acceptance")]
-    public async Task DefaultProfile_CmmnGrpcUsesQualifiedPersistentRuntime()
-    {
-        using var disabledFactory = new CustomWebApplicationFactory();
-        using var httpClient = disabledFactory.CreateClient();
-        using var channel = GrpcChannel.ForAddress("http://localhost", new GrpcChannelOptions
-        {
-            HttpClient = httpClient
-        });
-        var client = new api::VertexBPMN.Api.Grpc.VertexBPMNService.VertexBPMNServiceClient(channel);
+	[Fact]
+	[Trait("Category", "Phase4Acceptance")]
+	public async Task DefaultProfile_CmmnGrpcUsesQualifiedPersistentRuntime()
+	{
+		await using var disabledFactory = new CustomWebApplicationFactory();
+		using var httpClient = disabledFactory.CreateClient();
+		using var channel = GrpcChannel.ForAddress("http://localhost", new GrpcChannelOptions
+		{
+			HttpClient = httpClient
+		});
+		var client = new api::VertexBPMN.Api.Grpc.VertexBPMNService.VertexBPMNServiceClient(channel);
 
-        const string key = "default-qualified-cmmn";
-        var registration = await client.RegisterCmmnModelAsync(new ApiRegisterCmmnRequest
-        {
-            CaseId = key,
-            CmmnXml = EmptyCase(key)
-        }, cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Contains(key, registration.Message);
-        var execution = await client.ExecuteCaseAsync(
-            new ApiExecuteCaseRequest { CaseId = key },
-            cancellationToken: TestContext.Current.CancellationToken);
-        Assert.True(Guid.TryParse(execution.CaseInstanceId, out _));
-        Assert.Contains("CASE_COMPLETED", execution.Trace);
-    }
+		const string key = "default-qualified-cmmn";
+		var registration = await client.RegisterCmmnModelAsync(new ApiRegisterCmmnRequest
+		{
+			CaseId = key,
+			CmmnXml = EmptyCase(key)
+		}, cancellationToken: TestContext.Current.CancellationToken);
+		Assert.Contains(key, registration.Message, StringComparison.Ordinal);
+		var execution = await client.ExecuteCaseAsync(
+			new ApiExecuteCaseRequest { CaseId = key },
+			cancellationToken: TestContext.Current.CancellationToken);
+		Assert.True(Guid.TryParse(execution.CaseInstanceId, out _));
+		Assert.Contains("CASE_COMPLETED", execution.Trace, StringComparer.Ordinal);
+	}
 
-    [Fact]
-    public async Task VertexBpmnService_ExposesAllDefinedActions()
-    {
-        var client = new api::VertexBPMN.Api.Grpc.VertexBPMNService.VertexBPMNServiceClient(_channel);
-        const string caseId = "grpc-contract-case";
+	[Fact]
+	public async Task VertexBpmnService_ExposesAllDefinedActions()
+	{
+		var client = new api::VertexBPMN.Api.Grpc.VertexBPMNService.VertexBPMNServiceClient(_channel);
+		const string caseId = "grpc-contract-case";
 
-        var registration = await client.RegisterCmmnModelAsync(new ApiRegisterCmmnRequest
-        {
-            CaseId = caseId,
-            CmmnXml = InteractiveCase(caseId)
-        }, cancellationToken: TestContext.Current.CancellationToken);
+		var registration = await client.RegisterCmmnModelAsync(new ApiRegisterCmmnRequest
+		{
+			CaseId = caseId,
+			CmmnXml = InteractiveCase(caseId)
+		}, cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Contains(caseId, registration.Message);
+		Assert.Contains(caseId, registration.Message, StringComparison.Ordinal);
 
-        var execution = await client.ExecuteCaseAsync(new ApiExecuteCaseRequest { CaseId = caseId }, cancellationToken: TestContext.Current.CancellationToken);
-        Assert.True(Guid.TryParse(execution.CaseInstanceId, out _));
+		var execution = await client.ExecuteCaseAsync(new ApiExecuteCaseRequest { CaseId = caseId }, cancellationToken: TestContext.Current.CancellationToken);
+		Assert.True(Guid.TryParse(execution.CaseInstanceId, out _));
 
-        var eventResult = await client.TriggerUserEventAsync(new ApiTriggerEventRequest
-        {
-            CaseId = execution.CaseInstanceId,
-            EventId = "user-event"
-        }, cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Contains("user-event", eventResult.Message);
+		var eventResult = await client.TriggerUserEventAsync(new ApiTriggerEventRequest
+		{
+			CaseId = execution.CaseInstanceId,
+			EventId = "user-event"
+		}, cancellationToken: TestContext.Current.CancellationToken);
+		Assert.Contains("user-event", eventResult.Message, StringComparison.Ordinal);
 
-        var updateResult = await client.UpdateCaseFileItemAsync(new ApiCaseFileUpdateRequest
-        {
-            CaseId = execution.CaseInstanceId,
-            CaseFileItemId = "item",
-            NewValue = "value"
-        }, cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Contains("item", updateResult.Message);
+		var updateResult = await client.UpdateCaseFileItemAsync(new ApiCaseFileUpdateRequest
+		{
+			CaseId = execution.CaseInstanceId,
+			CaseFileItemId = "item",
+			NewValue = "value"
+		}, cancellationToken: TestContext.Current.CancellationToken);
+		Assert.Contains("item", updateResult.Message, StringComparison.Ordinal);
 
-        var adhocResult = await client.GenerateAdHocSubprocessAsync(new ApiGenerateAdHocSubprocessRequest { CaseId = execution.CaseInstanceId, PlanItemId = "optional-review" }, cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Contains("optional-review", adhocResult.Message);
-    }
+		var adhocResult = await client.GenerateAdHocSubprocessAsync(new ApiGenerateAdHocSubprocessRequest { CaseId = execution.CaseInstanceId, PlanItemId = "optional-review" }, cancellationToken: TestContext.Current.CancellationToken);
+		Assert.Contains("optional-review", adhocResult.Message, StringComparison.Ordinal);
+	}
 
-    [Fact]
-    public async Task McpService_ExposesAllDefinedActions()
-    {
-        var registrationClient = new api::VertexBPMN.Api.Grpc.VertexBPMNService.VertexBPMNServiceClient(_channel);
-        var client = new api::VertexBPMN.Api.Grpc.Mcp.VertexBPMNMCPService.VertexBPMNMCPServiceClient(_channel);
-        const string caseId = "grpc-mcp-contract-case";
+	[Fact]
+	public async Task McpService_ExposesAllDefinedActions()
+	{
+		var registrationClient = new api::VertexBPMN.Api.Grpc.VertexBPMNService.VertexBPMNServiceClient(_channel);
+		var client = new api::VertexBPMN.Api.Grpc.Mcp.VertexBPMNMCPService.VertexBPMNMCPServiceClient(_channel);
+		const string caseId = "grpc-mcp-contract-case";
 
-        await registrationClient.RegisterCmmnModelAsync(new ApiRegisterCmmnRequest
-        {
-            CaseId = caseId,
-            CmmnXml = InteractiveCase(caseId)
-        }, cancellationToken: TestContext.Current.CancellationToken);
+		await registrationClient.RegisterCmmnModelAsync(new ApiRegisterCmmnRequest
+		{
+			CaseId = caseId,
+			CmmnXml = InteractiveCase(caseId)
+		}, cancellationToken: TestContext.Current.CancellationToken);
 
-        var execution = await client.ExecuteCaseAsync(new McpExecuteCaseRequest { CaseId = caseId }, cancellationToken: TestContext.Current.CancellationToken);
-        Assert.True(Guid.TryParse(execution.CaseInstanceId, out _));
+		var execution = await client.ExecuteCaseAsync(new McpExecuteCaseRequest { CaseId = caseId }, cancellationToken: TestContext.Current.CancellationToken);
+		Assert.True(Guid.TryParse(execution.CaseInstanceId, out _));
 
-        var eventResult = await client.TriggerUserEventAsync(new McpTriggerEventRequest
-        {
-            CaseId = execution.CaseInstanceId,
-            EventId = "user-event"
-        }, cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Contains("user-event", eventResult.Message);
+		var eventResult = await client.TriggerUserEventAsync(new McpTriggerEventRequest
+		{
+			CaseId = execution.CaseInstanceId,
+			EventId = "user-event"
+		}, cancellationToken: TestContext.Current.CancellationToken);
+		Assert.Contains("user-event", eventResult.Message, StringComparison.Ordinal);
 
-        var updateResult = await client.UpdateCaseFileItemAsync(new McpCaseFileUpdateRequest
-        {
-            CaseId = execution.CaseInstanceId,
-            CaseFileItemId = "item",
-            NewValue = "value"
-        }, cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Contains("item", updateResult.Message);
+		var updateResult = await client.UpdateCaseFileItemAsync(new McpCaseFileUpdateRequest
+		{
+			CaseId = execution.CaseInstanceId,
+			CaseFileItemId = "item",
+			NewValue = "value"
+		}, cancellationToken: TestContext.Current.CancellationToken);
+		Assert.Contains("item", updateResult.Message, StringComparison.Ordinal);
 
-        var adhocResult = await client.GenerateAdHocSubprocessAsync(new McpGenerateAdHocSubprocessRequest { CaseId = execution.CaseInstanceId, PlanItemId = "optional-review" }, cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Contains("optional-review", adhocResult.Message);
+		var adhocResult = await client.GenerateAdHocSubprocessAsync(new McpGenerateAdHocSubprocessRequest { CaseId = execution.CaseInstanceId, PlanItemId = "optional-review" }, cancellationToken: TestContext.Current.CancellationToken);
+		Assert.Contains("optional-review", adhocResult.Message, StringComparison.Ordinal);
 
-        var history = await client.GetHistoricalContextAsync(new McpHistoricalContextRequest { CaseId = execution.CaseInstanceId }, cancellationToken: TestContext.Current.CancellationToken);
-        Assert.NotEmpty(history.HistoricalData);
-    }
+		var history = await client.GetHistoricalContextAsync(new McpHistoricalContextRequest { CaseId = execution.CaseInstanceId }, cancellationToken: TestContext.Current.CancellationToken);
+		Assert.NotEmpty(history.HistoricalData);
+	}
 
-    private static string EmptyCase(string id) =>
+	private static string EmptyCase(string id) =>
 
-        $"<definitions xmlns='https://www.omg.org/spec/CMMN/20151109/MODEL'><case id='{id}'><casePlanModel id='plan'/></case></definitions>";
+		$"<definitions xmlns='https://www.omg.org/spec/CMMN/20151109/MODEL'><case id='{id}'><casePlanModel id='plan'/></case></definitions>";
 
-    [Fact]
-    public async Task ReadOnlyCannotMutateThroughEitherGrpcAdapter()
-    {
-        var headers = new Metadata { { "x-test-user", "reader" }, { "x-test-tenant", "tenant-a" } };
-        var primary = new api::VertexBPMN.Api.Grpc.VertexBPMNService.VertexBPMNServiceClient(_channel);
-        var mcp = new api::VertexBPMN.Api.Grpc.Mcp.VertexBPMNMCPService.VertexBPMNMCPServiceClient(_channel);
-        var ct = TestContext.Current.CancellationToken;
-        var first = await Assert.ThrowsAsync<RpcException>(() => primary.RegisterCmmnModelAsync(
-            new ApiRegisterCmmnRequest { CaseId = "forbidden", CmmnXml = EmptyCase("forbidden") }, headers, cancellationToken: ct).ResponseAsync);
-        Assert.Equal(StatusCode.PermissionDenied, first.StatusCode);
-        var second = await Assert.ThrowsAsync<RpcException>(() => mcp.ExecuteCaseAsync(
-            new McpExecuteCaseRequest { CaseId = "forbidden" }, headers, cancellationToken: ct).ResponseAsync);
-        Assert.Equal(StatusCode.PermissionDenied, second.StatusCode);
-    }
+	[Fact]
+	public async Task ReadOnlyCannotMutateThroughEitherGrpcAdapter()
+	{
+		var headers = new Metadata { { "x-test-user", "reader" }, { "x-test-tenant", "tenant-a" } };
+		var primary = new api::VertexBPMN.Api.Grpc.VertexBPMNService.VertexBPMNServiceClient(_channel);
+		var mcp = new api::VertexBPMN.Api.Grpc.Mcp.VertexBPMNMCPService.VertexBPMNMCPServiceClient(_channel);
+		var ct = TestContext.Current.CancellationToken;
+		var first = await Assert.ThrowsAsync<RpcException>(() => primary.RegisterCmmnModelAsync(
+			new ApiRegisterCmmnRequest { CaseId = "forbidden", CmmnXml = EmptyCase("forbidden") }, headers, cancellationToken: ct).ResponseAsync);
+		Assert.Equal(StatusCode.PermissionDenied, first.StatusCode);
+		var second = await Assert.ThrowsAsync<RpcException>(() => mcp.ExecuteCaseAsync(
+			new McpExecuteCaseRequest { CaseId = "forbidden" }, headers, cancellationToken: ct).ResponseAsync);
+		Assert.Equal(StatusCode.PermissionDenied, second.StatusCode);
+	}
 
-    [Fact]
-    public async Task McpHistory_DoesNotExposeForeignTenantInstance()
-    {
-        var primary = new api::VertexBPMN.Api.Grpc.VertexBPMNService.VertexBPMNServiceClient(_channel);
-        var mcp = new api::VertexBPMN.Api.Grpc.Mcp.VertexBPMNMCPService.VertexBPMNMCPServiceClient(_channel);
-        var ct = TestContext.Current.CancellationToken;
-        var key = "isolated-" + Guid.NewGuid().ToString("N");
-        await primary.RegisterCmmnModelAsync(new ApiRegisterCmmnRequest { CaseId = key, CmmnXml = EmptyCase(key) }, cancellationToken: ct);
-        var started = await primary.ExecuteCaseAsync(new ApiExecuteCaseRequest { CaseId = key }, cancellationToken: ct);
-        var foreign = new Metadata { { "x-test-user", "foreign-reader" }, { "x-test-tenant", "other-tenant" } };
-        var denied = await Assert.ThrowsAsync<RpcException>(() => mcp.GetHistoricalContextAsync(
-            new McpHistoricalContextRequest { CaseId = started.CaseInstanceId }, foreign, cancellationToken: ct).ResponseAsync);
-        Assert.Equal(StatusCode.NotFound, denied.StatusCode);
-        var missingTenant = new Metadata { { "x-test-user", "reader" }, { "x-test-tenant", " " } };
-        var missing = await Assert.ThrowsAsync<RpcException>(() => mcp.GetHistoricalContextAsync(
-            new McpHistoricalContextRequest { CaseId = started.CaseInstanceId }, missingTenant, cancellationToken: ct).ResponseAsync);
-        Assert.Equal(StatusCode.PermissionDenied, missing.StatusCode);
-    }
+	[Fact]
+	public async Task McpHistory_DoesNotExposeForeignTenantInstance()
+	{
+		var primary = new api::VertexBPMN.Api.Grpc.VertexBPMNService.VertexBPMNServiceClient(_channel);
+		var mcp = new api::VertexBPMN.Api.Grpc.Mcp.VertexBPMNMCPService.VertexBPMNMCPServiceClient(_channel);
+		var ct = TestContext.Current.CancellationToken;
+		var key = "isolated-" + Guid.NewGuid().ToString("N");
+		await primary.RegisterCmmnModelAsync(new ApiRegisterCmmnRequest { CaseId = key, CmmnXml = EmptyCase(key) }, cancellationToken: ct);
+		var started = await primary.ExecuteCaseAsync(new ApiExecuteCaseRequest { CaseId = key }, cancellationToken: ct);
+		var foreign = new Metadata { { "x-test-user", "foreign-reader" }, { "x-test-tenant", "other-tenant" } };
+		var denied = await Assert.ThrowsAsync<RpcException>(() => mcp.GetHistoricalContextAsync(
+			new McpHistoricalContextRequest { CaseId = started.CaseInstanceId }, foreign, cancellationToken: ct).ResponseAsync);
+		Assert.Equal(StatusCode.NotFound, denied.StatusCode);
+		var missingTenant = new Metadata { { "x-test-user", "reader" }, { "x-test-tenant", " " } };
+		var missing = await Assert.ThrowsAsync<RpcException>(() => mcp.GetHistoricalContextAsync(
+			new McpHistoricalContextRequest { CaseId = started.CaseInstanceId }, missingTenant, cancellationToken: ct).ResponseAsync);
+		Assert.Equal(StatusCode.PermissionDenied, missing.StatusCode);
+	}
 
-    private static string InteractiveCase(string id) => $"""
+	private static string InteractiveCase(string id) => $"""
         <definitions xmlns="https://www.omg.org/spec/CMMN/20151109/MODEL">
           <case id="{id}" name="Interactive case">
             <casePlanModel id="plan">

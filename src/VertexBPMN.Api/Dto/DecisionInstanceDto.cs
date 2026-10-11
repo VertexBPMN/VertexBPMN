@@ -1,5 +1,6 @@
 namespace VertexBPMN.Api.Dto;
 
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public contract type DecisionInstanceDto retained for exposed HTTP action signatures and controller activation (DecisionInstanceDto).")]
 public class DecisionInstanceDto
 {
     public string Id { get; set; } = string.Empty;

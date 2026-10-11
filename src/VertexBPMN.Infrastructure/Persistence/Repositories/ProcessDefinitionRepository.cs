@@ -51,11 +51,21 @@ public class ProcessDefinitionRepository : IProcessDefinitionRepository
     public async IAsyncEnumerable<ProcessDefinition> ListAsync(string? key = null, string? tenantId = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var query = _db.ProcessDefinitions.AsQueryable();
-        if (key != null) query = query.Where(d => d.Key == key);
-        if (tenantId != null) query = query.Where(d => d.TenantId == tenantId);
-        await foreach (var def in query.AsAsyncEnumerable().WithCancellation(cancellationToken))
-            yield return def;
-    }
+        if (key != null)
+		{
+			query = query.Where(d => d.Key == key);
+		}
+
+		if (tenantId != null)
+		{
+			query = query.Where(d => d.TenantId == tenantId);
+		}
+
+		await foreach (var def in query.AsAsyncEnumerable().WithCancellation(cancellationToken))
+		{
+			yield return def;
+		}
+	}
 
     public async ValueTask DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {

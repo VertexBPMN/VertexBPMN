@@ -12,64 +12,63 @@ namespace VertexBPMN.Benchmarks;
 /// Measures performance impact of security and resilience features.
 /// </summary>
 [MemoryDiagnoser]
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "BenchmarkDotNet requires this public type in its generated external harness.")]
 public class Phase11HardeningBenchmarks
 {
-    private BpmnParser _baselineParser = null!;
-    private BpmnParser _hardenedParser = null!;
-    private string _complexModel = null!;
-    private BpmnMemoryProfiler _profiler = null!;
+	private BpmnParser _baselineParser = null!;
+	private BpmnParser _hardenedParser = null!;
+	private string _complexModel = null!;
+	private BpmnMemoryProfiler _profiler = null!;
 
-    [GlobalSetup]
-    public void Setup()
-    {
-        _baselineParser = new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Normalized,
-            EnableAdvancedValidation = false,
-            InternIds = false,
-            OptimizeLargeModels = false
-        });
+	[GlobalSetup]
+	public void Setup()
+	{
+		_baselineParser = new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Normalized,
+			EnableAdvancedValidation = false,
+			InternIds = false,
+			OptimizeLargeModels = false
+		});
 
-        _hardenedParser = new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = true,
-            ThrowOnFatalValidation = false,
-            InternIds = true,
-            OptimizeLargeModels = true,
-            UseLazyRawCloning = true,
-            UseSharedStringPool = true
-        });
+		_hardenedParser = new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = true,
+			ThrowOnFatalValidation = false,
+			InternIds = true,
+			OptimizeLargeModels = true,
+			UseLazyRawCloning = true,
+			UseSharedStringPool = true
+		});
 
-        _complexModel = GenerateComplexTestModel();
-        _profiler = new BpmnMemoryProfiler();
-    }
+		_complexModel = ComplexTestModelXml;
+		_profiler = new BpmnMemoryProfiler();
+	}
 
-    [Benchmark]
-    public async Task<Domain.Model.Bpmn.BpmnModel> Baseline_Parse()
-    {
-        return await _baselineParser.ParseAsync(_complexModel);
-    }
+	[Benchmark]
+	public async Task<Domain.Model.Bpmn.BpmnModel> Baseline_Parse()
+	{
+		return await _baselineParser.ParseAsync(_complexModel);
+	}
 
-    [Benchmark]
-    public async Task<Domain.Model.Bpmn.BpmnModel> Hardened_Parse()
-    {
-        return await _hardenedParser.ParseAsync(_complexModel);
-    }
+	[Benchmark]
+	public async Task<Domain.Model.Bpmn.BpmnModel> Hardened_Parse()
+	{
+		return await _hardenedParser.ParseAsync(_complexModel);
+	}
 
-    [Benchmark]
-    public async Task<MemoryProfileSnapshot> Memory_Profiling_Overhead()
-    {
-        return await _profiler.ProfileParseOperationAsync(_complexModel, new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Normalized,
-            InternIds = true
-        });
-    }
+	[Benchmark]
+	public async Task<MemoryProfileSnapshot> Memory_Profiling_Overhead()
+	{
+		return await _profiler.ProfileParseOperationAsync(_complexModel, new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Normalized,
+			InternIds = true
+		});
+	}
 
-    private static string GenerateComplexTestModel()
-    {
-        return """
+	private const string ComplexTestModelXml = """
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" 
              xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
   <process id="complexBenchmarkProcess">
@@ -105,5 +104,4 @@ public class Phase11HardeningBenchmarks
   </process>
 </definitions>
 """;
-    }
 }

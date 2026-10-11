@@ -22,18 +22,24 @@ internal sealed class DashboardLauncher
         var studioUrl = GetValue("Dashboard:StudioUrl", "http://localhost:5263/");
 
         if (GetValue("Dashboard:AutoStartApi", true) && !await IsApiReadyAsync(apiUrl, cancellationToken))
-            StartProject("Dashboard:ApiProject", "src/VertexBPMN.Api/VertexBPMN.Api.csproj", apiUrl);
+		{
+			StartProject("Dashboard:ApiProject", "src/VertexBPMN.Api/VertexBPMN.Api.csproj", apiUrl);
+		}
 
-        await WaitForApiAsync(apiUrl, cancellationToken);
+		await WaitForApiAsync(apiUrl, cancellationToken);
 
         if (GetValue("Dashboard:AutoStartStudio", true))
-            StartProject("Dashboard:StudioProject", "src/VertexBPMN.Studio/VertexBPMN.Studio.csproj", studioUrl,
+		{
+			StartProject("Dashboard:StudioProject", "src/VertexBPMN.Studio/VertexBPMN.Studio.csproj", studioUrl,
                 ("ApiBaseUrl", apiUrl));
+		}
 
-        if (GetValue("Dashboard:OpenBrowser", true))
-            OpenBrowser(studioUrl);
+		if (GetValue("Dashboard:OpenBrowser", true))
+		{
+			OpenBrowser(studioUrl);
+		}
 
-        await Console.Out.WriteLineAsync($"Dashboard: {studioUrl}");
+		await Console.Out.WriteLineAsync($"Dashboard: {studioUrl}");
     }
 
     public void StopOwnedProcesses()
@@ -47,7 +53,10 @@ internal sealed class DashboardLauncher
             }
             catch (Exception exception)
             {
-                _logger.LogDebug(exception, "Could not stop dashboard process {ProcessId}", process.Id);
+                if (_logger.IsEnabled(LogLevel.Debug))
+                {
+                    _logger.LogDebug(exception, "Could not stop dashboard process {ProcessId}", process.Id);
+                }
             }
             finally
             {
@@ -68,8 +77,11 @@ internal sealed class DashboardLauncher
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (await IsApiReadyAsync(apiUrl, cancellationToken, client))
-                return;
-            await Task.Delay(250, cancellationToken);
+			{
+				return;
+			}
+
+			await Task.Delay(250, cancellationToken);
         }
 
         throw new InvalidOperationException($"VertexBPMN API did not become ready at {apiUrl}.");
@@ -91,7 +103,7 @@ internal sealed class DashboardLauncher
         }
         catch (Exception exception) when (
             exception is HttpRequestException ||
-            exception is TaskCanceledException && !cancellationToken.IsCancellationRequested)
+            (exception is TaskCanceledException && !cancellationToken.IsCancellationRequested))
         {
             return false;
         }
@@ -101,11 +113,13 @@ internal sealed class DashboardLauncher
     {
         var projectPath = ResolveProjectPath(GetValue(configurationKey, defaultProject));
         if (!File.Exists(projectPath))
-            throw new FileNotFoundException($"Dashboard project was not found: {projectPath}", projectPath);
+		{
+			throw new FileNotFoundException($"Dashboard project was not found: {projectPath}", projectPath);
+		}
 
-        var startInfo = new ProcessStartInfo
+		var startInfo = new ProcessStartInfo
         {
-            FileName = "dotnet",
+            FileName = ResolveDotnetHost(),
             UseShellExecute = false,
             WorkingDirectory = Path.GetDirectoryName(projectPath)!,
             CreateNoWindow = false
@@ -117,12 +131,46 @@ internal sealed class DashboardLauncher
         startInfo.Environment["ASPNETCORE_URLS"] = url;
         startInfo.Environment["ASPNETCORE_ENVIRONMENT"] = "Development";
         foreach (var (key, value) in environment)
-            startInfo.Environment[key] = value;
+		{
+			startInfo.Environment[key] = value;
+		}
 
-        var process = Process.Start(startInfo)
+		var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException($"Could not start dashboard project: {projectPath}");
         _ownedProcesses.Add(process);
-        _logger.LogInformation("Started dashboard project {ProjectPath} with process {ProcessId}", projectPath, process.Id);
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.LogInformation("Started dashboard project {ProjectPath} with process {ProcessId}", projectPath, process.Id);
+        }
+    }
+
+    private static string ResolveDotnetHost()
+    {
+        var hostPath = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
+        if (!string.IsNullOrWhiteSpace(hostPath) && Path.IsPathFullyQualified(hostPath) && File.Exists(hostPath))
+        {
+            return hostPath;
+        }
+
+        var executableName = OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet";
+        var runtimeRoot = Environment.GetEnvironmentVariable("DOTNET_ROOT");
+        var searchDirectories = (Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
+        foreach (var directory in new[] { runtimeRoot }.Concat(searchDirectories))
+        {
+            if (string.IsNullOrWhiteSpace(directory) || !Path.IsPathFullyQualified(directory))
+            {
+                continue;
+            }
+
+            var candidate = Path.Combine(directory, executableName);
+            if (File.Exists(candidate))
+            {
+                return Path.GetFullPath(candidate);
+            }
+        }
+
+        throw new FileNotFoundException("The .NET host could not be found. Configure DOTNET_HOST_PATH or DOTNET_ROOT.");
     }
 
     private static void OpenBrowser(string url)
@@ -137,15 +185,20 @@ internal sealed class DashboardLauncher
     private static string ResolveProjectPath(string configuredPath)
     {
         if (Path.IsPathRooted(configuredPath))
-            return Path.GetFullPath(configuredPath);
+		{
+			return Path.GetFullPath(configuredPath);
+		}
 
-        var directory = new DirectoryInfo(Directory.GetCurrentDirectory());
+		var directory = new DirectoryInfo(Directory.GetCurrentDirectory());
         while (directory is not null)
         {
             var candidate = Path.Combine(directory.FullName, configuredPath);
             if (File.Exists(candidate))
-                return Path.GetFullPath(candidate);
-            directory = directory.Parent;
+			{
+				return Path.GetFullPath(candidate);
+			}
+
+			directory = directory.Parent;
         }
 
         return Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), configuredPath));

@@ -27,12 +27,17 @@ public class MultiInstanceExecutionRepository : IMultiInstanceExecutionRepositor
     {
         var query = _db.MultiInstanceExecutions.Where(e => e.ProcessInstanceId == processInstanceId);
         await foreach (var exec in query.AsAsyncEnumerable().WithCancellation(cancellationToken))
-            yield return exec;
-    }
+		{
+			yield return exec;
+		}
+	}
 
     public async ValueTask DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var entity = await _db.MultiInstanceExecutions.FindAsync(new object[] { id }, cancellationToken);
-        if (entity != null) _db.MultiInstanceExecutions.Remove(entity);
-    }
+        if (entity != null)
+		{
+			_db.MultiInstanceExecutions.Remove(entity);
+		}
+	}
 }

@@ -1,17 +1,5 @@
 namespace VertexBPMN.Infrastructure.Messaging;
 
-public enum RuntimeOutboxEntityType
-{
-    Topic,
-    Queue
-}
-
-public enum RuntimeOutboxAuthenticationMode
-{
-    ManagedIdentity,
-    ConnectionString
-}
-
 public sealed class RuntimeOutboxOptions
 {
     public bool Enabled { get; set; }

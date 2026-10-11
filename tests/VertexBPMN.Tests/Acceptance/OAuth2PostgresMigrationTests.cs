@@ -1,14 +1,14 @@
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
-using Npgsql;
-using VertexBPMN.Domain.Entities;
-using VertexBPMN.Infrastructure.Persistence;
-using VertexBPMN.Infrastructure.Persistence.Services;
-using VertexBPMN.Domain.Interfaces;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Npgsql;
+using VertexBPMN.Domain.Entities;
+using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Infrastructure.Persistence;
+using VertexBPMN.Infrastructure.Persistence.Services;
 
 namespace VertexBPMN.Tests.Acceptance;
 
@@ -41,8 +41,11 @@ public sealed class OAuth2PostgresMigrationTests
 		var database = $"oauth_migration_{Guid.NewGuid():N}";
 		await using var admin = new NpgsqlConnection(adminString);
 		await admin.OpenAsync(TestContext.Current.CancellationToken);
-		await using (var create = new NpgsqlCommand($"CREATE DATABASE \"{database}\"", admin))
+		await using (var create = VertexBPMN.Tests.Infrastructure.PostgresTestDatabaseCommands.CreateValidated(admin, $"CREATE DATABASE \"{database}\""))
+		{
 			await create.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+		}
+
 		try
 		{
 			var connection = new NpgsqlConnectionStringBuilder(adminString)
@@ -51,27 +54,7 @@ public sealed class OAuth2PostgresMigrationTests
 				.UseVertexNpgsql(connection.ConnectionString).Options);
 			if (upgrade)
 			{
-				await db.GetService<IMigrator>().MigrateAsync(Legacy, TestContext.Current.CancellationToken);
-				await db.Database.ExecuteSqlRawAsync("""
-                    INSERT INTO "OAuth2FlowStates"
-                    ("State", "TenantId", "CredentialId", "AuthorizationUrl", "TokenUrl", "ClientId", "RedirectUri", "Scopes", "CreatedAt", "ExpiresAt")
-                    VALUES ('legacy', 'tenant-a', 'credential', '', '', '', '', '', '2026-09-08 12:00:00', '2099-01-01T02:00:00+02:00');
-                    """, TestContext.Current.CancellationToken);
-				var error = await Assert.ThrowsAsync<PostgresException>(() => db.OAuth2FlowStates
-					.Where(s => s.ExpiresAt <= DateTime.UtcNow).ExecuteDeleteAsync(TestContext.Current.CancellationToken));
-				Assert.Equal(PostgresErrorCodes.UndefinedFunction, error.SqlState);
-				if (invalidLegacy)
-				{
-					await db.Database.ExecuteSqlRawAsync("""UPDATE "OAuth2FlowStates" SET "ExpiresAt" = 'invalid-date' WHERE "State" = 'legacy'""", TestContext.Current.CancellationToken);
-					var invalid = await Assert.ThrowsAsync<PostgresException>(() => db.Database.MigrateAsync(TestContext.Current.CancellationToken));
-					Assert.Equal(PostgresErrorCodes.InvalidDatetimeFormat, invalid.SqlState);
-					Assert.DoesNotContain("20260908090000_NormalizePostgresOAuth2FlowStateTimes",
-						await db.Database.GetAppliedMigrationsAsync(TestContext.Current.CancellationToken));
-					// Failed conversion must retain both the row and original text types.
-					Assert.Equal("invalid-date", await db.Database.SqlQueryRaw<string>("""SELECT "ExpiresAt" AS "Value" FROM "OAuth2FlowStates" WHERE "State" = 'legacy'""").SingleAsync(TestContext.Current.CancellationToken));
-					Assert.Equal("text", await db.Database.SqlQueryRaw<string>("""SELECT pg_typeof("CreatedAt")::text AS "Value" FROM "OAuth2FlowStates" WHERE "State" = 'legacy'""").SingleAsync(TestContext.Current.CancellationToken));
-					await db.Database.ExecuteSqlRawAsync("""UPDATE "OAuth2FlowStates" SET "ExpiresAt" = '2099-01-01T02:00:00+02:00' WHERE "State" = 'legacy'""", TestContext.Current.CancellationToken);
-				}
+				await PrepareLegacyOAuthSchemaAsync(db, invalidLegacy);
 			}
 
 			await db.Database.MigrateAsync(TestContext.Current.CancellationToken);
@@ -98,10 +81,35 @@ public sealed class OAuth2PostgresMigrationTests
 		finally
 		{
 			// Name is generated here, never supplied by an external configuration.
-			await using var drop = new NpgsqlCommand($"DROP DATABASE \"{database}\" WITH (FORCE)", admin);
+			await using var drop = VertexBPMN.Tests.Infrastructure.PostgresTestDatabaseCommands.CreateValidated(admin, $"DROP DATABASE \"{database}\" WITH (FORCE)");
 			await drop.ExecuteNonQueryAsync(CancellationToken.None);
 		}
 	}
+	private static async Task PrepareLegacyOAuthSchemaAsync(BpmnDbContext db, bool invalidLegacy)
+	{
+		await db.GetService<IMigrator>().MigrateAsync(Legacy, TestContext.Current.CancellationToken);
+		await db.Database.ExecuteSqlRawAsync("""
+                    INSERT INTO "OAuth2FlowStates"
+                    ("State", "TenantId", "CredentialId", "AuthorizationUrl", "TokenUrl", "ClientId", "RedirectUri", "Scopes", "CreatedAt", "ExpiresAt")
+                    VALUES ('legacy', 'tenant-a', 'credential', '', '', '', '', '', '2026-09-08 12:00:00', '2099-01-01T02:00:00+02:00');
+                    """, TestContext.Current.CancellationToken);
+		var error = await Assert.ThrowsAsync<PostgresException>(() => db.OAuth2FlowStates
+			.Where(s => s.ExpiresAt <= DateTime.UtcNow).ExecuteDeleteAsync(TestContext.Current.CancellationToken));
+		Assert.Equal(PostgresErrorCodes.UndefinedFunction, error.SqlState);
+		if (invalidLegacy)
+		{
+			await db.Database.ExecuteSqlRawAsync("""UPDATE "OAuth2FlowStates" SET "ExpiresAt" = 'invalid-date' WHERE "State" = 'legacy'""", TestContext.Current.CancellationToken);
+			var invalid = await Assert.ThrowsAsync<PostgresException>(() => db.Database.MigrateAsync(TestContext.Current.CancellationToken));
+			Assert.Equal(PostgresErrorCodes.InvalidDatetimeFormat, invalid.SqlState);
+			Assert.DoesNotContain("20260908090000_NormalizePostgresOAuth2FlowStateTimes",
+				await db.Database.GetAppliedMigrationsAsync(TestContext.Current.CancellationToken), StringComparer.Ordinal);
+			// Failed conversion must retain both the row and original text types.
+			Assert.Equal("invalid-date", await db.Database.SqlQueryRaw<string>("""SELECT "ExpiresAt" AS "Value" FROM "OAuth2FlowStates" WHERE "State" = 'legacy'""").SingleAsync(TestContext.Current.CancellationToken));
+			Assert.Equal("text", await db.Database.SqlQueryRaw<string>("""SELECT pg_typeof("CreatedAt")::text AS "Value" FROM "OAuth2FlowStates" WHERE "State" = 'legacy'""").SingleAsync(TestContext.Current.CancellationToken));
+			await db.Database.ExecuteSqlRawAsync("""UPDATE "OAuth2FlowStates" SET "ExpiresAt" = '2099-01-01T02:00:00+02:00' WHERE "State" = 'legacy'""", TestContext.Current.CancellationToken);
+		}
+	}
+
 
 	private static async Task AssertCallbackLifecycleAsync(BpmnDbContext db)
 	{
@@ -109,7 +117,7 @@ public sealed class OAuth2PostgresMigrationTests
 		var credentials = new PersistentCredentialService(db, new EphemeralDataProtectionProvider(),
 			Mock.Of<IAuditLogService>(), NullLogger<PersistentCredentialService>.Instance);
 		var credential = await credentials.CreateAsync("tenant-a", new CredentialWriteRequest(
-			"Postgres OAuth", "oauth2", null, new Dictionary<string, string> { ["client_secret"] = "test-secret" }), cancellation);
+			"Postgres OAuth", "oauth2", null, new Dictionary<string, string>(StringComparer.Ordinal) { ["client_secret"] = "test-secret" }), cancellation);
 		using var handler = new TokenEndpoint();
 		using var client = new HttpClient(handler);
 		var factory = new Mock<IHttpClientFactory>();
@@ -147,8 +155,8 @@ public sealed class OAuth2PostgresMigrationTests
 			Assert.Equal("https://oauth.test/token", request.RequestUri!.AbsoluteUri);
 			Assert.Equal(HttpMethod.Post, request.Method);
 			var body = await request.Content!.ReadAsStringAsync(cancellationToken);
-			Assert.Contains("grant_type=authorization_code", body);
-			Assert.Contains("code=test-code", body);
+			Assert.Contains("grant_type=authorization_code", body, StringComparison.Ordinal);
+			Assert.Contains("code=test-code", body, StringComparison.Ordinal);
 			return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
 			{
 				Content = new StringContent("""{"access_token":"test-access","refresh_token":"test-refresh","expires_in":3600}""",

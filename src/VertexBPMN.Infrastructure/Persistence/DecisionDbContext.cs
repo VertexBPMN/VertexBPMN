@@ -54,14 +54,14 @@ public class DecisionDbContext : DbContext
         var inputVariables = entity.Property(e => e.InputVariables)
             .HasConversion(
                 v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
-                v => JsonSerializer.Deserialize<Dictionary<string, object>>(v, (JsonSerializerOptions?)null) ?? new())
+                v => JsonSerializer.Deserialize<Dictionary<string, object>>(v, (JsonSerializerOptions?)null) ?? new(StringComparer.Ordinal))
             .HasColumnType("TEXT");
         inputVariables.Metadata.SetValueComparer(CreateDictionaryComparer());
 
         var outputVariables = entity.Property(e => e.OutputVariables)
             .HasConversion(
                 v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
-                v => JsonSerializer.Deserialize<Dictionary<string, object>>(v, (JsonSerializerOptions?)null) ?? new())
+                v => JsonSerializer.Deserialize<Dictionary<string, object>>(v, (JsonSerializerOptions?)null) ?? new(StringComparer.Ordinal))
             .HasColumnType("TEXT");
         outputVariables.Metadata.SetValueComparer(CreateDictionaryComparer());
 
@@ -124,5 +124,5 @@ public class DecisionDbContext : DbContext
         JsonSerializer.Deserialize<List<T>>(json, (JsonSerializerOptions?)null) ?? new();
 
     private static Dictionary<string, object> DeserializeDictionary(string json) =>
-        JsonSerializer.Deserialize<Dictionary<string, object>>(json, (JsonSerializerOptions?)null) ?? new();
+        JsonSerializer.Deserialize<Dictionary<string, object>>(json, (JsonSerializerOptions?)null) ?? new(StringComparer.Ordinal);
 }

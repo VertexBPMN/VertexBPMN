@@ -13,7 +13,7 @@ public static class DependencyRegistryProvider
     /// <summary>Auflösen des Providers aus expliziter Konfiguration bzw. Connection-String.</summary>
     public static string Resolve(string? connectionString, string? explicitProvider)
     {
-        var provider = string.IsNullOrWhiteSpace(explicitProvider) ? null : explicitProvider!.Trim().ToLowerInvariant();
+        var provider = string.IsNullOrWhiteSpace(explicitProvider) ? null : explicitProvider.Trim().ToLowerInvariant();
         return provider ?? InferFromConnectionString(connectionString);
     }
 
@@ -24,23 +24,32 @@ public static class DependencyRegistryProvider
     public static DbContextOptionsBuilder Configure(DbContextOptionsBuilder options, string provider, string connectionString)
     {
         if (IsSqlite(provider))
-            options.UseSqlite(connectionString);
-        else
-            options.UseVertexNpgsql(connectionString);
-        return options;
+		{
+			options.UseSqlite(connectionString);
+		}
+		else
+		{
+			options.UseVertexNpgsql(connectionString);
+		}
+
+		return options;
     }
 
     private static string InferFromConnectionString(string? cs)
     {
         if (string.IsNullOrWhiteSpace(cs))
-            return "sqlite";
+		{
+			return "sqlite";
+		}
 
-        var lower = cs.ToLowerInvariant();
+		var lower = cs.ToLowerInvariant();
         // PostgreSQL: Host=... bzw. Username=... mit Database=...
-        if (lower.Contains("host=") || (lower.Contains("username=") && lower.Contains("database=")))
-            return "npgsql";
+        if (lower.Contains("host=", StringComparison.Ordinal) || (lower.Contains("username=", StringComparison.Ordinal) && lower.Contains("database=", StringComparison.Ordinal)))
+		{
+			return "npgsql";
+		}
 
-        // Standard-Rückfall: lokale SQLite-Datei (z. B. "Data Source=vertexbpmn-dependencies.db").
-        return "sqlite";
+		// Standard-Rückfall: lokale SQLite-Datei (z. B. "Data Source=vertexbpmn-dependencies.db").
+		return "sqlite";
     }
 }

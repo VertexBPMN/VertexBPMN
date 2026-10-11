@@ -10,9 +10,10 @@ using Xunit;
 
 namespace VertexBPMN.Studio.UiTests;
 
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public xUnit test fixture referenced via IClassFixture<T>.")]
 public sealed class StudioUiTestHost : IAsyncLifetime
 {
-    public const string DeployedBpmn = """
+	public const string DeployedBpmn = """
 <?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_Deployed" targetNamespace="https://vertexbpmn.io/ui-tests">
   <bpmn:process id="InvoiceProcess" name="Deployed invoice process" isExecutable="true">
@@ -21,332 +22,388 @@ public sealed class StudioUiTestHost : IAsyncLifetime
 </bpmn:definitions>
 """;
 
-    private readonly ConcurrentQueue<string> _apiRequests = new();
-    private readonly ConcurrentQueue<string> _studioLogs = new();
-    private WebApplication? _api;
-    private Process? _studioProcess;
-    private IPlaywright? _playwright;
+	private readonly ConcurrentQueue<string> _apiRequests = new();
+	private readonly ConcurrentQueue<string> _studioLogs = new();
+	private WebApplication? _api;
+	private Process? _studioProcess;
+	private IPlaywright? _playwright;
 
-    public Uri BaseAddress { get; private set; } = null!;
-    public IBrowser Browser { get; private set; } = null!;
-    public IReadOnlyList<string> ApiRequests => _apiRequests.ToArray();
-    public IReadOnlyList<string> StudioLogs => _studioLogs.ToArray();
-    public VertexBPMN.SourceControl.Abstractions.SourceControlAvailability GitAvailability { get; init; } =
-        new(false, VertexBPMN.SourceControl.Abstractions.SourceControlCapability.None,
-            VertexBPMN.SourceControl.Abstractions.SourceControlErrorCode.Disabled);
-    public HttpStatusCode GitAvailabilityStatusCode { get; init; } = HttpStatusCode.OK;
+	public Uri BaseAddress { get; private set; } = null!;
+	public IBrowser Browser { get; private set; } = null!;
+	public IReadOnlyList<string> ApiRequests => _apiRequests.ToArray();
+	public IReadOnlyList<string> StudioLogs => _studioLogs.ToArray();
+	public VertexBPMN.SourceControl.Abstractions.SourceControlAvailability GitAvailability { get; init; } =
+		new(false, VertexBPMN.SourceControl.Abstractions.SourceControlCapability.None,
+			VertexBPMN.SourceControl.Abstractions.SourceControlErrorCode.Disabled);
+	public HttpStatusCode GitAvailabilityStatusCode { get; init; } = HttpStatusCode.OK;
 
-    public async ValueTask InitializeAsync()
-    {
-        try
-        {
-            await InitializeCoreAsync();
-        }
-        catch
-        {
-            await DisposeAsync();
-            throw;
-        }
-    }
-    private async ValueTask InitializeCoreAsync()
-    {
-        var apiPort = GetFreePort();
-        var studioPort = GetFreePort();
-        var apiAddress = new Uri($"http://127.0.0.1:{apiPort}/");
-        BaseAddress = new Uri($"http://127.0.0.1:{studioPort}/");
+	public async ValueTask InitializeAsync()
+	{
+		try
+		{
+			await InitializeCoreAsync();
+		}
+		catch
+		{
+			await DisposeAsync();
+			throw;
+		}
+	}
+	private async ValueTask InitializeCoreAsync()
+	{
+		var apiPort = GetFreePort();
+		var studioPort = GetFreePort();
+		var apiAddress = new Uri($"http://127.0.0.1:{apiPort}/");
+		BaseAddress = new Uri($"http://127.0.0.1:{studioPort}/");
 
-        var apiBuilder = WebApplication.CreateBuilder();
-        apiBuilder.WebHost.UseUrls(apiAddress.ToString());
-        _api = apiBuilder.Build();
-        _api.Use(async (context, next) =>
-        {
-            _apiRequests.Enqueue($"{context.Request.Method} {context.Request.Path}{context.Request.QueryString}");
-            await next();
-        });
-        MapApiContracts(_api);
-        _api.MapGet("/api/source-control/availability", () => Results.Json(GitAvailability,
-            statusCode: (int)GitAvailabilityStatusCode));
-        await _api.StartAsync();
+		await StartApiAsync(apiAddress);
 
-        var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../.."));
-        var studioProject = Path.Combine(repoRoot, "src", "VertexBPMN.Studio", "VertexBPMN.Studio.csproj");
-        var buildConfiguration = new DirectoryInfo(AppContext.BaseDirectory).Parent?.Name ?? "Release";
-        var dotnetHost = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
-        if (string.IsNullOrWhiteSpace(dotnetHost))
-            dotnetHost = "dotnet";
+		var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../.."));
+		var studioProject = Path.Combine(repoRoot, "src", "VertexBPMN.Studio", "VertexBPMN.Studio.csproj");
+		var buildConfiguration = new DirectoryInfo(AppContext.BaseDirectory).Parent?.Name ?? "Release";
+		var dotnetHost = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
+		if (string.IsNullOrWhiteSpace(dotnetHost))
+		{
+			dotnetHost = "dotnet";
+		}
 
-        var startInfo = new ProcessStartInfo(dotnetHost)
-        {
-            WorkingDirectory = repoRoot,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true
-        };
-        startInfo.ArgumentList.Add("run");
-        startInfo.ArgumentList.Add("--project");
-        startInfo.ArgumentList.Add(studioProject);
-        startInfo.ArgumentList.Add("--configuration");
-        startInfo.ArgumentList.Add(buildConfiguration);
-        startInfo.ArgumentList.Add("--no-build");
-        startInfo.ArgumentList.Add("--no-restore");
-        startInfo.ArgumentList.Add("--no-launch-profile");
-        startInfo.ArgumentList.Add("--urls");
-        startInfo.ArgumentList.Add(BaseAddress.ToString());
-        startInfo.Environment["ASPNETCORE_ENVIRONMENT"] = "UiTest";
-        startInfo.Environment["DOTNET_ENVIRONMENT"] = "UiTest";
-        startInfo.Environment["ApiBaseUrl"] = apiAddress.ToString();
-        startInfo.Environment["StudioAuthentication__Authority"] = "https://ui-test.invalid";
-        startInfo.Environment["StudioAuthentication__ClientId"] = "ui-test";
-        startInfo.Environment["StudioAuthentication__UiTestEnabled"] = "true";
+		_studioProcess = StartStudioProcess(repoRoot, studioProject, buildConfiguration, dotnetHost, apiAddress);
+		await WaitForStudioReadyAsync(_studioProcess);
 
-        _studioProcess = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("Could not start the Studio test host.");
-        _studioProcess.OutputDataReceived += (_, args) =>
-        {
-            if (args.Data is not null)
-                _studioLogs.Enqueue(args.Data);
-        };
-        _studioProcess.ErrorDataReceived += (_, args) =>
-        {
-            if (args.Data is not null)
-                _studioLogs.Enqueue(args.Data);
-        };
-        _studioProcess.BeginOutputReadLine();
-        _studioProcess.BeginErrorReadLine();
+		_playwright = await Playwright.CreateAsync();
+		var chromiumExecutable = global::Chromium.Path
+								 ?? throw new InvalidOperationException(
+									 "No Chromium executable found for runtime " +
+									 $"{System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier}.");
 
-        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
-        for (var attempt = 0; attempt < 480; attempt++)
-        {
-            if (_studioProcess.HasExited)
-                throw new InvalidOperationException(
-                    $"The Studio test host exited with code {_studioProcess.ExitCode} before becoming ready.{Environment.NewLine}" +
-                    string.Join(Environment.NewLine, _studioLogs));
+		Browser = await _playwright.Chromium.LaunchAsync(
+			new BrowserTypeLaunchOptions
+			{
+				Headless = true,
+				ExecutablePath = chromiumExecutable
+			});
+	}
 
-            try
-            {
-                using var response = await client.GetAsync(BaseAddress);
-                if (response.IsSuccessStatusCode)
-                    break;
-            }
-            catch (HttpRequestException)
-            {
-                // Kestrel is still starting.
-            }
+	private async Task StartApiAsync(Uri apiAddress)
+	{
+		var apiBuilder = WebApplication.CreateBuilder();
+		apiBuilder.WebHost.UseUrls(apiAddress.ToString());
+		_api = apiBuilder.Build();
+		_api.Use(async (context, next) =>
+		{
+			_apiRequests.Enqueue($"{context.Request.Method} {context.Request.Path}{context.Request.QueryString}");
+			await next();
+		});
+		MapApiContracts(_api);
+		_api.MapGet("/api/source-control/availability", () => Results.Json(GitAvailability,
+			statusCode: (int)GitAvailabilityStatusCode));
+		await _api.StartAsync();
+	}
 
-            await Task.Delay(TimeSpan.FromMilliseconds(250));
-            if (attempt == 479)
-                throw new TimeoutException("The Studio test host did not become ready.");
-        }
+	private Process StartStudioProcess(
+		string repoRoot, string studioProject, string buildConfiguration, string dotnetHost, Uri apiAddress)
+	{
+		var startInfo = new ProcessStartInfo(dotnetHost)
+		{
+			WorkingDirectory = repoRoot,
+			UseShellExecute = false,
+			RedirectStandardOutput = true,
+			RedirectStandardError = true,
+			CreateNoWindow = true
+		};
+		startInfo.ArgumentList.Add("run");
+		startInfo.ArgumentList.Add("--project");
+		startInfo.ArgumentList.Add(studioProject);
+		startInfo.ArgumentList.Add("--configuration");
+		startInfo.ArgumentList.Add(buildConfiguration);
+		startInfo.ArgumentList.Add("--no-build");
+		startInfo.ArgumentList.Add("--no-restore");
+		startInfo.ArgumentList.Add("--no-launch-profile");
+		startInfo.ArgumentList.Add("--urls");
+		startInfo.ArgumentList.Add(BaseAddress.ToString());
+		startInfo.Environment["ASPNETCORE_ENVIRONMENT"] = "UiTest";
+		startInfo.Environment["DOTNET_ENVIRONMENT"] = "UiTest";
+		startInfo.Environment["ApiBaseUrl"] = apiAddress.ToString();
+		startInfo.Environment["StudioAuthentication__Authority"] = "https://ui-test.invalid";
+		startInfo.Environment["StudioAuthentication__ClientId"] = "ui-test";
+		startInfo.Environment["StudioAuthentication__UiTestEnabled"] = "true";
 
-        _playwright = await Playwright.CreateAsync();
-        var chromiumExecutable = global::Chromium.Path
-                                 ?? throw new InvalidOperationException(
-                                     $"No Chromium executable found for runtime " +
-                                     $"{System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier}.");
+		var process = Process.Start(startInfo)
+			?? throw new InvalidOperationException("Could not start the Studio test host.");
+		process.OutputDataReceived += (_, args) =>
+		{
+			if (args.Data is not null)
+			{
+				_studioLogs.Enqueue(args.Data);
+			}
+		};
+		process.ErrorDataReceived += (_, args) =>
+		{
+			if (args.Data is not null)
+			{
+				_studioLogs.Enqueue(args.Data);
+			}
+		};
+		process.BeginOutputReadLine();
+		process.BeginErrorReadLine();
+		return process;
+	}
 
-        Browser = await _playwright.Chromium.LaunchAsync(
-            new BrowserTypeLaunchOptions
-            {
-                Headless = true,
-                ExecutablePath = chromiumExecutable
-            }); ;
-    }
+	private async Task WaitForStudioReadyAsync(Process process)
+	{
+		using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+		for (var attempt = 0; attempt < 480; attempt++)
+		{
+			if (process.HasExited)
+			{
+				throw new InvalidOperationException(
+					$"The Studio test host exited with code {process.ExitCode} before becoming ready.{Environment.NewLine}" +
+					string.Join(Environment.NewLine, _studioLogs));
+			}
 
-    public async ValueTask DisposeAsync()
-    {
-        try
-        {
-            if (Browser is not null)
-                await Browser.CloseAsync();
-        }
-        finally
-        {
-            _playwright?.Dispose();
+			try
+			{
+				using var response = await client.GetAsync(BaseAddress);
+				if (response.IsSuccessStatusCode)
+				{
+					return;
+				}
+			}
+			catch (HttpRequestException)
+			{
+				// Kestrel is still starting.
+			}
 
-            if (_studioProcess is not null)
-            {
-                try
-                {
-                    if (!_studioProcess.HasExited)
-                    {
-                        _studioProcess.Kill(entireProcessTree: true);
-                        await _studioProcess.WaitForExitAsync();
-                    }
-                }
-                catch (InvalidOperationException)
-                {
-                    // Process already exited.
-                }
-                finally
-                {
-                    _studioProcess.Dispose();
-                }
-            }
+			await Task.Delay(TimeSpan.FromMilliseconds(250));
+		}
 
-            if (_api is not null)
-            {
-                await _api.StopAsync();
-                await _api.DisposeAsync();
-            }
-        }
-    }
+		throw new TimeoutException("The Studio test host did not become ready.");
+	}
 
-    private static void MapApiContracts(WebApplication app)
-    {
-        app.MapGet("/api/external-task-operations/catalog", () => Results.Json(new[]
-        {
-            new
-            {
-                profileRef = "contract-reviewer.v1", profileVersion = "contract-reviewer.v1",
-                topic = "agent.contract-review", maxAttempts = 2, maxDeadlineSeconds = 300,
-                inputs = new[]
-                {
-                    new { name = "document", type = "string", required = true, maxLength = 65536 },
-                    new { name = "documentId", type = "string", required = true, maxLength = 256 },
-                    new { name = "documentVersion", type = "string", required = true, maxLength = 256 }
-                },
-                outputs = new[] { new { name = "summary", type = "string", required = true, maxLength = 4096 } }
-            }
-        }));
-        app.MapGet("/api/repository", () => Results.Json(new[]
-        {
-            new
-            {
-                id = "11111111-1111-1111-1111-111111111111",
-                key = "InvoiceProcess",
-                name = "Invoice approval",
-                version = 1,
-                bpmnXml = "",
-                tenantId = "tenant-a",
-                createdAt = "2026-08-12T10:00:00Z",
-                deploymentId = "22222222-2222-2222-2222-222222222222"
-            }
-        }));
-        app.MapGet("/api/repository/{id}", (string id) => Results.Json(new
-        {
-            id,
-            key = "InvoiceProcess",
-            name = "Invoice approval",
-            version = 1,
-            bpmnXml = DeployedBpmn,
-            tenantId = "tenant-a",
-            createdAt = "2026-08-12T10:00:00Z",
-            deploymentId = "22222222-2222-2222-2222-222222222222"
-        }));
-        app.MapPost("/api/repository", () => Results.Json(new
-        {
-            id = "55555555-5555-5555-5555-555555555555",
-            key = "Process_Fallback",
-            name = "studio-test-run.bpmn",
-            version = 2,
-            bpmnXml = DeployedBpmn,
-            tenantId = "tenant-a",
-            createdAt = "2026-08-12T10:00:00Z",
-            deploymentId = "66666666-6666-6666-6666-666666666666"
-        }));
-        app.MapGet("/api/runtime", () => Results.Json(new[]
-        {
-            new
-            {
-                id = "33333333-3333-3333-3333-333333333333",
-                processDefinitionId = "11111111-1111-1111-1111-111111111111",
-                businessKey = "invoice-1001",
-                tenantId = "tenant-a",
-                startedAt = "2026-08-12T10:05:00Z",
-                state = "Active",
-                instanceId = "instance-1001",
-                processId = "InvoiceProcess",
-                activeTasks = Array.Empty<string>(),
-                activeTokens = Array.Empty<string>(),
-                variables = new Dictionary<string, object>(),
-                createdAt = "2026-08-12T10:05:00Z",
-                lastModified = "2026-08-12T10:05:00Z"
-            }
-        }));
-        app.MapPost("/api/runtime/start", () => Results.Json(new
-        {
-            id = "77777777-7777-7777-7777-777777777777",
-            processDefinitionId = "55555555-5555-5555-5555-555555555555",
-            businessKey = "studio-test",
-            tenantId = "tenant-a",
-            startedAt = "2026-08-12T10:05:00Z",
-            state = "Completed",
-            status = 2,
-            instanceId = "studio-test-instance",
-            processId = "Process_Fallback",
-            activeTasks = Array.Empty<string>(),
-            activeTokens = Array.Empty<string>(),
-            variables = new Dictionary<string, object>()
-        }));
-        app.MapGet("/api/task", () => Results.Json(new[]
-        {
-            new
-            {
-                id = "44444444-4444-4444-4444-444444444444",
-                processInstanceId = "33333333-3333-3333-3333-333333333333",
-                name = "Approve invoice",
-                type = "userTask",
-                tenantId = "tenant-a",
-                createdAt = "2026-08-12T10:06:00Z",
-                lastModified = "2026-08-12T10:06:00Z",
-                candidateRole = "approver",
-                candidateUsers = Array.Empty<string>(),
-                requiredFields = Array.Empty<string>()
-            }
-        }));
-        app.MapGet("/api/engine/capabilities", () => Results.Json(new
-        {
-            engineType = "Simple",
-            supportsCmmn = true,
-            supportsWorkers = false,
-            supportsDurablePersistence = true
-        }));
-        app.MapGet("/api/identity/list-tenants", () => Results.Json(new[]
-        {
-            new { id = "tenant-a", name = "Tenant A", description = "UI test tenant" }
-        }));
-        app.MapGet("/api/connector-templates", () => Results.Json(new[]
-        {
-            new
-            {
-                id = "http-request", tenantId = "tenant-a", name = "HTTP request", category = "Communication",
-                appliesTo = new[] { "bpmn:ServiceTask" }, runtime = "http", icon = "http",
-                properties = Array.Empty<object>(), createdAt = "2026-08-12T10:00:00Z", lastModified = "2026-08-12T10:00:00Z"
-            }
-        }));
-        app.MapGet("/api/engine/connections", () => Results.Json(Array.Empty<object>()));
-        app.MapGet("/api/history", () => Results.Json(Array.Empty<object>()));
-        app.MapGet("/api/feature-flags", () => Results.Json(new
-        {
-            cmmn = true,
-            predictiveAnalytics = true
-        }));
-        app.MapGet("/api/visual-debug/visualize/{id}", (string id) => Results.Json(new
-        {
-            processInstanceId = id,
-            processDefinitionKey = "InvoiceProcess",
-            bpmnXml = DeployedBpmn,
-            activeTokens = new[] { new { id = "token-1", activityId = "Start_Deployed", position = "start", status = "waiting" } },
-            completedActivities = new[] { new { activityId = "Start_Deployed", status = "completed", completedAt = "2026-08-12T10:05:01Z" } },
-            metrics = new { totalActivities = 1, completedActivities = 1, activeActivities = 1 }
-        }));
-        app.MapGet("/api/visual-debug/trace/{id}", (string id) => Results.Json(new
-        {
-            processInstanceId = id,
-            events = new[]
-            {
-                new { type = "StartEvent", activityId = "Start_Deployed", timestamp = "2026-08-12T10:05:00Z", details = "Process started" },
-                new { type = "TaskWaiting", activityId = "Start_Deployed", timestamp = "2026-08-12T10:05:01Z", details = "Waiting for next activity" }
-            }
-        }));
-        app.MapMethods("/api/{**path}", ["GET", "POST", "PUT", "DELETE", "PATCH"], () => Results.Json(Array.Empty<object>()));
-    }
+	public async ValueTask DisposeAsync()
+	{
+		try
+		{
+			if (Browser is not null)
+			{
+				await Browser.CloseAsync();
+			}
+		}
+		finally
+		{
+			_playwright?.Dispose();
 
-    private static int GetFreePort()
-    {
-        using var listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        return ((IPEndPoint)listener.LocalEndpoint).Port;
-    }
+			if (_studioProcess is not null)
+			{
+				try
+				{
+					if (!_studioProcess.HasExited)
+					{
+						_studioProcess.Kill(entireProcessTree: true);
+						await _studioProcess.WaitForExitAsync();
+					}
+				}
+				catch (InvalidOperationException)
+				{
+					// Process already exited.
+				}
+				finally
+				{
+					_studioProcess.Dispose();
+				}
+			}
+
+			if (_api is not null)
+			{
+				await _api.StopAsync();
+				await _api.DisposeAsync();
+			}
+		}
+	}
+
+	private static readonly string[] AllHttpMethods = ["GET", "POST", "PUT", "DELETE", "PATCH"];
+	private static readonly string[] HttpRequestServiceTaskAppliesTo = ["bpmn:ServiceTask"];
+
+	private static void MapApiContracts(WebApplication app)
+	{
+		MapContractReviewEndpoints(app);
+		MapRepositoryEndpoints(app);
+		MapRuntimeEndpoints(app);
+		MapAdminEndpoints(app);
+		MapVisualDebugEndpoints(app);
+		app.MapMethods("/api/{**path}", AllHttpMethods, () => Results.Json(Array.Empty<object>()));
+	}
+
+	private static void MapContractReviewEndpoints(WebApplication app)
+	{
+		app.MapGet("/api/external-task-operations/catalog", () => Results.Json(new[]
+		{
+			new
+			{
+				profileRef = "contract-reviewer.v1", profileVersion = "contract-reviewer.v1",
+				topic = "agent.contract-review", maxAttempts = 2, maxDeadlineSeconds = 300,
+				inputs = new[]
+				{
+					new { name = "document", type = "string", required = true, maxLength = 65536 },
+					new { name = "documentId", type = "string", required = true, maxLength = 256 },
+					new { name = "documentVersion", type = "string", required = true, maxLength = 256 }
+				},
+				outputs = new[] { new { name = "summary", type = "string", required = true, maxLength = 4096 } }
+			}
+		}));
+	}
+
+	private static void MapRepositoryEndpoints(WebApplication app)
+	{
+		app.MapGet("/api/repository", () => Results.Json(new[]
+		{
+			new
+			{
+				id = "11111111-1111-1111-1111-111111111111",
+				key = "InvoiceProcess",
+				name = "Invoice approval",
+				version = 1,
+				bpmnXml = "",
+				tenantId = "tenant-a",
+				createdAt = "2026-08-12T10:00:00Z",
+				deploymentId = "22222222-2222-2222-2222-222222222222"
+			}
+		}));
+		app.MapGet("/api/repository/{id}", (string id) => Results.Json(new
+		{
+			id,
+			key = "InvoiceProcess",
+			name = "Invoice approval",
+			version = 1,
+			bpmnXml = DeployedBpmn,
+			tenantId = "tenant-a",
+			createdAt = "2026-08-12T10:00:00Z",
+			deploymentId = "22222222-2222-2222-2222-222222222222"
+		}));
+		app.MapPost("/api/repository", () => Results.Json(new
+		{
+			id = "55555555-5555-5555-5555-555555555555",
+			key = "Process_Fallback",
+			name = "studio-test-run.bpmn",
+			version = 2,
+			bpmnXml = DeployedBpmn,
+			tenantId = "tenant-a",
+			createdAt = "2026-08-12T10:00:00Z",
+			deploymentId = "66666666-6666-6666-6666-666666666666"
+		}));
+	}
+
+	private static void MapRuntimeEndpoints(WebApplication app)
+	{
+		app.MapGet("/api/runtime", () => Results.Json(new[]
+		{
+			new
+			{
+				id = "33333333-3333-3333-3333-333333333333",
+				processDefinitionId = "11111111-1111-1111-1111-111111111111",
+				businessKey = "invoice-1001",
+				tenantId = "tenant-a",
+				startedAt = "2026-08-12T10:05:00Z",
+				state = "Active",
+				instanceId = "instance-1001",
+				processId = "InvoiceProcess",
+				activeTasks = Array.Empty<string>(),
+				activeTokens = Array.Empty<string>(),
+				variables = new Dictionary<string, object>(StringComparer.Ordinal),
+				createdAt = "2026-08-12T10:05:00Z",
+				lastModified = "2026-08-12T10:05:00Z"
+			}
+		}));
+		app.MapPost("/api/runtime/start", () => Results.Json(new
+		{
+			id = "77777777-7777-7777-7777-777777777777",
+			processDefinitionId = "55555555-5555-5555-5555-555555555555",
+			businessKey = "studio-test",
+			tenantId = "tenant-a",
+			startedAt = "2026-08-12T10:05:00Z",
+			state = "Completed",
+			status = 2,
+			instanceId = "studio-test-instance",
+			processId = "Process_Fallback",
+			activeTasks = Array.Empty<string>(),
+			activeTokens = Array.Empty<string>(),
+			variables = new Dictionary<string, object>(StringComparer.Ordinal)
+		}));
+		app.MapGet("/api/task", () => Results.Json(new[]
+		{
+			new
+			{
+				id = "44444444-4444-4444-4444-444444444444",
+				processInstanceId = "33333333-3333-3333-3333-333333333333",
+				name = "Approve invoice",
+				type = "userTask",
+				tenantId = "tenant-a",
+				createdAt = "2026-08-12T10:06:00Z",
+				lastModified = "2026-08-12T10:06:00Z",
+				candidateRole = "approver",
+				candidateUsers = Array.Empty<string>(),
+				requiredFields = Array.Empty<string>()
+			}
+		}));
+		app.MapGet("/api/engine/capabilities", () => Results.Json(new
+		{
+			engineType = "Simple",
+			supportsCmmn = true,
+			supportsWorkers = false,
+			supportsDurablePersistence = true
+		}));
+	}
+
+	private static void MapAdminEndpoints(WebApplication app)
+	{
+		app.MapGet("/api/identity/list-tenants", () => Results.Json(new[]
+		{
+			new { id = "tenant-a", name = "Tenant A", description = "UI test tenant" }
+		}));
+		app.MapGet("/api/connector-templates", () => Results.Json(new[]
+		{
+			new
+			{
+				id = "http-request", tenantId = "tenant-a", name = "HTTP request", category = "Communication",
+				appliesTo = HttpRequestServiceTaskAppliesTo, runtime = "http", icon = "http",
+				properties = Array.Empty<object>(), createdAt = "2026-08-12T10:00:00Z", lastModified = "2026-08-12T10:00:00Z"
+			}
+		}));
+		app.MapGet("/api/engine/connections", () => Results.Json(Array.Empty<object>()));
+		app.MapGet("/api/history", () => Results.Json(Array.Empty<object>()));
+		app.MapGet("/api/feature-flags", () => Results.Json(new
+		{
+			cmmn = true,
+			predictiveAnalytics = true
+		}));
+	}
+
+	private static void MapVisualDebugEndpoints(WebApplication app)
+	{
+		app.MapGet("/api/visual-debug/visualize/{id}", (string id) => Results.Json(new
+		{
+			processInstanceId = id,
+			processDefinitionKey = "InvoiceProcess",
+			bpmnXml = DeployedBpmn,
+			activeTokens = new[] { new { id = "token-1", activityId = "Start_Deployed", position = "start", status = "waiting" } },
+			completedActivities = new[] { new { activityId = "Start_Deployed", status = "completed", completedAt = "2026-08-12T10:05:01Z" } },
+			metrics = new { totalActivities = 1, completedActivities = 1, activeActivities = 1 }
+		}));
+		app.MapGet("/api/visual-debug/trace/{id}", (string id) => Results.Json(new
+		{
+			processInstanceId = id,
+			events = new[]
+			{
+				new { type = "StartEvent", activityId = "Start_Deployed", timestamp = "2026-08-12T10:05:00Z", details = "Process started" },
+				new { type = "TaskWaiting", activityId = "Start_Deployed", timestamp = "2026-08-12T10:05:01Z", details = "Waiting for next activity" }
+			}
+		}));
+	}
+
+	private static int GetFreePort()
+	{
+		using var listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
+		listener.Start();
+		return ((IPEndPoint)listener.LocalEndpoint).Port;
+	}
 }

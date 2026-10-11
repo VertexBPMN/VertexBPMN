@@ -1,3 +1,4 @@
+using System.Text;
 using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
@@ -8,171 +9,170 @@ namespace VertexBPMN.Benchmarks;
 
 [Config(typeof(Config))]
 [MemoryDiagnoser]
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "BenchmarkDotNet generates an external harness which must access the public benchmark type.")]
 public class BpmnParserPerformanceBenchmarks
 {
-    private BpmnParser _parserStrict = null!;
-    private BpmnParser _parserNormalized = null!;
-    private BpmnParser _parserWithInterning = null!;
-    private BpmnParser _parserWithoutInterning = null!;
-    private BpmnParser _optimizedParser = null!;
-    
-    // Test data for different model sizes
-    private string _smallXml = null!;
-    private string _mediumXml = null!;
-    private string _largeXml = null!;
-    
-    private class Config : ManualConfig
-    {
-        public Config()
-        {
-            // Basic configuration - removed problematic ETW profiler
-        }
-    }
+	private BpmnParser _parserStrict = null!;
+	private BpmnParser _parserNormalized = null!;
+	private BpmnParser _parserWithInterning = null!;
+	private BpmnParser _parserWithoutInterning = null!;
+	private BpmnParser _optimizedParser = null!;
 
-    [GlobalSetup]
-    public void Setup()
-    {
-        _parserStrict = new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            InternIds = true,
-            BuildRuntimeProjection = false,
-            EnableAdvancedValidation = false
-        });
+	// Test data for different model sizes
+	private string _smallXml = null!;
+	private string _mediumXml = null!;
+	private string _largeXml = null!;
 
-        _parserNormalized = new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Normalized,
-            InternIds = true,
-            BuildRuntimeProjection = false,
-            EnableAdvancedValidation = false
-        });
-        
-        _parserWithInterning = new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Normalized,
-            InternIds = true,
-            BuildRuntimeProjection = false,
-            EnableAdvancedValidation = false
-        });
-        
-        _parserWithoutInterning = new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Normalized,
-            InternIds = false,
-            BuildRuntimeProjection = false,
-            EnableAdvancedValidation = false
-        });
+	private sealed class Config : ManualConfig
+	{
+		public Config()
+		{
+			// Basic configuration - removed problematic ETW profiler
+		}
+	}
 
-        _optimizedParser = new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            OptimizeLargeModels = true,  // Enable optimizations
-            LargeModelThreshold = 100,
-            SkipDocumentationForLargeModels = true,  // Enable this optimization
-            SkipArtifactsForLargeModels = true,      // Enable this optimization
-            SkipExtensionsForLargeModels = false,    // Keep extensions for compatibility
-            UseLazyRawCloning = true,
-            UseSharedStringPool = true,
-            InternIds = true
-        });
+	[GlobalSetup]
+	public void Setup()
+	{
+		_parserStrict = new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			InternIds = true,
+			BuildRuntimeProjection = false,
+			EnableAdvancedValidation = false
+		});
 
-        // Small model: 5 elements
-        _smallXml = GenerateSmallModel();
-        
-        // Medium model: ~50 elements
-        _mediumXml = GenerateMediumModel();
-        
-        // Large model: ~500 elements  
-        _largeXml = GenerateLargeModel();
-    }
+		_parserNormalized = new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Normalized,
+			InternIds = true,
+			BuildRuntimeProjection = false,
+			EnableAdvancedValidation = false
+		});
 
-    [Benchmark(Baseline = true)]
-    public async Task<BpmnModel> ParseSmall_Normalized()
-    {
-        return await _parserNormalized.ParseAsync(_smallXml);
-    }
+		_parserWithInterning = new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Normalized,
+			InternIds = true,
+			BuildRuntimeProjection = false,
+			EnableAdvancedValidation = false
+		});
 
-    [Benchmark]
-    public async Task<BpmnModel> ParseSmall_Strict()
-    {
-        return await _parserStrict.ParseAsync(_smallXml);
-    }
+		_parserWithoutInterning = new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Normalized,
+			InternIds = false,
+			BuildRuntimeProjection = false,
+			EnableAdvancedValidation = false
+		});
 
-    [Benchmark]
-    public async Task<BpmnModel> ParseMedium_Normalized()
-    {
-        return await _parserNormalized.ParseAsync(_mediumXml);
-    }
+		_optimizedParser = new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			OptimizeLargeModels = true,  // Enable optimizations
+			LargeModelThreshold = 100,
+			SkipDocumentationForLargeModels = true,  // Enable this optimization
+			SkipArtifactsForLargeModels = true,      // Enable this optimization
+			SkipExtensionsForLargeModels = false,    // Keep extensions for compatibility
+			UseLazyRawCloning = true,
+			UseSharedStringPool = true,
+			InternIds = true
+		});
 
-    [Benchmark]
-    public async Task<BpmnModel> ParseMedium_Strict()
-    {
-        return await _parserStrict.ParseAsync(_mediumXml);
-    }
+		// Small model: 5 elements
+		_smallXml = SmallModelXml;
 
-    [Benchmark]
-    public async Task<BpmnModel> ParseLarge_Normalized()
-    {
-        return await _parserNormalized.ParseAsync(_largeXml);
-    }
+		// Medium model: ~50 elements
+		_mediumXml = GenerateMediumModel();
 
-    [Benchmark]
-    public async Task<BpmnModel> ParseLarge_Strict()
-    {
-        return await _parserStrict.ParseAsync(_largeXml);
-    }
-    
-    [Benchmark]
-    public async Task<BpmnModel> ParseMedium_WithInterning()
-    {
-        return await _parserWithInterning.ParseAsync(_mediumXml);
-    }
-    
-    [Benchmark]
-    public async Task<BpmnModel> ParseMedium_WithoutInterning()
-    {
-        return await _parserWithoutInterning.ParseAsync(_mediumXml);
-    }
+		// Large model: ~500 elements  
+		_largeXml = GenerateLargeModel();
+	}
 
-    [Benchmark]
-    public async Task<BpmnModel> ParseLarge_Optimized()
-    {
-        return await _optimizedParser.ParseAsync(_largeXml);
-    }
+	[Benchmark(Baseline = true)]
+	public async Task<BpmnModel> ParseSmall_Normalized()
+	{
+		return await _parserNormalized.ParseAsync(_smallXml);
+	}
 
-    [Benchmark]
-    public async Task<BpmnModel> ParseLarge_WithDocumentationSkip()
-    {
-        var parser = new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            OptimizeLargeModels = true,
-            LargeModelThreshold = 100,
-            SkipDocumentationForLargeModels = true,  // Enable this specific optimization
-            InternIds = true
-        });
-        return await parser.ParseAsync(_largeXml);
-    }
+	[Benchmark]
+	public async Task<BpmnModel> ParseSmall_Strict()
+	{
+		return await _parserStrict.ParseAsync(_smallXml);
+	}
 
-    [Benchmark]
-    public async Task<BpmnModel> ParseLarge_WithArtifactSkip()
-    {
-        var parser = new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            OptimizeLargeModels = true,
-            LargeModelThreshold = 100,
-            SkipArtifactsForLargeModels = true,  // Enable this specific optimization
-            InternIds = true
-        });
-        return await parser.ParseAsync(_largeXml);
-    }
+	[Benchmark]
+	public async Task<BpmnModel> ParseMedium_Normalized()
+	{
+		return await _parserNormalized.ParseAsync(_mediumXml);
+	}
 
-    // Model generation methods
-    private static string GenerateSmallModel()
-    {
-        return """
+	[Benchmark]
+	public async Task<BpmnModel> ParseMedium_Strict()
+	{
+		return await _parserStrict.ParseAsync(_mediumXml);
+	}
+
+	[Benchmark]
+	public async Task<BpmnModel> ParseLarge_Normalized()
+	{
+		return await _parserNormalized.ParseAsync(_largeXml);
+	}
+
+	[Benchmark]
+	public async Task<BpmnModel> ParseLarge_Strict()
+	{
+		return await _parserStrict.ParseAsync(_largeXml);
+	}
+
+	[Benchmark]
+	public async Task<BpmnModel> ParseMedium_WithInterning()
+	{
+		return await _parserWithInterning.ParseAsync(_mediumXml);
+	}
+
+	[Benchmark]
+	public async Task<BpmnModel> ParseMedium_WithoutInterning()
+	{
+		return await _parserWithoutInterning.ParseAsync(_mediumXml);
+	}
+
+	[Benchmark]
+	public async Task<BpmnModel> ParseLarge_Optimized()
+	{
+		return await _optimizedParser.ParseAsync(_largeXml);
+	}
+
+	[Benchmark]
+	public async Task<BpmnModel> ParseLarge_WithDocumentationSkip()
+	{
+		var parser = new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			OptimizeLargeModels = true,
+			LargeModelThreshold = 100,
+			SkipDocumentationForLargeModels = true,  // Enable this specific optimization
+			InternIds = true
+		});
+		return await parser.ParseAsync(_largeXml);
+	}
+
+	[Benchmark]
+	public async Task<BpmnModel> ParseLarge_WithArtifactSkip()
+	{
+		var parser = new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			OptimizeLargeModels = true,
+			LargeModelThreshold = 100,
+			SkipArtifactsForLargeModels = true,  // Enable this specific optimization
+			InternIds = true
+		});
+		return await parser.ParseAsync(_largeXml);
+	}
+
+	// Model generation methods
+	private const string SmallModelXml = """
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <process id="smallProcess">
     <startEvent id="start"/>
@@ -183,21 +183,20 @@ public class BpmnParserPerformanceBenchmarks
   </process>
 </definitions>
 """;
-    }
 
-    private static string GenerateMediumModel()
-    {
-        var xml = """
+	private static string GenerateMediumModel()
+	{
+		var xml = new StringBuilder("""
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" 
              xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
   <process id="mediumProcess">
     <startEvent id="start"/>
-""";
-        
-        // Generate 10 parallel branches with 4 tasks each = ~40 tasks
-        for (int branch = 0; branch < 10; branch++)
-        {
-            xml += $"""
+""");
+
+		// Generate 10 parallel branches with 4 tasks each = ~40 tasks
+		for (var branch = 0; branch < 10; branch++)
+		{
+			xml.Append($"""
     <parallelGateway id="fork{branch}"/>
     <userTask id="task{branch}_1" name="Task {branch}.1">
       <extensionElements>
@@ -210,51 +209,87 @@ public class BpmnParserPerformanceBenchmarks
     </scriptTask>
     <userTask id="task{branch}_4" name="Task {branch}.4"/>
     <parallelGateway id="join{branch}"/>
-""";
-        }
-        
-        xml += """
+""");
+		}
+
+		xml.Append("""
     <endEvent id="end"/>
     <sequenceFlow id="f1" sourceRef="start" targetRef="fork0"/>
-""";
-        
-        // Generate sequence flows
-        for (int branch = 0; branch < 10; branch++)
-        {
-            if (branch > 0)
-                xml += $"""    <sequenceFlow id="f{branch * 10}" sourceRef="join{branch - 1}" targetRef="fork{branch}"/>""" + "\n";
-                
-            xml += $"""
-    <sequenceFlow id="f{branch * 10 + 1}" sourceRef="fork{branch}" targetRef="task{branch}_1"/>
-    <sequenceFlow id="f{branch * 10 + 2}" sourceRef="task{branch}_1" targetRef="task{branch}_2"/>
-    <sequenceFlow id="f{branch * 10 + 3}" sourceRef="task{branch}_2" targetRef="task{branch}_3"/>
-    <sequenceFlow id="f{branch * 10 + 4}" sourceRef="task{branch}_3" targetRef="task{branch}_4"/>
-    <sequenceFlow id="f{branch * 10 + 5}" sourceRef="task{branch}_4" targetRef="join{branch}"/>
-""";
-        }
-        
-        xml += $"""    <sequenceFlow id="fend" sourceRef="join9" targetRef="end"/>""" + "\n";
-        xml += """
+""");
+
+		// Generate sequence flows
+		for (var branch = 0; branch < 10; branch++)
+		{
+			if (branch > 0)
+			{
+				xml.Append($"""    <sequenceFlow id="f{branch * 10}" sourceRef="join{branch - 1}" targetRef="fork{branch}"/>""");
+				xml.Append('\n');
+			}
+
+			xml.Append($"""
+    <sequenceFlow id="f{(branch * 10) + 1}" sourceRef="fork{branch}" targetRef="task{branch}_1"/>
+    <sequenceFlow id="f{(branch * 10) + 2}" sourceRef="task{branch}_1" targetRef="task{branch}_2"/>
+    <sequenceFlow id="f{(branch * 10) + 3}" sourceRef="task{branch}_2" targetRef="task{branch}_3"/>
+    <sequenceFlow id="f{(branch * 10) + 4}" sourceRef="task{branch}_3" targetRef="task{branch}_4"/>
+    <sequenceFlow id="f{(branch * 10) + 5}" sourceRef="task{branch}_4" targetRef="join{branch}"/>
+""");
+		}
+
+		xml.Append("""    <sequenceFlow id="fend" sourceRef="join9" targetRef="end"/>""");
+		xml.Append('\n');
+		xml.Append("""
   </process>
 </definitions>
-""";
-        return xml;
-    }
+""");
+		return xml.ToString();
+	}
 
-    private static string GenerateLargeModel()
-    {
-        var xml = """
+	private static string GenerateLargeModel()
+	{
+		var xml = new StringBuilder("""
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" 
              xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
              xmlns:zeebe="http://zeebe.io/schema/zeebe/1.0">
   <process id="largeProcess">
     <startEvent id="start"/>
-""";
-        
-        // Generate 50 parallel branches with 8 tasks each = ~400 tasks
-        for (int branch = 0; branch < 50; branch++)
-        {
-            xml += $"""
+""");
+
+		// Generate 50 parallel branches with 8 tasks each = ~400 tasks
+		for (var branch = 0; branch < 50; branch++)
+		{
+			AppendLargeUserTask(xml, branch);
+			AppendLargeServiceTask(xml, branch);
+			AppendLargeRemainingNodes(xml, branch);
+
+			// Add text annotations and associations (artifacts that can be optimized)
+			if (branch % 5 == 0) // Add artifacts every 5th branch
+			{
+				xml.Append($"""
+    <textAnnotation id="annotation{branch}">
+      <text>This is a detailed annotation for branch {branch} explaining the business process flow, compliance requirements, and operational procedures.</text>
+    </textAnnotation>
+    <association id="assoc{branch}" sourceRef="task{branch}_1" targetRef="annotation{branch}"/>
+    <group id="group{branch}" categoryValueRef="category{branch}"/>
+""");
+			}
+		}
+
+		xml.Append("""
+    <endEvent id="end"/>
+    <sequenceFlow id="f1" sourceRef="start" targetRef="fork0"/>
+""");
+
+		AppendLargeSequenceFlows(xml);
+		xml.Append("""
+  </process>
+</definitions>
+""");
+		return xml.ToString();
+	}
+
+	private static void AppendLargeUserTask(StringBuilder xml, int branch)
+	{
+		xml.Append($"""
     <parallelGateway id="fork{branch}"/>
     <userTask id="task{branch}_1" name="User Task {branch}.1">
       <documentation>This is comprehensive documentation for task {branch}_1. 
@@ -270,6 +305,13 @@ public class BpmnParserPerformanceBenchmarks
         <camunda:taskListener event="create" class="org.example.TaskListener{branch}"/>
       </extensionElements>
     </userTask>
+""");
+		xml.Append('\n');
+	}
+
+	private static void AppendLargeServiceTask(StringBuilder xml, int branch)
+	{
+		xml.Append($"""
     <serviceTask id="task{branch}_2" name="Service Task {branch}.2">
       <documentation>Service task documentation for branch {branch} with detailed service configuration and error handling instructions.</documentation>
       <extensionElements>
@@ -284,6 +326,13 @@ public class BpmnParserPerformanceBenchmarks
         </zeebe:taskHeaders>
       </extensionElements>
     </serviceTask>
+""");
+		xml.Append('\n');
+	}
+
+	private static void AppendLargeRemainingNodes(StringBuilder xml, int branch)
+	{
+		xml.Append($"""
     <scriptTask id="task{branch}_3" scriptFormat="javascript" resultVariable="result{branch}">
       <documentation>Script task documentation with complex business logic description for branch {branch}.</documentation>
       <script>console.log('Branch {branch} processing:', input{branch});</script>
@@ -304,50 +353,33 @@ public class BpmnParserPerformanceBenchmarks
       <documentation>Call activity documentation with subprocess parameters and expected outputs for branch {branch}.</documentation>
     </callActivity>
     <parallelGateway id="join{branch}"/>
-""";
+""");
+	}
+	private static void AppendLargeSequenceFlows(StringBuilder xml)
+	{
+		// Generate sequence flows (8 per branch + connectors)
+		for (var branch = 0; branch < 50; branch++)
+		{
+			if (branch > 0)
+			{
+				xml.Append($"""    <sequenceFlow id="f{branch * 20}" sourceRef="join{branch - 1}" targetRef="fork{branch}"/>""");
+				xml.Append('\n');
+			}
 
-            // Add text annotations and associations (artifacts that can be optimized)
-            if (branch % 5 == 0) // Add artifacts every 5th branch
-            {
-                xml += $"""
-    <textAnnotation id="annotation{branch}">
-      <text>This is a detailed annotation for branch {branch} explaining the business process flow, compliance requirements, and operational procedures.</text>
-    </textAnnotation>
-    <association id="assoc{branch}" sourceRef="task{branch}_1" targetRef="annotation{branch}"/>
-    <group id="group{branch}" categoryValueRef="category{branch}"/>
-""";
-            }
-        }
-        
-        xml += """
-    <endEvent id="end"/>
-    <sequenceFlow id="f1" sourceRef="start" targetRef="fork0"/>
-""";
-        
-        // Generate sequence flows (8 per branch + connectors)
-        for (int branch = 0; branch < 50; branch++)
-        {
-            if (branch > 0)
-                xml += $"""    <sequenceFlow id="f{branch * 20}" sourceRef="join{branch - 1}" targetRef="fork{branch}"/>""" + "\n";
-                
-            xml += $"""
-    <sequenceFlow id="f{branch * 20 + 1}" sourceRef="fork{branch}" targetRef="task{branch}_1"/>
-    <sequenceFlow id="f{branch * 20 + 2}" sourceRef="task{branch}_1" targetRef="task{branch}_2"/>
-    <sequenceFlow id="f{branch * 20 + 3}" sourceRef="task{branch}_2" targetRef="task{branch}_3"/>
-    <sequenceFlow id="f{branch * 20 + 4}" sourceRef="task{branch}_3" targetRef="task{branch}_4"/>
-    <sequenceFlow id="f{branch * 20 + 5}" sourceRef="task{branch}_4" targetRef="task{branch}_5"/>
-    <sequenceFlow id="f{branch * 20 + 6}" sourceRef="task{branch}_5" targetRef="task{branch}_6"/>
-    <sequenceFlow id="f{branch * 20 + 7}" sourceRef="task{branch}_6" targetRef="task{branch}_7"/>
-    <sequenceFlow id="f{branch * 20 + 8}" sourceRef="task{branch}_7" targetRef="task{branch}_8"/>
-    <sequenceFlow id="f{branch * 20 + 9}" sourceRef="task{branch}_8" targetRef="join{branch}"/>
-""";
-        }
-        
-        xml += $"""    <sequenceFlow id="fend" sourceRef="join49" targetRef="end"/>""" + "\n";
-        xml += """
-  </process>
-</definitions>
-""";
-        return xml;
-    }
+			xml.Append($"""
+    <sequenceFlow id="f{(branch * 20) + 1}" sourceRef="fork{branch}" targetRef="task{branch}_1"/>
+    <sequenceFlow id="f{(branch * 20) + 2}" sourceRef="task{branch}_1" targetRef="task{branch}_2"/>
+    <sequenceFlow id="f{(branch * 20) + 3}" sourceRef="task{branch}_2" targetRef="task{branch}_3"/>
+    <sequenceFlow id="f{(branch * 20) + 4}" sourceRef="task{branch}_3" targetRef="task{branch}_4"/>
+    <sequenceFlow id="f{(branch * 20) + 5}" sourceRef="task{branch}_4" targetRef="task{branch}_5"/>
+    <sequenceFlow id="f{(branch * 20) + 6}" sourceRef="task{branch}_5" targetRef="task{branch}_6"/>
+    <sequenceFlow id="f{(branch * 20) + 7}" sourceRef="task{branch}_6" targetRef="task{branch}_7"/>
+    <sequenceFlow id="f{(branch * 20) + 8}" sourceRef="task{branch}_7" targetRef="task{branch}_8"/>
+    <sequenceFlow id="f{(branch * 20) + 9}" sourceRef="task{branch}_8" targetRef="join{branch}"/>
+""");
+		}
+
+		xml.Append("""    <sequenceFlow id="fend" sourceRef="join49" targetRef="end"/>""");
+		xml.Append('\n');
+	}
 }

@@ -5,7 +5,7 @@ namespace VertexBPMN.Tests.Parsing.Roundtrip;
 
 public class StrictPhase2VendorExtensionExtendedTests
 {
-    private const string Xml = """
+	private const string Xml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
                   xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
                   xmlns:zeebe="http://zeebe.io/schema/zeebe/1.0"
@@ -31,42 +31,42 @@ public class StrictPhase2VendorExtensionExtendedTests
 </bpmn:definitions>
 """;
 
-    [Fact]
-    public async Task ExtendedVendorNormalization_Disabled_MapAbsent()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict
-        }).ParseAsync(Xml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task ExtendedVendorNormalization_Disabled_MapAbsent()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict
+		}).ParseAsync(Xml, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(model.RawMetadata);
-        Assert.Null(model.RawMetadata!.VendorNormalizedExtensions);
-    }
+		Assert.NotNull(model.RawMetadata);
+		Assert.Null(model.RawMetadata.VendorNormalizedExtensions);
+	}
 
-    [Fact]
-    public async Task ExtendedVendorNormalization_Enabled_IncludesNewKeys()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            NormalizeVendorExtensions = true
-        }).ParseAsync(Xml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task ExtendedVendorNormalization_Enabled_IncludesNewKeys()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			NormalizeVendorExtensions = true
+		}).ParseAsync(Xml, TestContext.Current.CancellationToken);
 
-        var map = model.RawMetadata!.VendorNormalizedExtensions;
-        Assert.NotNull(map);
-        Assert.True(map!.ContainsKey("taskA"));
+		var map = model.RawMetadata!.VendorNormalizedExtensions;
+		Assert.NotNull(map);
+		Assert.True(map.ContainsKey("taskA"));
 
-        var t = map["taskA"];
-        // camunda form field
-        Assert.Equal("string", t["camunda:formField.ff1.type"]);
-        Assert.Equal("Field One", t["camunda:formField.ff1.name"]);
-        // camunda properties
-        Assert.Equal("42", t["camunda:property.pAlpha"]);
-        Assert.False(t.ContainsKey("camunda:property.")); // no empty name
-        // zeebe input/ output
-        Assert.Equal("=inVal", t["zeebe:ioMapping.input.inVar"]);
-        Assert.Equal("=calc(outVar)", t["zeebe:ioMapping.output.resultVar"]);
-        // flowable assignee
-        Assert.Equal("bob", t["flowable:assignee"]);
-    }
+		var t = map["taskA"];
+		// camunda form field
+		Assert.Equal("string", t["camunda:formField.ff1.type"]);
+		Assert.Equal("Field One", t["camunda:formField.ff1.name"]);
+		// camunda properties
+		Assert.Equal("42", t["camunda:property.pAlpha"]);
+		Assert.False(t.ContainsKey("camunda:property.")); // no empty name
+														  // zeebe input/ output
+		Assert.Equal("=inVal", t["zeebe:ioMapping.input.inVar"]);
+		Assert.Equal("=calc(outVar)", t["zeebe:ioMapping.output.resultVar"]);
+		// flowable assignee
+		Assert.Equal("bob", t["flowable:assignee"]);
+	}
 }

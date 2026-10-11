@@ -4,109 +4,117 @@ using System.Security.Claims;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.Api.Controllers
+namespace VertexBPMN.Api.Controllers;
+/// <summary>
+/// Provides BPMN process simulation endpoints.
+/// </summary>
+[ApiController]
+[Route("api/simulation")]
+[ApiExplorerSettings(GroupName = "Simulation")]
+[Authorize(Policy = "TenantReadOnly")]
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public controller required for ASP.NET Core MVC discovery and activation.")]
+public class SimulationController : ControllerBase
 {
-    /// <summary>
-    /// Provides BPMN process simulation endpoints.
-    /// </summary>
-    [ApiController]
-    [Route("api/simulation")]
-    [ApiExplorerSettings(GroupName = "Simulation")]
-    [Authorize(Policy = "TenantReadOnly")]
-    public class SimulationController : ControllerBase
-    {
-        private readonly ISimulationService _simulationService;
-        private readonly ISimulationScenarioService _scenarioService;
-        private readonly ISemanticValidationService _validationService;
-        public SimulationController(
-            ISimulationService simulationService,
-            ISimulationScenarioService scenarioService,
-            ISemanticValidationService validationService)
-        {
-            _simulationService = simulationService;
-            _scenarioService = scenarioService;
-            _validationService = validationService;
-        }
-        /// <summary>
-        /// Simulates a BPMN process instance using a saved scenario.
-        /// </summary>
-        /// <param name="scenarioId">Scenario ID</param>
-        /// <returns>Simulation result with steps and status</returns>
-        [HttpPost("scenario/{scenarioId}")]
-        [ProducesResponseType(typeof(SimulationResult), 200)]
-        [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-        public async System.Threading.Tasks.Task<ActionResult<SimulationResult>> SimulateScenario(string scenarioId)
-        {
-            var scenario = await _scenarioService.GetByIdAsync(scenarioId);
-            if (scenario == null || !CanAccessTenant(scenario.TenantId)) return NotFound();
-            // Validate BPMN before simulation (assume scenario contains BPMN XML)
-            var diagnostics = await _validationService.ValidateBpmnAsync(scenario.BpmnXml ?? "", HttpContext.RequestAborted);
-            var request = new SimulationRequest
-            {
-                BpmnXml = scenario.BpmnXml ?? string.Empty,
-                ProcessDefinitionId = scenario.ProcessDefinitionId,
-                Variables = scenario.Variables,
-                MaxSteps = scenario.MaxSteps,
-                TenantId = scenario.TenantId
-            };
-            return await SimulateValidated(request, diagnostics);
-        }
-        /// <summary>
-        /// Simulates a BPMN process instance and returns the simulation steps.
-        /// </summary>
-        /// <param name="request">Simulation request DTO</param>
-        /// <returns>Simulation result with steps and status</returns>
-        [HttpPost]
-        [ProducesResponseType(typeof(SimulationResult), 200)]
-        [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-        public async System.Threading.Tasks.Task<ActionResult<SimulationResult>> Simulate([FromBody] Dto.SimulationRequestDto request)
-        {
-            var domainRequest = new SimulationRequest
-            {
-                BpmnXml = request.BpmnXml ?? string.Empty,
-                ProcessDefinitionId = request.ProcessDefinitionId,
-                Variables = request.Variables,
-                MaxSteps = request.MaxSteps,
-                TenantId = ResolveSimulationTenantId(request.TenantId),
-                EventSelections = request.EventSelections,
-                CalledProcessDefinitions = request.CalledProcessDefinitions
-            };
-            // Validate BPMN before simulation (assume request contains BPMN XML)
-            var diagnostics = await _validationService.ValidateBpmnAsync(request.BpmnXml ?? "", HttpContext.RequestAborted);
-            return await SimulateValidated(domainRequest, diagnostics);
-        }
+	private readonly ISimulationService _simulationService;
+	private readonly ISimulationScenarioService _scenarioService;
+	private readonly ISemanticValidationService _validationService;
+	public SimulationController(ISimulationService simulationService, ISimulationScenarioService scenarioService, ISemanticValidationService validationService)
+	{
+		_simulationService = simulationService;
+		_scenarioService = scenarioService;
+		_validationService = validationService;
+	}
 
-        private async Task<ActionResult<SimulationResult>> SimulateValidated(
-            SimulationRequest request,
-            SemanticValidationResult diagnostics)
-        {
-            try
-            {
-                var result = await _simulationService.SimulateAsync(request, HttpContext.RequestAborted);
-                return Ok(new { Simulation = result, Diagnostics = diagnostics });
-            }
-            catch (Exception exception) when (exception is ArgumentException
-                                              or InvalidOperationException
-                                              or NotSupportedException)
-            {
-                return Problem(
-                    statusCode: StatusCodes.Status400BadRequest,
-                    title: "BPMN simulation request is not executable",
-                    detail: exception.Message);
-            }
-        }
-        private string? ResolveSimulationTenantId(string? explicitTenantId)
-        {
-            if (!User.IsInRole("Admin"))
-                return User.FindFirstValue("tenant_id");
-            return string.IsNullOrWhiteSpace(explicitTenantId) ? null : explicitTenantId;
-        }
+	/// <summary>
+	/// Simulates a BPMN process instance using a saved scenario.
+	/// </summary>
+	/// <param name = "scenarioId">Scenario ID</param>
+	/// <returns>Simulation result with steps and status</returns>
+	[HttpPost("scenario/{scenarioId}")]
+	[ProducesResponseType(typeof(SimulationResult), 200)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+	public async System.Threading.Tasks.Task<ActionResult<SimulationResult>> SimulateScenario(string scenarioId)
+	{
+		var scenario = await _scenarioService.GetByIdAsync(scenarioId);
+		if (scenario == null || !CanAccessTenant(scenario.TenantId))
+		{
+			return NotFound();
+		}
 
-        private bool CanAccessTenant(string? tenantId)
-        {
-            if (User.IsInRole("Admin")) return true;
-            var claim = User.FindFirstValue("tenant_id");
-            return !string.IsNullOrWhiteSpace(claim) && string.Equals(tenantId, claim, StringComparison.Ordinal);
-        }
-    }
+		// Validate BPMN before simulation (assume scenario contains BPMN XML)
+		var diagnostics = await _validationService.ValidateBpmnAsync(scenario.BpmnXml ?? "", HttpContext.RequestAborted);
+		var request = new SimulationRequest
+		{
+			BpmnXml = scenario.BpmnXml ?? string.Empty,
+			ProcessDefinitionId = scenario.ProcessDefinitionId,
+			Variables = scenario.Variables,
+			MaxSteps = scenario.MaxSteps,
+			TenantId = scenario.TenantId
+		};
+		return await SimulateValidated(request, diagnostics);
+	}
+
+	/// <summary>
+	/// Simulates a BPMN process instance and returns the simulation steps.
+	/// </summary>
+	/// <param name = "request">Simulation request DTO</param>
+	/// <returns>Simulation result with steps and status</returns>
+	[HttpPost]
+	[ProducesResponseType(typeof(SimulationResult), 200)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+	public async System.Threading.Tasks.Task<ActionResult<SimulationResult>> Simulate([FromBody] Dto.SimulationRequestDto request)
+	{
+		if (!User.IsInRole("Admin") && string.IsNullOrWhiteSpace(User.FindFirstValue("tenant_id")))
+		{
+			return Forbid();
+		}
+
+		var domainRequest = new SimulationRequest
+		{
+			BpmnXml = request.BpmnXml ?? string.Empty,
+			ProcessDefinitionId = request.ProcessDefinitionId,
+			Variables = request.Variables,
+			MaxSteps = request.MaxSteps,
+			TenantId = ResolveSimulationTenantId(request.TenantId) ?? string.Empty,
+			EventSelections = request.EventSelections,
+			CalledProcessDefinitions = request.CalledProcessDefinitions
+		};
+		// Validate BPMN before simulation (assume request contains BPMN XML)
+		var diagnostics = await _validationService.ValidateBpmnAsync(request.BpmnXml ?? "", HttpContext.RequestAborted);
+		return await SimulateValidated(domainRequest, diagnostics);
+	}
+
+	private async Task<ActionResult<SimulationResult>> SimulateValidated(SimulationRequest request, SemanticValidationResult diagnostics)
+	{
+		try
+		{
+			var result = await _simulationService.SimulateAsync(request, HttpContext.RequestAborted);
+			return Ok(new { Simulation = result, Diagnostics = diagnostics });
+		}
+		catch (Exception exception)when (exception is ArgumentException or InvalidOperationException or NotSupportedException)
+		{
+			return Problem(detail: exception.Message, statusCode: StatusCodes.Status400BadRequest, title: "BPMN simulation request is not executable");
+		}
+	}
+
+	private string? ResolveSimulationTenantId(string? explicitTenantId)
+	{
+		if (!User.IsInRole("Admin"))
+		{
+			return User.FindFirstValue("tenant_id");
+		}
+
+		return string.IsNullOrWhiteSpace(explicitTenantId) ? null : explicitTenantId;
+	}
+
+	private bool CanAccessTenant(string? tenantId)
+	{
+		if (User.IsInRole("Admin"))
+		{
+			return true;
+		}
+
+		var claim = User.FindFirstValue("tenant_id");
+		return !string.IsNullOrWhiteSpace(claim) && string.Equals(tenantId, claim, StringComparison.Ordinal);
+	}
 }

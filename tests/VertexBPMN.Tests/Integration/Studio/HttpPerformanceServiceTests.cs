@@ -8,62 +8,64 @@ namespace VertexBPMN.Tests.Integration.Studio;
 
 public sealed class HttpPerformanceServiceTests
 {
-    [Fact]
-    public async Task GetDashboardAsync_UsesPerformanceDashboardEndpoint()
-    {
-        var requests = new List<HttpRequestMessage>();
-        var response = new HttpResponseMessage(HttpStatusCode.OK)
-        {
-            Content = JsonContent.Create(new { systemMetrics = new { cpuUsage = 0.25 } })
-        };
-        var client = new HttpClient(new RecordingHandler(requests, response))
-        {
-            BaseAddress = new Uri("http://api.test/")
-        };
-        var factory = new Mock<IHttpClientFactory>();
-        factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
-        var service = new HttpPerformanceService(factory.Object);
+	[Fact]
+	public async Task GetDashboardAsync_UsesPerformanceDashboardEndpoint()
+	{
+		var requests = new List<HttpRequestMessage>();
+		using var response = new HttpResponseMessage(HttpStatusCode.OK)
+		{
+			Content = JsonContent.Create(new { systemMetrics = new { cpuUsage = 0.25 } })
+		};
+		using var handler = new RecordingHandler(requests, response);
+		using var client = new HttpClient(handler, disposeHandler: false)
+		{
+			BaseAddress = new Uri("http://api.test/")
+		};
+		var factory = new Mock<IHttpClientFactory>();
+		factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
+		var service = new HttpPerformanceService(factory.Object);
 
-        var dashboard = await service.GetDashboardAsync(TestContext.Current.CancellationToken);
+		var dashboard = await service.GetDashboardAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal(0.25, dashboard.GetProperty("systemMetrics").GetProperty("cpuUsage").GetDouble());
-        var request = Assert.Single(requests);
-        Assert.Equal(HttpMethod.Get, request.Method);
-        Assert.Equal("http://api.test/api/performance/dashboard", request.RequestUri!.ToString());
-    }
+		Assert.Equal(0.25, dashboard.GetProperty("systemMetrics").GetProperty("cpuUsage").GetDouble());
+		var request = Assert.Single(requests);
+		Assert.Equal(HttpMethod.Get, request.Method);
+		Assert.Equal("http://api.test/api/performance/dashboard", request.RequestUri!.ToString());
+	}
 
-    [Fact]
-    public async Task GetTrendsAsync_UsesRequestedHours()
-    {
-        var requests = new List<HttpRequestMessage>();
-        var response = new HttpResponseMessage(HttpStatusCode.OK)
-        {
-            Content = JsonContent.Create(Array.Empty<object>())
-        };
-        var client = new HttpClient(new RecordingHandler(requests, response))
-        {
-            BaseAddress = new Uri("http://api.test/")
-        };
-        var factory = new Mock<IHttpClientFactory>();
-        factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
-        var service = new HttpPerformanceService(factory.Object);
+	[Fact]
+	public async Task GetTrendsAsync_UsesRequestedHours()
+	{
+		var requests = new List<HttpRequestMessage>();
+		using var response = new HttpResponseMessage(HttpStatusCode.OK)
+		{
+			Content = JsonContent.Create(Array.Empty<object>())
+		};
+		using var handler = new RecordingHandler(requests, response);
+		using var client = new HttpClient(handler, disposeHandler: false)
+		{
+			BaseAddress = new Uri("http://api.test/")
+		};
+		var factory = new Mock<IHttpClientFactory>();
+		factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
+		var service = new HttpPerformanceService(factory.Object);
 
-        await service.GetTrendsAsync(6, TestContext.Current.CancellationToken);
+		await service.GetTrendsAsync(6, TestContext.Current.CancellationToken);
 
-        var request = Assert.Single(requests);
-        Assert.Equal("http://api.test/api/performance/trends?hours=6", request.RequestUri!.ToString());
-    }
+		var request = Assert.Single(requests);
+		Assert.Equal("http://api.test/api/performance/trends?hours=6", request.RequestUri!.ToString());
+	}
 
-    private sealed class RecordingHandler(
-        List<HttpRequestMessage> requests,
-        HttpResponseMessage response) : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request,
-            CancellationToken cancellationToken)
-        {
-            requests.Add(request);
-            return Task.FromResult(response);
-        }
-    }
+	private sealed class RecordingHandler(
+		List<HttpRequestMessage> requests,
+		HttpResponseMessage response) : HttpMessageHandler
+	{
+		protected override Task<HttpResponseMessage> SendAsync(
+			HttpRequestMessage request,
+			CancellationToken cancellationToken)
+		{
+			requests.Add(request);
+			return Task.FromResult(response);
+		}
+	}
 }

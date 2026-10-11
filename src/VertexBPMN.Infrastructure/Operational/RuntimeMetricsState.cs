@@ -4,7 +4,7 @@ namespace VertexBPMN.Infrastructure.Operational;
 
 public sealed class RuntimeMetricsState
 {
-    private IReadOnlyDictionary<string, long> _values = new Dictionary<string, long>();
+    private IReadOnlyDictionary<string, long> _values = new Dictionary<string, long>(StringComparer.Ordinal);
 
     public RuntimeMetricsState()
     {

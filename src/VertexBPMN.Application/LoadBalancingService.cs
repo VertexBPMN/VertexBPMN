@@ -24,7 +24,7 @@ public class LoadBalancingService : ILoadBalancingService
 		{
 			var totalCapacity = _workers.Values.Sum(w => w.MaxCapacity);
 			var totalLoad = _workers.Values.Sum(w => w.CurrentLoad);
-			var averageLoad = _workers.Any() ? (double)totalLoad / _workers.Count : 0;
+			var averageLoad = _workers.Count > 0 ? (double)totalLoad / _workers.Count : 0;
 
 			return new
 			{
@@ -34,7 +34,7 @@ public class LoadBalancingService : ILoadBalancingService
 				TotalLoad = totalLoad,
 				AverageLoad = Math.Round(averageLoad, 2),
 				LoadPercentage = totalCapacity > 0 ? Math.Round((double)totalLoad / totalCapacity * 100, 1) : 0,
-				Strategy = _config.Strategy,
+				_config.Strategy,
 				IsHealthy = CheckSystemHealth(),
 				Timestamp = DateTime.UtcNow
 			};
@@ -97,12 +97,12 @@ public class LoadBalancingService : ILoadBalancingService
 			{
 				WorkerId = worker.Id,
 				IsHealthy = isHealthy,
-				LastHeartbeat = worker.LastHeartbeat,
+				worker.LastHeartbeat,
 				TimeSinceHeartbeat = timeSinceHeartbeat,
-				CurrentLoad = worker.CurrentLoad,
-				MaxCapacity = worker.MaxCapacity,
+				worker.CurrentLoad,
+				worker.MaxCapacity,
 				LoadPercentage = Math.Round(loadPercentage, 1),
-				SupportedNodeTypes = worker.SupportedNodeTypes,
+				worker.SupportedNodeTypes,
 				Status = isHealthy ? "Online" : "Offline"
 			};
 		}
@@ -120,7 +120,7 @@ public class LoadBalancingService : ILoadBalancingService
 				.OrderBy(w => w.CurrentLoad)
 				.ToList();
 
-			if (!healthyWorkers.Any())
+			if (healthyWorkers.Count == 0)
 			{
 				return new
 				{
@@ -145,7 +145,7 @@ public class LoadBalancingService : ILoadBalancingService
 		{
 			Message = "Rebalancing completed",
 			RebalancedTokens = rebalancedCount,
-			Strategy = _config.Strategy,
+			_config.Strategy,
 			Timestamp = DateTime.UtcNow
 		};
 	}
@@ -163,11 +163,10 @@ public class LoadBalancingService : ILoadBalancingService
 	private WorkerNode? SelectWorkerForToken(ExecutionToken token, List<WorkerNode> workers)
 	{
 		var eligibleWorkers = workers
-			.Where(w => w.SupportedNodeTypes.Contains(token.NodeType))
-			.Where(w => w.CurrentLoad < w.MaxCapacity)
+			.Where(w => w.SupportedNodeTypes.Contains(token.NodeType) && w.CurrentLoad < w.MaxCapacity)
 			.ToList();
 
-		if (!eligibleWorkers.Any())
+		if (eligibleWorkers.Count == 0)
 		{
 			return null;
 		}
@@ -203,7 +202,7 @@ public class LoadBalancingService : ILoadBalancingService
 			return workers.First();
 		}
 
-		var random = new Random().Next(totalWeight);
+		var random = System.Security.Cryptography.RandomNumberGenerator.GetInt32(totalWeight);
 		var currentWeight = 0;
 
 		foreach (var worker in workers)
@@ -220,7 +219,7 @@ public class LoadBalancingService : ILoadBalancingService
 
 	private static WorkerNode SelectRandom(List<WorkerNode> workers)
 	{
-		var index = new Random().Next(workers.Count);
+		var index = System.Security.Cryptography.RandomNumberGenerator.GetInt32(workers.Count);
 		return workers[index];
 	}
 

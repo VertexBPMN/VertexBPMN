@@ -5,13 +5,13 @@ namespace VertexBPMN.Tests.Parsing.Unified;
 
 public class UnifiedParserSerializerTests
 {
-    private readonly BpmnParser _parser = new();
-    private readonly BpmnSerializer _serializer = new();
+	private readonly BpmnParser _parser = new();
+	private readonly BpmnSerializer _serializer = new();
 
-    [Fact]
-    public async Task Roundtrip_Preserves_EventDefinitions_And_DefaultFlow()
-    {
-        var xml = """
+	[Fact]
+	public async Task Roundtrip_Preserves_EventDefinitions_And_DefaultFlow()
+	{
+		const string xml = """
 <definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <process id='p1'>
     <startEvent id='s1'>
@@ -31,11 +31,11 @@ public class UnifiedParserSerializerTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
-        var serialized = _serializer.Serialize(model);
-        Assert.Contains("timerEventDefinition", serialized);
-        Assert.Contains("signalEventDefinition", serialized);
-        Assert.Contains("exclusiveGateway id=\"g1\" default=\"f2\"", serialized);
-        Assert.Contains("conditionExpression", serialized);
-    }
+		var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		var serialized = _serializer.Serialize(model);
+		Assert.Contains("timerEventDefinition", serialized, StringComparison.Ordinal);
+		Assert.Contains("signalEventDefinition", serialized, StringComparison.Ordinal);
+		Assert.Contains("exclusiveGateway id=\"g1\" default=\"f2\"", serialized, StringComparison.Ordinal);
+		Assert.Contains("conditionExpression", serialized, StringComparison.Ordinal);
+	}
 }

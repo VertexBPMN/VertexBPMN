@@ -13,77 +13,72 @@ namespace VertexBPMN.Tests.Parsing.Hardening;
 /// Focus: Fuzz testing, stress testing, security, and memory profiling.
 /// </summary>
 [Collection("ProcessMemoryMeasurements")]
-public class Phase11HardeningTests
+public class Phase11HardeningTests(ITestOutputHelper output)
 {
-    private readonly ITestOutputHelper _output;
+	private readonly ITestOutputHelper _output = output;
 
-    public Phase11HardeningTests(ITestOutputHelper output)
-    {
-        _output = output;
-    }
+	[Fact]
+	public async Task FuzzHarness_ExecutesMalformedXmlFragments_WithoutCrashing()
+	{
+		// RED: This test will fail until we implement BpmnFuzzHarness
+		var harness = new BpmnFuzzHarness();
 
-    [Fact]
-    public async Task FuzzHarness_ExecutesMalformedXmlFragments_WithoutCrashing()
-    {
-        // RED: This test will fail until we implement BpmnFuzzHarness
-        var harness = new BpmnFuzzHarness();
-        
-        // Generate 1000 random malformed XML mutations
-        var results = await harness.ExecuteFuzzTestAsync(1000, TimeSpan.FromMinutes(2));
-        
-        // Should not crash on any input
-        Assert.True(results.TotalExecutions > 0);
-        Assert.Equal(0, results.CrashCount);
-        Assert.True(results.SuccessfulParses > 0, "Should successfully parse some valid mutations");
-        Assert.True(results.HandledFailures > 0, "Should gracefully handle some malformed inputs");
-        
-        _output.WriteLine($"Fuzz results: {results.TotalExecutions} executions, " +
-                         $"{results.SuccessfulParses} success, {results.HandledFailures} handled failures, " +
-                         $"{results.CrashCount} crashes");
-    }
+		// Generate 1000 random malformed XML mutations
+		var results = await harness.ExecuteFuzzTestAsync(1000, TimeSpan.FromMinutes(2));
 
-    [Fact]
-    public async Task StressTest_10kParallelParses_NoRegressions()
-    {
-        // RED: This test will fail until we implement BpmnStressTester
-        var stressTester = new BpmnStressTester();
-        
-        // Prepare test model
-        var testXml = GenerateComplexTestModel();
-        
-        // Execute 10k parallel parses
-        var results = await stressTester.ExecuteParallelParseTestAsync(
-            xml: testXml,
-            concurrentOperations: 100,
-            totalOperations: 10000,
-            timeout: TimeSpan.FromMinutes(5)
-        );
-        
-        _output.WriteLine($"Stress test results: {results.CompletedSuccessfully}/{results.TotalAttempted} success, " +
-                         $"avg time: {results.AverageParseTime.TotalMilliseconds:F2}ms, " +
-                         $"throughput: {results.ThroughputPerSecond:F0} ops/sec, " +
-                         $"total retained delta: {results.MemoryUsedMB:F2}MB, " +
-                         $"second-phase retained growth: {results.RetainedMemoryGrowthMB:F2}MB");
+		// Should not crash on any input
+		Assert.True(results.TotalExecutions > 0);
+		Assert.Equal(0, results.CrashCount);
+		Assert.True(results.SuccessfulParses > 0, "Should successfully parse some valid mutations");
+		Assert.True(results.HandledFailures > 0, "Should gracefully handle some malformed inputs");
 
-        // Acceptance criteria
-        Assert.True(results.CompletedSuccessfully >= 9900, "At least 99% success rate");
-        Assert.True(results.AverageParseTime < TimeSpan.FromMilliseconds(100), "Average parse time under 100ms");
-        Assert.Equal(0, results.DeadlockCount);
-        Assert.Equal(0, results.MemoryLeakSuspects);
-        // Throughput is a coarse diagnostic and varies with shared CI-host load;
-        // the success, latency, deadlock, and leak assertions remain the hard gates.
-        const double minimumThroughputPerSecond = 500;
-        Assert.True(results.ThroughputPerSecond >= minimumThroughputPerSecond,
-            $"Should handle at least {minimumThroughputPerSecond:F0} parses/second");
-        
-    }
+		_output.WriteLine($"Fuzz results: {results.TotalExecutions} executions, " +
+						 $"{results.SuccessfulParses} success, {results.HandledFailures} handled failures, " +
+						 $"{results.CrashCount} crashes");
+	}
 
-    // Update the security test to be more realistic
-    [Fact]
-    public async Task SecurityReview_XXEPrevention_IsEnabledByDefault()
-    {
-        // Test XXE vulnerability
-        string simple = """
+	[Fact]
+	public async Task StressTest_10kParallelParses_NoRegressions()
+	{
+		// RED: This test will fail until we implement BpmnStressTester
+		var stressTester = new BpmnStressTester();
+
+		// Prepare test model
+		var testXml = GenerateComplexTestModel();
+
+		// Execute 10k parallel parses
+		var results = await stressTester.ExecuteParallelParseTestAsync(
+			xml: testXml,
+			concurrentOperations: 100,
+			totalOperations: 10000,
+			timeout: TimeSpan.FromMinutes(5)
+		);
+
+		_output.WriteLine($"Stress test results: {results.CompletedSuccessfully}/{results.TotalAttempted} success, " +
+						 $"avg time: {results.AverageParseTime.TotalMilliseconds:F2}ms, " +
+						 $"throughput: {results.ThroughputPerSecond:F0} ops/sec, " +
+						 $"total retained delta: {results.MemoryUsedMB:F2}MB, " +
+						 $"second-phase retained growth: {results.RetainedMemoryGrowthMB:F2}MB");
+
+		// Acceptance criteria
+		Assert.True(results.CompletedSuccessfully >= 9900, "At least 99% success rate");
+		Assert.True(results.AverageParseTime < TimeSpan.FromMilliseconds(100), "Average parse time under 100ms");
+		Assert.Equal(0, results.DeadlockCount);
+		Assert.Equal(0, results.MemoryLeakSuspects);
+		// Throughput is a coarse diagnostic and varies with shared CI-host load;
+		// the success, latency, deadlock, and leak assertions remain the hard gates.
+		const double minimumThroughputPerSecond = 500;
+		Assert.True(results.ThroughputPerSecond >= minimumThroughputPerSecond,
+			$"Should handle at least {minimumThroughputPerSecond:F0} parses/second");
+
+	}
+
+	// Update the security test to be more realistic
+	[Fact]
+	public async Task SecurityReview_XXEPrevention_IsEnabledByDefault()
+	{
+		// Test XXE vulnerability
+		const string simple = """
                                       <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
                                                         xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
                                         <bpmn:process id="p1">
@@ -100,31 +95,31 @@ public class Phase11HardeningTests
                                       </bpmn:definitions>
                                       """;
 
-        var securityValidator = new BpmnSecurityValidator();
+		var securityValidator = new BpmnSecurityValidator();
 
-        // Verify XXE prevention through actual configuration
-        var securityResult = securityValidator.ValidateSecurityConfiguration(simple);
+		// Verify XXE prevention through actual configuration
+		var securityResult = securityValidator.ValidateSecurityConfiguration(simple);
 
-        Assert.True(securityResult.IsSecure, "Parser should be secure against XXE attacks by default");
-        Assert.True(securityResult.DtdProcessingDisabled, "DTD processing should be disabled");
-        Assert.True(securityResult.ExternalEntityResolutionDisabled, "External entity resolution should be disabled");
-        Assert.Empty(securityResult.Vulnerabilities);
+		Assert.True(securityResult.IsSecure, "Parser should be secure against XXE attacks by default");
+		Assert.True(securityResult.DtdProcessingDisabled, "DTD processing should be disabled");
+		Assert.True(securityResult.ExternalEntityResolutionDisabled, "External entity resolution should be disabled");
+		Assert.Empty(securityResult.Vulnerabilities);
 
-        _output.WriteLine($"Security validation passed: DTD disabled={securityResult.DtdProcessingDisabled}, " +
-                         $"External entities disabled={securityResult.ExternalEntityResolutionDisabled}");
-    }
+		_output.WriteLine($"Security validation passed: DTD disabled={securityResult.DtdProcessingDisabled}, " +
+						 $"External entities disabled={securityResult.ExternalEntityResolutionDisabled}");
+	}
 
-    [Fact]
-    public async Task SecurityReview_MaliciousXXEAttempt_IsBlocked()
-    {
-        var parser = new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = true
-        });
+	[Fact]
+	public async Task SecurityReview_MaliciousXXEAttempt_IsBlocked()
+	{
+		var parser = new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = true
+		});
 
-        // XXE attack attempt
-        var xxeAttempt = """
+		// XXE attack attempt
+		const string xxeAttempt = """
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE definitions [
   <!ENTITY xxe SYSTEM "file:///etc/passwd">
@@ -136,167 +131,171 @@ public class Phase11HardeningTests
 </definitions>
 """;
 
-        // Should fail safely without exposing system files
-        var exception = await Assert.ThrowsAsync<SecurityException>(
-            () => parser.ParseAsync(xxeAttempt, TestContext.Current.CancellationToken));
-        
-        // Verify the error is related to DTD/entity processing
-        Assert.True(
-            exception.Message.Contains("DTD", StringComparison.OrdinalIgnoreCase) ||
-            exception.Message.Contains("entity", StringComparison.OrdinalIgnoreCase) ||
-            exception.Message.Contains("prohibited", StringComparison.OrdinalIgnoreCase),
-            $"Expected DTD/entity related error, got: {exception.Message}");
-        
-        _output.WriteLine($"XXE attack blocked successfully: {exception.Message}");
-    }
+		// Should fail safely without exposing system files
+		var exception = await Assert.ThrowsAsync<SecurityException>(
+			() => parser.ParseAsync(xxeAttempt, TestContext.Current.CancellationToken));
 
-    [Fact]
-    public async Task MemoryProfiler_LargeModel_SnapshotsMemoryUsage()
-    {
-        // RED: This test will fail until we implement BpmnMemoryProfiler
-        var profiler = new BpmnMemoryProfiler();
-        var largeModel = GenerateLargeTestModel(5000); // 5000 elements
-        
-        var snapshot = await profiler.ProfileParseOperationAsync(largeModel, new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            OptimizeLargeModels = true,
-            InternIds = true
-        });
-        
-        Assert.True(snapshot.PeakMemoryUsageMB < 500, "Peak memory usage should be under 500MB for 5k elements");
-        Assert.True(snapshot.FinalMemoryUsageMB <= snapshot.PeakMemoryUsageMB * 1.05,
-            "Final sampled memory should remain within 5% of the sampled peak");
-        Assert.True(snapshot.StringInterningEffectiveness >= 0,
-            "String interning effectiveness must not report a negative saving");
-        
-        _output.WriteLine($"Memory profile: Peak {snapshot.PeakMemoryUsageMB:F1}MB, " +
-                         $"Final {snapshot.FinalMemoryUsageMB:F1}MB, " +
-                         $"Interning effectiveness {snapshot.StringInterningEffectiveness:P1}");
-    }
+		// Verify the error is related to DTD/entity processing
+		Assert.True(
+			exception.Message.Contains("DTD", StringComparison.OrdinalIgnoreCase) ||
+			exception.Message.Contains("entity", StringComparison.OrdinalIgnoreCase) ||
+			exception.Message.Contains("prohibited", StringComparison.OrdinalIgnoreCase),
+			$"Expected DTD/entity related error, got: {exception.Message}");
 
-    [Fact]
-    public async Task MemoryProfiler_ParserOptions_ShowOptimizationImpact()
-    {
-        // RED: This test will fail until memory profiling is implemented
-        var profiler = new BpmnMemoryProfiler();
-        var testModel = GenerateLargeTestModel(1000);
-        
-        // Compare memory usage with different optimization settings
-        var baselineSnapshot = await profiler.ProfileParseOperationAsync(testModel, new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            OptimizeLargeModels = false,
-            InternIds = false,
-            UseLazyRawCloning = false
-        });
-        
-        var optimizedSnapshot = await profiler.ProfileParseOperationAsync(testModel, new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            OptimizeLargeModels = true,
-            InternIds = true,
-            UseLazyRawCloning = true,
-            SkipDocumentationForLargeModels = true,
-            LargeModelThreshold = 500
-        });
-        
-        // Optimized should use less memory
-        var memoryReduction = (baselineSnapshot.PeakMemoryUsageMB - optimizedSnapshot.PeakMemoryUsageMB) 
-                             / baselineSnapshot.PeakMemoryUsageMB;
-        
-        _output.WriteLine($"Memory optimization impact: {memoryReduction:P1} reduction " +
-                         $"({baselineSnapshot.PeakMemoryUsageMB:F1}MB → {optimizedSnapshot.PeakMemoryUsageMB:F1}MB)");
-        
-        Assert.True(baselineSnapshot.PeakMemoryUsageMB > 0);
-        Assert.True(optimizedSnapshot.PeakMemoryUsageMB > 0);
+		_output.WriteLine($"XXE attack blocked successfully: {exception.Message}");
+	}
 
-        // Process-level peak-memory sampling is noisy under parallel CI. Keep this as a
-        // catastrophic-regression guard; allocation benchmarks provide the tighter signal.
-        if (Environment.Version.Major >= 10)
-        {
-            Assert.True(memoryReduction >= -0.25,
-                $"Optimizations should not significantly increase memory usage on .NET 10+, got {memoryReduction:P1} (25% regression guard)");
-        }
-        else
-        {
-            Assert.True(memoryReduction > 0.1, 
-                $"Optimizations should reduce memory usage by at least 10%, got {memoryReduction:P1}");
-        }
-    }
+	[Fact]
+	public async Task MemoryProfiler_LargeModel_SnapshotsMemoryUsage()
+	{
+		// RED: This test will fail until we implement BpmnMemoryProfiler
+		var profiler = new BpmnMemoryProfiler();
+		var largeModel = GenerateLargeTestModel(5000); // 5000 elements
 
-    [Theory]
-    [InlineData(100)]   // Small stress
-    [InlineData(1000)]  // Medium stress  
-    [InlineData(10000)] // Large stress (acceptance criteria)
-    public async Task ConcurrentParsing_VariousScales_NoDeadlocksOrCorruption(int operationCount)
-    {
-        // RED: This test will fail until concurrent safety is verified
-        var parser = new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            CacheSize = 100,
-            InternIds = true
-        });
-        
-        var testXml = GenerateComplexTestModel();
-        var results = new ConcurrentBag<(bool Success, TimeSpan Duration, string? Error)>();
-        var semaphore = new SemaphoreSlim(50); // Limit concurrency
-        
-        var tasks = Enumerable.Range(0, operationCount)
-            .Select(async i =>
-            {
-                await semaphore.WaitAsync();
-                try
-                {
-                    var stopwatch = Stopwatch.StartNew();
-                    try
-                    {
-                        var model = await parser.ParseAsync(testXml);
-                        stopwatch.Stop();
-                        results.Add((true, stopwatch.Elapsed, null));
-                        
-                        // Verify model integrity
-                        Assert.NotNull(model);
-                        Assert.Equal("complexTestProcess", model.ProcessId);
-                    }
-                    catch (Exception ex)
-                    {
-                        stopwatch.Stop();
-                        results.Add((false, stopwatch.Elapsed, ex.Message));
-                    }
-                }
-                finally
-                {
-                    semaphore.Release();
-                }
-            });
-        
-        await Task.WhenAll(tasks);
-        
-        var successful = results.Count(r => r.Success);
-        var failed = results.Count(r => !r.Success);
-        var avgDuration = results.Average(r => r.Duration.TotalMilliseconds);
-        
-        // No corruption or deadlocks
-        Assert.True(successful >= operationCount * 0.99, 
-            $"At least 99% success rate required, got {successful}/{operationCount}");
-        Assert.True(avgDuration < 100, $"Average parse time should be under 100ms, got {avgDuration:F2}ms");
-        
-        if (failed > 0)
-        {
-            var errorSample = results.Where(r => !r.Success).Take(3)
-                .Select(r => r.Error).ToList();
-            _output.WriteLine($"Sample errors: {string.Join("; ", errorSample)}");
-        }
-        
-        _output.WriteLine($"Concurrent test {operationCount}: {successful} success, {failed} failed, " +
-                         $"{avgDuration:F1}ms avg");
-    }
+		var snapshot = await profiler.ProfileParseOperationAsync(largeModel, new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			OptimizeLargeModels = true,
+			InternIds = true
+		}, cancellationToken: TestContext.Current.CancellationToken);
 
-    private static string GenerateComplexTestModel()
-    {
-        return """
+		Assert.True(snapshot.PeakMemoryUsageMB < 500, "Peak memory usage should be under 500MB for 5k elements");
+		Assert.True(snapshot.FinalMemoryUsageMB <= snapshot.PeakMemoryUsageMB * 1.05,
+			"Final sampled memory should remain within 5% of the sampled peak");
+		Assert.True(snapshot.StringInterningEffectiveness >= 0,
+			"String interning effectiveness must not report a negative saving");
+
+		_output.WriteLine($"Memory profile: Peak {snapshot.PeakMemoryUsageMB:F1}MB, " +
+						 $"Final {snapshot.FinalMemoryUsageMB:F1}MB, " +
+						 $"Interning effectiveness {snapshot.StringInterningEffectiveness:P1}");
+	}
+
+	[Fact]
+	public async Task MemoryProfiler_ParserOptions_ShowOptimizationImpact()
+	{
+		// RED: This test will fail until memory profiling is implemented
+		var profiler = new BpmnMemoryProfiler();
+		var testModel = GenerateLargeTestModel(1000);
+
+		// Compare memory usage with different optimization settings
+		var baselineSnapshot = await profiler.ProfileParseOperationAsync(testModel, new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			OptimizeLargeModels = false,
+			InternIds = false,
+			UseLazyRawCloning = false
+		}, cancellationToken: TestContext.Current.CancellationToken);
+
+		var optimizedSnapshot = await profiler.ProfileParseOperationAsync(testModel, new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			OptimizeLargeModels = true,
+			InternIds = true,
+			UseLazyRawCloning = true,
+			SkipDocumentationForLargeModels = true,
+			LargeModelThreshold = 500
+		}, cancellationToken: TestContext.Current.CancellationToken);
+
+		// Optimized should use less memory
+		var memoryReduction = (baselineSnapshot.PeakMemoryUsageMB - optimizedSnapshot.PeakMemoryUsageMB)
+							 / baselineSnapshot.PeakMemoryUsageMB;
+
+		_output.WriteLine($"Memory optimization impact: {memoryReduction:P1} reduction " +
+						 $"({baselineSnapshot.PeakMemoryUsageMB:F1}MB → {optimizedSnapshot.PeakMemoryUsageMB:F1}MB)");
+
+		Assert.True(baselineSnapshot.PeakMemoryUsageMB > 0);
+		Assert.True(optimizedSnapshot.PeakMemoryUsageMB > 0);
+
+		// Process-level peak-memory sampling is noisy under parallel CI. Keep this as a
+		// catastrophic-regression guard; allocation benchmarks provide the tighter signal.
+		if (Environment.Version.Major >= 10)
+		{
+			Assert.True(memoryReduction >= -0.25,
+				$"Optimizations should not significantly increase memory usage on .NET 10+, got {memoryReduction:P1} (25% regression guard)");
+		}
+		else
+		{
+			Assert.True(memoryReduction > 0.1,
+				$"Optimizations should reduce memory usage by at least 10%, got {memoryReduction:P1}");
+		}
+	}
+
+	[Theory]
+	[InlineData(100)]   // Small stress
+	[InlineData(1000)]  // Medium stress  
+	[InlineData(10000)] // Large stress (acceptance criteria)
+	public async Task ConcurrentParsing_VariousScales_NoDeadlocksOrCorruption(int operationCount)
+	{
+		// RED: This test will fail until concurrent safety is verified
+		var parser = new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			CacheSize = 100,
+			InternIds = true
+		});
+
+		var testXml = GenerateComplexTestModel();
+		var results = new ConcurrentBag<(bool Success, TimeSpan Duration, string? Error)>();
+		using var semaphore = new SemaphoreSlim(50); // Limit concurrency
+
+		var tasks = Enumerable.Range(0, operationCount)
+			.Select(async _ => await ParseConcurrentSampleAsync(parser, testXml, semaphore, results));
+
+		await Task.WhenAll(tasks);
+
+		var successful = results.Count(r => r.Success);
+		var failed = results.Count(r => !r.Success);
+		var avgDuration = results.Average(r => r.Duration.TotalMilliseconds);
+
+		// No corruption or deadlocks
+		Assert.True(successful >= operationCount * 0.99,
+			$"At least 99% success rate required, got {successful}/{operationCount}");
+		Assert.True(avgDuration < 100, $"Average parse time should be under 100ms, got {avgDuration:F2}ms");
+
+		if (failed > 0)
+		{
+			var errorSample = results.Where(r => !r.Success).Take(3)
+				.Select(r => r.Error).ToList();
+			_output.WriteLine($"Sample errors: {string.Join("; ", errorSample)}");
+		}
+
+		_output.WriteLine($"Concurrent test {operationCount}: {successful} success, {failed} failed, " +
+						 $"{avgDuration:F1}ms avg");
+	}
+
+	private static async Task ParseConcurrentSampleAsync(BpmnParser parser, string testXml, SemaphoreSlim semaphore, ConcurrentBag<(bool Success, TimeSpan Duration, string? Error)> results)
+	{
+
+		await semaphore.WaitAsync();
+		try
+		{
+			var stopwatch = Stopwatch.StartNew();
+			try
+			{
+				var model = await parser.ParseAsync(testXml);
+				stopwatch.Stop();
+				results.Add((true, stopwatch.Elapsed, null));
+
+				// Verify model integrity
+				Assert.NotNull(model);
+				Assert.Equal("complexTestProcess", model.ProcessId);
+			}
+			catch (Exception ex)
+			{
+				stopwatch.Stop();
+				results.Add((false, stopwatch.Elapsed, ex.Message));
+			}
+		}
+		finally
+		{
+			semaphore.Release();
+		}
+
+	}
+
+	private static string GenerateComplexTestModel()
+	{
+		return """
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" 
              xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
   <process id="complexTestProcess">
@@ -331,23 +330,23 @@ public class Phase11HardeningTests
   </process>
 </definitions>
 """;
-    }
+	}
 
-    private static string GenerateLargeTestModel(int elementCount)
-    {
-        var tasks = new List<string>();
-        var flows = new List<string>();
-        
-        for (int i = 1; i <= elementCount; i++)
-        {
-            tasks.Add($"<userTask id=\"task{i}\" name=\"Task {i}\"/>");
-            if (i > 1)
-            {
-                flows.Add($"<sequenceFlow id=\"f{i-1}\" sourceRef=\"task{i-1}\" targetRef=\"task{i}\"/>");
-            }
-        }
-        
-        return $"""
+	private static string GenerateLargeTestModel(int elementCount)
+	{
+		var tasks = new List<string>();
+		var flows = new List<string>();
+
+		for (var i = 1; i <= elementCount; i++)
+		{
+			tasks.Add($"<userTask id=\"task{i}\" name=\"Task {i}\"/>");
+			if (i > 1)
+			{
+				flows.Add($"<sequenceFlow id=\"f{i - 1}\" sourceRef=\"task{i - 1}\" targetRef=\"task{i}\"/>");
+			}
+		}
+
+		return $"""
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <process id="largeTestProcess">
     <startEvent id="start"/>
@@ -360,5 +359,5 @@ public class Phase11HardeningTests
   </process>
 </definitions>
 """;
-    }
+	}
 }

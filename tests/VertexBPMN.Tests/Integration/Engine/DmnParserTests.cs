@@ -1,28 +1,55 @@
-﻿using System.Xml.Linq;
+using System.Xml.Linq;
 using Microsoft.Extensions.Logging;
 using Moq;
 
 using VertexBPMN.Domain.Exceptions;
+using VertexBPMN.Domain.Model.Dmn;
 using VertexBPMN.Engine.Parsing;
 
 namespace VertexBPMN.Tests.Integration.Engine;
 
 public class DmnParserTests
 {
-    private readonly Mock<ILogger<DmnParser>> _loggerMock;
-    private readonly DmnParser _parser;
+	private readonly Mock<ILogger<DmnParser>> _loggerMock;
+	private readonly DmnParser _parser;
 
-    public DmnParserTests()
-    {
-        _loggerMock = new Mock<ILogger<DmnParser>>();
-        _parser = new DmnParser(_loggerMock.Object);
-    }
+	public DmnParserTests()
+	{
+		_loggerMock = new Mock<ILogger<DmnParser>>();
+		_parser = new DmnParser(_loggerMock.Object);
+	}
 
-    [Fact]
-    public async Task ParseAsync_ValidDecisionTableWithHitPolicy_ReturnsDmnDecision()
-    {
+	[Fact]
+	public async Task ParseAsync_CancelledToken_PreservesCancellation()
+	{
+		using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+		await cancellation.CancelAsync();
+		var exception = await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+			_parser.ParseAsync("<definitions />", cancellation.Token));
+		Assert.Equal(cancellation.Token, exception.CancellationToken);
+	}
 
-        var dmnXml = @"<?xml version='1.0' encoding='UTF-8'?>
+	[Fact]
+	public async Task ParseAsync_PrefixedModelWithDifferentDefaultNamespace_UsesElementNamespace()
+	{
+		const string xml = """
+			<dmn:definitions xmlns:dmn="https://www.omg.org/spec/DMN/20191111/MODEL/" xmlns="urn:business-types">
+			  <dmn:decision id="approval" name="Approval">
+			    <dmn:literalExpression><dmn:text>42</dmn:text></dmn:literalExpression>
+			  </dmn:decision>
+			</dmn:definitions>
+			""";
+		var decision = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		Assert.Equal("approval", decision.Id);
+		Assert.Equal("Approval", decision.Name);
+		Assert.Equal(xml, decision.SourceXml);
+	}
+
+	[Fact]
+	public async Task ParseAsync_ValidDecisionTableWithHitPolicy_ReturnsDmnDecision()
+	{
+
+		const string dmnXml = @"<?xml version='1.0' encoding='UTF-8'?>
                                 <definitions xmlns='https://www.omg.org/spec/DMN/20191111/MODEL/'>
                                     <decision id='creditDecision' name='Credit Approval'>
                                         <decisionTable id='table1' hitPolicy='FIRST'>
@@ -43,89 +70,98 @@ public class DmnParserTests
                                     </decision>
                                 </definitions>";
 
-        var decision = await _parser.ParseAsync(dmnXml, TestContext.Current.CancellationToken);
+		var decision = await _parser.ParseAsync(dmnXml, TestContext.Current.CancellationToken);
 
-        Assert.Equal("creditDecision", decision.Id);
-        Assert.Equal("FIRST", decision.HitPolicy);
-        Assert.Equal(2, decision.Inputs.Count);
-        Assert.Equal("Age", decision.Inputs[0].Label);
-        Assert.Equal("Income", decision.Inputs[1].Label);
+		Assert.Equal("creditDecision", decision.Id);
+		Assert.Equal("FIRST", decision.HitPolicy);
+		Assert.Equal(2, decision.Inputs.Count);
+		Assert.Equal("Age", decision.Inputs[0].Label);
+		Assert.Equal("Income", decision.Inputs[1].Label);
 
-        // Updated to satisfy xUnit2013 (Assert.Single instead of Count comparison)
-        var output = Assert.Single(decision.Outputs);
-        Assert.Equal("Approval", output.Label);
+		// Updated to satisfy xUnit2013 (Assert.Single instead of Count comparison)
+		var output = Assert.Single(decision.Outputs);
+		Assert.Equal("Approval", output.Label);
 
-        Assert.Equal(2, decision.Rules.Count);
-        Assert.Contains(decision.Rules, r => r.InputConditions["input1"] == ">=18" && r.OutputValues["output1"].ToString() == "Approved");
-    }
+		Assert.Equal(2, decision.Rules.Count);
+		Assert.Contains(decision.Rules, r => r.InputConditions["input1"] == ">=18" && r.OutputValues["output1"].ToString() == "Approved");
+	}
 
-    [Fact]
-    public async Task ParseAsync_ValidDecisionTableWithHitPolicy_ReturnsDmnDecision2()
-    {
-        var path = Path.Combine("TestData", "dinnerDecisions.dmn");
-        var dmnXml = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
-        var decision = await _parser.ParseAsync(dmnXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task ParseAsync_ValidDecisionTableWithHitPolicy_ReturnsDmnDecision2()
+	{
+		var path = Path.Combine("TestData", "dinnerDecisions.dmn");
+		var dmnXml = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
+		var decision = await _parser.ParseAsync(dmnXml, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(decision);
+		Assert.NotNull(decision);
 
-        var xdoc = XDocument.Parse(dmnXml);
+		var xdoc = XDocument.Parse(dmnXml);
 
-        // Determine namespace (support default or prefixed)
-        XNamespace modelNs = xdoc.Root!.Name.Namespace;
+		// Determine namespace (support default or prefixed)
+		var modelNs = xdoc.Root!.Name.Namespace;
 
-        // Locate first decision
-        var decisionElement = xdoc.Descendants(modelNs + "decision").FirstOrDefault();
-        Assert.NotNull(decisionElement);
+		// Locate first decision
+		var decisionElement = xdoc.Descendants(modelNs + "decision").FirstOrDefault();
+		Assert.NotNull(decisionElement);
 
-        var expectedDecisionId = (string?)decisionElement!.Attribute("id");
-        Assert.False(string.IsNullOrWhiteSpace(expectedDecisionId));
-        Assert.Equal(expectedDecisionId, decision.Id);
+		var expectedDecisionId = (string?)decisionElement.Attribute("id");
+		Assert.False(string.IsNullOrWhiteSpace(expectedDecisionId));
+		Assert.Equal(expectedDecisionId, decision.Id);
 
-        var decisionTable = decisionElement.Element(modelNs + "decisionTable");
-        Assert.NotNull(decisionTable);
+		var decisionTable = decisionElement.Element(modelNs + "decisionTable");
+		Assert.NotNull(decisionTable);
 
-        var expectedHitPolicy = (string?)decisionTable!.Attribute("hitPolicy");
-        if (!string.IsNullOrWhiteSpace(expectedHitPolicy))
-            Assert.Equal(expectedHitPolicy, decision.HitPolicy);
-        else
-            Assert.False(string.IsNullOrWhiteSpace(decision.HitPolicy)); // Parser should set something sensible
+		AssertDeclaredOrDefaultHitPolicy(decisionTable, decision);
 
-        // Inputs
-        var expectedInputElements = decisionTable.Elements(modelNs + "input").ToList();
-        Assert.NotEmpty(expectedInputElements);
-        Assert.Equal(expectedInputElements.Count, decision.Inputs.Count);
-        foreach (var inputEl in expectedInputElements)
-        {
-            var inputId = (string?)inputEl.Attribute("id");
-            Assert.Contains(decision.Inputs, i => i.Id == inputId);
-        }
+		// Inputs
+		var expectedInputElements = decisionTable.Elements(modelNs + "input").ToList();
+		Assert.NotEmpty(expectedInputElements);
+		Assert.Equal(expectedInputElements.Count, decision.Inputs.Count);
+		foreach (var inputEl in expectedInputElements)
+		{
+			var inputId = (string?)inputEl.Attribute("id");
+			Assert.Contains(decision.Inputs, i => i.Id == inputId);
+		}
 
-        // Outputs
-        var expectedOutputElements = decisionTable.Elements(modelNs + "output").ToList();
-        Assert.NotEmpty(expectedOutputElements);
-        Assert.Equal(expectedOutputElements.Count, decision.Outputs.Count);
-        foreach (var outputEl in expectedOutputElements)
-        {
-            var outputId = (string?)outputEl.Attribute("id");
-            Assert.Contains(decision.Outputs, o => o.Id == outputId);
-        }
+		// Outputs
+		var expectedOutputElements = decisionTable.Elements(modelNs + "output").ToList();
+		Assert.NotEmpty(expectedOutputElements);
+		Assert.Equal(expectedOutputElements.Count, decision.Outputs.Count);
+		foreach (var outputEl in expectedOutputElements)
+		{
+			var outputId = (string?)outputEl.Attribute("id");
+			Assert.Contains(decision.Outputs, o => o.Id == outputId);
+		}
 
-        // Rules
-        var expectedRuleElements = decisionTable.Elements(modelNs + "rule").ToList();
-        Assert.NotEmpty(expectedRuleElements);
-        Assert.Equal(expectedRuleElements.Count, decision.Rules.Count);
+		// Rules
+		var expectedRuleElements = decisionTable.Elements(modelNs + "rule").ToList();
+		Assert.NotEmpty(expectedRuleElements);
+		Assert.Equal(expectedRuleElements.Count, decision.Rules.Count);
 
-        // Basic structural validation: each rule should have at least one output mapping
-        foreach (var rule in decision.Rules)
-        {
-            Assert.NotEmpty(rule.OutputValues);
-        }
-    }
+		// Basic structural validation: each rule should have at least one output mapping
+		foreach (var rule in decision.Rules)
+		{
+			Assert.NotEmpty(rule.OutputValues);
+		}
+	}
 
-    [Fact]
-    public async Task ParseAsync_InvalidHitPolicy_ThrowsException()
-    {
-        var dmnXml = @"
+	private static void AssertDeclaredOrDefaultHitPolicy(XElement decisionTable, DmnDecision decision)
+	{
+		var expectedHitPolicy = (string?)decisionTable.Attribute("hitPolicy");
+		if (!string.IsNullOrWhiteSpace(expectedHitPolicy))
+		{
+			Assert.Equal(expectedHitPolicy, decision.HitPolicy);
+		}
+		else
+		{
+			Assert.False(string.IsNullOrWhiteSpace(decision.HitPolicy));
+		}
+	}
+
+	[Fact]
+	public async Task ParseAsync_InvalidHitPolicy_ThrowsException()
+	{
+		const string dmnXml = @"
                         <dmn:definitions xmlns:dmn='https://www.omg.org/spec/DMN/20191111/MODEL/'>
                             <dmn:decision id='creditDecision'>
                                 <dmn:decisionTable id='table1' hitPolicy='INVALID'>
@@ -139,6 +175,6 @@ public class DmnParserTests
                             </dmn:decision>
                         </dmn:definitions>";
 
-        await Assert.ThrowsAsync<DmnParseException>(() => _parser.ParseAsync(dmnXml, TestContext.Current.CancellationToken));
-    }
+		await Assert.ThrowsAsync<DmnParseException>(() => _parser.ParseAsync(dmnXml, TestContext.Current.CancellationToken));
+	}
 }

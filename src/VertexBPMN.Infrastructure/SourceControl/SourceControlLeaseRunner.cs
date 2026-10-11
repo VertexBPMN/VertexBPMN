@@ -14,8 +14,11 @@ internal static class SourceControlLeaseRunner
         Func<CancellationToken, Task<bool>> renew, TimeSpan interval, CancellationToken cancellationToken)
     {
         if (interval <= TimeSpan.Zero || interval > TimeSpan.FromMinutes(1))
-            throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
-        using var execution = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+		{
+			throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+		}
+
+		using var execution = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         using var stopHeartbeat = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var leaseLost = false;
         async Task HeartbeatAsync()
@@ -25,18 +28,25 @@ internal static class SourceControlLeaseRunner
             {
                 while (await timer.WaitForNextTickAsync(stopHeartbeat.Token))
                 {
-                    if (await renew(stopHeartbeat.Token)) continue;
-                    leaseLost = true;
-                    execution.Cancel();
+                    if (await renew(stopHeartbeat.Token))
+					{
+						continue;
+					}
+
+					leaseLost = true;
+                    await execution.CancelAsync();
                     return;
                 }
             }
-            catch (OperationCanceledException) when (stopHeartbeat.IsCancellationRequested) { }
+            catch (OperationCanceledException) when (stopHeartbeat.IsCancellationRequested)
+            {
+                // Expected: the heartbeat was stopped because execution finished.
+            }
             catch
             {
                 // Provider failures may contain secrets. Fail closed without exposing them.
                 leaseLost = true;
-                execution.Cancel();
+                await execution.CancelAsync();
             }
         }
         var heartbeat = HeartbeatAsync();
@@ -46,8 +56,12 @@ internal static class SourceControlLeaseRunner
             await stopHeartbeat.CancelAsync();
             await heartbeat;
             cancellationToken.ThrowIfCancellationRequested();
-            if (leaseLost) throw new SourceControlSecurityException(SourceControlErrorCode.ResultUnknown);
-            return result;
+            if (leaseLost)
+			{
+				throw new SourceControlSecurityException(SourceControlErrorCode.ResultUnknown);
+			}
+
+			return result;
         }
         catch (OperationCanceledException) when (leaseLost && !cancellationToken.IsCancellationRequested)
         {

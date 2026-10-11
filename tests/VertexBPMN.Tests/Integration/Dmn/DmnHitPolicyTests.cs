@@ -6,10 +6,10 @@ namespace VertexBPMN.Tests.Integration.Dmn;
 
 public class DmnHitPolicyTests
 {
-    [Fact]
-    public void Unique_HitPolicy_Returns_First_Match()
-    {
-        const string dmn = @"<definitions xmlns='http://www.omg.org/spec/DMN/20191111/MODEL/'>
+	[Fact]
+	public void Unique_HitPolicy_Returns_First_Match()
+	{
+		const string dmn = @"<definitions xmlns='http://www.omg.org/spec/DMN/20191111/MODEL/'>
   <decision id='d1' name='Test'>
     <decisionTable hitPolicy='UNIQUE'>
       <input id='i1'><inputExpression>age</inputExpression></input>
@@ -25,15 +25,15 @@ public class DmnHitPolicyTests
     </decisionTable>
   </decision>
 </definitions>";
-        var table = DmnDecisionTable.Parse(dmn);
-        var result = table.Evaluate(new Dictionary<string, object> { { "i1", "18" } });
-        Assert.Equal("adult", result["result"]);
-    }
+		var table = DmnDecisionTable.Parse(dmn);
+		var result = table.Evaluate(new Dictionary<string, object>(StringComparer.Ordinal) { { "i1", "18" } });
+		Assert.Equal("adult", result["result"]);
+	}
 
-    [Fact]
-    public void First_HitPolicy_Returns_First_Match()
-    {
-        const string dmn = @"<definitions xmlns='http://www.omg.org/spec/DMN/20191111/MODEL/'>
+	[Fact]
+	public void First_HitPolicy_Returns_First_Match()
+	{
+		const string dmn = @"<definitions xmlns='http://www.omg.org/spec/DMN/20191111/MODEL/'>
   <decision id='d1' name='Test'>
     <decisionTable hitPolicy='FIRST'>
       <input id='i1'><inputExpression>age</inputExpression></input>
@@ -49,8 +49,8 @@ public class DmnHitPolicyTests
     </decisionTable>
   </decision>
 </definitions>";
-        var table = DmnDecisionTable.Parse(dmn);
-        var result = table.Evaluate(new Dictionary<string, object> { { "i1", "18" } });
-        Assert.Equal("adult", result["result"]);
-    }
+		var table = DmnDecisionTable.Parse(dmn);
+		var result = table.Evaluate(new Dictionary<string, object>(StringComparer.Ordinal) { { "i1", "18" } });
+		Assert.Equal("adult", result["result"]);
+	}
 }

@@ -8,111 +8,114 @@ namespace VertexBPMN.Tests.Integration.Studio;
 
 public sealed class HttpMlAnalyticsServiceTests
 {
-    [Fact]
-    public async Task PredictDurationAsync_PostsDurationContract()
-    {
-        var requests = new List<HttpRequestMessage>();
-        var response = new HttpResponseMessage(HttpStatusCode.OK)
-        {
-            Content = JsonContent.Create(new { estimatedDurationMinutes = 12.5 })
-        };
-        var client = new HttpClient(new RecordingHandler(requests, response))
-        {
-            BaseAddress = new Uri("http://api.test/")
-        };
-        var factory = new Mock<IHttpClientFactory>();
-        factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
-        var service = new HttpMlAnalyticsService(factory.Object);
+	[Fact]
+	public async Task PredictDurationAsync_PostsDurationContract()
+	{
+		var requests = new List<HttpRequestMessage>();
+		using var response = new HttpResponseMessage(HttpStatusCode.OK)
+		{
+			Content = JsonContent.Create(new { estimatedDurationMinutes = 12.5 })
+		};
+		using var handler = new RecordingHandler(requests, response);
+		using var client = new HttpClient(handler, disposeHandler: false)
+		{
+			BaseAddress = new Uri("http://api.test/")
+		};
+		var factory = new Mock<IHttpClientFactory>();
+		factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
+		var service = new HttpMlAnalyticsService(factory.Object);
 
-        var result = await service.PredictDurationAsync("invoice", cancellationToken: TestContext.Current.CancellationToken);
+		var result = await service.PredictDurationAsync("invoice", cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(12.5, result.GetProperty("estimatedDurationMinutes").GetDouble());
-        var request = Assert.Single(requests);
-        Assert.Equal(HttpMethod.Post, request.Method);
-        Assert.Equal("http://api.test/api/ml/predict/duration", request.RequestUri!.ToString());
-        var body = await request.Content!.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal("invoice", body.GetProperty("processDefinitionKey").GetString());
-    }
+		Assert.Equal(12.5, result.GetProperty("estimatedDurationMinutes").GetDouble());
+		var request = Assert.Single(requests);
+		Assert.Equal(HttpMethod.Post, request.Method);
+		Assert.Equal("http://api.test/api/ml/predict/duration", request.RequestUri!.ToString());
+		var body = await request.Content!.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
+		Assert.Equal("invoice", body.GetProperty("processDefinitionKey").GetString());
+	}
 
-    [Fact]
-    public async Task PredictBottlenecksAsync_EscapesProcessDefinitionKey()
-    {
-        var requests = new List<HttpRequestMessage>();
-        var response = new HttpResponseMessage(HttpStatusCode.OK)
-        {
-            Content = JsonContent.Create(new { overallBottleneckRisk = 0.4 })
-        };
-        var client = new HttpClient(new RecordingHandler(requests, response))
-        {
-            BaseAddress = new Uri("http://api.test/")
-        };
-        var factory = new Mock<IHttpClientFactory>();
-        factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
-        var service = new HttpMlAnalyticsService(factory.Object);
+	[Fact]
+	public async Task PredictBottlenecksAsync_EscapesProcessDefinitionKey()
+	{
+		var requests = new List<HttpRequestMessage>();
+		using var response = new HttpResponseMessage(HttpStatusCode.OK)
+		{
+			Content = JsonContent.Create(new { overallBottleneckRisk = 0.4 })
+		};
+		using var handler = new RecordingHandler(requests, response);
+		using var client = new HttpClient(handler, disposeHandler: false)
+		{
+			BaseAddress = new Uri("http://api.test/")
+		};
+		var factory = new Mock<IHttpClientFactory>();
+		factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
+		var service = new HttpMlAnalyticsService(factory.Object);
 
-        await service.PredictBottlenecksAsync("invoice/v2", cancellationToken: TestContext.Current.CancellationToken);
+		await service.PredictBottlenecksAsync("invoice/v2", cancellationToken: TestContext.Current.CancellationToken);
 
-        var request = Assert.Single(requests);
-        Assert.Equal("http://api.test/api/ml/predict/bottlenecks/invoice%2Fv2", request.RequestUri!.ToString());
-    }
+		var request = Assert.Single(requests);
+		Assert.Equal("http://api.test/api/ml/predict/bottlenecks/invoice%2Fv2", request.RequestUri!.ToString());
+	}
 
-    [Fact]
-    public async Task TrainModelsAsync_PostsToTrainEndpoint()
-    {
-        var requests = new List<HttpRequestMessage>();
-        var client = new HttpClient(new RecordingHandler(
-            requests,
-            new HttpResponseMessage(HttpStatusCode.OK)))
-        {
-            BaseAddress = new Uri("http://api.test/")
-        };
-        var factory = new Mock<IHttpClientFactory>();
-        factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
-        var service = new HttpMlAnalyticsService(factory.Object);
+	[Fact]
+	public async Task TrainModelsAsync_PostsToTrainEndpoint()
+	{
+		var requests = new List<HttpRequestMessage>();
+		using var response = new HttpResponseMessage(HttpStatusCode.OK);
+		using var handler = new RecordingHandler(requests, response);
+		using var client = new HttpClient(handler, disposeHandler: false)
+		{
+			BaseAddress = new Uri("http://api.test/")
+		};
+		var factory = new Mock<IHttpClientFactory>();
+		factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
+		var service = new HttpMlAnalyticsService(factory.Object);
 
-        await service.TrainModelsAsync(cancellationToken: TestContext.Current.CancellationToken);
+		await service.TrainModelsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        var request = Assert.Single(requests);
-        Assert.Equal(HttpMethod.Post, request.Method);
-        Assert.Equal("http://api.test/api/ml/train", request.RequestUri!.ToString());
-    }
+		var request = Assert.Single(requests);
+		Assert.Equal(HttpMethod.Post, request.Method);
+		Assert.Equal("http://api.test/api/ml/train", request.RequestUri!.ToString());
+	}
 
-    [Fact]
-    public async Task ExportTrainingDataAsync_GetsCsvFromExportEndpoint()
-    {
-        var requests = new List<HttpRequestMessage>();
-        var response = new HttpResponseMessage(HttpStatusCode.OK)
-        {
-            Content = new StringContent("tenantId,processDefinitionKey\n")
-        };
-        var client = new HttpClient(new RecordingHandler(requests, response))
-        {
-            BaseAddress = new Uri("http://api.test/")
-        };
-        var factory = new Mock<IHttpClientFactory>();
-        factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
-        var service = new HttpMlAnalyticsService(factory.Object);
+	[Fact]
+	public async Task ExportTrainingDataAsync_GetsCsvFromExportEndpoint()
+	{
+		var requests = new List<HttpRequestMessage>();
+		using var response = new HttpResponseMessage(HttpStatusCode.OK)
+		{
+			Content = new StringContent("tenantId,processDefinitionKey\n")
+		};
+		using var handler = new RecordingHandler(requests, response);
+		using var client = new HttpClient(handler, disposeHandler: false)
+		{
+			BaseAddress = new Uri("http://api.test/")
+		};
+		var factory = new Mock<IHttpClientFactory>();
+		factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
+		var service = new HttpMlAnalyticsService(factory.Object);
 
-        var csv = await service.ExportTrainingDataAsync("invoice/v2", cancellationToken: TestContext.Current.CancellationToken);
+		var csv = await service.ExportTrainingDataAsync("invoice/v2", cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal("tenantId,processDefinitionKey\n", System.Text.Encoding.UTF8.GetString(csv));
-        var request = Assert.Single(requests);
-        Assert.Equal(HttpMethod.Get, request.Method);
-        Assert.Equal(
-            "http://api.test/api/ml/export/training-data?processDefinitionKey=invoice%2Fv2",
-            request.RequestUri!.ToString());
-    }
+		Assert.Equal("tenantId,processDefinitionKey\n", System.Text.Encoding.UTF8.GetString(csv));
+		var request = Assert.Single(requests);
+		Assert.Equal(HttpMethod.Get, request.Method);
+		Assert.Equal(
+			"http://api.test/api/ml/export/training-data?processDefinitionKey=invoice%2Fv2",
+			request.RequestUri!.ToString());
+	}
 
-    private sealed class RecordingHandler(
-        List<HttpRequestMessage> requests,
-        HttpResponseMessage response) : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request,
-            CancellationToken cancellationToken)
-        {
-            requests.Add(request);
-            return Task.FromResult(response);
-        }
-    }
+	private sealed class RecordingHandler(
+		List<HttpRequestMessage> requests,
+		HttpResponseMessage response) : HttpMessageHandler
+	{
+		protected override Task<HttpResponseMessage> SendAsync(
+			HttpRequestMessage request,
+			CancellationToken cancellationToken)
+		{
+			requests.Add(request);
+			return Task.FromResult(response);
+		}
+	}
 }

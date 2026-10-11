@@ -12,14 +12,17 @@ public sealed class InMemoryRepositoryService : IRepositoryService
 
     public ValueTask<ProcessDefinition> DeployAsync(string bpmnXml, string name, string? tenantId = null, CancellationToken cancellationToken = default)
     {
-        string processId = name;
+        var processId = name;
         try
         {
             var doc = XDocument.Parse(bpmnXml);
             var ns = doc.Root?.Name.Namespace ?? "";
             var proc = doc.Descendants(ns + "process").FirstOrDefault();
-            if (proc != null) processId = (string?)proc.Attribute("id") ?? name;
-        }
+            if (proc != null)
+			{
+				processId = (string?)proc.Attribute("id") ?? name;
+			}
+		}
         catch { /* ignore */ }
 
         var version = _latest.TryGetValue((processId, tenantId), out var prev) ? prev.Version + 1 : 1;
@@ -64,8 +67,11 @@ public sealed class InMemoryRepositoryService : IRepositoryService
                     .Where(x => x.Key == removed.Key && x.TenantId == removed.TenantId)
                     .OrderByDescending(v => v.Version)
                     .FirstOrDefault();
-                if (rest != null) _latest[(rest.Key, rest.TenantId)] = rest;
-            }
+                if (rest != null)
+				{
+					_latest[(rest.Key, rest.TenantId)] = rest;
+				}
+			}
         }
         return ValueTask.CompletedTask;
     }

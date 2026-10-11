@@ -48,43 +48,52 @@ public sealed class OpenApiConnectorTemplateImporter : IOpenApiConnectorTemplate
 					continue;
 				}
 
-				var op = methodProp.Value;
-
-				if (!op.TryGetProperty("operationId", out var operationIdProp) || string.IsNullOrWhiteSpace(operationIdProp.GetString()))
-				{
-					report.Add(new($"{method.ToUpperInvariant()} {path}", N8nImportDisposition.Unsupported, "operationId fehlt"));
-					continue;
-				}
-				var operationId = operationIdProp.GetString()!;
-
-				var props = new List<ConnectorTemplateProperty>();
-				var notes = new List<string>();
-				var needsReview = false;
-
-				CollectParameters(op, props, ref needsReview, notes);
-				CollectRequestBody(op, props, ref needsReview, notes);
-				var auth = ResolveAuth(op, root, props, ref needsReview, notes);
-
-				var finalProps = new List<ConnectorTemplateProperty>(props)
-				{
-					new("vertex:connector.method", "string", true, method, null),
-					new("vertex:connector.endpoint", "string", true, serverUrl + path, null)
-				};
-				if (auth != null)
-				{
-					finalProps.Add(new("vertex:connector.authScheme", "string", true, auth, null));
-				}
-
-				templates.Add(new ConnectorTemplateWriteRequest(
-					operationId, "openapi-import", ["serviceTask"], "http", null, finalProps));
-
-				report.Add(new(operationId,
-					needsReview ? N8nImportDisposition.NeedsReview : N8nImportDisposition.Migrated,
-					needsReview ? string.Join("; ", notes) : $"Gemappt von {method.ToUpperInvariant()} {path}"));
+				ProcessOperation(methodProp.Value, root, path, serverUrl, method, templates, report);
 			}
 		}
 
 		return new OpenApiImportResult(templates, report);
+	}
+
+	private static void ProcessOperation(JsonElement op, JsonElement root, string path, string serverUrl, string method, List<ConnectorTemplateWriteRequest> templates, List<OpenApiImportReportItem> report)
+	{
+		if (!op.TryGetProperty("operationId", out var operationIdProp))
+		{
+			report.Add(new($"{method.ToUpperInvariant()} {path}", N8nImportDisposition.Unsupported, "operationId fehlt"));
+			return;
+		}
+
+		var operationId = operationIdProp.GetString();
+		if (string.IsNullOrWhiteSpace(operationId))
+		{
+			report.Add(new($"{method.ToUpperInvariant()} {path}", N8nImportDisposition.Unsupported, "operationId fehlt"));
+			return;
+		}
+
+		var props = new List<ConnectorTemplateProperty>();
+		var notes = new List<string>();
+		var needsReview = false;
+
+		CollectParameters(op, props, ref needsReview, notes);
+		CollectRequestBody(op, props, ref needsReview, notes);
+		var auth = ResolveAuth(op, root, props, ref needsReview, notes);
+
+		var finalProps = new List<ConnectorTemplateProperty>(props)
+		{
+			new("vertex:connector.method", "string", true, method, null),
+			new("vertex:connector.endpoint", "string", true, serverUrl + path, null)
+		};
+		if (auth != null)
+		{
+			finalProps.Add(new("vertex:connector.authScheme", "string", true, auth, null));
+		}
+
+		templates.Add(new ConnectorTemplateWriteRequest(
+			operationId, "openapi-import", ["serviceTask"], "http", null, finalProps));
+
+		report.Add(new(operationId,
+			needsReview ? N8nImportDisposition.NeedsReview : N8nImportDisposition.Migrated,
+			needsReview ? string.Join("; ", notes) : $"Gemappt von {method.ToUpperInvariant()} {path}"));
 	}
 
 	private static string ReadServerUrl(JsonElement root)
@@ -93,12 +102,18 @@ public sealed class OpenApiConnectorTemplateImporter : IOpenApiConnectorTemplate
 		{
 			foreach (var server in servers.EnumerateArray())
 			{
-				if (server.ValueKind == JsonValueKind.Object &&
-					server.TryGetProperty("url", out var url) &&
-					!string.IsNullOrWhiteSpace(url.GetString()))
+				if (server.ValueKind != JsonValueKind.Object || !server.TryGetProperty("url", out var url))
 				{
-					return url.GetString()!.TrimEnd('/');
+					continue;
 				}
+
+				var serverUrl = url.GetString();
+				if (string.IsNullOrWhiteSpace(serverUrl))
+				{
+					continue;
+				}
+
+				return serverUrl.TrimEnd('/');
 			}
 		}
 		return string.Empty;
@@ -132,7 +147,7 @@ public sealed class OpenApiConnectorTemplateImporter : IOpenApiConnectorTemplate
 				type = MapType(schema, ref needsReview, notes);
 			}
 
-			props.Add(new ConnectorTemplateProperty(name!, type, Required: location == "path"));
+			props.Add(new ConnectorTemplateProperty(name, type, Required: location == "path"));
 		}
 	}
 

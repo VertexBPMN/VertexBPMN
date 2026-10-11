@@ -13,13 +13,12 @@ namespace VertexBPMN.Application.Handlers;
 /// </summary>
 public class GenericAiServiceTaskHandler : IServiceTaskHandler
 {
-	private readonly HttpClient _httpClient;
 	private readonly ILogger<GenericAiServiceTaskHandler> _logger;
 	private readonly TracerProvider _tracerProvider;
 
 	public GenericAiServiceTaskHandler(HttpClient httpClient, ILogger<GenericAiServiceTaskHandler> logger, TracerProvider tracerProvider)
 	{
-		_httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+		ArgumentNullException.ThrowIfNull(httpClient);
 		_logger = logger ?? throw new ArgumentNullException(nameof(logger));
 		_tracerProvider = tracerProvider ?? throw new ArgumentNullException(nameof(tracerProvider));
 	}
@@ -27,7 +26,7 @@ public class GenericAiServiceTaskHandler : IServiceTaskHandler
 	/// <summary>
 	/// Executes AI tasks using a generic, configurable approach that works with any AI provider.
 	/// </summary>
-	public async Task ExecuteAsync(IDictionary<string, string> attributes, IDictionary<string, object> variables, CancellationToken cancellationToken = default)
+	public async Task ExecuteAsync(IDictionary<string, string> attributes, IDictionary<string, object> variables, CancellationToken ct = default)
 	{
 		var tracer = _tracerProvider.GetTracer("VertexBPMN.AI.Generic");
 		using var span = tracer.StartActiveSpan("GenericAI.ExecuteTask");
@@ -55,7 +54,7 @@ public class GenericAiServiceTaskHandler : IServiceTaskHandler
 		catch (Exception ex)
 		{
 			var errorMessage = $"Generic AI service task execution failed: {ex.Message}";
-			_logger.LogError(ex, errorMessage);
+			_logger.LogError("Generic AI service task execution failed.");
 			span.SetStatus(Status.Error.WithDescription(errorMessage));
 			throw new ServiceTaskExecutionException(errorMessage, ex);
 		}

@@ -12,32 +12,32 @@ namespace VertexBPMN.Studio.UiTests;
 
 public sealed partial class LocalStudioInfrastructureTests
 {
-    [Fact]
-    [Trait("Category", "LocalStudioE2E")]
-    public async Task EditorFeatures_LanesAnnotationsAndAssociations_DoNotBlockExecution()
-    {
-        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
-        using var apiClient = host.CreateApiClient();
-        var processKey = $"StudioE2E_EdFeat_{host.RunId}";
+	[Fact]
+	[Trait("Category", "LocalStudioE2E")]
+	public async Task EditorFeatures_LanesAnnotationsAndAssociations_DoNotBlockExecution()
+	{
+		Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
+		using var apiClient = host.CreateApiClient();
+		var processKey = $"StudioE2E_EdFeat_{host.RunId}";
 
-        await DeployUnderTestAsync(apiClient, processKey, BuildEditorFeaturesBpmn(processKey));
-        host.RegisterProcessDefinitionCleanup(processKey);
+		await DeployUnderTestAsync(apiClient, processKey, BuildEditorFeaturesBpmn(processKey));
+		host.RegisterProcessDefinitionCleanup(processKey);
 
-        var instanceId = await StartProcessAsync(apiClient, processKey, null, $"ef-{host.RunId}");
+		var instanceId = await StartProcessAsync(apiClient, processKey, null, $"ef-{host.RunId}");
 
-        await WaitForOpenTaskCountAsync(instanceId, 1);
-        var open = await GetOpenTasksAsync(instanceId);
-        Assert.Equal("t", open[0].GetProperty("activityId").GetString());
+		await WaitForOpenTaskCountAsync(instanceId, 1);
+		var open = await GetOpenTasksAsync(instanceId);
+		Assert.Equal("t", open[0].GetProperty("activityId").GetString());
 
-        await CompleteTaskAsync(open[0].GetProperty("id").GetGuid());
-        await WaitForInstanceStateAsync(instanceId, "Completed");
-    }
+		await CompleteTaskAsync(open[0].GetProperty("id").GetGuid());
+		await WaitForInstanceStateAsync(instanceId, "Completed");
+	}
 
-    // ---- helpers ----
+	// ---- helpers ----
 
-    private static string BuildEditorFeaturesBpmn(string processKey)
-    {
-        return $$"""
+	private static string BuildEditorFeaturesBpmn(string processKey)
+	{
+		return $$"""
             <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
                          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                          xmlns:vertex="http://vertexbpmn.dev/schema"
@@ -65,5 +65,5 @@ public sealed partial class LocalStudioInfrastructureTests
               </BPMNDiagram>
             </definitions>
             """;
-    }
+	}
 }

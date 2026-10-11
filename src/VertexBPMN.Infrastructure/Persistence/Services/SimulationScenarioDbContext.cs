@@ -1,8 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using VertexBPMN.Domain.Entities;
 
-namespace VertexBPMN.Infrastructure.Persistence.Services
-{
+namespace VertexBPMN.Infrastructure.Persistence.Services;
+
     public class SimulationScenarioDbContext : DbContext
     {
         public SimulationScenarioDbContext(DbContextOptions<SimulationScenarioDbContext> options) : base(options) { }
@@ -26,4 +26,3 @@ namespace VertexBPMN.Infrastructure.Persistence.Services
             );
         }
     }
-}

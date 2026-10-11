@@ -13,7 +13,7 @@ public sealed class GitModelHistoryTests
 	private static readonly HistoryRequest Request = new("models/example.bpmn", Commit, 1, null);
 
 	[Theory]
-	[InlineData("invalid\0" + "1800000000\0subject\0")]
+	[InlineData("invalid\01800000000\0subject\0")]
 	[InlineData("1111111111111111111111111111111111111111\0not-a-date\0subject\0")]
 	[InlineData("1111111111111111111111111111111111111111\09999999999999\0subject\0")]
 	[InlineData("1111111111111111111111111111111111111111\01800000000\0subject")]

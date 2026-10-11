@@ -5,7 +5,7 @@ namespace VertexBPMN.Tests.Parsing.Roundtrip;
 
 public class StrictPhase2VendorExtensionTests
 {
-    private const string Xml = """
+	private const string Xml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
                   xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
                   xmlns:zeebe="http://zeebe.io/schema/zeebe/1.0"
@@ -28,38 +28,38 @@ public class StrictPhase2VendorExtensionTests
 </bpmn:definitions>
 """;
 
-    [Fact]
-    public async Task VendorNormalization_Disabled_ByDefault()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict })
-            .ParseAsync(Xml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task VendorNormalization_Disabled_ByDefault()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict })
+			.ParseAsync(Xml, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(model.RawMetadata);
-        Assert.True(model.RawMetadata!.RawExtensionElements?.ContainsKey("ut1") == true);
-        Assert.Null(model.RawMetadata!.VendorNormalizedExtensions);
-    }
+		Assert.NotNull(model.RawMetadata);
+		Assert.True(model.RawMetadata.RawExtensionElements?.ContainsKey("ut1") == true);
+		Assert.Null(model.RawMetadata.VendorNormalizedExtensions);
+	}
 
-    [Fact]
-    public async Task VendorNormalization_Enabled_FlattensKnownVendors()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            NormalizeVendorExtensions = true
-        }).ParseAsync(Xml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task VendorNormalization_Enabled_FlattensKnownVendors()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			NormalizeVendorExtensions = true
+		}).ParseAsync(Xml, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(model.RawMetadata);
-        var map = model.RawMetadata!.VendorNormalizedExtensions;
-        Assert.NotNull(map);
-        Assert.True(map!.ContainsKey("ut1"));
+		Assert.NotNull(model.RawMetadata);
+		var map = model.RawMetadata.VendorNormalizedExtensions;
+		Assert.NotNull(map);
+		Assert.True(map.ContainsKey("ut1"));
 
-        var ut = map["ut1"];
-        Assert.Equal("alice", ut["camunda:assignee"]);
-        Assert.Equal("workerA", ut["zeebe:taskDefinition.type"]);
-        Assert.Equal("=x", ut["zeebe:ioMapping.input.varX"]);
-        Assert.Equal("http://api", ut["mcp:mcpServiceTask.mcpServerUrl"]);
-        Assert.Equal("Do", ut["mcp:mcpServiceTask.mcpMethod"]);
-        Assert.Equal(@"{""a"":1}", ut["mcp:mcpServiceTask.mcpParams"]);
-        Assert.True(model.RawMetadata!.RawExtensionElements?.ContainsKey("ut1") == true);
-    }
+		var ut = map["ut1"];
+		Assert.Equal("alice", ut["camunda:assignee"]);
+		Assert.Equal("workerA", ut["zeebe:taskDefinition.type"]);
+		Assert.Equal("=x", ut["zeebe:ioMapping.input.varX"]);
+		Assert.Equal("http://api", ut["mcp:mcpServiceTask.mcpServerUrl"]);
+		Assert.Equal("Do", ut["mcp:mcpServiceTask.mcpMethod"]);
+		Assert.Equal(@"{""a"":1}", ut["mcp:mcpServiceTask.mcpParams"]);
+		Assert.True(model.RawMetadata.RawExtensionElements?.ContainsKey("ut1") == true);
+	}
 }

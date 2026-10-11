@@ -57,18 +57,18 @@ public class SemanticValidationService(IBpmnParser parser) : ISemanticValidation
 		var errors = new List<string>();
 		var warnings = new List<string>();
 		var suggestions = new List<string>();
-		var hasDecisionTable = dmnXml.Contains("<decisionTable");
+		var hasDecisionTable = dmnXml.Contains("<decisionTable", StringComparison.Ordinal);
 		if (!hasDecisionTable)
 		{
 			errors.Add("No decision table found.");
 		}
 
-		if (!dmnXml.Contains("<input"))
+		if (!dmnXml.Contains("<input", StringComparison.Ordinal))
 		{
 			warnings.Add("No input variables defined.");
 		}
 
-		if (!dmnXml.Contains("<output"))
+		if (!dmnXml.Contains("<output", StringComparison.Ordinal))
 		{
 			warnings.Add("No output variables defined.");
 		}

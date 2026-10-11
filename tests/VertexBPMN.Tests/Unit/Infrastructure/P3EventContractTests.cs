@@ -33,7 +33,8 @@ public sealed class P3EventContractTests
 			services.AddScoped<IMessageDispatcher, PersistentMessageDispatcher>();
 			ProviderImpl = services.BuildServiceProvider();
 			Provider = ProviderImpl;
-			using var db = ProviderImpl.CreateScope().ServiceProvider.GetRequiredService<BpmnDbContext>();
+			using var scope = ProviderImpl.CreateScope();
+			var db = scope.ServiceProvider.GetRequiredService<BpmnDbContext>();
 			db.Database.EnsureCreated();
 		}
 
@@ -53,13 +54,13 @@ public sealed class P3EventContractTests
 
 	private sealed class RecordingTransport : IRuntimeOutboxTransport
 	{
-		public List<KeyValuePair<string, string>> Sent { get; } = new();
-		public ValueTask PublishAsync(RuntimeOutboxMessage message, CancellationToken ct = default)
+		public List<KeyValuePair<string, string>> Sent { get; } = [];
+		public ValueTask PublishAsync(RuntimeOutboxMessage message, CancellationToken cancellationToken = default)
 		{
 			Sent.Add(new KeyValuePair<string, string>(message.Id.ToString("N"), message.EventType));
 			return ValueTask.CompletedTask;
 		}
-		public ValueTask<OutboxTransportHealth> CheckHealthAsync(CancellationToken ct = default) =>
+		public ValueTask<OutboxTransportHealth> CheckHealthAsync(CancellationToken cancellationToken = default) =>
 			ValueTask.FromResult(new OutboxTransportHealth(true, "recording transport"));
 	}
 
@@ -69,12 +70,12 @@ public sealed class P3EventContractTests
 		await using var h = new Harness();
 		using var scope = h.Provider.CreateScope();
 		var dispatcher = scope.ServiceProvider.GetRequiredService<IMessageDispatcher>();
-		var attributes = new Dictionary<string, string>
+		var attributes = new Dictionary<string, string>(StringComparer.Ordinal)
 		{
 			["implementation"] = "calculateScore",
 			["vertex:mode"] = "verify"
 		};
-		var variables = new Dictionary<string, object> { ["applicantName"] = "Yova", ["age"] = 40 };
+		var variables = new Dictionary<string, object>(StringComparer.Ordinal) { ["applicantName"] = "Yova", ["age"] = 40 };
 		var processInstanceId = Guid.NewGuid();
 		const string tenantId = "tenant-a";
 
@@ -99,12 +100,12 @@ public sealed class P3EventContractTests
 
 		// 2) Broker send is a SEPARATE, durable outbox-publisher step with the SAME stable id.
 		var transport = new RecordingTransport();
-		var publisher = new RuntimeOutboxPublisherService(
+		using var publisher = new RuntimeOutboxPublisherService(
 			h.Provider.GetRequiredService<IServiceScopeFactory>(),
 			transport,
 			new RuntimeOutboxOptions { LeaseSeconds = 30 },
 			NullLogger<RuntimeOutboxPublisherService>.Instance);
-		var published = await publisher.RunOnceAsync();
+		var published = await publisher.RunOnceAsync(cancellationToken: TestContext.Current.CancellationToken);
 		Assert.Equal(1, published);
 
 		var sent = Assert.Single(transport.Sent);
@@ -121,8 +122,8 @@ public sealed class P3EventContractTests
 		await using var h = new Harness();
 		using var scope = h.Provider.CreateScope();
 		var dispatcher = scope.ServiceProvider.GetRequiredService<IMessageDispatcher>();
-		var attributes = new Dictionary<string, string> { ["implementation"] = "classify" };
-		var variables = new Dictionary<string, object> { ["text"] = "hello" };
+		var attributes = new Dictionary<string, string>(StringComparer.Ordinal) { ["implementation"] = "classify" };
+		var variables = new Dictionary<string, object>(StringComparer.Ordinal) { ["text"] = "hello" };
 		var processInstanceId = Guid.NewGuid();
 		const string tenantId = "tenant-a";
 
@@ -142,12 +143,12 @@ public sealed class P3EventContractTests
 		Assert.Equal("hello", root.GetProperty("variables").GetProperty("text").GetString());
 
 		var transport = new RecordingTransport();
-		var publisher = new RuntimeOutboxPublisherService(
+		using var publisher = new RuntimeOutboxPublisherService(
 			h.Provider.GetRequiredService<IServiceScopeFactory>(),
 			transport,
 			new RuntimeOutboxOptions { LeaseSeconds = 30 },
 			NullLogger<RuntimeOutboxPublisherService>.Instance);
-		var published = await publisher.RunOnceAsync();
+		var published = await publisher.RunOnceAsync(cancellationToken: TestContext.Current.CancellationToken);
 		Assert.Equal(1, published);
 		Assert.Equal(row.Id.ToString("N"), Assert.Single(transport.Sent).Key);
 		Assert.Equal("AiTaskDispatch", Assert.Single(transport.Sent).Value);
@@ -165,16 +166,16 @@ public sealed class P3EventContractTests
 		var dispatcher = scope.ServiceProvider.GetRequiredService<IMessageDispatcher>();
 		Assert.IsType<PersistentMessageDispatcher>(dispatcher);
 
-		var vars = new Dictionary<string, object> { ["k"] = "v" };
-		var attrs = new Dictionary<string, string> { ["implementation"] = "x" };
+		var vars = new Dictionary<string, object>(StringComparer.Ordinal) { ["k"] = "v" };
+		var attrs = new Dictionary<string, string>(StringComparer.Ordinal) { ["implementation"] = "x" };
 
-		await dispatcher.DispatchUserTaskAsync("bob", "task-1", vars);
-		await dispatcher.QueueTaskAsync("task-2", "type-a", vars);
-		await dispatcher.DispatchServiceTaskAsync("w", "x", attrs, vars);
-		await dispatcher.DispatchAiTaskAsync("w", "provider", "model", attrs, vars);
+		await dispatcher.DispatchUserTaskAsync("bob", "task-1", vars, cancellationToken: TestContext.Current.CancellationToken);
+		await dispatcher.QueueTaskAsync("task-2", "type-a", vars, cancellationToken: TestContext.Current.CancellationToken);
+		await dispatcher.DispatchServiceTaskAsync("w", "x", attrs, vars, cancellationToken: TestContext.Current.CancellationToken);
+		await dispatcher.DispatchAiTaskAsync("w", "provider", "model", attrs, vars, cancellationToken: TestContext.Current.CancellationToken);
 		await dispatcher.PublishCaseTokenAsync(new Domain.Model.Cmn.CaseToken(
 			Guid.NewGuid(), Guid.Empty, "", "",
-			new Dictionary<string, object>(), DateTime.UtcNow));
+			new Dictionary<string, object>(StringComparer.Ordinal), DateTime.UtcNow), cancellationToken: TestContext.Current.CancellationToken);
 
 		var rows = await h.ReadOutboxAsync();
 		Assert.Equal(5, rows.Count);

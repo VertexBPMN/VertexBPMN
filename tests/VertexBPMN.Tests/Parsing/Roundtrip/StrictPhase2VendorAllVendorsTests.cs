@@ -5,7 +5,7 @@ namespace VertexBPMN.Tests.Parsing.Roundtrip;
 
 public class StrictPhase2VendorAllVendorsTests
 {
-    private const string Xml = """
+	private const string Xml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
                   xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
                   xmlns:zeebe="http://zeebe.io/schema/zeebe/1.0"
@@ -82,64 +82,64 @@ public class StrictPhase2VendorAllVendorsTests
 </bpmn:definitions>
 """;
 
-    [Fact]
-    public async Task AllVendors_Disabled_Default_No_Map()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict
-        }).ParseAsync(Xml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task AllVendors_Disabled_Default_No_Map()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict
+		}).ParseAsync(Xml, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(model.RawMetadata);
-        Assert.Null(model.RawMetadata!.VendorNormalizedExtensions);
-    }
+		Assert.NotNull(model.RawMetadata);
+		Assert.Null(model.RawMetadata.VendorNormalizedExtensions);
+	}
 
-    [Fact]
-    public async Task AllVendors_Enabled_NoGenerics_GenericKeysMissing()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            NormalizeVendorExtensions = true
-        }).ParseAsync(Xml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task AllVendors_Enabled_NoGenerics_GenericKeysMissing()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			NormalizeVendorExtensions = true
+		}).ParseAsync(Xml, TestContext.Current.CancellationToken);
 
-        var map = model.RawMetadata!.VendorNormalizedExtensions!;
-        Assert.True(map.ContainsKey("utAll"));
-        var b = map["utAll"];
+		var map = model.RawMetadata!.VendorNormalizedExtensions!;
+		Assert.True(map.ContainsKey("utAll"));
+		var b = map["utAll"];
 
-        // Representative subset
-        Assert.Equal("alice", b["camunda:assignee"]);
-        Assert.Equal("string", b["camunda:formField.cf1.type"]);
-        Assert.Equal("cVal", b["camunda:property.cProp"]);
-        Assert.Equal("workType", b["zeebe:taskDefinition.type"]);
-        Assert.Equal("=inExpr", b["zeebe:ioMapping.input.inVar"]);
-        Assert.Equal("=outExpr", b["zeebe:ioMapping.output.outVar"]);
-        Assert.Equal("v1", b["zeebe:taskHeaders.h1"]);
-        Assert.Equal("bob", b["flowable:assignee"]);
-        Assert.Equal("boolean", b["activiti:formProperty.ap1.type"]);
-        Assert.Equal("carol", b["cib:assignee"]);
-        Assert.Equal("http", b["cib:connector.con1.type"]);
-        Assert.Equal("Do.X.Class", b["jbpm:workItemHandler.DoX.class"]);
-        Assert.Equal("jump", b["osmanthus:advance.type"]);
-        Assert.Equal("frmKey", b["alfresco:formKey"]);
-        Assert.Equal("http://mcp", b["mcp:mcpServiceTask.mcpServerUrl"]);
-        Assert.DoesNotContain("my:flag.enabled", b.Keys); // generics OFF
-    }
+		// Representative subset
+		Assert.Equal("alice", b["camunda:assignee"]);
+		Assert.Equal("string", b["camunda:formField.cf1.type"]);
+		Assert.Equal("cVal", b["camunda:property.cProp"]);
+		Assert.Equal("workType", b["zeebe:taskDefinition.type"]);
+		Assert.Equal("=inExpr", b["zeebe:ioMapping.input.inVar"]);
+		Assert.Equal("=outExpr", b["zeebe:ioMapping.output.outVar"]);
+		Assert.Equal("v1", b["zeebe:taskHeaders.h1"]);
+		Assert.Equal("bob", b["flowable:assignee"]);
+		Assert.Equal("boolean", b["activiti:formProperty.ap1.type"]);
+		Assert.Equal("carol", b["cib:assignee"]);
+		Assert.Equal("http", b["cib:connector.con1.type"]);
+		Assert.Equal("Do.X.Class", b["jbpm:workItemHandler.DoX.class"]);
+		Assert.Equal("jump", b["osmanthus:advance.type"]);
+		Assert.Equal("frmKey", b["alfresco:formKey"]);
+		Assert.Equal("http://mcp", b["mcp:mcpServiceTask.mcpServerUrl"]);
+		Assert.DoesNotContain("my:flag.enabled", b.Keys, StringComparer.Ordinal); // generics OFF
+	}
 
-    //[Fact]
-    //public void AllVendors_Enabled_WithGenerics_GenericKeysPresent()
-    //{
-    //    var model = await new BpmnParser(new BpmnParserOptions
-    //    {
-    //        RoundtripMode = BpmnRoundtripMode.Strict,
-    //        NormalizeVendorExtensions = true,
-    //        NormalizeUnknownVendorExtensions = true
-    //    }).ParseAsync(Xml);
+	//[Fact]
+	//public void AllVendors_Enabled_WithGenerics_GenericKeysPresent()
+	//{
+	//    var model = await new BpmnParser(new BpmnParserOptions
+	//    {
+	//        RoundtripMode = BpmnRoundtripMode.Strict,
+	//        NormalizeVendorExtensions = true,
+	//        NormalizeUnknownVendorExtensions = true
+	//    }).ParseAsync(Xml);
 
-    //    var map = model.RawMetadata!.VendorNormalizedExtensions!;
-    //    var b = map["utAll"];
+	//    var map = model.RawMetadata!.VendorNormalizedExtensions!;
+	//    var b = map["utAll"];
 
-    //    Assert.Equal("true", b["my:flag.enabled"]);
-    //    Assert.Equal("fast", b["my:flag.mode"]);
-    //}
+	//    Assert.Equal("true", b["my:flag.enabled"]);
+	//    Assert.Equal("fast", b["my:flag.mode"]);
+	//}
 }

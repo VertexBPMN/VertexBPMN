@@ -1,15 +1,28 @@
 ﻿using System;
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace VertexBPMN.Infrastructure.Persistence.Migrations.Decision
-{
+namespace VertexBPMN.Infrastructure.Persistence.Migrations.Decision;
+
     /// <inheritdoc />
+    [SuppressMessage("Meziantou.Analyzer", "MA0048", Justification = "EF migration snapshot / generated code.")]
     public partial class InitialCreate : Migration
     {
+        private static readonly string[] DefinitionKeyTenantIdColumns = new[] { "Key", "TenantId" };
+        private static readonly string[] InstanceKeyTenantIdColumns = new[] { "DecisionDefinitionKey", "TenantId" };
+
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
+        {
+            CreateDecisionDefinitionsTable(migrationBuilder);
+            CreateDecisionInstancesTable(migrationBuilder);
+            CreateDmnDecisionTablesTable(migrationBuilder);
+            CreateIndexes(migrationBuilder);
+        }
+
+        private static void CreateDecisionDefinitionsTable(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.CreateTable(
                 name: "DecisionDefinitions",
@@ -25,7 +38,10 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Decision
                 {
                     table.PrimaryKey("PK_DecisionDefinitions", x => x.Id);
                 });
+        }
 
+        private static void CreateDecisionInstancesTable(MigrationBuilder migrationBuilder)
+        {
             migrationBuilder.CreateTable(
                 name: "DecisionInstances",
                 columns: table => new
@@ -43,7 +59,10 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Decision
                 {
                     table.PrimaryKey("PK_DecisionInstances", x => x.Id);
                 });
+        }
 
+        private static void CreateDmnDecisionTablesTable(MigrationBuilder migrationBuilder)
+        {
             migrationBuilder.CreateTable(
                 name: "DmnDecisionTables",
                 columns: table => new
@@ -59,7 +78,10 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Decision
                 {
                     table.PrimaryKey("PK_DmnDecisionTables", x => x.Key);
                 });
+        }
 
+        private static void CreateIndexes(MigrationBuilder migrationBuilder)
+        {
             migrationBuilder.CreateIndex(
                 name: "IX_DecisionDefinitions_Key",
                 table: "DecisionDefinitions",
@@ -68,7 +90,7 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Decision
             migrationBuilder.CreateIndex(
                 name: "IX_DecisionDefinitions_Key_TenantId",
                 table: "DecisionDefinitions",
-                columns: new[] { "Key", "TenantId" },
+                columns: DefinitionKeyTenantIdColumns,
                 unique: true);
 
             migrationBuilder.CreateIndex(
@@ -79,7 +101,7 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Decision
             migrationBuilder.CreateIndex(
                 name: "IX_DecisionInstances_DecisionDefinitionKey_TenantId",
                 table: "DecisionInstances",
-                columns: new[] { "DecisionDefinitionKey", "TenantId" });
+                columns: InstanceKeyTenantIdColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_DecisionInstances_EvaluationTime",
@@ -110,4 +132,3 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Decision
                 name: "DmnDecisionTables");
         }
     }
-}

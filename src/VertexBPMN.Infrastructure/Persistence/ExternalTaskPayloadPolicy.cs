@@ -14,8 +14,11 @@ internal static class ExternalTaskPayloadPolicy
     {
         ValidateJson(result, 1);
         if (Encoding.UTF8.GetByteCount(result.GetRawText()) > MaximumBytes)
-            throw new ExternalTaskPayloadException("payload_too_large");
-        ValidateOutputSchema(result, schemaSnapshot);
+		{
+			throw new ExternalTaskPayloadException("payload_too_large");
+		}
+
+		ValidateOutputSchema(result, schemaSnapshot);
         var canonical = Canonicalize(result);
         return (canonical, Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonical))));
     }
@@ -47,21 +50,30 @@ internal static class ExternalTaskPayloadPolicy
     private static void ValidateOutputSchema(JsonElement result, string schemaSnapshot)
     {
         if (result.ValueKind != JsonValueKind.Object)
-            throw new ExternalTaskPayloadException("result_schema_invalid");
-        try
+		{
+			throw new ExternalTaskPayloadException("result_schema_invalid");
+		}
+
+		try
         {
             using var schema = JsonDocument.Parse(schemaSnapshot, new JsonDocumentOptions { MaxDepth = MaximumDepth });
             if (!schema.RootElement.TryGetProperty("output", out var output)
                 || !output.TryGetProperty("properties", out var properties)
                 || properties.ValueKind != JsonValueKind.Object)
-                throw new ExternalTaskPayloadException("result_schema_invalid");
-            var allowed = properties.EnumerateObject().ToDictionary(item => item.Name, item => item.Value, StringComparer.Ordinal);
+			{
+				throw new ExternalTaskPayloadException("result_schema_invalid");
+			}
+
+			var allowed = properties.EnumerateObject().ToDictionary(item => item.Name, item => item.Value, StringComparer.Ordinal);
             var actual = result.EnumerateObject().ToDictionary(item => item.Name, item => item.Value, StringComparer.Ordinal);
             var required = output.TryGetProperty("required", out var requiredElement)
                 ? requiredElement.EnumerateArray().Select(item => item.GetString()!).ToArray() : [];
             if (actual.Keys.Any(name => !allowed.ContainsKey(name)) || required.Any(name => !actual.ContainsKey(name)))
-                throw new ExternalTaskPayloadException("result_schema_invalid");
-            foreach (var pair in actual)
+			{
+				throw new ExternalTaskPayloadException("result_schema_invalid");
+			}
+
+			foreach (var pair in actual)
             {
                 var field = allowed[pair.Key];
                 var type = field.GetProperty("type").GetString();
@@ -74,8 +86,11 @@ internal static class ExternalTaskPayloadPolicy
                     "integer" => pair.Value.ValueKind == JsonValueKind.Number && pair.Value.TryGetInt64(out _),
                     _ => false
                 };
-                if (!valid) throw new ExternalTaskPayloadException("result_schema_invalid");
-            }
+                if (!valid)
+				{
+					throw new ExternalTaskPayloadException("result_schema_invalid");
+				}
+			}
         }
         catch (ExternalTaskPayloadException) { throw; }
         catch (Exception exception) when (exception is JsonException or InvalidOperationException or KeyNotFoundException)
@@ -86,25 +101,42 @@ internal static class ExternalTaskPayloadPolicy
 
     private static void ValidateJson(JsonElement value, int depth)
     {
-        if (depth > MaximumDepth) throw new ExternalTaskPayloadException("result_schema_invalid");
-        if (value.ValueKind == JsonValueKind.Object)
+        if (depth > MaximumDepth)
+		{
+			throw new ExternalTaskPayloadException("result_schema_invalid");
+		}
+
+		if (value.ValueKind == JsonValueKind.Object)
         {
             var names = new HashSet<string>(StringComparer.Ordinal);
             foreach (var property in value.EnumerateObject())
             {
-                if (!names.Add(property.Name)) throw new ExternalTaskPayloadException("duplicate_json_property");
-                ValidateJson(property.Value, depth + 1);
+                if (!names.Add(property.Name))
+				{
+					throw new ExternalTaskPayloadException("duplicate_json_property");
+				}
+
+				ValidateJson(property.Value, depth + 1);
             }
         }
         else if (value.ValueKind == JsonValueKind.Array)
-            foreach (var item in value.EnumerateArray()) ValidateJson(item, depth + 1);
-    }
+		{
+			foreach (var item in value.EnumerateArray())
+			{
+				ValidateJson(item, depth + 1);
+			}
+		}
+	}
 
     private static string Canonicalize(JsonElement value)
     {
         var buffer = new ArrayBufferWriter<byte>();
-        using (var writer = new Utf8JsonWriter(buffer)) WriteCanonical(writer, value);
-        return Encoding.UTF8.GetString(buffer.WrittenSpan);
+        using (var writer = new Utf8JsonWriter(buffer))
+		{
+			WriteCanonical(writer, value);
+		}
+
+		return Encoding.UTF8.GetString(buffer.WrittenSpan);
     }
 
     private static void WriteCanonical(Utf8JsonWriter writer, JsonElement value)
@@ -122,8 +154,12 @@ internal static class ExternalTaskPayloadPolicy
                 break;
             case JsonValueKind.Array:
                 writer.WriteStartArray();
-                foreach (var item in value.EnumerateArray()) WriteCanonical(writer, item);
-                writer.WriteEndArray();
+                foreach (var item in value.EnumerateArray())
+				{
+					WriteCanonical(writer, item);
+				}
+
+				writer.WriteEndArray();
                 break;
             case JsonValueKind.String: writer.WriteStringValue(value.GetString()); break;
             case JsonValueKind.Number: writer.WriteRawValue(value.GetRawText(), skipInputValidation: false); break;
@@ -135,6 +171,7 @@ internal static class ExternalTaskPayloadPolicy
     }
 }
 
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0048", Justification = "This small exception type is kept adjacent to the payload policy that raises it; splitting it into a separate file adds no value.")]
 internal sealed class ExternalTaskPayloadException(string code) : InvalidOperationException(code)
 {
     public string Code { get; } = code;

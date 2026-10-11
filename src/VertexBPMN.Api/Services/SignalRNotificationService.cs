@@ -5,7 +5,7 @@ using VertexBPMN.Domain.Interfaces;
 
 namespace VertexBPMN.Api.Services;
 
-public sealed class SignalRNotificationService : INotificationService
+internal sealed class SignalRNotificationService : INotificationService
 {
     private readonly IHubContext<ProcessMonitoringHub> _hub;
     private readonly ILogger<SignalRNotificationService> _logger;
@@ -27,16 +27,19 @@ public sealed class SignalRNotificationService : INotificationService
             {
                 Type = "UserNotification",
                 Recipient = n.RecipientId,
-                Message = n.Message,
+                n.Message,
                 Category = n.Category ?? "general",
-                Timestamp = n.Timestamp
+                n.Timestamp
             };
 
             // Per-user group (server side you must add connections to "User_<id>")
             await _hub.Clients.Group($"User_{n.RecipientId}")
                 .SendAsync("UserNotification", payload, cancellationToken);
 
-            _logger.LogDebug("Sent notification to {Recipient} ({Category})", n.RecipientId, n.Category);
+            if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug))
+            {
+	            _logger.LogDebug("Sent notification to {Recipient} ({Category})", n.RecipientId, n.Category);
+            }
         }
     }
 }

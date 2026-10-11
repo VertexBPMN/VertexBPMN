@@ -6,9 +6,6 @@ using VertexBPMN.SourceControl.Abstractions;
 
 namespace VertexBPMN.Infrastructure.SourceControl;
 
-internal sealed record ClaimedPushOutcome(SourceControlOperationState State, PushReceipt? Receipt,
-	SourceControlErrorCode? Error);
-
 /// <summary>Execute one claimed push with independently scoped lease renewal and failure finalization.</summary>
 internal sealed class SourceControlClaimedPushRunner(IServiceScopeFactory scopes)
 {
@@ -66,14 +63,8 @@ internal sealed class SourceControlClaimedPushRunner(IServiceScopeFactory scopes
 					return new(SourceControlOperationState.Pushed, completed, null);
 				}
 				var intent = await store.ReadSavedResultAsync(context.TenantId, id, worker, fence, DateTimeOffset.UtcNow, deadline.Token);
-				var code = exception is RejectedRemotePushException ? SourceControlErrorCode.RevisionConflict
-					: exception is SourceControlSecurityException safe ? safe.Code
-					: exception is OperationCanceledException ? SourceControlErrorCode.Cancelled : SourceControlErrorCode.ProviderUnavailable;
-				var state = exception is RejectedRemotePushException ? SourceControlOperationState.Conflict
-					: intent is not null || claim.State == (int)SourceControlOperationState.Reconciling || code == SourceControlErrorCode.ResultUnknown
-						? SourceControlOperationState.ResultUnknown
-						: code == SourceControlErrorCode.RevisionConflict ? SourceControlOperationState.Conflict
-							: exception is OperationCanceledException ? SourceControlOperationState.Cancelled : SourceControlOperationState.Failed;
+				var code = ClassifyCode(exception);
+				var state = ClassifyState(exception, code, intent is not null, claim.State);
 				if (!await store.FinishAsync(context.TenantId, id, worker, fence, state, DateTimeOffset.UtcNow, deadline.Token, code))
 				{
 					return new(SourceControlOperationState.ResultUnknown, null, SourceControlErrorCode.ResultUnknown);
@@ -85,5 +76,44 @@ internal sealed class SourceControlClaimedPushRunner(IServiceScopeFactory scopes
 				return new(SourceControlOperationState.ResultUnknown, null, SourceControlErrorCode.ResultUnknown);
 			}
 		}
+	}
+
+	private static SourceControlErrorCode ClassifyCode(Exception exception)
+	{
+		if (exception is RejectedRemotePushException)
+		{
+			return SourceControlErrorCode.RevisionConflict;
+		}
+		if (exception is SourceControlSecurityException safe)
+		{
+			return safe.Code;
+		}
+		if (exception is OperationCanceledException)
+		{
+			return SourceControlErrorCode.Cancelled;
+		}
+		return SourceControlErrorCode.ProviderUnavailable;
+	}
+
+	private static SourceControlOperationState ClassifyState(Exception exception, SourceControlErrorCode code,
+		bool hasIntent, int claimState)
+	{
+		if (exception is RejectedRemotePushException)
+		{
+			return SourceControlOperationState.Conflict;
+		}
+		if (hasIntent || claimState == (int)SourceControlOperationState.Reconciling || code == SourceControlErrorCode.ResultUnknown)
+		{
+			return SourceControlOperationState.ResultUnknown;
+		}
+		if (code == SourceControlErrorCode.RevisionConflict)
+		{
+			return SourceControlOperationState.Conflict;
+		}
+		if (exception is OperationCanceledException)
+		{
+			return SourceControlOperationState.Cancelled;
+		}
+		return SourceControlOperationState.Failed;
 	}
 }

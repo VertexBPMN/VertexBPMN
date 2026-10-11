@@ -2,7 +2,7 @@ using System.Reflection;
 
 namespace VertexBPMN.Api.Plugins;
 
-public class LoadedPlugin
+internal class LoadedPlugin
 {
     public string Id { get; set; } = string.Empty;
     public PluginMetadata Metadata { get; set; } = new();

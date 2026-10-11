@@ -2,8 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.Infrastructure.Persistence.Services
-{
+namespace VertexBPMN.Infrastructure.Persistence.Services;
+
     public class SimulationScenarioService : ISimulationScenarioService
     {
         private readonly SimulationScenarioDbContext _db;
@@ -12,11 +12,14 @@ namespace VertexBPMN.Infrastructure.Persistence.Services
             _db = db;
         }
 
-        public async Task<IEnumerable<SimulationScenario>> GetAllAsync(string tenantId = null)
+        public async Task<IEnumerable<SimulationScenario>> GetAllAsync(string? tenantId = null)
         {
             if (string.IsNullOrEmpty(tenantId))
-                return await _db.Scenarios.ToListAsync();
-            return await _db.Scenarios.Where(s => s.TenantId == tenantId).ToListAsync();
+		{
+			return await _db.Scenarios.ToListAsync();
+		}
+
+		return await _db.Scenarios.Where(s => s.TenantId == tenantId).ToListAsync();
         }
 
         public async Task<SimulationScenario?> GetByIdAsync(string id)
@@ -35,8 +38,12 @@ namespace VertexBPMN.Infrastructure.Persistence.Services
         public async Task<SimulationScenario?> UpdateAsync(string id, SimulationScenario scenario)
         {
             var existing = await _db.Scenarios.FindAsync(id);
-            if (existing == null) return null;
-            existing.Name = scenario.Name;
+            if (existing == null)
+		{
+			return null;
+		}
+
+		existing.Name = scenario.Name;
             existing.Description = scenario.Description;
             existing.ProcessDefinitionId = scenario.ProcessDefinitionId;
             existing.Variables = scenario.Variables;
@@ -49,10 +56,13 @@ namespace VertexBPMN.Infrastructure.Persistence.Services
         public async Task<bool> DeleteAsync(string id)
         {
             var scenario = await _db.Scenarios.FindAsync(id);
-            if (scenario == null) return false;
-            _db.Scenarios.Remove(scenario);
+            if (scenario == null)
+		{
+			return false;
+		}
+
+		_db.Scenarios.Remove(scenario);
             await _db.SaveChangesAsync();
             return true;
         }
     }
-}

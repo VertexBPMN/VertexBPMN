@@ -46,7 +46,7 @@ public class HttpConnectorExecutor(HttpClient client) : IConnectorExecutor
 		var path = template.ToString();
 		foreach (var pair in variables)
 		{
-			path = path.Replace("{" + pair.Key + "}", Uri.EscapeDataString(Convert.ToString(pair.Value) ?? string.Empty));
+			path = path.Replace("{" + pair.Key + "}", Uri.EscapeDataString(Convert.ToString(pair.Value) ?? string.Empty), StringComparison.Ordinal);
 		}
 
 		return new Uri(path);

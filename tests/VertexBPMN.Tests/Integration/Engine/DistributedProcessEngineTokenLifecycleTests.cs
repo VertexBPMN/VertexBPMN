@@ -1,9 +1,9 @@
-using Moq;
-using OpenTelemetry.Trace;
-using Shouldly;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
+using Moq;
+using OpenTelemetry.Trace;
+using Shouldly;
 using VertexBPMN.Application;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
@@ -13,241 +13,239 @@ using VertexBPMN.Infrastructure.Persistence.InMemory;
 
 namespace VertexBPMN.Tests.Integration.Engine;
 
-public sealed class DistributedProcessEngineTokenLifecycleTests
+public sealed class DistributedProcessEngineTokenLifecycleTests : IDisposable
 {
-    private readonly ITestOutputHelper _testOutputHelper;
-    private readonly IProcessInstanceStore _store;
+	public void Dispose() => _engine.Dispose();
 
-    private readonly DistributedProcessEngine _engine;
+	private readonly InMemoryProcessInstanceStore _store;
 
-    public DistributedProcessEngineTokenLifecycleTests(ITestOutputHelper testOutputHelper)
-    {
-        _testOutputHelper = testOutputHelper;
-        var loggerMock = new Mock<ILogger<DistributedProcessEngine>>();
-        _store = new InMemoryProcessInstanceStore();
-        var dispatcherMock = new Mock<IMessageDispatcher>();
-        var cmmnParserMock = new Mock<ICmmnParser>();
-        var aiDecisionServiceMock = new Mock<IAiDecisionService>();
-        var tracerProvider = new Mock<TracerProvider>().Object;
-        var registry = new ServiceTaskRegistry();
-        var dmnParser = new Mock<IDmnParser>();
-        var bpmnParser = new Mock<IBpmnParser>();
-        var dmnEngine = new Mock<IDmnEngine>();
+	private readonly DistributedProcessEngine _engine;
 
-        _engine = new DistributedProcessEngine(loggerMock.Object, registry, dispatcherMock.Object, _store, dmnEngine.Object, dmnParser.Object, cmmnParserMock.Object, bpmnParser.Object, aiDecisionServiceMock.Object, tracerProvider);
+	public DistributedProcessEngineTokenLifecycleTests()
+	{
+		var loggerMock = new Mock<ILogger<DistributedProcessEngine>>();
+		_store = new InMemoryProcessInstanceStore();
+		var dispatcherMock = new Mock<IMessageDispatcher>();
+		var cmmnParserMock = new Mock<ICmmnParser>();
+		var aiDecisionServiceMock = new Mock<IAiDecisionService>();
+		var tracerProvider = new Mock<TracerProvider>().Object;
+		var registry = new ServiceTaskRegistry();
+		var dmnParser = new Mock<IDmnParser>();
+		var bpmnParser = new Mock<IBpmnParser>();
+		var dmnEngine = new Mock<IDmnEngine>();
 
-    }
+		_engine = new DistributedProcessEngine(loggerMock.Object, registry, dispatcherMock.Object, _store, dmnEngine.Object, dmnParser.Object, cmmnParserMock.Object, bpmnParser.Object, aiDecisionServiceMock.Object, tracerProvider);
 
-    [Fact]
-    public async Task EndEvent_SetsTokenToCompleted_AndPersistsIt()
-    {
-        var processInstanceId = Guid.NewGuid();
+	}
 
-        var token = new ExecutionToken(
-            id: Guid.NewGuid(),
-            processInstanceId: processInstanceId,
-            currentNodeId: "end",
-            nodeType: "endEvent",
-            variables: new Dictionary<string, object>(),
-            createdAt: DateTime.UtcNow);
+	[Fact]
+	public async Task EndEvent_SetsTokenToCompleted_AndPersistsIt()
+	{
+		var processInstanceId = Guid.NewGuid();
 
-        token.SetState("Pending");
+		var token = new ExecutionToken(
+			id: Guid.NewGuid(),
+			processInstanceId: processInstanceId,
+			currentNodeId: "end",
+			nodeType: "endEvent",
+			variables: new Dictionary<string, object>(StringComparer.Ordinal),
+			createdAt: DateTime.UtcNow);
 
-        await _store.SaveTokenAsync(token);
+		token.SetState("Pending");
 
-        var endEvent = new BpmnEvent(
-            Id: "end",
-            Type: "endEvent",
-            Definitions: Array.Empty<EventDefinition>());
+		await _store.SaveTokenAsync(token);
 
-        var model = CreateEmptyModel();
-        var trace = new List<string>();
+		var endEvent = new BpmnEvent(
+			Id: "end",
+			Type: "endEvent",
+			Definitions: []);
 
-        await InvokeProcessEventAsync(
-            _engine,
-            endEvent,
-            token,
-            model,
-            trace);
+		var model = CreateEmptyModel();
+		var trace = new List<string>();
 
-        token.State.ShouldBe("Completed");
+		await InvokeProcessEventAsync(
+			_engine,
+			endEvent,
+			token,
+			model,
+			trace);
 
-        var persistedToken = await _store.GetTokenAsync(token.Id);
+		token.State.ShouldBe("Completed");
 
-        persistedToken.State.ShouldBe("Completed");
-        trace.Count.ShouldBe(2);
-        trace.ShouldContain(t => t.Contains("EndEvent:"));
-        trace.ShouldContain(t => t.Contains("EndEventCompleted"));
-    }
+		var persistedToken = await _store.GetTokenAsync(token.Id);
 
-    [Fact]
-    public async Task CompletedToken_IsNotProcessedAgain()
-    {
-        var token = new ExecutionToken(
-            id: Guid.NewGuid(),
-            processInstanceId: Guid.NewGuid(),
-            currentNodeId: "end",
-            nodeType: "endEvent",
-            variables: new Dictionary<string, object>(),
-            createdAt: DateTime.UtcNow);
+		persistedToken.State.ShouldBe("Completed");
+		trace.Count.ShouldBe(2);
+		trace.ShouldContain(t => t.Contains("EndEvent:"));
+		trace.ShouldContain(t => t.Contains("EndEventCompleted"));
+	}
 
-        token.SetState("Completed");
+	[Fact]
+	public async Task CompletedToken_IsNotProcessedAgain()
+	{
+		var token = new ExecutionToken(
+			id: Guid.NewGuid(),
+			processInstanceId: Guid.NewGuid(),
+			currentNodeId: "end",
+			nodeType: "endEvent",
+			variables: new Dictionary<string, object>(StringComparer.Ordinal),
+			createdAt: DateTime.UtcNow);
 
-        var trace = new List<string>();
+		token.SetState("Completed");
 
-        await InvokeProcessTokenAsync(
-            _engine,
-            token,
-            CreateEmptyModel(),
-            trace);
+		var trace = new List<string>();
 
-        trace.Count.ShouldBe(1);
-        trace.Single().ShouldContain("TokenSkipped");
-        trace.Single().ShouldContain("Completed");
-    }
+		await InvokeProcessTokenAsync(
+			_engine,
+			token,
+			CreateEmptyModel(),
+			trace);
 
-    [Fact]
-    public async Task FailedToken_IsNotProcessedAgain()
-    {
-        
-        
+		trace.Count.ShouldBe(1);
+		trace.Single().ShouldContain("TokenSkipped");
+		trace.Single().ShouldContain("Completed");
+	}
 
-        var token = new ExecutionToken(
-            id: Guid.NewGuid(),
-            processInstanceId: Guid.NewGuid(),
-            currentNodeId: "task",
-            nodeType: "task",
-            variables: new Dictionary<string, object>(),
-            createdAt: DateTime.UtcNow);
-
-        token.SetState("Failed");
-
-        var trace = new List<string>();
-
-        await InvokeProcessTokenAsync(
-            _engine,
-            token,
-            CreateEmptyModel(),
-            trace);
-
-        trace.ShouldContain(
-            entry => entry.Contains("TokenSkipped") &&
-                     entry.Contains("Failed"));
-    }
-
-    [Fact]
-    public async Task DeterministicModelFailure_IsNotRetried()
-    {
-        var token = new ExecutionToken(
-            id: Guid.NewGuid(),
-            processInstanceId: Guid.NewGuid(),
-            currentNodeId: "missing-node",
-            nodeType: "task",
-            variables: new Dictionary<string, object>(),
-            createdAt: DateTime.UtcNow);
-
-        token.SetState("Pending");
-        await _store.SaveTokenAsync(token);
-
-        var trace = new List<string>();
-        await InvokeProcessTokenAsync(_engine, token, CreateEmptyModel(), trace);
-
-        token.State.ShouldBe("Failed");
-        token.RetryCount.ShouldBe(1);
-        trace.ShouldContain(entry => entry.Contains("TokenFailed", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public async Task PendingToken_IsReturnedByInMemoryStore_WhenUnassigned()
-    {
-        var token = new ExecutionToken(
-            id: Guid.NewGuid(),
-            processInstanceId: Guid.NewGuid(),
-            currentNodeId: "task",
-            nodeType: "task",
-            variables: new Dictionary<string, object>(),
-            createdAt: DateTime.UtcNow);
-
-        token.SetState("Pending");
-        token.AssignedWorker = null;
-
-        await _store.SaveTokenAsync(token);
-
-        var pendingTokens =
-            await _store.GetPendingTokensAsync();
-
-        pendingTokens.Single().ShouldNotBeNull();
-        pendingTokens.Single().Id.ShouldBe(token.Id);
-    }
+	[Fact]
+	public async Task FailedToken_IsNotProcessedAgain()
+	{
 
 
-    private static BpmnModel CreateEmptyModel()
-    {
-        return new BpmnModel(
-            "process",
-            "process",
-            Array.Empty<BpmnEvent>(),
-            Array.Empty<BpmnGateway>(),
-            Array.Empty<BpmnSubprocess>(),
-            Array.Empty<BpmnSequenceFlow>(),
-            Array.Empty<BpmnTask>());
-    }
 
-    private static async Task InvokeProcessEventAsync(
-        DistributedProcessEngine engine,
-        BpmnEvent evt,
-        ExecutionToken token,
-        BpmnModel model,
-        List<string> trace)
-    {
-        var method = typeof(DistributedProcessEngine)
-            .GetMethod(
-                "ProcessEventAsync",
-                BindingFlags.Instance |
-                BindingFlags.NonPublic);
+		var token = new ExecutionToken(
+			id: Guid.NewGuid(),
+			processInstanceId: Guid.NewGuid(),
+			currentNodeId: "task",
+			nodeType: "task",
+			variables: new Dictionary<string, object>(StringComparer.Ordinal),
+			createdAt: DateTime.UtcNow);
 
-        method.ShouldNotBeNull();
+		token.SetState("Failed");
 
-        var result = method!.Invoke(
-            engine,
-            new object[]
-            {
-                evt,
-                token,
-                model,
-                trace,
-                TestContext.Current.CancellationToken
-            });
+		var trace = new List<string>();
 
-        var task = Assert.IsAssignableFrom<Task>(result);
-        await task;
-    }
+		await InvokeProcessTokenAsync(
+			_engine,
+			token,
+			CreateEmptyModel(),
+			trace);
 
-    private static async Task InvokeProcessTokenAsync(
-        DistributedProcessEngine engine,
-        ExecutionToken token,
-        BpmnModel model,
-        List<string> trace)
-    {
-        var method = typeof(DistributedProcessEngine)
-            .GetMethod(
-                "ProcessTokenAsync",
-                BindingFlags.Instance |
-                BindingFlags.NonPublic);
+		trace.ShouldContain(
+			entry => entry.Contains("TokenSkipped") &&
+					 entry.Contains("Failed"));
+	}
 
-        method.ShouldNotBeNull();
+	[Fact]
+	public async Task DeterministicModelFailure_IsNotRetried()
+	{
+		var token = new ExecutionToken(
+			id: Guid.NewGuid(),
+			processInstanceId: Guid.NewGuid(),
+			currentNodeId: "missing-node",
+			nodeType: "task",
+			variables: new Dictionary<string, object>(StringComparer.Ordinal),
+			createdAt: DateTime.UtcNow);
 
-        var result = method!.Invoke(
-            engine,
-            new object[]
-            {
-                token,
-                model,
-                trace,
-                TestContext.Current.CancellationToken
-            });
+		token.SetState("Pending");
+		await _store.SaveTokenAsync(token);
 
-        var task = Assert.IsAssignableFrom<Task>(result);
-        await task;
-    }
+		var trace = new List<string>();
+		await InvokeProcessTokenAsync(_engine, token, CreateEmptyModel(), trace);
+
+		token.State.ShouldBe("Failed");
+		token.RetryCount.ShouldBe(1);
+		trace.ShouldContain(entry => entry.Contains("TokenFailed", StringComparison.Ordinal));
+	}
+
+	[Fact]
+	public async Task PendingToken_IsReturnedByInMemoryStore_WhenUnassigned()
+	{
+		var token = new ExecutionToken(
+			id: Guid.NewGuid(),
+			processInstanceId: Guid.NewGuid(),
+			currentNodeId: "task",
+			nodeType: "task",
+			variables: new Dictionary<string, object>(StringComparer.Ordinal),
+			createdAt: DateTime.UtcNow);
+
+		token.SetState("Pending");
+		token.AssignedWorker = null;
+
+		await _store.SaveTokenAsync(token);
+
+		var pendingTokens =
+			await _store.GetPendingTokensAsync();
+
+		pendingTokens.Single().ShouldNotBeNull();
+		pendingTokens.Single().Id.ShouldBe(token.Id);
+	}
+
+
+	private static BpmnModel CreateEmptyModel()
+	{
+		return new BpmnModel(
+			"process",
+			"process",
+			[],
+			[],
+			[],
+			[],
+			[]);
+	}
+
+	private static async Task InvokeProcessEventAsync(
+		DistributedProcessEngine engine,
+		BpmnEvent evt,
+		ExecutionToken token,
+		BpmnModel model,
+		List<string> trace)
+	{
+		var method = typeof(DistributedProcessEngine)
+			.GetMethod(
+				"ProcessEventAsync",
+				BindingFlags.Instance |
+				BindingFlags.NonPublic);
+
+		method.ShouldNotBeNull();
+
+		var result = method.Invoke(
+			engine,
+			[
+				evt,
+				token,
+				model,
+				trace,
+				TestContext.Current.CancellationToken
+			]);
+
+		var task = Assert.IsAssignableFrom<Task>(result);
+		await task;
+	}
+
+	private static async Task InvokeProcessTokenAsync(
+		DistributedProcessEngine engine,
+		ExecutionToken token,
+		BpmnModel model,
+		List<string> trace)
+	{
+		var method = typeof(DistributedProcessEngine)
+			.GetMethod(
+				"ProcessTokenAsync",
+				BindingFlags.Instance |
+				BindingFlags.NonPublic);
+
+		method.ShouldNotBeNull();
+
+		var result = method.Invoke(
+			engine,
+			[
+				token,
+				model,
+				trace,
+				TestContext.Current.CancellationToken
+			]);
+
+		var task = Assert.IsAssignableFrom<Task>(result);
+		await task;
+	}
 }

@@ -19,8 +19,11 @@ public sealed class ConfiguredExternalTaskContractResolver(IConfiguration config
         if (inputNames.Distinct(StringComparer.Ordinal).Count() != inputNames.Count
             || inputNames.Any(name => !contract.Inputs.Any(field => field.Name == name))
             || contract.Inputs.Any(field => field.Required && !inputNames.Contains(field.Name, StringComparer.Ordinal)))
-            throw new InvalidOperationException("external_task_input_mapping_invalid");
-        return ValueTask.CompletedTask;
+		{
+			throw new InvalidOperationException("external_task_input_mapping_invalid");
+		}
+
+		return ValueTask.CompletedTask;
     }
 
     private ExternalTaskCatalogEntry FindContract(string tenantId, ExternalTaskDefinition definition)
@@ -30,23 +33,35 @@ public sealed class ConfiguredExternalTaskContractResolver(IConfiguration config
             && string.Equals(entry.Topic, definition.Topic, StringComparison.Ordinal)
             && string.Equals(entry.AgentProfileRef, definition.AgentProfileRef, StringComparison.Ordinal)).ToArray();
         if (string.IsNullOrWhiteSpace(tenantId) || candidates.Length != 1 || !candidates[0].Enabled)
-            throw new InvalidOperationException("external_task_contract_unavailable");
-        var contract = candidates[0];
+		{
+			throw new InvalidOperationException("external_task_contract_unavailable");
+		}
+
+		var contract = candidates[0];
         if (string.IsNullOrWhiteSpace(contract.Version) || contract.Version.Length > 128
             || contract.MaxAttempts is < 1 or > 10 || contract.MaxDeadlineSeconds is < 1 or > 86400
             || (definition.AgentProfileRef is not null && string.IsNullOrWhiteSpace(contract.AgentProfileVersion)))
-            throw new InvalidOperationException("external_task_invalid_contract");
-        if (definition.MaxAttempts > contract.MaxAttempts || definition.DeadlineSeconds > contract.MaxDeadlineSeconds)
-            throw new InvalidOperationException("external_task_contract_limits_exceeded");
-        ValidateFields(contract.Inputs);
+		{
+			throw new InvalidOperationException("external_task_invalid_contract");
+		}
+
+		if (definition.MaxAttempts > contract.MaxAttempts || definition.DeadlineSeconds > contract.MaxDeadlineSeconds)
+		{
+			throw new InvalidOperationException("external_task_contract_limits_exceeded");
+		}
+
+		ValidateFields(contract.Inputs);
         ValidateFields(contract.Outputs);
         if (contract.BusinessErrorCodes.Length > 32
             || contract.BusinessErrorCodes.Distinct(StringComparer.Ordinal).Count() != contract.BusinessErrorCodes.Length
             || contract.BusinessErrorCodes.Any(code => string.IsNullOrWhiteSpace(code) || code.Length > 128
                 || !char.IsAsciiLetter(code[0]) || !char.IsLower(code[0])
                 || code.Any(character => !(char.IsAsciiLetterOrDigit(character) || character is '_' or '.'))))
-            throw new InvalidOperationException("external_task_invalid_error_allowlist");
-        return contract;
+		{
+			throw new InvalidOperationException("external_task_invalid_error_allowlist");
+		}
+
+		return contract;
     }
 
     public ValueTask<ResolvedExternalTaskContract> ResolveAsync(string tenantId, ExternalTaskDefinition definition,
@@ -55,13 +70,20 @@ public sealed class ConfiguredExternalTaskContractResolver(IConfiguration config
         cancellationToken.ThrowIfCancellationRequested();
         var contract = FindContract(tenantId, definition);
         if (inputs.Keys.Any(key => !contract.Inputs.Any(field => field.Name == key)))
-            throw new InvalidOperationException("external_task_input_not_allowed");
-        foreach (var field in contract.Inputs)
+		{
+			throw new InvalidOperationException("external_task_input_not_allowed");
+		}
+
+		foreach (var field in contract.Inputs)
         {
             if (!inputs.TryGetValue(field.Name, out var value))
             {
-                if (field.Required) throw new InvalidOperationException("external_task_input_missing");
-                continue;
+                if (field.Required)
+				{
+					throw new InvalidOperationException("external_task_input_missing");
+				}
+
+				continue;
             }
             // Object/array payloads (including credential-reference objects) are not accepted by this catalog.
             var json = JsonSerializer.SerializeToElement(value);
@@ -72,11 +94,17 @@ public sealed class ConfiguredExternalTaskContractResolver(IConfiguration config
                 "integer" => json.ValueKind == JsonValueKind.Number && json.TryGetInt64(out _),
                 _ => false
             };
-            if (!valid) throw new InvalidOperationException("external_task_input_schema_invalid");
-        }
+            if (!valid)
+			{
+				throw new InvalidOperationException("external_task_input_schema_invalid");
+			}
+		}
         if (System.Text.Encoding.UTF8.GetByteCount(JsonSerializer.Serialize(inputs)) > 128 * 1024)
-            throw new InvalidOperationException("external_task_input_too_large");
-        var snapshot = JsonSerializer.Serialize(new
+		{
+			throw new InvalidOperationException("external_task_input_too_large");
+		}
+
+		var snapshot = JsonSerializer.Serialize(new
         {
             dialect = "vertex.scalar-contract.v1", version = contract.Version,
             input = Schema(contract.Inputs), output = Schema(contract.Outputs),
@@ -92,19 +120,22 @@ public sealed class ConfiguredExternalTaskContractResolver(IConfiguration config
                 || field.Name.Any(character => !(char.IsAsciiLetterOrDigit(character) || character == '_'))
                 || field.Type is not ("string" or "boolean" or "integer") || !field.AllowExternalTransfer
                 || field.MaxLength is < 1 or > 65536))
-            throw new InvalidOperationException("external_task_invalid_contract_fields");
-    }
+		{
+			throw new InvalidOperationException("external_task_invalid_contract_fields");
+		}
+	}
 
     private static object Schema(ExternalTaskScalarField[] fields) => new
     {
         type = "object", additionalProperties = false,
         required = fields.Where(field => field.Required).Select(field => field.Name).ToArray(),
         properties = fields.ToDictionary(field => field.Name, field => (object)(field.Type == "string"
-            ? new Dictionary<string, object> { ["type"] = field.Type, ["maxLength"] = field.MaxLength }
-            : new Dictionary<string, object> { ["type"] = field.Type }), StringComparer.Ordinal)
+            ? new Dictionary<string, object>(StringComparer.Ordinal) { ["type"] = field.Type, ["maxLength"] = field.MaxLength }
+            : new Dictionary<string, object>(StringComparer.Ordinal) { ["type"] = field.Type }), StringComparer.Ordinal)
     };
 }
 
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0048", Justification = "Small DTO type kept adjacent to the contract resolver that serializes it; splitting it into a separate file adds no value.")]
 public sealed class ExternalTaskCatalogEntry
 {
     public string TenantId { get; set; } = "";
@@ -120,6 +151,7 @@ public sealed class ExternalTaskCatalogEntry
     public string[] BusinessErrorCodes { get; set; } = [];
 }
 
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0048", Justification = "Small DTO type kept adjacent to the contract resolver that serializes it; splitting it into a separate file adds no value.")]
 public sealed class ExternalTaskScalarField
 {
     public string Name { get; set; } = "";

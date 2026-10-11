@@ -5,7 +5,7 @@ namespace VertexBPMN.Tests.Parsing.Validation;
 
 public class Phase3AdvancedValidationBoundaryCompensationCancelActivityTests
 {
-    private const string InvalidCompBoundaryXml = """
+	private const string InvalidCompBoundaryXml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <bpmn:process id="p1">
     <bpmn:userTask id="taskA"/>
@@ -23,7 +23,7 @@ public class Phase3AdvancedValidationBoundaryCompensationCancelActivityTests
 </bpmn:definitions>
 """;
 
-    private const string ValidCompBoundaryXml = """
+	private const string ValidCompBoundaryXml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <bpmn:process id="p1">
     <bpmn:userTask id="taskA"/>
@@ -37,48 +37,51 @@ public class Phase3AdvancedValidationBoundaryCompensationCancelActivityTests
 </bpmn:definitions>
 """;
 
-    [Fact]
-    public async Task BoundaryCompensationCancelActivity_Disabled_NoStructuredDiagnostics()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = false
-        }).ParseAsync(InvalidCompBoundaryXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task BoundaryCompensationCancelActivity_Disabled_NoStructuredDiagnostics()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = false
+		}).ParseAsync(InvalidCompBoundaryXml, TestContext.Current.CancellationToken);
 
-        Assert.Null(model.ValidationDiagnostics);
-    }
+		Assert.Null(model.ValidationDiagnostics);
+	}
 
-    [Fact]
-    public async Task BoundaryCompensationCancelActivity_Enabled_ReportsErrors()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = true
-        }).ParseAsync(InvalidCompBoundaryXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task BoundaryCompensationCancelActivity_Enabled_ReportsErrors()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = true
+		}).ParseAsync(InvalidCompBoundaryXml, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(model.ValidationDiagnostics);
-        var diags = model.ValidationDiagnostics!;
-        Assert.Contains(diags, d =>
-            d.Code == "SEM-BOUNDARY-COMPENSATION-CANCELACTIVITY" &&
-            d.ElementId == "bc1" &&
-            d.Severity == ValidationSeverity.Error);
+		Assert.NotNull(model.ValidationDiagnostics);
+		var diags = model.ValidationDiagnostics;
+		Assert.Contains(diags, d =>
+			d.Code == "SEM-BOUNDARY-COMPENSATION-CANCELACTIVITY" &&
+			d.ElementId == "bc1" &&
+			d.Severity == ValidationSeverity.Error);
 
-        Assert.Contains(diags, d =>
-            d.Code == "SEM-BOUNDARY-COMPENSATION-CANCELACTIVITY" &&
-            d.ElementId == "bc2" &&
-            d.Severity == ValidationSeverity.Error);
-    }
+		Assert.Contains(diags, d =>
+			d.Code == "SEM-BOUNDARY-COMPENSATION-CANCELACTIVITY" &&
+			d.ElementId == "bc2" &&
+			d.Severity == ValidationSeverity.Error);
+	}
 
-    [Fact]
-    public async Task BoundaryCompensationCancelActivity_Enabled_NoViolationWhenFalse()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = true
-        }).ParseAsync(ValidCompBoundaryXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task BoundaryCompensationCancelActivity_Enabled_NoViolationWhenFalse()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = true
+		}).ParseAsync(ValidCompBoundaryXml, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(model.ValidationDiagnostics);
-        Assert.DoesNotContain(model.ValidationDiagnostics!,
-            d => d.Code == "SEM-BOUNDARY-COMPENSATION-CANCELACTIVITY");
-    }
+		Assert.NotNull(model.ValidationDiagnostics);
+		Assert.DoesNotContain(model.ValidationDiagnostics,
+			d => d.Code == "SEM-BOUNDARY-COMPENSATION-CANCELACTIVITY");
+	}
 }

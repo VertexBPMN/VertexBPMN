@@ -11,7 +11,7 @@ public static partial class SourceControlInputPolicy
 	public static string ValidateRelativePath(string path)
 	{
 		if (string.IsNullOrWhiteSpace(path) || path.Length > 240 || path != path.Trim()
-			|| path.Any(c => char.IsControl(c) || "\\:%*?\"<>|".Contains(c)) || path.StartsWith('/'))
+			|| path.Any(c => char.IsControl(c) || "\\:%*?\"<>|".Contains(c, StringComparison.Ordinal)) || path.StartsWith('/'))
 		{
 			Reject();
 		}
@@ -57,7 +57,7 @@ public static partial class SourceControlInputPolicy
 		if (string.IsNullOrWhiteSpace(branch) || branch.Length > 240 || branch.StartsWith('-')
 			|| branch is "@" or "HEAD" || branch.EndsWith('.') || branch.Contains("..", StringComparison.Ordinal)
 			|| branch.Contains("@{", StringComparison.Ordinal)
-			|| branch.Any(c => char.IsControl(c) || char.IsWhiteSpace(c) || "~^:?*[\\".Contains(c)))
+			|| branch.Any(c => char.IsControl(c) || char.IsWhiteSpace(c) || "~^:?*[\\".Contains(c, StringComparison.Ordinal)))
 		{
 			Reject();
 		}
@@ -141,6 +141,6 @@ public static partial class SourceControlInputPolicy
 
 	private static void Reject() => throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
 
-	[GeneratedRegex("^(CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+	[GeneratedRegex("^(?:CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking)]
 	private static partial Regex DeviceName();
 }

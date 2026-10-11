@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Linq;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 
@@ -11,10 +12,11 @@ public class InMemoryHistoryService : IHistoryService
 {
     public async IAsyncEnumerable<HistoryEvent> ListHistoricTasksAsync(Guid? processInstanceId = null, string? tenantId = null, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        await foreach (var evt in ListAsync(processInstanceId, tenantId, cancellationToken))
+        await foreach (var evt in ListAsync(processInstanceId, tenantId, cancellationToken)
+            .Where(e => e.EventType.Contains("TASK", StringComparison.OrdinalIgnoreCase))
+            .WithCancellation(cancellationToken))
         {
-            if (evt.EventType.Contains("TASK", StringComparison.OrdinalIgnoreCase))
-                yield return evt;
+            yield return evt;
         }
     }
 
@@ -26,14 +28,17 @@ public class InMemoryHistoryService : IHistoryService
     public IAsyncEnumerable<HistoryEvent> ListAsync(string? tenantId = null, CancellationToken cancellationToken = default)
         => ListAsync(null, tenantId, cancellationToken);
 
-    private async IAsyncEnumerable<HistoryEvent> ListAsync(Guid? processInstanceId, string? tenantId, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
-    {
+    private async IAsyncEnumerable<HistoryEvent> ListAsync(Guid? processInstanceId, string? tenantId, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+	{
         foreach (var evt in _events.Values)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if ((!processInstanceId.HasValue || evt.ProcessInstanceId == processInstanceId.Value) &&
                 (string.IsNullOrWhiteSpace(tenantId) || evt.TenantId == tenantId))
-                yield return evt;
-        }
+			{
+				yield return evt;
+			}
+		}
         await Task.CompletedTask;
     }
 

@@ -8,11 +8,11 @@ namespace VertexBPMN.Infrastructure.Messaging;
 /// </summary>
 public sealed class TypeSafeConformanceOptions
 {
-    /// <summary>Master-Schalter. false => der Validator wertet nicht aus (NotEvaluated).</summary>
-    public bool Enabled { get; set; } = false;
+	/// <summary>Master-Schalter. false => der Validator wertet nicht aus (NotEvaluated).</summary>
+	public bool Enabled { get; set; }
 
-    /// <summary>TypeSafe-System-One-Evaluations-Endpunkt.</summary>
-    public string Endpoint { get; set; } = "https://api.typesafe.ai/v1/systemone";
+	/// <summary>TypeSafe-System-One-Evaluations-Endpunkt.</summary>
+	public string Endpoint { get; set; } = "https://api.typesafe.ai/v1/systemone";
 
     /// <summary>API-Key (server-seitig halten, niemals in Clients/Konfig-Repos).</summary>
     public string ApiKey { get; set; } = string.Empty;

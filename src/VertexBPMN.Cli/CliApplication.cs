@@ -1,7 +1,6 @@
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
-using VertexBPMN.Application.Configuration;
 using VertexBPMN.Application;
 using VertexBPMN.Application.Configuration;
 using VertexBPMN.Application.Import;
@@ -10,7 +9,6 @@ using VertexBPMN.Engine.Configuration;
 using VertexBPMN.Engine.Parsing;
 
 namespace VertexBPMN.Cli;
-
 internal sealed class CliApplication
 {
 	private readonly TextWriter _output;
@@ -34,7 +32,6 @@ internal sealed class CliApplication
 	private readonly IPollingTriggerService _pollingTriggerService;
 	private readonly DashboardLauncher _dashboardLauncher;
 	private readonly IRecordedOutputReplayService _recordedOutputReplayService;
-
 	public CliApplication(IServiceProvider services, TextWriter output, TextWriter error)
 	{
 		_output = output;
@@ -57,48 +54,63 @@ internal sealed class CliApplication
 		_openApiImporter = services.GetRequiredService<IOpenApiConnectorTemplateImporter>();
 		_pollingTriggerService = services.GetRequiredService<IPollingTriggerService>();
 		_dashboardLauncher = services.GetRequiredService<DashboardLauncher>();
-		_dashboardLauncher = services.GetRequiredService<DashboardLauncher>();
 		_recordedOutputReplayService = services.GetRequiredService<IRecordedOutputReplayService>();
 	}
 
 	public async Task<int> RunAsync(string[] args, CancellationToken cancellationToken)
 	{
 		if (args.Length == 0)
+		{
 			return await RunInteractiveAsync(cancellationToken);
+		}
+
 		if (args is ["--help"] or ["-h"])
 		{
 			WriteHelp(_output);
 			return 0;
 		}
+
 		return await ExecuteCommandAsync(args, cancellationToken);
 	}
 
 	private async Task<int> RunInteractiveAsync(CancellationToken cancellationToken)
 	{
-		_output.WriteLine($"VertexBPMN CLI - {GetEngineType()} engine");
+		await _output.WriteLineAsync($"VertexBPMN CLI - {GetEngineType()} engine");
 		while (!cancellationToken.IsCancellationRequested)
 		{
 			await _output.WriteAsync("vertexbpmn> ");
 			var line = await Console.In.ReadLineAsync(cancellationToken);
 			if (line is null)
+			{
 				break;
+			}
+
 			var command = Tokenize(line);
 			if (command.Count == 0)
+			{
 				continue;
+			}
+
 			if (command[0] is "exit" or "quit")
+			{
 				break;
+			}
+
 			if (command[0] is "help" or "--help")
 			{
 				WriteHelp(_output);
 				continue;
 			}
+
 			if (command[0] == "clear")
 			{
 				Console.Clear();
 				continue;
 			}
+
 			await ExecuteCommandAsync(command.ToArray(), cancellationToken);
 		}
+
 		return 0;
 	}
 
@@ -106,140 +118,9 @@ internal sealed class CliApplication
 	{
 		try
 		{
-			switch (args[0].ToLowerInvariant())
-			{
-				case "status":
-					await PrintStatusAsync(cancellationToken);
-					return 0;
-				case "pending":
-					await PrintPendingAsync(cancellationToken);
-					return 0;
-				case "workers":
-					RequireDistributedEngine();
-					await PrintWorkersAsync();
-					return 0;
-				case "dashboard":
-				case "studio":
-					await _dashboardLauncher.OpenAsync(cancellationToken);
-					return 0;
-				case "config":
-					await ExecuteConfigCommandAsync(args, cancellationToken);
-					return 0;
-				case "trigger":
-					await ExecuteTriggerCommandAsync(args, cancellationToken);
-					return 0;
-				case "credential":
-					await ExecuteCredentialCommandAsync(args, cancellationToken);
-					return 0;
-				case "connector":
-					await ExecuteConnectorCommandAsync(args, cancellationToken);
-					return 0;
-				case "polling-trigger":
-					await ExecutePollingTriggerCommandAsync(args, cancellationToken);
-					return 0;
-				case "template":
-					await ExecuteTemplateCommandAsync(args, cancellationToken);
-					return 0;
-				case "validate":
-					RequireArguments(args, 2);
-					await PrintValidationAsync(await ReadFileAsync(args[1]));
-					return 0;
-				case "import-n8n":
-					RequireArguments(args, 2);
-					var importTenant = args.Length > 3 ? args[3] : "default";
-					var imported = _n8nImporter.Import(
-						await ReadFileAsync(args[1]),
-						await _credentialService.ListAsync(importTenant, cancellationToken));
-					var outputPath = args.Length > 2 ? args[2] : Path.ChangeExtension(args[1], ".bpmn");
-					await File.WriteAllTextAsync(outputPath, imported.BpmnXml, cancellationToken);
-					await _output.WriteLineAsync($"n8n workflow imported: {outputPath}");
-					foreach (var item in imported.Report)
-						await _output.WriteLineAsync($"{item.Disposition}: {item.NodeName} - {item.Message}");
-					return 0;
-				case "execute":
-					RequireArguments(args, 2);
-					var model = await _bpmnParser.ParseAsync(await ReadFileAsync(args[1]), cancellationToken);
-					await PrintTraceAsync(_engine.ExecuteAsync(model, cancellationToken));
-					return 0;
-				case "execute-id":
-					RequireArguments(args, 2);
-					await PrintTraceAsync(_engine.ExecuteProcessAsync(args[1], cancellationToken));
-					return 0;
-				case "deploy-bpmn":
-					RequireArguments(args, 2);
-					var deployed = await _repositoryService.DeployAsync(
-						await ReadFileAsync(args[1]),
-						Path.GetFileName(args[1]),
-						args.Length > 2 ? args[2] : null,
-						cancellationToken);
-					await _output.WriteLineAsync($"BPMN deployed: {deployed.Key} ({deployed.Id})");
-					return 0;
-				case "deploy-dmn":
-					RequireArguments(args, 2);
-					var dmnPath = args[1];
-					var decisionKey = Path.GetFileNameWithoutExtension(dmnPath);
-					await _decisionService.DeployAsync(decisionKey, decisionKey, await ReadFileAsync(dmnPath), args.Length > 2 ? args[2] : null);
-					await _output.WriteLineAsync($"DMN deployed: {decisionKey}");
-					return 0;
-				case "deploy-form":
-					RequireArguments(args, 2);
-					var formPath = args[1];
-					var formKey = Path.GetFileNameWithoutExtension(formPath);
-					var form = await _formDefinitionService.CreateAsync(TenantAt(args, 2), new(formKey, formKey, await ReadFileAsync(formPath)), cancellationToken);
-					await _output.WriteLineAsync($"Form deployed: {form.Key} ({form.Id})");
-					return 0;
-				case "test-run":
-					var useRecordedOutputs = args.Any(a => a == "--use-recorded-outputs");
-					var cmdArgs = args.Where(a => a != "--use-recorded-outputs").ToArray();
-					RequireArguments(cmdArgs, 3);
-					var tenant = args.Length > 3 ? args[3] : null;
-					var testPath = cmdArgs[1];
-					var testDefinition = await _repositoryService.DeployAsync(await ReadFileAsync(testPath), Path.GetFileName(testPath), tenant, cancellationToken);
-					var variables = JsonSerializer.Deserialize<Dictionary<string, object>>(await ReadFileAsync(cmdArgs[2])) ?? throw new CliUsageException("Variables must be a JSON object.");
-					if (useRecordedOutputs)
-					{
-						var parsedModel = await _bpmnParser.ParseAsync(await ReadFileAsync(testPath), cancellationToken);
-						var replayModel = await _recordedOutputReplayService.RewriteForReplayAsync(tenant ?? "default", testDefinition.Key, parsedModel, cancellationToken);
-						var trace = await _engine.ExecuteAsync(replayModel, cancellationToken);
-						await _output.WriteLineAsync($"Test run (recorded-output replay) {testDefinition.Key}:");
-						foreach (var line in trace)
-							await _output.WriteLineAsync("  " + line);
-					}
-					else
-					{
-						var instance = await _runtimeService.StartProcessByKeyAsync(testDefinition.Key, variables, $"cli-test-{Guid.NewGuid():N}", tenant, null, cancellationToken);
-						await _output.WriteLineAsync($"Test run started: {instance.Id} ({testDefinition.Key})");
-					}
-					return 0;
-				case "register-bpmn":
-					RequireArguments(args, 3);
-					await _engine.RegisterBpmnModelAsync(args[1], await ReadFileAsync(args[2]), cancellationToken);
-					await _output.WriteLineAsync($"BPMN registered: {args[1]}");
-					return 0;
-				case "register-cmmn":
-					RequireArguments(args, 3);
-					await _engine.RegisterCmmnModelAsync(args[1], await ReadFileAsync(args[2]));
-					await _output.WriteLineAsync($"CMMN registered: {args[1]}");
-					return 0;
-				case "register-dmn":
-					RequireArguments(args, 3);
-					await _engine.RegisterDmnModelAsync(args[1], await ReadFileAsync(args[2]));
-					await _output.WriteLineAsync($"DMN registered: {args[1]}");
-					return 0;
-				case "execute-case":
-					RequireArguments(args, 2);
-					var caseModel = await _cmmnParser.ParseAsync(await ReadFileAsync(args[1]), cancellationToken);
-					await PrintTraceAsync(_engine.ExecuteCaseAsync(caseModel, cancellationToken));
-					return 0;
-				case "help":
-				case "--help":
-					WriteHelp(_output);
-					return 0;
-				default:
-					throw new CliUsageException($"Unknown command '{args[0]}'. Use 'help' for available commands.");
-			}
+			return await DispatchCommandAsync(args, cancellationToken);
 		}
-		catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+		catch (OperationCanceledException)when (cancellationToken.IsCancellationRequested)
 		{
 			await _error.WriteLineAsync("Operation cancelled.");
 			return 130;
@@ -280,10 +161,15 @@ internal sealed class CliApplication
 		var caseTokens = await distributedEngine.GetPendingCaseTokensAsync(cancellationToken);
 		await _output.WriteLineAsync($"Execution tokens: {tokens.Count}");
 		foreach (var token in tokens)
+		{
 			await _output.WriteLineAsync($"  {token.Id} -> {token.CurrentNodeId} ({token.State})");
+		}
+
 		await _output.WriteLineAsync($"Case tokens: {caseTokens.Count}");
 		foreach (var token in caseTokens)
+		{
 			await _output.WriteLineAsync($"  {token.Id} -> {token.CurrentPlanItemId}");
+		}
 	}
 
 	private async Task PrintWorkersAsync()
@@ -294,19 +180,20 @@ internal sealed class CliApplication
 			await _output.WriteLineAsync("No active workers.");
 			return;
 		}
+
 		foreach (var worker in workers)
+		{
 			await _output.WriteLineAsync($"{worker.Id}: {worker.CurrentLoad}/{worker.MaxCapacity} on {worker.HostName}");
+		}
 	}
 
-	private string GetEngineType()
-		=> _engine is IDistributedProcessEngine
-			? ProcessEngineType.Distributed.ToString()
-			: ProcessEngineType.Simple.ToString();
-
+	private string GetEngineType() => _engine is IDistributedProcessEngine ? nameof(ProcessEngineType.Distributed) : nameof(ProcessEngineType.Simple);
 	private void RequireDistributedEngine()
 	{
 		if (_engine is not IDistributedProcessEngine)
+		{
 			throw new CliUsageException("This command requires ProcessEngine:Type=Distributed.");
+		}
 	}
 
 	private async Task ExecuteTriggerCommandAsync(string[] args, CancellationToken cancellationToken)
@@ -323,31 +210,45 @@ internal sealed class CliApplication
 				break;
 			case "list":
 				foreach (var trigger in await _triggerService.ListAsync(args.Length > 2 ? args[2] : null, cancellationToken))
+				{
 					await _output.WriteLineAsync($"{trigger.Id}  {trigger.Name}  {trigger.ProcessDefinitionKey}  {(trigger.Enabled ? "enabled" : "disabled")}  invocations={trigger.InvocationCount}");
+				}
+
 				break;
 			case "invoke":
 				RequireArguments(args, 4);
 				var triggerId = ParseGuid(args[2]);
 				Dictionary<string, object?>? variables = null;
 				if (args.Length > 4)
-					variables = JsonSerializer.Deserialize<Dictionary<string, object?>>(args[4])
-						?? throw new CliUsageException("Variables must be a JSON object.");
+				{
+					variables = JsonSerializer.Deserialize<Dictionary<string, object?>>(args[4]) ?? throw new CliUsageException("Variables must be a JSON object.");
+				}
+
 				var result = await _triggerService.InvokeAsync(triggerId, args[3], variables, args.Length > 5 ? args[5] : null, cancellationToken);
 				if (result.Status != WorkflowTriggerInvocationStatus.Started)
+				{
 					throw new CliUsageException($"Trigger invocation failed: {result.Status}.");
+				}
+
 				await _output.WriteLineAsync($"Process started: {result.ProcessInstance!.Id}");
 				break;
 			case "enable":
 			case "disable":
 				RequireArguments(args, 3);
 				if (!await _triggerService.UpdateAsync(ParseGuid(args[2]), null, args[1].Equals("enable", StringComparison.OrdinalIgnoreCase), args.Length > 3 ? args[3] : null, cancellationToken))
+				{
 					throw new CliUsageException("Trigger not found.");
+				}
+
 				await _output.WriteLineAsync($"Trigger {args[1].ToLowerInvariant()}d: {args[2]}");
 				break;
 			case "delete":
 				RequireArguments(args, 3);
 				if (!await _triggerService.DeleteAsync(ParseGuid(args[2]), args.Length > 3 ? args[3] : null, cancellationToken))
+				{
 					throw new CliUsageException("Trigger not found.");
+				}
+
 				await _output.WriteLineAsync($"Trigger deleted: {args[2]}");
 				break;
 			default:
@@ -365,26 +266,33 @@ internal sealed class CliApplication
 				var attributesJson = args.Length > 5 ? args[5] : "{}";
 				var attributes = JsonSerializer.Deserialize<Dictionary<string, string>>(attributesJson) ?? throw new CliUsageException("ConnectorAttributes must be a JSON object.");
 				var interval = args.Length > 6 && int.TryParse(args[6], out var parsedInterval) ? parsedInterval : 60;
-				var createdTrigger = await _pollingTriggerService.CreateAsync(
-					new PollingTriggerWriteRequest(args[2], args[3], args[4], JsonSerializer.Serialize(attributes), null, interval),
-					TenantAt(args, 7), cancellationToken);
+				var createdTrigger = await _pollingTriggerService.CreateAsync(new PollingTriggerWriteRequest(args[2], args[3], args[4], JsonSerializer.Serialize(attributes), null, interval), TenantAt(args, 7), cancellationToken);
 				await _output.WriteLineAsync($"Polling trigger created: {createdTrigger.Trigger.Id}");
 				break;
 			case "list":
 				foreach (var trigger in await _pollingTriggerService.ListAsync(TenantAt(args, 2), cancellationToken))
+				{
 					await _output.WriteLineAsync($"{trigger.Id}  {trigger.Name}  {trigger.ProcessDefinitionKey}  {trigger.ConnectorType}  {(trigger.Enabled ? "enabled" : "disabled")}  failures={trigger.ConsecutiveFailures}");
+				}
+
 				break;
 			case "enable":
 			case "disable":
 				RequireArguments(args, 3);
 				if (!await _pollingTriggerService.UpdateAsync(ParseGuid(args[2]), null, args[1].Equals("enable", StringComparison.OrdinalIgnoreCase), TenantAt(args, 3), cancellationToken))
+				{
 					throw new CliUsageException("Polling trigger not found.");
+				}
+
 				await _output.WriteLineAsync($"Polling trigger {args[1].ToLowerInvariant()}d: {args[2]}");
 				break;
 			case "delete":
 				RequireArguments(args, 3);
 				if (!await _pollingTriggerService.DeleteAsync(ParseGuid(args[2]), TenantAt(args, 3), cancellationToken))
+				{
 					throw new CliUsageException("Polling trigger not found.");
+				}
+
 				await _output.WriteLineAsync($"Polling trigger deleted: {args[2]}");
 				break;
 			case "poll-now":
@@ -410,12 +318,18 @@ internal sealed class CliApplication
 				break;
 			case "list":
 				foreach (var item in await _credentialService.ListAsync(TenantAt(args, 2), cancellationToken))
+				{
 					await _output.WriteLineAsync($"{item.Id}  {item.Name}  {item.Type}");
+				}
+
 				break;
 			case "rotate":
 				RequireArguments(args, 5);
 				if (!await _credentialService.RotateSecretAsync(TenantAt(args, 5), args[2], new(args[3], args[4]), cancellationToken))
+				{
 					throw new CliUsageException("Credential not found.");
+				}
+
 				await _output.WriteLineAsync($"Credential secret rotated: {args[2]}");
 				break;
 			default:
@@ -430,7 +344,10 @@ internal sealed class CliApplication
 		{
 			case "list":
 				foreach (var item in await _connectorService.ListAsync(TenantAt(args, 2), cancellationToken))
+				{
 					await _output.WriteLineAsync($"{item.Id}  {item.Name}  {item.Type}  {(item.Enabled ? "enabled" : "disabled")}");
+				}
+
 				break;
 			case "create":
 				RequireArguments(args, 4);
@@ -447,9 +364,15 @@ internal sealed class CliApplication
 				var importTenant = TenantAt(args, 3);
 				var openApiResult = _openApiImporter.Import(await ReadFileAsync(args[2]), importTenant);
 				foreach (var template in openApiResult.Templates)
+				{
 					await _connectorTemplateService.CreateAsync(importTenant, template, cancellationToken);
+				}
+
 				foreach (var item in openApiResult.Report)
+				{
 					await _output.WriteLineAsync($"{item.Disposition}: {item.OperationId} - {item.Message}");
+				}
+
 				break;
 			default:
 				throw new CliUsageException("Usage: connector list [tenant] | create <name> <type> [endpoint] [credential-id] [template-id] [tenant] | test <id> [tenant] | import-openapi <spec.json> [tenant]");
@@ -458,10 +381,15 @@ internal sealed class CliApplication
 
 	private async Task ExecuteTemplateCommandAsync(string[] args, CancellationToken cancellationToken)
 	{
-		if (args.Length is > 1 && !args[1].Equals("list", StringComparison.OrdinalIgnoreCase))
+		if (args.Length is> 1 && !args[1].Equals("list", StringComparison.OrdinalIgnoreCase))
+		{
 			throw new CliUsageException("Usage: template list [tenant]");
+		}
+
 		foreach (var template in await _connectorTemplateService.ListAsync(TenantAt(args, 2), cancellationToken))
+		{
 			await _output.WriteLineAsync($"{template.Id}  {template.Name}  {template.Category}");
+		}
 	}
 
 	private async Task PrintValidationAsync(string bpmnXml)
@@ -469,22 +397,27 @@ internal sealed class CliApplication
 		var validation = await _validationService.ValidateBpmnAsync(bpmnXml);
 		await _output.WriteLineAsync(validation.IsValid ? "BPMN is valid." : "BPMN is invalid.");
 		foreach (var error in validation.Errors ?? [])
+		{
 			await _output.WriteLineAsync($"Error: {error}");
+		}
+
 		foreach (var warning in validation.Warnings ?? [])
+		{
 			await _output.WriteLineAsync($"Warning: {warning}");
+		}
 	}
 
-	private static Guid ParseGuid(string value)
-		=> Guid.TryParse(value, out var id) ? id : throw new CliUsageException($"Invalid trigger id: {value}");
-
+	private static Guid ParseGuid(string value) => Guid.TryParse(value, out var id) ? id : throw new CliUsageException($"Invalid trigger id: {value}");
 	private static string TenantAt(string[] args, int index) => args.Length > index && !string.IsNullOrWhiteSpace(args[index]) ? args[index] : "default";
-
 	private async Task ExecuteConfigCommandAsync(string[] args, CancellationToken cancellationToken)
 	{
 		if (args.Length == 1 || args[1].Equals("list", StringComparison.OrdinalIgnoreCase))
 		{
 			foreach (var entry in await _dependencyRegistry.ListAsync(cancellationToken))
+			{
 				await _output.WriteLineAsync($"{entry.Key}={entry.Value}");
+			}
+
 			return;
 		}
 
@@ -494,7 +427,10 @@ internal sealed class CliApplication
 				RequireArguments(args, 3);
 				var entry = await _dependencyRegistry.GetAsync(args[2], cancellationToken);
 				if (entry is null)
+				{
 					throw new CliUsageException($"Configuration key not found: {args[2]}");
+				}
+
 				await _output.WriteLineAsync(entry.Value);
 				break;
 			case "set":
@@ -506,7 +442,10 @@ internal sealed class CliApplication
 			case "delete":
 				RequireArguments(args, 3);
 				if (!await _dependencyRegistry.RemoveAsync(args[2], cancellationToken))
+				{
 					throw new CliUsageException($"Configuration key not found: {args[2]}");
+				}
+
 				await _output.WriteLineAsync($"Configuration removed: {args[2]}");
 				break;
 			default:
@@ -517,25 +456,30 @@ internal sealed class CliApplication
 	private async Task PrintTraceAsync(Task<List<string>> traceTask)
 	{
 		foreach (var line in await traceTask)
+		{
 			await _output.WriteLineAsync(line);
+		}
 	}
 
 	private static async Task<string> ReadFileAsync(string path)
 	{
 		if (!File.Exists(path))
+		{
 			throw new CliUsageException($"File not found: {path}");
+		}
+
 		return await File.ReadAllTextAsync(path);
 	}
 
 	private static void RequireArguments(string[] args, int count)
 	{
 		if (args.Length < count)
+		{
 			throw new CliUsageException("Missing arguments. Use 'help' for command syntax.");
+		}
 	}
 
-	internal static bool IsHelpRequest(string[] args)
-		=> args is ["--help"] or ["-h"] or ["help"];
-
+	internal static bool IsHelpRequest(string[] args) => args is ["--help"] or ["-h"] or ["help"];
 	internal static void WriteHelp(TextWriter output)
 	{
 		output.WriteLine("VertexBPMN CLI");
@@ -578,12 +522,18 @@ internal sealed class CliApplication
 			if (quote != '\0')
 			{
 				if (character == quote)
+				{
 					quote = '\0';
+				}
 				else
+				{
 					current.Append(character);
+				}
 			}
 			else if (character is '\'' or '"')
+			{
 				quote = character;
+			}
 			else if (char.IsWhiteSpace(character))
 			{
 				if (current.Length > 0)
@@ -593,12 +543,238 @@ internal sealed class CliApplication
 				}
 			}
 			else
+			{
 				current.Append(character);
+			}
 		}
+
 		if (current.Length > 0)
+		{
 			tokens.Add(current.ToString());
+		}
+
 		return tokens;
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "S3871", Justification = "CLI usage errors are caught inside ExecuteCommandAsync and converted to exit code 2; the exception never forms a public library contract.")]
 	private sealed class CliUsageException(string message) : Exception(message);
+	private Task<int> DispatchCommandAsync(string[] args, CancellationToken cancellationToken) => args[0].ToLowerInvariant() switch
+	{
+		"status" => RunStatusCommandAsync(cancellationToken),
+		"pending" => RunPendingCommandAsync(cancellationToken),
+		"workers" => RunWorkersCommandAsync(),
+		"dashboard" or "studio" => RunDashboardCommandAsync(cancellationToken),
+		"config" => RunConfigCommandAsync(args, cancellationToken),
+		"trigger" => RunTriggerCommandAsync(args, cancellationToken),
+		"credential" => RunCredentialCommandAsync(args, cancellationToken),
+		"connector" => RunConnectorCommandAsync(args, cancellationToken),
+		"polling-trigger" => RunPollingTriggerCommandAsync(args, cancellationToken),
+		"template" => RunTemplateCommandAsync(args, cancellationToken),
+		"validate" => RunValidateCommandAsync(args),
+		"import-n8n" => RunImportN8nCommandAsync(args, cancellationToken),
+		"execute" => RunExecuteCommandAsync(args, cancellationToken),
+		"execute-id" => RunExecuteIdCommandAsync(args, cancellationToken),
+		"deploy-bpmn" => RunDeployBpmnCommandAsync(args, cancellationToken),
+		"deploy-dmn" => RunDeployDmnCommandAsync(args),
+		"deploy-form" => RunDeployFormCommandAsync(args, cancellationToken),
+		"test-run" => RunTestRunCommandAsync(args, cancellationToken),
+		"register-bpmn" => RunRegisterBpmnCommandAsync(args, cancellationToken),
+		"register-cmmn" => RunRegisterCmmnCommandAsync(args),
+		"register-dmn" => RunRegisterDmnCommandAsync(args),
+		"execute-case" => RunExecuteCaseCommandAsync(args, cancellationToken),
+		"help" or "--help" => RunHelpCommandAsync(),
+		_ => throw new CliUsageException($"Unknown command '{args[0]}'. Use 'help' for available commands.")};
+	private async Task<int> RunStatusCommandAsync(CancellationToken cancellationToken)
+	{
+		await PrintStatusAsync(cancellationToken);
+		return 0;
+	}
+
+	private async Task<int> RunPendingCommandAsync(CancellationToken cancellationToken)
+	{
+		await PrintPendingAsync(cancellationToken);
+		return 0;
+	}
+
+	private async Task<int> RunWorkersCommandAsync()
+	{
+		RequireDistributedEngine();
+		await PrintWorkersAsync();
+		return 0;
+	}
+
+	private async Task<int> RunDashboardCommandAsync(CancellationToken cancellationToken)
+	{
+		await _dashboardLauncher.OpenAsync(cancellationToken);
+		return 0;
+	}
+
+	private async Task<int> RunConfigCommandAsync(string[] args, CancellationToken cancellationToken)
+	{
+		await ExecuteConfigCommandAsync(args, cancellationToken);
+		return 0;
+	}
+
+	private async Task<int> RunTriggerCommandAsync(string[] args, CancellationToken cancellationToken)
+	{
+		await ExecuteTriggerCommandAsync(args, cancellationToken);
+		return 0;
+	}
+
+	private async Task<int> RunCredentialCommandAsync(string[] args, CancellationToken cancellationToken)
+	{
+		await ExecuteCredentialCommandAsync(args, cancellationToken);
+		return 0;
+	}
+
+	private async Task<int> RunConnectorCommandAsync(string[] args, CancellationToken cancellationToken)
+	{
+		await ExecuteConnectorCommandAsync(args, cancellationToken);
+		return 0;
+	}
+
+	private async Task<int> RunPollingTriggerCommandAsync(string[] args, CancellationToken cancellationToken)
+	{
+		await ExecutePollingTriggerCommandAsync(args, cancellationToken);
+		return 0;
+	}
+
+	private async Task<int> RunTemplateCommandAsync(string[] args, CancellationToken cancellationToken)
+	{
+		await ExecuteTemplateCommandAsync(args, cancellationToken);
+		return 0;
+	}
+
+	private async Task<int> RunValidateCommandAsync(string[] args)
+	{
+		RequireArguments(args, 2);
+		await PrintValidationAsync(await ReadFileAsync(args[1]));
+		return 0;
+	}
+
+	private async Task<int> RunImportN8nCommandAsync(string[] args, CancellationToken cancellationToken)
+	{
+		RequireArguments(args, 2);
+		var importTenant = args.Length > 3 ? args[3] : "default";
+		var imported = _n8nImporter.Import(await ReadFileAsync(args[1]), await _credentialService.ListAsync(importTenant, cancellationToken));
+		var outputPath = args.Length > 2 ? args[2] : Path.ChangeExtension(args[1], ".bpmn");
+		await File.WriteAllTextAsync(outputPath, imported.BpmnXml, cancellationToken);
+		await _output.WriteLineAsync($"n8n workflow imported: {outputPath}");
+		foreach (var item in imported.Report)
+		{
+			await _output.WriteLineAsync($"{item.Disposition}: {item.NodeName} - {item.Message}");
+		}
+
+		return 0;
+	}
+
+	private async Task<int> RunExecuteCommandAsync(string[] args, CancellationToken cancellationToken)
+	{
+		RequireArguments(args, 2);
+		var model = await _bpmnParser.ParseAsync(await ReadFileAsync(args[1]), cancellationToken);
+		await PrintTraceAsync(_engine.ExecuteAsync(model, cancellationToken));
+		return 0;
+	}
+
+	private async Task<int> RunExecuteIdCommandAsync(string[] args, CancellationToken cancellationToken)
+	{
+		RequireArguments(args, 2);
+		await PrintTraceAsync(_engine.ExecuteProcessAsync(args[1], cancellationToken));
+		return 0;
+	}
+
+	private async Task<int> RunDeployBpmnCommandAsync(string[] args, CancellationToken cancellationToken)
+	{
+		RequireArguments(args, 2);
+		var deployed = await _repositoryService.DeployAsync(await ReadFileAsync(args[1]), Path.GetFileName(args[1]), args.Length > 2 ? args[2] : null, cancellationToken);
+		await _output.WriteLineAsync($"BPMN deployed: {deployed.Key} ({deployed.Id})");
+		return 0;
+	}
+
+	private async Task<int> RunDeployDmnCommandAsync(string[] args)
+	{
+		RequireArguments(args, 2);
+		var dmnPath = args[1];
+		var decisionKey = Path.GetFileNameWithoutExtension(dmnPath);
+		await _decisionService.DeployAsync(decisionKey, decisionKey, await ReadFileAsync(dmnPath), args.Length > 2 ? args[2] : null);
+		await _output.WriteLineAsync($"DMN deployed: {decisionKey}");
+		return 0;
+	}
+
+	private async Task<int> RunDeployFormCommandAsync(string[] args, CancellationToken cancellationToken)
+	{
+		RequireArguments(args, 2);
+		var formPath = args[1];
+		var formKey = Path.GetFileNameWithoutExtension(formPath);
+		var form = await _formDefinitionService.CreateAsync(TenantAt(args, 2), new(formKey, formKey, await ReadFileAsync(formPath)), cancellationToken);
+		await _output.WriteLineAsync($"Form deployed: {form.Key} ({form.Id})");
+		return 0;
+	}
+
+	private async Task<int> RunTestRunCommandAsync(string[] args, CancellationToken cancellationToken)
+	{
+		var useRecordedOutputs = args.Any(a => a == "--use-recorded-outputs");
+		var cmdArgs = args.Where(a => a != "--use-recorded-outputs").ToArray();
+		RequireArguments(cmdArgs, 3);
+		var tenant = args.Length > 3 ? args[3] : null;
+		var testPath = cmdArgs[1];
+		var testDefinition = await _repositoryService.DeployAsync(await ReadFileAsync(testPath), Path.GetFileName(testPath), tenant, cancellationToken);
+		var variables = JsonSerializer.Deserialize<Dictionary<string, object>>(await ReadFileAsync(cmdArgs[2])) ?? throw new CliUsageException("Variables must be a JSON object.");
+		if (useRecordedOutputs)
+		{
+			var parsedModel = await _bpmnParser.ParseAsync(await ReadFileAsync(testPath), cancellationToken);
+			var replayModel = await _recordedOutputReplayService.RewriteForReplayAsync(tenant ?? "default", testDefinition.Key, parsedModel, cancellationToken);
+			var trace = await _engine.ExecuteAsync(replayModel, cancellationToken);
+			await _output.WriteLineAsync($"Test run (recorded-output replay) {testDefinition.Key}:");
+			foreach (var line in trace)
+			{
+				await _output.WriteLineAsync("  " + line);
+			}
+		}
+		else
+		{
+			var instance = await _runtimeService.StartProcessByKeyAsync(testDefinition.Key, variables, $"cli-test-{Guid.NewGuid():N}", tenant, null, cancellationToken);
+			await _output.WriteLineAsync($"Test run started: {instance.Id} ({testDefinition.Key})");
+		}
+
+		return 0;
+	}
+
+	private async Task<int> RunRegisterBpmnCommandAsync(string[] args, CancellationToken cancellationToken)
+	{
+		RequireArguments(args, 3);
+		await _engine.RegisterBpmnModelAsync(args[1], await ReadFileAsync(args[2]), cancellationToken);
+		await _output.WriteLineAsync($"BPMN registered: {args[1]}");
+		return 0;
+	}
+
+	private async Task<int> RunRegisterCmmnCommandAsync(string[] args)
+	{
+		RequireArguments(args, 3);
+		await _engine.RegisterCmmnModelAsync(args[1], await ReadFileAsync(args[2]));
+		await _output.WriteLineAsync($"CMMN registered: {args[1]}");
+		return 0;
+	}
+
+	private async Task<int> RunRegisterDmnCommandAsync(string[] args)
+	{
+		RequireArguments(args, 3);
+		await _engine.RegisterDmnModelAsync(args[1], await ReadFileAsync(args[2]));
+		await _output.WriteLineAsync($"DMN registered: {args[1]}");
+		return 0;
+	}
+
+	private async Task<int> RunExecuteCaseCommandAsync(string[] args, CancellationToken cancellationToken)
+	{
+		RequireArguments(args, 2);
+		var caseModel = await _cmmnParser.ParseAsync(await ReadFileAsync(args[1]), cancellationToken);
+		await PrintTraceAsync(_engine.ExecuteCaseAsync(caseModel, cancellationToken));
+		return 0;
+	}
+
+	private Task<int> RunHelpCommandAsync()
+	{
+		WriteHelp(_output);
+		return Task.FromResult(0);
+	}
 }

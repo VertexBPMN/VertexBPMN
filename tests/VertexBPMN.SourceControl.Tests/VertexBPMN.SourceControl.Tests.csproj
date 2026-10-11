@@ -9,6 +9,7 @@
     <TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../VertexBPMN.Tests/Infrastructure/PostgresTestDatabaseCommands.cs" Link="Infrastructure/PostgresTestDatabaseCommands.cs" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <PackageReference Include="xunit.v3.mtp-v2" Version="4.0.1" />
     <ProjectReference Include="../../src/VertexBPMN.SourceControl.Abstractions/VertexBPMN.SourceControl.Abstractions.csproj" />

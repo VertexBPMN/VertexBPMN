@@ -8,13 +8,14 @@ namespace VertexBPMN.Tests.Integration.Bpmn;
 
 public class DecisionServiceTests
 {
-    [Fact]
-    public async Task Evaluate_Decision_Returns_Dmn_Output()
-    {
-        var logger = new LoggerFactory().CreateLogger<DecisionService>();
-        var repository = new InMemoryDecisionRepository();
-        var service = new DecisionService(logger, repository);
-        const string dmnXml = """
+	[Fact]
+	public async Task Evaluate_Decision_Returns_Dmn_Output()
+	{
+		using var loggerFactory = new LoggerFactory();
+		var logger = loggerFactory.CreateLogger<DecisionService>();
+		var repository = new InMemoryDecisionRepository();
+		var service = new DecisionService(logger, repository);
+		const string dmnXml = """
             <definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/">
               <decision id="test" name="Test">
                 <decisionTable hitPolicy="UNIQUE">
@@ -25,12 +26,12 @@ public class DecisionServiceTests
               </decision>
             </definitions>
             """;
-        await service.DeployAsync("test", "Test", dmnXml);
-        var inputs = new Dictionary<string, object> { { "foo", 42 } };
+		await service.DeployAsync("test", "Test", dmnXml);
+		var inputs = new Dictionary<string, object>(StringComparer.Ordinal) { { "foo", 42 } };
 
-        var result = await service.EvaluateDecisionByKeyAsync("test", inputs, cancellationToken: TestContext.Current.CancellationToken);
+		var result = await service.EvaluateDecisionByKeyAsync("test", inputs, cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.NotNull(result);
-        Assert.Equal("accepted", result.Variables["result"]);
-    }
+		Assert.NotNull(result);
+		Assert.Equal("accepted", result.Variables["result"]);
+	}
 }

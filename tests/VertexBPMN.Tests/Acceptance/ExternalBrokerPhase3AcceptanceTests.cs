@@ -16,266 +16,282 @@ namespace VertexBPMN.Tests.Acceptance;
 
 public sealed class ExternalBrokerPhase3AcceptanceTests(ITestOutputHelper output)
 {
-    [Fact]
-    [Trait("Category", "Phase3ExternalAcceptance")]
-    public async Task P3_EXT_01_RabbitMq_health_publish_and_consume_roundtrip()
-    {
-        var connectionString = Environment.GetEnvironmentVariable("VERTEXBPMN_TEST_RABBITMQ");
-        Assert.SkipUnless(!string.IsNullOrWhiteSpace(connectionString), "Local RabbitMQ connection required.");
-        Assert.False(string.IsNullOrWhiteSpace(connectionString),
-            "VERTEXBPMN_TEST_RABBITMQ must point to the CI RabbitMQ service.");
+	[Fact]
+	[Trait("Category", "Phase3ExternalAcceptance")]
+	public async Task P3_EXT_01_RabbitMq_health_publish_and_consume_roundtrip()
+	{
+		var connectionString = Environment.GetEnvironmentVariable("VERTEXBPMN_TEST_RABBITMQ");
+		Assert.SkipUnless(!string.IsNullOrWhiteSpace(connectionString), "Local RabbitMQ connection required.");
+		Assert.False(string.IsNullOrWhiteSpace(connectionString),
+			"VERTEXBPMN_TEST_RABBITMQ must point to the CI RabbitMQ service.");
 
-        var destination = $"vertexbpmn-phase3-{Guid.NewGuid():N}";
-        var options = new RuntimeOutboxOptions
-        {
-            Enabled = true,
-            Provider = "RabbitMq",
-            ConnectionString = connectionString,
-            Destination = destination
-        };
-        var transport = new RabbitMqRuntimeOutboxTransport(options);
-        var factory = new ConnectionFactory { Uri = new Uri(connectionString) };
-        await using var connection = await factory.CreateConnectionAsync(TestContext.Current.CancellationToken);
-        if (connection.ServerProperties.TryGetValue("version", out var version))
-            output.WriteLine($"RabbitMQ server version: {(version is byte[] bytes ? Encoding.UTF8.GetString(bytes) : version)}");
-        await using var channel = await connection.CreateChannelAsync(cancellationToken: TestContext.Current.CancellationToken);
-        await channel.ExchangeDeclareAsync(
-            destination,
-            ExchangeType.Topic,
-            durable: true,
-            autoDelete: false,
-            cancellationToken: TestContext.Current.CancellationToken);
-        var queue = await channel.QueueDeclareAsync(
-            queue: string.Empty,
-            durable: false,
-            exclusive: true,
-            autoDelete: true,
-            arguments: null,
-            cancellationToken: TestContext.Current.CancellationToken);
-        await channel.QueueBindAsync(
-            queue.QueueName,
-            destination,
-            "#",
-            arguments: null,
-            cancellationToken: TestContext.Current.CancellationToken);
+		var destination = $"vertexbpmn-phase3-{Guid.NewGuid():N}";
+		var options = new RuntimeOutboxOptions
+		{
+			Enabled = true,
+			Provider = "RabbitMq",
+			ConnectionString = connectionString,
+			Destination = destination
+		};
+		var transport = new RabbitMqRuntimeOutboxTransport(options);
+		var factory = new ConnectionFactory { Uri = new Uri(connectionString) };
+		await using var connection = await factory.CreateConnectionAsync(TestContext.Current.CancellationToken);
+		Assert.NotNull(connection.ServerProperties);
+		if (connection.ServerProperties.TryGetValue("version", out var version))
+		{
+			output.WriteLine($"RabbitMQ server version: {(version is byte[] bytes ? Encoding.UTF8.GetString(bytes) : version)}");
+		}
 
-        var health = await transport.CheckHealthAsync(TestContext.Current.CancellationToken);
-        Assert.True(health.IsHealthy, health.Description);
-        var message = new RuntimeOutboxMessage
-        {
-            Id = Guid.NewGuid(),
-            ProcessInstanceId = Guid.NewGuid(),
-            EventType = "Phase3ExternalRoundtrip",
-            Payload = JsonSerializer.Serialize(new { value = 42 }),
-            State = "InFlight",
-            OccurredAt = DateTime.UtcNow
-        };
-        await transport.PublishAsync(message, TestContext.Current.CancellationToken);
+		await using var channel = await connection.CreateChannelAsync(cancellationToken: TestContext.Current.CancellationToken);
+		await channel.ExchangeDeclareAsync(
+			destination,
+			ExchangeType.Topic,
+			durable: true,
+			autoDelete: false,
+			cancellationToken: TestContext.Current.CancellationToken);
+		var queue = await channel.QueueDeclareAsync(
+			queue: string.Empty,
+			durable: false,
+			exclusive: true,
+			autoDelete: true,
+			arguments: null,
+			cancellationToken: TestContext.Current.CancellationToken);
+		await channel.QueueBindAsync(
+			queue.QueueName,
+			destination,
+			"#",
+			arguments: null,
+			cancellationToken: TestContext.Current.CancellationToken);
 
-        var delivered = await channel.BasicGetAsync(
-            queue.QueueName,
-            autoAck: true,
-            TestContext.Current.CancellationToken);
-        Assert.NotNull(delivered);
-        Assert.Equal(message.Id.ToString("N"), delivered.BasicProperties.MessageId);
-        var envelope = Encoding.UTF8.GetString(delivered.Body.ToArray());
-        Assert.Contains(message.EventType, envelope, StringComparison.Ordinal);
-        Assert.Contains("42", envelope, StringComparison.Ordinal);
-    }
+		var health = await transport.CheckHealthAsync(TestContext.Current.CancellationToken);
+		Assert.True(health.IsHealthy, health.Description);
+		var message = CreateRabbitMqRoundtripMessage();
+		await transport.PublishAsync(message, TestContext.Current.CancellationToken);
 
-    [Fact]
-    [Trait("Category", "Phase3ExternalAcceptance")]
-    public async Task P3_EXT_02_All_EF_migrations_apply_to_real_PostgreSql_databases()
-    {
-        var adminConnectionString = Environment.GetEnvironmentVariable("VERTEXBPMN_TEST_POSTGRES_ADMIN");
-        Assert.SkipUnless(!string.IsNullOrWhiteSpace(adminConnectionString), "Local PostgreSQL connection required.");
-        Assert.False(string.IsNullOrWhiteSpace(adminConnectionString),
-            "VERTEXBPMN_TEST_POSTGRES_ADMIN must point to the CI PostgreSQL service.");
+		var delivered = await channel.BasicGetAsync(
+			queue.QueueName,
+			autoAck: true,
+			TestContext.Current.CancellationToken);
+		Assert.NotNull(delivered);
+		Assert.Equal(message.Id.ToString("N"), delivered.BasicProperties.MessageId);
+		var envelope = Encoding.UTF8.GetString(delivered.Body.ToArray());
+		Assert.Contains(message.EventType, envelope, StringComparison.Ordinal);
+		Assert.Contains("42", envelope, StringComparison.Ordinal);
+	}
 
-        var databaseNames = new[]
-        {
-            $"p3_bpmn_{Guid.NewGuid():N}",
-            $"p3_tenants_{Guid.NewGuid():N}",
-            $"p3_simulation_{Guid.NewGuid():N}",
-            $"p3_mining_{Guid.NewGuid():N}",
-            $"p3_decision_{Guid.NewGuid():N}"
-        };
+	private static RuntimeOutboxMessage CreateRabbitMqRoundtripMessage() => new()
+	{
+		Id = Guid.NewGuid(),
+		ProcessInstanceId = Guid.NewGuid(),
+		EventType = "Phase3ExternalRoundtrip",
+		Payload = JsonSerializer.Serialize(new { value = 42 }),
+		State = "InFlight",
+		OccurredAt = DateTime.UtcNow
+	};
 
-        await using var admin = new NpgsqlConnection(adminConnectionString);
-        await admin.OpenAsync(TestContext.Current.CancellationToken);
-        output.WriteLine($"PostgreSQL server version: {admin.PostgreSqlVersion}");
-        try
-        {
-            foreach (var databaseName in databaseNames)
-                await ExecuteAdminCommandAsync(admin, $"CREATE DATABASE \"{databaseName}\"");
+	[Fact]
+	[Trait("Category", "Phase3ExternalAcceptance")]
+	public async Task P3_EXT_02_All_EF_migrations_apply_to_real_PostgreSql_databases()
+	{
+		var adminConnectionString = Environment.GetEnvironmentVariable("VERTEXBPMN_TEST_POSTGRES_ADMIN");
+		Assert.SkipUnless(!string.IsNullOrWhiteSpace(adminConnectionString), "Local PostgreSQL connection required.");
+		Assert.False(string.IsNullOrWhiteSpace(adminConnectionString),
+			"VERTEXBPMN_TEST_POSTGRES_ADMIN must point to the CI PostgreSQL service.");
 
-            await AssertMigrationsCurrentAsync(new BpmnDbContext(
-                new DbContextOptionsBuilder<BpmnDbContext>()
-                    .UseVertexNpgsql(ConnectionStringFor(adminConnectionString, databaseNames[0])).Options));
-            await AssertMigrationsCurrentAsync(new TenantDbContext(
-                new DbContextOptionsBuilder<TenantDbContext>()
-                    .UseVertexNpgsql(ConnectionStringFor(adminConnectionString, databaseNames[1])).Options));
-            await AssertMigrationsCurrentAsync(new SimulationScenarioDbContext(
-                new DbContextOptionsBuilder<SimulationScenarioDbContext>()
-                    .UseVertexNpgsql(ConnectionStringFor(adminConnectionString, databaseNames[2])).Options));
-            await AssertMigrationsCurrentAsync(new ProcessMiningEventDbContext(
-                new DbContextOptionsBuilder<ProcessMiningEventDbContext>()
-                    .UseVertexNpgsql(ConnectionStringFor(adminConnectionString, databaseNames[3])).Options));
-            await AssertMigrationsCurrentAsync(new DecisionDbContext(
-                new DbContextOptionsBuilder<DecisionDbContext>()
-                    .UseVertexNpgsql(ConnectionStringFor(adminConnectionString, databaseNames[4])).Options));
-        }
-        finally
-        {
-            foreach (var databaseName in databaseNames)
-                await ExecuteAdminCommandAsync(admin, $"DROP DATABASE IF EXISTS \"{databaseName}\" WITH (FORCE)");
-        }
-    }
+		var databaseNames = new[]
+		{
+			$"p3_bpmn_{Guid.NewGuid():N}",
+			$"p3_tenants_{Guid.NewGuid():N}",
+			$"p3_simulation_{Guid.NewGuid():N}",
+			$"p3_mining_{Guid.NewGuid():N}",
+			$"p3_decision_{Guid.NewGuid():N}"
+		};
 
-    [Fact]
-    [Trait("Category", "Phase3ExternalAcceptance")]
-    public async Task P3_EXT_03_Two_isolated_publishers_share_PostgreSql_without_duplicate_leases()
-    {
-        var adminConnectionString = Environment.GetEnvironmentVariable("VERTEXBPMN_TEST_POSTGRES_ADMIN");
-        Assert.SkipUnless(!string.IsNullOrWhiteSpace(adminConnectionString), "Local PostgreSQL connection required.");
-        Assert.False(string.IsNullOrWhiteSpace(adminConnectionString),
-            "VERTEXBPMN_TEST_POSTGRES_ADMIN must point to the CI PostgreSQL service.");
+		await using var admin = new NpgsqlConnection(adminConnectionString);
+		await admin.OpenAsync(TestContext.Current.CancellationToken);
+		output.WriteLine($"PostgreSQL server version: {admin.PostgreSqlVersion}");
+		try
+		{
+			foreach (var databaseName in databaseNames)
+			{
+				await ExecuteAdminCommandAsync(admin, $"CREATE DATABASE \"{databaseName}\"");
+			}
 
-        var databaseName = $"p3_multipod_{Guid.NewGuid():N}";
-        await using var admin = new NpgsqlConnection(adminConnectionString);
-        await admin.OpenAsync(TestContext.Current.CancellationToken);
-        await ExecuteAdminCommandAsync(admin, $"CREATE DATABASE \"{databaseName}\"");
-        try
-        {
-            var connectionString = ConnectionStringFor(adminConnectionString, databaseName);
-            await using (var migrationContext = new BpmnDbContext(
-                             new DbContextOptionsBuilder<BpmnDbContext>()
-                                 .UseVertexNpgsql(connectionString).Options))
-            {
-                await migrationContext.Database.MigrateAsync(TestContext.Current.CancellationToken);
-                migrationContext.RuntimeOutbox.AddRange(Enumerable.Range(0, 40).Select(index =>
-                    new RuntimeOutboxMessage
-                    {
-                        Id = Guid.NewGuid(),
-                        EventType = "Phase3MultiPod",
-                        Payload = JsonSerializer.Serialize(new { index }),
-                        State = "Pending",
-                        OccurredAt = DateTime.UtcNow.AddMilliseconds(index)
-                    }));
-                await migrationContext.SaveChangesAsync(TestContext.Current.CancellationToken);
-            }
+			await using var bpmnContext = new BpmnDbContext(
+				new DbContextOptionsBuilder<BpmnDbContext>()
+					.UseVertexNpgsql(ConnectionStringFor(adminConnectionString, databaseNames[0])).Options);
+			await AssertMigrationsCurrentAsync(bpmnContext);
+			await using var tenantContext = new TenantDbContext(
+				new DbContextOptionsBuilder<TenantDbContext>()
+					.UseVertexNpgsql(ConnectionStringFor(adminConnectionString, databaseNames[1])).Options);
+			await AssertMigrationsCurrentAsync(tenantContext);
+			await using var simulationContext = new SimulationScenarioDbContext(
+				new DbContextOptionsBuilder<SimulationScenarioDbContext>()
+					.UseVertexNpgsql(ConnectionStringFor(adminConnectionString, databaseNames[2])).Options);
+			await AssertMigrationsCurrentAsync(simulationContext);
+			await using var miningContext = new ProcessMiningEventDbContext(
+				new DbContextOptionsBuilder<ProcessMiningEventDbContext>()
+					.UseVertexNpgsql(ConnectionStringFor(adminConnectionString, databaseNames[3])).Options);
+			await AssertMigrationsCurrentAsync(miningContext);
+			await using var decisionContext = new DecisionDbContext(
+				new DbContextOptionsBuilder<DecisionDbContext>()
+					.UseVertexNpgsql(ConnectionStringFor(adminConnectionString, databaseNames[4])).Options);
+			await AssertMigrationsCurrentAsync(decisionContext);
+		}
+		finally
+		{
+			foreach (var databaseName in databaseNames)
+			{
+				await ExecuteAdminCommandAsync(admin, $"DROP DATABASE IF EXISTS \"{databaseName}\" WITH (FORCE)");
+			}
+		}
+	}
 
-            await using var podA = RuntimePublisherProvider(connectionString);
-            await using var podB = RuntimePublisherProvider(connectionString);
-            var transport = new ConcurrentRecordingTransport();
-            var options = new RuntimeOutboxOptions
-            {
-                Enabled = true,
-                Provider = "Test",
-                ConnectionString = "test",
-                Destination = "phase3-multipod",
-                BatchSize = 40,
-                LeaseSeconds = 30,
-                RetryDelaySeconds = 0,
-                MaxAttempts = 3
-            };
-            var publisherA = new RuntimeOutboxPublisherService(
-                podA.GetRequiredService<IServiceScopeFactory>(), transport, options,
-                NullLogger<RuntimeOutboxPublisherService>.Instance);
-            var publisherB = new RuntimeOutboxPublisherService(
-                podB.GetRequiredService<IServiceScopeFactory>(), transport, options,
-                NullLogger<RuntimeOutboxPublisherService>.Instance);
+	[Fact]
+	[Trait("Category", "Phase3ExternalAcceptance")]
+	public async Task P3_EXT_03_Two_isolated_publishers_share_PostgreSql_without_duplicate_leases()
+	{
+		var adminConnectionString = Environment.GetEnvironmentVariable("VERTEXBPMN_TEST_POSTGRES_ADMIN");
+		Assert.SkipUnless(!string.IsNullOrWhiteSpace(adminConnectionString), "Local PostgreSQL connection required.");
+		Assert.False(string.IsNullOrWhiteSpace(adminConnectionString),
+			"VERTEXBPMN_TEST_POSTGRES_ADMIN must point to the CI PostgreSQL service.");
 
-            await Task.WhenAll(
-                publisherA.RunOnceAsync(TestContext.Current.CancellationToken),
-                publisherB.RunOnceAsync(TestContext.Current.CancellationToken));
+		var databaseName = $"p3_multipod_{Guid.NewGuid():N}";
+		await using var admin = new NpgsqlConnection(adminConnectionString);
+		await admin.OpenAsync(TestContext.Current.CancellationToken);
+		await ExecuteAdminCommandAsync(admin, $"CREATE DATABASE \"{databaseName}\"");
+		try
+		{
+			var connectionString = ConnectionStringFor(adminConnectionString, databaseName);
+			await SeedMultiPublisherOutboxAsync(connectionString);
+			await using var podA = RuntimePublisherProvider(connectionString);
+			await using var podB = RuntimePublisherProvider(connectionString);
+			var transport = new ConcurrentRecordingTransport();
+			var options = new RuntimeOutboxOptions
+			{
+				Enabled = true,
+				Provider = "Test",
+				ConnectionString = "test",
+				Destination = "phase3-multipod",
+				BatchSize = 40,
+				LeaseSeconds = 30,
+				RetryDelaySeconds = 0,
+				MaxAttempts = 3
+			};
+			using var publisherA = new RuntimeOutboxPublisherService(
+				podA.GetRequiredService<IServiceScopeFactory>(), transport, options,
+				NullLogger<RuntimeOutboxPublisherService>.Instance);
+			using var publisherB = new RuntimeOutboxPublisherService(
+				podB.GetRequiredService<IServiceScopeFactory>(), transport, options,
+				NullLogger<RuntimeOutboxPublisherService>.Instance);
 
-            await using var verification = new BpmnDbContext(
-                new DbContextOptionsBuilder<BpmnDbContext>().UseNpgsql(connectionString).Options);
-            var messages = await verification.RuntimeOutbox.AsNoTracking()
-                .ToListAsync(TestContext.Current.CancellationToken);
-            Assert.Equal(40, messages.Count);
-            Assert.All(messages, message => Assert.Equal("Published", message.State));
-            Assert.All(messages, message => Assert.Equal(1, transport.Deliveries[message.Id]));
-        }
-        finally
-        {
-            await ExecuteAdminCommandAsync(admin, $"DROP DATABASE IF EXISTS \"{databaseName}\" WITH (FORCE)");
-        }
-    }
+			await Task.WhenAll(
+				publisherA.RunOnceAsync(TestContext.Current.CancellationToken),
+				publisherB.RunOnceAsync(TestContext.Current.CancellationToken));
 
-    [Fact]
-    [Trait("Category", "Phase3ExternalAcceptance")]
-    public async Task P3_EXT_04_RabbitMq_rejects_unroutable_mandatory_delivery()
-    {
-        var connectionString = Environment.GetEnvironmentVariable("VERTEXBPMN_TEST_RABBITMQ");
-        Assert.SkipUnless(!string.IsNullOrWhiteSpace(connectionString), "Local RabbitMQ connection required.");
-        Assert.False(string.IsNullOrWhiteSpace(connectionString),
-            "VERTEXBPMN_TEST_RABBITMQ must point to the CI RabbitMQ service.");
+			await using var verification = new BpmnDbContext(
+				new DbContextOptionsBuilder<BpmnDbContext>().UseNpgsql(connectionString).Options);
+			var messages = await verification.RuntimeOutbox.AsNoTracking()
+				.ToListAsync(TestContext.Current.CancellationToken);
+			Assert.Equal(40, messages.Count);
+			Assert.All(messages, message => Assert.Equal("Published", message.State));
+			Assert.All(messages, message => Assert.Equal(1, transport.Deliveries[message.Id]));
+		}
+		finally
+		{
+			await ExecuteAdminCommandAsync(admin, $"DROP DATABASE IF EXISTS \"{databaseName}\" WITH (FORCE)");
+		}
+	}
+	private static async Task SeedMultiPublisherOutboxAsync(string connectionString)
+	{
+		await using var migrationContext = new BpmnDbContext(
+							 new DbContextOptionsBuilder<BpmnDbContext>()
+								 .UseVertexNpgsql(connectionString).Options);
+		await migrationContext.Database.MigrateAsync(TestContext.Current.CancellationToken);
+		migrationContext.RuntimeOutbox.AddRange(Enumerable.Range(0, 40).Select(index =>
+			new RuntimeOutboxMessage
+			{
+				Id = Guid.NewGuid(),
+				EventType = "Phase3MultiPod",
+				Payload = JsonSerializer.Serialize(new { index }),
+				State = "Pending",
+				OccurredAt = DateTime.UtcNow.AddMilliseconds(index)
+			}));
+		await migrationContext.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        var transport = new RabbitMqRuntimeOutboxTransport(new RuntimeOutboxOptions
-        {
-            Enabled = true,
-            Provider = "RabbitMq",
-            ConnectionString = connectionString,
-            Destination = $"vertexbpmn-unroutable-{Guid.NewGuid():N}"
-        });
-        var message = new RuntimeOutboxMessage
-        {
-            Id = Guid.NewGuid(),
-            EventType = "NoBoundQueue",
-            Payload = "{}",
-            State = "InFlight",
-            OccurredAt = DateTime.UtcNow
-        };
 
-        var exception = await Assert.ThrowsAsync<PublishReturnException>(async () =>
-            await transport.PublishAsync(message, TestContext.Current.CancellationToken));
-        Assert.Equal(Constants.NoRoute, exception.ReplyCode);
-    }
+	}
 
-    private static async Task AssertMigrationsCurrentAsync(DbContext context)
-    {
-        await using (context)
-        {
-            await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
-            var pending = await context.Database.GetPendingMigrationsAsync(TestContext.Current.CancellationToken);
-            Assert.Empty(pending);
-            Assert.True(await context.Database.CanConnectAsync(TestContext.Current.CancellationToken));
-        }
-    }
 
-    private static async Task ExecuteAdminCommandAsync(NpgsqlConnection connection, string sql)
-    {
-        await using var command = new NpgsqlCommand(sql, connection);
-        await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
-    }
+	[Fact]
+	[Trait("Category", "Phase3ExternalAcceptance")]
+	public async Task P3_EXT_04_RabbitMq_rejects_unroutable_mandatory_delivery()
+	{
+		var connectionString = Environment.GetEnvironmentVariable("VERTEXBPMN_TEST_RABBITMQ");
+		Assert.SkipUnless(!string.IsNullOrWhiteSpace(connectionString), "Local RabbitMQ connection required.");
+		Assert.False(string.IsNullOrWhiteSpace(connectionString),
+			"VERTEXBPMN_TEST_RABBITMQ must point to the CI RabbitMQ service.");
 
-    private static string ConnectionStringFor(string adminConnectionString, string databaseName)
-    {
-        var builder = new NpgsqlConnectionStringBuilder(adminConnectionString) { Database = databaseName };
-        return builder.ConnectionString;
-    }
+		var transport = new RabbitMqRuntimeOutboxTransport(new RuntimeOutboxOptions
+		{
+			Enabled = true,
+			Provider = "RabbitMq",
+			ConnectionString = connectionString,
+			Destination = $"vertexbpmn-unroutable-{Guid.NewGuid():N}"
+		});
+		var message = new RuntimeOutboxMessage
+		{
+			Id = Guid.NewGuid(),
+			EventType = "NoBoundQueue",
+			Payload = "{}",
+			State = "InFlight",
+			OccurredAt = DateTime.UtcNow
+		};
 
-    private static ServiceProvider RuntimePublisherProvider(string connectionString)
-    {
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddDbContext<BpmnDbContext>(options => options.UseVertexNpgsql(connectionString));
-        return services.BuildServiceProvider();
-    }
+		var exception = await Assert.ThrowsAsync<PublishReturnException>(async () =>
+			await transport.PublishAsync(message, TestContext.Current.CancellationToken));
+		Assert.Equal(Constants.NoRoute, exception.ReplyCode);
+	}
 
-    private sealed class ConcurrentRecordingTransport : IRuntimeOutboxTransport
-    {
-        public ConcurrentDictionary<Guid, int> Deliveries { get; } = new();
+	private static async Task AssertMigrationsCurrentAsync(DbContext context)
+	{
+		await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
+		var pending = await context.Database.GetPendingMigrationsAsync(TestContext.Current.CancellationToken);
+		Assert.Empty(pending);
+		Assert.True(await context.Database.CanConnectAsync(TestContext.Current.CancellationToken));
+	}
 
-        public ValueTask PublishAsync(RuntimeOutboxMessage message, CancellationToken cancellationToken = default)
-        {
-            Deliveries.AddOrUpdate(message.Id, 1, (_, count) => count + 1);
-            return ValueTask.CompletedTask;
-        }
+	private static async Task ExecuteAdminCommandAsync(NpgsqlConnection connection, string sql)
+	{
+		await using var command = VertexBPMN.Tests.Infrastructure.PostgresTestDatabaseCommands.CreateValidated(connection, sql);
+		await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+	}
 
-        public ValueTask<OutboxTransportHealth> CheckHealthAsync(CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(new OutboxTransportHealth(true, "test transport ready"));
-    }
+	private static string ConnectionStringFor(string adminConnectionString, string databaseName)
+	{
+		var builder = new NpgsqlConnectionStringBuilder(adminConnectionString) { Database = databaseName };
+		return builder.ConnectionString;
+	}
+
+	private static ServiceProvider RuntimePublisherProvider(string connectionString)
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddDbContext<BpmnDbContext>(options => options.UseVertexNpgsql(connectionString));
+		return services.BuildServiceProvider();
+	}
+
+	private sealed class ConcurrentRecordingTransport : IRuntimeOutboxTransport
+	{
+		public ConcurrentDictionary<Guid, int> Deliveries { get; } = new();
+
+		public ValueTask PublishAsync(RuntimeOutboxMessage message, CancellationToken cancellationToken = default)
+		{
+			Deliveries.AddOrUpdate(message.Id, 1, (_, count) => count + 1);
+			return ValueTask.CompletedTask;
+		}
+
+		public ValueTask<OutboxTransportHealth> CheckHealthAsync(CancellationToken cancellationToken = default) =>
+			ValueTask.FromResult(new OutboxTransportHealth(true, "test transport ready"));
+	}
 }

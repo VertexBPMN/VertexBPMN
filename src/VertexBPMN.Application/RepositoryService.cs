@@ -71,6 +71,39 @@ public class RepositoryService : IRepositoryService
 			throw new BpmnDeploymentValidationException(errors);
 		}
 
+		await ValidateRuntimeConstraintsAsync(model, tenantId, cancellationToken);
+
+		var processId = model.ProcessId;
+		var latest = await _repo.GetLatestByKeyAsync(processId, tenantId, cancellationToken);
+		var deploymentId = Guid.NewGuid();
+		var def = BuildProcessDefinition(name, processId, bpmnXml, tenantId, (latest?.Version ?? 0) + 1, deploymentId);
+		await _repo.AddAsync(def, cancellationToken);
+		return def;
+	}
+
+	private static ProcessDefinition BuildProcessDefinition(string name, string processId, string bpmnXml, string? tenantId, int version, Guid deploymentId)
+		=> new()
+		{
+			Id = Guid.NewGuid(),
+			Key = processId,
+			Name = name,
+			Version = version,
+			BpmnXml = bpmnXml,
+			TenantId = tenantId,
+			TenantScope = string.IsNullOrWhiteSpace(tenantId) ? "$global" : tenantId.Trim(),
+			CreatedAt = DateTime.UtcNow,
+			DeploymentId = deploymentId,
+			Deployment = new EngineDeployment
+			{
+				Id = deploymentId,
+				CreatedAt = DateTime.UtcNow,
+				Name = $"Deployment_{name}_{DateTime.UtcNow:yyyyMMddHHmmss}",
+				TenantId = tenantId
+			}
+		};
+
+	private async Task ValidateRuntimeConstraintsAsync(BpmnModel model, string? tenantId, CancellationToken cancellationToken)
+	{
 		foreach (var task in (model.Tasks ?? []).Where(task => task.ExternalTask is not null))
 		{
 			try
@@ -114,32 +147,6 @@ public class RepositoryService : IRepositoryService
 				"BPMN C# script tasks are disabled for the in-process production runtime because Roslyn is not sandboxed. " +
 				"Set Runtime:Scripts:AllowCSharp=true only if all tenants are trusted.");
 		}
-
-		var processId = model.ProcessId;
-		var latest = await _repo.GetLatestByKeyAsync(processId, tenantId, cancellationToken);
-		var deploymentId = Guid.NewGuid();
-		var def = new ProcessDefinition
-		{
-			Id = Guid.NewGuid(),
-			Key = processId,
-			Name = name,
-			Version = (latest?.Version ?? 0) + 1,
-			BpmnXml = bpmnXml,
-			TenantId = tenantId,
-			TenantScope = string.IsNullOrWhiteSpace(tenantId) ? "$global" : tenantId.Trim(),
-			CreatedAt = DateTime.UtcNow,
-			DeploymentId = deploymentId,
-			Deployment = new EngineDeployment
-			{
-				Id = deploymentId,
-				CreatedAt = DateTime.UtcNow,
-				Name = $"Deployment_{name}_{DateTime.UtcNow:yyyyMMddHHmmss}",
-				TenantId = tenantId
-			}
-
-		};
-		await _repo.AddAsync(def, cancellationToken);
-		return def;
 	}
 
 	private static bool RequestsCSharpScript(BpmnTask task)

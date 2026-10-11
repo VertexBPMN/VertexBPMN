@@ -16,8 +16,11 @@ public class TaskRepository : ITaskRepository
     public async ValueTask AddAsync(UserTask userTask, CancellationToken cancellationToken = default)
     {
         if (_db.Entry(userTask).State == EntityState.Detached)
-            _db.Tasks.Update(userTask);
-        await _db.SaveChangesAsync(cancellationToken);
+		{
+			_db.Tasks.Update(userTask);
+		}
+
+		await _db.SaveChangesAsync(cancellationToken);
     }
 
     public async ValueTask<UserTask?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
@@ -29,16 +32,33 @@ public class TaskRepository : ITaskRepository
     {
         var query = _db.Tasks.AsQueryable();
         query = query.Where(t => t.Status == UserTaskStatus.Pending || t.Status == UserTaskStatus.Delegated);
-        if (processInstanceId != null) query = query.Where(t => t.ProcessInstanceId == processInstanceId);
-        if (assignee != null) query = query.Where(t => t.Assignee == assignee);
-        if (tenantId != null) query = query.Where(t => t.TenantId == tenantId);
-        await foreach (var task in query.AsAsyncEnumerable().WithCancellation(cancellationToken))
-            yield return task;
-    }
+        if (processInstanceId != null)
+		{
+			query = query.Where(t => t.ProcessInstanceId == processInstanceId);
+		}
+
+		if (assignee != null)
+		{
+			query = query.Where(t => t.Assignee == assignee);
+		}
+
+		if (tenantId != null)
+		{
+			query = query.Where(t => t.TenantId == tenantId);
+		}
+
+		await foreach (var task in query.AsAsyncEnumerable().WithCancellation(cancellationToken))
+		{
+			yield return task;
+		}
+	}
 
     public async ValueTask DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var entity = await _db.Tasks.FindAsync(new object[] { id }, cancellationToken);
-        if (entity != null) _db.Tasks.Remove(entity);
-    }
+        if (entity != null)
+		{
+			_db.Tasks.Remove(entity);
+		}
+	}
 }

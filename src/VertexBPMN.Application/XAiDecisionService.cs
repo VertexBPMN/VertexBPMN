@@ -15,7 +15,9 @@ public class XAiDecisionService : IAiDecisionService
 	private readonly ILogger<XAiDecisionService> _logger;
 	private readonly Tracer _tracer;
 	private readonly string _apiEndpoint = "https://api.x.ai/grok";
-	private readonly string _mcpServerEndpoint = "http://mcp-server:8080/api/mcp"; // Konfigurierbar
+	// Internal Docker MCP server reached over plain http on the private service network; TLS is not available on this endpoint.
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S5332:Using http protocol is insecure", Justification = "Legitimate non-TLS internal MCP server endpoint on the private Docker network; not user-facing.")]
+	private const string McpServerEndpoint = "http://mcp-server:8080/api/mcp";
 	public XAiDecisionService(HttpClient httpClient, ILogger<XAiDecisionService> logger, TracerProvider tracerProvider)
 	{
 		_httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
@@ -69,7 +71,7 @@ public class XAiDecisionService : IAiDecisionService
 			// Beispiel: Steuerung eines externen MCP-Servers, um eine Aktion auszuführen
 			if (externalContext.ContainsKey("requiresApproval"))
 			{
-				await ExecuteMcpActionAsync(caseId, _mcpServerEndpoint, "trigger_approval", new Dictionary<string, object>(StringComparer.Ordinal)
+				await ExecuteMcpActionAsync(caseId, McpServerEndpoint, "trigger_approval", new Dictionary<string, object>(StringComparer.Ordinal)
 				{
 					{ "caseId", caseId },
 					{ "documentId", externalContext["documentId"] }
@@ -123,7 +125,7 @@ public class XAiDecisionService : IAiDecisionService
 				id = Guid.NewGuid().ToString()
 			};
 			using var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
-			using var response = await _httpClient.PostAsync(_mcpServerEndpoint, content, cancellationToken);
+			using var response = await _httpClient.PostAsync(McpServerEndpoint, content, cancellationToken);
 			response.EnsureSuccessStatusCode();
 
 			var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);

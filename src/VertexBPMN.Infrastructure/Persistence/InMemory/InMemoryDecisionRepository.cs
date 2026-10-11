@@ -10,9 +10,9 @@ namespace VertexBPMN.Infrastructure.Persistence.InMemory;
 /// </summary>
 public class InMemoryDecisionRepository : IDecisionRepository
 {
-    private readonly ConcurrentDictionary<string, DecisionDefinition> _definitions = new();
-    private readonly ConcurrentDictionary<string, List<DecisionInstance>> _instances = new();
-    private readonly object _instanceLock = new();
+    private readonly ConcurrentDictionary<string, DecisionDefinition> _definitions = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, List<DecisionInstance>> _instances = new(StringComparer.Ordinal);
+    private readonly Lock _instanceLock = new();
 
     public ValueTask UpsertDefinitionAsync(DecisionDefinition definition, CancellationToken ct = default)
     {
@@ -40,10 +40,16 @@ public class InMemoryDecisionRepository : IDecisionRepository
     {
         IEnumerable<DecisionDefinition> query = _definitions.Values;
         if (!string.IsNullOrWhiteSpace(key))
-            query = query.Where(d => d.Key == key);
-        if (!string.IsNullOrWhiteSpace(tenantId))
-            query = query.Where(d => d.TenantId == tenantId);
-        foreach (var d in query.OrderBy(d => d.Key))
+		{
+			query = query.Where(d => d.Key == key);
+		}
+
+		if (!string.IsNullOrWhiteSpace(tenantId))
+		{
+			query = query.Where(d => d.TenantId == tenantId);
+		}
+
+		foreach (var d in query.OrderBy(d => d.Key, StringComparer.Ordinal))
         {
             ct.ThrowIfCancellationRequested();
             yield return d;
@@ -84,10 +90,16 @@ public class InMemoryDecisionRepository : IDecisionRepository
         }
         IEnumerable<DecisionInstance> query = snapshot;
         if (!string.IsNullOrWhiteSpace(decisionKey))
-            query = query.Where(i => i.DecisionDefinitionKey == decisionKey);
-        if (!string.IsNullOrWhiteSpace(tenantId))
-            query = query.Where(i => i.TenantId == tenantId);
-        foreach (var inst in query.OrderByDescending(i => i.EvaluationTime))
+		{
+			query = query.Where(i => i.DecisionDefinitionKey == decisionKey);
+		}
+
+		if (!string.IsNullOrWhiteSpace(tenantId))
+		{
+			query = query.Where(i => i.TenantId == tenantId);
+		}
+
+		foreach (var inst in query.OrderByDescending(i => i.EvaluationTime))
         {
             ct.ThrowIfCancellationRequested();
             yield return inst;

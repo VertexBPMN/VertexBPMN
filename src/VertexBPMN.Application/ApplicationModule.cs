@@ -18,7 +18,7 @@ public static class ApplicationModule
 	/// Registers engine services into the DI container.
 	/// </summary>
 	/// <param name="services">Service collection.</param>
-	/// <param name="useInMemory">If true, register in-memory implementations instead of persistent ones (for tests).</param>
+	/// <param name="configuration">Application configuration, including provider and operational mode selection.</param>
 	public static IServiceCollection AddApplicationServices(this IServiceCollection services, IConfiguration configuration)
 	{
 		services.AddSingleton<Microsoft.Extensions.Options.IValidateOptions<VertexBPMN.SourceControl.Abstractions.SourceControlOptions>,
@@ -35,6 +35,17 @@ public static class ApplicationModule
 							 || string.Equals(configuration["OperationalMode"], "Stage", StringComparison.OrdinalIgnoreCase)
 							 || string.Equals(configuration["ASPNETCORE_ENVIRONMENT"], "Staging", StringComparison.OrdinalIgnoreCase);
 		services.AddSingleton(dependencies);
+		RegisterCoreServices(services, configuration);
+		RegisterOptionalServices(services, dependencies, productionMode);
+		services.AddScoped<ISemanticValidationService, SemanticValidationService>();
+		services.AddSingleton<IIdentityService, IdentityService>();
+		services.AddSingleton<IHostedService, JobExecutorService>();
+		services.AddServiceTaskHandlers(configuration);
+		return services;
+	}
+
+	private static void RegisterCoreServices(IServiceCollection services, IConfiguration configuration)
+	{
 		services.AddSingleton<ISecretProvider, ConfigurationSecretProvider>();
 		services.AddScoped<ProcessMiningEventSink>();
 		services.AddHttpClient("webhooks", client =>
@@ -64,7 +75,10 @@ public static class ApplicationModule
 		services.AddScoped<PollingTriggerPoller>();
 		services.AddScoped<IPollingTriggerService, PollingTriggerService>();
 		services.AddScoped<PollingTriggerPoller>();
-		//services.AddHttpClient<IAiDecisionService, XAiDecisionService>();
+	}
+
+	private static void RegisterOptionalServices(IServiceCollection services, DependencyOptions dependencies, bool productionMode)
+	{
 		if (dependencies.Mcp.Enabled && dependencies.Interfaces.McpAgentService)
 		{
 			services.AddHttpClient<IMcpAgentService, McpAgentService>();
@@ -86,10 +100,5 @@ public static class ApplicationModule
 				services.AddSingleton<IAiDecisionService, FakeAiDecisionService>();
 			}
 		}
-		services.AddScoped<ISemanticValidationService, SemanticValidationService>();
-		services.AddSingleton<IIdentityService, IdentityService>();
-		services.AddSingleton<IHostedService, JobExecutorService>();
-		services.AddServiceTaskHandlers(configuration);
-		return services;
 	}
 }

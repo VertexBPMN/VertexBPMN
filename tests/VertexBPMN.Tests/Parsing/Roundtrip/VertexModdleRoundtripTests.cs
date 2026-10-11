@@ -6,31 +6,23 @@ namespace VertexBPMN.Tests.Parsing.Roundtrip;
 
 public class VertexModdleRoundtripTests
 {
-    private const string VertexNs = "https://vertexbpmn.io/schema/bpmn/1.0";
+	private const string VertexNs = "https://vertexbpmn.io/schema/bpmn/1.0";
 
-    private static BpmnParser StrictParser(bool advancedValidation = false, bool normalizeVendors = false) =>
-        new(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            PreserveUnknownExtensions = true,
-            EnableAdvancedValidation = advancedValidation,
-            NormalizeVendorExtensions = normalizeVendors
-        });
-    private static BpmnParser NormalizedParser(bool advancedValidation = false, bool normalizeVendors = true) =>
-        new(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Normalized,
-            PreserveUnknownExtensions = true,
-            EnableAdvancedValidation = advancedValidation,
-            NormalizeVendorExtensions = normalizeVendors
-        });
-    private static string SerializeStrict(BpmnModel model) =>
-        new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
+	private static BpmnParser StrictParser(bool advancedValidation = false, bool normalizeVendors = false) =>
+		new(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			PreserveUnknownExtensions = true,
+			EnableAdvancedValidation = advancedValidation,
+			NormalizeVendorExtensions = normalizeVendors
+		});
+	private static string SerializeStrict(BpmnModel model) =>
+		new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
 
-    [Fact]
-    public async Task Connector_Retry_IoMapping_StrictRoundtrip_UsesCanonicalNamespace()
-    {
-        const string xml = """
+	[Fact]
+	public async Task Connector_Retry_IoMapping_StrictRoundtrip_UsesCanonicalNamespace()
+	{
+		const string xml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
                   xmlns:vertex="https://vertexbpmn.io/schema/bpmn/1.0">
   <bpmn:process id="p1">
@@ -51,40 +43,40 @@ public class VertexModdleRoundtripTests
   </bpmn:process>
 </bpmn:definitions>
 """;
-        var parser = StrictParser(normalizeVendors: true);
-        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
-        var outXml = parser.Serialize(model);
+		var parser = StrictParser(normalizeVendors: true);
+		var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		var outXml = parser.Serialize(model);
 
-        Assert.Contains(VertexNs, outXml);
-        Assert.Contains("vertex:connector", outXml);
-        Assert.Contains("type=\"http\"", outXml);
-        Assert.Contains("operationId=\"http.request\"", outXml);
-        Assert.Contains("credentialRef=\"cred-orders-api\"", outXml);
-        Assert.Contains("timeoutMs=\"30000\"", outXml);
-        Assert.Contains("vertex:retryPolicy", outXml);
-        Assert.Contains("maxAttempts=\"5\"", outXml);
-        Assert.Contains("strategy=\"exponential\"", outXml);
-        Assert.Contains("baseDelayMs=\"1000\"", outXml);
-        Assert.Contains("retryOn=\"429,5xx\"", outXml);
-        Assert.Contains("vertex:ioMapping", outXml);
-        Assert.Contains("vertex:input", outXml);
-        Assert.Contains("name=\"url\"", outXml);
-        Assert.Contains("expression=\"${orderApiUrl}\"", outXml);
-        Assert.Contains("vertex:output", outXml);
-        Assert.Contains("name=\"response\"", outXml);
-        Assert.Contains("target=\"httpResponse\"", outXml);
+		Assert.Contains(VertexNs, outXml, StringComparison.Ordinal);
+		Assert.Contains("vertex:connector", outXml, StringComparison.Ordinal);
+		Assert.Contains("type=\"http\"", outXml, StringComparison.Ordinal);
+		Assert.Contains("operationId=\"http.request\"", outXml, StringComparison.Ordinal);
+		Assert.Contains("credentialRef=\"cred-orders-api\"", outXml, StringComparison.Ordinal);
+		Assert.Contains("timeoutMs=\"30000\"", outXml, StringComparison.Ordinal);
+		Assert.Contains("vertex:retryPolicy", outXml, StringComparison.Ordinal);
+		Assert.Contains("maxAttempts=\"5\"", outXml, StringComparison.Ordinal);
+		Assert.Contains("strategy=\"exponential\"", outXml, StringComparison.Ordinal);
+		Assert.Contains("baseDelayMs=\"1000\"", outXml, StringComparison.Ordinal);
+		Assert.Contains("retryOn=\"429,5xx\"", outXml, StringComparison.Ordinal);
+		Assert.Contains("vertex:ioMapping", outXml, StringComparison.Ordinal);
+		Assert.Contains("vertex:input", outXml, StringComparison.Ordinal);
+		Assert.Contains("name=\"url\"", outXml, StringComparison.Ordinal);
+		Assert.Contains("expression=\"${orderApiUrl}\"", outXml, StringComparison.Ordinal);
+		Assert.Contains("vertex:output", outXml, StringComparison.Ordinal);
+		Assert.Contains("name=\"response\"", outXml, StringComparison.Ordinal);
+		Assert.Contains("target=\"httpResponse\"", outXml, StringComparison.Ordinal);
 
-        var task = model.Tasks!.Single(value => value.Id == "Task_CallApi").Attributes!;
-        Assert.Equal("http", task["vertex:connector.type"]);
-        Assert.Equal("http.request", task["vertex:connector.operationId"]);
-        Assert.Equal("vertex:connector", model.Tasks!.Single(value => value.Id == "Task_CallApi").Implementation);
+		var task = model.Tasks!.Single(value => value.Id == "Task_CallApi").Attributes!;
+		Assert.Equal("http", task["vertex:connector.type"]);
+		Assert.Equal("http.request", task["vertex:connector.operationId"]);
+		Assert.Equal("vertex:connector", model.Tasks!.Single(value => value.Id == "Task_CallApi").Implementation);
 
-    }
+	}
 
-    [Fact]
-    public async Task Webhook_OnStartEvent_StrictRoundtrip()
-    {
-        const string xml = """
+	[Fact]
+	public async Task Webhook_OnStartEvent_StrictRoundtrip()
+	{
+		const string xml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
                   xmlns:vertex="https://vertexbpmn.io/schema/bpmn/1.0">
   <bpmn:process id="p1">
@@ -99,25 +91,25 @@ public class VertexModdleRoundtripTests
   </bpmn:process>
 </bpmn:definitions>
 """;
-        var model = await StrictParser().ParseAsync(xml, TestContext.Current.CancellationToken);
-        var outXml = SerializeStrict(model);
-        Assert.Contains("vertex:webhook", outXml);
-        Assert.Contains("path=\"/hooks/orders\"", outXml);
-        Assert.Contains("method=\"POST\"", outXml);
-        Assert.Contains("secretRef=\"cred-webhook\"", outXml);
-        Assert.Contains("credentialRef=\"cred-webhook-hmac\"", outXml);
-        Assert.Contains("secretKey=\"signing\"", outXml);
-        Assert.Contains("authMode=\"hmac-sha256\"", outXml);
-        Assert.Contains("correlationKey=\"orderId\"", outXml);
-        Assert.Contains("vertex:trigger", outXml);
-        Assert.Contains("processDefinitionKey=\"order-process\"", outXml);
-        Assert.Contains(VertexNs, outXml);
-    }
+		var model = await StrictParser().ParseAsync(xml, TestContext.Current.CancellationToken);
+		var outXml = SerializeStrict(model);
+		Assert.Contains("vertex:webhook", outXml, StringComparison.Ordinal);
+		Assert.Contains("path=\"/hooks/orders\"", outXml, StringComparison.Ordinal);
+		Assert.Contains("method=\"POST\"", outXml, StringComparison.Ordinal);
+		Assert.Contains("secretRef=\"cred-webhook\"", outXml, StringComparison.Ordinal);
+		Assert.Contains("credentialRef=\"cred-webhook-hmac\"", outXml, StringComparison.Ordinal);
+		Assert.Contains("secretKey=\"signing\"", outXml, StringComparison.Ordinal);
+		Assert.Contains("authMode=\"hmac-sha256\"", outXml, StringComparison.Ordinal);
+		Assert.Contains("correlationKey=\"orderId\"", outXml, StringComparison.Ordinal);
+		Assert.Contains("vertex:trigger", outXml, StringComparison.Ordinal);
+		Assert.Contains("processDefinitionKey=\"order-process\"", outXml, StringComparison.Ordinal);
+		Assert.Contains(VertexNs, outXml, StringComparison.Ordinal);
+	}
 
-    [Fact]
-    public async Task Decision_AndIoMapping_OnBusinessRuleTask_StrictRoundtrip()
-    {
-        const string xml = """
+	[Fact]
+	public async Task Decision_AndIoMapping_OnBusinessRuleTask_StrictRoundtrip()
+	{
+		const string xml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
                   xmlns:vertex="https://vertexbpmn.io/schema/bpmn/1.0">
   <bpmn:process id="p1">
@@ -135,23 +127,23 @@ public class VertexModdleRoundtripTests
   </bpmn:process>
 </bpmn:definitions>
 """;
-        var model = await StrictParser(normalizeVendors: true).ParseAsync(xml, TestContext.Current.CancellationToken);
-        var outXml = SerializeStrict(model);
+		var model = await StrictParser(normalizeVendors: true).ParseAsync(xml, TestContext.Current.CancellationToken);
+		var outXml = SerializeStrict(model);
 
-        Assert.Contains("vertex:decision", outXml);
-        Assert.Contains("decisionRef=\"risk-assessment\"", outXml);
-        Assert.Contains("binding=\"latest\"", outXml);
-        Assert.Contains("version=\"3\"", outXml);
-        var attributes = model.Tasks!.Single(task => task.Id == "decisionTask").Attributes!;
-        Assert.Equal("risk-assessment", attributes["vertex:decision.decisionRef"]);
-        Assert.Equal("${orderAmount}", attributes["vertex:ioMapping.input.amount"]);
-        Assert.Equal("riskLevel", attributes["vertex:ioMapping.output.risk"]);
-    }
+		Assert.Contains("vertex:decision", outXml, StringComparison.Ordinal);
+		Assert.Contains("decisionRef=\"risk-assessment\"", outXml, StringComparison.Ordinal);
+		Assert.Contains("binding=\"latest\"", outXml, StringComparison.Ordinal);
+		Assert.Contains("version=\"3\"", outXml, StringComparison.Ordinal);
+		var attributes = model.Tasks!.Single(task => task.Id == "decisionTask").Attributes!;
+		Assert.Equal("risk-assessment", attributes["vertex:decision.decisionRef"]);
+		Assert.Equal("${orderAmount}", attributes["vertex:ioMapping.input.amount"]);
+		Assert.Equal("riskLevel", attributes["vertex:ioMapping.output.risk"]);
+	}
 
-    [Fact]
-    public async Task Credential_Extension_StrictRoundtrip()
-    {
-        const string xml = """
+	[Fact]
+	public async Task Credential_Extension_StrictRoundtrip()
+	{
+		const string xml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
                   xmlns:vertex="https://vertexbpmn.io/schema/bpmn/1.0">
   <bpmn:process id="p1">
@@ -165,18 +157,18 @@ public class VertexModdleRoundtripTests
   </bpmn:process>
 </bpmn:definitions>
 """;
-        var model = await StrictParser().ParseAsync(xml, TestContext.Current.CancellationToken);
-        var outXml = SerializeStrict(model);
-        Assert.Contains("vertex:credential", outXml);
-        Assert.Contains("id=\"cred-orders-api\"", outXml);
-        Assert.Contains("kind=\"http-basic\"", outXml);
-        Assert.Contains(VertexNs, outXml);
-    }
+		var model = await StrictParser().ParseAsync(xml, TestContext.Current.CancellationToken);
+		var outXml = SerializeStrict(model);
+		Assert.Contains("vertex:credential", outXml, StringComparison.Ordinal);
+		Assert.Contains("id=\"cred-orders-api\"", outXml, StringComparison.Ordinal);
+		Assert.Contains("kind=\"http-basic\"", outXml, StringComparison.Ordinal);
+		Assert.Contains(VertexNs, outXml, StringComparison.Ordinal);
+	}
 
-    [Fact]
-    public async Task UnknownExtension_NotDropped_BesideVertexConnector()
-    {
-        const string xml = """
+	[Fact]
+	public async Task UnknownExtension_NotDropped_BesideVertexConnector()
+	{
+		const string xml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
                   xmlns:vertex="https://vertexbpmn.io/schema/bpmn/1.0"
                   xmlns:other="http://example.com/other">
@@ -192,18 +184,18 @@ public class VertexModdleRoundtripTests
   </bpmn:process>
 </bpmn:definitions>
 """;
-        var model = await StrictParser().ParseAsync(xml, TestContext.Current.CancellationToken);
-        var outXml = SerializeStrict(model);
-        Assert.Contains("vertex:connector", outXml);
-        Assert.Contains("other:foo", outXml);
-        Assert.Contains("bar=\"1\"", outXml);
-        Assert.Contains("http://example.com/other", outXml);
-    }
+		var model = await StrictParser().ParseAsync(xml, TestContext.Current.CancellationToken);
+		var outXml = SerializeStrict(model);
+		Assert.Contains("vertex:connector", outXml, StringComparison.Ordinal);
+		Assert.Contains("other:foo", outXml, StringComparison.Ordinal);
+		Assert.Contains("bar=\"1\"", outXml, StringComparison.Ordinal);
+		Assert.Contains("http://example.com/other", outXml, StringComparison.Ordinal);
+	}
 
-    [Fact]
-    public async Task Connector_MissingTypeAndOperation_ProducesVertexDiagnostics()
-    {
-        const string xml = """
+	[Fact]
+	public async Task Connector_MissingTypeAndOperation_ProducesVertexDiagnostics()
+	{
+		const string xml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
                   xmlns:vertex="https://vertexbpmn.io/schema/bpmn/1.0">
   <bpmn:process id="p1">
@@ -217,25 +209,25 @@ public class VertexModdleRoundtripTests
   </bpmn:process>
 </bpmn:definitions>
 """;
-        var model = await StrictParser(advancedValidation: true).ParseAsync(xml, TestContext.Current.CancellationToken);
-        Assert.NotNull(model.ValidationDiagnostics);
-        var codes = model.ValidationDiagnostics!.Select(d => d.Code).ToList();
-        Assert.Contains("VEN-VERTEX-CONNECTOR-TYPE", codes);
-        Assert.Contains("VEN-VERTEX-CONNECTOR-OPERATION", codes);
-        Assert.All(
-            model.ValidationDiagnostics!.Where(d => d.Code.StartsWith("VEN-VERTEX-", StringComparison.Ordinal)),
-            d =>
-            {
-                Assert.Equal(ValidationSeverity.Error, d.Severity);
-                Assert.Equal("Vertex", d.Category);
-                Assert.Equal("t1", d.ElementId);
-            });
-    }
+		var model = await StrictParser(advancedValidation: true).ParseAsync(xml, TestContext.Current.CancellationToken);
+		Assert.NotNull(model.ValidationDiagnostics);
+		var codes = model.ValidationDiagnostics.Select(d => d.Code).ToList();
+		Assert.Contains("VEN-VERTEX-CONNECTOR-TYPE", codes, StringComparer.Ordinal);
+		Assert.Contains("VEN-VERTEX-CONNECTOR-OPERATION", codes, StringComparer.Ordinal);
+		Assert.All(
+			model.ValidationDiagnostics.Where(d => d.Code.StartsWith("VEN-VERTEX-", StringComparison.Ordinal)),
+			d =>
+			{
+				Assert.Equal(ValidationSeverity.Error, d.Severity);
+				Assert.Equal("Vertex", d.Category);
+				Assert.Equal("t1", d.ElementId);
+			});
+	}
 
-    [Fact]
-    public async Task CamundaAssignee_And_VertexConnector_BothSurvive()
-    {
-        const string xml = """
+	[Fact]
+	public async Task CamundaAssignee_And_VertexConnector_BothSurvive()
+	{
+		const string xml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
                   xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
                   xmlns:vertex="https://vertexbpmn.io/schema/bpmn/1.0">
@@ -251,15 +243,15 @@ public class VertexModdleRoundtripTests
   </bpmn:process>
 </bpmn:definitions>
 """;
-        var model = await StrictParser(normalizeVendors: true).ParseAsync(xml, TestContext.Current.CancellationToken);
-        var outXml = SerializeStrict(model);
-        Assert.Contains("camunda:assignee", outXml);
-        Assert.Contains("value=\"alice\"", outXml);
-        Assert.Contains("vertex:connector", outXml);
-        Assert.Contains("type=\"http\"", outXml);
-        Assert.Contains("operationId=\"http.request\"", outXml);
+		var model = await StrictParser(normalizeVendors: true).ParseAsync(xml, TestContext.Current.CancellationToken);
+		var outXml = SerializeStrict(model);
+		Assert.Contains("camunda:assignee", outXml, StringComparison.Ordinal);
+		Assert.Contains("value=\"alice\"", outXml, StringComparison.Ordinal);
+		Assert.Contains("vertex:connector", outXml, StringComparison.Ordinal);
+		Assert.Contains("type=\"http\"", outXml, StringComparison.Ordinal);
+		Assert.Contains("operationId=\"http.request\"", outXml, StringComparison.Ordinal);
 
-        var ut = model.Tasks!.Single(value => value.Id == "ut1").Attributes!;
-        Assert.Equal("http", ut["vertex:connector.type"]);
-    }
+		var ut = model.Tasks!.Single(value => value.Id == "ut1").Attributes!;
+		Assert.Equal("http", ut["vertex:connector.type"]);
+	}
 }

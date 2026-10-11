@@ -32,7 +32,7 @@ public sealed class PersistentMessageDispatcher(BpmnDbContext db) : IMessageDisp
 		CancellationToken cancellationToken = default) =>
 		EnqueueAsync("UserTaskDispatch", Guid.Empty, new { assignee, taskId, variables }, cancellationToken);
 
-	public Task<Dictionary<string, object>> DispatchDmnTaskAsync(string targetWorker, string decisionRef,
+	public Task<Dictionary<string, object?>> DispatchDmnTaskAsync(string targetWorker, string decisionRef,
 		Dictionary<string, object> variables, CancellationToken cancellationToken = default) =>
 		throw new NotSupportedException("Durable DMN request/reply dispatch is not part of the production BPMN runtime.");
 

@@ -25,7 +25,7 @@ public static class RepositoryAccessPolicy
 			throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
 		}
 
-		if (requested == RepositoryPermission.None || (requested & ~Known) != 0)
+		if (requested == RepositoryPermission.None || (requested & ~Known) != RepositoryPermission.None)
 		{
 			throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
 		}
@@ -47,7 +47,7 @@ public static class RepositoryAccessPolicy
 		var grant = currentGrants.Where(g => string.Equals(g.ActorId, context.ActorId, StringComparison.Ordinal))
 			.Aggregate(RepositoryPermission.None, (permissions, g) => permissions | (g.Permissions & Known));
 		// Even Manage/Deploy requires explicit Read. Admin is not an ACL bypass.
-		if ((roleLimit & grant & RepositoryPermission.Read) == 0)
+		if ((roleLimit & grant & RepositoryPermission.Read) == RepositoryPermission.None)
 		{
 			throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
 		}

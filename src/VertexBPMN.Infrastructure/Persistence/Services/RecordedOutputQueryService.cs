@@ -25,9 +25,11 @@ public sealed class RecordedOutputQueryService(BpmnDbContext db) : IRecordedOutp
             .OrderByDescending(p => p.Version)
             .FirstOrDefaultAsync(cancellationToken);
         if (definition is null)
-            return null;
+		{
+			return null;
+		}
 
-        var data = await db.HistoryEvents.AsNoTracking()
+		var data = await db.HistoryEvents.AsNoTracking()
             .Where(e => e.EventType == TaskIoSnapshotRecorder.EventType
                         && e.ElementId == elementId
                         && e.TenantId == tenantId
@@ -39,21 +41,25 @@ public sealed class RecordedOutputQueryService(BpmnDbContext db) : IRecordedOutp
             .FirstOrDefaultAsync(cancellationToken);
 
         if (string.IsNullOrWhiteSpace(data))
-            return null;
+		{
+			return null;
+		}
 
-        return ParseOutput(data);
+		return ParseOutput(data);
     }
 
-    private static IReadOnlyDictionary<string, object>? ParseOutput(string json)
+    private static Dictionary<string, object>? ParseOutput(string json)
     {
         try
         {
             using var doc = JsonDocument.Parse(json);
             if (!doc.RootElement.TryGetProperty("output", out var output)
                 || output.ValueKind != JsonValueKind.Object)
-                return null;
+			{
+				return null;
+			}
 
-            var dict = new Dictionary<string, object>();
+			var dict = new Dictionary<string, object>(StringComparer.Ordinal);
             foreach (var prop in output.EnumerateObject())
             {
                 dict[prop.Name] = prop.Value.ValueKind switch

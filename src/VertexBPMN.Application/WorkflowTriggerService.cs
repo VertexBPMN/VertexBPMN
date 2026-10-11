@@ -137,70 +137,80 @@ public sealed class WorkflowTriggerService(
 		var created = new List<WorkflowTriggerCreated>();
 		foreach (var startEvent in document.Descendants(bpmn + "startEvent"))
 		{
-			var sourceElementId = (string?)startEvent.Attribute("id");
-			var extensions = startEvent.Element(bpmn + "extensionElements");
-			var webhook = extensions?.Elements().FirstOrDefault(element => element.Name == vertex + "webhook");
-			if (webhook is null || string.IsNullOrWhiteSpace(sourceElementId))
-			{
-				continue;
-			}
-
-			var path = NormalizePath((string?)webhook.Attribute("path"));
-			var method = NormalizeMethod((string?)webhook.Attribute("method"));
-			var trigger = extensions!.Elements().FirstOrDefault(element => element.Name == vertex + "trigger");
-			var name = ((string?)trigger?.Attribute("name"))?.Trim();
-			var authenticationMode = NormalizeAuthenticationMode((string?)webhook.Attribute("authMode"), (string?)webhook.Attribute("credentialRef") ?? (string?)webhook.Attribute("secretRef"));
-			var credentialId = NormalizeOptional((string?)webhook.Attribute("credentialRef") ?? (string?)webhook.Attribute("secretRef"), 128);
-			var found = await triggerRepository.GetBySourceElementAsync(processDefinitionKey, sourceElementId, tenantId, cancellationToken);
-			WorkflowTrigger existing;
-			string? oneTimeSecret = null;
-			bool isNew;
-			if (found is null)
-			{
-				isNew = true;
-				oneTimeSecret = CreateSecret();
-				existing = new WorkflowTrigger { Id = Guid.NewGuid(), SecretHash = HashSecret(oneTimeSecret), CreatedAt = DateTime.UtcNow };
-			}
-			else
-			{
-				isNew = false;
-				existing = found;
-			}
-			var endpointOwner = await triggerRepository.GetByEndpointAsync(path, method, null, cancellationToken);
-			if (endpointOwner is not null && endpointOwner.Id != existing.Id)
-			{
-				throw new WorkflowTriggerConflictException($"Webhook endpoint '{method} {path}' is already registered.");
-			}
-
-			existing.Name = string.IsNullOrWhiteSpace(name) ? $"Webhook {path}" : Required(name, nameof(name), 256);
-			existing.ProcessDefinitionKey = processDefinitionKey;
-			existing.TenantId = tenantId;
-			existing.Path = path;
-			existing.Method = method;
-			existing.AuthenticationMode = authenticationMode;
-			existing.CredentialId = credentialId;
-			existing.CredentialSecretKey = NormalizeOptional((string?)webhook.Attribute("secretKey"), 128) ?? "secret";
-			existing.PayloadSchemaJson = NormalizeOptional((string?)webhook.Attribute("payloadSchema"), 16_384);
-			existing.CorrelationKey = NormalizeOptional((string?)webhook.Attribute("correlationKey"), 256);
-			existing.SourceElementId = sourceElementId;
-			existing.Enabled = true;
-			existing.LastModified = DateTime.UtcNow;
-			if (isNew)
-			{
-				await triggerRepository.AddAsync(existing, cancellationToken);
-				// Reveal the one-time secret only for trigger-secret webhooks (HMAC
-				// webhooks authenticate with the referenced credential secret instead).
-				if (string.Equals(existing.AuthenticationMode, "trigger-secret", StringComparison.OrdinalIgnoreCase))
-				{
-					created.Add(new WorkflowTriggerCreated(ToInfo(existing), oneTimeSecret!, $"/api/webhooks{path}"));
-				}
-			}
-			else
-			{
-				await triggerRepository.SaveAsync(existing, cancellationToken);
-			}
+			await SynchronizeStartEventAsync(startEvent, vertex, bpmn, processDefinitionKey, tenantId, created, cancellationToken);
 		}
 		return created;
+	}
+
+	private async Task SynchronizeStartEventAsync(XElement startEvent, XNamespace vertex, XNamespace bpmn, string processDefinitionKey, string? tenantId, List<WorkflowTriggerCreated> created, CancellationToken cancellationToken)
+	{
+		var sourceElementId = (string?)startEvent.Attribute("id");
+		var extensions = startEvent.Element(bpmn + "extensionElements");
+		var webhook = extensions?.Elements().FirstOrDefault(element => element.Name == vertex + "webhook");
+		if (webhook is null || string.IsNullOrWhiteSpace(sourceElementId))
+		{
+			return;
+		}
+
+		var path = NormalizePath((string?)webhook.Attribute("path"));
+		var method = NormalizeMethod((string?)webhook.Attribute("method"));
+		var trigger = extensions!.Elements().FirstOrDefault(element => element.Name == vertex + "trigger");
+		var name = ((string?)trigger?.Attribute("name"))?.Trim();
+		var authenticationMode = NormalizeAuthenticationMode((string?)webhook.Attribute("authMode"), (string?)webhook.Attribute("credentialRef") ?? (string?)webhook.Attribute("secretRef"));
+		var credentialId = NormalizeOptional((string?)webhook.Attribute("credentialRef") ?? (string?)webhook.Attribute("secretRef"), 128);
+		var found = await triggerRepository.GetBySourceElementAsync(processDefinitionKey, sourceElementId, tenantId, cancellationToken);
+		WorkflowTrigger existing;
+		string? oneTimeSecret = null;
+		bool isNew;
+		if (found is null)
+		{
+			isNew = true;
+			oneTimeSecret = CreateSecret();
+			existing = new WorkflowTrigger { Id = Guid.NewGuid(), SecretHash = HashSecret(oneTimeSecret), CreatedAt = DateTime.UtcNow };
+		}
+		else
+		{
+			isNew = false;
+			existing = found;
+		}
+		var endpointOwner = await triggerRepository.GetByEndpointAsync(path, method, null, cancellationToken);
+		if (endpointOwner is not null && endpointOwner.Id != existing.Id)
+		{
+			throw new WorkflowTriggerConflictException($"Webhook endpoint '{method} {path}' is already registered.");
+		}
+
+		await PopulateAndPersistWebhookAsync(existing, webhook, path, method, name, authenticationMode, credentialId, sourceElementId, processDefinitionKey, tenantId, isNew, oneTimeSecret, created, cancellationToken);
+	}
+
+	private async Task PopulateAndPersistWebhookAsync(WorkflowTrigger existing, XElement webhook, string path, string method, string? name, string authenticationMode, string? credentialId, string sourceElementId, string processDefinitionKey, string? tenantId, bool isNew, string? oneTimeSecret, List<WorkflowTriggerCreated> created, CancellationToken cancellationToken)
+	{
+		existing.Name = string.IsNullOrWhiteSpace(name) ? $"Webhook {path}" : Required(name, nameof(name), 256);
+		existing.ProcessDefinitionKey = processDefinitionKey;
+		existing.TenantId = tenantId;
+		existing.Path = path;
+		existing.Method = method;
+		existing.AuthenticationMode = authenticationMode;
+		existing.CredentialId = credentialId;
+		existing.CredentialSecretKey = NormalizeOptional((string?)webhook.Attribute("secretKey"), 128) ?? "secret";
+		existing.PayloadSchemaJson = NormalizeOptional((string?)webhook.Attribute("payloadSchema"), 16_384);
+		existing.CorrelationKey = NormalizeOptional((string?)webhook.Attribute("correlationKey"), 256);
+		existing.SourceElementId = sourceElementId;
+		existing.Enabled = true;
+		existing.LastModified = DateTime.UtcNow;
+		if (isNew)
+		{
+			await triggerRepository.AddAsync(existing, cancellationToken);
+			// Reveal the one-time secret only for trigger-secret webhooks (HMAC
+			// webhooks authenticate with the referenced credential secret instead).
+			if (string.Equals(existing.AuthenticationMode, "trigger-secret", StringComparison.OrdinalIgnoreCase))
+			{
+				created.Add(new WorkflowTriggerCreated(ToInfo(existing), oneTimeSecret!, $"/api/webhooks{path}"));
+			}
+		}
+		else
+		{
+			await triggerRepository.SaveAsync(existing, cancellationToken);
+		}
 	}
 
 	public async Task<WorkflowTriggerInvocationResult> InvokeWebhookAsync(string path, string method, string? triggerSecret, string? signature, ReadOnlyMemory<byte> payload, string? timestamp = null, string? deliveryId = null, CancellationToken cancellationToken = default)
@@ -310,7 +320,7 @@ public sealed class WorkflowTriggerService(
 		return CryptographicOperations.FixedTimeEquals(expected, provided);
 	}
 
-	private static IDictionary<string, object?> ParsePayload(ReadOnlyMemory<byte> payload)
+	private static Dictionary<string, object?> ParsePayload(ReadOnlyMemory<byte> payload)
 	{
 		if (payload.IsEmpty)
 		{
@@ -404,9 +414,10 @@ public sealed class WorkflowTriggerService(
 		_ => value.GetRawText()
 	};
 
-	private static string? ResolveCorrelationKey(string? key, IDictionary<string, object?> variables) =>
+	private static string? ResolveCorrelationKey(string? key, Dictionary<string, object?> variables) =>
 		!string.IsNullOrWhiteSpace(key) && variables.TryGetValue(key, out var value) ? Convert.ToString(value) : null;
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1075:URIs should not be hardcoded", Justification = "Webhook URL paths must use '/' as the path separator on every platform; this is not a filesystem path.")]
 	private static string NormalizePath(string? value)
 	{
 		var path = Required(value, "path", 512);
@@ -415,7 +426,7 @@ public sealed class WorkflowTriggerService(
 			path = "/" + path;
 		}
 
-		if (path.Contains("..", StringComparison.Ordinal) || path.Contains('?') || path.Contains('#'))
+		if (path.Contains("..", StringComparison.Ordinal) || path.Contains('?', StringComparison.Ordinal) || path.Contains('#', StringComparison.Ordinal))
 		{
 			throw new ArgumentException("path is invalid.", nameof(value));
 		}
@@ -440,24 +451,24 @@ public sealed class WorkflowTriggerService(
 	}
 	private static string NormalizeAuthenticationMode(string? value, string? credentialId)
 	{
-		string mode;
-		if (string.IsNullOrWhiteSpace(value))
+		var mode = ResolveAuthenticationMode(value, credentialId);
+
+		if (mode is not ("trigger-secret" or "hmac-sha256"))
 		{
-			if (string.IsNullOrWhiteSpace(credentialId))
-			{
-				mode = "trigger-secret";
-			}
-			else
-			{
-				mode = "hmac-sha256";
-			}
-		}
-		else
-		{
-			mode = value.Trim().ToLowerInvariant();
+			throw new ArgumentException("authMode must be trigger-secret or hmac-sha256.", nameof(value));
 		}
 
-		return mode is "trigger-secret" or "hmac-sha256" ? mode : throw new ArgumentException("authMode must be trigger-secret or hmac-sha256.", nameof(value));
+		return mode;
+	}
+
+	private static string ResolveAuthenticationMode(string? value, string? credentialId)
+	{
+		if (!string.IsNullOrWhiteSpace(value))
+		{
+			return value.Trim().ToLowerInvariant();
+		}
+
+		return string.IsNullOrWhiteSpace(credentialId) ? "trigger-secret" : "hmac-sha256";
 	}
 
 	private static string Required(string? value, string field, int maxLength)

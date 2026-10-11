@@ -1,8 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using VertexBPMN.Domain.Entities;
 
-namespace VertexBPMN.Infrastructure.Persistence.Services
-{
+namespace VertexBPMN.Infrastructure.Persistence.Services;
+
     public class ProcessMiningEventDbContext : DbContext
     {
         public DbSet<ProcessMiningEvent> Events { get; set; }
@@ -71,4 +71,3 @@ namespace VertexBPMN.Infrastructure.Persistence.Services
             base.OnModelCreating(modelBuilder);
         }
     }
-}

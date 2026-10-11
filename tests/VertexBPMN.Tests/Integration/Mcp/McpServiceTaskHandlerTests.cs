@@ -4,75 +4,77 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using Moq.Protected;
 using OpenTelemetry.Trace;
-using VertexBPMN.Domain.Exceptions;
 using VertexBPMN.Application.Handlers;
 using VertexBPMN.Domain.Entities;
+using VertexBPMN.Domain.Exceptions;
 
 namespace VertexBPMN.Tests.Integration.Mcp;
 
-public class McpServiceTaskHandlerTests
+public sealed class McpServiceTaskHandlerTests : IDisposable
 {
-    private readonly Mock<ILogger<McpServiceTaskHandler>> _loggerMock;
-    private readonly Mock<HttpMessageHandler> _httpMessageHandlerMock;
-    private readonly HttpClient _httpClient;
-    private readonly Mock<TracerProvider> _tracerProviderMock;
-    private readonly McpServiceTaskHandler _handler;
+	public void Dispose() => _httpClient.Dispose();
 
-    public McpServiceTaskHandlerTests()
-    {
-        _loggerMock = new Mock<ILogger<McpServiceTaskHandler>>();
-        _httpMessageHandlerMock = new Mock<HttpMessageHandler>();
-        _httpClient = new HttpClient(_httpMessageHandlerMock.Object);
-        _tracerProviderMock = new Mock<TracerProvider>();
-        _handler = new McpServiceTaskHandler(_httpClient, _loggerMock.Object, _tracerProviderMock.Object);
-    }
+	private readonly Mock<ILogger<McpServiceTaskHandler>> _loggerMock;
+	private readonly Mock<HttpMessageHandler> _httpMessageHandlerMock;
+	private readonly HttpClient _httpClient;
+	private readonly Mock<TracerProvider> _tracerProviderMock;
+	private readonly McpServiceTaskHandler _handler;
 
-    [Fact]
-    public async Task ExecuteAsync_McpServiceTask_Successfully()
-    {
-        // Arrange
-        var attributes = new Dictionary<string, string>
-            {
-                { "mcpServerUrl", "http://cms-mcp:8080/api/mcp" },
-                { "mcpMethod", "trigger_approval" },
-                { "mcpParams", "{\"documentId\": \"doc123\"}" }
-            };
-        var variables = new Dictionary<string, object>
-            {
-                { "caseId", "case1" }
-            };
-        var responseContent = JsonSerializer.Serialize(new JsonRpcResponse("2.0", new { result = "success" }, null));
-        var httpResponse = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(responseContent) };
+	public McpServiceTaskHandlerTests()
+	{
+		_loggerMock = new Mock<ILogger<McpServiceTaskHandler>>();
+		_httpMessageHandlerMock = new Mock<HttpMessageHandler>();
+		_httpClient = new HttpClient(_httpMessageHandlerMock.Object);
+		_tracerProviderMock = new Mock<TracerProvider>();
+		_handler = new McpServiceTaskHandler(_httpClient, _loggerMock.Object, _tracerProviderMock.Object);
+	}
 
-        _httpMessageHandlerMock
-            .Protected()
-            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(httpResponse);
+	[Fact]
+	public async Task ExecuteAsync_McpServiceTask_Successfully()
+	{
+		// Arrange
+		var attributes = new Dictionary<string, string>(StringComparer.Ordinal)
+			{
+				{ "mcpServerUrl", "http://cms-mcp:8080/api/mcp" },
+				{ "mcpMethod", "trigger_approval" },
+				{ "mcpParams", "{\"documentId\": \"doc123\"}" }
+			};
+		var variables = new Dictionary<string, object>(StringComparer.Ordinal)
+			{
+				{ "caseId", "case1" }
+			};
+		var responseContent = JsonSerializer.Serialize(new JsonRpcResponse("2.0", new { result = "success" }, null));
+		using var httpResponse = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(responseContent) };
 
-        // Act
-        await _handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken);
+		_httpMessageHandlerMock
+			.Protected()
+			.Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+			.ReturnsAsync(httpResponse);
 
-        // Assert
-        _httpMessageHandlerMock
-            .Protected()
-            .Verify("SendAsync", Times.Once(),
-                ItExpr.Is<HttpRequestMessage>(request => request.RequestUri!.ToString() == "http://cms-mcp:8080/api/mcp"),
-                ItExpr.IsAny<CancellationToken>());
-        Assert.Contains("result", variables);
-        Assert.Equal("success", variables["result"].ToString());
-    }
+		// Act
+		await _handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken);
 
-    [Fact]
-    public async Task ExecuteAsync_MissingMcpServerUrl_ThrowsException()
-    {
-        // Arrange
-        var attributes = new Dictionary<string, string>
-            {
-                { "mcpMethod", "trigger_approval" }
-            };
-        var variables = new Dictionary<string, object>();
+		// Assert
+		_httpMessageHandlerMock
+			.Protected()
+			.Verify("SendAsync", Times.Once(),
+				ItExpr.Is<HttpRequestMessage>(request => request.RequestUri!.ToString() == "http://cms-mcp:8080/api/mcp"),
+				ItExpr.IsAny<CancellationToken>());
+		Assert.Contains("result", variables);
+		Assert.Equal("success", variables["result"].ToString());
+	}
 
-        // Act & Assert
-        await Assert.ThrowsAsync<DistributedTokenException>(() => _handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken));
-    }
+	[Fact]
+	public async Task ExecuteAsync_MissingMcpServerUrl_ThrowsException()
+	{
+		// Arrange
+		var attributes = new Dictionary<string, string>(StringComparer.Ordinal)
+			{
+				{ "mcpMethod", "trigger_approval" }
+			};
+		var variables = new Dictionary<string, object>(StringComparer.Ordinal);
+
+		// Act & Assert
+		await Assert.ThrowsAsync<DistributedTokenException>(() => _handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken));
+	}
 }

@@ -43,18 +43,7 @@ internal sealed class SourceControlPushExecutor(PersistentSourceControlStore sto
 		var saved = await store.ReadSavedResultAsync(context.TenantId, id, worker, fence, DateTimeOffset.UtcNow, cancellationToken);
 		if (saved is not null)
 		{
-			ValidateIntent(saved, work, receipt);
-			roles = (await resolveCurrentRoles(cancellationToken)).ToArray();
-			work = await store.ReadPushWorkAsync(context, id, worker, fence, roles, cancellationToken);
-			await store.PublishRemotePushAsync(context, work, worker, fence, async token =>
-			{
-				var head = await readHead(work.Command, token);
-				if (GitPushReconciliation.AfterUncertainWrite(receipt.Commit, head) != GitPushReconciliationResult.Confirmed)
-				{
-					throw new SourceControlSecurityException(SourceControlErrorCode.ResultUnknown);
-				}
-			}, cancellationToken);
-			return receipt; // Reconciliation never calls push, even if the remote reverted to the expected head.
+			return await ReconcileSavedAsync(context, id, worker, fence, work, saved, receipt, resolveCurrentRoles, readHead, cancellationToken);
 		}
 		if (work.State == SourceControlOperationState.Reconciling)
 		{
@@ -99,6 +88,25 @@ internal sealed class SourceControlPushExecutor(PersistentSourceControlStore sto
 			}
 		}, cancellationToken);
 		return receipt;
+	}
+
+	private async Task<PushReceipt> ReconcileSavedAsync(SourceControlContext context, Guid id, string worker, long fence,
+		AcceptedPushWork work, byte[] saved, PushReceipt receipt,
+		Func<CancellationToken, Task<IReadOnlyCollection<string>>> resolveCurrentRoles,
+		Func<PushCommand, CancellationToken, Task<GitCommitId?>> readHead, CancellationToken cancellationToken)
+	{
+		ValidateIntent(saved, work, receipt);
+		var roles = (await resolveCurrentRoles(cancellationToken)).ToArray();
+		work = await store.ReadPushWorkAsync(context, id, worker, fence, roles, cancellationToken);
+		await store.PublishRemotePushAsync(context, work, worker, fence, async token =>
+		{
+			var head = await readHead(work.Command, token);
+			if (GitPushReconciliation.AfterUncertainWrite(receipt.Commit, head) != GitPushReconciliationResult.Confirmed)
+			{
+				throw new SourceControlSecurityException(SourceControlErrorCode.ResultUnknown);
+			}
+		}, cancellationToken);
+		return receipt; // Reconciliation never calls push, even if the remote reverted to the expected head.
 	}
 
 	private static void ValidateIntent(byte[] bytes, AcceptedPushWork work, PushReceipt expected)

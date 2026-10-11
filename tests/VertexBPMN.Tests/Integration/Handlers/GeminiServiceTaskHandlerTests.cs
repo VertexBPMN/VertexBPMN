@@ -9,162 +9,162 @@ using VertexBPMN.Application.Handlers;
 
 namespace VertexBPMN.Tests.Integration.Handlers;
 
-public class GeminiServiceTaskHandlerTests : IDisposable
+public sealed class GeminiServiceTaskHandlerTests : IDisposable
 {
-    private readonly Mock<HttpMessageHandler> _httpMessageHandlerMock;
-    private readonly HttpClient _httpClient;
-    private readonly Mock<ILogger<GeminiServiceTaskHandler>> _loggerMock;
-    private readonly GeminiServiceTaskHandler _handler;
+	private static string CreateMockResponseJson() => JsonSerializer.Serialize(
+		new
+		{
+			candidates = new[]
+					{
+						new
+						{
+							content = new
+							{
+								parts = new[]
+								{
+									new { text = "Mocked Gemini response: This is a comprehensive analysis of the data." }
+								}
+							},
+							finishReason = "STOP"
+						}
+					},
+			usageMetadata = new
+			{
+				promptTokenCount = 20,
+				candidatesTokenCount = 12,
+				totalTokenCount = 32
+			}
+		}, ResponseJsonOptions);
+	private static readonly JsonSerializerOptions ResponseJsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+	private readonly Mock<HttpMessageHandler> _httpMessageHandlerMock;
+	private readonly HttpClient _httpClient;
+	private readonly Mock<ILogger<GeminiServiceTaskHandler>> _loggerMock;
+	private readonly GeminiServiceTaskHandler _handler;
 
-    public GeminiServiceTaskHandlerTests()
-    {
-        _httpMessageHandlerMock = new Mock<HttpMessageHandler>();
-        _httpClient = new HttpClient(_httpMessageHandlerMock.Object);
-        _loggerMock = new Mock<ILogger<GeminiServiceTaskHandler>>();
-        _handler = new GeminiServiceTaskHandler(_httpClient, _loggerMock.Object, null);
-    }
+	public GeminiServiceTaskHandlerTests()
+	{
+		_httpMessageHandlerMock = new Mock<HttpMessageHandler>();
+		_httpClient = new HttpClient(_httpMessageHandlerMock.Object);
+		_loggerMock = new Mock<ILogger<GeminiServiceTaskHandler>>();
+		_handler = new GeminiServiceTaskHandler(_httpClient, _loggerMock.Object, null);
+	}
 
-    [Fact]
-    public async Task ExecuteAsync_WithUseMockMode_ShouldReturnMockResponse()
-    {
-        // Arrange
-        var attributes = new Dictionary<string, string>
-        {
-            { "ai:model", "gemini-pro" },
-            { "ai:prompt", "Analyze this data comprehensively" },
-            { "ai:resultVariable", "geminiResult" },
-            { "ai:useMockMode", "true" }
-        };
+	[Fact]
+	public async Task ExecuteAsync_WithUseMockMode_ShouldReturnMockResponse()
+	{
+		// Arrange
+		var attributes = new Dictionary<string, string>(StringComparer.Ordinal)
+		{
+			{ "ai:model", "gemini-pro" },
+			{ "ai:prompt", "Analyze this data comprehensively" },
+			{ "ai:resultVariable", "geminiResult" },
+			{ "ai:useMockMode", "true" }
+		};
 
-        var variables = new Dictionary<string, object>();
+		var variables = new Dictionary<string, object>(StringComparer.Ordinal);
 
-        // Act
-        await _handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken);
+		// Act
+		await _handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken);
 
-        // Assert
-        variables.ShouldContainKey("geminiResult");
-        var result = Assert.IsType<string>(variables["geminiResult"]);
-        result.ShouldContain("Gemini gemini-pro processed");
-        result.ShouldContain("Analyze this data comprehensively");
-    }
+		// Assert
+		variables.ShouldContainKey("geminiResult");
+		var result = Assert.IsType<string>(variables["geminiResult"]);
+		result.ShouldContain("Gemini gemini-pro processed");
+		result.ShouldContain("Analyze this data comprehensively");
+	}
 
-    [Fact]
-    public async Task ExecuteAsync_WithMockedHttpClient_ShouldHandleGeminiResponse()
-    {
-        // Arrange
-        var geminiResponse = new
-        {
-            candidates = new[]
-            {
-                new
-                {
-                    content = new
-                    {
-                        parts = new[]
-                        {
-                            new { text = "Mocked Gemini response: This is a comprehensive analysis of the data." }
-                        }
-                    },
-                    finishReason = "STOP"
-                }
-            },
-            usageMetadata = new
-            {
-                promptTokenCount = 20,
-                candidatesTokenCount = 12,
-                totalTokenCount = 32
-            }
-        };
+	[Fact]
+	public async Task ExecuteAsync_WithMockedHttpClient_ShouldHandleGeminiResponse()
+	{
+		// Arrange
 
-        var responseJson = JsonSerializer.Serialize(geminiResponse, new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-        });
+		var responseJson = CreateMockResponseJson();
 
-        var httpResponse = new HttpResponseMessage(HttpStatusCode.OK)
-        {
-            Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
-        };
+		using var httpResponse = new HttpResponseMessage(HttpStatusCode.OK)
+		{
+			Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+		};
 
-        _httpMessageHandlerMock
-            .Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.Is<HttpRequestMessage>(req => 
-                    req.Method == HttpMethod.Post && 
-                    req.RequestUri!.ToString().Contains("generativelanguage.googleapis.com")),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(httpResponse);
+		_httpMessageHandlerMock
+			.Protected()
+			.Setup<Task<HttpResponseMessage>>(
+				"SendAsync",
+				ItExpr.Is<HttpRequestMessage>(req =>
+					req.Method == HttpMethod.Post &&
+					req.RequestUri!.ToString().Contains("generativelanguage.googleapis.com")),
+				ItExpr.IsAny<CancellationToken>())
+			.ReturnsAsync(httpResponse);
 
-        var attributes = new Dictionary<string, string>
-        {
-            { "ai:model", "gemini-pro" },
-            { "ai:prompt", "Analyze this data comprehensively" },
-            { "ai:resultVariable", "geminiResult" }
-        };
+		var attributes = new Dictionary<string, string>(StringComparer.Ordinal)
+		{
+			{ "ai:model", "gemini-pro" },
+			{ "ai:prompt", "Analyze this data comprehensively" },
+			{ "ai:resultVariable", "geminiResult" }
+		};
 
-        var variables = new Dictionary<string, object>();
+		var variables = new Dictionary<string, object>(StringComparer.Ordinal);
 
-        Environment.SetEnvironmentVariable("GEMINI_API_KEY", "test-gemini-key");
+		var originalApiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
+		Environment.SetEnvironmentVariable("GEMINI_API_KEY", "test-gemini-key");
 
-        try
-        {
-            // Act
-            await _handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken);
+		try
+		{
+			// Act
+			await _handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken);
 
-            // Assert
-            variables.ShouldContainKey("geminiResult");
-            var result = Assert.IsType<string>(variables["geminiResult"]);
-            result.ShouldContain("Mocked Gemini response");
-            result.ShouldContain("comprehensive analysis");
+			// Assert
+			variables.ShouldContainKey("geminiResult");
+			var result = Assert.IsType<string>(variables["geminiResult"]);
+			result.ShouldContain("Mocked Gemini response");
+			result.ShouldContain("comprehensive analysis");
 
-            // Verify HTTP request was made correctly
-            _httpMessageHandlerMock.Protected().Verify(
-                "SendAsync",
-                Times.Once(),
-                ItExpr.Is<HttpRequestMessage>(req =>
-                    req.Method == HttpMethod.Post &&
-                    req.RequestUri!.ToString().Contains("generativelanguage.googleapis.com") &&
-                    req.RequestUri.ToString().Contains("test-gemini-key")),
-                ItExpr.IsAny<CancellationToken>());
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("GEMINI_API_KEY", null);
-        }
-    }
+			// Verify HTTP request was made correctly
+			_httpMessageHandlerMock.Protected().Verify(
+				"SendAsync",
+				Times.Once(),
+				ItExpr.Is<HttpRequestMessage>(req =>
+					req.Method == HttpMethod.Post &&
+					req.RequestUri!.ToString().Contains("generativelanguage.googleapis.com") &&
+					req.RequestUri.ToString().Contains("test-gemini-key")),
+				ItExpr.IsAny<CancellationToken>());
+		}
+		finally
+		{
+			Environment.SetEnvironmentVariable("GEMINI_API_KEY", originalApiKey);
+		}
+	}
 
-    [Theory]
-    [InlineData("generation")]
-    [InlineData("code")]
-    [InlineData("analysis")]
-    [InlineData("multimodal")]
-    public async Task ExecuteAsync_WithDifferentTaskTypes_ShouldProcessCorrectly(string taskType)
-    {
-        // Arrange
-        var attributes = new Dictionary<string, string>
-        {
-            { "ai:taskType", taskType },
-            { "ai:prompt", $"Execute {taskType} task" },
-            { "ai:resultVariable", "taskOutput" },
-            { "ai:useMockMode", "true" }
-        };
+	[Theory]
+	[InlineData("generation")]
+	[InlineData("code")]
+	[InlineData("analysis")]
+	[InlineData("multimodal")]
+	public async Task ExecuteAsync_WithDifferentTaskTypes_ShouldProcessCorrectly(string taskType)
+	{
+		// Arrange
+		var attributes = new Dictionary<string, string>(StringComparer.Ordinal)
+		{
+			{ "ai:taskType", taskType },
+			{ "ai:prompt", $"Execute {taskType} task" },
+			{ "ai:resultVariable", "taskOutput" },
+			{ "ai:useMockMode", "true" }
+		};
 
-        var variables = new Dictionary<string, object>();
+		var variables = new Dictionary<string, object>(StringComparer.Ordinal);
 
-        // Act
-        await _handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken);
+		// Act
+		await _handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken);
 
-        // Assert
-        variables.ShouldContainKey("taskOutput");
-        var result = Assert.IsType<string>(variables["taskOutput"]);
-        result.ShouldContain("Gemini");
-        result.ShouldContain($"Execute {taskType} task");
-    }
+		// Assert
+		variables.ShouldContainKey("taskOutput");
+		var result = Assert.IsType<string>(variables["taskOutput"]);
+		result.ShouldContain("Gemini");
+		result.ShouldContain($"Execute {taskType} task");
+	}
 
-    public void Dispose()
-    {
-        _httpClient?.Dispose();
-        GC.SuppressFinalize(this);
-    }
+	public void Dispose()
+	{
+		_httpClient?.Dispose();
+		GC.SuppressFinalize(this);
+	}
 }

@@ -5,7 +5,7 @@ namespace VertexBPMN.Tests.Parsing.Roundtrip;
 
 public class StrictPhase1CollaborationTests
 {
-    private const string XmlWithCollab = """
+	private const string XmlWithCollab = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <bpmn:message id="msg1" name="M1"/>
   <bpmn:signal id="sig1"/>
@@ -21,46 +21,46 @@ public class StrictPhase1CollaborationTests
 </bpmn:definitions>
 """;
 
-    [Fact]
-    public async Task CollaborationParsing_Disabled_ByDefault()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict })
-            .ParseAsync(XmlWithCollab, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task CollaborationParsing_Disabled_ByDefault()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict })
+			.ParseAsync(XmlWithCollab, TestContext.Current.CancellationToken);
 
-        Assert.Equal("p1", model.ProcessId);
-        Assert.NotNull(model.Participants);
-        Assert.NotNull(model.MessageFlows);
-        Assert.Empty(model.Participants); // still disabled (zero-break)
-        Assert.Empty(model.MessageFlows);
-        Assert.NotNull(model.RawMetadata);         // strict
-        Assert.NotNull(model.RawMetadata!.RawGlobalElements); // existing capture
-        // GlobalElementKinds index not built when option disabled
-        Assert.Null(model.RawMetadata!.GlobalElementKinds);
-    }
+		Assert.Equal("p1", model.ProcessId);
+		Assert.NotNull(model.Participants);
+		Assert.NotNull(model.MessageFlows);
+		Assert.Empty(model.Participants); // still disabled (zero-break)
+		Assert.Empty(model.MessageFlows);
+		Assert.NotNull(model.RawMetadata);         // strict
+		Assert.NotNull(model.RawMetadata.RawGlobalElements); // existing capture
+															 // GlobalElementKinds index not built when option disabled
+		Assert.Null(model.RawMetadata.GlobalElementKinds);
+	}
 
-    [Fact]
-    public async Task CollaborationParsing_Enabled_Participants_And_MessageFlows_Available()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableCollaborationParsing = true,
-            BuildGlobalElementIndex = true
-        }).ParseAsync(XmlWithCollab, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task CollaborationParsing_Enabled_Participants_And_MessageFlows_Available()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableCollaborationParsing = true,
+			BuildGlobalElementIndex = true
+		}).ParseAsync(XmlWithCollab, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(model.Participants);
-        Assert.NotNull(model.MessageFlows);
-        var participants = model.Participants!;
-        var messageFlows = model.MessageFlows!;
-        Assert.Single(participants);
-        Assert.Equal("part1", participants[0].Id);
-        Assert.Single(messageFlows);
-        Assert.Equal("mf1", messageFlows[0].Id);
+		Assert.NotNull(model.Participants);
+		Assert.NotNull(model.MessageFlows);
+		var participants = model.Participants;
+		var messageFlows = model.MessageFlows;
+		Assert.Single(participants);
+		Assert.Equal("part1", participants[0].Id);
+		Assert.Single(messageFlows);
+		Assert.Equal("mf1", messageFlows[0].Id);
 
-        // Global element index present & correct
-        Assert.NotNull(model.RawMetadata);
-        Assert.NotNull(model.RawMetadata!.GlobalElementKinds);
-        Assert.Equal("message", model.RawMetadata!.GlobalElementKinds!["msg1"]);
-        Assert.Equal("signal", model.RawMetadata!.GlobalElementKinds!["sig1"]);
-    }
+		// Global element index present & correct
+		Assert.NotNull(model.RawMetadata);
+		Assert.NotNull(model.RawMetadata.GlobalElementKinds);
+		Assert.Equal("message", model.RawMetadata.GlobalElementKinds["msg1"]);
+		Assert.Equal("signal", model.RawMetadata.GlobalElementKinds["sig1"]);
+	}
 }

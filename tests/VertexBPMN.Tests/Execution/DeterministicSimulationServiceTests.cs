@@ -7,14 +7,18 @@ namespace VertexBPMN.Tests.Execution;
 
 public sealed class DeterministicSimulationServiceTests
 {
-    private readonly DeterministicSimulationService _service = new(
-        new BpmnParser(),
-        NullLogger<DeterministicSimulationService>.Instance);
+	private static readonly string[] ExpectedParallelSteps = ["start", "split", "a", "b", "join", "end"];
+	private static readonly string[] ExpectedInclusiveSteps = ["start", "split", "a", "join", "end"];
+	private static readonly string[] ExpectedSubprocessSteps = ["start", "sub", "innerStart", "innerTask", "innerEnd", "end"];
+	private static readonly string[] ExpectedSelectedEventSteps = ["start", "wait", "timer", "end"];
+	private readonly DeterministicSimulationService _service = new(
+		new BpmnParser(),
+		NullLogger<DeterministicSimulationService>.Instance);
 
-    [Fact]
-    public async Task Parallel_split_and_join_emit_one_join_step()
-    {
-        const string bpmn = """
+	[Fact]
+	public async Task Parallel_split_and_join_emit_one_join_step()
+	{
+		const string bpmn = """
             <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
               <process id="parallel">
                 <startEvent id="start" />
@@ -33,17 +37,17 @@ public sealed class DeterministicSimulationServiceTests
             </definitions>
             """;
 
-        var result = await Simulate(bpmn, "parallel");
+		var result = await Simulate(bpmn, "parallel");
 
-        Assert.True(result.Completed);
-        Assert.Equal(new[] { "start", "split", "a", "b", "join", "end" }, Ids(result));
-        Assert.Single(result.Steps, step => step.ActivityId == "join");
-    }
+		Assert.True(result.Completed);
+		Assert.Equal(ExpectedParallelSteps, Ids(result));
+		Assert.Single(result.Steps, step => step.ActivityId == "join");
+	}
 
-    [Fact]
-    public async Task Inclusive_join_does_not_wait_for_unselected_branch()
-    {
-        const string bpmn = """
+	[Fact]
+	public async Task Inclusive_join_does_not_wait_for_unselected_branch()
+	{
+		const string bpmn = """
             <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
               <process id="inclusive">
                 <startEvent id="start" />
@@ -64,19 +68,19 @@ public sealed class DeterministicSimulationServiceTests
             </definitions>
             """;
 
-        var result = await Simulate(
-            bpmn,
-            "inclusive",
-            new Dictionary<string, object> { ["takeA"] = true });
+		var result = await Simulate(
+			bpmn,
+			"inclusive",
+			new Dictionary<string, object>(StringComparer.Ordinal) { ["takeA"] = true });
 
-        Assert.True(result.Completed);
-        Assert.Equal(new[] { "start", "split", "a", "join", "end" }, Ids(result));
-    }
+		Assert.True(result.Completed);
+		Assert.Equal(ExpectedInclusiveSteps, Ids(result));
+	}
 
-    [Fact]
-    public async Task Embedded_subprocess_executes_its_internal_scope_before_parent_flow()
-    {
-        const string bpmn = """
+	[Fact]
+	public async Task Embedded_subprocess_executes_its_internal_scope_before_parent_flow()
+	{
+		const string bpmn = """
             <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
               <process id="subprocess">
                 <startEvent id="start" />
@@ -94,18 +98,18 @@ public sealed class DeterministicSimulationServiceTests
             </definitions>
             """;
 
-        var result = await Simulate(bpmn, "subprocess");
+		var result = await Simulate(bpmn, "subprocess");
 
-        Assert.True(result.Completed);
-        Assert.Equal(
-            new[] { "start", "sub", "innerStart", "innerTask", "innerEnd", "end" },
-            Ids(result));
-    }
+		Assert.True(result.Completed);
+		Assert.Equal(
+			ExpectedSubprocessSteps,
+			Ids(result));
+	}
 
-    [Fact]
-    public async Task Event_based_gateway_requires_and_honors_explicit_event_selection()
-    {
-        const string bpmn = """
+	[Fact]
+	public async Task Event_based_gateway_requires_and_honors_explicit_event_selection()
+	{
+		const string bpmn = """
             <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
               <process id="events">
                 <startEvent id="start" />
@@ -122,25 +126,25 @@ public sealed class DeterministicSimulationServiceTests
             </definitions>
             """;
 
-        var missingSelection = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => Simulate(bpmn, "events"));
-        Assert.Contains("EventSelections", missingSelection.Message);
+		var missingSelection = await Assert.ThrowsAsync<InvalidOperationException>(
+			() => Simulate(bpmn, "events"));
+		Assert.Contains("EventSelections", missingSelection.Message, StringComparison.Ordinal);
 
-        var result = await _service.SimulateAsync(new SimulationRequest
-        {
-            BpmnXml = bpmn,
-            ProcessDefinitionId = "events",
-            EventSelections = new Dictionary<string, string> { ["wait"] = "timer" }
-        }, TestContext.Current.CancellationToken);
+		var result = await _service.SimulateAsync(new SimulationRequest
+		{
+			BpmnXml = bpmn,
+			ProcessDefinitionId = "events",
+			EventSelections = new Dictionary<string, string>(StringComparer.Ordinal) { ["wait"] = "timer" }
+		}, TestContext.Current.CancellationToken);
 
-        Assert.True(result.Completed);
-        Assert.Equal(new[] { "start", "wait", "timer", "end" }, Ids(result));
-    }
+		Assert.True(result.Completed);
+		Assert.Equal(ExpectedSelectedEventSteps, Ids(result));
+	}
 
-    [Fact]
-    public async Task Cyclic_model_stops_at_max_steps_instead_of_running_unbounded()
-    {
-        const string bpmn = """
+	[Fact]
+	public async Task Cyclic_model_stops_at_max_steps_instead_of_running_unbounded()
+	{
+		const string bpmn = """
             <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
               <process id="cycle">
                 <startEvent id="start" />
@@ -151,22 +155,22 @@ public sealed class DeterministicSimulationServiceTests
             </definitions>
             """;
 
-        var result = await _service.SimulateAsync(new SimulationRequest
-        {
-            BpmnXml = bpmn,
-            ProcessDefinitionId = "cycle",
-            MaxSteps = 5
-        }, TestContext.Current.CancellationToken);
+		var result = await _service.SimulateAsync(new SimulationRequest
+		{
+			BpmnXml = bpmn,
+			ProcessDefinitionId = "cycle",
+			MaxSteps = 5
+		}, TestContext.Current.CancellationToken);
 
-        Assert.False(result.Completed);
-        Assert.Equal(5, result.Steps.Count);
-        Assert.Contains("MaxSteps=5", result.Message);
-    }
+		Assert.False(result.Completed);
+		Assert.Equal(5, result.Steps.Count);
+		Assert.Contains("MaxSteps=5", result.Message, StringComparison.Ordinal);
+	}
 
-    [Fact]
-    public async Task Call_activity_executes_the_supplied_called_process_before_parent_continues()
-    {
-        const string parent = """
+	[Fact]
+	public async Task Call_activity_executes_the_supplied_called_process_before_parent_continues()
+	{
+		const string parent = """
             <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
               <process id="parent">
                 <startEvent id="parentStart" />
@@ -177,7 +181,7 @@ public sealed class DeterministicSimulationServiceTests
               </process>
             </definitions>
             """;
-        const string child = """
+		const string child = """
             <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
               <process id="child">
                 <startEvent id="childStart" />
@@ -189,23 +193,23 @@ public sealed class DeterministicSimulationServiceTests
             </definitions>
             """;
 
-        var result = await _service.SimulateAsync(new SimulationRequest
-        {
-            BpmnXml = parent,
-            ProcessDefinitionId = "parent",
-            CalledProcessDefinitions = new Dictionary<string, string> { ["child"] = child }
-        }, TestContext.Current.CancellationToken);
+		var result = await _service.SimulateAsync(new SimulationRequest
+		{
+			BpmnXml = parent,
+			ProcessDefinitionId = "parent",
+			CalledProcessDefinitions = new Dictionary<string, string>(StringComparer.Ordinal) { ["child"] = child }
+		}, TestContext.Current.CancellationToken);
 
-        Assert.True(result.Completed);
-        Assert.Equal(
-            ["parentStart", "call", "childStart", "childWork", "childEnd", "parentEnd"],
-            Ids(result));
-    }
+		Assert.True(result.Completed);
+		Assert.Equal(
+			["parentStart", "call", "childStart", "childWork", "childEnd", "parentEnd"],
+			Ids(result));
+	}
 
-    [Fact]
-    public async Task Interrupting_event_subprocess_replaces_the_root_execution_path_when_selected()
-    {
-        const string bpmn = """
+	[Fact]
+	public async Task Interrupting_event_subprocess_replaces_the_root_execution_path_when_selected()
+	{
+		const string bpmn = """
             <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
               <message id="interruptMessage" name="interrupt" />
               <process id="interrupting-event-subprocess">
@@ -227,21 +231,21 @@ public sealed class DeterministicSimulationServiceTests
             </definitions>
             """;
 
-        var result = await _service.SimulateAsync(new SimulationRequest
-        {
-            BpmnXml = bpmn,
-            ProcessDefinitionId = "interrupting-event-subprocess",
-            EventSelections = new Dictionary<string, string> { ["handler"] = "trigger" }
-        }, TestContext.Current.CancellationToken);
+		var result = await _service.SimulateAsync(new SimulationRequest
+		{
+			BpmnXml = bpmn,
+			ProcessDefinitionId = "interrupting-event-subprocess",
+			EventSelections = new Dictionary<string, string>(StringComparer.Ordinal) { ["handler"] = "trigger" }
+		}, TestContext.Current.CancellationToken);
 
-        Assert.True(result.Completed);
-        Assert.Equal(["eventStart", "recovery", "handlerEnd"], Ids(result));
-    }
+		Assert.True(result.Completed);
+		Assert.Equal(["eventStart", "recovery", "handlerEnd"], Ids(result));
+	}
 
-    [Fact]
-    public async Task Noninterrupting_event_subprocess_runs_beside_the_root_execution_path_when_selected()
-    {
-        const string bpmn = """
+	[Fact]
+	public async Task Noninterrupting_event_subprocess_runs_beside_the_root_execution_path_when_selected()
+	{
+		const string bpmn = """
             <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
               <signal id="notification" name="notification" />
               <process id="noninterrupting-event-subprocess">
@@ -263,25 +267,25 @@ public sealed class DeterministicSimulationServiceTests
             </definitions>
             """;
 
-        var result = await _service.SimulateAsync(new SimulationRequest
-        {
-            BpmnXml = bpmn,
-            ProcessDefinitionId = "noninterrupting-event-subprocess",
-            EventSelections = new Dictionary<string, string> { ["eventStart"] = "trigger" }
-        }, TestContext.Current.CancellationToken);
+		var result = await _service.SimulateAsync(new SimulationRequest
+		{
+			BpmnXml = bpmn,
+			ProcessDefinitionId = "noninterrupting-event-subprocess",
+			EventSelections = new Dictionary<string, string>(StringComparer.Ordinal) { ["eventStart"] = "trigger" }
+		}, TestContext.Current.CancellationToken);
 
-        Assert.True(result.Completed);
-        Assert.Equal(6, result.Steps.Count);
-        Assert.Contains(result.Steps, step => step.ActivityId == "normal");
-        Assert.Contains(result.Steps, step => step.ActivityId == "notificationWork");
-        Assert.Contains(result.Steps, step => step.ActivityId == "end");
-        Assert.Contains(result.Steps, step => step.ActivityId == "handlerEnd");
-    }
+		Assert.True(result.Completed);
+		Assert.Equal(6, result.Steps.Count);
+		Assert.Contains(result.Steps, step => step.ActivityId == "normal");
+		Assert.Contains(result.Steps, step => step.ActivityId == "notificationWork");
+		Assert.Contains(result.Steps, step => step.ActivityId == "end");
+		Assert.Contains(result.Steps, step => step.ActivityId == "handlerEnd");
+	}
 
-    [Fact]
-    public async Task Sequential_multi_instance_subprocess_carries_an_isolated_iteration_context()
-    {
-        const string bpmn = """
+	[Fact]
+	public async Task Sequential_multi_instance_subprocess_carries_an_isolated_iteration_context()
+	{
+		const string bpmn = """
             <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
               <process id="sequential-mi">
                 <startEvent id="start" />
@@ -302,21 +306,21 @@ public sealed class DeterministicSimulationServiceTests
             </definitions>
             """;
 
-        var result = await Simulate(bpmn, "sequential-mi");
+		var result = await Simulate(bpmn, "sequential-mi");
 
-        Assert.True(result.Completed);
-        var iterations = result.Steps.Where(step => step.ActivityId == "innerTask").ToArray();
-        Assert.Equal(3, iterations.Length);
-        Assert.Equal(
-            [0, 1, 2],
-            iterations.Select(step => Convert.ToInt32(step.Variables["loopCounter"])).ToArray());
-        Assert.Single(result.Steps, step => step.ActivityId == "end");
-    }
+		Assert.True(result.Completed);
+		var iterations = result.Steps.Where(step => step.ActivityId == "innerTask").ToArray();
+		Assert.Equal(3, iterations.Length);
+		Assert.Equal(
+			[0, 1, 2],
+			[.. iterations.Select(step => Convert.ToInt32(step.Variables["loopCounter"]))]);
+		Assert.Single(result.Steps, step => step.ActivityId == "end");
+	}
 
-    [Fact]
-    public async Task Parallel_multi_instance_subprocess_keeps_internal_join_state_per_iteration()
-    {
-        const string bpmn = """
+	[Fact]
+	public async Task Parallel_multi_instance_subprocess_keeps_internal_join_state_per_iteration()
+	{
+		const string bpmn = """
             <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
               <process id="parallel-mi">
                 <startEvent id="start" />
@@ -344,25 +348,25 @@ public sealed class DeterministicSimulationServiceTests
             </definitions>
             """;
 
-        var result = await Simulate(bpmn, "parallel-mi");
+		var result = await Simulate(bpmn, "parallel-mi");
 
-        Assert.True(result.Completed);
-        Assert.Equal(2, result.Steps.Count(step => step.ActivityId == "join"));
-        Assert.Equal(2, result.Steps.Count(step => step.ActivityId == "innerEnd"));
-        Assert.Single(result.Steps, step => step.ActivityId == "end");
-    }
+		Assert.True(result.Completed);
+		Assert.Equal(2, result.Steps.Count(step => step.ActivityId == "join"));
+		Assert.Equal(2, result.Steps.Count(step => step.ActivityId == "innerEnd"));
+		Assert.Single(result.Steps, step => step.ActivityId == "end");
+	}
 
-    private Task<SimulationResult> Simulate(
-        string bpmn,
-        string processId,
-        Dictionary<string, object>? variables = null) =>
-        _service.SimulateAsync(new SimulationRequest
-        {
-            BpmnXml = bpmn,
-            ProcessDefinitionId = processId,
-            Variables = variables ?? new Dictionary<string, object>()
-        }, TestContext.Current.CancellationToken);
+	private Task<SimulationResult> Simulate(
+		string bpmn,
+		string processId,
+		Dictionary<string, object>? variables = null) =>
+		_service.SimulateAsync(new SimulationRequest
+		{
+			BpmnXml = bpmn,
+			ProcessDefinitionId = processId,
+			Variables = variables ?? new Dictionary<string, object>(StringComparer.Ordinal)
+		}, TestContext.Current.CancellationToken);
 
-    private static string[] Ids(SimulationResult result) =>
-        result.Steps.Select(step => step.ActivityId).ToArray();
+	private static string[] Ids(SimulationResult result) =>
+		[.. result.Steps.Select(step => step.ActivityId)];
 }

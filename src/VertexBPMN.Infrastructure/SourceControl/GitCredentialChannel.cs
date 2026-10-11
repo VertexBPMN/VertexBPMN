@@ -29,7 +29,7 @@ internal sealed class GitCredentialChannel : IAsyncDisposable
             {
                 await _pipe.WaitForConnectionAsync(_stop.Token);
                 using var reader = new StreamReader(_pipe, new UTF8Encoding(false), leaveOpen: true);
-                using var writer = new StreamWriter(_pipe, new UTF8Encoding(false), leaveOpen: true) { AutoFlush = true };
+				await using var writer = new StreamWriter(_pipe, new UTF8Encoding(false), leaveOpen: true) { AutoFlush = true };
                 var protocol = await BoundedProtocol.ReadLineAsync(reader, 16, _stop.Token);
                 var host = await BoundedProtocol.ReadLineAsync(reader, 256, _stop.Token);
                 var path = await BoundedProtocol.ReadLineAsync(reader, 4096, _stop.Token);
@@ -45,15 +45,18 @@ internal sealed class GitCredentialChannel : IAsyncDisposable
                 _pipe.Disconnect();
             }
         }
-        catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested)
+        {
+            // Expected shutdown path: the channel is being disposed.
+        }
         catch { /* Invalid/expired channels are closed, never logged. */ }
     }
 
     public async ValueTask DisposeAsync()
     {
-        _stop.Cancel();
+        await _stop.CancelAsync();
         await _serve.ConfigureAwait(false);
-        _pipe.Dispose();
+        await _pipe.DisposeAsync();
         _stop.Dispose();
     }
 }

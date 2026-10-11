@@ -39,7 +39,7 @@ public sealed class SourceControlOptionsValidator : IValidateOptions<SourceContr
 		if (options.AllowedHosts is null || options.AllowedHosts.Count == 0
 			|| options.AllowedHosts.Any(h => string.IsNullOrWhiteSpace(h) || h != h.Trim()
 				|| h.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not '.' and not '-')
-				|| Uri.CheckHostName(h) != UriHostNameType.Dns || !h.Contains('.')
+				|| Uri.CheckHostName(h) != UriHostNameType.Dns || !h.Contains('.', StringComparison.Ordinal)
 				|| h.EndsWith('.') || h.EndsWith(".localhost", StringComparison.OrdinalIgnoreCase)
 				|| h.EndsWith(".local", StringComparison.OrdinalIgnoreCase)))
 		{
@@ -70,6 +70,6 @@ public sealed class SourceControlOptionsValidator : IValidateOptions<SourceContr
 
 	private static bool SafeAbsolutePath(string? path) => !string.IsNullOrWhiteSpace(path)
 		&& path == path.Trim() && !path.Any(char.IsControl) && Path.IsPathFullyQualified(path)
-		&& !path.StartsWith("\\", StringComparison.Ordinal)
-		&& !path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Any(p => p is "." or "..");
+		&& !path.StartsWith('\\')
+		&& !path.Split((ReadOnlySpan<char>)[Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar]).Any(p => p is "." or "..");
 }

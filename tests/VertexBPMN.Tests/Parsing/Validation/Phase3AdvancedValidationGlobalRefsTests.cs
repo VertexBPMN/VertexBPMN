@@ -5,7 +5,7 @@ namespace VertexBPMN.Tests.Parsing.Validation;
 
 public class Phase3AdvancedValidationGlobalRefsTests
 {
-    private const string MissingGlobalsXml = """
+	private const string MissingGlobalsXml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <bpmn:process id="p1">
     <bpmn:startEvent id="start">
@@ -29,7 +29,7 @@ public class Phase3AdvancedValidationGlobalRefsTests
 </bpmn:definitions>
 """;
 
-    private const string WithGlobalsXml = """
+	private const string WithGlobalsXml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <bpmn:message id="msg1" name="M"/>
   <bpmn:signal id="sigX" name="S"/>
@@ -57,49 +57,49 @@ public class Phase3AdvancedValidationGlobalRefsTests
 </bpmn:definitions>
 """;
 
-    [Fact]
-    public async Task GlobalRefsMissing_Disabled_NoStructuredDiagnostics()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = false
-        }).ParseAsync(MissingGlobalsXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task GlobalRefsMissing_Disabled_NoStructuredDiagnostics()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = false
+		}).ParseAsync(MissingGlobalsXml, TestContext.Current.CancellationToken);
 
-        Assert.Null(model.ValidationDiagnostics);
-    }
+		Assert.Null(model.ValidationDiagnostics);
+	}
 
-    [Fact]
-    public async Task GlobalRefsMissing_Enabled_ProducesAllFourDiagnostics()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = true
-        }).ParseAsync(MissingGlobalsXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task GlobalRefsMissing_Enabled_ProducesAllFourDiagnostics()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = true
+		}).ParseAsync(MissingGlobalsXml, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(model.ValidationDiagnostics);
-        var d = model.ValidationDiagnostics!;
-        Assert.Contains(d, x => x.Code == "REF-GLOBAL-MESSAGE-MISSING" && x.ElementId == "start");
-        Assert.Contains(d, x => x.Code == "REF-GLOBAL-SIGNAL-MISSING" && x.ElementId == "catch1");
-        Assert.Contains(d, x => x.Code == "REF-GLOBAL-ERROR-MISSING" && x.ElementId == "throwErr");
-        Assert.Contains(d, x => x.Code == "REF-GLOBAL-ESCALATION-MISSING" && x.ElementId == "throwEsc");
-        // All severities should be Error
-        Assert.All(d.Where(x => x.Code.StartsWith("REF-GLOBAL-", System.StringComparison.Ordinal)),
-            x => Assert.Equal(ValidationSeverity.Error, x.Severity));
-    }
+		Assert.NotNull(model.ValidationDiagnostics);
+		var d = model.ValidationDiagnostics;
+		Assert.Contains(d, x => x.Code == "REF-GLOBAL-MESSAGE-MISSING" && x.ElementId == "start");
+		Assert.Contains(d, x => x.Code == "REF-GLOBAL-SIGNAL-MISSING" && x.ElementId == "catch1");
+		Assert.Contains(d, x => x.Code == "REF-GLOBAL-ERROR-MISSING" && x.ElementId == "throwErr");
+		Assert.Contains(d, x => x.Code == "REF-GLOBAL-ESCALATION-MISSING" && x.ElementId == "throwEsc");
+		// All severities should be Error
+		Assert.All(d.Where(x => x.Code.StartsWith("REF-GLOBAL-", System.StringComparison.Ordinal)),
+			x => Assert.Equal(ValidationSeverity.Error, x.Severity));
+	}
 
-    [Fact]
-    public async Task GlobalRefsPresent_Enabled_NoMissingDiagnostics()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = true
-        }).ParseAsync(WithGlobalsXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task GlobalRefsPresent_Enabled_NoMissingDiagnostics()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = true
+		}).ParseAsync(WithGlobalsXml, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(model.ValidationDiagnostics);
-        Assert.DoesNotContain(model.ValidationDiagnostics!,
-            x => x.Code.StartsWith("REF-GLOBAL-", System.StringComparison.Ordinal));
-    }
+		Assert.NotNull(model.ValidationDiagnostics);
+		Assert.DoesNotContain(model.ValidationDiagnostics,
+			x => x.Code.StartsWith("REF-GLOBAL-", System.StringComparison.Ordinal));
+	}
 }

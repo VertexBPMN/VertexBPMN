@@ -1,13 +1,17 @@
 ﻿using System;
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace VertexBPMN.Infrastructure.Persistence.Migrations.ProcessMiningEvents
-{
+namespace VertexBPMN.Infrastructure.Persistence.Migrations.ProcessMiningEvents;
+
     /// <inheritdoc />
+    [SuppressMessage("Meziantou.Analyzer", "MA0048", Justification = "EF migration snapshot / generated code.")]
     public partial class AddAuditLogs : Migration
     {
+        private static readonly string[] TenantTimestampColumns = new[] { "TenantId", "Timestamp" };
+
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -42,7 +46,7 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.ProcessMiningEvents
             migrationBuilder.CreateIndex(
                 name: "IX_AuditLogs_TenantId_Timestamp",
                 table: "AuditLogs",
-                columns: new[] { "TenantId", "Timestamp" });
+                columns: TenantTimestampColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_AuditLogs_Timestamp",
@@ -57,4 +61,3 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.ProcessMiningEvents
                 name: "AuditLogs");
         }
     }
-}

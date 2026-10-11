@@ -1,5 +1,6 @@
-using Microsoft.EntityFrameworkCore.Infrastructure;
+﻿using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+#pragma warning disable MA0048
 
 namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn;
 
@@ -10,12 +11,14 @@ public sealed class NormalizePostgresOAuth2FlowStateTimes : Migration
     protected override void Up(MigrationBuilder migrationBuilder)
     {
         if (ActiveProvider?.Contains("Npgsql", StringComparison.Ordinal) != true)
-            return;
+		{
+			return;
+		}
 
-        // Legacy values were written as UTC. Explicit offsets remain authoritative;
-        // offset-free values must not depend on the database server's local timezone.
-        // Invalid values intentionally fail the transaction instead of deleting states.
-        migrationBuilder.Sql("""
+		// Legacy values were written as UTC. Explicit offsets remain authoritative;
+		// offset-free values must not depend on the database server's local timezone.
+		// Invalid values intentionally fail the transaction instead of deleting states.
+		migrationBuilder.Sql("""
             SET LOCAL TIME ZONE 'UTC';
             ALTER TABLE "OAuth2FlowStates"
                 ALTER COLUMN "CreatedAt" TYPE timestamp with time zone USING "CreatedAt"::timestamp with time zone,
@@ -26,9 +29,11 @@ public sealed class NormalizePostgresOAuth2FlowStateTimes : Migration
     protected override void Down(MigrationBuilder migrationBuilder)
     {
         if (ActiveProvider?.Contains("Npgsql", StringComparison.Ordinal) != true)
-            return;
+		{
+			return;
+		}
 
-        migrationBuilder.Sql("""
+		migrationBuilder.Sql("""
             SET LOCAL TIME ZONE 'UTC';
             ALTER TABLE "OAuth2FlowStates"
                 ALTER COLUMN "CreatedAt" TYPE text USING "CreatedAt"::text,
@@ -36,3 +41,5 @@ public sealed class NormalizePostgresOAuth2FlowStateTimes : Migration
             """);
     }
 }
+
+#pragma warning disable MA0048

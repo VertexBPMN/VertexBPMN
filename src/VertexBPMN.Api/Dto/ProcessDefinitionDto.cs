@@ -1,5 +1,6 @@
 namespace VertexBPMN.Api.Dto;
 
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public contract type ProcessDefinitionDto retained for exposed HTTP action signatures and controller activation (ProcessDefinitionDto).")]
 public class ProcessDefinitionDto
 {
     public string Id { get; set; } = string.Empty;

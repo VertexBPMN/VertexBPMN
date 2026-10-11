@@ -98,9 +98,9 @@ public sealed class ConnectorDestinationPolicy(IConfiguration configuration)
 			host = host[4..].Trim();
 		}
 
-		if (host.StartsWith("[", StringComparison.Ordinal))
+		if (host.StartsWith('['))
 		{
-			var closingBracket = host.IndexOf(']');
+			var closingBracket = host.IndexOf(']', StringComparison.Ordinal);
 			if (closingBracket > 1)
 			{
 				return host[1..closingBracket];

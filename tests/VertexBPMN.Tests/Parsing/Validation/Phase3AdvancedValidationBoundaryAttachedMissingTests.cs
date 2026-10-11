@@ -5,7 +5,7 @@ namespace VertexBPMN.Tests.Parsing.Validation;
 
 public class Phase3AdvancedValidationBoundaryAttachedMissingTests
 {
-    private const string InvalidBoundaryXml = """
+	private const string InvalidBoundaryXml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <bpmn:process id="p1">
     <bpmn:startEvent id="start"/>
@@ -25,7 +25,7 @@ public class Phase3AdvancedValidationBoundaryAttachedMissingTests
 </bpmn:definitions>
 """;
 
-    private const string NoBoundaryIssueXml = """
+	private const string NoBoundaryIssueXml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <bpmn:process id="p1">
     <bpmn:startEvent id="s"/>
@@ -40,48 +40,48 @@ public class Phase3AdvancedValidationBoundaryAttachedMissingTests
 </bpmn:definitions>
 """;
 
-    [Fact]
-    public async Task BoundaryAttachedMissing_Disabled_NoStructuredDiagnostics()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = false
-        }).ParseAsync(InvalidBoundaryXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task BoundaryAttachedMissing_Disabled_NoStructuredDiagnostics()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = false
+		}).ParseAsync(InvalidBoundaryXml, TestContext.Current.CancellationToken);
 
-        Assert.Null(model.ValidationDiagnostics);
-    }
+		Assert.Null(model.ValidationDiagnostics);
+	}
 
-    [Fact]
-    public async Task BoundaryAttachedMissing_Enabled_ReportsError()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = true
-        }).ParseAsync(InvalidBoundaryXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task BoundaryAttachedMissing_Enabled_ReportsError()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = true
+		}).ParseAsync(InvalidBoundaryXml, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(model.ValidationDiagnostics);
-        Assert.Contains(model.ValidationDiagnostics!, d =>
-            d.Code == "REF-BOUNDARY-ATTACHED-MISSING" &&
-            d.ElementId == "bInvalid" &&
-            d.Severity == ValidationSeverity.Error);
+		Assert.NotNull(model.ValidationDiagnostics);
+		Assert.Contains(model.ValidationDiagnostics, d =>
+			d.Code == "REF-BOUNDARY-ATTACHED-MISSING" &&
+			d.ElementId == "bInvalid" &&
+			d.Severity == ValidationSeverity.Error);
 
-        // Ensure valid boundary not flagged
-        Assert.DoesNotContain(model.ValidationDiagnostics!, d =>
-            d.ElementId == "bValid" && d.Code == "REF-BOUNDARY-ATTACHED-MISSING");
-    }
+		// Ensure valid boundary not flagged
+		Assert.DoesNotContain(model.ValidationDiagnostics, d =>
+			d.ElementId == "bValid" && d.Code == "REF-BOUNDARY-ATTACHED-MISSING");
+	}
 
-    [Fact]
-    public async Task BoundaryAttachedMissing_Enabled_NoIssues()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = true
-        }).ParseAsync(NoBoundaryIssueXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task BoundaryAttachedMissing_Enabled_NoIssues()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = true
+		}).ParseAsync(NoBoundaryIssueXml, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(model.ValidationDiagnostics);
-        Assert.DoesNotContain(model.ValidationDiagnostics!, d => d.Code == "REF-BOUNDARY-ATTACHED-MISSING");
-    }
+		Assert.NotNull(model.ValidationDiagnostics);
+		Assert.DoesNotContain(model.ValidationDiagnostics, d => d.Code == "REF-BOUNDARY-ATTACHED-MISSING");
+	}
 }

@@ -1,6 +1,6 @@
 namespace VertexBPMN.Api.Migration;
 
-public class ProcessDefinitionInfo
+internal class ProcessDefinitionInfo
 {
     public Guid Id { get; set; }
     public string? TenantId { get; set; }

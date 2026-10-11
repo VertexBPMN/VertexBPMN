@@ -28,7 +28,7 @@ public class ContextEnrichmentServiceTaskHandler : IServiceTaskHandler
 	/// <summary>
 	/// Executes context enrichment by fetching data from external sources and merging it into process variables.
 	/// </summary>
-	public async Task ExecuteAsync(IDictionary<string, string> attributes, IDictionary<string, object> variables, CancellationToken cancellationToken = default)
+	public async Task ExecuteAsync(IDictionary<string, string> attributes, IDictionary<string, object> variables, CancellationToken ct = default)
 	{
 		using var span = _tracer.StartActiveSpan("ContextEnrichment.ExecuteTask");
 
@@ -48,25 +48,25 @@ public class ContextEnrichmentServiceTaskHandler : IServiceTaskHandler
 			{
 				case "api":
 				case "rest":
-					await EnrichFromRestApiAsync(config, variables, span, cancellationToken);
+					await EnrichFromRestApiAsync(config, variables, span, ct);
 					break;
 				case "database":
 				case "db":
-					await EnrichFromDatabaseAsync(config, variables, span, cancellationToken);
+					await EnrichFromDatabaseAsync(config, variables, span);
 					break;
 				case "file":
 				case "filesystem":
-					await EnrichFromFileSystemAsync(config, variables, span, cancellationToken);
+					await EnrichFromFileSystemAsync(config, variables, span, ct);
 					break;
 				case "memory":
 				case "cache":
-					await EnrichFromMemoryAsync(config, variables, span, cancellationToken);
+					await EnrichFromMemoryAsync(config, variables, span);
 					break;
 				case "mock":
-					await EnrichFromMockAsync(config, variables, span, cancellationToken);
+					await EnrichFromMockAsync(config, variables);
 					break;
 				case "composite":
-					await EnrichFromMultipleSourcesAsync(config, variables, span, cancellationToken);
+					await EnrichFromMultipleSourcesAsync(config, variables, span, ct);
 					break;
 				default:
 					throw new ServiceTaskExecutionException($"Unsupported source type: {config.SourceType}");
@@ -78,7 +78,7 @@ public class ContextEnrichmentServiceTaskHandler : IServiceTaskHandler
 		catch (Exception ex) when (ex is not ServiceTaskExecutionException)
 		{
 			var errorMessage = $"Context enrichment execution failed: {ex.Message}";
-			_logger.LogError(ex, errorMessage);
+			_logger.LogError(ex, "Context enrichment execution failed: {ErrorMessage}", ex.Message);
 			span.SetStatus(Status.Error.WithDescription(errorMessage));
 			throw new ServiceTaskExecutionException(errorMessage, ex);
 		}
@@ -153,8 +153,39 @@ public class ContextEnrichmentServiceTaskHandler : IServiceTaskHandler
 		span.SetAttribute("context.api.method", config.HttpMethod);
 
 		var url = BuildUrlWithParameters(config.SourceUrl, config.InputVariables, variables);
+		using var request = BuildRestRequest(config, url, variables);
 
-		using var request = new HttpRequestMessage(new HttpMethod(config.HttpMethod), url);
+		var response = await SendRestRequestWithRetryAsync(request, config, cancellationToken);
+
+		if (response?.IsSuccessStatusCode != true)
+		{
+			var errorMessage = $"Context enrichment API call failed: {response?.StatusCode} - {response?.ReasonPhrase}";
+			if (config.FailOnError)
+			{
+				throw new ServiceTaskExecutionException(errorMessage);
+			}
+			_logger.LogWarning("Context enrichment API call failed: {Status}", errorMessage);
+			variables[config.ResultVariable] = new Dictionary<string, object>(StringComparer.Ordinal) { ["error"] = errorMessage };
+
+			return;
+		}
+
+		var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
+		span.SetAttribute("context.api.response_size", responseContent.Length);
+
+		// Process response
+		var enrichedData = ProcessApiResponse(responseContent, config);
+		MergeEnrichedData(enrichedData, config, variables);
+
+		if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug))
+		{
+			_logger.LogDebug("Successfully enriched context from REST API: {Url}", url);
+		}
+	}
+
+	private static HttpRequestMessage BuildRestRequest(ContextEnrichmentConfiguration config, string url, IDictionary<string, object> variables)
+	{
+		var request = new HttpRequestMessage(new HttpMethod(config.HttpMethod), url);
 
 		// Add headers
 		foreach (var (key, value) in config.Headers)
@@ -176,6 +207,12 @@ public class ContextEnrichmentServiceTaskHandler : IServiceTaskHandler
 			request.Content = new StringContent(requestBody, Encoding.UTF8, "application/json");
 		}
 
+		return request;
+	}
+
+	private async Task<HttpResponseMessage?> SendRestRequestWithRetryAsync(HttpRequestMessage request,
+		ContextEnrichmentConfiguration config, CancellationToken cancellationToken)
+	{
 		// Configure timeout
 		using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(config.Timeout));
 		using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, cts.Token);
@@ -205,9 +242,9 @@ public class ContextEnrichmentServiceTaskHandler : IServiceTaskHandler
 					await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, retryCount)), combinedCts.Token);
 				}
 			}
-			catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
+			catch (OperationCanceledException ex) when (cts.Token.IsCancellationRequested)
 			{
-				throw new ServiceTaskExecutionException($"Context enrichment API call timed out after {config.Timeout} seconds");
+				throw new ServiceTaskExecutionException($"Context enrichment API call timed out after {config.Timeout} seconds", ex);
 			}
 			catch (HttpRequestException)
 			{
@@ -223,34 +260,10 @@ public class ContextEnrichmentServiceTaskHandler : IServiceTaskHandler
 			}
 		}
 
-		if (response?.IsSuccessStatusCode != true)
-		{
-			var errorMessage = $"Context enrichment API call failed: {response?.StatusCode} - {response?.ReasonPhrase}";
-			if (config.FailOnError)
-			{
-				throw new ServiceTaskExecutionException(errorMessage);
-			}
-			_logger.LogWarning(errorMessage);
-			variables[config.ResultVariable] = new Dictionary<string, object>(StringComparer.Ordinal) { ["error"] = errorMessage };
-
-			return;
-		}
-
-		var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
-		span.SetAttribute("context.api.response_size", responseContent.Length);
-
-		// Process response
-		var enrichedData = ProcessApiResponse(responseContent, config);
-		MergeEnrichedData(enrichedData, config, variables);
-
-		if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug))
-		{
-			_logger.LogDebug("Successfully enriched context from REST API: {Url}", url);
-		}
+		return response;
 	}
 
-	private async Task EnrichFromDatabaseAsync(ContextEnrichmentConfiguration config, IDictionary<string, object> variables,
-		TelemetrySpan span, CancellationToken cancellationToken)
+	private static async Task EnrichFromDatabaseAsync(ContextEnrichmentConfiguration config, IDictionary<string, object> variables, TelemetrySpan span)
 	{
 		// Placeholder for database enrichment
 		// In a real implementation, this would use Entity Framework or direct SQL
@@ -321,8 +334,7 @@ public class ContextEnrichmentServiceTaskHandler : IServiceTaskHandler
 		}
 	}
 
-	private async Task EnrichFromMemoryAsync(ContextEnrichmentConfiguration config, IDictionary<string, object> variables,
-		TelemetrySpan span, CancellationToken cancellationToken)
+	private async Task EnrichFromMemoryAsync(ContextEnrichmentConfiguration config, IDictionary<string, object> variables, TelemetrySpan span)
 	{
 		// Placeholder for in-memory cache enrichment
 		span.SetAttribute("context.cache.key", config.CacheKey);
@@ -343,8 +355,7 @@ public class ContextEnrichmentServiceTaskHandler : IServiceTaskHandler
 		await Task.CompletedTask;
 	}
 
-	private static async Task EnrichFromMockAsync(ContextEnrichmentConfiguration config, IDictionary<string, object> variables,
-		TelemetrySpan span, CancellationToken cancellationToken)
+	private static async Task EnrichFromMockAsync(ContextEnrichmentConfiguration config, IDictionary<string, object> variables)
 	{
 		var dataType = config.DataType;
 		var entityId = variables.TryGetValue("entityId", out var idValue)
@@ -405,19 +416,19 @@ public class ContextEnrichmentServiceTaskHandler : IServiceTaskHandler
 
 			MergeEnrichedData(compositeData, config, variables);
 		}
+		catch (Exception) when (config.FailOnError)
+		{
+			throw;
+		}
 		catch (Exception ex)
 		{
-			if (config.FailOnError)
-			{
-				throw;
-			}
 			_logger.LogWarning(ex, "Partial failure in composite enrichment");
 
 			variables[config.ResultVariable] = compositeData;
 		}
 	}
 
-	private Dictionary<string, object> ProcessApiResponse(string responseContent, ContextEnrichmentConfiguration config)
+	private static Dictionary<string, object> ProcessApiResponse(string responseContent, ContextEnrichmentConfiguration config)
 	{
 		try
 		{
@@ -427,13 +438,13 @@ public class ContextEnrichmentServiceTaskHandler : IServiceTaskHandler
 			// Apply filter expression if provided
 			if (!string.IsNullOrEmpty(config.FilterExpression))
 			{
-				data = ApplyJsonPathFilter(data, config.FilterExpression);
+				data = ApplyJsonPathFilter(data);
 			}
 
 			// Apply transform expression if provided
 			if (!string.IsNullOrEmpty(config.TransformExpression))
 			{
-				data = ApplyTransformation(data, config.TransformExpression);
+				data = ApplyTransformation(data);
 			}
 
 			return data;
@@ -550,19 +561,19 @@ public class ContextEnrichmentServiceTaskHandler : IServiceTaskHandler
 		var body = template;
 		foreach (var (key, value) in variables)
 		{
-			body = body.Replace($"{{{key}}}", value?.ToString() ?? "");
+			body = body.Replace($"{{{key}}}", value?.ToString() ?? "", StringComparison.Ordinal);
 		}
 		return body;
 	}
 
-	private static Dictionary<string, object> ApplyJsonPathFilter(Dictionary<string, object> data, string filterExpression)
+	private static Dictionary<string, object> ApplyJsonPathFilter(Dictionary<string, object> data)
 	{
 		// Simplified JSONPath-like filtering
 		// In a real implementation, use a proper JSONPath library like JsonPath.Net
 		return data;
 	}
 
-	private static Dictionary<string, object> ApplyTransformation(Dictionary<string, object> data, string transformExpression)
+	private static Dictionary<string, object> ApplyTransformation(Dictionary<string, object> data)
 	{
 		// Simplified transformation logic
 		// In a real implementation, use a transformation engine like Jint or similar

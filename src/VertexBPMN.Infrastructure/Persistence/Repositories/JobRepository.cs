@@ -33,8 +33,10 @@ public class JobRepository : IJobRepository
         // unnecessarily extends server-side cursors on production providers.
         var dueJobs = await query.OrderBy(job => job.DueDate).ToListAsync(cancellationToken);
         foreach (var job in dueJobs)
-            yield return job;
-    }
+		{
+			yield return job;
+		}
+	}
 
     public async ValueTask DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
@@ -71,8 +73,12 @@ public class JobRepository : IJobRepository
                 .SetProperty(item => item.LockOwner, workerId)
                 .SetProperty(item => item.LockedUntil, lockedUntil)
                 .SetProperty(item => item.Revision, item => item.Revision + 1), cancellationToken);
-        if (updated == 0) return false;
-        job.State = "Executing";
+        if (updated == 0)
+		{
+			return false;
+		}
+
+		job.State = "Executing";
         job.LockOwner = workerId;
         job.LockedUntil = lockedUntil;
         job.Revision++;

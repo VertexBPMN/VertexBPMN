@@ -18,8 +18,9 @@ public class EmailConnectorExecutor : IConnectorExecutor
 		var port = context.Attributes.TryGetValue("vertex:connector.smtpPort", out var rawPort) && int.TryParse(rawPort, out var configuredPort) ? configuredPort : 587;
 		using var client = new SmtpClient(host, port)
 		{
-			EnableSsl = !context.Attributes.TryGetValue("vertex:connector.ssl", out var ssl) || !string.Equals(ssl, "false", StringComparison.OrdinalIgnoreCase)
+			EnableSsl = true
 		};
+		ConfigureTransport(client, context);
 		if (!string.IsNullOrEmpty(context.CredentialSecret))
 		{
 			var username = Require(context, "vertex:connector.username");
@@ -32,6 +33,25 @@ public class EmailConnectorExecutor : IConnectorExecutor
 		};
 		await client.SendMailAsync(message, cancellationToken);
 		return new ConnectorExecutionResult(true, null, new Dictionary<string, object>(StringComparer.Ordinal) { ["delivered"] = true });
+	}
+
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "S5332", Justification = "Explicit plaintext SMTP is restricted to literal loopback destinations without credentials; all remote connections require TLS.")]
+	internal static void ConfigureTransport(SmtpClient client, ConnectorExecutionContext context)
+	{
+		if (!context.Attributes.TryGetValue("vertex:connector.ssl", out var ssl) || !string.Equals(ssl, "false", StringComparison.OrdinalIgnoreCase))
+		{
+			client.EnableSsl = true;
+			return;
+		}
+
+		var host = string.Equals(client.Host, "localhost", StringComparison.OrdinalIgnoreCase) ? IPAddress.Loopback.ToString() : client.Host;
+		if (!IPAddress.TryParse(host, out var address) || !IPAddress.IsLoopback(address) || !string.IsNullOrEmpty(context.CredentialSecret))
+		{
+			throw new ServiceTaskExecutionException("Plaintext SMTP is only allowed for local loopback testing without credentials.");
+		}
+
+		client.Host = address.ToString();
+		client.EnableSsl = false;
 	}
 	private static string Require(ConnectorExecutionContext context, string key) => context.Attributes.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value) ? value : throw new ServiceTaskExecutionException($"Email connector requires '{key}'.");
 }

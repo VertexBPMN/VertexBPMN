@@ -4,12 +4,12 @@ namespace VertexBPMN.Tests.Parsing.Unified;
 
 public class UnifiedPhaseBValidationTests
 {
-    private readonly BpmnParser _parser = new();
+	private readonly BpmnParser _parser = new();
 
-    [Fact]
-    public async Task Detects_MultiInstance_Conflict()
-    {
-        var xml = """
+	[Fact]
+	public async Task Detects_MultiInstance_Conflict()
+	{
+		const string xml = """
 <definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL' xmlns:camunda='http://camunda.org/schema/1.0/bpmn'>
   <process id='p1'>
     <subProcess id='sp1'>
@@ -20,14 +20,15 @@ public class UnifiedPhaseBValidationTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
-        Assert.Contains(model.Diagnostics, d => d.Contains("multi-instance") && d.Contains("sp1"));
-    }
+		var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		Assert.NotNull(model.Diagnostics);
+		Assert.Contains(model.Diagnostics, d => d.Contains("multi-instance", StringComparison.Ordinal) && d.Contains("sp1", StringComparison.Ordinal));
+	}
 
-    [Fact]
-    public async Task Cancel_End_Outside_Transaction_Flagged()
-    {
-        var xml = """
+	[Fact]
+	public async Task Cancel_End_Outside_Transaction_Flagged()
+	{
+		const string xml = """
 <definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <process id='p1'>
     <endEvent id='e1'>
@@ -36,28 +37,30 @@ public class UnifiedPhaseBValidationTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
-        Assert.Contains(model.Diagnostics, d => d.Contains("Cancel end event") && d.Contains("e1"));
-    }
+		var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		Assert.NotNull(model.Diagnostics);
+		Assert.Contains(model.Diagnostics, d => d.Contains("Cancel end event", StringComparison.Ordinal) && d.Contains("e1", StringComparison.Ordinal));
+	}
 
-    [Fact]
-    public async Task Gateway_With_No_Outgoing_Flagged()
-    {
-        var xml = """
+	[Fact]
+	public async Task Gateway_With_No_Outgoing_Flagged()
+	{
+		const string xml = """
 <definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <process id='p1'>
     <exclusiveGateway id='g1'/>
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
-        Assert.Contains(model.Diagnostics, d => d.Contains("Gateway g1 has no outgoing"));
-    }
+		var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		Assert.NotNull(model.Diagnostics);
+		Assert.Contains(model.Diagnostics, d => d.Contains("Gateway g1 has no outgoing", StringComparison.Ordinal));
+	}
 
-    [Fact]
-    public async Task Multiple_Link_Throw_Flagged()
-    {
-        var xml = """
+	[Fact]
+	public async Task Multiple_Link_Throw_Flagged()
+	{
+		const string xml = """
 <definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <process id='p1'>
     <intermediateThrowEvent id='t1'>
@@ -72,14 +75,15 @@ public class UnifiedPhaseBValidationTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
-        Assert.Contains(model.Diagnostics, d => d.Contains("Multiple throw link events") && d.Contains("L1"));
-    }
+		var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		Assert.NotNull(model.Diagnostics);
+		Assert.Contains(model.Diagnostics, d => d.Contains("Multiple throw link events", StringComparison.Ordinal) && d.Contains("L1", StringComparison.Ordinal));
+	}
 
-    [Fact]
-    public async Task Missing_Link_Catch_Flagged()
-    {
-        var xml = """
+	[Fact]
+	public async Task Missing_Link_Catch_Flagged()
+	{
+		const string xml = """
 <definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <process id='p1'>
     <intermediateThrowEvent id='t1'>
@@ -88,7 +92,8 @@ public class UnifiedPhaseBValidationTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
-        Assert.Contains(model.Diagnostics, d => d.Contains("Unmatched link") && d.Contains("L2"));
-    }
+		var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		Assert.NotNull(model.Diagnostics);
+		Assert.Contains(model.Diagnostics, d => d.Contains("Unmatched link", StringComparison.Ordinal) && d.Contains("L2", StringComparison.Ordinal));
+	}
 }

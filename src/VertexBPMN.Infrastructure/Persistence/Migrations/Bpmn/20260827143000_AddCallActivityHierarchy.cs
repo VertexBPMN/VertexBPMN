@@ -1,14 +1,15 @@
-using Microsoft.EntityFrameworkCore.Infrastructure;
+﻿using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using VertexBPMN.Infrastructure.Persistence;
 
 #nullable disable
+#pragma warning disable MA0048
 
 namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn;
 
 [DbContext(typeof(BpmnDbContext))]
 [Migration("20260827143000_AddCallActivityHierarchy")]
-public partial class AddCallActivityHierarchy : Migration
+public class AddCallActivityHierarchy : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
     {

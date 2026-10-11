@@ -10,160 +10,187 @@ namespace VertexBPMN.Tests.Integration.Studio;
 
 public sealed class HttpBpmnEngineServiceTests
 {
-    [Fact]
-    public async Task DeployXmlAsync_PostsRepositoryContract()
-    {
-        var definition = new ProcessDefinition
-        {
-            Id = Guid.NewGuid(),
-            Key = "InvoiceProcess",
-            Name = "invoice.bpmn"
-        };
-        var (service, requests) = CreateService(JsonResponse(definition, HttpStatusCode.Created));
+	[Fact]
+	public async Task DeployXmlAsync_PostsRepositoryContract()
+	{
+		var definition = new ProcessDefinition
+		{
+			Id = Guid.NewGuid(),
+			Key = "InvoiceProcess",
+			Name = "invoice.bpmn"
+		};
+		using var response = JsonResponse(definition, HttpStatusCode.Created);
+		var requests = new List<HttpRequestMessage>();
+		using var handler = new RecordingHandler(requests, response);
+		using var client = new HttpClient(handler, disposeHandler: false) { BaseAddress = new Uri("http://api.test/") };
+		var service = CreateService(client);
 
-        var result = await service.DeployXmlAsync("<definitions />", "invoice.bpmn", "tenant-a");
+		var result = await service.DeployXmlAsync("<definitions />", "invoice.bpmn", "tenant-a");
 
-        Assert.Equal(definition.Id, result.Definition.Id);
-        var request = Assert.Single(requests);
-        Assert.Equal(HttpMethod.Post, request.Method);
-        Assert.Equal("http://api.test/api/repository", request.RequestUri!.ToString());
-        var body = await request.Content!.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal("<definitions />", body.GetProperty("bpmnXml").GetString());
-        Assert.Equal("invoice.bpmn", body.GetProperty("name").GetString());
-        Assert.Equal("tenant-a", body.GetProperty("tenantId").GetString());
-    }
+		Assert.Equal(definition.Id, result.Definition.Id);
+		var request = Assert.Single(requests);
+		Assert.Equal(HttpMethod.Post, request.Method);
+		Assert.Equal("http://api.test/api/repository", request.RequestUri!.ToString());
+		var body = await request.Content!.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
+		Assert.Equal("<definitions />", body.GetProperty("bpmnXml").GetString());
+		Assert.Equal("invoice.bpmn", body.GetProperty("name").GetString());
+		Assert.Equal("tenant-a", body.GetProperty("tenantId").GetString());
+	}
 
-    [Fact]
-    public async Task DeployXmlAsync_ParsesOneTimeWebhookSecretHeader()
-    {
-        var definition = new ProcessDefinition { Id = Guid.NewGuid(), Key = "WebhookProcess", Name = "webhook.bpmn" };
-        var created = new[] { new { Path = "/orders", Method = "POST", Secret = "s3cr3t", InvokePath = "/api/webhooks/orders" } };
-        var response = JsonResponse(definition, HttpStatusCode.Created);
-        response.Headers.Add("X-VertexBPMN-Created-Webhooks", JsonSerializer.Serialize(created));
-        var (service, _) = CreateService(response);
+	[Fact]
+	public async Task DeployXmlAsync_ParsesOneTimeWebhookSecretHeader()
+	{
+		var definition = new ProcessDefinition { Id = Guid.NewGuid(), Key = "WebhookProcess", Name = "webhook.bpmn" };
+		var created = new[] { new { Path = "/orders", Method = "POST", Secret = "s3cr3t", InvokePath = "/api/webhooks/orders" } };
+		using var response = JsonResponse(definition, HttpStatusCode.Created);
+		response.Headers.Add("X-VertexBPMN-Created-Webhooks", JsonSerializer.Serialize(created));
+		var requests = new List<HttpRequestMessage>();
+		using var handler = new RecordingHandler(requests, response);
+		using var client = new HttpClient(handler, disposeHandler: false) { BaseAddress = new Uri("http://api.test/") };
+		var service = CreateService(client);
 
-        var result = await service.DeployXmlAsync("<definitions />", "webhook.bpmn", "tenant-a");
+		var result = await service.DeployXmlAsync("<definitions />", "webhook.bpmn", "tenant-a");
 
-        var hook = Assert.Single(result.CreatedWebhooks);
-        Assert.Equal("/orders", hook.Path);
-        Assert.Equal("POST", hook.Method);
-        Assert.Equal("s3cr3t", hook.Secret);
-        Assert.Equal("/api/webhooks/orders", hook.InvokePath);
-        Assert.Equal(definition.Id, result.Definition.Id);
-    }
+		var hook = Assert.Single(result.CreatedWebhooks);
+		Assert.Equal("/orders", hook.Path);
+		Assert.Equal("POST", hook.Method);
+		Assert.Equal("s3cr3t", hook.Secret);
+		Assert.Equal("/api/webhooks/orders", hook.InvokePath);
+		Assert.Equal(definition.Id, result.Definition.Id);
+	}
 
-    [Fact]
-    public async Task StartProcessAsync_PostsRuntimeStartContract()
-    {
-        var instance = new ProcessInstance { Id = Guid.NewGuid(), ProcessId = "InvoiceProcess" };
-        var (service, requests) = CreateService(JsonResponse(instance));
-        var variables = new Dictionary<string, object?> { ["approved"] = true };
+	[Fact]
+	public async Task StartProcessAsync_PostsRuntimeStartContract()
+	{
+		var instance = new ProcessInstance { Id = Guid.NewGuid(), ProcessId = "InvoiceProcess" };
+		using var response = JsonResponse(instance);
+		var requests = new List<HttpRequestMessage>();
+		using var handler = new RecordingHandler(requests, response);
+		using var client = new HttpClient(handler, disposeHandler: false) { BaseAddress = new Uri("http://api.test/") };
+		var service = CreateService(client);
+		var variables = new Dictionary<string, object?>(StringComparer.Ordinal) { ["approved"] = true };
 
-        var result = await service.StartProcessAsync("InvoiceProcess", variables, "business-42", "tenant-a");
+		var result = await service.StartProcessAsync("InvoiceProcess", variables, "business-42", "tenant-a");
 
-        Assert.Equal(instance.Id, result.Id);
-        var request = Assert.Single(requests);
-        Assert.Equal("http://api.test/api/runtime/start", request.RequestUri!.ToString());
-        var body = await request.Content!.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal("InvoiceProcess", body.GetProperty("processDefinitionKey").GetString());
-        Assert.Equal("business-42", body.GetProperty("businessKey").GetString());
-        Assert.True(body.GetProperty("variables").GetProperty("approved").GetBoolean());
-    }
+		Assert.Equal(instance.Id, result.Id);
+		var request = Assert.Single(requests);
+		Assert.Equal("http://api.test/api/runtime/start", request.RequestUri!.ToString());
+		var body = await request.Content!.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
+		Assert.Equal("InvoiceProcess", body.GetProperty("processDefinitionKey").GetString());
+		Assert.Equal("business-42", body.GetProperty("businessKey").GetString());
+		Assert.True(body.GetProperty("variables").GetProperty("approved").GetBoolean());
+	}
 
-    [Fact]
-    public async Task CompleteTaskAsync_PostsTaskVariables()
-    {
-        var taskId = Guid.NewGuid();
-        var (service, requests) = CreateService(new HttpResponseMessage(HttpStatusCode.NoContent));
+	[Fact]
+	public async Task CompleteTaskAsync_PostsTaskVariables()
+	{
+		var taskId = Guid.NewGuid();
+		using var response = new HttpResponseMessage(HttpStatusCode.NoContent);
+		var requests = new List<HttpRequestMessage>();
+		using var handler = new RecordingHandler(requests, response);
+		using var client = new HttpClient(handler, disposeHandler: false) { BaseAddress = new Uri("http://api.test/") };
+		var service = CreateService(client);
 
-        await service.CompleteTaskAsync(taskId, new Dictionary<string, object?> { ["formData"] = "{}" });
+		await service.CompleteTaskAsync(taskId, new Dictionary<string, object?>(StringComparer.Ordinal) { ["formData"] = "{}" });
 
-        var request = Assert.Single(requests);
-        Assert.Equal(HttpMethod.Post, request.Method);
-        Assert.Equal($"http://api.test/api/task/{taskId}/complete", request.RequestUri!.ToString());
-        var body = await request.Content!.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal("{}", body.GetProperty("variables").GetProperty("formData").GetString());
-    }
+		var request = Assert.Single(requests);
+		Assert.Equal(HttpMethod.Post, request.Method);
+		Assert.Equal($"http://api.test/api/task/{taskId}/complete", request.RequestUri!.ToString());
+		var body = await request.Content!.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
+		Assert.Equal("{}", body.GetProperty("variables").GetProperty("formData").GetString());
+	}
 
-    [Fact]
-    public async Task TenantAwareDefinitionOperations_ForwardSelectedTenant()
-    {
-        var definitionId = Guid.NewGuid();
-        var definition = new ProcessDefinition { Id = definitionId, BpmnXml = "<definitions />" };
-        var (service, requests) = CreateService(JsonResponse(definition));
+	[Fact]
+	public async Task TenantAwareDefinitionOperations_ForwardSelectedTenant()
+	{
+		var definitionId = Guid.NewGuid();
+		var definition = new ProcessDefinition { Id = definitionId, BpmnXml = "<definitions />" };
+		using var response = JsonResponse(definition);
+		var requests = new List<HttpRequestMessage>();
+		using var handler = new RecordingHandler(requests, response);
+		using var client = new HttpClient(handler, disposeHandler: false) { BaseAddress = new Uri("http://api.test/") };
+		var service = CreateService(client);
 
-        Assert.Equal("<definitions />", await service.GetProcessDefinitionXmlAsync(definitionId.ToString(), "tenant-a"));
-        await service.DeleteProcessDefinitionAsync(definitionId, "tenant-a");
+		Assert.Equal("<definitions />", await service.GetProcessDefinitionXmlAsync(definitionId.ToString(), "tenant-a"));
+		await service.DeleteProcessDefinitionAsync(definitionId, "tenant-a");
 
-        Assert.Equal(2, requests.Count);
-        Assert.Equal($"http://api.test/api/repository/{definitionId}?tenantId=tenant-a", requests[0].RequestUri!.ToString());
-        Assert.Equal($"http://api.test/api/repository/{definitionId}?tenantId=tenant-a", requests[1].RequestUri!.ToString());
-    }
+		Assert.Equal(2, requests.Count);
+		Assert.Equal($"http://api.test/api/repository/{definitionId}?tenantId=tenant-a", requests[0].RequestUri!.ToString());
+		Assert.Equal($"http://api.test/api/repository/{definitionId}?tenantId=tenant-a", requests[1].RequestUri!.ToString());
+	}
 
-    [Fact]
-    public async Task CompleteTaskAsync_ForwardsSelectedTenant()
-    {
-        var taskId = Guid.NewGuid();
-        var (service, requests) = CreateService(new HttpResponseMessage(HttpStatusCode.NoContent));
+	[Fact]
+	public async Task CompleteTaskAsync_ForwardsSelectedTenant()
+	{
+		var taskId = Guid.NewGuid();
+		using var response = new HttpResponseMessage(HttpStatusCode.NoContent);
+		var requests = new List<HttpRequestMessage>();
+		using var handler = new RecordingHandler(requests, response);
+		using var client = new HttpClient(handler, disposeHandler: false) { BaseAddress = new Uri("http://api.test/") };
+		var service = CreateService(client);
 
-        await service.CompleteTaskAsync(taskId, null, "tenant-a");
+		await service.CompleteTaskAsync(taskId, null, "tenant-a");
 
-        var request = Assert.Single(requests);
-        var body = await request.Content!.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal("tenant-a", body.GetProperty("tenantId").GetString());
-    }
+		var request = Assert.Single(requests);
+		var body = await request.Content!.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
+		Assert.Equal("tenant-a", body.GetProperty("tenantId").GetString());
+	}
 
-    [Fact]
-    public async Task GetEngineConfigurationAsync_UsesCapabilitiesEndpoint()
-    {
-        var capabilities = new
-        {
-            engineType = "Distributed",
-            supportsCmmn = true,
-            supportsWorkers = true,
-            supportsDurablePersistence = true
-        };
-        var (service, requests) = CreateService(JsonResponse(capabilities));
+	[Fact]
+	public async Task GetEngineConfigurationAsync_UsesCapabilitiesEndpoint()
+	{
+		var capabilities = new
+		{
+			engineType = "Distributed",
+			supportsCmmn = true,
+			supportsWorkers = true,
+			supportsDurablePersistence = true
+		};
+		using var response = JsonResponse(capabilities);
+		var requests = new List<HttpRequestMessage>();
+		using var handler = new RecordingHandler(requests, response);
+		using var client = new HttpClient(handler, disposeHandler: false) { BaseAddress = new Uri("http://api.test/") };
+		var service = CreateService(client);
 
-        var result = await service.GetEngineConfigurationAsync();
+		var result = await service.GetEngineConfigurationAsync();
 
-        Assert.Contains("Distributed", result.StatusMessage);
-        var request = Assert.Single(requests);
-        Assert.Equal(HttpMethod.Get, request.Method);
-        Assert.Equal("http://api.test/api/engine/capabilities", request.RequestUri!.ToString());
-    }
+		Assert.Contains("Distributed", result.StatusMessage, StringComparison.Ordinal);
+		var request = Assert.Single(requests);
+		Assert.Equal(HttpMethod.Get, request.Method);
+		Assert.Equal("http://api.test/api/engine/capabilities", request.RequestUri!.ToString());
+	}
 
-    private static (HttpBpmnEngineService Service, List<HttpRequestMessage> Requests) CreateService(HttpResponseMessage response)
-    {
-        var requests = new List<HttpRequestMessage>();
-        var handler = new RecordingHandler(requests, response);
-        var client = new HttpClient(handler) { BaseAddress = new Uri("http://api.test/") };
-        var factory = new Mock<IHttpClientFactory>();
-        factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
-        return (new HttpBpmnEngineService(factory.Object, NullLogger<HttpBpmnEngineService>.Instance), requests);
-    }
+	private static HttpBpmnEngineService CreateService(HttpClient client)
+	{
+		var factory = new Mock<IHttpClientFactory>();
+		factory.Setup(value => value.CreateClient("VertexBPMN.Api")).Returns(client);
+		return new HttpBpmnEngineService(factory.Object, NullLogger<HttpBpmnEngineService>.Instance);
+	}
 
-    private static HttpResponseMessage JsonResponse<T>(T value, HttpStatusCode statusCode = HttpStatusCode.OK) =>
-        new(statusCode)
-        {
-            Content = JsonContent.Create(value)
-        };
+	private static HttpResponseMessage JsonResponse<T>(T value, HttpStatusCode statusCode = HttpStatusCode.OK) =>
+		new(statusCode)
+		{
+			Content = JsonContent.Create(value)
+		};
 
-    private sealed class RecordingHandler : HttpMessageHandler
-    {
-        private readonly List<HttpRequestMessage> _requests;
-        private readonly HttpResponseMessage _response;
+	private sealed class RecordingHandler(List<HttpRequestMessage> requests, HttpResponseMessage response) : HttpMessageHandler
+	{
+		private readonly List<HttpRequestMessage> _requests = requests;
+		private readonly HttpResponseMessage _response = response;
 
-        public RecordingHandler(List<HttpRequestMessage> requests, HttpResponseMessage response)
-        {
-            _requests = requests;
-            _response = response;
-        }
+		protected override void Dispose(bool disposing)
+		{
+			if (disposing)
+			{
+				_response.Dispose();
+			}
+			base.Dispose(disposing);
+		}
 
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            _requests.Add(request);
-            return Task.FromResult(_response);
-        }
-    }
+		protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+		{
+			_requests.Add(request);
+			return Task.FromResult(_response);
+		}
+	}
 }

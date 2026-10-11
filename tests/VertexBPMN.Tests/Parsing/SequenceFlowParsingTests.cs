@@ -4,12 +4,12 @@ namespace VertexBPMN.Tests.Parsing;
 
 public class SequenceFlowParsingTests
 {
-    private readonly BpmnParser _parser = new();
+	private readonly BpmnParser _parser = new();
 
-    [Fact]
-    public async Task Parses_Condition_And_Default_Flow()
-    {
-        var xml = """
+	[Fact]
+	public async Task Parses_Condition_And_Default_Flow()
+	{
+		const string xml = """
 <definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <process id='p1'>
     <exclusiveGateway id='g1' default='flow2'/>
@@ -22,18 +22,19 @@ public class SequenceFlowParsingTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
-        Assert.Equal(2, model.SequenceFlows.Count);
-        var cond = model.SequenceFlows.First(f => f.Id == "flow1");
-        Assert.Equal("${x > 5}", cond.ConditionExpression);
-        var def = model.SequenceFlows.First(f => f.Id == "flow2");
-        Assert.True(def.IsDefault);
-    }
+		var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		Assert.NotNull(model.SequenceFlows);
+		Assert.Equal(2, model.SequenceFlows.Count);
+		var cond = model.SequenceFlows.First(f => f.Id == "flow1");
+		Assert.Equal("${x > 5}", cond.ConditionExpression);
+		var def = model.SequenceFlows.First(f => f.Id == "flow2");
+		Assert.True(def.IsDefault);
+	}
 
-    [Fact]
-    public async Task Preserves_Condition_Expression_Language_Override_And_Model_Default()
-    {
-        var xml = """
+	[Fact]
+	public async Task Preserves_Condition_Expression_Language_Override_And_Model_Default()
+	{
+		const string xml = """
 <definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'
              expressionLanguage='https://www.omg.org/spec/DMN/20191111/FEEL/'>
   <process id='p1'>
@@ -47,20 +48,21 @@ public class SequenceFlowParsingTests
 </definitions>
 """;
 
-        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
 
-        Assert.Equal(
-            "https://www.omg.org/spec/DMN/20191111/FEEL/",
-            model.SequenceFlows.Single(flow => flow.Id == "feel").ConditionExpressionLanguage);
-        Assert.Equal(
-            "http://www.w3.org/1999/XPath",
-            model.SequenceFlows.Single(flow => flow.Id == "xpath").ConditionExpressionLanguage);
-    }
+		Assert.NotNull(model.SequenceFlows);
+		Assert.Equal(
+			"https://www.omg.org/spec/DMN/20191111/FEEL/",
+			model.SequenceFlows.Single(flow => flow.Id == "feel").ConditionExpressionLanguage);
+		Assert.Equal(
+			"http://www.w3.org/1999/XPath",
+			model.SequenceFlows.Single(flow => flow.Id == "xpath").ConditionExpressionLanguage);
+	}
 
-    [Fact]
-    public async Task Preserves_Owning_Process_For_Collaboration_Flow_Nodes()
-    {
-        var xml = """
+	[Fact]
+	public async Task Preserves_Owning_Process_For_Collaboration_Flow_Nodes()
+	{
+		const string xml = """
 <definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <process id='primary'>
     <startEvent id='primary-start'/>
@@ -75,11 +77,14 @@ public class SequenceFlowParsingTests
 </definitions>
 """;
 
-        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
 
-        Assert.Equal("primary", model.Events.Single(evt => evt.Id == "primary-start").ProcessId);
-        Assert.Equal("secondary", model.Events.Single(evt => evt.Id == "secondary-start").ProcessId);
-        Assert.Equal("secondary", model.Tasks.Single(task => task.Id == "secondary-task").ProcessId);
-        Assert.Equal("secondary", model.SequenceFlows.Single(flow => flow.Id == "secondary-flow").ProcessId);
-    }
+		Assert.NotNull(model.Events);
+		Assert.Equal("primary", model.Events.Single(evt => evt.Id == "primary-start").ProcessId);
+		Assert.Equal("secondary", model.Events.Single(evt => evt.Id == "secondary-start").ProcessId);
+		Assert.NotNull(model.Tasks);
+		Assert.Equal("secondary", model.Tasks.Single(task => task.Id == "secondary-task").ProcessId);
+		Assert.NotNull(model.SequenceFlows);
+		Assert.Equal("secondary", model.SequenceFlows.Single(flow => flow.Id == "secondary-flow").ProcessId);
+	}
 }

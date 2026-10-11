@@ -5,11 +5,11 @@ using VertexBPMN.Domain.Model.Dmn;
 using VertexBPMN.Infrastructure.Persistence;
 namespace VertexBPMN.Tests.Infrastructure.Seeding;
 
-public sealed class DecisionSeeder : TestDataSeederBase
+internal sealed class DecisionSeeder : TestDataSeederBase
 {
-    public override int Order => 30;
+	public override int Order => 30;
 
-    private const string SampleDmn = """
+	private const string SampleDmn = """
         <definitions xmlns="http://www.omg.org/spec/DMN/20191111/MODEL/">
           <decision id="d1" name="TestDecision">
             <decisionTable hitPolicy="UNIQUE">
@@ -21,34 +21,34 @@ public sealed class DecisionSeeder : TestDataSeederBase
         </definitions>
         """;
 
-    public override async Task SeedAsync(IServiceScope scope, CancellationToken cancellationToken = default)
-    {
-        var logger = scope.ServiceProvider.GetRequiredService<ILogger<DecisionSeeder>>();
-        var decisionDb = scope.ServiceProvider.GetRequiredService<DecisionDbContext>();
+	public override async Task SeedAsync(IServiceScope scope, CancellationToken cancellationToken = default)
+	{
+		var logger = scope.ServiceProvider.GetRequiredService<ILogger<DecisionSeeder>>();
+		var decisionDb = scope.ServiceProvider.GetRequiredService<DecisionDbContext>();
 
-        var set = decisionDb.DecisionDefinitions;
-        var model = DmnDecisionTable.Parse(SampleDmn);
-        // Idempotent check via reflection (fallback)
-        var any = await set
-            .AsQueryable()
-            .Cast<object>()
-            .AnyAsync(cancellationToken);
+		var set = decisionDb.DecisionDefinitions;
+		var model = DmnDecisionTable.Parse(SampleDmn);
+		// Idempotent check via reflection (fallback)
+		var any = await set
+			.AsQueryable()
+			.Cast<object>()
+			.AnyAsync(cancellationToken);
 
-        if (!any)
-        {
-            var decision = new DecisionDefinition
-            {
-                Id = Guid.NewGuid().ToString(),
-                Key = "d1",
-                Name = "TestDecision",
-                DmnXml = SampleDmn,
-                DecisionTable = model,
-                TenantId = null
-            };
-            set.Add(decision);
-            await decisionDb.SaveChangesAsync(cancellationToken);
-            logger.LogInformation("Seeded DMN decision");
-        }
-    }
+		if (!any)
+		{
+			var decision = new DecisionDefinition
+			{
+				Id = Guid.NewGuid().ToString(),
+				Key = "d1",
+				Name = "TestDecision",
+				DmnXml = SampleDmn,
+				DecisionTable = model,
+				TenantId = null
+			};
+			set.Add(decision);
+			await decisionDb.SaveChangesAsync(cancellationToken);
+			logger.LogInformation("Seeded DMN decision");
+		}
+	}
 
 }

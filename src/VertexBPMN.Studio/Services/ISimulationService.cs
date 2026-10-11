@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace VertexBPMN.Studio.Services;
 
-public interface ISimulationService
+internal interface ISimulationService
 {
     Task<JsonElement> SimulateAsync(
         string bpmnXml,

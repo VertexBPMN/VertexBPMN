@@ -1,8 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using VertexBPMN.Domain.Entities;
 
-namespace VertexBPMN.Infrastructure.Persistence.Services
-{
+namespace VertexBPMN.Infrastructure.Persistence.Services;
+
     public class TenantDbContext : DbContext
     {
         public DbSet<Tenant> Tenants { get; set; }
@@ -19,4 +19,3 @@ namespace VertexBPMN.Infrastructure.Persistence.Services
             );
         }
     }
-}

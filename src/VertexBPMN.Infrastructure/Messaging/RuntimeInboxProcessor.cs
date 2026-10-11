@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -8,40 +8,11 @@ using VertexBPMN.Infrastructure.Persistence;
 namespace VertexBPMN.Infrastructure.Messaging;
 
 /// <summary>
-/// Outcome classifications of one idempotent inbox processing attempt.
-/// Consumers (RabbitMQ, Azure Service Bus) map these onto their ack/requeue/reject semantics.
-/// </summary>
-public enum RuntimeInboxOutcome
-{
-    /// <summary>Business effect was applied and the completion marker committed atomically.</summary>
-    Completed,
-    /// <summary>The message was already completed exactly once (idempotent no-op). Safe to acknowledge.</summary>
-    CompletedDuplicate,
-    /// <summary>The message is owned by another live worker and its claim has not expired. Safe to skip (ack).</summary>
-    Busy,
-    /// <summary>Transient failure; the consumer should redeliver/requeue and retry.</summary>
-    RetryableFailure,
-    /// <summary>Permanent, non-retryable failure (missing handler, invalid payload, unknown contract version,
-    /// unauthorized tenant). The consumer should move the message to the DLQ, not ack as success.</summary>
-    Rejected
-}
-
-/// <summary>Outcome + an optional diagnostic reason (used for DLQ "dead-letter reason" and logs).</summary>
-public readonly record struct RuntimeInboxProcessResult(RuntimeInboxOutcome Outcome, string? Reason = null);
-
-/// <summary>
-/// Thrown by a business handler to permanently reject a message (-> DLQ). Any other exception is treated
-/// as a transient, retryable failure.
-/// </summary>
-public sealed class RuntimeInboxRejectException : Exception
-{
-    public RuntimeInboxRejectException(string reason, Exception? inner = null) : base(reason, inner) { }
-}
-
-/// <summary>
+/// <para>
 /// Provider-neutral, idempotent inbox processing shared by every transport consumer (RabbitMQ now,
 /// Azure Service Bus via <see cref="AzureServiceBusRuntimeInboxConsumerService"/>).
-///
+/// </para>
+/// <para>
 /// Guarantees:
 ///  - The envelope payload is cloned from the source <see cref="JsonDocument"/> and outlives its disposal.
 ///  - A durable idempotency claim (unique <c>(TenantScope, Operation, IdempotencyKey)</c>) reserves the
@@ -53,6 +24,7 @@ public sealed class RuntimeInboxRejectException : Exception
 ///    (commit-before-ack safety is delegated to the consumer's ack after this returns Completed).
 ///  - A missing handler, unparseable payload, unknown contract version or unauthorized tenant is reported
 ///    as <see cref="RuntimeInboxOutcome.Rejected"/>, never as a fake success.
+/// </para>
 /// </summary>
 public sealed class RuntimeInboxProcessor
 {
@@ -75,15 +47,10 @@ public sealed class RuntimeInboxProcessor
         string idempotencyKey,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(envelope.EventType))
-            return new(RuntimeInboxOutcome.Rejected, "Envelope has no eventType.");
-
-        if (envelope.Payload is not { } payload)
-            return new(RuntimeInboxOutcome.Rejected, "Envelope has no payload.");
-
-        if (payload.ValueKind == JsonValueKind.Undefined || payload.ValueKind == JsonValueKind.Null)
-            return new RuntimeInboxProcessResult(RuntimeInboxOutcome.Rejected,
-                $"Envelope payload has invalid value kind '{payload.ValueKind}'.");
+        if (ValidateEnvelope(envelope) is { } invalid)
+        {
+            return invalid;
+        }
 
         var claimWindow = TimeSpan.FromSeconds(Math.Clamp(_options.ClaimTimeoutSeconds, 1, 86400));
 
@@ -91,11 +58,55 @@ public sealed class RuntimeInboxProcessor
         var db = scope.ServiceProvider.GetRequiredService<BpmnDbContext>();
         var tenantId = envelope.TenantId;
         var tenantScope = string.IsNullOrWhiteSpace(tenantId) ? "$global" : tenantId.Trim();
-        var operation = envelope.EventType;
+        var operation = envelope.EventType!;
 
-        // 1) Reserve the idempotency claim. Unique (TenantScope, Operation, IdempotencyKey) commits this
-        //    first so concurrent/duplicate deliveries observe exactly one winner.
-        var claim = new RuntimeInboxMessage
+        var claim = CreateClaim(operation, idempotencyKey, tenantId, tenantScope);
+        db.RuntimeInbox.Add(claim);
+        if (await ReserveClaimAsync(db, claim, operation, idempotencyKey, tenantScope, claimWindow, cancellationToken) is { } reserve)
+        {
+            return reserve;
+        }
+
+        // 2) No business handler registered -> this is a permanent misconfiguration, NOT a success.
+        var handler = scope.ServiceProvider.GetService<IRuntimeInboxHandler>();
+        var sink = scope.ServiceProvider.GetService<IInboxEventSink>();
+        if (handler is null && sink is null)
+        {
+            return new(RuntimeInboxOutcome.Rejected,
+                "No IRuntimeInboxHandler or IInboxEventSink is registered; refusing to acknowledge the message as processed.");
+        }
+
+        if (await EvaluateConformanceAsync(scope, envelope, cancellationToken) is { } conformance)
+        {
+            return conformance;
+        }
+
+        return await ExecuteBusinessEffectAsync(db, handler, sink, envelope, tenantId, idempotencyKey, claim, cancellationToken);
+    }
+
+    private static RuntimeInboxProcessResult? ValidateEnvelope(InboxEnvelope envelope)
+    {
+        if (string.IsNullOrWhiteSpace(envelope.EventType))
+        {
+            return new(RuntimeInboxOutcome.Rejected, "Envelope has no eventType.");
+        }
+
+        if (envelope.Payload is not { } payload)
+        {
+            return new(RuntimeInboxOutcome.Rejected, "Envelope has no payload.");
+        }
+
+        if (payload.ValueKind == JsonValueKind.Undefined || payload.ValueKind == JsonValueKind.Null)
+        {
+            return new RuntimeInboxProcessResult(RuntimeInboxOutcome.Rejected,
+                $"Envelope payload has invalid value kind '{payload.ValueKind}'.");
+        }
+
+        return null;
+    }
+
+    private static RuntimeInboxMessage CreateClaim(string operation, string idempotencyKey, string? tenantId, string tenantScope)
+        => new()
         {
             Id = Guid.NewGuid(),
             Operation = operation,
@@ -104,10 +115,20 @@ public sealed class RuntimeInboxProcessor
             TenantScope = tenantScope,
             ReceivedAt = DateTime.UtcNow
         };
-        db.RuntimeInbox.Add(claim);
+
+    private static async Task<RuntimeInboxProcessResult?> ReserveClaimAsync(
+        BpmnDbContext db,
+        RuntimeInboxMessage claim,
+        string operation,
+        string idempotencyKey,
+        string tenantScope,
+        TimeSpan claimWindow,
+        CancellationToken cancellationToken)
+    {
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            return null;
         }
         catch (DbUpdateException)
         {
@@ -120,14 +141,21 @@ public sealed class RuntimeInboxProcessor
                      && m.TenantScope == tenantScope,
                 cancellationToken);
             if (existing is null)
+            {
                 return new(RuntimeInboxOutcome.RetryableFailure, "Duplicate insert detected but existing row not found; retry.");
+            }
+
             if (existing.CompletedAt is not null)
+            {
                 return new(RuntimeInboxOutcome.CompletedDuplicate, "Already completed exactly once.");
+            }
 
             // Incomplete claim: either another live worker holds it (Busy) or it is stale and reclaimable
             // after the claim timeout (crash mid-processing -> recovery).
             if (existing.ReceivedAt >= DateTime.UtcNow - claimWindow)
+            {
                 return new(RuntimeInboxOutcome.Busy, "Claimed by another worker and claim has not expired.");
+            }
 
             // Stale incomplete claim -> reclaim (delete old row, re-reserve) and reprocess below.
             await db.RuntimeInbox.Where(m => m.Id == existing.Id).ExecuteDeleteAsync(cancellationToken);
@@ -141,44 +169,59 @@ public sealed class RuntimeInboxProcessor
             {
                 return new(RuntimeInboxOutcome.Busy, "Reclaim lost the race to another worker; skipping.");
             }
+            return null;
         }
+    }
 
-        // 2) No business handler registered -> this is a permanent misconfiguration, NOT a success.
-        var handler = scope.ServiceProvider.GetService<IRuntimeInboxHandler>();
-        var sink = scope.ServiceProvider.GetService<IInboxEventSink>();
-        if (handler is null && sink is null)
-            return new(RuntimeInboxOutcome.Rejected,
-                "No IRuntimeInboxHandler or IInboxEventSink is registered; refusing to acknowledge the message as processed.");
-
+    private static async Task<RuntimeInboxProcessResult?> EvaluateConformanceAsync(
+        AsyncServiceScope scope,
+        InboxEnvelope envelope,
+        CancellationToken cancellationToken)
+    {
         // 2b) Optionales semantisches Konformitäts-Judgment (TypeSafe System One), config-gated.
         //     Nur aktiv, wenn ein Validator registriert UND aktiviert ist; sonst NotEvaluated -> weiter wie bisher.
         //     Falsch/vertragswidrig => permanent ablehnen (DLQ); unklar => transient requeuen (Review).
         var conformance = scope.ServiceProvider.GetService<ITypeSafeEnvelopeConformanceValidator>();
-        if (conformance is not null)
+        if (conformance is null)
         {
-            var judgment = await conformance.EvaluateAsync(envelope, cancellationToken);
-            switch (judgment.Verdict)
-            {
-                case EnvelopeConformanceVerdict.Malformed:
-                case EnvelopeConformanceVerdict.WrongContract:
-                    return new(RuntimeInboxOutcome.Rejected,
-                        $"Envelope contract conformance failed ({judgment.Verdict}): {judgment.Reason}");
-                case EnvelopeConformanceVerdict.Unclear:
-                    return new(RuntimeInboxOutcome.RetryableFailure,
-                        $"Contract conformance unclear (confidence {judgment.Confidence:0.00}); requeue for review.");
-                default:
-                    break; // Conforms / NotEvaluated: weiter zur Geschäftsverarbeitung.
-            }
+            return null;
         }
 
+        var judgment = await conformance.EvaluateAsync(envelope, cancellationToken);
+        return judgment.Verdict switch
+        {
+            EnvelopeConformanceVerdict.Malformed or EnvelopeConformanceVerdict.WrongContract =>
+                new(RuntimeInboxOutcome.Rejected,
+                    $"Envelope contract conformance failed ({judgment.Verdict}): {judgment.Reason}"),
+            EnvelopeConformanceVerdict.Unclear =>
+                new(RuntimeInboxOutcome.RetryableFailure,
+                    $"Contract conformance unclear (confidence {judgment.Confidence:0.00}); requeue for review."),
+            _ => null,
+        };
+    }
+
+    private async Task<RuntimeInboxProcessResult> ExecuteBusinessEffectAsync(
+        BpmnDbContext db,
+        IRuntimeInboxHandler? handler,
+        IInboxEventSink? sink,
+        InboxEnvelope envelope,
+        string? tenantId,
+        string idempotencyKey,
+        RuntimeInboxMessage claim,
+        CancellationToken cancellationToken)
+    {
         // 3) Shared transaction: business effect + completion marker commit atomically.
         await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
         try
         {
             if (handler is not null)
+            {
                 await handler.HandleAsync(envelope.EventType, envelope.Payload, envelope.ProcessInstanceId, tenantId, cancellationToken);
+            }
             else
+            {
                 await sink!.HandleAsync(envelope, cancellationToken);
+            }
 
             claim.Result = "Processed";
             claim.CompletedAt = DateTime.UtcNow;
@@ -207,43 +250,3 @@ public sealed class RuntimeInboxProcessor
         }
     }
 }
-
-/// <summary>
-/// Parsed shape of the runtime outbox envelope published by the transport.
-/// The payload is <see cref="JsonElement.Clone()"/>d so it outlives the source
-/// <see cref="JsonDocument"/> used to parse the wire body.
-/// </summary>
-public sealed record InboxEnvelope(
-    Guid? Id,
-    string? EventType,
-    Guid? ProcessInstanceId,
-    string? TenantId,
-    DateTimeOffset? OccurredAt,
-    JsonElement? Payload)
-{
-    public static InboxEnvelope Parse(byte[] body)
-    {
-        using var document = JsonDocument.Parse(body);
-        var root = document.RootElement;
-        return new InboxEnvelope(
-            root.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String && Guid.TryParse(id.GetString(), out var g) ? g : null,
-            root.TryGetProperty("eventType", out var et) ? et.GetString() : null,
-            root.TryGetProperty("processInstanceId", out var pi) && pi.ValueKind == JsonValueKind.String ? (Guid?)Guid.Parse(pi.GetString()!) : null,
-            root.TryGetProperty("tenantId", out var t) && t.ValueKind is JsonValueKind.String or JsonValueKind.Null ? (t.ValueKind == JsonValueKind.Null ? null : t.GetString()) : null,
-            root.TryGetProperty("occurredAt", out var oa) ? (DateTimeOffset?)oa.GetDateTimeOffset() : null,
-            root.TryGetProperty("payload", out var p) ? p.Clone() : null);
-    }
-}
-
-/// <summary>Idempotent business handler invoked exactly once per stable message id.</summary>
-public interface IRuntimeInboxHandler
-{
-    Task HandleAsync(string? eventType, JsonElement? payload, Guid? processInstanceId, string? tenantId, CancellationToken cancellationToken);
-}
-
-/// <summary>Alternative sink (test seams / external forwarding) invoked exactly once.</summary>
-public interface IInboxEventSink
-{
-    Task HandleAsync(InboxEnvelope envelope, CancellationToken cancellationToken);
-}
-

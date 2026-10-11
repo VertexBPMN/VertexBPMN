@@ -6,10 +6,10 @@ namespace VertexBPMN.Tests.Integration.Dmn;
 
 public class DmnRuleOrderPolicyTests
 {
-    [Fact]
-    public void RuleOrder_HitPolicy_Returns_All_Matches_In_Order()
-    {
-        const string dmn = @"<definitions xmlns='http://www.omg.org/spec/DMN/20191111/MODEL/'>
+	[Fact]
+	public void RuleOrder_HitPolicy_Returns_All_Matches_In_Order()
+	{
+		const string dmn = @"<definitions xmlns='http://www.omg.org/spec/DMN/20191111/MODEL/'>
   <decision id='d1' name='Test'>
     <decisionTable hitPolicy='RULE ORDER'>
       <input id='i1'><inputExpression>age</inputExpression></input>
@@ -25,8 +25,8 @@ public class DmnRuleOrderPolicyTests
     </decisionTable>
   </decision>
 </definitions>";
-        var table = DmnDecisionTable.Parse(dmn);
-        var result = table.Evaluate(new Dictionary<string, object> { { "i1", "18" } });
-        Assert.True(result["result"] is List<object> list && list[0].Equals("adult") && list[1].Equals("duplicate"));
-    }
+		var table = DmnDecisionTable.Parse(dmn);
+		var result = table.Evaluate(new Dictionary<string, object>(StringComparer.Ordinal) { { "i1", "18" } });
+		Assert.True(result["result"] is List<object> list && list[0].Equals("adult") && list[1].Equals("duplicate"));
+	}
 }

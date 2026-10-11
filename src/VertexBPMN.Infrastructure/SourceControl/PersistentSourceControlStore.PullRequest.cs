@@ -27,7 +27,7 @@ public sealed partial class PersistentSourceControlStore
             ?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
         RepositoryAccessPolicy.Demand(context, access.Binding, copiedRoles, access.Grants, RepositoryPermission.PullRequest);
         if (access.Binding.Remote.Host != "github.com"
-            || submission.BaseBranch != access.Binding.DefaultBranch && submission.BaseBranch != access.Binding.ReleaseBranch)
+            || (submission.BaseBranch != access.Binding.DefaultBranch && submission.BaseBranch != access.Binding.ReleaseBranch))
         {
             throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
         }
@@ -80,11 +80,11 @@ public sealed partial class PersistentSourceControlStore
             var bytes = Unprotect(context, row.RepositoryId, row.ProtectedRequest);
             var accepted = JsonSerializer.Deserialize<AcceptedPullRequest>(bytes);
             if (accepted is null || accepted.SchemaVersion != 1 || accepted.PushOperationId == Guid.Empty
-                || string.IsNullOrWhiteSpace(accepted.Title) || accepted.Title.Length > 256
-                || accepted.Title.Any(char.IsControl) || accepted.Description is null || accepted.Description.Length > 16_384
-                || accepted.WorkBranch is null || !accepted.WorkBranch.StartsWith("vertex/", StringComparison.Ordinal)
-                || accepted.WorkBranch == accepted.BaseBranch || access.Binding.Remote.Host != "github.com"
-                || accepted.BaseBranch != access.Binding.DefaultBranch && accepted.BaseBranch != access.Binding.ReleaseBranch)
+				|| string.IsNullOrWhiteSpace(accepted.Title) || accepted.Title.Length > 256
+				|| accepted.Title.Any(char.IsControl) || accepted.Description is null || accepted.Description.Length > 16_384
+				|| accepted.WorkBranch?.StartsWith("vertex/", StringComparison.Ordinal) != true
+				|| accepted.WorkBranch == accepted.BaseBranch || access.Binding.Remote.Host != "github.com"
+                || (accepted.BaseBranch != access.Binding.DefaultBranch && accepted.BaseBranch != access.Binding.ReleaseBranch))
             {
                 throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
             }
@@ -139,8 +139,12 @@ public sealed partial class PersistentSourceControlStore
         }
         var until = await db.SourceControlOperations.Where(x => x.Id == id).Select(x => x.LeaseUntilUtcTicks).SingleAsync(cancellationToken);
         var remaining = new DateTimeOffset(until!.Value, TimeSpan.Zero) - DateTimeOffset.UtcNow;
-        if (remaining <= TimeSpan.Zero) throw new SourceControlSecurityException(SourceControlErrorCode.ResultUnknown);
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (remaining <= TimeSpan.Zero)
+		{
+			throw new SourceControlSecurityException(SourceControlErrorCode.ResultUnknown);
+		}
+
+		using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(remaining);
         var receipt = await invoke(work, deadline.Token);
         await transaction.CommitAsync(deadline.Token);
@@ -172,11 +176,15 @@ public sealed partial class PersistentSourceControlStore
             throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
         }
         var repository = work.Binding.Remote.AbsolutePath.Trim('/');
-        if (repository.EndsWith(".git", StringComparison.Ordinal)) repository = repository[..^4];
-        var expectedUrl = new Uri($"https://github.com/{repository}/pull/{receipt.Number.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+        if (repository.EndsWith(".git", StringComparison.Ordinal))
+		{
+			repository = repository[..^4];
+		}
+
+		var expectedUrl = new Uri($"https://github.com/{repository}/pull/{receipt.Number.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
         if (receipt.Url != expectedUrl || !Enum.IsDefined(receipt.State)
-            || receipt.State == PullRequestState.Merged && receipt.MergeCommit is null
-            || receipt.State != PullRequestState.Merged && receipt.MergeCommit is not null)
+            || (receipt.State == PullRequestState.Merged && receipt.MergeCommit is null)
+			|| (receipt.State != PullRequestState.Merged && receipt.MergeCommit is not null))
         {
             throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
         }

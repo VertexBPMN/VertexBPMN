@@ -4,28 +4,37 @@ using Microsoft.AspNetCore.Mvc;
 using VertexBPMN.Domain.Interfaces;
 
 namespace VertexBPMN.Api.Controllers;
-
 [ApiController]
 [Route("api/oauth2")]
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public controller required for ASP.NET Core MVC discovery and activation.")]
 public sealed class OAuth2Controller(IOAuth2CredentialFlowService flowService) : ControllerBase
 {
 	[HttpPost("authorize")]
 	[Authorize(Policy = "AdminOnly")]
 	[ProducesResponseType(typeof(OAuth2AuthorizationStart), StatusCodes.Status200OK)]
-	public async Task<ActionResult<OAuth2AuthorizationStart>> StartAuthorization(
-		[FromBody] OAuth2AuthorizeRequest request,
-		CancellationToken cancellationToken)
+	public async Task<ActionResult<OAuth2AuthorizationStart>> StartAuthorization([FromBody] OAuth2AuthorizeRequest request, CancellationToken cancellationToken)
 	{
 		var tenant = ResolveTenant(request.TenantId, out var forbidden);
 		if (forbidden)
+		{
 			return Forbid();
+		}
+
 		if (tenant is null)
+		{
 			return BadRequest(new ProblemDetails { Title = "TenantId is required." });
+		}
+
 		var subject = Subject();
 		if (subject is null)
+		{
 			return Forbid();
+		}
+
 		if (request.BrowserProof is null || request.BrowserProof.Length is < 43 or > 256)
+		{
 			return BadRequest(new ProblemDetails { Title = "A per-browser OAuth2 proof is required." });
+		}
 
 		try
 		{
@@ -40,18 +49,24 @@ public sealed class OAuth2Controller(IOAuth2CredentialFlowService flowService) :
 
 	[HttpPost("callback")]
 	[Authorize(Policy = "AdminOnly")]
-	public async Task<IActionResult> Callback(
-		[FromBody] OAuth2CallbackRequest request,
-		CancellationToken cancellationToken)
+	public async Task<IActionResult> Callback([FromBody] OAuth2CallbackRequest request, CancellationToken cancellationToken)
 	{
 		var subject = Subject();
 		if (subject is null)
+		{
 			return Forbid();
+		}
+
 		if (string.IsNullOrWhiteSpace(request.BrowserProof) || request.BrowserProof.Length > 256)
+		{
 			return Unauthorized();
+		}
+
 		var completed = await flowService.CompleteAuthorizationAsync(request.State, request.Code, new OAuth2FlowBinding(subject, request.BrowserProof), cancellationToken);
 		if (!completed)
+		{
 			return Unauthorized(new ProblemDetails { Title = "Invalid or expired OAuth2 authorization." });
+		}
 
 		return Content("Authorization completed. You may close this tab.", "text/plain");
 	}
@@ -67,15 +82,11 @@ public sealed class OAuth2Controller(IOAuth2CredentialFlowService flowService) :
 	private string? Subject()
 	{
 		var claim = User.FindFirst(ClaimTypes.NameIdentifier) ?? User.FindFirst("sub") ?? User.FindFirst(ClaimTypes.Name);
-		return claim is null || string.IsNullOrWhiteSpace(claim.Value) ? null
-			: System.Text.Json.JsonSerializer.Serialize(new[] { claim.Issuer, claim.Value, User.FindFirstValue("tenant_id") });
+		return claim is null || string.IsNullOrWhiteSpace(claim.Value) ? null : System.Text.Json.JsonSerializer.Serialize(new[] { claim.Issuer, claim.Value, User.FindFirstValue("tenant_id") });
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public contract type OAuth2CallbackRequest retained for exposed HTTP action signatures and controller activation (OAuth2Controller).")]
 	public sealed record OAuth2CallbackRequest(string State, string Code, string BrowserProof);
-
-	public sealed record OAuth2AuthorizeRequest(
-		string? TenantId,
-		string CredentialId,
-		OAuth2AuthorizationConfig Config,
-		string? BrowserProof = null);
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public contract type OAuth2AuthorizeRequest retained for exposed HTTP action signatures and controller activation (OAuth2Controller).")]
+	public sealed record OAuth2AuthorizeRequest(string? TenantId, string CredentialId, OAuth2AuthorizationConfig Config, string? BrowserProof = null);
 }

@@ -80,18 +80,18 @@ else
             <TemplateColumn Title="Actions" Sortable="false">
                 <CellTemplate>
                     <MudButtonGroup Size="Size.Small" Variant="Variant.Text">
-                        <MudIconButton Icon="@Icons.Material.Filled.Visibility" 
-                                      Size="Size.Small" 
-                                      OnClick="@(() => ViewDefinition(context.Item))" 
+                        <MudIconButton Icon="@Icons.Material.Filled.Visibility"
+                                      Size="Size.Small"
+                                      OnClick="@(() => ViewDefinition(context.Item))"
                                       aria-label="View BPMN" />
-                        <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" 
-                                      Size="Size.Small" 
+                        <MudIconButton Icon="@Icons.Material.Filled.PlayArrow"
+                                      Size="Size.Small"
                                       Color="Color.Success"
-                                      OnClick="@(() => StartProcess(context.Item))" 
+                                      OnClick="@(() => StartProcess(context.Item))"
                                       aria-label="Start Process Instance" />
-                        <MudIconButton Icon="@Icons.Material.Filled.History" 
-                                      Size="Size.Small" 
-                                      OnClick="@(() => ViewVersions(context.Item.Key))" 
+                        <MudIconButton Icon="@Icons.Material.Filled.History"
+                                      Size="Size.Small"
+                                      OnClick="@(() => ViewVersions(context.Item.Key))"
                                       aria-label="View Versions" />
                         <MudIconButton Icon="@Icons.Material.Filled.Delete"
                                       Size="Size.Small"
@@ -116,6 +116,8 @@ else
 }
 
 @code {
+    private void OnEngineStatusChanged(object? sender, EventArgs args) => _ = InvokeAsync(StateHasChanged);
+
     private List<ProcessDefinition> _processDefinitions = new();
     private bool _isLoading = true;
     private string? _error;
@@ -131,18 +133,18 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        ActiveEngineService.OnChange += StateHasChanged;
+        ActiveEngineService.OnChange += OnEngineStatusChanged;
         TenantContext.Changed += OnTenantChanged;
         await LoadProcessDefinitions();
     }
 
     public void Dispose()
     {
-        ActiveEngineService.OnChange -= StateHasChanged;
+        ActiveEngineService.OnChange -= OnEngineStatusChanged;
         TenantContext.Changed -= OnTenantChanged;
     }
 
-    private void OnTenantChanged() => _ = InvokeAsync(LoadProcessDefinitions);
+    private void OnTenantChanged(object? sender, EventArgs args) => _ = InvokeAsync(LoadProcessDefinitions);
 
     private async Task OnSearchChanged(string search)
     {
@@ -185,7 +187,7 @@ else
         try
         {
             var xml = await RepositoryService.GetProcessDefinitionXmlAsync(definition.Id.ToString(), TenantContext.CurrentTenantId);
-            
+
             var parameters = new DialogParameters
             {
                 ["BpmnXml"] = xml,
@@ -228,7 +230,7 @@ else
         try
         {
             var versions = await RepositoryService.GetProcessDefinitionVersionsAsync(processKey, TenantContext.CurrentTenantId);
-            
+
             var parameters = new DialogParameters
             {
                 ["ProcessKey"] = processKey,

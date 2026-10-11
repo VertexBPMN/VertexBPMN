@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace VertexBPMN.Infrastructure.Persistence;
 
@@ -21,14 +21,20 @@ public static class DependencyConfigurationLoader
             // Migration ausschließlich über den Migrationspfad; der Loader liest NUR und darf den Start
             // bei noch nicht migrierter / nicht erreichbarer Registry nicht blockieren (P4.1).
             if (DependencyRegistryProvider.IsSqlite(provider))
-                dbContext.Database.Migrate();
+			{
+				dbContext.Database.Migrate();
+			}
 
-            foreach (var entry in dbContext.Entries.AsNoTracking())
-                values[entry.Key] = entry.Value;
+			foreach (var entry in dbContext.Entries.AsNoTracking())
+			{
+				values[entry.Key] = entry.Value;
+			}
 
-            if (values.Count > 0)
-                configuration.AddInMemoryCollection(values);
-        }
+			if (values.Count > 0)
+			{
+				configuration.AddInMemoryCollection(values);
+			}
+		}
         catch (Exception ex)
         {
             logger?.LogWarning(ex,

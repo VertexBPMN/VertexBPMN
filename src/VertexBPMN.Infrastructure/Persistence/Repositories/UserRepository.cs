@@ -1,5 +1,5 @@
-using Microsoft.EntityFrameworkCore;
 using System.Runtime.CompilerServices;
+using Microsoft.EntityFrameworkCore;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces.Repositories;
 
@@ -15,14 +15,22 @@ public sealed class UserRepository : IUserRepository
 
     public async ValueTask<User?> GetUserAsync(string userId, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(userId)) return null;
-        return await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        if (string.IsNullOrWhiteSpace(userId))
+		{
+			return null;
+		}
+
+		return await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
     }
 
     public async ValueTask<bool> IsInRoleAsync(string userId, string role, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(role)) return false;
-        return await _db.Users
+        if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(role))
+		{
+			return false;
+		}
+
+		return await _db.Users
             .AsNoTracking()
             .Where(u => u.Id == userId)
             .AnyAsync(u => u.Roles.Contains(role), cancellationToken);
@@ -42,12 +50,15 @@ public sealed class UserRepository : IUserRepository
             query = query.Where(u => u.Roles.Contains(r));
         }
         await foreach (var user in query.AsNoTracking().AsAsyncEnumerable().WithCancellation(cancellationToken))
-            yield return user;
-    }
+		{
+			yield return user;
+		}
+	}
 
     public async ValueTask AddAsync(User user, CancellationToken cancellationToken = default)
     {
-        if (user == null) throw new ArgumentNullException(nameof(user));
+        ArgumentNullException.ThrowIfNull(user);
+
         user.CreatedAt = DateTime.UtcNow;
         user.LastModified = user.CreatedAt;
         await _db.Users.AddAsync(user, cancellationToken);
@@ -56,7 +67,8 @@ public sealed class UserRepository : IUserRepository
 
     public async ValueTask UpdateAsync(User user, CancellationToken cancellationToken = default)
     {
-        if (user == null) throw new ArgumentNullException(nameof(user));
+        ArgumentNullException.ThrowIfNull(user);
+
         user.LastModified = DateTime.UtcNow;
         _db.Users.Update(user);
         await _db.SaveChangesAsync(cancellationToken);
@@ -74,10 +86,18 @@ public sealed class UserRepository : IUserRepository
 
     public async ValueTask AssignRoleAsync(string userId, string role, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(role)) return;
-        var entity = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
-        if (entity == null) return;
-        if (!entity.Roles.Contains(role))
+        if (string.IsNullOrWhiteSpace(role))
+		{
+			return;
+		}
+
+		var entity = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        if (entity == null)
+		{
+			return;
+		}
+
+		if (!entity.Roles.Contains(role))
         {
             entity.Roles.Add(role);
             entity.LastModified = DateTime.UtcNow;
@@ -87,10 +107,18 @@ public sealed class UserRepository : IUserRepository
 
     public async ValueTask RemoveRoleAsync(string userId, string role, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(role)) return;
-        var entity = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
-        if (entity == null) return;
-        if (entity.Roles.Remove(role))
+        if (string.IsNullOrWhiteSpace(role))
+		{
+			return;
+		}
+
+		var entity = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        if (entity == null)
+		{
+			return;
+		}
+
+		if (entity.Roles.Remove(role))
         {
             entity.LastModified = DateTime.UtcNow;
             await _db.SaveChangesAsync(cancellationToken);
@@ -109,7 +137,11 @@ public sealed class UserRepository : IUserRepository
 
     public async ValueTask<bool> ExistsAsync(string userId, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(userId)) return false;
-        return await _db.Users.AsNoTracking().AnyAsync(u => u.Id == userId, cancellationToken);
+        if (string.IsNullOrWhiteSpace(userId))
+		{
+			return false;
+		}
+
+		return await _db.Users.AsNoTracking().AnyAsync(u => u.Id == userId, cancellationToken);
     }
 }

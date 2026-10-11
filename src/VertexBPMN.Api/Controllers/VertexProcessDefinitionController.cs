@@ -6,82 +6,104 @@ using VertexBPMN.Domain.Interfaces;
 using CoreDef = VertexBPMN.Domain.Entities.ProcessDefinition;
 
 namespace VertexBPMN.Api.Controllers;
-
 [ApiController]
 [Route("api/vertex/process-definition")]
 [Authorize]
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public controller required for ASP.NET Core MVC discovery and activation.")]
 public class VertexProcessDefinitionController : ControllerBase
 {
-    private readonly IRepositoryService _repositoryService;
+	private readonly IRepositoryService _repositoryService;
+	public VertexProcessDefinitionController(IRepositoryService repositoryService)
+	{
+		_repositoryService = repositoryService;
+	}
 
-    public VertexProcessDefinitionController(IRepositoryService repositoryService)
-    {
-        _repositoryService = repositoryService;
-    }
+	[HttpGet]
+	public async Task<ActionResult<IReadOnlyList<ProcessDefinitionDto>>> GetAll([FromQuery] string? key = null, [FromQuery] string? tenantId = null)
+	{
+		var effectiveTenantId = ResolveTenantId(tenantId);
+		if (effectiveTenantId is null && !User.IsInRole("Admin"))
+		{
+			return Forbid();
+		}
 
-    [HttpGet]
-    public async Task<ActionResult<IReadOnlyList<ProcessDefinitionDto>>> GetAll([FromQuery] string? key = null, [FromQuery] string? tenantId = null)
-    {
-        var effectiveTenantId = ResolveTenantId(tenantId);
-        if (effectiveTenantId is null && !User.IsInRole("Admin")) return Forbid();
-        var definitions = new List<ProcessDefinitionDto>();
-        await foreach (var def in _repositoryService.ListAsync(key, effectiveTenantId))
-            definitions.Add(ToDto(def));
-        return definitions;
-    }
+		var definitions = new List<ProcessDefinitionDto>();
+		await foreach (var def in _repositoryService.ListAsync(key, effectiveTenantId))
+		{
+			definitions.Add(ToDto(def));
+		}
 
-    [HttpGet("{id}")]
-    public async Task<ActionResult<ProcessDefinitionDto>> GetById(Guid id)
-    {
-        var def = await _repositoryService.GetByIdAsync(id);
-        if (def is null) return NotFound();
-        if (!CanAccessTenant(def.TenantId)) return Forbid();
-        return ToDto(def);
-    }
+		return definitions;
+	}
 
-    /// <summary>
-    /// Returns the BPMN XML for a process definition (bpmn-js compatible).
-    /// </summary>
-    [HttpGet("{id}/xml")]
-    public async Task<IActionResult> GetXml(Guid id)
-    {
-        var def = await _repositoryService.GetByIdAsync(id);
-        if (def is null) return NotFound();
-        if (!CanAccessTenant(def.TenantId)) return Forbid();
-        // bpmn-js expects { id, bpmn20Xml }
-        return Ok(new { id = def.Id.ToString(), bpmn20Xml = def.BpmnXml });
-    }
+	[HttpGet("{id}")]
+	public async Task<ActionResult<ProcessDefinitionDto>> GetById(Guid id)
+	{
+		var def = await _repositoryService.GetByIdAsync(id);
+		if (def is null)
+		{
+			return NotFound();
+		}
 
-    /// <summary>
-    /// Updates the BPMN XML for a process definition (bpmn-js save).
-    /// </summary>
-    [HttpPut("{id}/xml")]
-    public async Task<IActionResult> UpdateXml(Guid id, [FromBody] UpdateXmlRequest request)
-    {
-        return StatusCode(StatusCodes.Status501NotImplemented, new ProblemDetails
-        {
-            Title = "BPMN XML update is unavailable",
-            Detail = "The repository contract does not provide a durable XML update operation."
-        });
-    }
+		if (!CanAccessTenant(def.TenantId))
+		{
+			return Forbid();
+		}
 
-    public record UpdateXmlRequest(string BpmnXml);
+		return ToDto(def);
+	}
 
-    private string? ResolveTenantId(string? requestedTenantId) =>
-        User.IsInRole("Admin")
-            ? (string.IsNullOrWhiteSpace(requestedTenantId) ? null : requestedTenantId.Trim())
-            : User.FindFirstValue("tenant_id");
+	/// <summary>
+	/// Returns the BPMN XML for a process definition (bpmn-js compatible).
+	/// </summary>
+	[HttpGet("{id}/xml")]
+	public async Task<IActionResult> GetXml(Guid id)
+	{
+		var def = await _repositoryService.GetByIdAsync(id);
+		if (def is null)
+		{
+			return NotFound();
+		}
 
-    private bool CanAccessTenant(string? tenantId) =>
-        User.IsInRole("Admin") || string.Equals(User.FindFirstValue("tenant_id"), tenantId, StringComparison.Ordinal);
+		if (!CanAccessTenant(def.TenantId))
+		{
+			return Forbid();
+		}
 
-    private static ProcessDefinitionDto ToDto(CoreDef d) => new()
-    {
-        Id = d.Id.ToString(),
-        Key = d.Key,
-        Name = d.Name,
-        Version = d.Version,
-        TenantId = d.TenantId ?? string.Empty,
-        // ...mapping für weitere Felder nach Camunda-DTO...
-    };
+		// bpmn-js expects { id, bpmn20Xml }
+		return Ok(new { id = def.Id.ToString(), bpmn20Xml = def.BpmnXml });
+	}
+
+	/// <summary>
+	/// Updates the BPMN XML for a process definition (bpmn-js save).
+	/// </summary>
+	[HttpPut("{id}/xml")]
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE0060", Justification = "Existing HTTP route and request contract retained; the unavailable durable update operation explicitly returns 501.")]
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "RCS1163", Justification = "Compatibility endpoint retains its inputs without pretending that an XML update has been persisted.")]
+	public async Task<IActionResult> UpdateXml(Guid id, [FromBody] UpdateXmlRequest request)
+	{
+		return StatusCode(StatusCodes.Status501NotImplemented, new ProblemDetails { Title = "BPMN XML update is unavailable", Detail = "The repository contract does not provide a durable XML update operation." });
+	}
+
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public contract type UpdateXmlRequest retained for exposed HTTP action signatures and controller activation (VertexProcessDefinitionController).")]
+	public record UpdateXmlRequest(string BpmnXml);
+	private string? ResolveTenantId(string? requestedTenantId)
+	{
+		if (!User.IsInRole("Admin"))
+		{
+			return User.FindFirstValue("tenant_id");
+		}
+
+		return string.IsNullOrWhiteSpace(requestedTenantId) ? null : requestedTenantId.Trim();
+	}
+	private bool CanAccessTenant(string? tenantId) => User.IsInRole("Admin") || string.Equals(User.FindFirstValue("tenant_id"), tenantId, StringComparison.Ordinal);
+	private static ProcessDefinitionDto ToDto(CoreDef d) => new()
+	{
+		Id = d.Id.ToString(),
+		Key = d.Key,
+		Name = d.Name,
+		Version = d.Version,
+		TenantId = d.TenantId ?? string.Empty,
+	// ...mapping für weitere Felder nach Camunda-DTO...
+	};
 }

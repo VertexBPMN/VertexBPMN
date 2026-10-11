@@ -1,5 +1,6 @@
 namespace VertexBPMN.Api.Dto;
 
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public contract type TaskDto retained for exposed HTTP action signatures and controller activation (TaskDto).")]
 public class TaskDto
 {
     public Guid Id { get; set; }

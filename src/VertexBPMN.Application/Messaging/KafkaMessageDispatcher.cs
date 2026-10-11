@@ -34,7 +34,7 @@ public class KafkaMessageDispatcher : IMessageDispatcher, IDisposable
 	private const string GenericMessageTopic = "engine-messages";
 
 	// Pending DMN task responses (correlation)
-	private readonly ConcurrentDictionary<string, TaskCompletionSource<Dictionary<string, object>>> _dmnPending = new(StringComparer.OrdinalIgnoreCase);
+	private readonly ConcurrentDictionary<string, TaskCompletionSource<Dictionary<string, object?>>> _dmnPending = new(StringComparer.OrdinalIgnoreCase);
 
 	private static readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -111,10 +111,7 @@ public class KafkaMessageDispatcher : IMessageDispatcher, IDisposable
 
 	public async Task PublishTokenAsync(ExecutionToken token, CancellationToken cancellationToken = default)
 	{
-		if (token == null)
-		{
-			throw new ArgumentNullException(nameof(token));
-		}
+		ArgumentNullException.ThrowIfNull(token);
 
 		try
 		{
@@ -238,7 +235,7 @@ public class KafkaMessageDispatcher : IMessageDispatcher, IDisposable
 		}
 	}
 
-	public async Task<Dictionary<string, object>> DispatchDmnTaskAsync(string targetWorker, string decisionRef, Dictionary<string, object> variables,
+	public async Task<Dictionary<string, object?>> DispatchDmnTaskAsync(string targetWorker, string decisionRef, Dictionary<string, object> variables,
 		CancellationToken cancellationToken = default)
 	{
 		if (string.IsNullOrWhiteSpace(targetWorker))
@@ -252,7 +249,7 @@ public class KafkaMessageDispatcher : IMessageDispatcher, IDisposable
 		}
 
 		var correlationId = Guid.NewGuid().ToString("N");
-		var tcs = new TaskCompletionSource<Dictionary<string, object>>(TaskCreationOptions.RunContinuationsAsynchronously);
+		var tcs = new TaskCompletionSource<Dictionary<string, object?>>(TaskCreationOptions.RunContinuationsAsynchronously);
 		if (!_dmnPending.TryAdd(correlationId, tcs))
 		{
 			throw new DistributedTokenException("Failed to register DMN correlation id");
@@ -290,6 +287,11 @@ public class KafkaMessageDispatcher : IMessageDispatcher, IDisposable
 			throw new DistributedTokenException($"Failed to dispatch DMN task {decisionRef}", ex);
 		}
 
+		return await WaitForDmnResponseAsync(correlationId, tcs, cancellationToken);
+	}
+
+	private async Task<Dictionary<string, object?>> WaitForDmnResponseAsync(string correlationId, TaskCompletionSource<Dictionary<string, object?>> tcs, CancellationToken cancellationToken)
+	{
 		using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 		// Optional: could add timeout here if desired, e.g. linkedCts.CancelAfter(TimeSpan.FromSeconds(30));
 
@@ -304,10 +306,6 @@ public class KafkaMessageDispatcher : IMessageDispatcher, IDisposable
 		try
 		{
 			return await tcs.Task.ConfigureAwait(false);
-		}
-		catch (TaskCanceledException)
-		{
-			throw;
 		}
 		finally
 		{
@@ -331,16 +329,7 @@ public class KafkaMessageDispatcher : IMessageDispatcher, IDisposable
 		{
 			while (!cancellationToken.IsCancellationRequested && _dmnPending.ContainsKey(correlationId))
 			{
-				ConsumeResult<string, string>? result = null;
-				try
-				{
-					result = consumer.Consume(TimeSpan.FromMilliseconds(250));
-				}
-				catch (ConsumeException cex)
-				{
-					_logger.LogWarning(cex, "Consume exception on DMN response listener (Correlation {CorrelationId})", correlationId);
-					continue;
-				}
+				var result = TryConsume(consumer, TimeSpan.FromMilliseconds(250), correlationId);
 
 				if (result?.Message == null)
 				{
@@ -349,34 +338,9 @@ public class KafkaMessageDispatcher : IMessageDispatcher, IDisposable
 
 				try
 				{
-					// Expect envelope with correlationId and resultVariables
-					using var doc = JsonDocument.Parse(result.Message.Value);
-					if (!doc.RootElement.TryGetProperty("correlationId", out var cidProp))
+					if (!TryCompleteDmnResponse(result.Message.Value, correlationId))
 					{
 						continue;
-					}
-
-					if (!string.Equals(cidProp.GetString(), correlationId, StringComparison.OrdinalIgnoreCase))
-					{
-						continue;
-					}
-
-					Dictionary<string, object> variables = new(StringComparer.OrdinalIgnoreCase);
-					if (doc.RootElement.TryGetProperty("resultVariables", out var varsElem) && varsElem.ValueKind == JsonValueKind.Object)
-					{
-						foreach (var prop in varsElem.EnumerateObject())
-						{
-							variables[prop.Name] = ExtractJsonElement(prop.Value);
-						}
-					}
-
-					if (_dmnPending.TryRemove(correlationId, out var tcs))
-					{
-						tcs.TrySetResult(variables);
-						if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
-						{
-							_logger.LogInformation("Received DMN response (Correlation {CorrelationId})", correlationId);
-						}
 					}
 					break;
 				}
@@ -386,7 +350,13 @@ public class KafkaMessageDispatcher : IMessageDispatcher, IDisposable
 				}
 			}
 		}
-		catch (OperationCanceledException) { }
+		catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+		{
+			if (_logger.IsEnabled(LogLevel.Debug))
+			{
+				_logger.LogDebug("DMN response listener cancelled for correlation {CorrelationId}", correlationId);
+			}
+		}
 		catch (Exception ex)
 		{
 			_logger.LogError(ex, "Unhandled error in DMN response listener (Correlation {CorrelationId})", correlationId);
@@ -400,32 +370,65 @@ public class KafkaMessageDispatcher : IMessageDispatcher, IDisposable
 			consumer.Close();
 		}
 
-		static object? ExtractJsonElement(JsonElement element) =>
-			element.ValueKind switch
-			{
-				JsonValueKind.String => element.GetString(),
-				JsonValueKind.Number => element.TryGetInt64(out var l) ? l :
-										element.TryGetDouble(out var d) ? d : element.GetRawText(),
-				JsonValueKind.True => true,
-				JsonValueKind.False => false,
-				JsonValueKind.Null => null,
-				JsonValueKind.Object => JsonSerializer.Deserialize<Dictionary<string, object>>(element.GetRawText(), _jsonOptions),
-				JsonValueKind.Array => JsonSerializer.Deserialize<object[]>(element.GetRawText(), _jsonOptions),
-				_ => element.GetRawText()
-			};
+
 	}
 
-	public async Task SubscribeToMessageAsync(string messageName, Func<Message, Task> handler, CancellationToken cancellationToken = default)
+	private bool TryCompleteDmnResponse(string json, string correlationId)
+	{
+		// Expect envelope with correlationId and resultVariables
+		using var doc = JsonDocument.Parse(json);
+		if (!doc.RootElement.TryGetProperty("correlationId", out var cidProp))
+		{
+			return false;
+		}
+
+		if (!string.Equals(cidProp.GetString(), correlationId, StringComparison.OrdinalIgnoreCase))
+		{
+			return false;
+		}
+
+		Dictionary<string, object?> variables = new(StringComparer.OrdinalIgnoreCase);
+		if (doc.RootElement.TryGetProperty("resultVariables", out var varsElem) && varsElem.ValueKind == JsonValueKind.Object)
+		{
+			foreach (var prop in varsElem.EnumerateObject())
+			{
+				variables[prop.Name] = ExtractJsonElement(prop.Value);
+			}
+		}
+
+		if (_dmnPending.TryRemove(correlationId, out var tcs))
+		{
+			tcs.TrySetResult(variables);
+			if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
+			{
+				_logger.LogInformation("Received DMN response (Correlation {CorrelationId})", correlationId);
+			}
+		}
+		return true;
+	}
+
+	private static object? ExtractJsonElement(JsonElement element) =>
+		element.ValueKind switch
+		{
+			JsonValueKind.String => element.GetString(),
+			JsonValueKind.Number when element.TryGetInt64(out var integer) => integer,
+			JsonValueKind.Number when element.TryGetDouble(out var number) => number,
+			JsonValueKind.True => true,
+			JsonValueKind.False => false,
+			JsonValueKind.Null => null,
+			JsonValueKind.Object => JsonSerializer.Deserialize<Dictionary<string, object?>>(element.GetRawText(), _jsonOptions),
+			JsonValueKind.Array => JsonSerializer.Deserialize<object?[]>(element.GetRawText(), _jsonOptions),
+			_ => element.GetRawText()
+		};
+
+	public Task SubscribeToMessageAsync(string messageName, Func<Message, Task> handler, CancellationToken cancellationToken = default)
 	{
 		if (string.IsNullOrWhiteSpace(messageName))
 		{
 			throw new ArgumentException("Message name required", nameof(messageName));
 		}
 
-		if (handler == null)
-		{
-			throw new ArgumentNullException(nameof(handler));
-		}
+		ArgumentNullException.ThrowIfNull(handler);
 
 		var consumerConfig = new ConsumerConfig
 		{
@@ -437,62 +440,75 @@ public class KafkaMessageDispatcher : IMessageDispatcher, IDisposable
 		var consumer = new ConsumerBuilder<string, string>(consumerConfig).Build();
 		consumer.Subscribe(GenericMessageTopic);
 
-		_ = Task.Run(async () =>
+		_ = Task.Run(() => ConsumeMessagesAsync(consumer, messageName, handler, cancellationToken), cancellationToken);
+		return Task.CompletedTask;
+	}
+
+	private async Task ConsumeMessagesAsync(IConsumer<string, string> consumer, string messageName, Func<Message, Task> handler, CancellationToken cancellationToken)
+	{
+		if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
 		{
-			if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
+			_logger.LogInformation("Subscribed to generic messages '{MessageName}'", messageName);
+		}
+		try
+		{
+			while (!cancellationToken.IsCancellationRequested)
 			{
-				_logger.LogInformation("Subscribed to generic messages '{MessageName}'", messageName);
-			}
-			try
-			{
-				while (!cancellationToken.IsCancellationRequested)
+				var cr = TryConsume(consumer, TimeSpan.FromMilliseconds(500), messageName);
+				if (cr?.Message == null)
 				{
-					ConsumeResult<string, string>? cr = null;
-					try
-					{
-						cr = consumer.Consume(TimeSpan.FromMilliseconds(500));
-					}
-					catch (ConsumeException cex)
-					{
-						_logger.LogWarning(cex, "Consume exception on generic message subscription {MessageName}", messageName);
-						continue;
-					}
-					if (cr?.Message == null)
-					{
-						continue;
-					}
+					continue;
+				}
 
-					if (!string.Equals(cr.Message.Key, messageName, StringComparison.OrdinalIgnoreCase))
-					{
-						continue;
-					}
+				if (!string.Equals(cr.Message.Key, messageName, StringComparison.OrdinalIgnoreCase))
+				{
+					continue;
+				}
 
-					try
-					{
+				try
+				{
 
-						var msg = new Message(cr.Message.Key, cr.Message.Value, TryExtractVariables(cr.Message.Value));
+					var msg = new Message(cr.Message.Key, cr.Message.Value, TryExtractVariables(cr.Message.Value));
 
-						await handler(msg);
-					}
-					catch (Exception hex)
-					{
-						_logger.LogError(hex, "Error in handler for message {MessageName}", messageName);
-					}
+					await handler(msg);
+				}
+				catch (Exception hex)
+				{
+					_logger.LogError(hex, "Error in handler for message {MessageName}", messageName);
 				}
 			}
-			catch (OperationCanceledException) { }
-			catch (Exception ex)
+		}
+		catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+		{
+			if (_logger.IsEnabled(LogLevel.Debug))
 			{
-				_logger.LogError(ex, "Unhandled error in message subscription {MessageName}", messageName);
+				_logger.LogDebug("Message subscription cancelled for {MessageName}", messageName);
 			}
-			finally
-			{
-				try
-				{ consumer.Close(); }
-				catch { /* ignored */ }
-				consumer.Dispose();
-			}
-		}, cancellationToken);
+		}
+		catch (Exception ex)
+		{
+			_logger.LogError(ex, "Unhandled error in message subscription {MessageName}", messageName);
+		}
+		finally
+		{
+			try
+			{ consumer.Close(); }
+			catch { /* ignored */ }
+			consumer.Dispose();
+		}
+	}
+
+	private ConsumeResult<string, string>? TryConsume(IConsumer<string, string> consumer, TimeSpan timeout, string subscription)
+	{
+		try
+		{
+			return consumer.Consume(timeout);
+		}
+		catch (ConsumeException exception)
+		{
+			_logger.LogWarning(exception, "Kafka consume failed for subscription {Subscription}", subscription);
+			return null;
+		}
 	}
 
 	private static Dictionary<string, object> TryExtractVariables(string json)
@@ -508,8 +524,9 @@ public class KafkaMessageDispatcher : IMessageDispatcher, IDisposable
 					dict[p.Name] = p.Value.ValueKind switch
 					{
 						JsonValueKind.String => p.Value.GetString()!,
-						JsonValueKind.Number => p.Value.TryGetInt64(out var l) ? l :
-												p.Value.TryGetDouble(out var d) ? d : p.Value.GetRawText(),
+						JsonValueKind.Number when p.Value.TryGetInt64(out var integer) => integer,
+						JsonValueKind.Number when p.Value.TryGetDouble(out var number) => number,
+						JsonValueKind.Number => p.Value.GetRawText(),
 						JsonValueKind.True => true,
 						JsonValueKind.False => false,
 						JsonValueKind.Null => null!,
@@ -595,6 +612,17 @@ public class KafkaMessageDispatcher : IMessageDispatcher, IDisposable
 
 	public void Dispose()
 	{
+		Dispose(true);
+		GC.SuppressFinalize(this);
+	}
+
+	protected virtual void Dispose(bool disposing)
+	{
+		if (!disposing)
+		{
+			return;
+		}
+
 		try
 		{ _producer?.Flush(TimeSpan.FromSeconds(2)); }
 		catch { /* ignore */ }

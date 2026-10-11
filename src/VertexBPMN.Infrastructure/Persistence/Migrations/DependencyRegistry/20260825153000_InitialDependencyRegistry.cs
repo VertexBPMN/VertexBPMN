@@ -1,11 +1,13 @@
 ﻿using System;
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace VertexBPMN.Infrastructure.Persistence.Migrations.DependencyRegistry
-{
+namespace VertexBPMN.Infrastructure.Persistence.Migrations.DependencyRegistry;
+
     /// <inheritdoc />
+    [SuppressMessage("Meziantou.Analyzer", "MA0048", Justification = "EF migration snapshot / generated code.")]
     public partial class InitialDependencyRegistry : Migration
     {
         /// <inheritdoc />
@@ -32,4 +34,3 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.DependencyRegistry
                 name: "Entries");
         }
     }
-}

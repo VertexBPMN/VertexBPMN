@@ -23,15 +23,9 @@ public class InformCustomerSuccessfulCancelationHandler : IServiceTaskHandler
 	/// <param name="ct">Cancellation token for the operation.</param>
 	public async Task ExecuteAsync(IDictionary<string, string> attributes, IDictionary<string, object> variables, CancellationToken ct = default)
 	{
-		if (attributes == null)
-		{
-			throw new ArgumentNullException(nameof(attributes));
-		}
+		ArgumentNullException.ThrowIfNull(attributes);
 
-		if (variables == null)
-		{
-			throw new ArgumentNullException(nameof(variables));
-		}
+		ArgumentNullException.ThrowIfNull(variables);
 
 		_logger.LogInformation("Starting task to inform customer about successful cancellation...");
 

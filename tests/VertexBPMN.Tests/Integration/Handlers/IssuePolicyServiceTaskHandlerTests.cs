@@ -6,48 +6,49 @@ namespace VertexBPMN.Tests.Integration.Handlers;
 
 public class IssuePolicyServiceTaskHandlerTests
 {
-    [Fact]
-    public async Task ExecuteAsync_ShouldIssuePolicySuccessfully()
-    {
-        // Arrange
-        var loggerMock = new Mock<ILogger<IssuePolicyServiceTaskHandler>>();
-        loggerMock.Setup(logger => logger.IsEnabled(LogLevel.Information)).Returns(true);
-        var handler = new IssuePolicyServiceTaskHandler(loggerMock.Object);
-        var variables = new Dictionary<string, object>
-        {
-            { "policyId", "POL12345" },
-            { "customerId", "CUST67890" }
-        };
+	[Fact]
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1873", Justification = "ILogger.Log is an expression tree passed to Moq.Verify, not an executed logging call; matcher evaluation must not be conditionally skipped.")]
+	public async Task ExecuteAsync_ShouldIssuePolicySuccessfully()
+	{
+		// Arrange
+		var loggerMock = new Mock<ILogger<IssuePolicyServiceTaskHandler>>();
+		loggerMock.Setup(logger => logger.IsEnabled(LogLevel.Information)).Returns(true);
+		var handler = new IssuePolicyServiceTaskHandler(loggerMock.Object);
+		var variables = new Dictionary<string, object>(StringComparer.Ordinal)
+		{
+			{ "policyId", "POL12345" },
+			{ "customerId", "CUST67890" }
+		};
 
-        // Act
-        await handler.ExecuteAsync(new Dictionary<string, string>(), variables, TestContext.Current.CancellationToken);
+		// Act
+		await handler.ExecuteAsync(new Dictionary<string, string>(StringComparer.Ordinal), variables, TestContext.Current.CancellationToken);
 
-        // Assert
-        Assert.True(variables.ContainsKey("policyStatus"));
-        Assert.Equal("Issued", variables["policyStatus"]);
-        loggerMock.Verify(
-            x => x.Log(
-                LogLevel.Information,
-                It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((v, t) => (v.ToString() ?? string.Empty).Contains("POL12345")),
-                It.IsAny<Exception?>(),
-                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-            Times.Exactly(2));
-    }
+		// Assert
+		Assert.True(variables.ContainsKey("policyStatus"));
+		Assert.Equal("Issued", variables["policyStatus"]);
+		loggerMock.Verify(
+			x => x.Log(
+				LogLevel.Information,
+				It.IsAny<EventId>(),
+				It.Is<It.IsAnyType>((v, _) => v != null && (v.ToString() ?? string.Empty).Contains("POL12345", StringComparison.Ordinal)),
+				It.IsAny<Exception?>(),
+				It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+			Times.Exactly(2));
+	}
 
-    [Fact]
-    public async Task ExecuteAsync_ShouldThrowException_WhenPolicyIdIsMissing()
-    {
-        // Arrange
-        var loggerMock = new Mock<ILogger<IssuePolicyServiceTaskHandler>>();
-        var handler = new IssuePolicyServiceTaskHandler(loggerMock.Object);
-        var variables = new Dictionary<string, object>
-        {
-            { "customerId", "CUST67890" }
-        };
+	[Fact]
+	public async Task ExecuteAsync_ShouldThrowException_WhenPolicyIdIsMissing()
+	{
+		// Arrange
+		var loggerMock = new Mock<ILogger<IssuePolicyServiceTaskHandler>>();
+		var handler = new IssuePolicyServiceTaskHandler(loggerMock.Object);
+		var variables = new Dictionary<string, object>(StringComparer.Ordinal)
+		{
+			{ "customerId", "CUST67890" }
+		};
 
-        // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            handler.ExecuteAsync(new Dictionary<string, string>(), variables, TestContext.Current.CancellationToken));
-    }
+		// Act & Assert
+		await Assert.ThrowsAsync<InvalidOperationException>(() =>
+			handler.ExecuteAsync(new Dictionary<string, string>(StringComparer.Ordinal), variables, TestContext.Current.CancellationToken));
+	}
 }

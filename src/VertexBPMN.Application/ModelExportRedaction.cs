@@ -10,7 +10,7 @@ public static class ModelExportRedaction
 	private static readonly HashSet<string> SecretNames = new(StringComparer.OrdinalIgnoreCase)
 	{ "password", "passwd", "secret", "clientsecret", "apikey", "accesstoken", "refreshtoken", "authorization", "connectionstring" };
 
-	private static bool Sensitive(string name) => SecretNames.Contains(name.Replace("_", "").Replace("-", ""));
+	private static bool Sensitive(string name) => SecretNames.Contains(name.Replace("_", "", StringComparison.Ordinal).Replace("-", "", StringComparison.Ordinal));
 
 	public static string Redact(string xml)
 	{

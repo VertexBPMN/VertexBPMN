@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace VertexBPMN.Studio.Services;
 
-public sealed class HttpMessageSignalService(IHttpClientFactory httpClientFactory) : IMessageSignalService
+internal sealed class HttpMessageSignalService(IHttpClientFactory httpClientFactory) : IMessageSignalService
 {
     public Task<JsonElement> CorrelateMessageAsync(
         string messageName,
@@ -48,7 +48,7 @@ public sealed class HttpMessageSignalService(IHttpClientFactory httpClientFactor
     {
         if (string.IsNullOrWhiteSpace(variablesJson))
         {
-            return JsonSerializer.SerializeToElement(new Dictionary<string, object?>());
+            return JsonSerializer.SerializeToElement(new Dictionary<string, object?>(StringComparer.Ordinal));
         }
 
         using var document = JsonDocument.Parse(variablesJson);

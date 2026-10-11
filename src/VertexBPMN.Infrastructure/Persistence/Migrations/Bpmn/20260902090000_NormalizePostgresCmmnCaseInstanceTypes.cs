@@ -1,7 +1,8 @@
-using Microsoft.EntityFrameworkCore.Infrastructure;
+﻿using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
+#pragma warning disable MA0048
 
 namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn;
 
@@ -16,9 +17,11 @@ public sealed class NormalizePostgresCmmnCaseInstanceTypes : Migration
     protected override void Up(MigrationBuilder migrationBuilder)
     {
         if (!ActiveProvider.Contains("Npgsql", StringComparison.Ordinal))
-            return;
+		{
+			return;
+		}
 
-        migrationBuilder.Sql(
+		migrationBuilder.Sql(
             """
             ALTER TABLE "CaseInstances"
                 ALTER COLUMN "Id" TYPE uuid USING "Id"::uuid,
@@ -32,9 +35,11 @@ public sealed class NormalizePostgresCmmnCaseInstanceTypes : Migration
     protected override void Down(MigrationBuilder migrationBuilder)
     {
         if (!ActiveProvider.Contains("Npgsql", StringComparison.Ordinal))
-            return;
+		{
+			return;
+		}
 
-        migrationBuilder.Sql(
+		migrationBuilder.Sql(
             """
             ALTER TABLE "CaseInstances"
                 ALTER COLUMN "Id" TYPE text USING "Id"::text,

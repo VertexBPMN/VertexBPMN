@@ -18,17 +18,17 @@ public sealed class CmmnHistoryPersistenceTests
 		await using (var writeContext = new BpmnDbContext(options))
 		{
 			await writeContext.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
-			var flag = await writeContext.FeatureFlags.FindAsync(new object?[] { "liveinspector" }, TestContext.Current.CancellationToken);
+			var flag = await writeContext.FeatureFlags.FindAsync(["liveinspector"], TestContext.Current.CancellationToken);
 			Assert.NotNull(flag);
-			flag!.Enabled = false;
+			flag.Enabled = false;
 			await writeContext.SaveChangesAsync(TestContext.Current.CancellationToken);
 		}
 
 		await using var readContext = new BpmnDbContext(options);
-		var persisted = await readContext.FeatureFlags.FindAsync(new object?[] { "liveinspector" }, TestContext.Current.CancellationToken);
+		var persisted = await readContext.FeatureFlags.FindAsync(["liveinspector"], TestContext.Current.CancellationToken);
 
 		Assert.NotNull(persisted);
-		Assert.False(persisted!.Enabled);
+		Assert.False(persisted.Enabled);
 	}
 
 	[Fact]
@@ -41,7 +41,7 @@ public sealed class CmmnHistoryPersistenceTests
 		var timestamp = DateTime.UtcNow;
 		var expected = new HistoricalCaseData(
 			"case-1",
-			new Dictionary<string, object> { ["amount"] = 42 },
+			new Dictionary<string, object>(StringComparer.Ordinal) { ["amount"] = 42 },
 			["plan-1", "plan-2"],
 			timestamp);
 
@@ -68,34 +68,7 @@ public sealed class CmmnHistoryPersistenceTests
 			.UseInMemoryDatabase(Guid.NewGuid().ToString())
 			.Options;
 
-		await using (var writeContext = new BpmnDbContext(options))
-		{
-			await writeContext.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
-			writeContext.IdentityGroups.Add(new IdentityGroupRecord
-			{
-				Id = "group-1",
-				Name = "Operators",
-				Type = "role",
-				TenantId = "tenant-1"
-			});
-			writeContext.IdentityGroupMemberships.Add(new IdentityGroupMembershipRecord
-			{
-				GroupId = "group-1",
-				UserId = "1",
-				TenantId = "tenant-1"
-			});
-			writeContext.IdentityAuthorizations.Add(new IdentityAuthorizationRecord
-			{
-				Id = "authorization-1",
-				UserId = "1",
-				GroupId = "group-1",
-				Resource = "process-definition:SampleProcess",
-				Permissions = "read,execute",
-				TenantId = "tenant-1"
-			});
-			await writeContext.SaveChangesAsync(TestContext.Current.CancellationToken);
-		}
-
+		await SeedIdentityReadModelsAsync(options);
 		await using var readContext = new BpmnDbContext(options);
 		await using var tenantContext = new TenantDbContext(
 			new DbContextOptionsBuilder<TenantDbContext>()
@@ -105,13 +78,21 @@ public sealed class CmmnHistoryPersistenceTests
 
 		var groups = new List<Domain.Interfaces.GroupInfo>();
 		await foreach (var group in identity.ListGroupsAsync(null, TestContext.Current.CancellationToken))
+		{
 			groups.Add(group);
+		}
+
 		var users = new List<Domain.Interfaces.UserInfo>();
 		await foreach (var user in identity.ListUsersByGroupAsync("group-1", null, TestContext.Current.CancellationToken))
+		{
 			users.Add(user);
+		}
+
 		var authorizations = new List<Domain.Interfaces.AuthorizationInfo>();
 		await foreach (var authorization in identity.ListAuthorizationsAsync(null, TestContext.Current.CancellationToken))
+		{
 			authorizations.Add(authorization);
+		}
 
 		Assert.Collection(groups, group =>
 		{
@@ -128,13 +109,49 @@ public sealed class CmmnHistoryPersistenceTests
 		var tenantGroups = new List<Domain.Interfaces.GroupInfo>();
 		await foreach (var group in identity.ListGroupsAsync(
 "tenant-other", TestContext.Current.CancellationToken))
+		{
 			tenantGroups.Add(group);
+		}
+
 		var tenantAuthorizations = new List<Domain.Interfaces.AuthorizationInfo>();
 		await foreach (var authorization in identity.ListAuthorizationsAsync(
 "tenant-other", TestContext.Current.CancellationToken))
+		{
 			tenantAuthorizations.Add(authorization);
+		}
 
 		Assert.Empty(tenantGroups);
 		Assert.Empty(tenantAuthorizations);
 	}
+	private static async Task SeedIdentityReadModelsAsync(DbContextOptions<BpmnDbContext> options)
+	{
+		await using var writeContext = new BpmnDbContext(options);
+		await writeContext.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
+		writeContext.IdentityGroups.Add(new IdentityGroupRecord
+		{
+			Id = "group-1",
+			Name = "Operators",
+			Type = "role",
+			TenantId = "tenant-1"
+		});
+		writeContext.IdentityGroupMemberships.Add(new IdentityGroupMembershipRecord
+		{
+			GroupId = "group-1",
+			UserId = "1",
+			TenantId = "tenant-1"
+		});
+		writeContext.IdentityAuthorizations.Add(new IdentityAuthorizationRecord
+		{
+			Id = "authorization-1",
+			UserId = "1",
+			GroupId = "group-1",
+			Resource = "process-definition:SampleProcess",
+			Permissions = "read,execute",
+			TenantId = "tenant-1"
+		});
+		await writeContext.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+
+	}
+
 }

@@ -3,37 +3,6 @@ using Microsoft.Extensions.Logging;
 
 namespace VertexBPMN.Infrastructure.Messaging;
 
-/// <summary>Ergebnis der semantischen Envelope-Konformitätsprüfung.</summary>
-public enum EnvelopeConformanceVerdict
-{
-    /// <summary>Prüfung nicht aktiv / nicht anwendbar / extern nicht erreichbar (fail-open).</summary>
-    NotEvaluated,
-    /// <summary>Die Payload entspricht dem deklarierten Ereignisvertrag.</summary>
-    Conforms,
-    /// <summary>Pflichtfelder fehlen oder haben falsche Typen.</summary>
-    Malformed,
-    /// <summary>Felder vorhanden, aber semantisch ein anderes Ereignis.</summary>
-    WrongContract,
-    /// <summary>Urteil unsicher (unter Konfidenzschwelle) — zur erneuten Prüfung/Review.</summary>
-    Unclear
-}
-
-/// <summary>Urteil + Konfidenz + optionaler Diagnosegrund.</summary>
-public readonly record struct EnvelopeConformanceResult(
-    EnvelopeConformanceVerdict Verdict,
-    double Confidence = 0.0,
-    string? Reason = null);
-
-/// <summary>
-/// Semantische Konformitäts-Judgment-Instanz auf Basis von TypeSafe System One (Jev).
-/// Ergänzt die deterministischen Inbox-Checks (Envelope-Version, Idempotenz, Tenant): Sie bewertet
-/// die tatsächliche Payload gegen den deklarierten Ereignisvertrag und liefert ein typisiertes Urteil.
-/// </summary>
-public interface ITypeSafeEnvelopeConformanceValidator
-{
-    Task<EnvelopeConformanceResult> EvaluateAsync(InboxEnvelope envelope, CancellationToken cancellationToken);
-}
-
 /// <summary>
 /// Wandelt eine Envelope-Payload in einen TypeSafe-Choice-Judgment-Aufruf um und übersetzt das Choice-Urteil
 /// in ein <see cref="EnvelopeConformanceVerdict"/>. Deaktiviert/nicht erreichbar → <see cref="EnvelopeConformanceVerdict.NotEvaluated"/>
@@ -71,12 +40,16 @@ public sealed class TypeSafeEnvelopeConformanceValidator : ITypeSafeEnvelopeConf
     public async Task<EnvelopeConformanceResult> EvaluateAsync(InboxEnvelope envelope, CancellationToken cancellationToken)
     {
         if (!_options.Enabled)
-            return new(EnvelopeConformanceVerdict.NotEvaluated);
+		{
+			return new(EnvelopeConformanceVerdict.NotEvaluated);
+		}
 
-        if (string.IsNullOrWhiteSpace(envelope.EventType))
-            return new(EnvelopeConformanceVerdict.Malformed, Reason: "Envelope hat keinen eventType.");
+		if (string.IsNullOrWhiteSpace(envelope.EventType))
+		{
+			return new(EnvelopeConformanceVerdict.Malformed, Reason: "Envelope hat keinen eventType.");
+		}
 
-        KnownContracts.TryGetValue(envelope.EventType, out var contract);
+		KnownContracts.TryGetValue(envelope.EventType, out var contract);
         contract ??= GenericContract;
 
         var state = new
@@ -101,10 +74,12 @@ public sealed class TypeSafeEnvelopeConformanceValidator : ITypeSafeEnvelopeConf
 
         // Unzureichende Konfidenz => unsicher, nicht fälschlich als konform werten.
         if (answer.Confidence < _options.ConfidenceThreshold)
-            return new(EnvelopeConformanceVerdict.Unclear, answer.Confidence,
+		{
+			return new(EnvelopeConformanceVerdict.Unclear, answer.Confidence,
                 $"Konfidenz {answer.Confidence:0.00} unter Schwelle {_options.ConfidenceThreshold:0.00}.");
+		}
 
-        return answer.Choice switch
+		return answer.Choice switch
         {
             "conforms" => new(EnvelopeConformanceVerdict.Conforms, answer.Confidence),
             "malformed" => new(EnvelopeConformanceVerdict.Malformed, answer.Confidence),

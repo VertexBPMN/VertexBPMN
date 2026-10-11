@@ -1,56 +1,57 @@
+using Azure.Extensions.AspNetCore.DataProtection.Blobs;
+using Azure.Extensions.AspNetCore.DataProtection.Keys;
+using Azure.Identity;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using VertexBPMN.Application;
 using VertexBPMN.Application.Configuration;
 using VertexBPMN.Application.Messaging;
-using VertexBPMN.Application;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Domain.Interfaces.Repositories;
+using VertexBPMN.Infrastructure.Messaging;
+using VertexBPMN.Infrastructure.Operational;
 using VertexBPMN.Infrastructure.Persistence;
 using VertexBPMN.Infrastructure.Persistence.Repositories;
 using VertexBPMN.Infrastructure.Persistence.Services;
-using VertexBPMN.Infrastructure.Messaging;
-using VertexBPMN.Infrastructure.Operational;
 using VertexBPMN.Infrastructure.Stores;
-using Azure.Identity;
-
-using Azure.Extensions.AspNetCore.DataProtection.Blobs;
-
-using Azure.Extensions.AspNetCore.DataProtection.Keys;
 
 
 namespace VertexBPMN.Infrastructure;
 
 public static class InfrastructureModule
 {
-    public static IServiceCollection AddBpmnPersistenceServices(this IServiceCollection services, IConfiguration configuration)
+    private static readonly string[] BpmnContextSynonyms = { "BpmnDbContext" };
+    private static readonly string[] TenantContextSynonyms = { "TenantDbContext" };
+    private static readonly string[] SimulationContextSynonyms = { "SimulationScenarioDbContext" };
+    private static readonly string[] ProcessMiningContextSynonyms = { "ProcessMiningEventsSqlite" };
+    private static readonly string[] DecisionContextSynonyms = { "DecisionDbContext" };
+
+	[Obsolete("AddBpmnPersistenceServices is superseded by AddAllEngineDbContexts plus the focused persistence registrations; it will be removed in a future release.")]
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Sonar Code Smell", "S1133", Justification = "Intentionally kept obsolete until callers migrate to AddAllEngineDbContexts.")]
+	public static IServiceCollection AddBpmnPersistenceServices(this IServiceCollection services, IConfiguration configuration)
+        => services.AddRuntimePersistenceServices(configuration);
+
+    /// <summary>Registers durable runtime services; database contexts are configured separately by AddAllEngineDbContexts.</summary>
+    public static IServiceCollection AddRuntimePersistenceServices(this IServiceCollection services, IConfiguration configuration)
     {
         var mode = NormalizeMode(configuration["OperationalMode"]
                                  ?? configuration["ASPNETCORE_ENVIRONMENT"]
                                  ?? "Development");
         var configuredDependencyRegistry = configuration.GetConnectionString("DependencyRegistry")
                                            ?? configuration["DependencyRegistry:ConnectionString"];
-        var externalTasksEnabled = configuration.GetValue<bool>("ExternalTasks:Enabled");
-        var schedulingPreviewEnabled = configuration.GetValue<bool>("ExternalTasks:EnableSchedulingPreview");
-        if (schedulingPreviewEnabled)
-        {
-            var previewEnvironment = configuration["OperationalMode"] ?? configuration["ASPNETCORE_ENVIRONMENT"];
-            if (previewEnvironment?.Trim().ToLowerInvariant() is not ("development" or "test" or "unittest"))
-                throw new InvalidOperationException("External-task scheduling preview is restricted to Development and Test.");
-        }
-        if (externalTasksEnabled || schedulingPreviewEnabled)
-        {
-            services.AddScoped<IExternalTaskContractResolver, ConfiguredExternalTaskContractResolver>();
-            services.AddScoped<IExternalTaskLeaseService, ExternalTaskLeaseService>();
-            services.AddScoped<IExternalTaskRecoveryService, ExternalTaskRecoveryService>();
-            if (mode != "Test") services.AddHostedService<ExternalTaskRecoveryHostedService>();
-        }
+
+        RegisterExternalTaskServices(services, configuration, mode);
+
         if (mode is "Production" or "Stage" && string.IsNullOrWhiteSpace(configuredDependencyRegistry))
+        {
             throw new InvalidOperationException(
                 "ConnectionStrings:DependencyRegistry is required in Production and Stage; the local file fallback is forbidden.");
+        }
+
         var depRegistryCs = DependencyConfigurationLoader.ResolveConnectionString(configuration);
         var depRegistryProvider = DependencyRegistryProvider.Resolve(depRegistryCs, configuration["DependencyRegistry:Provider"]);
         services.AddDbContext<DependencyRegistryDbContext>(options =>
@@ -67,10 +68,64 @@ public static class InfrastructureModule
         services.AddScoped<IRuntimeMetricsReader, RuntimeMetricsReader>();
         services.AddSingleton<RuntimeMetricsState>();
         if (mode != "Test" && configuration.GetValue("Operational:Metrics:Enabled", true))
+        {
             services.AddHostedService<RuntimeMetricsCollectorService>();
+        }
+
         if (mode != "Test")
+        {
             services.AddHostedService<PollingSchedulerService>();
+        }
+
         ConfigureRuntimeOutbox(services, configuration, mode);
+        RegisterRepositoryServices(services);
+        var dataProtection = services.AddDataProtection().SetApplicationName("VertexBPMN");
+        ConfigureDataProtection(dataProtection, configuration, mode);
+        RegisterSourceControlServices(services, configuration, mode);
+        services.AddScoped<VertexBPMN.Application.SourceControl.ISourceControlAccessStore>(sp =>
+            sp.GetRequiredService<SourceControl.PersistentSourceControlStore>());
+        services.AddScoped<IConnectorService, PersistentConnectorService>();
+        services.AddScoped<IConnectorTemplateService, PersistentConnectorTemplateService>();
+        services.AddScoped<IFormDefinitionService, PersistentFormDefinitionService>();
+        services.AddScoped<ITaskIoSnapshotRecorder, TaskIoSnapshotRecorder>();
+        services.AddScoped<IOAuth2CredentialFlowService, OAuth2CredentialFlowService>();
+        if (mode != "Test")
+        {
+            services.AddHostedService<OAuth2FlowStateCleanupService>();
+        }
+
+        return services;
+    }
+
+    private static void RegisterExternalTaskServices(
+        IServiceCollection services,
+        IConfiguration configuration,
+        string mode)
+    {
+        var externalTasksEnabled = configuration.GetValue<bool>("ExternalTasks:Enabled");
+        var schedulingPreviewEnabled = configuration.GetValue<bool>("ExternalTasks:EnableSchedulingPreview");
+        if (schedulingPreviewEnabled)
+        {
+            var previewEnvironment = configuration["OperationalMode"] ?? configuration["ASPNETCORE_ENVIRONMENT"];
+            if (previewEnvironment?.Trim().ToLowerInvariant() is not ("development" or "test" or "unittest"))
+            {
+                throw new InvalidOperationException("External-task scheduling preview is restricted to Development and Test.");
+            }
+        }
+        if (externalTasksEnabled || schedulingPreviewEnabled)
+        {
+            services.AddScoped<IExternalTaskContractResolver, ConfiguredExternalTaskContractResolver>();
+            services.AddScoped<IExternalTaskLeaseService, ExternalTaskLeaseService>();
+            services.AddScoped<IExternalTaskRecoveryService, ExternalTaskRecoveryService>();
+            if (mode != "Test")
+            {
+                services.AddHostedService<ExternalTaskRecoveryHostedService>();
+            }
+        }
+    }
+
+    private static void RegisterRepositoryServices(IServiceCollection services)
+    {
         services.AddScoped<IProcessDefinitionRepository, ProcessDefinitionRepository>();
         services.AddScoped<IWorkflowTriggerRepository, WorkflowTriggerRepository>();
         services.AddScoped<IProcessInstanceRepository, ProcessInstanceRepository>();
@@ -85,7 +140,13 @@ public static class InfrastructureModule
         services.AddScoped<IIncidentRepository, IncidentRepository>();
         services.AddScoped<IDecisionRepository, DecisionRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
-        var dataProtection = services.AddDataProtection().SetApplicationName("VertexBPMN");
+    }
+
+    private static void ConfigureDataProtection(
+        IDataProtectionBuilder dataProtection,
+        IConfiguration configuration,
+        string mode)
+    {
         var dataProtectionProvider = configuration["DataProtection:Provider"];
         var dataProtectionIsAzure = string.Equals(
             dataProtectionProvider, "AzureBlobKeyVault", StringComparison.OrdinalIgnoreCase);
@@ -95,16 +156,21 @@ public static class InfrastructureModule
             {
                 if (string.IsNullOrWhiteSpace(configuration["DataProtection:BlobUri"])
                     || string.IsNullOrWhiteSpace(configuration["DataProtection:KeyVaultKeyIdentifier"]))
+                {
                     throw new InvalidOperationException(
                         "DataProtection:BlobUri and DataProtection:KeyVaultKeyIdentifier are required in Production/Stage "
                         + "when DataProtection:Provider=AzureBlobKeyVault so replicas share durable, encrypted keys.");
+                }
             }
             else
             {
                 var keyRingPath = configuration["DataProtection:KeyRingPath"];
                 if (string.IsNullOrWhiteSpace(keyRingPath))
+                {
                     throw new InvalidOperationException(
                         "DataProtection:KeyRingPath is required in Production and Stage so replicas share durable keys.");
+                }
+
                 var directory = Directory.CreateDirectory(Path.GetFullPath(keyRingPath));
                 dataProtection.PersistKeysToFileSystem(directory);
             }
@@ -115,7 +181,6 @@ public static class InfrastructureModule
             var keyIdentifier = new Uri(configuration["DataProtection:KeyVaultKeyIdentifier"]!);
             var credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions
             {
-                ExcludeSharedTokenCacheCredential = true,
                 ExcludeVisualStudioCredential = true,
                 ExcludeVisualStudioCodeCredential = true,
                 ExcludeInteractiveBrowserCredential = true,
@@ -123,6 +188,13 @@ public static class InfrastructureModule
             dataProtection.PersistKeysToAzureBlobStorage(new Uri(blobUri), credential);
             dataProtection.ProtectKeysWithAzureKeyVault(keyIdentifier, credential);
         }
+    }
+
+    private static void RegisterSourceControlServices(
+        IServiceCollection services,
+        IConfiguration configuration,
+        string mode)
+    {
         services.AddScoped<ICredentialService, PersistentCredentialService>();
         services.AddScoped<SourceControl.PersistentSourceControlStore>();
         services.AddScoped<SourceControl.GitHubAppTokenBroker>();
@@ -146,16 +218,6 @@ public static class InfrastructureModule
             services.AddHostedService<SourceControl.SourceControlMaintenanceHostedService>();
             services.AddHostedService<SourceControl.SourceControlJobsHostedService>();
         }
-        services.AddScoped<VertexBPMN.Application.SourceControl.ISourceControlAccessStore>(sp =>
-            sp.GetRequiredService<SourceControl.PersistentSourceControlStore>());
-        services.AddScoped<IConnectorService, PersistentConnectorService>();
-        services.AddScoped<IConnectorTemplateService, PersistentConnectorTemplateService>();
-        services.AddScoped<IFormDefinitionService, PersistentFormDefinitionService>();
-        services.AddScoped<ITaskIoSnapshotRecorder, TaskIoSnapshotRecorder>();
-        services.AddScoped<IOAuth2CredentialFlowService, OAuth2CredentialFlowService>();
-        if (mode != "Test")
-            services.AddHostedService<OAuth2FlowStateCleanupService>();
-        return services;
     }
 
     private static void ConfigureRuntimeOutbox(
@@ -173,21 +235,10 @@ public static class InfrastructureModule
             provider == "azureservicebus"
             && options.AuthenticationMode == RuntimeOutboxAuthenticationMode.ManagedIdentity;
 
-        if (productionMode && !options.Enabled)
-            throw new InvalidOperationException(
-                "Runtime:Outbox:Enabled must be true in Production and Stage.");
-        if (options.Enabled
-            && string.IsNullOrWhiteSpace(options.ConnectionString)
-            && !azureManagedIdentity)
-            throw new InvalidOperationException(
-                "Runtime:Outbox:ConnectionString is required when the outbox publisher is enabled, " +
-                "unless AuthenticationMode=ManagedIdentity is used with Azure Service Bus.");
-        if (productionMode && provider is not ("kafka" or "rabbitmq" or "azureservicebus"))
-            throw new InvalidOperationException(
-                "Runtime:Outbox:Provider must be Kafka, RabbitMq or AzureServiceBus in Production and Stage.");
+        ValidateRuntimeOutbox(provider, productionMode, options, azureManagedIdentity);
 
         services.AddSingleton(options);
-        services.AddSingleton<IRuntimeOutboxTransport>(sp =>
+        services.AddSingleton<IRuntimeOutboxTransport>(_ =>
             provider switch
             {
                 "kafka" => new KafkaRuntimeOutboxTransport(options),
@@ -196,8 +247,47 @@ public static class InfrastructureModule
                 _ => new DisabledRuntimeOutboxTransport()
             });
         if (options.Enabled)
+        {
             services.AddHostedService<RuntimeOutboxPublisherService>();
+        }
 
+        RegisterRuntimeInboxConsumer(services, configuration, provider, options);
+    }
+
+    private static void ValidateRuntimeOutbox(
+        string provider,
+        bool productionMode,
+        RuntimeOutboxOptions options,
+        bool azureManagedIdentity)
+    {
+        if (productionMode && !options.Enabled)
+        {
+            throw new InvalidOperationException(
+                "Runtime:Outbox:Enabled must be true in Production and Stage.");
+        }
+
+        if (options.Enabled
+            && string.IsNullOrWhiteSpace(options.ConnectionString)
+            && !azureManagedIdentity)
+        {
+            throw new InvalidOperationException(
+                "Runtime:Outbox:ConnectionString is required when the outbox publisher is enabled, " +
+                "unless AuthenticationMode=ManagedIdentity is used with Azure Service Bus.");
+        }
+
+        if (productionMode && provider is not ("kafka" or "rabbitmq" or "azureservicebus"))
+        {
+            throw new InvalidOperationException(
+                "Runtime:Outbox:Provider must be Kafka, RabbitMq or AzureServiceBus in Production and Stage.");
+        }
+    }
+
+    private static void RegisterRuntimeInboxConsumer(
+        IServiceCollection services,
+        IConfiguration configuration,
+        string provider,
+        RuntimeOutboxOptions options)
+    {
         // Produktioneller Inbox-Konsument (idempotent). Optional separat
         // zuschaltbar ueber Runtime:Inbox:Enabled; faellt ohne Flag zurueck
         // auf den Outbox-Enabled-Zustand, damit der at-least-once-Zustellungs-
@@ -229,8 +319,11 @@ public static class InfrastructureModule
             {
                 case "rabbitmq":
                     if (string.IsNullOrWhiteSpace(options.ConnectionString))
+                    {
                         throw new InvalidOperationException(
                             "Runtime:Outbox:ConnectionString is required for the RabbitMQ inbox consumer.");
+                    }
+
                     services.AddHostedService<RuntimeInboxConsumerService>();
                     break;
                 case "azureservicebus":
@@ -258,6 +351,7 @@ public static class InfrastructureModule
     ///  - Missing/empty: EF InMemory provider
     /// Per-mode selection (Production/Stage/Development/Test) can still be handled outside by choosing the active connection string keys.
     /// </summary>
+    /// <exception cref="InvalidOperationException"></exception>
     public static IServiceCollection AddAllEngineDbContexts(this IServiceCollection services, IConfiguration configuration)
     {
         var mode = (configuration["OperationalMode"]
@@ -268,11 +362,11 @@ public static class InfrastructureModule
 
         var contexts = new[]
         {
-            new DbContextDescriptor("Bpmn",                new[] { "BpmnDbContext" }),
-            new DbContextDescriptor("Tenants",             new[] { "TenantDbContext" }),
-            new DbContextDescriptor("Simulation",          new[] { "SimulationScenarioDbContext" }),
-            new DbContextDescriptor("ProcessMiningEvents", new[] { "ProcessMiningEventsSqlite" }),
-            new DbContextDescriptor("Decision",            new[] { "DecisionDbContext" })
+            new DbContextDescriptor("Bpmn",                BpmnContextSynonyms),
+            new DbContextDescriptor("Tenants",             TenantContextSynonyms),
+            new DbContextDescriptor("Simulation",          SimulationContextSynonyms),
+            new DbContextDescriptor("ProcessMiningEvents", ProcessMiningContextSynonyms),
+            new DbContextDescriptor("Decision",            DecisionContextSynonyms)
         };
 
         foreach (var ctx in contexts)
@@ -343,7 +437,6 @@ public static class InfrastructureModule
                 case "sqlserver":
                     options.UseVertexSqlServer(connectionString);
                     break;
-                case "sqlite":
                 default:
                     options.UseSqlite(connectionString);
                     break;
@@ -355,39 +448,56 @@ public static class InfrastructureModule
     private static string InferProvider(string? cs)
     {
         if (string.IsNullOrWhiteSpace(cs))
-            return "inmemory";
+		{
+			return "inmemory";
+		}
 
-        var lower = cs.ToLowerInvariant();
+		var lower = cs.ToLowerInvariant();
 
         // PostgreSQL detection
-        if (lower.Contains("host=") || (lower.Contains("username=") && lower.Contains("database=")))
-            return "npgsql";
+        if (lower.Contains("host=", StringComparison.Ordinal) || (lower.Contains("username=", StringComparison.Ordinal) && lower.Contains("database=", StringComparison.Ordinal)))
+		{
+			return "npgsql";
+		}
 
-        // SQL Server detection
-        if (lower.Contains("server=") ||
-            lower.Contains("initial catalog=") ||
-            (lower.Contains("data source=") && (lower.Contains("initial catalog=") || lower.Contains("user id="))))
-            return "sqlserver";
+		// SQL Server detection
+		if (lower.Contains("server=", StringComparison.Ordinal) ||
+            lower.Contains("initial catalog=", StringComparison.Ordinal) ||
+            (lower.Contains("data source=", StringComparison.Ordinal) && (lower.Contains("initial catalog=", StringComparison.Ordinal) || lower.Contains("user id=", StringComparison.Ordinal))))
+		{
+			return "sqlserver";
+		}
 
-        // SQLite detection
-        if (lower.Contains("data source=") &&
-            (lower.Contains(".db") || lower.Contains(".sqlite") || lower.Contains(":memory:")))
-            return "sqlite";
-        if (lower.Contains("filename="))
-            return "sqlite";
-        if (lower.Contains(":memory:"))
-            return "sqlite";
+		// SQLite detection
+		if (lower.Contains("data source=", StringComparison.Ordinal) &&
+            (lower.Contains(".db", StringComparison.Ordinal) || lower.Contains(".sqlite", StringComparison.Ordinal) || lower.Contains(":memory:", StringComparison.Ordinal)))
+		{
+			return "sqlite";
+		}
 
-        // Default fallback
-        return "sqlite";
+		if (lower.Contains("filename=", StringComparison.Ordinal))
+		{
+			return "sqlite";
+		}
+
+		if (lower.Contains(":memory:", StringComparison.Ordinal))
+		{
+			return "sqlite";
+		}
+
+		// Default fallback
+		return "sqlite";
     }
 
     private static string? ResolveConnectionString(IConfiguration configuration, DbContextDescriptor descriptor, string mode)
     {
         var csSection = configuration.GetSection("ConnectionStrings");
-        if (!csSection.Exists()) return null;
+        if (!csSection.Exists())
+		{
+			return null;
+		}
 
-        var candidates = new List<string>
+		var candidates = new List<string>
         {
             $"{descriptor.LogicalName}_{mode}"
         };
@@ -399,8 +509,10 @@ public static class InfrastructureModule
         {
             var value = configuration.GetConnectionString(key) ?? csSection[key];
             if (!string.IsNullOrWhiteSpace(value))
-                return value;
-        }
+			{
+				return value;
+			}
+		}
 
         return null;
     }
@@ -414,17 +526,5 @@ public static class InfrastructureModule
             _                      => "Development"
         };
 
-    private sealed record DbContextDescriptor(string LogicalName, string[] Synonyms)
-    {
-        public Type GetDbContextType() =>
-            LogicalName switch
-            {
-                "Bpmn"                => typeof(BpmnDbContext),
-                "Tenants"             => typeof(TenantDbContext),
-                "Simulation"          => typeof(SimulationScenarioDbContext),
-                "ProcessMiningEvents" => typeof(ProcessMiningEventDbContext),
-                "Decision"            => typeof(DecisionDbContext),
-                _ => throw new InvalidOperationException($"Unknown context {LogicalName}")
-            };
-    }
+    private sealed record DbContextDescriptor(string LogicalName, string[] Synonyms);
 }

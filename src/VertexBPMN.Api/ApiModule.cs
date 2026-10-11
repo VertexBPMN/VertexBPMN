@@ -13,13 +13,13 @@ namespace VertexBPMN.Api;
 /// <summary>
 /// Extension module to register all api service implementations in this project.
 /// </summary>
-public static class ApiModule
+internal static class ApiModule
 {
     /// <summary>
     /// Registers engine services into the DI container.
     /// </summary>
     /// <param name="services">Service collection.</param>
-    /// <param name="configuration"></param>
+    /// <param name="configuration">Configuration used to bind advanced-feature options.</param>
     public static IServiceCollection AddApiServices(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddOptions<AdvancedFeatureOptions>()
@@ -30,7 +30,9 @@ public static class ApiModule
         services.AddMemoryCache(); // Required for ProductionCachingService
         services.AddScoped<ICachingService, ProductionCachingService>();
         services.AddScoped<IResilienceService, ProductionResilienceService>();
-        services.AddScoped<IRateLimitingService, ProductionRateLimitingService>();
+        services.AddSingleton<ProductionRateLimitingService>();
+        services.AddSingleton<IRateLimitingService>(provider => provider.GetRequiredService<ProductionRateLimitingService>());
+        services.AddHostedService<ProductionRateLimitingService>(provider => provider.GetRequiredService<ProductionRateLimitingService>());
         services.AddScoped<IHealthMonitoringService, ProductionHealthMonitoringService>();
         services.AddScoped<IPredictiveAnalyticsService, HistoricalPredictiveAnalyticsService>();
         services.AddScoped<ILiveProcessMigrationService, LiveProcessMigrationService>();

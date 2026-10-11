@@ -14,7 +14,7 @@ public sealed class McpHttpResourceLifetimeTests
 	public async Task CallAgentAsync_DisposesHttpContentAfterSuccessOrFailure(HttpStatusCode status)
 	{
 		var configuration = new ConfigurationBuilder().AddInMemoryCollection(
-			new Dictionary<string, string?>
+			new Dictionary<string, string?>(StringComparer.Ordinal)
 			{
 				["McpAgents:0:name"] = "test",
 				["McpAgents:0:url"] = "https://example.org/mcp"

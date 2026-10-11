@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace VertexBPMN.Studio.Services;
 
-public interface IPerformanceService
+internal interface IPerformanceService
 {
     Task<JsonElement> GetMetricsAsync(CancellationToken cancellationToken = default);
     Task<JsonElement> GetDashboardAsync(CancellationToken cancellationToken = default);

@@ -1,14 +1,15 @@
-using Microsoft.EntityFrameworkCore.Infrastructure;
+﻿using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using VertexBPMN.Infrastructure.Persistence;
 
 #nullable disable
+#pragma warning disable CA1861, MA0048
 
 namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn;
 
 [DbContext(typeof(BpmnDbContext))]
 [Migration("20260906200000_AddPollingTriggers")]
-public partial class AddPollingTriggers : Migration
+public class AddPollingTriggers : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
     {

@@ -3,7 +3,7 @@ using VertexBPMN.SourceControl.Abstractions;
 
 namespace VertexBPMN.Studio.Services;
 
-public sealed class HttpSourceControlService(IHttpClientFactory clients)
+internal sealed class HttpSourceControlService(IHttpClientFactory clients)
 {
 	private const string Prefix = "/api/source-control";
 	private static string Escape(string value) => Uri.EscapeDataString(value);
@@ -67,9 +67,3 @@ public sealed class HttpSourceControlService(IHttpClientFactory clients)
 			?? throw new HttpRequestException("The API returned no source-control result.");
 	}
 }
-
-public sealed record StudioGitRepository(RepositoryBinding Binding, long Revision, RepositoryGrant[] Grants);
-public sealed record StudioGitBindingRequest(string Remote, string? CredentialReference, string DefaultBranch, string ReleaseBranch, string[] ModelRoots);
-public sealed record StudioGitSnapshot(string Path, Guid Generation, long LocalRevision, byte[] Bytes, string ContentSha256);
-public sealed record StudioGitCommitRequest(string Key, Guid SessionId, long SessionRevision, string BaseCommit, string Message, StudioGitSnapshot[] Snapshots);
-public sealed record StudioGitPullRequestRequest(string Key, Guid PushOperationId, string BaseBranch, string Title, string Description);

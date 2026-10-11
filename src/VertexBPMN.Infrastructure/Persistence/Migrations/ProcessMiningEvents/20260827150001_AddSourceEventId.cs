@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using VertexBPMN.Infrastructure.Persistence.Services;
@@ -8,7 +9,8 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.ProcessMiningEvents;
 
 [DbContext(typeof(ProcessMiningEventDbContext))]
 [Migration("20260827150001_AddSourceEventId")]
-public partial class AddSourceEventId : Migration
+[SuppressMessage("Meziantou.Analyzer", "MA0048", Justification = "EF migration snapshot / generated code.")]
+public class AddSourceEventId : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
     {

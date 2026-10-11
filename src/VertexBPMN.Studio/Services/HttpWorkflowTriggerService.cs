@@ -2,7 +2,7 @@ using System.Net.Http.Json;
 
 namespace VertexBPMN.Studio.Services;
 
-public sealed class HttpWorkflowTriggerService(IHttpClientFactory httpClientFactory) : IWorkflowTriggerService
+internal sealed class HttpWorkflowTriggerService(IHttpClientFactory httpClientFactory) : IWorkflowTriggerService
 {
     public async Task<IReadOnlyList<StudioWorkflowTrigger>> ListAsync(string tenantId, CancellationToken cancellationToken = default)
     {

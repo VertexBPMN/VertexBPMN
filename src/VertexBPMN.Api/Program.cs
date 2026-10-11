@@ -29,7 +29,6 @@ using SendGrid;
 using Microsoft.AspNetCore.HttpOverrides;
 using System.Net;
 
-
 var builder = WebApplication.CreateBuilder(args);
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
@@ -42,21 +41,12 @@ var advancedFeatureOptions = new AdvancedFeatureOptions();
 builder.Configuration.GetSection(AdvancedFeatureOptions.SectionName).Bind(advancedFeatureOptions);
 var dependencyOptions = new DependencyOptions();
 builder.Configuration.GetSection("Dependencies").Bind(dependencyOptions);
-
 // Resolve operational mode
 var opMode = builder.Environment.ResolveOperationalMode(builder.Configuration);
-
 builder.Services.AddScoped<IMultiInstanceExecutionRepository, MultiInstanceExecutionRepository>();
-builder.Services.AddScoped<IProcessMigrationService>(sp =>
-	new ProcessMigrationService(
-		sp.GetRequiredService<IRuntimeService>(),
-		sp.GetRequiredService<IHistoryService>()
-	)
-);
-
+builder.Services.AddScoped<IProcessMigrationService>(sp => new ProcessMigrationService(sp.GetRequiredService<IRuntimeService>(), sp.GetRequiredService<IHistoryService>()));
 builder.Services.AddLogging();
 builder.Logging.AddFile("Logs/api-log.txt"); // mit z. B. Serilog oder Drittanbieter
-
 // Telemetry conditional
 if (moduleOptions.Telemetry && opMode is not OperationalMode.Test)
 {
@@ -71,87 +61,60 @@ if (moduleOptions.Persistence)
 
 if (moduleOptions.Engine)
 {
-	builder.Services.AddBpmnPersistenceServices(builder.Configuration);
+	builder.Services.AddRuntimePersistenceServices(builder.Configuration);
 	builder.Services.AddApplicationServices(builder.Configuration);
-	builder.Services.AddScoped<IProcessMiningEventSink>(sp => new VertexBPMN.Application.Messaging.WebhookEventSink(
-		sp.GetRequiredService<PersistentProcessMiningEventSink>(),
-		sp.GetRequiredService<IHttpClientFactory>(),
-		builder.Configuration,
-		sp.GetRequiredService<ILogger<VertexBPMN.Application.Messaging.WebhookEventSink>>()));
+	builder.Services.AddScoped<IProcessMiningEventSink>(sp => new VertexBPMN.Application.Messaging.WebhookEventSink(sp.GetRequiredService<PersistentProcessMiningEventSink>(), sp.GetRequiredService<IHttpClientFactory>(), builder.Configuration, sp.GetRequiredService<ILogger<VertexBPMN.Application.Messaging.WebhookEventSink>>()));
 	builder.Services.AddScoped<VertexBPMN.Domain.Interfaces.IIdentityService, VertexBPMN.Infrastructure.Persistence.Services.PersistentIdentityService>();
 	builder.Services.AddEngineServices(builder.Configuration);
 }
 
 builder.Services.AddApiServices(builder.Configuration);
-
 builder.Services.AddRateLimiter(options =>
 {
 	var permitLimit = builder.Configuration.GetValue("RateLimiting:PermitLimit", 120);
 	var windowSeconds = builder.Configuration.GetValue("RateLimiting:WindowSeconds", 60);
 	var queueLimit = builder.Configuration.GetValue("RateLimiting:QueueLimit", 0);
-
 	options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 	options.OnRejected = async (context, cancellationToken) =>
 	{
-		if (!context.HttpContext.Request.Path.StartsWithSegments("/api/external-tasks")) return;
-		var retryAfter = context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var duration)
-			? duration : TimeSpan.FromSeconds(2);
-		context.HttpContext.Response.Headers.RetryAfter = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(
-			System.Globalization.CultureInfo.InvariantCulture);
-		context.HttpContext.Response.ContentType = "application/problem+json";
-		await context.HttpContext.Response.WriteAsJsonAsync(new
+		if (!context.HttpContext.Request.Path.StartsWithSegments("/api/external-tasks", StringComparison.OrdinalIgnoreCase))
 		{
-			type = "about:blank", title = "External task rate limit exceeded.", status = 429,
-			code = "worker_rate_limited", traceId = context.HttpContext.TraceIdentifier
-		}, cancellationToken);
-	};
-	options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
-		RateLimitPartition.GetFixedWindowLimiter(
-			context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-			_ => new FixedWindowRateLimiterOptions
-			{
-				PermitLimit = permitLimit,
-				Window = TimeSpan.FromSeconds(windowSeconds),
-				QueueLimit = queueLimit,
-				AutoReplenishment = true
-			}));
+			return;
+		}
 
+		var retryAfter = context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var duration) ? duration : TimeSpan.FromSeconds(2);
+		context.HttpContext.Response.Headers.RetryAfter = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+		context.HttpContext.Response.ContentType = "application/problem+json";
+		await context.HttpContext.Response.WriteAsJsonAsync(new { type = "about:blank", title = "External task rate limit exceeded.", status = 429, code = "worker_rate_limited", traceId = context.HttpContext.TraceIdentifier }, cancellationToken);
+	};
+	options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context => RateLimitPartition.GetFixedWindowLimiter(context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions { PermitLimit = permitLimit, Window = TimeSpan.FromSeconds(windowSeconds), QueueLimit = queueLimit, AutoReplenishment = true }));
 	// Worker leases have a separate identity-based budget. Five tokens permit a
 	// short burst; one token every two seconds sustains at most 30 operations/minute.
-	options.AddPolicy("ExternalTaskWorker", context =>
-		RateLimitPartition.GetTokenBucketLimiter(
-			$"{context.User.FindFirst("tenant_id")?.Value}:{context.User.FindFirst("sub")?.Value}",
-			_ => new TokenBucketRateLimiterOptions
-			{
-				TokenLimit = 5,
-				TokensPerPeriod = 1,
-				ReplenishmentPeriod = TimeSpan.FromSeconds(2),
-				QueueLimit = 0,
-				AutoReplenishment = true
-			}));
+	options.AddPolicy("ExternalTaskWorker", context => RateLimitPartition.GetTokenBucketLimiter($"{context.User.FindFirst("tenant_id")?.Value}:{context.User.FindFirst("sub")?.Value}", _ => new TokenBucketRateLimiterOptions { TokenLimit = 5, TokensPerPeriod = 1, ReplenishmentPeriod = TimeSpan.FromSeconds(2), QueueLimit = 0, AutoReplenishment = true }));
 });
-
 // Background hosted services control (example: disable job executor in Test)
 if (opMode == OperationalMode.Test || !moduleOptions.BackgroundJobs)
 {
 	// Optionally remove specific hosted services after registration if API-level toggles needed.
 	// Example pattern (pseudo):
-	 builder.Services.Remove(new ServiceDescriptor(typeof(IHostedService), typeof(JobExecutorService), ServiceLifetime.Singleton));
+	builder.Services.Remove(new ServiceDescriptor(typeof(IHostedService), typeof(JobExecutorService), ServiceLifetime.Singleton));
 }
 
 // gRPC & SignalR
 builder.Services.AddWhen(moduleOptions.Grpc, s => s.AddGrpc());
 builder.Services.AddWhen(moduleOptions.SignalR, s => s.AddSignalR());
-
-
 // Add services to the container.
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
 	options.JsonSerializerOptions.TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver
-	{ Modifiers = { VertexBPMN.Api.Security.ModelExportJsonPolicy.Apply } };
+	{
+		Modifiers =
+		{
+			VertexBPMN.Api.Security.ModelExportJsonPolicy.Apply
+		}
+	};
 });
 builder.Services.AddHttpContextAccessor();
-
 // Authentication is disabled only in the dedicated test host, where tests install
 // an explicit test scheme. All other modes use the single production security setup.
 if (opMode != OperationalMode.Test)
@@ -160,22 +123,13 @@ if (opMode != OperationalMode.Test)
 }
 
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddHealthChecks()
-	.AddCheck("liveness", () => HealthCheckResult.Healthy(), tags: new[] { "live" })
-	.AddCheck<ServiceDependenciesHealthCheck>(
-		"service_dependencies",
-		failureStatus: HealthStatus.Unhealthy,
-		tags: new[] { "ready" })
-	.AddCheck<OperationalReadinessHealthCheck>(
-		"operational_readiness",
-		failureStatus: HealthStatus.Unhealthy,
-		tags: new[] { "ready" });
-
+builder.Services.AddHealthChecks().AddCheck("liveness", () => HealthCheckResult.Healthy(), tags: HealthCheckTags.Live).AddCheck<ServiceDependenciesHealthCheck>("service_dependencies", failureStatus: HealthStatus.Unhealthy, tags: HealthCheckTags.Ready).AddCheck<OperationalReadinessHealthCheck>("operational_readiness", failureStatus: HealthStatus.Unhealthy, tags: HealthCheckTags.Ready);
 if (moduleOptions.SignalR)
 {
 	builder.Services.AddSignalR();
 	builder.Services.AddScoped<INotificationService, SignalRNotificationService>();
 }
+
 // Swagger configuration - consolidated
 if (moduleOptions.Swagger || opMode is OperationalMode.Development or OperationalMode.Stage)
 {
@@ -185,7 +139,6 @@ if (moduleOptions.Swagger || opMode is OperationalMode.Development or Operationa
 		// (for example DeployRequest). Full names keep the generated OpenAPI
 		// component identifiers unique and therefore make snapshot generation stable.
 		options.CustomSchemaIds(type => type.FullName!.Replace('+', '.'));
-
 		// Add JWT Bearer security definition
 		var securityScheme = new Microsoft.OpenApi.OpenApiSecurityScheme
 		{
@@ -199,14 +152,9 @@ if (moduleOptions.Swagger || opMode is OperationalMode.Development or Operationa
 		options.AddSecurityDefinition("Bearer", securityScheme);
 		// References need the document containing the scheme; an unresolved reference
 		// serializes as an empty requirement and incorrectly documents anonymous access.
-		options.AddSecurityRequirement(document => new Microsoft.OpenApi.OpenApiSecurityRequirement
-		{
-			{ new Microsoft.OpenApi.OpenApiSecuritySchemeReference("Bearer", document), new List<string>() }
-		});
-		
+		options.AddSecurityRequirement(document => new Microsoft.OpenApi.OpenApiSecurityRequirement { { new Microsoft.OpenApi.OpenApiSecuritySchemeReference("Bearer", document), new List<string>() } });
 		// Add Simulation API tag
 		options.DocumentFilter<VertexBPMN.Api.SimulationTagDocumentFilter>();
-		
 		// Include XML comments if available
 		var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
 		var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
@@ -228,46 +176,49 @@ if (opMode == OperationalMode.Production && moduleOptions.Emails)
 // decisions see the real client. Only enabled when explicit proxy IPs are set —
 // we never accept forwarded headers from arbitrary senders.
 var reverseProxyEnabled = builder.Configuration.GetValue<bool>("ReverseProxy:Enabled");
-var apiKnownProxyValues = builder.Configuration
-    .GetSection("ReverseProxy:KnownProxies")
-    .Get<string[]>() ?? [];
+var apiKnownProxyValues = builder.Configuration.GetSection("ReverseProxy:KnownProxies").Get<string[]>() ?? [];
 var apiKnownProxies = new List<IPAddress>();
 foreach (var value in apiKnownProxyValues)
 {
-    if (!IPAddress.TryParse(value, out var address))
-        throw new InvalidOperationException($"ReverseProxy:KnownProxies contains invalid IP address '{value}'.");
-    apiKnownProxies.Add(address);
-}
-if (reverseProxyEnabled && apiKnownProxies.Count == 0)
-{
-    throw new InvalidOperationException(
-        "ReverseProxy:KnownProxies must contain at least one explicit proxy IP when ReverseProxy:Enabled is true.");
-}
-if (reverseProxyEnabled)
-{
-    builder.Services.Configure<ForwardedHeadersOptions>(options =>
-    {
-        // Do not consume X-Forwarded-Host: the proxy must preserve the public
-        // Host header so OIDC callback / token origins cannot be rewritten.
-        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-        options.ForwardLimit = 1;
-        options.RequireHeaderSymmetry = true;
-        options.KnownProxies.Clear();
-        options.KnownIPNetworks.Clear();
-        foreach (var address in apiKnownProxies)
-            options.KnownProxies.Add(address);
-    });
+	if (!IPAddress.TryParse(value, out var address))
+	{
+		throw new InvalidOperationException($"ReverseProxy:KnownProxies contains invalid IP address '{value}'.");
+	}
+
+	apiKnownProxies.Add(address);
 }
 
+if (reverseProxyEnabled && apiKnownProxies.Count == 0)
+{
+	throw new InvalidOperationException("ReverseProxy:KnownProxies must contain at least one explicit proxy IP when ReverseProxy:Enabled is true.");
+}
+
+if (reverseProxyEnabled)
+{
+	builder.Services.Configure<ForwardedHeadersOptions>(options =>
+	{
+		// Do not consume X-Forwarded-Host: the proxy must preserve the public
+		// Host header so OIDC callback / token origins cannot be rewritten.
+		options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+		options.ForwardLimit = 1;
+		options.RequireHeaderSymmetry = true;
+		options.KnownProxies.Clear();
+		options.KnownIPNetworks.Clear();
+		foreach (var address in apiKnownProxies)
+		{
+			options.KnownProxies.Add(address);
+		}
+	});
+}
 
 var app = builder.Build();
 app.MapDefaultEndpoints();
-
 if (reverseProxyEnabled)
-    app.UseForwardedHeaders();
+{
+	app.UseForwardedHeaders();
+}
 
-var migrateOnly = args.Any(argument =>
-	string.Equals(argument, "--migrate-only", StringComparison.OrdinalIgnoreCase));
+var migrateOnly = args.Any(argument => string.Equals(argument, "--migrate-only", StringComparison.OrdinalIgnoreCase));
 if (migrateOnly)
 {
 	await DatabaseMigrationCoordinator.ApplyAsync(app.Services);
@@ -277,13 +228,15 @@ if (migrateOnly)
 if (opMode is OperationalMode.Production or OperationalMode.Stage)
 {
 	if (builder.Configuration.GetValue<bool>("Runtime:Scripts:Enabled"))
+	{
 		throw new InvalidOperationException("In-process BPMN scripts are forbidden in Production and Stage.");
+	}
 
 	using var validationScope = app.Services.CreateScope();
 	var dispatcher = validationScope.ServiceProvider.GetRequiredService<IMessageDispatcher>();
 	var workerManager = validationScope.ServiceProvider.GetRequiredService<IWorkerNodeManager>();
 	var miningSink = validationScope.ServiceProvider.GetRequiredService<IProcessMiningEventSink>();
-	var productionDependencies = new object?[]
+	var productionDependencies = new object? []
 	{
 		dispatcher,
 		workerManager,
@@ -291,76 +244,73 @@ if (opMode is OperationalMode.Production or OperationalMode.Stage)
 		validationScope.ServiceProvider.GetService<IAiDecisionService>(),
 		validationScope.ServiceProvider.GetService<ISendGridClient>()
 	};
-	var forbiddenImplementations = productionDependencies
-		.Where(dependency => dependency is not null)
-		.Select(dependency => dependency!.GetType())
-		.Where(type => type.Name.Contains("Fake", StringComparison.OrdinalIgnoreCase)
-	                || type.Name.Contains("InMemory", StringComparison.OrdinalIgnoreCase)
-	                || type.Name.Contains("NoOp", StringComparison.OrdinalIgnoreCase))
-	 .Select(type => type.FullName)
-	 .ToArray();
+	var forbiddenImplementations = productionDependencies.Where(dependency => dependency is not null).Select(dependency => dependency!.GetType()).Where(type => type.Name.Contains("Fake", StringComparison.OrdinalIgnoreCase) || type.Name.Contains("InMemory", StringComparison.OrdinalIgnoreCase) || type.Name.Contains("NoOp", StringComparison.OrdinalIgnoreCase)).Select(type => type.FullName).ToArray();
 	if (forbiddenImplementations.Length > 0)
-		throw new InvalidOperationException(
-			$"Production dependency validation rejected: {string.Join(", ", forbiddenImplementations)}.");
+	{
+		throw new InvalidOperationException($"Production dependency validation rejected: {string.Join(", ", forbiddenImplementations)}.");
+	}
 }
 
 // Production pods never race each other while applying schemas. A dedicated
 // migration job invokes --migrate-only; regular pods only verify schema state.
-var applyMigrationsOnStartup = builder.Configuration.GetValue<bool?>("Database:ApplyMigrationsOnStartup")
-	?? opMode is not (OperationalMode.Production or OperationalMode.Stage);
+var applyMigrationsOnStartup = builder.Configuration.GetValue<bool?>("Database:ApplyMigrationsOnStartup") ?? opMode is not (OperationalMode.Production or OperationalMode.Stage);
 if (applyMigrationsOnStartup)
+{
 	await DatabaseMigrationCoordinator.ApplyAsync(app.Services);
+}
 else
+{
 	await DatabaseMigrationCoordinator.EnsureCurrentAsync(app.Services);
+}
 
 // Plugin system gating
 var enablePlugins = moduleOptions.Plugins && dependencyOptions.Plugins.Enabled && opMode != OperationalMode.Test;
 if (enablePlugins)
 {
-	if (opMode is OperationalMode.Production or OperationalMode.Stage
-	    && dependencyOptions.Plugins.Files.Count == 0)
+	if (opMode is OperationalMode.Production or OperationalMode.Stage && dependencyOptions.Plugins.Files.Count == 0)
+	{
 		throw new InvalidOperationException("Production plug-ins require an explicit Dependencies:Plugins:Files allowlist.");
+	}
 
-	var pluginsDir = Path.IsPathRooted(dependencyOptions.Plugins.Directory)
-		? dependencyOptions.Plugins.Directory
-		: Path.Combine(AppContext.BaseDirectory, dependencyOptions.Plugins.Directory);
+	var pluginsDir = Path.IsPathRooted(dependencyOptions.Plugins.Directory) ? dependencyOptions.Plugins.Directory : Path.Combine(AppContext.BaseDirectory, dependencyOptions.Plugins.Directory);
 	if (!Directory.Exists(pluginsDir))
 	{
 		Directory.CreateDirectory(pluginsDir);
 	}
+
 	// Load plugins from the "plugins" directory
-	using (var pluginScope = app.Services.CreateScope())
-	{
+	using var pluginScope = app.Services.CreateScope();
 		var pluginManager = pluginScope.ServiceProvider.GetRequiredService<IPluginManager>();
 		var logger = pluginScope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("PluginLoader");
-		var pluginFiles = dependencyOptions.Plugins.Files.Count == 0
-			? Directory.GetFiles(pluginsDir, "*.dll", SearchOption.TopDirectoryOnly)
-			: dependencyOptions.Plugins.Files.Select(file => Path.IsPathRooted(file) ? file : Path.Combine(pluginsDir, file));
+		var pluginFiles = dependencyOptions.Plugins.Files.Count == 0 ? Directory.GetFiles(pluginsDir, "*.dll", SearchOption.TopDirectoryOnly) : dependencyOptions.Plugins.Files.Select(file => Path.IsPathRooted(file) ? file : Path.Combine(pluginsDir, file));
 		foreach (var pluginPath in pluginFiles)
 		{
 			if (opMode is OperationalMode.Production or OperationalMode.Stage)
 			{
 				var fileName = Path.GetFileName(pluginPath);
-				if (!dependencyOptions.Plugins.Sha256.TryGetValue(fileName, out var expectedHash)
-				    || string.IsNullOrWhiteSpace(expectedHash))
+				if (!dependencyOptions.Plugins.Sha256.TryGetValue(fileName, out var expectedHash) || string.IsNullOrWhiteSpace(expectedHash))
+				{
 					throw new InvalidOperationException($"No SHA-256 allowlist entry exists for plug-in '{fileName}'.");
+				}
+
 				await using var pluginStream = File.OpenRead(pluginPath);
 				var actualHash = Convert.ToHexString(await SHA256.HashDataAsync(pluginStream)).ToLowerInvariant();
-				if (!CryptographicOperations.FixedTimeEquals(
-						Convert.FromHexString(expectedHash), Convert.FromHexString(actualHash)))
+				if (!CryptographicOperations.FixedTimeEquals(Convert.FromHexString(expectedHash), Convert.FromHexString(actualHash)))
+				{
 					throw new InvalidOperationException($"SHA-256 verification failed for plug-in '{fileName}'.");
+				}
 			}
+
 			var result = await pluginManager.LoadPluginAsync(pluginPath);
 			if (!result.Success)
 			{
 				logger.LogError("Failed to load plugin {PluginPath}: {Error}", pluginPath, result.Error);
 			}
-			else
+			else if (logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
 			{
 				logger.LogInformation("Loaded plugin: {PluginPath}", pluginPath);
 			}
 		}
-	}
 }
 
 // Configure the HTTP request pipeline.
@@ -368,24 +318,19 @@ if (opMode is OperationalMode.Production or OperationalMode.Stage)
 {
 	// Orchestrator probes originate inside the cluster and use the container's HTTP port.
 	// Application traffic still redirects unless the trusted reverse proxy supplied HTTPS.
-	app.UseWhen(
-		context => !context.Request.Path.StartsWithSegments("/api/health")
-		           && !context.Request.Path.StartsWithSegments("/api/ready"),
-		branch => branch.UseHttpsRedirection());
+	app.UseWhen(context => !context.Request.Path.StartsWithSegments("/api/health", StringComparison.OrdinalIgnoreCase) && !context.Request.Path.StartsWithSegments("/api/ready", StringComparison.OrdinalIgnoreCase), branch => branch.UseHttpsRedirection());
 }
 
-var pathBase = builder.Configuration["PathBase"]
-			  ?? builder.Configuration["ASPNETCORE_PATHBASE"]
-			  ?? Environment.GetEnvironmentVariable("ASPNETCORE_PATHBASE");
-
+var pathBase = builder.Configuration["PathBase"] ?? builder.Configuration["ASPNETCORE_PATHBASE"] ?? Environment.GetEnvironmentVariable("ASPNETCORE_PATHBASE");
 if (!string.IsNullOrWhiteSpace(pathBase))
 {
 	if (!pathBase.StartsWith('/'))
-		pathBase = "/" + pathBase.Trim();
+	{
+		pathBase = string.Concat('/', pathBase.Trim());
+	}
+
 	pathBase = pathBase.TrimEnd('/');
-
 	app.UsePathBase(pathBase);
-
 	app.Use(async (ctx, next) =>
 	{
 		if (ctx.Request.Path == "/" && !string.IsNullOrEmpty(pathBase))
@@ -393,6 +338,7 @@ if (!string.IsNullOrWhiteSpace(pathBase))
 			ctx.Response.Redirect(pathBase + "/");
 			return;
 		}
+
 		await next();
 	});
 }
@@ -406,36 +352,18 @@ if (moduleOptions.Swagger || opMode is OperationalMode.Development or Operationa
 
 // Health endpoints remain anonymous so orchestrators can probe a pod before authentication is available.
 app.MapHealthChecks("/api/health").AllowAnonymous();
-app.MapHealthChecks("/api/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
-{
-	Predicate = registration => registration.Tags.Contains("live")
-}).AllowAnonymous();
+app.MapHealthChecks("/api/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions { Predicate = registration => registration.Tags.Contains("live") }).AllowAnonymous();
 // Readiness – only include checks tagged "ready"
-app.MapHealthChecks("/api/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+app.MapHealthChecks("/api/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions { Predicate = r => r.Tags.Contains("ready"), ResponseWriter = async (ctx, report) =>
 {
-	Predicate = r => r.Tags.Contains("ready"),
-	ResponseWriter = async (ctx, report) =>
+	ctx.Response.ContentType = "application/json; charset=utf-8";
+	var payload = new
 	{
-		ctx.Response.ContentType = "application/json; charset=utf-8";
-		var payload = new
-		{
-			status = report.Status.ToString(),
-			results = report.Entries.ToDictionary(
-				e => e.Key,
-				e => new
-				{
-					status = e.Value.Status.ToString(),
-					description = e.Value.Description,
-					data = e.Value.Data
-				})
-		};
-		await System.Text.Json.JsonSerializer.SerializeAsync(
-			ctx.Response.Body,
-			payload,
-			new System.Text.Json.JsonSerializerOptions { WriteIndented = false });
-	}
-}).AllowAnonymous();
-
+		status = report.Status.ToString(),
+		results = report.Entries.ToDictionary(e => e.Key, e => new { status = e.Value.Status.ToString(), description = e.Value.Description, data = e.Value.Data }, StringComparer.Ordinal)
+	};
+	await System.Text.Json.JsonSerializer.SerializeAsync(ctx.Response.Body, payload, new System.Text.Json.JsonSerializerOptions { WriteIndented = false });
+} }).AllowAnonymous();
 if (opMode != OperationalMode.Test)
 {
 	app.UseCors("Production");
@@ -444,20 +372,23 @@ if (opMode != OperationalMode.Test)
 }
 
 app.UseMiddleware<CorrelationIdMiddleware>();
-
 // Request/Response Logging Middleware
 app.Use(async (context, next) =>
 {
 	var logger = context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("RequestLogger");
-	logger.LogInformation("HTTP {Method} {Path}", context.Request.Method, context.Request.Path);
+	if (logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
+	{
+		logger.LogInformation("HTTP {Method} {Path}", context.Request.Method, context.Request.Path);
+	}
 	await next();
-	logger.LogInformation("HTTP {Method} {Path} responded {StatusCode}", context.Request.Method, context.Request.Path, context.Response.StatusCode);
+	if (logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
+	{
+		logger.LogInformation("HTTP {Method} {Path} responded {StatusCode}", context.Request.Method, context.Request.Path, context.Response.StatusCode);
+	}
 });
-
 app.UseAuthorization();
 app.UseMiddleware<SecurityHeadersMiddleware>();
 app.UseMiddleware<AuditLoggingMiddleware>();
-
 //Enterprise Scalability: SignalR Hub mapping,Only map hubs when enabled
 if (moduleOptions.SignalR)
 {
@@ -466,7 +397,6 @@ if (moduleOptions.SignalR)
 }
 
 app.MapControllers();
-
 // The CMMN-only gRPC contracts remain discoverable when gRPC is enabled, but
 // each operation enforces the advanced-feature gate before invoking the engine.
 if (moduleOptions.Grpc)
@@ -474,11 +404,11 @@ if (moduleOptions.Grpc)
 	app.MapGrpcService<VertexBpmnServiceImpl>();
 	app.MapGrpcService<VertexBpmnMcpServiceImpl>();
 }
+
 app.MapGet("/", () => $"VertexBPMN API ({opMode})");
-
-app.Run();
-
+await app.RunAsync();
 namespace VertexBPMN.Api
 {
-public partial class Program { }
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public entry point required by WebApplicationFactory integration tests.")]
+	public class Program;
 }

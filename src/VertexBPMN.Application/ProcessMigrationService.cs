@@ -20,7 +20,6 @@ public class ProcessMigrationService : IProcessMigrationService
 		var warnings = new List<string>();
 		var migratedInstanceIds = new List<string>();
 		var migratedActivities = new Dictionary<string, List<string>>(StringComparer.Ordinal); // instanceId -> migrated activity IDs
-		var startTime = DateTime.UtcNow;
 
 		// Validate migration plan
 		if (plan.ActivityMappings == null || plan.ActivityMappings.Count == 0)
@@ -36,36 +35,12 @@ public class ProcessMigrationService : IProcessMigrationService
 		// Fetch all process instances for source definition
 		var sourceDefId = Guid.Parse(plan.SourceProcessDefinitionId);
 		var targetDefId = Guid.Parse(plan.TargetProcessDefinitionId);
-		var sourceInstances = new List<ProcessInstance>();
 		var instanceEnum = _runtimeService.ListAsync(sourceDefId);
 		var enumTask = instanceEnum.GetAsyncEnumerator();
 		while (enumTask.MoveNextAsync().AsTask().Result)
 		{
-			var instance = enumTask.Current;
-			instance.ProcessDefinitionId = targetDefId;
-			migratedInstanceIds.Add(instance.Id.ToString());
-			migratedActivities[instance.Id.ToString()] = new List<string>();
-
-			var historyEnum = _historyService.ListByProcessInstanceAsync(instance.Id);
-			var histTask = historyEnum.GetAsyncEnumerator();
-			while (histTask.MoveNextAsync().AsTask().Result)
-			{
-				var evt = histTask.Current;
-				// Example: Remap activity IDs in event details
-				if (!string.IsNullOrEmpty(evt.Details) && plan.ActivityMappings != null)
-				{
-					foreach (var mapping in plan.ActivityMappings)
-					{
-						if (evt.Details.Contains(mapping.Key))
-						{
-							evt.Details = evt.Details.Replace(mapping.Key, mapping.Value);
-							migratedActivities[instance.Id.ToString()].Add(mapping.Value);
-						}
-					}
-				}
-			}
+			MigrateInstance(enumTask.Current, targetDefId, plan, migratedInstanceIds, migratedActivities);
 		}
-		var endTime = DateTime.UtcNow;
 
 		var success = errors.Count == 0;
 		return new ProcessMigrationResult
@@ -77,6 +52,35 @@ public class ProcessMigrationService : IProcessMigrationService
 			// Extended analytics
 			// You can add migratedActivities and migration duration to the result model if needed
 		};
+	}
+
+	private void MigrateInstance(
+		ProcessInstance instance,
+		Guid targetDefId,
+		ProcessMigrationPlan plan,
+		List<string> migratedInstanceIds,
+		Dictionary<string, List<string>> migratedActivities)
+	{
+		instance.ProcessDefinitionId = targetDefId;
+		var instanceId = instance.Id.ToString();
+		migratedInstanceIds.Add(instanceId);
+		migratedActivities[instanceId] = new List<string>();
+
+		var historyEnum = _historyService.ListByProcessInstanceAsync(instance.Id);
+		var histTask = historyEnum.GetAsyncEnumerator();
+		while (histTask.MoveNextAsync().AsTask().Result)
+		{
+			var evt = histTask.Current;
+			// Example: Remap activity IDs in event details
+			if (!string.IsNullOrEmpty(evt.Details) && plan.ActivityMappings != null)
+			{
+				foreach (var mapping in plan.ActivityMappings.Where(mapping => evt.Details.Contains(mapping.Key, StringComparison.Ordinal)))
+				{
+					evt.Details = evt.Details.Replace(mapping.Key, mapping.Value, StringComparison.Ordinal);
+					migratedActivities[instanceId].Add(mapping.Value);
+				}
+			}
+		}
 	}
 
 	// Simulated: fetch process instances by definition ID

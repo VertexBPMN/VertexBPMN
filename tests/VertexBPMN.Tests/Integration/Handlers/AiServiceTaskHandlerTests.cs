@@ -6,98 +6,100 @@ using VertexBPMN.Domain.Exceptions;
 
 namespace VertexBPMN.Tests.Integration.Handlers;
 
-public class AiServiceTaskHandlerTests
+public sealed class AiServiceTaskHandlerTests : IDisposable
 {
-    private readonly Mock<HttpMessageHandler> _httpMessageHandlerMock;
-    private readonly HttpClient _httpClient;
+	public void Dispose() => _httpClient.Dispose();
 
-    public AiServiceTaskHandlerTests()
-    {
-        _httpMessageHandlerMock = new Mock<HttpMessageHandler>();
-        _httpClient = new HttpClient(_httpMessageHandlerMock.Object);
-    }
+	private readonly Mock<HttpMessageHandler> _httpMessageHandlerMock;
+	private readonly HttpClient _httpClient;
 
-    [Fact]
-    public async Task ExecuteAsync_MockProvider_ShouldReturnExpectedResult()
-    {
-        // Arrange
-        var logger = new Mock<ILogger<AIServiceTaskHandler>>();
-        var handler = new AIServiceTaskHandler(logger.Object, _httpClient);
+	public AiServiceTaskHandlerTests()
+	{
+		_httpMessageHandlerMock = new Mock<HttpMessageHandler>();
+		_httpClient = new HttpClient(_httpMessageHandlerMock.Object);
+	}
 
-        var attributes = new Dictionary<string, string>
-        {
-            { "ai:provider", "mock" },
-            { "ai:model", "test-model" },
-            { "ai:prompt", "Test prompt" },
-            { "ai:resultVariable", "testResult" }
-        };
+	[Fact]
+	public async Task ExecuteAsync_MockProvider_ShouldReturnExpectedResult()
+	{
+		// Arrange
+		var logger = new Mock<ILogger<AIServiceTaskHandler>>();
+		var handler = new AIServiceTaskHandler(logger.Object, _httpClient);
 
-        var variables = new Dictionary<string, object>
-        {
-            { "customerId", "123" }
-        };
+		var attributes = new Dictionary<string, string>(StringComparer.Ordinal)
+		{
+			{ "ai:provider", "mock" },
+			{ "ai:model", "test-model" },
+			{ "ai:prompt", "Test prompt" },
+			{ "ai:resultVariable", "testResult" }
+		};
 
-        // Act
-        await handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken);
+		var variables = new Dictionary<string, object>(StringComparer.Ordinal)
+		{
+			{ "customerId", "123" }
+		};
 
-        // Assert
-        variables.ShouldContainKey("testResult");
-        var result = Assert.IsType<string>(variables["testResult"]);
-        result.ShouldContain("Mock AI");
-        result.ShouldContain("test-model");
-        result.ShouldContain("Test prompt");
-    }
+		// Act
+		await handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken);
 
-    [Fact]
-    public async Task ExecuteAsync_UnsupportedProvider_ShouldThrowException()
-    {
-        // Arrange
-        var logger = new Mock<ILogger<AIServiceTaskHandler>>();
-        var httpClient = new HttpClient();
-        var handler = new AIServiceTaskHandler(logger.Object, _httpClient);
+		// Assert
+		variables.ShouldContainKey("testResult");
+		var result = Assert.IsType<string>(variables["testResult"]);
+		result.ShouldContain("Mock AI");
+		result.ShouldContain("test-model");
+		result.ShouldContain("Test prompt");
+	}
 
-        var attributes = new Dictionary<string, string>
-        {
-            { "ai:provider", "unsupported-provider" },
+	[Fact]
+	public async Task ExecuteAsync_UnsupportedProvider_ShouldThrowException()
+	{
+		// Arrange
+		var logger = new Mock<ILogger<AIServiceTaskHandler>>();
+		using var httpClient = new HttpClient();
+		var handler = new AIServiceTaskHandler(logger.Object, _httpClient);
+
+		var attributes = new Dictionary<string, string>(StringComparer.Ordinal)
+		{
+			{ "ai:provider", "unsupported-provider" },
+			{ "ai:prompt", "Test prompt" }
+		};
+
+		var variables = new Dictionary<string, object>(StringComparer.Ordinal);
+
+		// Act & Assert
+		var exception = await Should.ThrowAsync<ServiceTaskExecutionException>(
+			() => handler.ExecuteAsync(attributes, variables));
+
+		exception.Message.ShouldContain("Unsupported AI provider: unsupported-provider");
+	}
+
+	[Fact]
+	public async Task ExecuteAsync_OnException_ShouldSetErrorVariables()
+	{
+		// Arrange
+		var logger = new Mock<ILogger<AIServiceTaskHandler>>();
+		using var httpClient = new HttpClient();
+		var handler = new AIServiceTaskHandler(logger.Object, _httpClient);
+
+		var attributes = new Dictionary<string, string>(StringComparer.Ordinal)
+		{
+			{ "ai:provider", "openai" }, // Will fail without API key
             { "ai:prompt", "Test prompt" }
-        };
+		};
 
-        var variables = new Dictionary<string, object>();
+		var variables = new Dictionary<string, object>(StringComparer.Ordinal);
 
-        // Act & Assert
-        var exception = await Should.ThrowAsync<ServiceTaskExecutionException>(
-            () => handler.ExecuteAsync(attributes, variables));
+		// Ensure no API key is set
+		Environment.SetEnvironmentVariable("OPENAI_API_KEY", null);
 
-        exception.Message.ShouldContain("Unsupported AI provider: unsupported-provider");
-    }
+		// Act & Assert
+		await Should.ThrowAsync<ServiceTaskExecutionException>(
+			() => handler.ExecuteAsync(attributes, variables));
 
-    [Fact]
-    public async Task ExecuteAsync_OnException_ShouldSetErrorVariables()
-    {
-        // Arrange
-        var logger = new Mock<ILogger<AIServiceTaskHandler>>();
-        var httpClient = new HttpClient();
-        var handler = new AIServiceTaskHandler(logger.Object, _httpClient);
-
-        var attributes = new Dictionary<string, string>
-        {
-            { "ai:provider", "openai" }, // Will fail without API key
-            { "ai:prompt", "Test prompt" }
-        };
-
-        var variables = new Dictionary<string, object>();
-
-        // Ensure no API key is set
-        Environment.SetEnvironmentVariable("OPENAI_API_KEY", null);
-
-        // Act & Assert
-        await Should.ThrowAsync<ServiceTaskExecutionException>(
-            () => handler.ExecuteAsync(attributes, variables));
-
-        // Verify error variables are set
-        variables.ShouldContainKey("aiTask_error");
-        variables.ShouldContainKey("aiTask_failed");
-        variables["aiTask_failed"].ShouldBe(true);
-        Assert.IsType<string>(variables["aiTask_error"]).ShouldContain("OPENAI_API_KEY");
-    }
+		// Verify error variables are set
+		variables.ShouldContainKey("aiTask_error");
+		variables.ShouldContainKey("aiTask_failed");
+		variables["aiTask_failed"].ShouldBe(true);
+		Assert.IsType<string>(variables["aiTask_error"]).ShouldContain("OPENAI_API_KEY");
+	}
 }

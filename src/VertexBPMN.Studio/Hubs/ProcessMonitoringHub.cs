@@ -2,7 +2,8 @@ using Microsoft.AspNetCore.SignalR;
 
 namespace VertexBPMN.Studio.Hubs;
 
-public class ProcessMonitoringHub : Hub
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "ASP.NET Core activates this public SignalR endpoint.")]
+public sealed class ProcessMonitoringHub : Hub
 {
     public async Task JoinEngineGroup(string engineId)
     {

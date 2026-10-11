@@ -43,7 +43,7 @@ internal static class GitModelTree
 		foreach (var entry in text.Split('\0', StringSplitOptions.RemoveEmptyEntries))
 		{
 			cancellationToken.ThrowIfCancellationRequested();
-			var tab = entry.IndexOf('\t');
+			var tab = entry.IndexOf('\t', StringComparison.Ordinal);
 			if (tab < 0)
 			{
 				throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);

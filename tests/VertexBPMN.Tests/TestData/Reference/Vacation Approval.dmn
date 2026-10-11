@@ -1,0 +1,359 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<semantic:definitions xmlns:semantic="https://www.omg.org/spec/DMN/20191111/MODEL/" xmlns:triso="http://www.trisotech.com/2015/triso/modeling" xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/" xmlns:di="http://www.omg.org/spec/DMN/20180521/DI/" xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/" xmlns:trisodmn="http://www.trisotech.com/2016/triso/dmn" xmlns:feel="https://www.omg.org/spec/DMN/20191111/FEEL/" xmlns:tc="http://www.omg.org/spec/DMN/20160719/testcase" xmlns:drools="http://www.drools.org/kie/dmn/1.1" xmlns:openapi="https://openapis.org/omg/extension/1.0" xmlns:dmn11="http://www.omg.org/spec/DMN/20151101/dmn.xsd" xmlns:rss="http://purl.org/rss/2.0/" xmlns:trisofeed="http://trisotech.com/feed" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"               xmlns:xsd="http://www.w3.org/2001/XMLSchema"  xmlns:boxedext="https://www.trisotech.com/spec/DMN/20191111/EXT/"   xmlns:i18n="http://www.omg.org/spec/BPMN/non-normative/extensions/i18n/1.0"  xmlns="http://www.trisotech.com/definitions/_195db244-42dd-4beb-ac9e-cc8a9b2b8643" id="_195db244-42dd-4beb-ac9e-cc8a9b2b8643" name="Vacation Approval" namespace="http://www.trisotech.com/definitions/_195db244-42dd-4beb-ac9e-cc8a9b2b8643" exporter="Decision Modeler" exporterVersion="7.3.4" xml:lang="en" triso:logoChoice="Default" triso:version="1.0" triso:state="Draft">
+    <semantic:description>&lt;p&gt;Automatic vacation approval rules for EU-Rent&lt;/p&gt;</semantic:description>
+    <semantic:extensionElements>
+        <triso:notes>&lt;p&gt;&lt;strong&gt;Challenges&lt;/strong&gt;&lt;/p&gt;&lt;ul&gt;&lt;/ul&gt;</triso:notes>
+        <triso:graphRelations/>
+    </semantic:extensionElements>
+    <semantic:itemDefinition name="Approval" label="Approval" isCollection="false">
+        <semantic:typeRef>string</semantic:typeRef>
+        <semantic:allowedValues triso:constraintsType="enumeration">
+            <semantic:extensionElements>
+                <triso:constraintDetails>
+                    <triso:display>"Approved", "Refused", "Manual Validation Required"</triso:display>
+                    <triso:choices>
+                        <triso:value>"Approved"</triso:value>
+                        <triso:display>"Approved"</triso:display>
+                    </triso:choices>
+                    <triso:choices>
+                        <triso:value>"Refused"</triso:value>
+                        <triso:display>"Refused"</triso:display>
+                    </triso:choices>
+                    <triso:choices>
+                        <triso:value>"Manual Validation Required"</triso:value>
+                        <triso:display>"Manual Validation Required"</triso:display>
+                    </triso:choices>
+                </triso:constraintDetails>
+            </semantic:extensionElements>
+            <semantic:text>"Approved","Refused","Manual Validation Required"</semantic:text>
+        </semantic:allowedValues>
+    </semantic:itemDefinition>
+    <semantic:itemDefinition name="Vacation_Approval" label="Vacation Approval" isCollection="false">
+        <semantic:itemComponent id="_b328882e-9b59-4382-83bb-640eb6551309" name="Approval" isCollection="false">
+            <semantic:typeRef>Approval</semantic:typeRef>
+            <semantic:allowedValues triso:constraintsType="enumeration">
+                <semantic:extensionElements>
+                    <triso:constraintDetails>
+                        <triso:display>"Approved", "Refused", "Manual Validation Required"</triso:display>
+                        <triso:choices>
+                            <triso:value>"Approved"</triso:value>
+                            <triso:display>"Approved"</triso:display>
+                        </triso:choices>
+                        <triso:choices>
+                            <triso:value>"Refused"</triso:value>
+                            <triso:display>"Refused"</triso:display>
+                        </triso:choices>
+                        <triso:choices>
+                            <triso:value>"Manual Validation Required"</triso:value>
+                            <triso:display>"Manual Validation Required"</triso:display>
+                        </triso:choices>
+                    </triso:constraintDetails>
+                </semantic:extensionElements>
+                <semantic:text>"Approved","Refused","Manual Validation Required"</semantic:text>
+            </semantic:allowedValues>
+        </semantic:itemComponent>
+        <semantic:itemComponent id="_4dc033ad-8616-4db6-a679-0a33f547d2f7" name="Reason" isCollection="false">
+            <semantic:typeRef>string</semantic:typeRef>
+        </semantic:itemComponent>
+    </semantic:itemDefinition>
+    <semantic:decisionService id="_195db244-42dd-4beb-ac9e-cc8a9b2b8643_DS" name="Whole Model Decision Service" triso:dynamicDecisionService="true" triso:wholeModelService="true">
+        <semantic:variable name="Whole Model Decision Service" id="_195db244-42dd-4beb-ac9e-cc8a9b2b8643_DS_VAR" typeRef="Any"/>
+        <semantic:outputDecision href="#_9ba1b7b0-c84d-484f-9203-3792edc6dcbd"/>
+        <semantic:encapsulatedDecision href="#_f3b7578e-ab9e-461f-9438-dc9d466f0d99"/>
+        <semantic:inputData href="#_c8169d21-b1b6-4e97-9891-7bda071cb38b"/>
+        <semantic:inputData href="#_568a7704-dbb4-4750-a01b-3144d56acf24"/>
+        <semantic:inputData href="#_2fc2b314-570f-4fb6-aa34-0fa7a2e35e27"/>
+    </semantic:decisionService>
+    <semantic:decisionService id="_166800f2-c429-434b-815b-6ae3d77fc0db_DS" name="Diagram Vacation Approval" triso:dynamicDecisionService="true">
+        <semantic:variable name="Diagram Vacation Approval" id="_166800f2-c429-434b-815b-6ae3d77fc0db_DS_VAR" typeRef="Any"/>
+        <semantic:outputDecision href="#_9ba1b7b0-c84d-484f-9203-3792edc6dcbd"/>
+        <semantic:encapsulatedDecision href="#_f3b7578e-ab9e-461f-9438-dc9d466f0d99"/>
+        <semantic:inputData href="#_c8169d21-b1b6-4e97-9891-7bda071cb38b"/>
+        <semantic:inputData href="#_568a7704-dbb4-4750-a01b-3144d56acf24"/>
+        <semantic:inputData href="#_2fc2b314-570f-4fb6-aa34-0fa7a2e35e27"/>
+    </semantic:decisionService>
+    <semantic:decision id="_9ba1b7b0-c84d-484f-9203-3792edc6dcbd" name="Vacation Approval Status" triso:useOutputTypeAsAnswer="false">
+        <semantic:variable name="Vacation Approval Status" id="_78018588-f35a-44e5-ba49-8634d17adfd5" typeRef="Vacation_Approval"/>
+        <semantic:informationRequirement id="_79f1cecf-bab2-41f8-ba3d-c4769a5ad486">
+            <semantic:requiredInput href="#_2fc2b314-570f-4fb6-aa34-0fa7a2e35e27"/>
+        </semantic:informationRequirement>
+        <semantic:informationRequirement id="_40fbfc9d-73f6-4616-8936-92afd3d952e8">
+            <semantic:requiredDecision href="#_f3b7578e-ab9e-461f-9438-dc9d466f0d99"/>
+        </semantic:informationRequirement>
+        <semantic:informationRequirement id="_68002aff-2225-40cb-a2e5-070589411a00">
+            <semantic:requiredInput href="#_568a7704-dbb4-4750-a01b-3144d56acf24"/>
+        </semantic:informationRequirement>
+        <semantic:informationRequirement id="_59eb14f0-8e40-4607-a603-fd012e627396">
+            <semantic:requiredInput href="#_c8169d21-b1b6-4e97-9891-7bda071cb38b"/>
+        </semantic:informationRequirement>
+        <semantic:decisionTable triso:descriptionVisible="false" id="_bcc020c6-47e4-4e10-a339-bcf99c935edd" hitPolicy="FIRST" outputLabel="Vacation Approval Status" typeRef="Vacation_Approval" triso:expressionId="_e52ccb69-9604-4b56-855b-b0a83ed199f8">
+            <semantic:input id="_1db4e1fc-e573-471d-bf2a-ef50441f8246" label="Days Remaining">
+                <semantic:inputExpression typeRef="number">
+                    <semantic:text>Days Remaining</semantic:text>
+                </semantic:inputExpression>
+            </semantic:input>
+            <semantic:input id="_9a010045-5de1-4151-9980-28b277799457" label="Number of days">
+                <semantic:inputExpression typeRef="number">
+                    <semantic:text>Number of days</semantic:text>
+                </semantic:inputExpression>
+            </semantic:input>
+            <semantic:input id="_f82874eb-79a5-49d1-ad52-848c18e79c90" triso:allowNull="true" label="From">
+                <semantic:inputExpression typeRef="dateTime">
+                    <semantic:text>From</semantic:text>
+                </semantic:inputExpression>
+            </semantic:input>
+            <semantic:input id="_ae4551b2-5f8a-4ce5-9a18-4c8dfc09fbe0" triso:allowNull="true" label="To">
+                <semantic:inputExpression typeRef="dateTime">
+                    <semantic:text>To</semantic:text>
+                </semantic:inputExpression>
+            </semantic:input>
+            <semantic:output id="_3f4025a4-165b-4711-b267-942266623962" triso:allowNull="true" name="Approval" typeRef="Approval">
+                <semantic:outputValues triso:constraintsType="enumeration">
+                    <semantic:text>"Approved","Refused","Manual Validation Required",null</semantic:text>
+                </semantic:outputValues>
+            </semantic:output>
+            <semantic:output id="_45a31d48-aba5-475b-b5d3-d6b42ba17719" triso:allowNull="true" name="Reason" typeRef="string"/>
+            <semantic:annotation name="Description"/>
+            <semantic:rule id="_06f39b6a-caeb-448c-8904-a7622f214124">
+                <semantic:inputEntry id="_8d26607b-0126-4b19-894b-0e34fbb15fa5">
+                    <semantic:text>-</semantic:text>
+                </semantic:inputEntry>
+                <semantic:inputEntry id="_5e30934b-37ab-4b86-8707-66e7399504ea">
+                    <semantic:text>-</semantic:text>
+                </semantic:inputEntry>
+                <semantic:inputEntry id="_ff7cb7af-e42f-491a-be4b-83a8802e9107">
+                    <semantic:text>&gt;= To</semantic:text>
+                </semantic:inputEntry>
+                <semantic:inputEntry id="_8026a3d2-4adc-435d-9f0c-5a3390d79de5">
+                    <semantic:text>-</semantic:text>
+                </semantic:inputEntry>
+                <semantic:outputEntry id="_9bc81315-9f53-49df-a847-d5940b25d240">
+                    <semantic:text>"Refused"</semantic:text>
+                </semantic:outputEntry>
+                <semantic:outputEntry id="_b5912d3c-91d1-490f-b627-19c007b1973c">
+                    <semantic:text>"Begining date is after the end date"</semantic:text>
+                </semantic:outputEntry>
+                <semantic:annotationEntry>
+                    <semantic:text>Error on date range</semantic:text>
+                </semantic:annotationEntry>
+            </semantic:rule>
+            <semantic:rule id="_447aff51-64df-4750-8f1d-72d236dbd804">
+                <semantic:inputEntry id="_d9f3d075-92ca-42da-917d-17cd0fdadba2">
+                    <semantic:text>-</semantic:text>
+                </semantic:inputEntry>
+                <semantic:inputEntry id="_43ce48b1-8c02-4e7f-a5d3-c02a87319cbb">
+                    <semantic:text>-</semantic:text>
+                </semantic:inputEntry>
+                <semantic:inputEntry id="_c84b2e59-7c1a-4060-bc96-778f4f12be6a">
+                    <semantic:text>date (?) &lt;= date(now() + duration("P7D"))</semantic:text>
+                </semantic:inputEntry>
+                <semantic:inputEntry id="_79984cb4-3bce-4bee-8020-b18fb8fb982f">
+                    <semantic:text>-</semantic:text>
+                </semantic:inputEntry>
+                <semantic:outputEntry id="_15d58702-b45b-4b69-b305-a91675d8d664">
+                    <semantic:text>"Refused"</semantic:text>
+                </semantic:outputEntry>
+                <semantic:outputEntry id="_1c522342-777a-47f8-b8b6-c06bf593277e">
+                    <semantic:text>"Vacation Requests need to be done at least 1 week prior to the start date"</semantic:text>
+                </semantic:outputEntry>
+                <semantic:annotationEntry>
+                    <semantic:text>Dates too close</semantic:text>
+                </semantic:annotationEntry>
+            </semantic:rule>
+            <semantic:rule id="_f9894ec8-82b1-4ed6-8f43-544e5a0e8d73">
+                <semantic:inputEntry id="_8232a136-c91e-43f2-8023-0860fec3d0ee">
+                    <semantic:text>&gt;= 2</semantic:text>
+                </semantic:inputEntry>
+                <semantic:inputEntry id="_f1fbc659-611d-4f28-8446-1cebe51e969e">
+                    <semantic:text>&lt;= 2</semantic:text>
+                </semantic:inputEntry>
+                <semantic:inputEntry id="_d3ecc89b-e240-42bd-9ee5-e9f52677dd1e">
+                    <semantic:text>-</semantic:text>
+                </semantic:inputEntry>
+                <semantic:inputEntry id="_ab20cc23-f9ab-494d-b050-2b7170da5613">
+                    <semantic:text>-</semantic:text>
+                </semantic:inputEntry>
+                <semantic:outputEntry id="_8ef13258-a3bb-44d3-8a4b-6a2ee482b3d5">
+                    <semantic:text>"Approved"</semantic:text>
+                </semantic:outputEntry>
+                <semantic:outputEntry id="_67d8dc9e-04a2-4f39-a89a-27c14f498e10">
+                    <semantic:text>"Approved Automatically"</semantic:text>
+                </semantic:outputEntry>
+                <semantic:annotationEntry>
+                    <semantic:text>If two days or less and the employee has enough vacation time</semantic:text>
+                </semantic:annotationEntry>
+            </semantic:rule>
+            <semantic:rule id="_dac6bcad-0905-4c3c-9c79-999763070e3b">
+                <semantic:inputEntry id="_d891a21f-b66f-4abf-a83a-44ccbf4076c3">
+                    <semantic:text>&gt;= Number of days</semantic:text>
+                </semantic:inputEntry>
+                <semantic:inputEntry id="_d2148ce8-9619-49c1-a4fd-b5e1bc0f7184">
+                    <semantic:text>&gt; 2</semantic:text>
+                </semantic:inputEntry>
+                <semantic:inputEntry id="_854a8c58-b12c-4ae0-9ec9-fb96e01ff020">
+                    <semantic:text>-</semantic:text>
+                </semantic:inputEntry>
+                <semantic:inputEntry id="_6cf9ed9f-6886-4ec8-a1e8-b149bde4b0a9">
+                    <semantic:text>-</semantic:text>
+                </semantic:inputEntry>
+                <semantic:outputEntry id="_6c75a6d8-f6d9-4895-bab0-aeee46359dae">
+                    <semantic:text>"Manual Validation Required"</semantic:text>
+                </semantic:outputEntry>
+                <semantic:outputEntry id="_a78c6b13-1358-4596-8cd0-e19bd389904e">
+                    <semantic:text>"Manual Validation Required"</semantic:text>
+                </semantic:outputEntry>
+                <semantic:annotationEntry>
+                    <semantic:text>Approval required for more than two days</semantic:text>
+                </semantic:annotationEntry>
+            </semantic:rule>
+            <semantic:rule id="_b59afe0d-5b42-4423-8e70-d2ec8f0d64fc">
+                <semantic:inputEntry id="_a3b27c3a-9813-417b-9efa-b7f8d18c7b6f">
+                    <semantic:text>&lt;= Number of days</semantic:text>
+                </semantic:inputEntry>
+                <semantic:inputEntry id="_ed9266b6-6b5c-4f42-99b7-8e4055b78696">
+                    <semantic:text>&gt; 2</semantic:text>
+                </semantic:inputEntry>
+                <semantic:inputEntry id="_544f2a21-efce-48aa-af1e-ee0bf23814e2">
+                    <semantic:text>-</semantic:text>
+                </semantic:inputEntry>
+                <semantic:inputEntry id="_1d837cd6-7102-496f-aaa2-663a5065178b">
+                    <semantic:text>-</semantic:text>
+                </semantic:inputEntry>
+                <semantic:outputEntry id="_48e793e4-9b30-4157-a65d-e7fbad7d5160">
+                    <semantic:text>"Refused"</semantic:text>
+                </semantic:outputEntry>
+                <semantic:outputEntry id="_560c14d2-075d-4fe0-b0e3-b0d22b1b1a04">
+                    <semantic:text>"Not enough days available in the vacation day bank ("  + string(Days Remaining )+ ")"</semantic:text>
+                </semantic:outputEntry>
+                <semantic:annotationEntry>
+                    <semantic:text>Not enough vacation remaining</semantic:text>
+                </semantic:annotationEntry>
+            </semantic:rule>
+            <semantic:rule id="_96d35e20-0072-4364-b91e-44f03e57af23">
+                <semantic:inputEntry id="_1d08df8f-9d8c-43bb-b594-6ede88162e1a">
+                    <semantic:text>-</semantic:text>
+                </semantic:inputEntry>
+                <semantic:inputEntry id="_37971b5e-b3e4-4360-88b7-74e80ce2dae3">
+                    <semantic:text>-</semantic:text>
+                </semantic:inputEntry>
+                <semantic:inputEntry id="_f5917b39-7bfe-47cc-b751-08499ef7fbfd">
+                    <semantic:text>-</semantic:text>
+                </semantic:inputEntry>
+                <semantic:inputEntry id="_c36104bd-92b2-43fa-965d-76de4a402881">
+                    <semantic:text>-</semantic:text>
+                </semantic:inputEntry>
+                <semantic:outputEntry id="_d268e4d8-4e8f-4e78-9ad8-20f211f01d10">
+                    <semantic:text>"Refused"</semantic:text>
+                </semantic:outputEntry>
+                <semantic:outputEntry id="_18e87d39-2993-4498-8863-b4e8a02f8b47">
+                    <semantic:text>"Refused"</semantic:text>
+                </semantic:outputEntry>
+                <semantic:annotationEntry>
+                    <semantic:text>Catch All</semantic:text>
+                </semantic:annotationEntry>
+            </semantic:rule>
+        </semantic:decisionTable>
+    </semantic:decision>
+    <semantic:inputData id="_c8169d21-b1b6-4e97-9891-7bda071cb38b" name="From">
+        <semantic:variable name="From" id="_18cb221f-c1dc-4def-80e3-185fe30c5ffe" typeRef="dateTime"/>
+    </semantic:inputData>
+    <semantic:inputData id="_568a7704-dbb4-4750-a01b-3144d56acf24" name="To">
+        <semantic:variable name="To" id="_ced0379a-716f-4567-9059-84b92b0ae340" typeRef="dateTime"/>
+    </semantic:inputData>
+    <semantic:decision id="_f3b7578e-ab9e-461f-9438-dc9d466f0d99" name="Number of days" triso:useOutputTypeAsAnswer="false">
+        <semantic:variable name="Number of days" id="_df5e920f-52bd-41af-963a-241674501bff" typeRef="number"/>
+        <semantic:informationRequirement id="_41c55d6f-dba2-4771-a659-0d8c21d9987d">
+            <semantic:requiredInput href="#_c8169d21-b1b6-4e97-9891-7bda071cb38b"/>
+        </semantic:informationRequirement>
+        <semantic:informationRequirement id="_4c9aee94-f08e-4ed3-ac08-98801ab6e868">
+            <semantic:requiredInput href="#_568a7704-dbb4-4750-a01b-3144d56acf24"/>
+        </semantic:informationRequirement>
+        <semantic:context id="_24209c43-7c49-4627-b00c-5f6bdec7121b" triso:descriptionVisible="false" typeRef="number" triso:expressionId="_f7ad5ac1-24a0-498c-9c7c-a9473a4ac96f">
+            <semantic:contextEntry id="_cbda604a-1ab3-40d8-83fa-57f1abc2124a">
+                <semantic:variable name="Vacation Duration" id="_2818cfdd-7e7f-4aa2-8e71-34eb6d9987b3" typeRef="dayTimeDuration"/>
+                <semantic:literalExpression id="_f036ae6a-65f2-4fe8-8c61-7b652c9a6600" triso:descriptionVisible="false">
+                    <semantic:text>To - From</semantic:text>
+                </semantic:literalExpression>
+            </semantic:contextEntry>
+            <semantic:contextEntry id="_0ac500dd-2e18-4751-af32-d23529a67839">
+                <semantic:variable name="Number of days" id="_d1a2b494-a725-4f5b-8638-5102db0480c6" typeRef="Any"/>
+                <semantic:literalExpression id="_a33372ed-c4a9-4c49-ae49-85ca62afbfd2" triso:descriptionVisible="false">
+                    <semantic:text>Vacation Duration.days</semantic:text>
+                </semantic:literalExpression>
+            </semantic:contextEntry>
+            <semantic:contextEntry id="_367ef119-9ca7-462c-bc8e-62e56e7c838d">
+                <semantic:literalExpression id="_21081502-447c-48e3-9de7-7c010f61d7c9">
+                    <semantic:text>floor(Number of days)</semantic:text>
+                </semantic:literalExpression>
+            </semantic:contextEntry>
+        </semantic:context>
+    </semantic:decision>
+    <semantic:inputData id="_2fc2b314-570f-4fb6-aa34-0fa7a2e35e27" name="Days Remaining">
+        <semantic:variable name="Days Remaining" id="_9afdbc72-b484-4237-85d6-662b6e49e86d" typeRef="number"/>
+    </semantic:inputData>
+    <semantic:decisionService id="_d394e1e3-3bf5-4adc-880e-8ed9d46c2160" name="Vacation Approval">
+        <semantic:variable name="Vacation Approval" id="_e6c6ba57-291f-47e5-b9c2-af04a073fe30" typeRef="Any"/>
+        <semantic:outputDecision href="#_9ba1b7b0-c84d-484f-9203-3792edc6dcbd"/>
+        <semantic:encapsulatedDecision href="#_f3b7578e-ab9e-461f-9438-dc9d466f0d99"/>
+        <semantic:inputData href="#_c8169d21-b1b6-4e97-9891-7bda071cb38b"/>
+        <semantic:inputData href="#_568a7704-dbb4-4750-a01b-3144d56acf24"/>
+        <semantic:inputData href="#_2fc2b314-570f-4fb6-aa34-0fa7a2e35e27"/>
+    </semantic:decisionService>
+    <dmndi:DMNDI>
+        <dmndi:DMNDiagram id="_166800f2-c429-434b-815b-6ae3d77fc0db" triso:modelElementRef="_8299dd03-a901-415e-95f5-b75a2b8fe734" name="Vacation Approval">
+            <di:extension/>
+            <dmndi:Size height="1050" width="1485"/>
+            <dmndi:DMNShape id="_28b4a070-f847-4c20-8e86-52b103292a89" dmnElementRef="_9ba1b7b0-c84d-484f-9203-3792edc6dcbd">
+                <dc:Bounds x="527" y="170" width="153" height="60"/>
+                <dmndi:DMNLabel sharedStyle="LS_195db244-42dd-4beb-ac9e-cc8a9b2b8643_0" trisodmn:defaultBounds="true"/>
+            </dmndi:DMNShape>
+            <dmndi:DMNShape id="_41ac670a-e7f5-40b6-8b6a-d16f4f0559e0" dmnElementRef="_c8169d21-b1b6-4e97-9891-7bda071cb38b">
+                <dc:Bounds x="288.7588291168213" y="461.99999618530273" width="135.48234176635742" height="60.00000762939453"/>
+                <dmndi:DMNLabel sharedStyle="LS_195db244-42dd-4beb-ac9e-cc8a9b2b8643_0"/>
+            </dmndi:DMNShape>
+            <dmndi:DMNShape id="_8330dc74-98e4-4f80-8d72-dcf03199abb9" dmnElementRef="_568a7704-dbb4-4750-a01b-3144d56acf24">
+                <dc:Bounds x="500.5" y="461.99999618530273" width="135.48234176635742" height="60.00000762939453"/>
+                <dmndi:DMNLabel sharedStyle="LS_195db244-42dd-4beb-ac9e-cc8a9b2b8643_0"/>
+            </dmndi:DMNShape>
+            <dmndi:DMNShape id="_fe0b94d8-7cf9-45c9-b22c-31321021e118" dmnElementRef="_f3b7578e-ab9e-461f-9438-dc9d466f0d99">
+                <dc:Bounds x="280" y="280" width="153" height="60"/>
+                <dmndi:DMNLabel sharedStyle="LS_195db244-42dd-4beb-ac9e-cc8a9b2b8643_0"/>
+            </dmndi:DMNShape>
+            <dmndi:DMNShape id="_5e7119f8-de29-49c5-8953-5b253c34c144" dmnElementRef="_2fc2b314-570f-4fb6-aa34-0fa7a2e35e27">
+                <dc:Bounds x="725.7588291168213" y="461.99999618530273" width="135.48234176635742" height="60.00000762939453"/>
+                <dmndi:DMNLabel sharedStyle="LS_195db244-42dd-4beb-ac9e-cc8a9b2b8643_0"/>
+            </dmndi:DMNShape>
+            <dmndi:DMNEdge id="_88fdaa16-fede-4322-827b-4bb88a84eb4f" dmnElementRef="_41c55d6f-dba2-4771-a659-0d8c21d9987d" sourceElement="_41ac670a-e7f5-40b6-8b6a-d16f4f0559e0" targetElement="_fe0b94d8-7cf9-45c9-b22c-31321021e118">
+                <di:waypoint x="356.4968013763428" y="461.99999618530273"/>
+                <di:waypoint x="336.5" y="340"/>
+                <dmndi:DMNLabel sharedStyle="LS_195db244-42dd-4beb-ac9e-cc8a9b2b8643_0"/>
+            </dmndi:DMNEdge>
+            <dmndi:DMNEdge id="_57443b0e-2a10-45ad-97d4-0fecb1e40910" dmnElementRef="_4c9aee94-f08e-4ed3-ac08-98801ab6e868" sourceElement="_8330dc74-98e4-4f80-8d72-dcf03199abb9" targetElement="_fe0b94d8-7cf9-45c9-b22c-31321021e118">
+                <di:waypoint x="568.2379722595215" y="461.99999618530273"/>
+                <di:waypoint x="406.5" y="340"/>
+                <dmndi:DMNLabel sharedStyle="LS_195db244-42dd-4beb-ac9e-cc8a9b2b8643_0"/>
+            </dmndi:DMNEdge>
+            <dmndi:DMNEdge id="_6867239f-28e1-4539-ab6c-17caa73fc409" dmnElementRef="_79f1cecf-bab2-41f8-ba3d-c4769a5ad486" sourceElement="_5e7119f8-de29-49c5-8953-5b253c34c144" targetElement="_28b4a070-f847-4c20-8e86-52b103292a89">
+                <di:waypoint x="793.4968013763428" y="461.99999618530273"/>
+                <di:waypoint x="643.5" y="230"/>
+                <dmndi:DMNLabel sharedStyle="LS_195db244-42dd-4beb-ac9e-cc8a9b2b8643_0"/>
+            </dmndi:DMNEdge>
+            <dmndi:DMNEdge id="_2939124b-4243-4a72-9082-a2661e77b324" dmnElementRef="_40fbfc9d-73f6-4616-8936-92afd3d952e8" sourceElement="_fe0b94d8-7cf9-45c9-b22c-31321021e118" targetElement="_28b4a070-f847-4c20-8e86-52b103292a89">
+                <di:waypoint x="356.5" y="280"/>
+                <di:waypoint x="553.5" y="230"/>
+                <dmndi:DMNLabel sharedStyle="LS_195db244-42dd-4beb-ac9e-cc8a9b2b8643_0"/>
+            </dmndi:DMNEdge>
+            <dmndi:DMNEdge id="_0b36be6d-ad9a-460c-90b2-7ff5152f6052" dmnElementRef="_68002aff-2225-40cb-a2e5-070589411a00" sourceElement="_8330dc74-98e4-4f80-8d72-dcf03199abb9" targetElement="_28b4a070-f847-4c20-8e86-52b103292a89">
+                <di:waypoint x="635.9823417663574" y="491.99999618530273"/>
+                <di:waypoint x="623.5" y="230"/>
+                <dmndi:DMNLabel sharedStyle="LS_195db244-42dd-4beb-ac9e-cc8a9b2b8643_0"/>
+            </dmndi:DMNEdge>
+            <dmndi:DMNEdge id="_4ddfb073-7077-4006-9680-7faf56b11d4d" dmnElementRef="_59eb14f0-8e40-4607-a603-fd012e627396" sourceElement="_41ac670a-e7f5-40b6-8b6a-d16f4f0559e0" targetElement="_28b4a070-f847-4c20-8e86-52b103292a89">
+                <di:waypoint x="422.9968013763428" y="481.99999618530273"/>
+                <di:waypoint x="573.5" y="230"/>
+                <dmndi:DMNLabel sharedStyle="LS_195db244-42dd-4beb-ac9e-cc8a9b2b8643_0"/>
+            </dmndi:DMNEdge>
+        </dmndi:DMNDiagram>
+        <dmndi:DMNStyle id="LS_195db244-42dd-4beb-ac9e-cc8a9b2b8643_0" fontFamily="arial,helvetica,sans-serif" fontSize="11" fontBold="false" fontItalic="false" fontUnderline="false" fontStrikeThrough="false"/>
+    </dmndi:DMNDI>
+</semantic:definitions>

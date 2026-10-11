@@ -2,6 +2,10 @@
 
 Stand: 2026-10-05. Planungsbasis: `master`, Commit `cb88bee0f83807cd0d7906a4d092807a56b49969`.
 
+## Ergänzungsplan – generische Git-Server, 2026-10-09
+
+Der [Plan zur generischen Git-Server-Unterstützung](2026-10-09_Git-Generische-Server-Unterstuetzung_Implementierungsplan.md) konkretisiert die Erweiterung für eigene HTTPS-/SSH-Server, Azure DevOps und weitere Hostinganbieter. Er trennt Git-Grundfunktionen von optionalen PR-/MR-Adaptern und enthält kompatible Profil-/Jobmigration sowie eigene Sicherheits- und Abnahmegates. Die bisherigen G02–G09-Pflichten und offenen Abnahmen bleiben bestehen; der Ergänzungsplan ist noch nicht implementiert oder abgenommen.
+
 ## Konsolidierter Teilstand – 2026-10-08
 
 Die nachfolgenden historischen Fortschrittsnotizen und ungeschlossenen Paketcheckboxen sind keine Aussage, dass inzwischen angeschlossene Provider/API/Studio-Komponenten fehlen. G04–G06 sind implementiert, aber nicht insgesamt abgenommen. Sichtbar geprüft wurden Öffnen, Bearbeiten, echte GitHub-Commits/Pushes und Wiederöffnen im isolierten Testrepository; diese Teilnachweise ersetzen nicht alle GT01–GT19-Kriterien.

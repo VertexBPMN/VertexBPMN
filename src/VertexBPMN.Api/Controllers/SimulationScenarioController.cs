@@ -4,123 +4,145 @@ using System.Security.Claims;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 
-namespace VertexBPMN.Api.Controllers
+namespace VertexBPMN.Api.Controllers;
+[ApiController]
+[Route("api/simulation-scenario")]
+[ApiExplorerSettings(GroupName = "Simulation")]
+[Authorize(Policy = "TenantReadOnly")]
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public controller required for ASP.NET Core MVC discovery and activation.")]
+public class SimulationScenarioController : ControllerBase
 {
-    [ApiController]
-    [Route("api/simulation-scenario")]
-    [ApiExplorerSettings(GroupName = "Simulation")]
-    [Authorize(Policy = "TenantReadOnly")]
-    public class SimulationScenarioController : ControllerBase
-    {
-        private readonly ISimulationScenarioService _service;
-        public SimulationScenarioController(ISimulationScenarioService service)
-        {
-            _service = service;
-        }
+	private readonly ISimulationScenarioService _service;
+	public SimulationScenarioController(ISimulationScenarioService service)
+	{
+		_service = service;
+	}
 
-        /// <summary>
-        /// Returns all simulation scenarios for a tenant.
-        /// Non-admins are always pinned to their own tenant claim.
-        /// </summary>
-        [HttpGet]
-        public async Task<ActionResult<IEnumerable<Dto.SimulationScenarioDto>>> GetAll([FromQuery] string? tenantId = null)
-        {
-            var tenant = ResolveTenantId(tenantId) ?? string.Empty;
-            var scenarios = await _service.GetAllAsync(tenant);
-            var dtos = scenarios.Select(s => new Dto.SimulationScenarioDto
-            {
-                Id = s.Id,
-                Name = s.Name,
-                Description = s.Description,
-                ProcessDefinitionId = s.ProcessDefinitionId,
-                Variables = s.Variables,
-                MaxSteps = s.MaxSteps,
-                TenantId = s.TenantId
-            });
-            return Ok(dtos);
-        }
+	/// <summary>
+	/// Returns all simulation scenarios for a tenant.
+	/// Non-admins are always pinned to their own tenant claim.
+	/// </summary>
+	[HttpGet]
+	public async Task<ActionResult<IEnumerable<Dto.SimulationScenarioDto>>> GetAll([FromQuery] string? tenantId = null)
+	{
+		if (!User.IsInRole("Admin") && string.IsNullOrWhiteSpace(User.FindFirstValue("tenant_id")))
+		{
+			return Forbid();
+		}
 
-        [HttpGet("{id}")]
-        public async Task<ActionResult<Dto.SimulationScenarioDto>> GetById(string id)
-        {
-            var scenario = await _service.GetByIdAsync(id);
-            if (scenario == null || !CanAccessTenant(scenario.TenantId)) return NotFound();
-            var dto = new Dto.SimulationScenarioDto
-            {
-                Id = scenario.Id,
-                Name = scenario.Name,
-                Description = scenario.Description,
-                ProcessDefinitionId = scenario.ProcessDefinitionId,
-                Variables = scenario.Variables,
-                MaxSteps = scenario.MaxSteps,
-                TenantId = scenario.TenantId
-            };
-            return Ok(dto);
-        }
+		var tenant = ResolveTenantId(tenantId) ?? string.Empty;
+		var scenarios = await _service.GetAllAsync(tenant);
+		var dtos = scenarios.Select(s => new Dto.SimulationScenarioDto { Id = s.Id, Name = s.Name, Description = s.Description, ProcessDefinitionId = s.ProcessDefinitionId, Variables = s.Variables, MaxSteps = s.MaxSteps, TenantId = s.TenantId });
+		return Ok(dtos);
+	}
 
-        [HttpPost]
-        [Authorize(Policy = "ProcessManager")]
-        public async Task<ActionResult<Dto.SimulationScenarioDto>> Create([FromBody] Dto.SimulationScenarioDto dto)
-        {
-            var scenario = new SimulationScenario
-            {
-                Name = dto.Name,
-                Description = dto.Description,
-                ProcessDefinitionId = dto.ProcessDefinitionId,
-                Variables = dto.Variables,
-                MaxSteps = dto.MaxSteps,
-                TenantId = ResolveTenantId(dto.TenantId)
-            };
-            var created = await _service.CreateAsync(scenario);
-            dto.Id = created.Id;
-            dto.TenantId = scenario.TenantId;
-            return CreatedAtAction(nameof(GetById), new { id = dto.Id }, dto);
-        }
+	[HttpGet("{id}")]
+	public async Task<ActionResult<Dto.SimulationScenarioDto>> GetById(string id)
+	{
+		var scenario = await _service.GetByIdAsync(id);
+		if (scenario == null || !CanAccessTenant(scenario.TenantId))
+		{
+			return NotFound();
+		}
 
-        [HttpPut("{id}")]
-        [Authorize(Policy = "ProcessManager")]
-        public async Task<ActionResult<Dto.SimulationScenarioDto>> Update(string id, [FromBody] Dto.SimulationScenarioDto dto)
-        {
-            var existing = await _service.GetByIdAsync(id);
-            if (existing == null || !CanAccessTenant(existing.TenantId)) return NotFound();
+		var dto = new Dto.SimulationScenarioDto
+		{
+			Id = scenario.Id,
+			Name = scenario.Name,
+			Description = scenario.Description,
+			ProcessDefinitionId = scenario.ProcessDefinitionId,
+			Variables = scenario.Variables,
+			MaxSteps = scenario.MaxSteps,
+			TenantId = scenario.TenantId
+		};
+		return Ok(dto);
+	}
 
-            var scenario = new SimulationScenario
-            {
-                Name = dto.Name,
-                Description = dto.Description,
-                ProcessDefinitionId = dto.ProcessDefinitionId,
-                Variables = dto.Variables,
-                MaxSteps = dto.MaxSteps,
-                TenantId = ResolveTenantId(dto.TenantId)
-            };
-            var updated = await _service.UpdateAsync(id, scenario);
-            if (updated == null) return NotFound();
-            dto.Id = updated.Id;
-            return Ok(dto);
-        }
+	[HttpPost]
+	[Authorize(Policy = "ProcessManager")]
+	public async Task<ActionResult<Dto.SimulationScenarioDto>> Create([FromBody] Dto.SimulationScenarioDto dto)
+	{
+		if (!User.IsInRole("Admin") && string.IsNullOrWhiteSpace(User.FindFirstValue("tenant_id")))
+		{
+			return Forbid();
+		}
 
-        [HttpDelete("{id}")]
-        [Authorize(Policy = "ProcessManager")]
-        public async Task<IActionResult> Delete(string id)
-        {
-            var existing = await _service.GetByIdAsync(id);
-            if (existing == null || !CanAccessTenant(existing.TenantId)) return NotFound();
-            var deleted = await _service.DeleteAsync(id);
-            return deleted ? NoContent() : NotFound();
-        }
+		var scenario = new SimulationScenario
+		{
+			Name = dto.Name,
+			Description = dto.Description,
+			ProcessDefinitionId = dto.ProcessDefinitionId,
+			Variables = dto.Variables,
+			MaxSteps = dto.MaxSteps,
+			TenantId = ResolveTenantId(dto.TenantId) ?? string.Empty
+		};
+		var created = await _service.CreateAsync(scenario);
+		dto.Id = created.Id;
+		dto.TenantId = scenario.TenantId;
+		return CreatedAtAction(nameof(GetById), new { id = dto.Id }, dto);
+	}
 
-        private string? ResolveTenantId(string? explicitTenantId)
-        {
-            if (!User.IsInRole("Admin"))
-                return User.FindFirstValue("tenant_id");
-            return string.IsNullOrWhiteSpace(explicitTenantId) ? null : explicitTenantId;
-        }
+	[HttpPut("{id}")]
+	[Authorize(Policy = "ProcessManager")]
+	public async Task<ActionResult<Dto.SimulationScenarioDto>> Update(string id, [FromBody] Dto.SimulationScenarioDto dto)
+	{
+		var existing = await _service.GetByIdAsync(id);
+		if (existing == null || !CanAccessTenant(existing.TenantId))
+		{
+			return NotFound();
+		}
 
-        private bool CanAccessTenant(string? tenantId)
-        {
-            if (User.IsInRole("Admin")) return true;
-            var claim = User.FindFirstValue("tenant_id");
-            return !string.IsNullOrWhiteSpace(claim) && string.Equals(tenantId, claim, StringComparison.Ordinal);
-        }
-    }
+		var scenario = new SimulationScenario
+		{
+			Name = dto.Name,
+			Description = dto.Description,
+			ProcessDefinitionId = dto.ProcessDefinitionId,
+			Variables = dto.Variables,
+			MaxSteps = dto.MaxSteps,
+			TenantId = ResolveTenantId(dto.TenantId) ?? string.Empty
+		};
+		var updated = await _service.UpdateAsync(id, scenario);
+		if (updated == null)
+		{
+			return NotFound();
+		}
+
+		dto.Id = updated.Id;
+		return Ok(dto);
+	}
+
+	[HttpDelete("{id}")]
+	[Authorize(Policy = "ProcessManager")]
+	public async Task<IActionResult> Delete(string id)
+	{
+		var existing = await _service.GetByIdAsync(id);
+		if (existing == null || !CanAccessTenant(existing.TenantId))
+		{
+			return NotFound();
+		}
+
+		var deleted = await _service.DeleteAsync(id);
+		return deleted ? NoContent() : NotFound();
+	}
+
+	private string? ResolveTenantId(string? explicitTenantId)
+	{
+		if (!User.IsInRole("Admin"))
+		{
+			return User.FindFirstValue("tenant_id");
+		}
+
+		return string.IsNullOrWhiteSpace(explicitTenantId) ? null : explicitTenantId;
+	}
+
+	private bool CanAccessTenant(string? tenantId)
+	{
+		if (User.IsInRole("Admin"))
+		{
+			return true;
+		}
+
+		var claim = User.FindFirstValue("tenant_id");
+		return !string.IsNullOrWhiteSpace(claim) && string.Equals(tenantId, claim, StringComparison.Ordinal);
+	}
 }

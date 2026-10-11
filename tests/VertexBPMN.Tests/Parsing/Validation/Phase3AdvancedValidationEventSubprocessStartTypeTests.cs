@@ -5,7 +5,7 @@ namespace VertexBPMN.Tests.Parsing.Validation;
 
 public class Phase3AdvancedValidationEventSubprocessStartTypeTests
 {
-    private const string InvalidStartTypesXml = """
+	private const string InvalidStartTypesXml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <bpmn:process id="p1">
     <!-- Event subprocess with various invalid start events -->
@@ -39,7 +39,7 @@ public class Phase3AdvancedValidationEventSubprocessStartTypeTests
 </bpmn:definitions>
 """;
 
-    private const string AllValidXml = """
+	private const string AllValidXml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <bpmn:process id="p1">
     <bpmn:subProcess id="esp1" triggeredByEvent="true">
@@ -75,49 +75,52 @@ public class Phase3AdvancedValidationEventSubprocessStartTypeTests
 </bpmn:definitions>
 """;
 
-    [Fact]
-    public async Task EventSubprocessStartType_Disabled_NoStructuredDiagnostics()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = false
-        }).ParseAsync(InvalidStartTypesXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task EventSubprocessStartType_Disabled_NoStructuredDiagnostics()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = false
+		}).ParseAsync(InvalidStartTypesXml, TestContext.Current.CancellationToken);
 
-        Assert.Null(model.ValidationDiagnostics);
-    }
+		Assert.Null(model.ValidationDiagnostics);
+	}
 
-    [Fact]
-    public async Task EventSubprocessStartType_InvalidReported()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = true
-        }).ParseAsync(InvalidStartTypesXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task EventSubprocessStartType_InvalidReported()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = true
+		}).ParseAsync(InvalidStartTypesXml, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(model.ValidationDiagnostics);
-        var diags = model.ValidationDiagnostics!;
+		Assert.NotNull(model.ValidationDiagnostics);
+		var diags = model.ValidationDiagnostics;
 
-        // Expect separate diagnostics for each invalid start inside event subprocess
-        Assert.Contains(diags, d => d.Code == "SEM-EVENTSUBPROCESS-START-TYPE" && d.ElementId == "startNone"      && d.Message.Contains("none"));
-        Assert.Contains(diags, d => d.Code == "SEM-EVENTSUBPROCESS-START-TYPE" && d.ElementId == "startTerminate" && d.Message.Contains("terminate"));
-        Assert.Contains(diags, d => d.Code == "SEM-EVENTSUBPROCESS-START-TYPE" && d.ElementId == "startLink"      && d.Message.Contains("link"));
+		// Expect separate diagnostics for each invalid start inside event subprocess
+		Assert.Contains(diags, d => d.Code == "SEM-EVENTSUBPROCESS-START-TYPE" && d.ElementId == "startNone" && d.Message.Contains("none", StringComparison.Ordinal));
+		Assert.Contains(diags, d => d.Code == "SEM-EVENTSUBPROCESS-START-TYPE" && d.ElementId == "startTerminate" && d.Message.Contains("terminate", StringComparison.Ordinal));
+		Assert.Contains(diags, d => d.Code == "SEM-EVENTSUBPROCESS-START-TYPE" && d.ElementId == "startLink" && d.Message.Contains("link", StringComparison.Ordinal));
 
-        // Valid timer not flagged
-        Assert.DoesNotContain(diags, d => d.Code == "SEM-EVENTSUBPROCESS-START-TYPE" && d.ElementId == "startTimer");
-        // Normal (non event) subprocess start not flagged
-        Assert.DoesNotContain(diags, d => d.ElementId == "normalStart" && d.Code == "SEM-EVENTSUBPROCESS-START-TYPE");
-    }
+		// Valid timer not flagged
+		Assert.DoesNotContain(diags, d => d.Code == "SEM-EVENTSUBPROCESS-START-TYPE" && d.ElementId == "startTimer");
+		// Normal (non event) subprocess start not flagged
+		Assert.DoesNotContain(diags, d => d.ElementId == "normalStart" && d.Code == "SEM-EVENTSUBPROCESS-START-TYPE");
+	}
 
-    [Fact]
-    public async Task EventSubprocessStartType_AllValid_NoDiagnostics()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = true
-        }).ParseAsync(AllValidXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task EventSubprocessStartType_AllValid_NoDiagnostics()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = true
+		}).ParseAsync(AllValidXml, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(model.ValidationDiagnostics);
-        Assert.DoesNotContain(model.ValidationDiagnostics!,
-            d => d.Code == "SEM-EVENTSUBPROCESS-START-TYPE");
-    }
+		Assert.NotNull(model.ValidationDiagnostics);
+		Assert.DoesNotContain(model.ValidationDiagnostics,
+			d => d.Code == "SEM-EVENTSUBPROCESS-START-TYPE");
+	}
 }

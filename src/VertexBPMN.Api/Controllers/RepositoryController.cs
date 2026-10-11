@@ -7,123 +7,142 @@ using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Domain.Model.Bpmn;
 
 namespace VertexBPMN.Api.Controllers;
-
 [ApiController]
 [Route("api/repository")]
 [Authorize]
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public controller required for ASP.NET Core MVC discovery and activation.")]
 public class RepositoryController : ControllerBase
 {
-    private readonly IRepositoryService _repositoryService;
-    private readonly IWorkflowTriggerService _workflowTriggerService;
+	private readonly IRepositoryService _repositoryService;
+	private readonly IWorkflowTriggerService _workflowTriggerService;
+	public RepositoryController(IRepositoryService repositoryService, IWorkflowTriggerService workflowTriggerService)
+	{
+		_repositoryService = repositoryService;
+		_workflowTriggerService = workflowTriggerService;
+	}
 
-    public RepositoryController(IRepositoryService repositoryService, IWorkflowTriggerService workflowTriggerService)
-    {
-        _repositoryService = repositoryService;
-        _workflowTriggerService = workflowTriggerService;
-    }
+	[HttpGet]
+	public async Task<ActionResult<IReadOnlyList<ProcessDefinition>>> GetAll([FromQuery] string? key = null, [FromQuery] string? tenantId = null, CancellationToken cancellationToken = default)
+	{
+		var effectiveTenantId = ResolveTenantId(tenantId);
+		if (effectiveTenantId is null && !User.IsInRole("Admin"))
+		{
+			return Forbid();
+		}
 
-    [HttpGet]
-    public async Task<ActionResult<IReadOnlyList<ProcessDefinition>>> GetAll(
-        [FromQuery] string? key = null,
-        [FromQuery] string? tenantId = null,
-        CancellationToken cancellationToken = default)
-    {
-        var effectiveTenantId = ResolveTenantId(tenantId);
-        if (effectiveTenantId is null && !User.IsInRole("Admin")) return Forbid();
+		var definitions = new List<ProcessDefinition>();
+		await foreach (var definition in _repositoryService.ListAsync(key, effectiveTenantId, cancellationToken))
+		{
+			definitions.Add(definition);
+		}
 
-        var definitions = new List<ProcessDefinition>();
-        await foreach (var definition in _repositoryService.ListAsync(key, effectiveTenantId, cancellationToken))
-            definitions.Add(definition);
-        return definitions;
-    }
+		return definitions;
+	}
 
-    [HttpGet("{id}")]
-    public async Task<ActionResult<ProcessDefinition>> GetById(Guid id)
-    {
-        var def = await _repositoryService.GetByIdAsync(id);
-        if (def is null) return NotFound();
-        if (!CanAccessTenant(def.TenantId)) return Forbid();
-        return def;
-    }
+	[HttpGet("{id}")]
+	public async Task<ActionResult<ProcessDefinition>> GetById(Guid id)
+	{
+		var def = await _repositoryService.GetByIdAsync(id);
+		if (def is null)
+		{
+			return NotFound();
+		}
 
-    /// <summary>
-    /// Deploys a new BPMN process definition.
-    /// </summary>
-    /// <remarks>
-    /// Example request:
-    ///
-    ///     POST /api/repository
-    ///     {
-    ///         "bpmnXml": "&lt;definitions ...&gt;...&lt;/definitions&gt;",
-    ///         "name": "hello-world.bpmn",
-    ///         "tenantId": null
-    ///     }
-    /// </remarks>
-    /// <param name="request">Deployment request</param>
-    /// <returns>The deployed process definition</returns>
-    [HttpPost]
-    [Authorize(Policy = "ProcessManager")]
-    [ProducesResponseType(typeof(ProcessDefinition), 201)]
-    public async Task<ActionResult<ProcessDefinition>> Deploy([FromBody] RepositoryDeployRequest request)
-    {
-        if (string.IsNullOrWhiteSpace(request.BpmnXml) || string.IsNullOrWhiteSpace(request.Name))
-        {
-            return BadRequest(new ProblemDetails
-            {
-                Title = "Invalid process deployment.",
-                Detail = "BpmnXml and Name are required."
-            });
-        }
+		if (!CanAccessTenant(def.TenantId))
+		{
+			return Forbid();
+		}
 
-        var effectiveTenantId = ResolveTenantId(request.TenantId);
-        if (effectiveTenantId is null && !User.IsInRole("Admin")) return Forbid();
+		return def;
+	}
 
-        ProcessDefinition def;
-        try
-        {
-            def = await _repositoryService.DeployAsync(request.BpmnXml, request.Name, effectiveTenantId);
-        }
-        catch (BpmnDeploymentValidationException exception)
-        {
-            return BadRequest(new { message = exception.Message, diagnostics = exception.Diagnostics });
-        }
-        catch (Exception exception) when (exception is System.Xml.XmlException
-            or VertexBPMN.Domain.Exceptions.BpmnParseException or VertexBPMN.Domain.Exceptions.BpmnValidationException
-            or VertexBPMN.Domain.Exceptions.SecurityException)
-        {
-            return BadRequest(new { message = exception.Message });
-        }
-        var createdWebhooks = await _workflowTriggerService.SynchronizeBpmnWebhooksAsync(request.BpmnXml, def.Key, effectiveTenantId);
-        if (createdWebhooks.Count > 0)
-        {
-            var headerValue = JsonSerializer.Serialize(createdWebhooks.Select(c => new { c.Trigger.Path, c.Trigger.Method, c.Secret, c.InvokePath }));
-            Response.Headers.Append("X-VertexBPMN-Created-Webhooks", headerValue);
-        }
-        return CreatedAtAction(nameof(GetById), new { id = def.Id }, def);
-    }
+	/// <summary>
+	/// Deploys a new BPMN process definition.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Example request:
+	///
+	///     POST /api/repository
+	///     {
+	///         "bpmnXml": "&lt;definitions ...&gt;...&lt;/definitions&gt;",
+	///         "name": "hello-world.bpmn",
+	///         "tenantId": null
+	///     }
+	/// </para>
+	/// </remarks>
+	/// <param name = "request">Deployment request</param>
+	/// <returns>The deployed process definition</returns>
+	[HttpPost]
+	[Authorize(Policy = "ProcessManager")]
+	[ProducesResponseType(typeof(ProcessDefinition), 201)]
+	public async Task<ActionResult<ProcessDefinition>> Deploy([FromBody] RepositoryDeployRequest request)
+	{
+		if (string.IsNullOrWhiteSpace(request.BpmnXml) || string.IsNullOrWhiteSpace(request.Name))
+		{
+			return BadRequest(new ProblemDetails { Title = "Invalid process deployment.", Detail = "BpmnXml and Name are required." });
+		}
 
-    [HttpDelete("{id}")]
-    [Authorize(Policy = "ProcessManager")]
-    public async Task<IActionResult> Delete(Guid id, [FromQuery] string? tenantId = null)
-    {
-        var def = await _repositoryService.GetByIdAsync(id);
-        if (def is null) return NotFound();
-        if (!CanAccessTenant(def.TenantId, tenantId)) return Forbid();
-        await _repositoryService.DeleteAsync(id);
-        return NoContent();
-    }
+		var effectiveTenantId = ResolveTenantId(request.TenantId);
+		if (effectiveTenantId is null && !User.IsInRole("Admin"))
+		{
+			return Forbid();
+		}
 
-    private bool CanAccessTenant(string? tenantId, string? requestedTenantId = null) =>
-        User.IsInRole("Admin")
-            ? string.IsNullOrWhiteSpace(requestedTenantId) || string.Equals(requestedTenantId, tenantId, StringComparison.Ordinal)
-            : string.Equals(User.FindFirstValue("tenant_id"), tenantId, StringComparison.Ordinal);
+		ProcessDefinition def;
+		try
+		{
+			def = await _repositoryService.DeployAsync(request.BpmnXml, request.Name, effectiveTenantId);
+		}
+		catch (BpmnDeploymentValidationException exception)
+		{
+			return BadRequest(new { message = exception.Message, diagnostics = exception.Diagnostics });
+		}
+		catch (Exception exception)when (exception is System.Xml.XmlException or VertexBPMN.Domain.Exceptions.BpmnParseException or VertexBPMN.Domain.Exceptions.BpmnValidationException or VertexBPMN.Domain.Exceptions.SecurityException)
+		{
+			return BadRequest(new { message = exception.Message });
+		}
 
-    private string? ResolveTenantId(string? requestedTenantId)
-    {
-        if (User.IsInRole("Admin"))
-            return string.IsNullOrWhiteSpace(requestedTenantId) ? null : requestedTenantId.Trim();
+		var createdWebhooks = await _workflowTriggerService.SynchronizeBpmnWebhooksAsync(request.BpmnXml, def.Key, effectiveTenantId);
+		if (createdWebhooks.Count > 0)
+		{
+			var headerValue = JsonSerializer.Serialize(createdWebhooks.Select(c => new { c.Trigger.Path, c.Trigger.Method, c.Secret, c.InvokePath }));
+			Response.Headers.Append("X-VertexBPMN-Created-Webhooks", headerValue);
+		}
 
-        return User.FindFirstValue("tenant_id");
-    }
-    public record RepositoryDeployRequest(string BpmnXml, string Name, string? TenantId);
+		return CreatedAtAction(nameof(GetById), new { id = def.Id }, def);
+	}
+
+	[HttpDelete("{id}")]
+	[Authorize(Policy = "ProcessManager")]
+	public async Task<IActionResult> Delete(Guid id, [FromQuery] string? tenantId = null)
+	{
+		var def = await _repositoryService.GetByIdAsync(id);
+		if (def is null)
+		{
+			return NotFound();
+		}
+
+		if (!CanAccessTenant(def.TenantId, tenantId))
+		{
+			return Forbid();
+		}
+
+		await _repositoryService.DeleteAsync(id);
+		return NoContent();
+	}
+
+	private bool CanAccessTenant(string? tenantId, string? requestedTenantId = null) => User.IsInRole("Admin") ? string.IsNullOrWhiteSpace(requestedTenantId) || string.Equals(requestedTenantId, tenantId, StringComparison.Ordinal) : string.Equals(User.FindFirstValue("tenant_id"), tenantId, StringComparison.Ordinal);
+	private string? ResolveTenantId(string? requestedTenantId)
+	{
+		if (User.IsInRole("Admin"))
+		{
+			return string.IsNullOrWhiteSpace(requestedTenantId) ? null : requestedTenantId.Trim();
+		}
+
+		return User.FindFirstValue("tenant_id");
+	}
+
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public contract type RepositoryDeployRequest retained for exposed HTTP action signatures and controller activation (RepositoryController).")]
+	public record RepositoryDeployRequest(string BpmnXml, string Name, string? TenantId);
 }

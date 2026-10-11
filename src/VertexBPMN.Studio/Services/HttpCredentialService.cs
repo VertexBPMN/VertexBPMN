@@ -2,7 +2,7 @@ using System.Net.Http.Json;
 
 namespace VertexBPMN.Studio.Services;
 
-public sealed class HttpCredentialService(IHttpClientFactory httpClientFactory) : ICredentialService
+internal sealed class HttpCredentialService(IHttpClientFactory httpClientFactory) : ICredentialService
 {
     public async Task<IReadOnlyList<StudioCredential>> ListAsync(string tenantId, CancellationToken cancellationToken = default)
     {
@@ -13,7 +13,7 @@ public sealed class HttpCredentialService(IHttpClientFactory httpClientFactory) 
     public async Task<StudioCredential> CreateAsync(string tenantId, string name, string type, string? description, string key, string value, CancellationToken cancellationToken = default)
     {
         var client = httpClientFactory.CreateClient("VertexBPMN.Api");
-        using var response = await client.PostAsJsonAsync("/api/credentials", new { tenantId, name, type, description, secrets = new Dictionary<string, string> { [key] = value } }, cancellationToken);
+        using var response = await client.PostAsJsonAsync("/api/credentials", new { tenantId, name, type, description, secrets = new Dictionary<string, string>(StringComparer.Ordinal) { [key] = value } }, cancellationToken);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<StudioCredential>(cancellationToken) ?? throw new InvalidOperationException("The API returned no credential metadata.");
     }
@@ -39,7 +39,7 @@ public sealed class HttpCredentialService(IHttpClientFactory httpClientFactory) 
         response.EnsureSuccessStatusCode();
     }
 
-    public async Task<string> StartOAuth2AuthorizationAsync(string tenantId, string credentialId, OAuth2ConnectConfig config, CancellationToken cancellationToken = default, string? browserProof = null)
+    public async Task<string> StartOAuth2AuthorizationAsync(string tenantId, string credentialId, OAuth2ConnectConfig config, string? browserProof = null, CancellationToken cancellationToken = default)
     {
         var client = httpClientFactory.CreateClient("VertexBPMN.Api");
         using var response = await client.PostAsJsonAsync("/api/oauth2/authorize", new

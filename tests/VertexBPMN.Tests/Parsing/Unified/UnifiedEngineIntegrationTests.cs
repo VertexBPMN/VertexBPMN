@@ -5,12 +5,12 @@ namespace VertexBPMN.Tests.Parsing.Unified;
 
 public class UnifiedEngineIntegrationTests
 {
-    private BpmnParser CreateParser() => new(new BpmnParserOptions());
+	private static BpmnParser CreateParser() => new(new BpmnParserOptions());
 
-    [Fact]
-    public async Task Mapper_Builds_Basic_Graph_Metadata()
-    {
-        var xml = """
+	[Fact]
+	public async Task Mapper_Builds_Basic_Graph_Metadata()
+	{
+		const string xml = """
 <definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <process id='p1'>
     <startEvent id='s1'/>
@@ -21,24 +21,24 @@ public class UnifiedEngineIntegrationTests
   </process>
 </definitions>
 """;
-        var parser = CreateParser();
-        var unified = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
-        var mapper = new EngineMapper();
-        var result = mapper.Map("p1", unified);
-        Assert.NotNull(result.ProcessDefinition);
-        var def = result.ProcessDefinition!;
-        Assert.Equal(3, def.Nodes.Count);
-        Assert.Equal(2, def.SequenceFlows.Count);
-        Assert.Single(def.StartEventIds);
-        Assert.True(def.Outgoing.ContainsKey("s1"));
-        Assert.True(def.Incoming.ContainsKey("task1"));
-        Assert.DoesNotContain(result.MappingDiagnostics, d =>d.Contains("error", StringComparison.OrdinalIgnoreCase));
-    }
+		var parser = CreateParser();
+		var unified = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		var mapper = new EngineMapper();
+		var result = mapper.Map("p1", unified);
+		Assert.NotNull(result.ProcessDefinition);
+		var def = result.ProcessDefinition;
+		Assert.Equal(3, def.Nodes.Count);
+		Assert.Equal(2, def.SequenceFlows.Count);
+		Assert.Single(def.StartEventIds);
+		Assert.True(def.Outgoing.ContainsKey("s1"));
+		Assert.True(def.Incoming.ContainsKey("task1"));
+		Assert.DoesNotContain(result.MappingDiagnostics, d => d.Contains("error", StringComparison.OrdinalIgnoreCase));
+	}
 
-    [Fact]
-    public async Task Runtime_Starts_Process_And_Creates_UserTask()
-    {
-        var xml = """
+	[Fact]
+	public async Task Runtime_Starts_Process_And_Creates_UserTask()
+	{
+		const string xml = """
 <definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <process id='demo'>
     <startEvent id='start'/>
@@ -49,24 +49,24 @@ public class UnifiedEngineIntegrationTests
   </process>
 </definitions>
 """;
-        var parser = CreateParser();
-        var unified = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
-        var mapper = new EngineMapper();
-        var mapped = mapper.Map("demo", unified).ProcessDefinition!;
-        var runtime = new EngineRuntime();
-        runtime.Deploy(mapped);
-        var start = runtime.Start("demo");
-        Assert.Single(start.ActivatedTasks);
-        var task = start.ActivatedTasks.Single();
-        var completion = runtime.CompleteUserTask(start.Instance.Id, task.Id);
-        Assert.True(completion.ProcessCompleted); // straight-through
-        Assert.True(completion.Instance.Completed);
-    }
+		var parser = CreateParser();
+		var unified = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		var mapper = new EngineMapper();
+		var mapped = mapper.Map("demo", unified).ProcessDefinition!;
+		var runtime = new EngineRuntime();
+		runtime.Deploy(mapped);
+		var start = runtime.Start("demo");
+		Assert.Single(start.ActivatedTasks);
+		var task = start.ActivatedTasks.Single();
+		var completion = runtime.CompleteUserTask(start.Instance.Id, task.Id);
+		Assert.True(completion.ProcessCompleted); // straight-through
+		Assert.True(completion.Instance.Completed);
+	}
 
-    [Fact]
-    public async Task Runtime_Chooses_Second_Flow_When_First_Condition_False()
-    {
-        var xml = """
+	[Fact]
+	public async Task Runtime_Chooses_Second_Flow_When_First_Condition_False()
+	{
+		const string xml = """
 <definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL' xmlns:vertex='http://vertexbpmn.io/schema/1.0'>
   <process id='route'>
     <startEvent id='s'/>
@@ -84,25 +84,25 @@ public class UnifiedEngineIntegrationTests
   </process>
 </definitions>
 """;
-        var parser = CreateParser();
-        var unified = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
-        var mapper = new EngineMapper();
-        var def = mapper.Map("route", unified).ProcessDefinition!;
-        var runtime = new EngineRuntime();
-        runtime.Deploy(def);
-        // Variable x = false -> first conditional path skipped
-        var start = runtime.Start("route", new Dictionary<string, object?> { ["x"] = false });
-        var open = start.ActivatedTasks;
-        Assert.Single(open);
-        Assert.Equal("t_fallback", open.Single().NodeId);
-        var completion = runtime.CompleteUserTask(start.Instance.Id, open.Single().Id);
-        Assert.True(completion.ProcessCompleted);
-    }
+		var parser = CreateParser();
+		var unified = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		var mapper = new EngineMapper();
+		var def = mapper.Map("route", unified).ProcessDefinition!;
+		var runtime = new EngineRuntime();
+		runtime.Deploy(def);
+		// Variable x = false -> first conditional path skipped
+		var start = runtime.Start("route", new Dictionary<string, object?>(StringComparer.Ordinal) { ["x"] = false });
+		var open = start.ActivatedTasks;
+		Assert.Single(open);
+		Assert.Equal("t_fallback", open.Single().NodeId);
+		var completion = runtime.CompleteUserTask(start.Instance.Id, open.Single().Id);
+		Assert.True(completion.ProcessCompleted);
+	}
 
-    [Fact]
-    public void Runtime_Start_Undeployed_Throws()
-    {
-        var runtime = new EngineRuntime();
-        Assert.Throws<InvalidOperationException>(() => runtime.Start("missing"));
-    }
+	[Fact]
+	public void Runtime_Start_Undeployed_Throws()
+	{
+		var runtime = new EngineRuntime();
+		Assert.Throws<InvalidOperationException>(() => runtime.Start("missing"));
+	}
 }

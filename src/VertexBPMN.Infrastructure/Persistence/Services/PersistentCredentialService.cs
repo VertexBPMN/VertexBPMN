@@ -38,9 +38,11 @@ public sealed class PersistentCredentialService(
         var type = NormalizeRequired(request.Type, "Type", 128);
         var secrets = NormalizeSecrets(request.Secrets);
         if (await db.Credentials.AnyAsync(c => c.TenantId == tenantId && c.Name == name, cancellationToken))
-            throw new CredentialConflictException($"A credential named '{name}' already exists in this tenant.");
+		{
+			throw new CredentialConflictException($"A credential named '{name}' already exists in this tenant.");
+		}
 
-        var now = DateTime.UtcNow;
+		var now = DateTime.UtcNow;
         var record = new CredentialRecord
         {
             TenantId = tenantId,
@@ -61,12 +63,19 @@ public sealed class PersistentCredentialService(
     public async Task<bool> UpdateMetadataAsync(string tenantId, string id, CredentialMetadataUpdate request, CancellationToken cancellationToken = default)
     {
         var record = await FindAsync(tenantId, id, cancellationToken);
-        if (record is null) return false;
-        var name = NormalizeRequired(request.Name, "Name", 256);
+        if (record is null)
+		{
+			return false;
+		}
+
+		var name = NormalizeRequired(request.Name, "Name", 256);
         var type = NormalizeRequired(request.Type, "Type", 128);
         if (await db.Credentials.AnyAsync(c => c.TenantId == tenantId && c.Name == name && c.Id != id, cancellationToken))
-            throw new CredentialConflictException($"A credential named '{name}' already exists in this tenant.");
-        record.Name = name;
+		{
+			throw new CredentialConflictException($"A credential named '{name}' already exists in this tenant.");
+		}
+
+		record.Name = name;
         record.Type = type;
         record.Description = NormalizeOptional(request.Description, 2000);
         record.LastModified = DateTime.UtcNow;
@@ -78,8 +87,12 @@ public sealed class PersistentCredentialService(
     public async Task<bool> RotateSecretAsync(string tenantId, string id, CredentialSecretRotation request, CancellationToken cancellationToken = default)
     {
         var record = await FindAsync(tenantId, id, cancellationToken);
-        if (record is null) return false;
-        var key = NormalizeRequired(request.Key, "Key", MaxSecretKeyLength);
+        if (record is null)
+		{
+			return false;
+		}
+
+		var key = NormalizeRequired(request.Key, "Key", MaxSecretKeyLength);
         var value = NormalizeRequired(request.Value, "Value", MaxSecretValueLength, trim: false);
         var secrets = Unprotect(record.ProtectedValues);
         secrets[key] = value;
@@ -94,8 +107,12 @@ public sealed class PersistentCredentialService(
     public async Task<bool> DeleteAsync(string tenantId, string id, CancellationToken cancellationToken = default)
     {
         var record = await FindAsync(tenantId, id, cancellationToken);
-        if (record is null) return false;
-        db.Credentials.Remove(record);
+        if (record is null)
+		{
+			return false;
+		}
+
+		db.Credentials.Remove(record);
         await db.SaveChangesAsync(cancellationToken);
         await AuditAsync("credential.deleted", record, cancellationToken);
         return true;
@@ -104,11 +121,19 @@ public sealed class PersistentCredentialService(
     public async Task<string?> ResolveSecretAsync(string tenantId, string id, string key, CancellationToken cancellationToken = default)
     {
         var record = await FindAsync(tenantId, id, cancellationToken);
-        if (record is null) return null;
-        var normalizedKey = NormalizeRequired(key, "Key", MaxSecretKeyLength);
+        if (record is null)
+		{
+			return null;
+		}
+
+		var normalizedKey = NormalizeRequired(key, "Key", MaxSecretKeyLength);
         var secrets = Unprotect(record.ProtectedValues);
-        if (!secrets.TryGetValue(normalizedKey, out var value)) return null;
-        record.LastUsedAt = DateTime.UtcNow;
+        if (!secrets.TryGetValue(normalizedKey, out var value))
+		{
+			return null;
+		}
+
+		record.LastUsedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
         await AuditAsync("credential.secret_resolved", record, cancellationToken, new { key = normalizedKey });
         return value;
@@ -151,36 +176,66 @@ public sealed class PersistentCredentialService(
 
     private static Dictionary<string, string> NormalizeSecrets(IReadOnlyDictionary<string, string>? values)
     {
-        if (values is null || values.Count == 0) throw new ArgumentException("At least one secret value is required.", nameof(values));
-        if (values.Count > MaxSecretCount) throw new ArgumentException($"A credential may contain at most {MaxSecretCount} secret values.", nameof(values));
-        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (values is null || values.Count == 0)
+		{
+			throw new ArgumentException("At least one secret value is required.", nameof(values));
+		}
+
+		if (values.Count > MaxSecretCount)
+		{
+			throw new ArgumentException($"A credential may contain at most {MaxSecretCount} secret values.", nameof(values));
+		}
+
+		var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var pair in values)
         {
             var key = NormalizeRequired(pair.Key, "Key", MaxSecretKeyLength);
             var value = NormalizeRequired(pair.Value, "Value", MaxSecretValueLength, trim: false);
-            if (!result.TryAdd(key, value)) throw new ArgumentException($"Duplicate secret key '{key}'.", nameof(values));
-        }
+            if (!result.TryAdd(key, value))
+			{
+				throw new ArgumentException($"Duplicate secret key '{key}'.", nameof(values));
+			}
+		}
         return result;
     }
 
     private static string NormalizeRequired(string? value, string fieldName, int maxLength, bool trim = true)
     {
         var normalized = trim ? value?.Trim() : value;
-        if (string.IsNullOrWhiteSpace(normalized)) throw new ArgumentException($"{fieldName} is required.", fieldName);
-        if (normalized.Length > maxLength) throw new ArgumentException($"{fieldName} exceeds the maximum length of {maxLength}.", fieldName);
-        return normalized;
+        if (string.IsNullOrWhiteSpace(normalized))
+		{
+			throw new ArgumentException($"{fieldName} is required.", fieldName);
+		}
+
+		if (normalized.Length > maxLength)
+		{
+			throw new ArgumentException($"{fieldName} exceeds the maximum length of {maxLength}.", fieldName);
+		}
+
+		return normalized;
     }
 
     private static string? NormalizeOptional(string? value, int maxLength)
     {
         var normalized = value?.Trim();
-        if (string.IsNullOrWhiteSpace(normalized)) return null;
-        if (normalized.Length > maxLength) throw new ArgumentException($"Description exceeds the maximum length of {maxLength}.", nameof(value));
-        return normalized;
+        if (string.IsNullOrWhiteSpace(normalized))
+		{
+			return null;
+		}
+
+		if (normalized.Length > maxLength)
+		{
+			throw new ArgumentException($"Description exceeds the maximum length of {maxLength}.", nameof(value));
+		}
+
+		return normalized;
     }
 
     private static void ValidateTenant(string tenantId) => _ = NormalizeRequired(tenantId, "TenantId", 64);
 }
 
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0048", Justification = "Small exception types are kept adjacent to the credential service that raises them; splitting each into a separate file adds no value.")]
 public sealed class CredentialConflictException(string message) : Exception(message);
+
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0048", Justification = "Small exception types are kept adjacent to the credential service that raises them; splitting each into a separate file adds no value.")]
 public sealed class CredentialProtectionException(string message, Exception innerException) : Exception(message, innerException);

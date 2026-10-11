@@ -8,8 +8,12 @@ public static class ServiceCollectionModuleExtensions
 {
     public static IServiceCollection AddWhen(this IServiceCollection services, bool condition, Action<IServiceCollection> add)
     {
-        if (condition) add(services);
-        return services;
+        if (condition)
+		{
+			add(services);
+		}
+
+		return services;
     }
 
     public static OperationalMode ResolveOperationalMode(this IHostEnvironment env, IConfiguration config)

@@ -1,9 +1,10 @@
 ﻿using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
+#pragma warning disable MA0048
 
-namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
-{
+namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn;
+
     /// <inheritdoc />
     public partial class DiagnosePendingBpmnModel : Migration
     {
@@ -20,4 +21,3 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
             // No-op; see Up.
         }
     }
-}

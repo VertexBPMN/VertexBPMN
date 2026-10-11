@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace VertexBPMN.Studio.Services;
 
-public sealed class HttpSimulationService(IHttpClientFactory httpClientFactory) : ISimulationService
+internal sealed class HttpSimulationService(IHttpClientFactory httpClientFactory) : ISimulationService
 {
     public async Task<JsonElement> SimulateAsync(
         string bpmnXml,
@@ -22,7 +22,7 @@ public sealed class HttpSimulationService(IHttpClientFactory httpClientFactory) 
                 processDefinitionId,
                 // The API treats Variables as a required, non-nullable member; never send null
                 // or the request fails model validation with 400 "The Variables field is required."
-                variables = variables ?? (object)new Dictionary<string, object>(),
+                variables = variables ?? (object)new Dictionary<string, object>(StringComparer.Ordinal),
                 maxSteps,
                 tenantId
             },

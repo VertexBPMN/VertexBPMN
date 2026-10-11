@@ -3,18 +3,17 @@ using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using VertexBPMN.Infrastructure.Persistence;
 using VertexBPMN.Domain.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 
 namespace VertexBPMN.Api.Controllers;
-
-using Microsoft.AspNetCore.Authorization;
 [ApiController]
 [Route("api/vertex/group")]
 [Authorize(Policy = "ReadOnly")]
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public controller required for ASP.NET Core MVC discovery and activation.")]
 public class VertexGroupController : ControllerBase
 {
 	private readonly IIdentityService _identityService;
 	private readonly BpmnDbContext _db;
-
 	public VertexGroupController(IIdentityService identityService, BpmnDbContext db)
 	{
 		_identityService = identityService;
@@ -26,7 +25,10 @@ public class VertexGroupController : ControllerBase
 	{
 		var groups = new List<GroupDto>();
 		await foreach (var group in _identityService.ListGroupsAsync(CurrentTenantId(), cancellationToken))
+		{
 			groups.Add(new GroupDto { Id = group.Id, Name = group.Name, Type = group.Type });
+		}
+
 		return Ok(groups);
 	}
 
@@ -34,21 +36,18 @@ public class VertexGroupController : ControllerBase
 	public async Task<ActionResult<GroupDto>> GetById(string id, CancellationToken cancellationToken)
 	{
 		var group = await _identityService.GetGroupByIdAsync(id, CurrentTenantId(), cancellationToken);
-		return group is null
-			? NotFound()
-			: Ok(new GroupDto { Id = group.Id, Name = group.Name, Type = group.Type });
+		return group is null ? NotFound() : Ok(new GroupDto { Id = group.Id, Name = group.Name, Type = group.Type });
 	}
 
-	private string? CurrentTenantId() => User.IsInRole("Admin")
-		? null
-		: User.FindFirstValue("tenant_id");
-
+	private string? CurrentTenantId() => User.IsInRole("Admin") ? null : User.FindFirstValue("tenant_id");
 	[HttpPost]
 	[Authorize(Policy = "AdminOnly")]
 	public async Task<ActionResult<GroupDto>> Create([FromBody] GroupWriteDto request, CancellationToken cancellationToken)
 	{
 		if (string.IsNullOrWhiteSpace(request.Name))
+		{
 			return ValidationProblem("Group name is required.");
+		}
 
 		var group = new IdentityGroupRecord
 		{
@@ -58,12 +57,7 @@ public class VertexGroupController : ControllerBase
 		};
 		_db.IdentityGroups.Add(group);
 		await _db.SaveChangesAsync(cancellationToken);
-		return CreatedAtAction(nameof(GetById), new { id = group.Id }, new GroupDto
-		{
-			Id = group.Id,
-			Name = group.Name,
-			Type = group.Type
-		});
+		return CreatedAtAction(nameof(GetById), new { id = group.Id }, new GroupDto { Id = group.Id, Name = group.Name, Type = group.Type });
 	}
 
 	[HttpPost("{id}/users/{userId}")]
@@ -73,14 +67,11 @@ public class VertexGroupController : ControllerBase
 		var group = await _db.IdentityGroups.SingleOrDefaultAsync(group => group.Id == id, cancellationToken);
 		var user = await _db.Users.SingleOrDefaultAsync(user => user.Id == userId, cancellationToken);
 		if (group is null || user is null || (group.TenantId is not null && user.TenantId != group.TenantId))
-			return NotFound();
-
-		_db.IdentityGroupMemberships.Add(new IdentityGroupMembershipRecord
 		{
-			GroupId = id,
-			UserId = userId,
-			TenantId = group.TenantId
-		});
+			return NotFound();
+		}
+
+		_db.IdentityGroupMemberships.Add(new IdentityGroupMembershipRecord { GroupId = id, UserId = userId, TenantId = group.TenantId });
 		await _db.SaveChangesAsync(cancellationToken);
 		return NoContent();
 	}
@@ -91,12 +82,16 @@ public class VertexGroupController : ControllerBase
 	{
 		var membership = await _db.IdentityGroupMemberships.FindAsync([id, userId], cancellationToken);
 		if (membership is null)
+		{
 			return NotFound();
+		}
+
 		_db.IdentityGroupMemberships.Remove(membership);
 		await _db.SaveChangesAsync(cancellationToken);
 		return NoContent();
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public contract type GroupDto retained for exposed HTTP action signatures and controller activation (VertexGroupController).")]
 	public class GroupDto
 	{
 		public string Id { get; set; } = string.Empty;
@@ -104,6 +99,7 @@ public class VertexGroupController : ControllerBase
 		public string Type { get; set; } = string.Empty;
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public contract type GroupWriteDto retained for exposed HTTP action signatures and controller activation (VertexGroupController).")]
 	public sealed class GroupWriteDto
 	{
 		public string Name { get; set; } = string.Empty;

@@ -11,80 +11,78 @@ namespace VertexBPMN.Tests.Unit.Infrastructure;
 /// </summary>
 public sealed class AzureServiceBusInboxConsumerValidationTests
 {
-    private static RuntimeOutboxOptions BaseOutbox() => new()
-    {
-        Provider = "AzureServiceBus",
-        EntityName = "vertexbpmn-runtime",
-        EntityType = RuntimeOutboxEntityType.Topic,
-        AuthenticationMode = RuntimeOutboxAuthenticationMode.ManagedIdentity,
-        FullyQualifiedNamespace = "test.servicebus.windows.net"
-    };
+	private static RuntimeOutboxOptions BaseOutbox() => new()
+	{
+		Provider = "AzureServiceBus",
+		EntityName = "vertexbpmn-runtime",
+		EntityType = RuntimeOutboxEntityType.Topic,
+		AuthenticationMode = RuntimeOutboxAuthenticationMode.ManagedIdentity,
+		FullyQualifiedNamespace = "test.servicebus.windows.net"
+	};
 
-    private static RuntimeInboxOptions BaseInbox() => new() { Subscription = "all" };
+	private static RuntimeInboxOptions BaseInbox() => new() { Subscription = "all" };
 
-    private static IServiceScopeFactory ScopeFactory() =>
-        new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
+	private static void Build(RuntimeOutboxOptions outbox, RuntimeInboxOptions inbox)
+	{
+		using var provider = new ServiceCollection().BuildServiceProvider();
+		using var consumer = new AzureServiceBusRuntimeInboxConsumerService(
+			provider.GetRequiredService<IServiceScopeFactory>(), outbox, inbox, NullLogger<AzureServiceBusRuntimeInboxConsumerService>.Instance);
+	}
 
-    private static void Build(RuntimeOutboxOptions outbox, RuntimeInboxOptions inbox)
-    {
-        _ = new AzureServiceBusRuntimeInboxConsumerService(
-            ScopeFactory(), outbox, inbox, NullLogger<AzureServiceBusRuntimeInboxConsumerService>.Instance);
-    }
+	[Fact]
+	public void Topic_Without_Subscription_IsRejected()
+	{
+		var outbox = BaseOutbox();
+		outbox.EntityType = RuntimeOutboxEntityType.Topic; // default topic
+		var inbox = BaseInbox();
+		inbox.Subscription = string.Empty;
 
-    [Fact]
-    public void Topic_Without_Subscription_IsRejected()
-    {
-        var outbox = BaseOutbox();
-        outbox.EntityType = RuntimeOutboxEntityType.Topic; // default topic
-        var inbox = BaseInbox();
-        inbox.Subscription = string.Empty;
+		var error = Assert.Throws<InvalidOperationException>(() => Build(outbox, inbox));
+		Assert.Contains("Inbox:Subscription", error.Message, StringComparison.Ordinal);
+	}
 
-        var error = Assert.Throws<InvalidOperationException>(() => Build(outbox, inbox));
-        Assert.Contains("Inbox:Subscription", error.Message, StringComparison.Ordinal);
-    }
+	[Fact]
+	public void Queue_DoesNotRequire_Subscription()
+	{
+		var outbox = BaseOutbox();
+		outbox.EntityType = RuntimeOutboxEntityType.Queue;
+		var inbox = BaseInbox();
+		inbox.Subscription = string.Empty;
 
-    [Fact]
-    public void Queue_DoesNotRequire_Subscription()
-    {
-        var outbox = BaseOutbox();
-        outbox.EntityType = RuntimeOutboxEntityType.Queue;
-        var inbox = BaseInbox();
-        inbox.Subscription = string.Empty;
+		// Must not throw: a queue has no subscription.
+		Assert.Null(Record.Exception(() => Build(outbox, inbox)));
+	}
 
-        // Must not throw: a queue has no subscription.
-        Build(outbox, inbox);
-    }
+	[Fact]
+	public void ManagedIdentity_Without_Namespace_IsRejected()
+	{
+		var outbox = BaseOutbox();
+		outbox.FullyQualifiedNamespace = null;
+		outbox.AuthenticationMode = RuntimeOutboxAuthenticationMode.ManagedIdentity;
 
-    [Fact]
-    public void ManagedIdentity_Without_Namespace_IsRejected()
-    {
-        var outbox = BaseOutbox();
-        outbox.FullyQualifiedNamespace = null;
-        outbox.AuthenticationMode = RuntimeOutboxAuthenticationMode.ManagedIdentity;
+		var error = Assert.Throws<InvalidOperationException>(() => Build(outbox, BaseInbox()));
+		Assert.Contains("FullyQualifiedNamespace", error.Message, StringComparison.Ordinal);
+	}
 
-        var error = Assert.Throws<InvalidOperationException>(() => Build(outbox, BaseInbox()));
-        Assert.Contains("FullyQualifiedNamespace", error.Message, StringComparison.Ordinal);
-    }
+	[Fact]
+	public void ConnectionString_Mode_DoesNot_Require_Namespace()
+	{
+		var outbox = BaseOutbox();
+		outbox.AuthenticationMode = RuntimeOutboxAuthenticationMode.ConnectionString;
+		outbox.FullyQualifiedNamespace = null;
+		outbox.ConnectionString = "Endpoint=sb://placeholder.servicebus.windows.net/;SharedAccessKeyName=x;SharedAccessKey=y;";
 
-    [Fact]
-    public void ConnectionString_Mode_DoesNot_Require_Namespace()
-    {
-        var outbox = BaseOutbox();
-        outbox.AuthenticationMode = RuntimeOutboxAuthenticationMode.ConnectionString;
-        outbox.FullyQualifiedNamespace = null;
-        outbox.ConnectionString = "Endpoint=sb://placeholder.servicebus.windows.net/;SharedAccessKeyName=x;SharedAccessKey=y;";
+		// Validation is deliberately name-only and does not connect to the endpoint.
+		Assert.Null(Record.Exception(() => Build(outbox, BaseInbox())));
+	}
 
-        // Validation is deliberately name-only and does not connect to the endpoint.
-        Build(outbox, BaseInbox());
-    }
+	[Fact]
+	public void Missing_EntityName_IsRejected()
+	{
+		var outbox = BaseOutbox();
+		outbox.EntityName = null;
 
-    [Fact]
-    public void Missing_EntityName_IsRejected()
-    {
-        var outbox = BaseOutbox();
-        outbox.EntityName = null;
-
-        var error = Assert.Throws<InvalidOperationException>(() => Build(outbox, BaseInbox()));
-        Assert.Contains("EntityName", error.Message, StringComparison.Ordinal);
-    }
+		var error = Assert.Throws<InvalidOperationException>(() => Build(outbox, BaseInbox()));
+		Assert.Contains("EntityName", error.Message, StringComparison.Ordinal);
+	}
 }

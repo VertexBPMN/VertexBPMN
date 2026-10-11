@@ -110,7 +110,7 @@
         }
     }
 
-    private Color GetEventColor(string eventType) => eventType?.ToLower() switch
+    private static Color GetEventColor(string eventType) => eventType?.ToLower() switch
     {
         "process_started" => Color.Success,
         "process_completed" => Color.Info,
@@ -122,5 +122,5 @@
         _ => Color.Default
     };
 
-    private string GetEventTitle(string eventType) => eventType?.Replace('_', ' ').ToTitleCase() ?? "Unknown Event";
+    private static string GetEventTitle(string eventType) => eventType?.Replace('_', ' ').ToTitleCase() ?? "Unknown Event";
 }

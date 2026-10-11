@@ -45,8 +45,8 @@ public class InMemoryMessageDispatcher : IMessageDispatcher
 		return Task.CompletedTask;
 	}
 
-	public Task<Dictionary<string, object>> DispatchDmnTaskAsync(string targetWorker, string decisionRef, Dictionary<string, object> variables, CancellationToken cancellationToken = default)
-		=> Task.FromResult(new Dictionary<string, object>(variables, StringComparer.Ordinal));
+	public Task<Dictionary<string, object?>> DispatchDmnTaskAsync(string targetWorker, string decisionRef, Dictionary<string, object> variables, CancellationToken cancellationToken = default)
+		=> Task.FromResult(variables.ToDictionary(pair => pair.Key, pair => (object?)pair.Value, StringComparer.Ordinal));
 
 	public Task DispatchUserTaskAsync(string assignee, string taskId, Dictionary<string, object> variables, CancellationToken cancellationToken = default)
 		=> Task.CompletedTask; // In-Memory: keine besondere Behandlung

@@ -18,6 +18,8 @@ public class OpenAiServiceTaskHandler : IServiceTaskHandler
 	private readonly ILogger<OpenAiServiceTaskHandler> _logger;
 	private readonly TracerProvider? _tracerProvider;
 	private readonly ISecretProvider? _secretProvider;
+
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Minor Code Smell", "S1075", Justification = "Canonical third-party OpenAI API endpoint that must remain fixed.")]
 	private const string BaseUrl = "https://api.openai.com/v1/chat/completions";
 
 	public OpenAiServiceTaskHandler(HttpClient httpClient, ILogger<OpenAiServiceTaskHandler> logger, TracerProvider? tracerProvider = null, ISecretProvider? secretProvider = null)
@@ -31,7 +33,7 @@ public class OpenAiServiceTaskHandler : IServiceTaskHandler
 	/// <summary>
 	/// Executes OpenAI-powered tasks including text generation, analysis, classification, and data extraction.
 	/// </summary>
-	public async Task ExecuteAsync(IDictionary<string, string> attributes, IDictionary<string, object> variables, CancellationToken cancellationToken = default)
+	public async Task ExecuteAsync(IDictionary<string, string> attributes, IDictionary<string, object> variables, CancellationToken ct = default)
 	{
 		var tracer = _tracerProvider?.GetTracer("VertexBPMN.AI.OpenAI");
 		using var span = tracer?.StartActiveSpan("OpenAI.ExecuteTask");
@@ -57,62 +59,7 @@ public class OpenAiServiceTaskHandler : IServiceTaskHandler
 				return;
 			}
 
-			// Get API key
-			var apiKey = GetApiKey(attributes);
-
-			// Build context from input variables
-			var context = BuildContextString(config.InputVariables, variables);
-
-			// Prepare messages
-			var messages = new List<object>
-			{
-				new { role = "system", content = config.SystemMessage }
-			};
-
-			// Add user message with prompt and context
-			var userMessage = string.IsNullOrEmpty(context)
-				? config.Prompt
-				: $"{config.Prompt}\n\nContext:\n{context}";
-
-			messages.Add(new { role = "user", content = userMessage });
-
-			// Build request
-			var requestBody = new
-			{
-				model = config.Model,
-				messages = messages,
-				temperature = config.Temperature,
-				max_tokens = config.MaxTokens
-			};
-
-			var requestJson = JsonSerializer.Serialize(requestBody, JsonOptions);
-			using var content = new StringContent(requestJson, Encoding.UTF8, "application/json");
-
-			// Add OpenAI API key
-			_httpClient.DefaultRequestHeaders.Clear();
-			_httpClient.DefaultRequestHeaders.Authorization = new("Bearer", apiKey);
-
-			span?.SetAttribute("ai.request_size", requestJson.Length);
-
-			// Execute OpenAI API call
-			var response = await _httpClient.PostAsync(BaseUrl, content, cancellationToken);
-
-			if (!response.IsSuccessStatusCode)
-			{
-				var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-				var errorMessage = $"OpenAI API error: {response.StatusCode} - {errorContent}";
-				_logger.LogError(errorMessage);
-				span?.SetStatus(Status.Error.WithDescription(errorMessage));
-				throw new ServiceTaskExecutionException(errorMessage);
-			}
-
-			var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
-			var openAiResponse = JsonSerializer.Deserialize<OpenAiResponse>(responseJson, JsonOptions);
-
-			if (openAiResponse?.Choices?.Any() != true)
-			{
-				throw new ServiceTaskExecutionException("OpenAI API returned no choices");
-			}
+			var openAiResponse = await RequestResponseAsync(config, attributes, variables, span, ct);
 
 			// Process and store results
 			ProcessOpenAiResponse(openAiResponse, config, variables);
@@ -136,10 +83,72 @@ public class OpenAiServiceTaskHandler : IServiceTaskHandler
 		catch (Exception ex) when (ex is not ServiceTaskExecutionException)
 		{
 			var errorMessage = $"OpenAI service task execution failed: {ex.Message}";
-			_logger.LogError(ex, errorMessage);
+			_logger.LogError("OpenAi service task execution failed.");
 			span?.SetStatus(Status.Error.WithDescription(errorMessage));
 			throw new ServiceTaskExecutionException(errorMessage, ex);
 		}
+	}
+
+	private async Task<OpenAiResponse> RequestResponseAsync(OpenAiConfiguration config, IDictionary<string, string> attributes, IDictionary<string, object> variables, TelemetrySpan? span, CancellationToken ct)
+	{
+		// Get API key
+		var apiKey = GetApiKey(attributes);
+
+		// Build context from input variables
+		var context = BuildContextString(config.InputVariables, variables);
+
+		// Prepare messages
+		var messages = new List<object>
+		{
+			new { role = "system", content = config.SystemMessage }
+		};
+
+		// Add user message with prompt and context
+		var userMessage = string.IsNullOrEmpty(context)
+			? config.Prompt
+			: $"{config.Prompt}\n\nContext:\n{context}";
+
+		messages.Add(new { role = "user", content = userMessage });
+
+		// Build request
+		var requestBody = new
+		{
+			model = config.Model,
+			messages,
+			temperature = config.Temperature,
+			max_tokens = config.MaxTokens
+		};
+
+		var requestJson = JsonSerializer.Serialize(requestBody, JsonOptions);
+		using var content = new StringContent(requestJson, Encoding.UTF8, "application/json");
+
+		// Add OpenAI API key
+		_httpClient.DefaultRequestHeaders.Clear();
+		_httpClient.DefaultRequestHeaders.Authorization = new("Bearer", apiKey);
+
+		span?.SetAttribute("ai.request_size", requestJson.Length);
+
+		// Execute OpenAI API call
+		using var response = await _httpClient.PostAsync(BaseUrl, content, ct);
+
+		if (!response.IsSuccessStatusCode)
+		{
+			var errorContent = await response.Content.ReadAsStringAsync(ct);
+			var errorMessage = $"OpenAI API error: {response.StatusCode} - {errorContent}";
+			_logger.LogError("OpenAi API returned status {StatusCode}", response.StatusCode);
+			span?.SetStatus(Status.Error.WithDescription(errorMessage));
+			throw new ServiceTaskExecutionException(errorMessage);
+		}
+
+		var responseJson = await response.Content.ReadAsStringAsync(ct);
+		var openAiResponse = JsonSerializer.Deserialize<OpenAiResponse>(responseJson, JsonOptions);
+
+		if (openAiResponse?.Choices is not { Length: > 0 })
+		{
+			throw new ServiceTaskExecutionException("OpenAI API returned no choices");
+		}
+
+		return openAiResponse;
 	}
 
 	private OpenAiConfiguration ParseConfiguration(IDictionary<string, string> attributes)
@@ -236,31 +245,41 @@ public class OpenAiServiceTaskHandler : IServiceTaskHandler
 
 	private sealed record OpenAiResponse
 	{
+		[System.Text.Json.Serialization.JsonInclude]
 		public string Id { get; init; } = "";
+		[System.Text.Json.Serialization.JsonInclude]
 		public string Object { get; init; } = "";
-		public long Created { get; init; }
+		[System.Text.Json.Serialization.JsonInclude]
 		public string Model { get; init; } = "";
+		[System.Text.Json.Serialization.JsonInclude]
 		public OpenAiChoice[] Choices { get; init; } = [];
+		[System.Text.Json.Serialization.JsonInclude]
 		public OpenAiUsage? Usage { get; init; }
 	}
 
 	private sealed record OpenAiChoice
 	{
-		public int Index { get; init; }
+		[System.Text.Json.Serialization.JsonInclude]
 		public OpenAiMessage Message { get; init; } = new();
+		[System.Text.Json.Serialization.JsonInclude]
 		public string FinishReason { get; init; } = "";
 	}
 
 	private sealed record OpenAiMessage
 	{
+		[System.Text.Json.Serialization.JsonInclude]
 		public string Role { get; init; } = "";
+		[System.Text.Json.Serialization.JsonInclude]
 		public string Content { get; init; } = "";
 	}
 
 	private sealed record OpenAiUsage
 	{
+		[System.Text.Json.Serialization.JsonInclude]
 		public int PromptTokens { get; init; }
+		[System.Text.Json.Serialization.JsonInclude]
 		public int CompletionTokens { get; init; }
+		[System.Text.Json.Serialization.JsonInclude]
 		public int TotalTokens { get; init; }
 	}
 

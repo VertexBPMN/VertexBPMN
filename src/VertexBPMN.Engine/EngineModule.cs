@@ -14,28 +14,30 @@ namespace VertexBPMN.Engine;
 /// </summary>
 public static class EngineModule
 {
-    /// <summary>
-    /// Registers engine services into the DI container.
-    /// </summary>
-    /// <param name="services">Service collection.</param>
-    /// <param name="useInMemory">If true, register in-memory implementations instead of persistent ones (for tests).</param>
-    public static IServiceCollection AddEngineServices(this IServiceCollection services, IConfiguration configuration)
-    {
-        // Shared singleton/event sink;
-        services.AddScoped<IDmnEngine, DmnEngine>();
-        services.AddScoped<IDmnParser, DmnParser>();
-        services.AddScoped<ICmmnParser, CmmnParser>();
-        services.AddScoped<IBpmnParser, BpmnParser>();
-        services.AddScoped<IWorkerNodeManager, PersistentWorkerNodeManager>();
-        services.AddScoped<ProcessEngine>();
-        services.AddScoped<DistributedProcessEngine>();
-        services.AddScoped<IDistributedProcessEngine>(provider =>
-            provider.GetRequiredService<DistributedProcessEngine>());
-        services.AddScoped<ICaseExecutionRuntime, PersistentCaseExecutionRuntime>();
-        services.AddScoped<IProcessExecutionRuntime, PersistentProcessExecutionRuntime>();
-        services.AddScoped<ISimulationService, DeterministicSimulationService>();
-        services.AddScoped<IProcessEngine>(provider =>
-            ProcessEngineFactory.CreateFromConfiguration(provider));
-        return services;
-    }
+	/// <summary>
+	/// Registers engine services into the DI container.
+	/// </summary>
+	/// <param name="services">Service collection.</param>
+	/// <param name="configuration">Application configuration available to registered engine factories.</param>
+	public static IServiceCollection AddEngineServices(this IServiceCollection services, IConfiguration configuration)
+	{
+		ArgumentNullException.ThrowIfNull(services);
+		ArgumentNullException.ThrowIfNull(configuration);
+		// Shared singleton/event sink;
+		services.AddScoped<IDmnEngine, DmnEngine>();
+		services.AddScoped<IDmnParser, DmnParser>();
+		services.AddScoped<ICmmnParser, CmmnParser>();
+		services.AddScoped<IBpmnParser, BpmnParser>();
+		services.AddScoped<IWorkerNodeManager, PersistentWorkerNodeManager>();
+		services.AddScoped<ProcessEngine>();
+		services.AddScoped<DistributedProcessEngine>();
+		services.AddScoped<IDistributedProcessEngine>(provider =>
+			provider.GetRequiredService<DistributedProcessEngine>());
+		services.AddScoped<ICaseExecutionRuntime, PersistentCaseExecutionRuntime>();
+		services.AddScoped<IProcessExecutionRuntime, PersistentProcessExecutionRuntime>();
+		services.AddScoped<ISimulationService, DeterministicSimulationService>();
+		services.AddScoped<IProcessEngine>(provider =>
+			ProcessEngineFactory.CreateFromConfiguration(provider));
+		return services;
+	}
 }

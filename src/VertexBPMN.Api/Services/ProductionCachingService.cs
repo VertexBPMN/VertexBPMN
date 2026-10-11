@@ -7,12 +7,12 @@ namespace VertexBPMN.Api.Services;
 /// Production-Grade Caching Service
 /// Olympic-level feature: Production-Grade Features - Performance Optimization
 /// </summary>
-public class ProductionCachingService : ICachingService
+internal class ProductionCachingService : ICachingService
 {
     private readonly IMemoryCache _memoryCache;
     private readonly ILogger<ProductionCachingService> _logger;
-    private readonly Dictionary<string, string> _keyRegistry = new();
-    private readonly object _registryLock = new();
+    private readonly Dictionary<string, string> _keyRegistry = new(StringComparer.Ordinal);
+    private readonly System.Threading.Lock _registryLock = new();
 
     public ProductionCachingService(IMemoryCache memoryCache, ILogger<ProductionCachingService> logger)
     {
@@ -26,17 +26,23 @@ public class ProductionCachingService : ICachingService
         {
             if (_memoryCache.TryGetValue(key, out var cached))
             {
-                _logger.LogDebug("Cache hit for key: {Key}", key);
+                if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug))
+                {
+	                _logger.LogDebug("Cache hit for key: {Key}", key);
+                }
                 return (T?)cached;
             }
 
-            _logger.LogDebug("Cache miss for key: {Key}", key);
-            return default(T);
+            if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug))
+            {
+	            _logger.LogDebug("Cache miss for key: {Key}", key);
+            }
+            return default;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting cache value for key: {Key}", key);
-            return default(T);
+            return default;
         }
     }
 
@@ -55,9 +61,12 @@ public class ProductionCachingService : ICachingService
                 options.SlidingExpiration = TimeSpan.FromMinutes(30); // Default expiry
             }
 
-            options.RegisterPostEvictionCallback((key, value, reason, state) =>
+            options.RegisterPostEvictionCallback((key, _, reason, _) =>
             {
-                _logger.LogDebug("Cache entry evicted - Key: {Key}, Reason: {Reason}", key, reason);
+                if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug))
+                {
+	                _logger.LogDebug("Cache entry evicted - Key: {Key}, Reason: {Reason}", key, reason);
+                }
                 lock (_registryLock)
                 {
                     _keyRegistry.Remove(key.ToString()!);
@@ -71,8 +80,11 @@ public class ProductionCachingService : ICachingService
                 _keyRegistry[key] = typeof(T).Name;
             }
 
-            _logger.LogDebug("Cache set for key: {Key}, Type: {Type}, Expiry: {Expiry}", 
-                key, typeof(T).Name, expiry?.ToString() ?? "Default");
+            if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug))
+            {
+	            _logger.LogDebug("Cache set for key: {Key}, Type: {Type}, Expiry: {Expiry}", 
+	                key, typeof(T).Name, expiry?.ToString() ?? "Default");
+            }
         }
         catch (Exception ex)
         {
@@ -89,7 +101,10 @@ public class ProductionCachingService : ICachingService
             {
                 _keyRegistry.Remove(key);
             }
-            _logger.LogDebug("Cache removed for key: {Key}", key);
+            if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug))
+            {
+	            _logger.LogDebug("Cache removed for key: {Key}", key);
+            }
         }
         catch (Exception ex)
         {
@@ -101,7 +116,7 @@ public class ProductionCachingService : ICachingService
     {
         try
         {
-            List<string> keysToRemove = new();
+            List<string> keysToRemove;
             
             lock (_registryLock)
             {
@@ -115,8 +130,11 @@ public class ProductionCachingService : ICachingService
                 await RemoveAsync(key);
             }
 
-            _logger.LogDebug("Cache pattern removal completed - Pattern: {Pattern}, Removed: {Count}", 
-                pattern, keysToRemove.Count);
+            if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug))
+            {
+	            _logger.LogDebug("Cache pattern removal completed - Pattern: {Pattern}, Removed: {Count}", 
+	                pattern, keysToRemove.Count);
+            }
         }
         catch (Exception ex)
         {
@@ -126,22 +144,32 @@ public class ProductionCachingService : ICachingService
 
     public async Task<T> GetOrSetAsync<T>(string key, Func<Task<T>> factory, TimeSpan? expiry = null)
     {
-        var cached = await GetAsync<T>(key);
-        if (cached != null)
-        {
-            return cached;
-        }
+    	if (TryGetCachedValue<T>(key, out var cached))
+    	{
+    		return cached;
+    	}
 
+    	var value = await factory();
+    	await SetAsync(key, value, expiry);
+    	return value;
+    }
+
+    private bool TryGetCachedValue<T>(string key, out T value)
+    {
         try
         {
-            var value = await factory();
-            await SetAsync(key, value, expiry);
-            return value;
+            if (_memoryCache.TryGetValue(key, out var cached) && cached is T typedValue)
+            {
+                value = typedValue;
+                return true;
+            }
         }
-        catch (Exception ex)
+        catch (Exception exception)
         {
-            _logger.LogError(ex, "Error in GetOrSet factory for key: {Key}", key);
-            throw;
+            _logger.LogError(exception, "Error getting cache value for key: {Key}", key);
         }
+
+        value = default!;
+        return false;
     }
 }

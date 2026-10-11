@@ -11,35 +11,35 @@ namespace VertexBPMN.Studio.UiTests;
 
 public sealed partial class LocalStudioInfrastructureTests
 {
-    [Fact]
-    [Trait("Category", "LocalStudioE2E")]
-    public async Task DataArtifacts_DataObjectsStoresAndProperties_DoNotBlockExecution()
-    {
-        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
-        using var apiClient = host.CreateApiClient();
-        var processKey = $"StudioE2E_DataArt_{host.RunId}";
+	[Fact]
+	[Trait("Category", "LocalStudioE2E")]
+	public async Task DataArtifacts_DataObjectsStoresAndProperties_DoNotBlockExecution()
+	{
+		Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
+		using var apiClient = host.CreateApiClient();
+		var processKey = $"StudioE2E_DataArt_{host.RunId}";
 
-        await DeployUnderTestAsync(apiClient, processKey, BuildDataArtifactsBpmn(processKey));
-        host.RegisterProcessDefinitionCleanup(processKey);
+		await DeployUnderTestAsync(apiClient, processKey, BuildDataArtifactsBpmn(processKey));
+		host.RegisterProcessDefinitionCleanup(processKey);
 
-        var instanceId = await StartProcessAsync(apiClient, processKey, null, $"da-{host.RunId}");
+		var instanceId = await StartProcessAsync(apiClient, processKey, null, $"da-{host.RunId}");
 
-        await WaitForOpenTaskCountAsync(instanceId, 1);
-        var open = await GetOpenTasksAsync(instanceId);
-        Assert.Equal("t", open[0].GetProperty("activityId").GetString());
+		await WaitForOpenTaskCountAsync(instanceId, 1);
+		var open = await GetOpenTasksAsync(instanceId);
+		Assert.Equal("t", open[0].GetProperty("activityId").GetString());
 
-        await CompleteTaskAsync(open[0].GetProperty("id").GetGuid());
-        await WaitForInstanceStateAsync(instanceId, "Completed");
+		await CompleteTaskAsync(open[0].GetProperty("id").GetGuid());
+		await WaitForInstanceStateAsync(instanceId, "Completed");
 
-        var history = await GetHistoryAsync(instanceId);
-        Assert.Contains(history, e => EventHasElementId(e, "end") && IsEndEventReached(e));
-    }
+		var history = await GetHistoryAsync(instanceId);
+		Assert.Contains(history, e => EventHasElementId(e, "end") && IsEndEventReached(e));
+	}
 
-    // ---- helpers ----
+	// ---- helpers ----
 
-    private static string BuildDataArtifactsBpmn(string processKey)
-    {
-        return $$"""
+	private static string BuildDataArtifactsBpmn(string processKey)
+	{
+		return $$"""
             <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
                          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                          xmlns:vertex="http://vertexbpmn.dev/schema"
@@ -60,5 +60,5 @@ public sealed partial class LocalStudioInfrastructureTests
               </process>
             </definitions>
             """;
-    }
+	}
 }

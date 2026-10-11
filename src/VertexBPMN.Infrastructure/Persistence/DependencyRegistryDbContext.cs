@@ -17,6 +17,7 @@ public sealed class DependencyRegistryDbContext(DbContextOptions<DependencyRegis
     }
 }
 
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0048", Justification = "Small entity type kept adjacent to the DbContext that uses it; splitting it into a separate file adds no value.")]
 public sealed class DependencyConfigurationEntity
 {
     public string Key { get; set; } = string.Empty;

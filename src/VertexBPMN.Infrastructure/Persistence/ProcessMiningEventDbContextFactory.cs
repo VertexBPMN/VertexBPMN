@@ -2,8 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using VertexBPMN.Infrastructure.Persistence.Services;
 
-namespace VertexBPMN.Infrastructure.Persistence
-{
+namespace VertexBPMN.Infrastructure.Persistence;
+
     public class ProcessMiningEventDbContextFactory : IDesignTimeDbContextFactory<ProcessMiningEventDbContext>
     {
         public static ProcessMiningEventDbContext Create(string connectionString)
@@ -22,4 +22,3 @@ namespace VertexBPMN.Infrastructure.Persistence
             return new ProcessMiningEventDbContext(optionsBuilder.Options);
         }
     }
-}

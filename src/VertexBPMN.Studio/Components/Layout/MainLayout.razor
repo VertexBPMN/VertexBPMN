@@ -138,9 +138,9 @@
                 _tenantsLoaded = true;
                 return;
             }
-            catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+            catch (OperationCanceledException exception) when (timeout.IsCancellationRequested)
             {
-                Logger.LogWarning("Loading tenants timed out on attempt {Attempt}; retrying", attempt);
+                Logger.LogWarning(exception, "Loading tenants timed out on attempt {Attempt}; retrying", attempt);
             }
             catch (Exception exception)
             {
@@ -177,7 +177,10 @@
         StateHasChanged();
     }
 
-    private async void OnTenantsChanged()
+    private async void OnTenantsChanged(object? sender, EventArgs args)
+        => await RefreshTenantsAsync();
+
+    private async Task RefreshTenantsAsync()
     {
         if (!_canSelectTenant) return;
         await InvokeAsync(async () =>
@@ -197,7 +200,7 @@
         });
     }
 
-    private void OnEngineStatusChanged() => _ = InvokeAsync(StateHasChanged);
+    private void OnEngineStatusChanged(object? sender, EventArgs args) => _ = InvokeAsync(StateHasChanged);
 
     private async void OnAuthenticationStateChanged(Task<AuthenticationState> stateTask)
     {
@@ -213,7 +216,7 @@
                 _tenants = string.IsNullOrWhiteSpace(tenantId) ? [] : [new StudioTenant(tenantId, tenantId)];
             }
             else if (!wasAdmin)
-                OnTenantsChanged();
+                await RefreshTenantsAsync();
             StateHasChanged();
         });
     }
@@ -231,7 +234,7 @@
 
     private bool IsWorkspaceRoute()
     {
-        var path = Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].TrimEnd('/');
+        var path = Navigation.ToBaseRelativePath(Navigation.Uri).Split(['?', '#'], StringSplitOptions.None)[0].TrimEnd('/');
         return path is "bpmn-modeler" or "dmn-modeler" or "cmmn-modeler" or "form-builder";
     }
 

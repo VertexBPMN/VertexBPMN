@@ -7,163 +7,179 @@ namespace VertexBPMN.McpAgentPlugin;
 /// <summary>
 /// BPMN-Plugin für MCP-Agent-Integration (Service Task mit implementation="mcp-agent")
 /// </summary>
-public class McpAgentPlugin : IPlugin
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "MA0049", Justification = "Published plugin type and namespace are retained for external plugin discovery and callers.")]
+public class McpAgentPlugin : IPlugin, IDisposable
 {
-    private Dictionary<string, AgentConfig> _agents = new();
-    private HttpClient _httpClient = new();
-    private int _maxRetries = 3;
-    private PluginContext? _pluginContext;
-    private bool _enabled = true;
+	private Dictionary<string, AgentConfig> _agents = new(StringComparer.Ordinal);
+	private readonly HttpClient _httpClient;
+	private readonly bool _ownsHttpClient;
+	private int _maxRetries = 3;
+	private bool _enabled = true;
 
-    public McpAgentPlugin(HttpClient? httpClient = null)
-    {
-        _httpClient = httpClient ?? new HttpClient();
-    }
+	public McpAgentPlugin(HttpClient? httpClient = null)
+	{
+		_httpClient = httpClient ?? new HttpClient();
+		_ownsHttpClient = httpClient is null;
+	}
 
 
-    // IPlugin: Initialisierung
-    public async Task InitializeAsync(PluginContext context)
-    {
-        _pluginContext = context;
-        _maxRetries = 3;
-        // Konfiguration laden
-        if (context.Configuration["agentsConfigPath"] is string configPath && File.Exists(configPath))
-        {
-            var configJson = await File.ReadAllTextAsync(configPath);
-            var config = JsonNode.Parse(configJson)?["agents"]?.AsArray()
-                ?? throw new InvalidDataException($"Agent configuration '{configPath}' must contain an 'agents' array.");
-            _agents = new();
-            foreach (var x in config)
-            {
-                var agent = x ?? throw new InvalidDataException($"Agent configuration '{configPath}' contains a null entry.");
-                var name = agent["name"]?.GetValue<string>()
-                    ?? throw new InvalidDataException($"Agent configuration '{configPath}' contains an agent without a name.");
-                _agents[name] = new AgentConfig
-                {
-                    Name = name,
-                    Type = agent["type"]?.GetValue<string>()
-                        ?? throw new InvalidDataException($"Agent '{name}' has no type."),
-                    Url = agent["url"]?.GetValue<string>()
-                        ?? throw new InvalidDataException($"Agent '{name}' has no URL."),
-                    Auth = agent["auth"]?.GetValue<string>()
-                };
-            }
-        }
-        // Extension Point Registrierung (Service Task Handler)
-        // ...optional: weitere Initialisierung...
-        await Task.CompletedTask;
-    }
+	// IPlugin: Initialisierung
+	public async Task InitializeAsync(PluginContext context)
+	{
+		_maxRetries = 3;
+		// Konfiguration laden
+		if (context.Configuration["agentsConfigPath"] is string configPath && File.Exists(configPath))
+		{
+			var configJson = await File.ReadAllTextAsync(configPath);
+			var config = JsonNode.Parse(configJson)?["agents"]?.AsArray()
+				?? throw new InvalidDataException($"Agent configuration '{configPath}' must contain an 'agents' array.");
+			_agents = new(StringComparer.Ordinal);
+			foreach (var x in config)
+			{
+				var agent = x ?? throw new InvalidDataException($"Agent configuration '{configPath}' contains a null entry.");
+				var name = agent["name"]?.GetValue<string>()
+					?? throw new InvalidDataException($"Agent configuration '{configPath}' contains an agent without a name.");
+				_agents[name] = new AgentConfig
+				{
+					Name = name,
+					Type = agent["type"]?.GetValue<string>()
+						?? throw new InvalidDataException($"Agent '{name}' has no type."),
+					Url = agent["url"]?.GetValue<string>()
+						?? throw new InvalidDataException($"Agent '{name}' has no URL."),
+					Auth = agent["auth"]?.GetValue<string>()
+				};
+			}
+		}
+		// Extension Point Registrierung (Service Task Handler)
+		// ...optional: weitere Initialisierung...
+		await Task.CompletedTask;
+	}
 
-    public async Task ShutdownAsync()
-    {
-        _enabled = false;
-        await Task.CompletedTask;
-    }
+	public Task ShutdownAsync() => DisableAsync();
 
-    public async Task EnableAsync()
-    {
-        _enabled = true;
-        await Task.CompletedTask;
-    }
+	public async Task EnableAsync()
+	{
+		_enabled = true;
+		await Task.CompletedTask;
+	}
 
-    public async Task DisableAsync()
-    {
-        _enabled = false;
-        await Task.CompletedTask;
-    }
+	public async Task DisableAsync()
+	{
+		_enabled = false;
+		await Task.CompletedTask;
+	}
 
-    public async Task RegisterServicesAsync(PluginServiceContainer serviceContainer)
-    {
-        // Beispiel: Service für andere Plugins bereitstellen
-        serviceContainer.RegisterService<McpAgentPlugin>(this);
-        await Task.CompletedTask;
-    }
+	public async Task RegisterServicesAsync(PluginServiceContainer serviceContainer)
+	{
+		// Beispiel: Service für andere Plugins bereitstellen
+		serviceContainer.RegisterService<McpAgentPlugin>(this);
+		await Task.CompletedTask;
+	}
 
-    public async Task<object?> ExecuteMethodAsync(string methodName, params object[] parameters)
-    {
-        // Ermöglicht dynamische Methodenaufrufe
-        return methodName switch
-        {
-            "CallAgentAsync" => parameters.Length == 2 && parameters[0] is AgentConfig agent && parameters[1] is JsonNode input
-                ? await CallAgentAsync(agent, input, CancellationToken.None) : null,
-            _ => null
-        };
-    }
+	public async Task<object?> ExecuteMethodAsync(string methodName, params object[] parameters)
+	{
+		// Ermöglicht dynamische Methodenaufrufe
+		return methodName switch
+		{
+			"CallAgentAsync" => parameters.Length == 2 && parameters[0] is AgentConfig agent && parameters[1] is JsonNode input
+				? await CallAgentAsync(agent, input, CancellationToken.None) : null,
+			_ => null
+		};
+	}
 
-    public async Task<List<PluginExtensionPoint>> GetExtensionPointsAsync()
-    {
-        // Extension Point für Service Task Handler
-        var ext = new PluginExtensionPoint
-        {
-            Id = "mcp-agent-service-task",
-            Name = "MCP-Agent Service Task Handler",
-            Description = "Service Task Handler für MCP-Agent Integration",
-            InterfaceType = typeof(ICustomActivityBehavior).FullName!,
-            Parameters = new Dictionary<string, PluginParameter>
-            {
-                { "agentName", new PluginParameter { Name = "agentName", Type = "string", Required = true } }
-            }
-        };
-        return await Task.FromResult(new List<PluginExtensionPoint> { ext });
-    }
+	public async Task<List<PluginExtensionPoint>> GetExtensionPointsAsync()
+	{
+		// Extension Point für Service Task Handler
+		var ext = new PluginExtensionPoint
+		{
+			Id = "mcp-agent-service-task",
+			Name = "MCP-Agent Service Task Handler",
+			Description = "Service Task Handler für MCP-Agent Integration",
+			InterfaceType = typeof(ICustomActivityBehavior).FullName!,
+			Parameters = new Dictionary<string, PluginParameter>(StringComparer.Ordinal)
+			{
+				{ "agentName", new PluginParameter { Name = "agentName", Type = "string", Required = true } }
+			}
+		};
+		return await Task.FromResult(new List<PluginExtensionPoint> { ext });
+	}
 
-    // Optional: Handler für Service Tasks (kann über Extension Point angebunden werden)
-    public async Task<ActivityExecutionResult> ExecuteAsync(ActivityExecutionContext context)
-    {
-        if (!_enabled)
-            return new ActivityExecutionResult { Success = false, Error = "Plugin disabled" };
-        var agentName = context.Configuration.TryGetValue("agentName", out var nameObj) ? nameObj?.ToString() : null;
-        if (agentName == null || !_agents.TryGetValue(agentName, out var agent))
-        {
-            return new ActivityExecutionResult { Success = false, Error = $"MCP-Agent '{agentName}' nicht gefunden." };
-        }
-        var input = JsonNode.Parse(JsonSerializer.Serialize(context.Variables))!;
-        int attempt = 0;
-        Exception? lastEx = null;
-        while (attempt < _maxRetries)
-        {
-            try
-            {
-                var response = await CallAgentAsync(agent, input, CancellationToken.None);
-                // Korrigiere Typkonvertierung: JsonNode zu Dictionary<string, object>
-                var outputVars = new Dictionary<string, object>();
-                foreach (var kv in response.AsObject())
-                {
-                    outputVars[kv.Key] = kv.Value is JsonValue v ? v.GetValue<object>() : kv.Value?.ToJsonString();
-                }
-                return new ActivityExecutionResult { Success = true, OutputVariables = outputVars };
-            }
-            catch (Exception ex)
-            {
-                lastEx = ex;
-                attempt++;
-                await Task.Delay(500);
-            }
-        }
-        return new ActivityExecutionResult { Success = false, Error = $"MCP-Agent-Call fehlgeschlagen: {lastEx?.Message}" };
-    }
+	// Optional: Handler für Service Tasks (kann über Extension Point angebunden werden)
+	public async Task<ActivityExecutionResult> ExecuteAsync(ActivityExecutionContext context)
+	{
+		if (!_enabled)
+		{
+			return new ActivityExecutionResult { Success = false, Error = "Plugin disabled" };
+		}
+		var agentName = context.Configuration.TryGetValue("agentName", out var nameObj) ? nameObj?.ToString() : null;
+		if (agentName == null || !_agents.TryGetValue(agentName, out var agent))
+		{
+			return new ActivityExecutionResult { Success = false, Error = $"MCP-Agent '{agentName}' nicht gefunden." };
+		}
+		var input = JsonNode.Parse(JsonSerializer.Serialize(context.Variables))!;
+		var attempt = 0;
+		Exception? lastEx = null;
+		while (attempt < _maxRetries)
+		{
+			try
+			{
+				var response = await CallAgentAsync(agent, input, CancellationToken.None);
+				// Korrigiere Typkonvertierung: JsonNode zu Dictionary<string, object>
+				var outputVars = new Dictionary<string, object?>(StringComparer.Ordinal);
+				foreach (var kv in response.AsObject())
+				{
+					outputVars[kv.Key] = kv.Value is JsonValue v ? v.GetValue<object>() : kv.Value?.ToJsonString();
+				}
+#pragma warning disable CS8619 // The legacy plugin contract has non-nullable values, but JSON null remains a valid output; preserve it without replacing it with a fabricated value.
+				return new ActivityExecutionResult { Success = true, OutputVariables = outputVars };
+#pragma warning restore CS8619
+			}
+			catch (Exception ex)
+			{
+				lastEx = ex;
+				attempt++;
+				await Task.Delay(500);
+			}
+		}
+		return new ActivityExecutionResult { Success = false, Error = $"MCP-Agent-Call fehlgeschlagen: {lastEx?.Message}" };
+	}
 
-    public async Task<JsonNode> CallAgentAsync(AgentConfig agent, JsonNode input, CancellationToken ct)
-    {
-        var req = new StringContent(input.ToJsonString(), Encoding.UTF8, "application/json");
-        var resp = await _httpClient.PostAsync(agent.Url, req, ct);
-        resp.EnsureSuccessStatusCode();
-        var respJson = await resp.Content.ReadAsStringAsync(ct);
-        return JsonNode.Parse(respJson)!;
-    }
+	public async Task<JsonNode> CallAgentAsync(AgentConfig agent, JsonNode input, CancellationToken ct)
+	{
+		using var req = new StringContent(input.ToJsonString(), Encoding.UTF8, "application/json");
+		using var resp = await _httpClient.PostAsync(agent.Url, req, ct);
+		resp.EnsureSuccessStatusCode();
+		var respJson = await resp.Content.ReadAsStringAsync(ct);
+		return JsonNode.Parse(respJson) ?? throw new JsonException("Agent response must contain a JSON value.");
+	}
 
-    // Optional: Demo-Response
-    public async Task<JsonNode> WaitForAgentResponseAsync(string correlationId, CancellationToken ct)
-    {
-        await Task.Delay(1000, ct);
-        return new JsonObject { ["correlationId"] = correlationId, ["result"] = "DemoResponse" };
-    }
+	// Optional: Demo-Response
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "S2325", Justification = "Instance signature retained for existing plugin consumers; this method is explicitly a demo response, not a production polling implementation.")]
+	public async Task<JsonNode> WaitForAgentResponseAsync(string correlationId, CancellationToken ct)
+	{
+		await Task.Delay(1000, ct);
+		return new JsonObject { ["correlationId"] = correlationId, ["result"] = "DemoResponse" };
+	}
 
-    public class AgentConfig
-    {
-        public string Name { get; set; } = "";
-        public string Type { get; set; } = "REST";
-        public string Url { get; set; } = "";
-        public string? Auth { get; set; }
-    }
+	public class AgentConfig
+	{
+		public string Name { get; set; } = "";
+		public string Type { get; set; } = "REST";
+		public string Url { get; set; } = "";
+		public string? Auth { get; set; }
+	}
+
+	public void Dispose()
+	{
+		Dispose(disposing: true);
+		GC.SuppressFinalize(this);
+	}
+
+	protected virtual void Dispose(bool disposing)
+	{
+		if (disposing && _ownsHttpClient)
+		{
+			_httpClient.Dispose();
+		}
+	}
 }

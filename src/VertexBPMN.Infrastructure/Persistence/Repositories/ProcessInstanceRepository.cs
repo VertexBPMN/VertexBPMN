@@ -27,11 +27,21 @@ public class ProcessInstanceRepository : IProcessInstanceRepository
     public async IAsyncEnumerable<ProcessInstance> ListAsync(Guid? processDefinitionId = null, string? tenantId = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var query = _db.ProcessInstances.AsQueryable();
-        if (processDefinitionId != null) query = query.Where(i => i.ProcessDefinitionId == processDefinitionId);
-        if (tenantId != null) query = query.Where(i => i.TenantId == tenantId);
-        await foreach (var inst in query.AsAsyncEnumerable().WithCancellation(cancellationToken))
-            yield return inst;
-    }
+        if (processDefinitionId != null)
+		{
+			query = query.Where(i => i.ProcessDefinitionId == processDefinitionId);
+		}
+
+		if (tenantId != null)
+		{
+			query = query.Where(i => i.TenantId == tenantId);
+		}
+
+		await foreach (var inst in query.AsAsyncEnumerable().WithCancellation(cancellationToken))
+		{
+			yield return inst;
+		}
+	}
 
     public async ValueTask DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
@@ -48,16 +58,17 @@ public class ProcessInstanceRepository : IProcessInstanceRepository
     /// </summary>
     /// <param name="processInstance">Instance to update.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <exception cref="ArgumentNullException"></exception>
     public async ValueTask UpdateAsync(ProcessInstance processInstance, CancellationToken cancellationToken = default)
     {
  
-        if (processInstance is null) throw new ArgumentNullException(nameof(processInstance));
+        ArgumentNullException.ThrowIfNull(processInstance);
 
-        // If entity tracks modification audit.
-        try
+		// If entity tracks modification audit.
+		try
         {
             var lastModifiedProp = processInstance.GetType().GetProperty("LastModified");
-            if (lastModifiedProp is not null && lastModifiedProp.CanWrite)
+            if (lastModifiedProp?.CanWrite == true)
             {
                 lastModifiedProp.SetValue(processInstance, DateTime.UtcNow);
             }

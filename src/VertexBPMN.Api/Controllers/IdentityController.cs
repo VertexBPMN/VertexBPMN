@@ -6,6 +6,7 @@ namespace VertexBPMN.Api.Controllers;
 
 [ApiController]
 [Route("api/identity")]
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public controller required for ASP.NET Core MVC discovery and activation.")]
 public class IdentityController : ControllerBase
 {
     private readonly IIdentityService _identityService;
@@ -25,6 +26,11 @@ public class IdentityController : ControllerBase
     [HttpGet("validate-user")]
     public ActionResult<UserInfo> ValidateUser([FromQuery] string username)
     {
+        if (string.IsNullOrWhiteSpace(username))
+        {
+            return BadRequest(new ProblemDetails { Title = "A username is required." });
+        }
+
         if (Request.Query.ContainsKey("password"))
         {
             return BadRequest(new ProblemDetails
@@ -52,5 +58,13 @@ public class IdentityController : ControllerBase
             ManagementUrl: string.IsNullOrWhiteSpace(managementUrl) ? null : managementUrl));
     }
 
-    public sealed record PasswordManagementInfo(string Mode, bool LocalPasswordValidation, string? ManagementUrl);
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public contract type PasswordManagementInfo retained for exposed HTTP action signatures and controller activation (IdentityController).")]
+    [method: System.Text.Json.Serialization.JsonConstructor]
+    public sealed record PasswordManagementInfo(string Mode, bool LocalPasswordValidation, string? ManagementUrl)
+    {
+        public PasswordManagementInfo(string Mode, bool LocalPasswordValidation, Uri ManagementUrl)
+            : this(Mode, LocalPasswordValidation, ManagementUrl.AbsoluteUri)
+        {
+        }
+    }
 }

@@ -32,9 +32,11 @@ public sealed class PersistentConnectorService(
         ValidateTenant(tenantId);
         var normalized = await NormalizeAsync(tenantId, request, cancellationToken);
         if (await db.Connectors.AnyAsync(c => c.TenantId == tenantId && c.Name == normalized.Name, cancellationToken))
-            throw new ConnectorConflictException($"A connector named '{normalized.Name}' already exists in this tenant.");
+		{
+			throw new ConnectorConflictException($"A connector named '{normalized.Name}' already exists in this tenant.");
+		}
 
-        var now = DateTime.UtcNow;
+		var now = DateTime.UtcNow;
         var record = new ConnectorRecord
         {
             TenantId = tenantId,
@@ -58,12 +60,18 @@ public sealed class PersistentConnectorService(
     {
         ValidateTenant(tenantId);
         var record = await FindAsync(tenantId, id, cancellationToken);
-        if (record is null) return false;
-        var normalized = await NormalizeAsync(tenantId, request, cancellationToken);
-        if (await db.Connectors.AnyAsync(c => c.TenantId == tenantId && c.Name == normalized.Name && c.Id != id, cancellationToken))
-            throw new ConnectorConflictException($"A connector named '{normalized.Name}' already exists in this tenant.");
+        if (record is null)
+		{
+			return false;
+		}
 
-        record.Name = normalized.Name;
+		var normalized = await NormalizeAsync(tenantId, request, cancellationToken);
+        if (await db.Connectors.AnyAsync(c => c.TenantId == tenantId && c.Name == normalized.Name && c.Id != id, cancellationToken))
+		{
+			throw new ConnectorConflictException($"A connector named '{normalized.Name}' already exists in this tenant.");
+		}
+
+		record.Name = normalized.Name;
         record.Type = normalized.Type;
         record.Description = normalized.Description;
         record.Endpoint = normalized.Endpoint;
@@ -80,8 +88,12 @@ public sealed class PersistentConnectorService(
     {
         ValidateTenant(tenantId);
         var record = await FindAsync(tenantId, id, cancellationToken);
-        if (record is null) return false;
-        record.Enabled = enabled;
+        if (record is null)
+		{
+			return false;
+		}
+
+		record.Enabled = enabled;
         record.LastModified = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
         await AuditAsync(enabled ? "connector.enabled" : "connector.disabled", record, cancellationToken, new { enabled });
@@ -92,8 +104,12 @@ public sealed class PersistentConnectorService(
     {
         ValidateTenant(tenantId);
         var record = await FindAsync(tenantId, id, cancellationToken);
-        if (record is null) return false;
-        db.Connectors.Remove(record);
+        if (record is null)
+		{
+			return false;
+		}
+
+		db.Connectors.Remove(record);
         await db.SaveChangesAsync(cancellationToken);
         await AuditAsync("connector.deleted", record, cancellationToken);
         return true;
@@ -103,11 +119,31 @@ public sealed class PersistentConnectorService(
     {
         ValidateTenant(tenantId);
         var record = await FindAsync(tenantId, id, cancellationToken);
-        if (record is null) return null;
-        var endpointHost = Uri.TryCreate(record.Endpoint, UriKind.Absolute, out var endpoint) ? endpoint.Host : null;
-        var result = record.Enabled && endpointHost is not null
-            ? new ConnectorTestResult(true, "Connector configuration is ready. Credentials remain server-side and are not transmitted by this safe test.", endpointHost, record.CredentialId is not null)
-            : new ConnectorTestResult(false, record.Enabled ? "An absolute HTTP(S) endpoint is required before testing." : "Enable the connector before testing.", endpointHost, record.CredentialId is not null);
+        if (record is null)
+		{
+			return null;
+		}
+
+		var endpointHost = Uri.TryCreate(record.Endpoint, UriKind.Absolute, out var endpoint) ? endpoint.Host : null;
+        var success = record.Enabled && endpointHost is not null;
+        // IDE0045 would collapse this to a nested conditional, which S3358/RCS1238 prohibit; keep the explicit branches.
+#pragma warning disable IDE0045
+        string message;
+        if (success)
+        {
+            message = "Connector configuration is ready. Credentials remain server-side and are not transmitted by this safe test.";
+        }
+        else if (record.Enabled)
+        {
+            message = "An absolute HTTP(S) endpoint is required before testing.";
+        }
+        else
+        {
+            message = "Enable the connector before testing.";
+        }
+#pragma warning restore IDE0045
+
+        var result = new ConnectorTestResult(success, message, endpointHost, record.CredentialId is not null);
         await AuditAsync("connector.tested", record, cancellationToken, new { result.Success, result.CredentialConfigured, endpointHost });
         return result;
     }
@@ -120,16 +156,23 @@ public sealed class PersistentConnectorService(
         var endpoint = Optional(request.Endpoint, "Endpoint", 2048);
         if (endpoint is not null && (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri)
             || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)))
-            throw new ArgumentException("Endpoint must be an absolute HTTP or HTTPS URL.", nameof(request));
+		{
+			throw new ArgumentException("Endpoint must be an absolute HTTP or HTTPS URL.", nameof(request));
+		}
 
-        var credentialId = Optional(request.CredentialId, "CredentialId", 128);
+		var credentialId = Optional(request.CredentialId, "CredentialId", 128);
         if (credentialId is not null && await credentialService.GetAsync(tenantId, credentialId, cancellationToken) is null)
-            throw new ConnectorCredentialException("The credential reference does not exist in this tenant.");
+		{
+			throw new ConnectorCredentialException("The credential reference does not exist in this tenant.");
+		}
 
-        var templateId = Optional(request.TemplateId, "TemplateId", 128);
+		var templateId = Optional(request.TemplateId, "TemplateId", 128);
         if (templateId is not null && !await db.ConnectorTemplates.AnyAsync(template => template.TenantId == tenantId && template.Id == templateId, cancellationToken))
-            throw new ConnectorTemplateReferenceException("The connector template reference does not exist in this tenant.");
-        return new ConnectorWriteRequest(name, type, description, endpoint, credentialId, templateId, request.Enabled);
+		{
+			throw new ConnectorTemplateReferenceException("The connector template reference does not exist in this tenant.");
+		}
+
+		return new ConnectorWriteRequest(name, type, description, endpoint, credentialId, templateId, request.Enabled);
     }
 
     private Task<ConnectorRecord?> FindAsync(string tenantId, string id, CancellationToken cancellationToken) =>
@@ -154,22 +197,43 @@ public sealed class PersistentConnectorService(
     private static string Required(string? value, string field, int maxLength)
     {
         var normalized = value?.Trim();
-        if (string.IsNullOrWhiteSpace(normalized)) throw new ArgumentException($"{field} is required.", field);
-        if (normalized.Length > maxLength) throw new ArgumentException($"{field} exceeds the maximum length of {maxLength}.", field);
-        return normalized;
+        if (string.IsNullOrWhiteSpace(normalized))
+		{
+			throw new ArgumentException($"{field} is required.", field);
+		}
+
+		if (normalized.Length > maxLength)
+		{
+			throw new ArgumentException($"{field} exceeds the maximum length of {maxLength}.", field);
+		}
+
+		return normalized;
     }
 
     private static string? Optional(string? value, string field, int maxLength)
     {
         var normalized = value?.Trim();
-        if (string.IsNullOrWhiteSpace(normalized)) return null;
-        if (normalized.Length > maxLength) throw new ArgumentException($"{field} exceeds the maximum length of {maxLength}.", field);
-        return normalized;
+        if (string.IsNullOrWhiteSpace(normalized))
+		{
+			return null;
+		}
+
+		if (normalized.Length > maxLength)
+		{
+			throw new ArgumentException($"{field} exceeds the maximum length of {maxLength}.", field);
+		}
+
+		return normalized;
     }
 
     private static void ValidateTenant(string tenantId) => _ = Required(tenantId, "TenantId", 64);
 }
 
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0048", Justification = "Small exception types are kept adjacent to the connector service that raises them; splitting each into a separate file adds no value.")]
 public sealed class ConnectorConflictException(string message) : Exception(message);
+
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0048", Justification = "Small exception types are kept adjacent to the connector service that raises them; splitting each into a separate file adds no value.")]
 public sealed class ConnectorCredentialException(string message) : Exception(message);
+
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "MA0048", Justification = "Small exception types are kept adjacent to the connector service that raises them; splitting each into a separate file adds no value.")]
 public sealed class ConnectorTemplateReferenceException(string message) : Exception(message);

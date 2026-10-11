@@ -31,9 +31,11 @@ public sealed class TaskIoSnapshotRecorder(
     {
         if (!await db.FeatureFlags.AsNoTracking()
                 .AnyAsync(f => f.Name == FeatureFlagName && f.Enabled, cancellationToken))
-            return;
+		{
+			return;
+		}
 
-        var redactedInput = redaction.Redact(input);
+		var redactedInput = redaction.Redact(input);
         var redactedOutput = output is null ? null : redaction.Redact(output);
 
         db.HistoryEvents.Add(new HistoryEvent

@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 
 namespace VertexBPMN.Api.Middleware;
 
-public sealed partial class CorrelationIdMiddleware(RequestDelegate next, ILogger<CorrelationIdMiddleware> logger)
+internal sealed partial class CorrelationIdMiddleware(RequestDelegate next, ILogger<CorrelationIdMiddleware> logger)
 {
     public const string HeaderName = "X-Correlation-ID";
 
@@ -19,8 +19,10 @@ public sealed partial class CorrelationIdMiddleware(RequestDelegate next, ILogge
         Activity.Current?.SetTag("correlation.id", correlationId);
         Activity.Current?.AddBaggage("correlation.id", correlationId);
 
-        using (logger.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId }))
+        using (logger.BeginScope(new Dictionary<string, object>(StringComparer.Ordinal) { ["CorrelationId"] = correlationId }))
+        {
             await next(context);
+        }
     }
 
     private static bool IsValid(string? value) =>
@@ -28,6 +30,6 @@ public sealed partial class CorrelationIdMiddleware(RequestDelegate next, ILogge
         && value.Length <= 128
         && CorrelationIdPattern().IsMatch(value);
 
-    [GeneratedRegex("^[A-Za-z0-9._:-]+$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex("^[A-Za-z0-9._:-]+$", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 1000)]
     private static partial Regex CorrelationIdPattern();
 }

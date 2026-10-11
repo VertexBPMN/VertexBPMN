@@ -2,9 +2,10 @@
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
+#pragma warning disable CA1861, MA0048
 
-namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
-{
+namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn;
+
     /// <inheritdoc />
     public partial class AddFormDefinitions : Migration
     {
@@ -43,4 +44,3 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                 name: "FormDefinitions");
         }
     }
-}

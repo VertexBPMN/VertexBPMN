@@ -10,6 +10,7 @@ namespace VertexBPMN.Application.Connectors;
 public class DatabaseConnectorExecutor : IConnectorExecutor
 {
 	public virtual string Type => "database";
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA2100", Justification = "The SQL command is executable model configuration, not interpolated process data. Runtime db.* values are bound exclusively through DbParameter; covered by DatabaseConnectorParameterTests.")]
 	public async Task<ConnectorExecutionResult> ExecuteAsync(ConnectorExecutionContext context, CancellationToken cancellationToken)
 	{
 		var provider = Required(context, "vertex:connector.provider");

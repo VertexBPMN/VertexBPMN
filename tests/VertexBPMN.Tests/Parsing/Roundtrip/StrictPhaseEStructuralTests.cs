@@ -7,30 +7,33 @@ namespace VertexBPMN.Tests.Parsing.Roundtrip;
 
 public class StrictPhaseEStructuralTests
 {
-    private static readonly BpmnParser P = new(new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict, PreserveUnknownExtensions = true });
-    private static readonly XNamespace BPMN = "http://www.omg.org/spec/BPMN/20100524/MODEL";
+	private static readonly BpmnParser P = new(new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict, PreserveUnknownExtensions = true });
+	private static readonly XNamespace BPMN = "http://www.omg.org/spec/BPMN/20100524/MODEL";
 
-    private static void StructuralCompare(XElement expected, XElement actual)
-    {
-        Assert.Equal(expected.Name, actual.Name);
-        var expAttrs = expected.Attributes().Where(a => !a.IsNamespaceDeclaration).OrderBy(a=>a.Name.ToString()).ToList();
-        var actAttrs = actual.Attributes().Where(a => !a.IsNamespaceDeclaration).OrderBy(a=>a.Name.ToString()).ToList();
-        Assert.Equal(expAttrs.Count, actAttrs.Count);
-        for(int i=0;i<expAttrs.Count;i++)
-        {
-            Assert.Equal(expAttrs[i].Name, actAttrs[i].Name);
-            Assert.Equal(expAttrs[i].Value, actAttrs[i].Value);
-        }
-        var expChildren = expected.Elements().ToList();
-        var actChildren = actual.Elements().ToList();
-        Assert.Equal(expChildren.Count, actChildren.Count);
-        for(int i=0;i<expChildren.Count;i++) StructuralCompare(expChildren[i], actChildren[i]);
-    }
+	private static void StructuralCompare(XElement expected, XElement actual)
+	{
+		Assert.Equal(expected.Name, actual.Name);
+		var expAttrs = expected.Attributes().Where(a => !a.IsNamespaceDeclaration).OrderBy(a => a.Name.ToString(), StringComparer.Ordinal).ToList();
+		var actAttrs = actual.Attributes().Where(a => !a.IsNamespaceDeclaration).OrderBy(a => a.Name.ToString(), StringComparer.Ordinal).ToList();
+		Assert.Equal(expAttrs.Count, actAttrs.Count);
+		for (var i = 0; i < expAttrs.Count; i++)
+		{
+			Assert.Equal(expAttrs[i].Name, actAttrs[i].Name);
+			Assert.Equal(expAttrs[i].Value, actAttrs[i].Value);
+		}
+		var expChildren = expected.Elements().ToList();
+		var actChildren = actual.Elements().ToList();
+		Assert.Equal(expChildren.Count, actChildren.Count);
+		for (var i = 0; i < expChildren.Count; i++)
+		{
+			StructuralCompare(expChildren[i], actChildren[i]);
+		}
+	}
 
-    [Fact]
-    public async Task Structural_Gateway_ForkJoin_Roundtrip()
-    {
-        const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL'>
+	[Fact]
+	public async Task Structural_Gateway_ForkJoin_Roundtrip()
+	{
+		const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <bpmn:process id='p1'>
     <bpmn:startEvent id='start'/>
     <bpmn:parallelGateway id='gw_split'/>
@@ -46,17 +49,17 @@ public class StrictPhaseEStructuralTests
     <bpmn:sequenceFlow id='f_join_end' sourceRef='gw_join' targetRef='end'/>
   </bpmn:process>
 </bpmn:definitions>";
-        var model = await P.ParseAsync(xml, TestContext.Current.CancellationToken);
-        var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
-        var expProc = XDocument.Parse(xml).Root!.Element(BPMN + "process")!;
-        var actProc = XDocument.Parse(outXml).Root!.Element(BPMN + "process")!;
-        StructuralCompare(expProc, actProc);
-    }
+		var model = await P.ParseAsync(xml, TestContext.Current.CancellationToken);
+		var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
+		var expProc = XDocument.Parse(xml).Root!.Element(BPMN + "process")!;
+		var actProc = XDocument.Parse(outXml).Root!.Element(BPMN + "process")!;
+		StructuralCompare(expProc, actProc);
+	}
 
-    [Fact]
-    public async Task Structural_Unknown_EventDefinition_Preserved()
-    {
-        const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL' xmlns:ven='http://vendor/x'>
+	[Fact]
+	public async Task Structural_Unknown_EventDefinition_Preserved()
+	{
+		const string xml = @"<bpmn:definitions xmlns:bpmn='http://www.omg.org/spec/BPMN/20100524/MODEL' xmlns:ven='http://vendor/x'>
   <bpmn:process id='p4'>
     <bpmn:startEvent id='s'>
       <bpmn:extensionElements><ven:meta k='v'/></bpmn:extensionElements>
@@ -64,10 +67,10 @@ public class StrictPhaseEStructuralTests
     </bpmn:startEvent>
   </bpmn:process>
 </bpmn:definitions>";
-        var model = await P.ParseAsync(xml, TestContext.Current.CancellationToken);
-        var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
-        var expEvt = XDocument.Parse(xml).Root!.Descendants(BPMN + "startEvent").First();
-        var actEvt = XDocument.Parse(outXml).Root!.Descendants(BPMN + "startEvent").First();
-        StructuralCompare(expEvt, actEvt);
-    }
+		var model = await P.ParseAsync(xml, TestContext.Current.CancellationToken);
+		var outXml = new BpmnSerializer { RoundtripMode = BpmnRoundtripMode.Strict }.Serialize(model);
+		var expEvt = XDocument.Parse(xml).Root!.Descendants(BPMN + "startEvent").First();
+		var actEvt = XDocument.Parse(outXml).Root!.Descendants(BPMN + "startEvent").First();
+		StructuralCompare(expEvt, actEvt);
+	}
 }

@@ -9,21 +9,23 @@ using VertexBPMN.Domain.Entities;
 namespace VertexBPMN.Infrastructure.Messaging;
 
 /// <summary>
-/// Durable runtime-outbox transport for Azure Service Bus.
-///
+/// <para>Durable runtime-outbox transport for Azure Service Bus.</para>
+/// <para>
 /// The JSON envelope matches RabbitMQ/Kafka exactly so downstream inbox consumers see the same
 /// shape regardless of provider. The stable MessageId is the outbox id ("N" format, like RabbitMQ),
 /// so consumers can de-duplicate retries; correlation/tenant/event-type metadata travel as
 /// Application Properties.
-///
+/// </para>
+/// <para>
 /// Authentication is explicit and has NO unintended fallback chain in production:
 ///  - ManagedIdentity  -> uses ManagedIdentityCredential (optionally a User-Assigned client id).
 ///  - ConnectionString -> only intended for local integration tests.
+/// </para>
 /// </summary>
 public sealed class AzureServiceBusRuntimeOutboxTransport : IRuntimeOutboxTransport, IAsyncDisposable
 {
     private readonly RuntimeOutboxOptions _options;
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private ServiceBusClient? _client;
     private ServiceBusSender? _sender;
 
@@ -43,9 +45,11 @@ public sealed class AzureServiceBusRuntimeOutboxTransport : IRuntimeOutboxTransp
         }
 
         if (string.IsNullOrWhiteSpace(options.EntityName))
-            throw new InvalidOperationException("Runtime:Outbox:EntityName (topic or queue name) is required for Azure Service Bus.");
+		{
+			throw new InvalidOperationException("Runtime:Outbox:EntityName (topic or queue name) is required for Azure Service Bus.");
+		}
 
-        if (options.AuthenticationMode == RuntimeOutboxAuthenticationMode.ConnectionString
+		if (options.AuthenticationMode == RuntimeOutboxAuthenticationMode.ConnectionString
             && string.IsNullOrWhiteSpace(options.ConnectionString))
         {
             throw new InvalidOperationException(
@@ -57,9 +61,11 @@ public sealed class AzureServiceBusRuntimeOutboxTransport : IRuntimeOutboxTransp
     {
         var sender = _sender;
         if (sender is not null)
-            return sender;
+		{
+			return sender;
+		}
 
-        lock (_gate)
+		lock (_gate)
         {
             if (_sender is null)
             {
@@ -70,13 +76,13 @@ public sealed class AzureServiceBusRuntimeOutboxTransport : IRuntimeOutboxTransp
         }
     }
 
-    private ServiceBusClient CreateClient()
+	private ServiceBusClient CreateClient()
     {
         if (_options.AuthenticationMode == RuntimeOutboxAuthenticationMode.ManagedIdentity)
         {
             TokenCredential credential = string.IsNullOrWhiteSpace(_options.ManagedIdentityClientId)
-                ? new ManagedIdentityCredential()
-                : new ManagedIdentityCredential(_options.ManagedIdentityClientId);
+                ? new ManagedIdentityCredential(ManagedIdentityId.SystemAssigned)
+                : new ManagedIdentityCredential(ManagedIdentityId.FromUserAssignedClientId(_options.ManagedIdentityClientId));
             return new ServiceBusClient(_options.FullyQualifiedNamespace!, credential);
         }
 
@@ -100,7 +106,7 @@ public sealed class AzureServiceBusRuntimeOutboxTransport : IRuntimeOutboxTransp
             // Nontransient, diagnostically clear: give the publisher a concrete reason in LastError.
             throw new InvalidOperationException(
                 $"Azure Service Bus message size limit exceeded for outbox message {message.Id}. " +
-                $"Inspect payload size including application properties.", ex);
+                "Inspect payload size including application properties.", ex);
         }
     }
 
@@ -163,10 +169,12 @@ public sealed class AzureServiceBusRuntimeOutboxTransport : IRuntimeOutboxTransp
     private string ResolveNamespaceHost()
     {
         if (_options.AuthenticationMode == RuntimeOutboxAuthenticationMode.ManagedIdentity)
-            return _options.FullyQualifiedNamespace!;
+		{
+			return _options.FullyQualifiedNamespace!;
+		}
 
-        // Parse from "Endpoint=sb://<host>/;SharedAccessKeyName=...;SharedAccessKey=..."
-        var endpoint = _options.ConnectionString!
+		// Parse from "Endpoint=sb://<host>/;SharedAccessKeyName=...;SharedAccessKey=..."
+		var endpoint = _options.ConnectionString!
             .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .First(part => part.StartsWith("Endpoint=", StringComparison.OrdinalIgnoreCase))
             .Substring("Endpoint=".Length);
@@ -186,8 +194,13 @@ public sealed class AzureServiceBusRuntimeOutboxTransport : IRuntimeOutboxTransp
         }
 
         if (sender is not null)
-            await sender.DisposeAsync().ConfigureAwait(false);
-        if (client is not null)
-            await client.DisposeAsync().ConfigureAwait(false);
-    }
+		{
+			await sender.DisposeAsync().ConfigureAwait(false);
+		}
+
+		if (client is not null)
+		{
+			await client.DisposeAsync().ConfigureAwait(false);
+		}
+	}
 }

@@ -2,9 +2,10 @@
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
+#pragma warning disable CA1861, MA0048, MA0051
 
-namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
-{
+namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn;
+
     /// <inheritdoc />
     public partial class AddPersistentMultiInstanceRuntime : Migration
     {
@@ -152,4 +153,3 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                 columns: new[] { "ProcessInstanceId", "ActivityId" });
         }
     }
-}

@@ -5,6 +5,7 @@ namespace VertexBPMN.Api.Controllers;
 
 [ApiController]
 [Route("api/metrics")]
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public controller required for ASP.NET Core MVC discovery and activation.")]
 public class MetricsController : ControllerBase
 {
     private readonly IManagementService _managementService;

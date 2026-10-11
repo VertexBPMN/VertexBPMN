@@ -8,9 +8,9 @@ namespace VertexBPMN.Api.Services;
 /// Production-Grade Resilience Service with Circuit Breaker Pattern
 /// Olympic-level feature: Production-Grade Features - Resilience
 /// </summary>
-public class ProductionResilienceService : IResilienceService
+internal class ProductionResilienceService : IResilienceService
 {
-    private readonly Dictionary<string, IAsyncPolicy> _policies = new();
+    private readonly Dictionary<string, IAsyncPolicy> _policies = new(StringComparer.Ordinal);
     private readonly ILogger<ProductionResilienceService> _logger;
 
     public ProductionResilienceService(ILogger<ProductionResilienceService> logger)
@@ -27,7 +27,7 @@ public class ProductionResilienceService : IResilienceService
             .WaitAndRetryAsync(
                 retryCount: 3,
                 sleepDurationProvider: retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
-                onRetry: (outcome, delay, retryCount, context) =>
+                onRetry: (outcome, delay, retryCount, _) =>
                 {
                     _logger.LogWarning("Database operation retry {RetryCount} after {Delay}s: {Exception}",
                         retryCount, delay.TotalSeconds, outcome.Message);
@@ -41,7 +41,7 @@ public class ProductionResilienceService : IResilienceService
             .WaitAndRetryAsync(
                 retryCount: 2,
                 sleepDurationProvider: retryAttempt => TimeSpan.FromSeconds(retryAttempt),
-                onRetry: (outcome, delay, retryCount, context) =>
+                onRetry: (outcome, delay, retryCount, _) =>
                 {
                     _logger.LogWarning("External API retry {RetryCount} after {Delay}s: {Exception}",
                         retryCount, delay.TotalSeconds, outcome.Message);
@@ -55,7 +55,7 @@ public class ProductionResilienceService : IResilienceService
             .WaitAndRetryAsync(
                 retryCount: 2,
                 sleepDurationProvider: retryAttempt => TimeSpan.FromSeconds(retryAttempt * 2),
-                onRetry: (outcome, delay, retryCount, context) =>
+                onRetry: (outcome, delay, retryCount, _) =>
                 {
                     _logger.LogWarning("Process execution retry {RetryCount} after {Delay}s: {Exception}",
                         retryCount, delay.TotalSeconds, outcome.Message);
@@ -68,8 +68,8 @@ public class ProductionResilienceService : IResilienceService
             .Handle<Exception>()
             .WaitAndRetryAsync(
                 retryCount: 1,
-                sleepDurationProvider: retryAttempt => TimeSpan.FromSeconds(1),
-                onRetry: (outcome, delay, retryCount, context) =>
+                sleepDurationProvider: _ => TimeSpan.FromSeconds(1),
+                onRetry: (outcome, delay, retryCount, _) =>
                 {
                     _logger.LogWarning("Health check retry {RetryCount} after {Delay}s: {Exception}",
                         retryCount, delay.TotalSeconds, outcome.Message);
@@ -80,28 +80,27 @@ public class ProductionResilienceService : IResilienceService
 
     public async Task<T> ExecuteAsync<T>(Func<Task<T>> operation, string operationName)
     {
-        if (!_policies.TryGetValue(operationName, out var policy))
-        {
-            _logger.LogWarning("No resilience policy found for operation: {OperationName}", operationName);
-            return await operation();
-        }
+    	if (!_policies.TryGetValue(operationName, out var policy))
+    	{
+    		_logger.LogWarning("No resilience policy found for operation: {OperationName}", operationName);
+    		return await operation();
+    	}
 
-        try
-        {
-            var result = await policy.ExecuteAsync(async () =>
-            {
-                _logger.LogDebug("Executing operation: {OperationName}", operationName);
-                return await operation();
-            });
+    	var result = await policy.ExecuteAsync(async () =>
+    	{
+    		if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug))
+    		{
+    			_logger.LogDebug("Executing operation: {OperationName}", operationName);
+    		}
 
-            _logger.LogDebug("Operation completed successfully: {OperationName}", operationName);
-            return result;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Operation failed after all retries: {OperationName}", operationName);
-            throw;
-        }
+    		return await operation();
+    	});
+    	if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug))
+    	{
+    		_logger.LogDebug("Operation completed successfully: {OperationName}", operationName);
+    	}
+
+    	return result;
     }
 
     public async Task ExecuteAsync(Func<Task> operation, string operationName)
@@ -115,7 +114,7 @@ public class ProductionResilienceService : IResilienceService
 
     public ResilienceStatus GetCircuitBreakerStatus(string operationName)
     {
-        if (!_policies.TryGetValue(operationName, out var policy))
+        if (!_policies.ContainsKey(operationName))
         {
             return new ResilienceStatus(operationName, "Unknown", "No policy configured");
         }

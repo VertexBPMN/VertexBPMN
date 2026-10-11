@@ -6,49 +6,51 @@ using VertexBPMN.Application.Handlers;
 
 namespace VertexBPMN.Tests.Integration.Handlers;
 
-public class GenericAiServiceTaskHandlerTests
+public sealed class GenericAiServiceTaskHandlerTests : IDisposable
 {
-    private readonly Mock<HttpMessageHandler> _httpMessageHandlerMock;
-    private readonly HttpClient _httpClient;
+	public void Dispose() => _httpClient.Dispose();
 
-    public GenericAiServiceTaskHandlerTests()
-    {
-        _httpMessageHandlerMock = new Mock<HttpMessageHandler>();
-        _httpClient = new HttpClient(_httpMessageHandlerMock.Object);
+	private readonly Mock<HttpMessageHandler> _httpMessageHandlerMock;
+	private readonly HttpClient _httpClient;
 
-    }
+	public GenericAiServiceTaskHandlerTests()
+	{
+		_httpMessageHandlerMock = new Mock<HttpMessageHandler>();
+		_httpClient = new HttpClient(_httpMessageHandlerMock.Object);
 
-    [Theory]
-    [InlineData("openai", "gpt-4")]
-    [InlineData("anthropic", "claude-3-sonnet")]
-    [InlineData("cohere", "command-r")]
-    [InlineData("huggingface", "llama-2-7b")]
-    [InlineData("ollama", "llama3")]
-    [InlineData("custom", "my-model")]
-    public async Task ExecuteAsync_WithDifferentProviders_ShouldReflectProviderInResult(string provider, string model)
-    {
-        // Arrange
-        var logger = new Mock<ILogger<GenericAiServiceTaskHandler>>();
-        var handler = new GenericAiServiceTaskHandler(_httpClient, logger.Object, TracerProvider.Default);
+	}
 
-        var attributes = new Dictionary<string, string>
-        {
-            { "ai:provider", provider },
-            { "ai:model", model },
-            { "ai:prompt", $"Test {provider} provider" },
-            { "ai:resultVariable", $"{provider}Result" }
-        };
+	[Theory]
+	[InlineData("openai", "gpt-4")]
+	[InlineData("anthropic", "claude-3-sonnet")]
+	[InlineData("cohere", "command-r")]
+	[InlineData("huggingface", "llama-2-7b")]
+	[InlineData("ollama", "llama3")]
+	[InlineData("custom", "my-model")]
+	public async Task ExecuteAsync_WithDifferentProviders_ShouldReflectProviderInResult(string provider, string model)
+	{
+		// Arrange
+		var logger = new Mock<ILogger<GenericAiServiceTaskHandler>>();
+		var handler = new GenericAiServiceTaskHandler(_httpClient, logger.Object, TracerProvider.Default);
 
-        var variables = new Dictionary<string, object>();
+		var attributes = new Dictionary<string, string>(StringComparer.Ordinal)
+		{
+			{ "ai:provider", provider },
+			{ "ai:model", model },
+			{ "ai:prompt", $"Test {provider} provider" },
+			{ "ai:resultVariable", $"{provider}Result" }
+		};
 
-        // Act
-        await handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken);
+		var variables = new Dictionary<string, object>(StringComparer.Ordinal);
 
-        // Assert
-        variables.ShouldContainKey($"{provider}Result");
-        var result = Assert.IsType<string>(variables[$"{provider}Result"]);
-        result.ShouldContain(provider);
-        result.ShouldContain(model);
-        result.ShouldContain($"Test {provider} provider");
-    }
+		// Act
+		await handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken);
+
+		// Assert
+		variables.ShouldContainKey($"{provider}Result");
+		var result = Assert.IsType<string>(variables[$"{provider}Result"]);
+		result.ShouldContain(provider);
+		result.ShouldContain(model);
+		result.ShouldContain($"Test {provider} provider");
+	}
 }

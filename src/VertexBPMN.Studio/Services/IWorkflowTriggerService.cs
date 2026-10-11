@@ -1,6 +1,6 @@
 namespace VertexBPMN.Studio.Services;
 
-public interface IWorkflowTriggerService
+internal interface IWorkflowTriggerService
 {
     Task<IReadOnlyList<StudioWorkflowTrigger>> ListAsync(string tenantId, CancellationToken cancellationToken = default);
     Task<StudioWorkflowTriggerCreated> CreateAsync(string tenantId, string name, string processDefinitionKey, CancellationToken cancellationToken = default);

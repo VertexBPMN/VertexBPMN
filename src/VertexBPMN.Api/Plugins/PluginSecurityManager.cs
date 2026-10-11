@@ -1,9 +1,9 @@
 namespace VertexBPMN.Api.Plugins;
 
-public class PluginSecurityManager
+internal class PluginSecurityManager
 {
     private readonly ILogger _logger;
-    private readonly HashSet<string> _allowedMethods = new()
+    private readonly HashSet<string> _allowedMethods = new(StringComparer.Ordinal)
     {
         "ExecuteAsync", "ProcessAsync", "ValidateAsync", "InitializeAsync", "ShutdownAsync"
     };
@@ -42,9 +42,9 @@ public class PluginSecurityManager
         }
     }
 
-    public async Task<bool> CanExecuteMethodAsync(string pluginId, string methodName)
+    public Task<bool> CanExecuteMethodAsync(string methodName)
     {
         // Check if method is in allowed list
-        return await Task.FromResult(_allowedMethods.Contains(methodName));
+        return Task.FromResult(_allowedMethods.Contains(methodName));
     }
 }

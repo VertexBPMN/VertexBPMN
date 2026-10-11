@@ -11,12 +11,9 @@ public class HistoryService : IHistoryService
 {
 	public async IAsyncEnumerable<HistoryEvent> ListHistoricTasksAsync(Guid? processInstanceId = null, string? tenantId = null, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
 	{
-		await foreach (var historyEvent in _repo.ListAsync(processInstanceId, tenantId, cancellationToken))
+		await foreach (var historyEvent in _repo.ListAsync(processInstanceId, tenantId, cancellationToken).Where(historyEvent => historyEvent.EventType.Contains("TASK", StringComparison.OrdinalIgnoreCase)))
 		{
-			if (historyEvent.EventType.Contains("TASK", StringComparison.OrdinalIgnoreCase))
-			{
-				yield return historyEvent;
-			}
+			yield return historyEvent;
 		}
 	}
 	private readonly IHistoryEventRepository _repo;

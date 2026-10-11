@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace VertexBPMN.Studio.Services;
 
-public sealed class HttpPluginService(IHttpClientFactory httpClientFactory) : IPluginService
+internal sealed class HttpPluginService(IHttpClientFactory httpClientFactory) : IPluginService
 {
     public Task<JsonElement> GetPluginsAsync(CancellationToken cancellationToken = default) =>
         GetAsync("/api/plugins", cancellationToken);

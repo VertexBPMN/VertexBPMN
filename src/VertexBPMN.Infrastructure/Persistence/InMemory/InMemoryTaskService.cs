@@ -17,12 +17,12 @@ public class InMemoryTaskService : ITaskService
 		_eventSink = eventSink;
 	}
 
-	public ValueTask ClaimAsync(Guid taskId, string userId, CancellationToken cancellationToken = default)
+	public async ValueTask ClaimAsync(Guid taskId, string userId, CancellationToken cancellationToken = default)
 	{
 		if (_tasks.TryGetValue(taskId, out var task))
 		{
 			task.Assignee = userId;
-			_eventSink.EmitAsync(new ProcessMiningEvent
+			await _eventSink.EmitAsync(new ProcessMiningEvent
 			{
 				EventType = "TaskClaimed",
 				ProcessInstanceId = task.ProcessInstanceId.ToString(),
@@ -32,7 +32,6 @@ public class InMemoryTaskService : ITaskService
 				Timestamp = DateTimeOffset.UtcNow
 			}, cancellationToken);
 		}
-		return ValueTask.CompletedTask;
 	}
 
 	public async ValueTask<ProcessMiningEvent?> CompleteAsync(Guid taskId, IDictionary<string, object>? variables = null, string? idempotencyKey = null, CancellationToken cancellationToken = default)
@@ -94,7 +93,9 @@ public class InMemoryTaskService : ITaskService
 	{
 
 		if (!_tasks.TryGetValue(userTaskId, out var task))
+		{
 			throw new InvalidOperationException($"Task {userTaskId} not found.");
+		}
 
 		// Update task state (assumes a Rejected status exists in UserTaskStatus enum)
 		task.CompletedAt ??= DateTime.UtcNow;
@@ -121,6 +122,6 @@ public class InMemoryTaskService : ITaskService
 			{
 				reason = rejectionReason
 			})
-		});
+		}, cancellationToken);
 	}
 }

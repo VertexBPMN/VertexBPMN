@@ -5,7 +5,7 @@ namespace VertexBPMN.Tests.Parsing.Validation;
 
 public class Phase3AdvancedValidationLinkEventsTests
 {
-    private const string UnmatchedLinkXml = """
+	private const string UnmatchedLinkXml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <bpmn:process id="p1">
     <bpmn:startEvent id="start"/>
@@ -19,7 +19,7 @@ public class Phase3AdvancedValidationLinkEventsTests
 </bpmn:definitions>
 """;
 
-    private const string MultipleThrowLinkXml = """
+	private const string MultipleThrowLinkXml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <bpmn:process id="p1">
     <bpmn:startEvent id="start"/>
@@ -43,7 +43,7 @@ public class Phase3AdvancedValidationLinkEventsTests
 </bpmn:definitions>
 """;
 
-    private const string ValidLinkXml = """
+	private const string ValidLinkXml = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <bpmn:process id="p1">
     <bpmn:startEvent id="start"/>
@@ -61,59 +61,63 @@ public class Phase3AdvancedValidationLinkEventsTests
 </bpmn:definitions>
 """;
 
-    [Fact]
-    public async Task LinkEvents_Disabled_NoStructuredDiagnostics()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = false
-        }).ParseAsync(UnmatchedLinkXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task LinkEvents_Disabled_NoStructuredDiagnostics()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = false
+		}).ParseAsync(UnmatchedLinkXml, TestContext.Current.CancellationToken);
 
-        Assert.Null(model.ValidationDiagnostics);
-    }
+		Assert.Null(model.ValidationDiagnostics);
+	}
 
-    [Fact]
-    public async Task LinkEvents_Unmatched_ProducesSemanticError()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = true
-        }).ParseAsync(UnmatchedLinkXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task LinkEvents_Unmatched_ProducesSemanticError()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = true
+		}).ParseAsync(UnmatchedLinkXml, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(model.ValidationDiagnostics);
-        Assert.Contains(model.ValidationDiagnostics!, d =>
-            d.Code == "SEM-LINK-UNMATCHED" &&
-            d.Severity == ValidationSeverity.Error);
-    }
+		Assert.NotNull(model.ValidationDiagnostics);
+		Assert.Contains(model.ValidationDiagnostics, d =>
+			d.Code == "SEM-LINK-UNMATCHED" &&
+			d.Severity == ValidationSeverity.Error);
+	}
 
-    [Fact]
-    public async Task LinkEvents_MultipleThrow_ProducesSemanticError()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = true
-        }).ParseAsync(MultipleThrowLinkXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task LinkEvents_MultipleThrow_ProducesSemanticError()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = true
+		}).ParseAsync(MultipleThrowLinkXml, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(model.ValidationDiagnostics);
-        // Multiple throw rule
-        Assert.Contains(model.ValidationDiagnostics!, d =>
-            d.Code == "SEM-LINK-MULTIPLE-THROW" &&
-            d.Severity == ValidationSeverity.Error);
-        // No unmatched error for L_MULTI (it is caught)
-        Assert.DoesNotContain(model.ValidationDiagnostics!, d =>
-            d.Code == "SEM-LINK-UNMATCHED" && d.Message.Contains("L_MULTI"));
-    }
+		Assert.NotNull(model.ValidationDiagnostics);
+		// Multiple throw rule
+		Assert.Contains(model.ValidationDiagnostics, d =>
+			d.Code == "SEM-LINK-MULTIPLE-THROW" &&
+			d.Severity == ValidationSeverity.Error);
+		// No unmatched error for L_MULTI (it is caught)
+		Assert.DoesNotContain(model.ValidationDiagnostics, d =>
+			d.Code == "SEM-LINK-UNMATCHED" && d.Message.Contains("L_MULTI", StringComparison.Ordinal));
+	}
 
-    [Fact]
-    public async Task LinkEvents_Valid_NoSemanticLinkDiagnostics()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = true
-        }).ParseAsync(ValidLinkXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task LinkEvents_Valid_NoSemanticLinkDiagnostics()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = true
+		}).ParseAsync(ValidLinkXml, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(model.ValidationDiagnostics);
-        Assert.DoesNotContain(model.ValidationDiagnostics!, d =>
-            d.Code is "SEM-LINK-UNMATCHED" or "SEM-LINK-MULTIPLE-THROW");
-    }
+		Assert.NotNull(model.ValidationDiagnostics);
+		Assert.DoesNotContain(model.ValidationDiagnostics, d =>
+			d.Code is "SEM-LINK-UNMATCHED" or "SEM-LINK-MULTIPLE-THROW");
+	}
 }

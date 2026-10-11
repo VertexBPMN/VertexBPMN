@@ -5,38 +5,9 @@ using VertexBPMN.Engine.Parsing;
 
 namespace VertexBPMN.Tests.Parsing.Observability;
 
-// Simple test logger implementation
-internal class TestLogger : ILogger
-{
-    public List<LogEntry> LogEntries { get; } = new();
-    
-    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-    public bool IsEnabled(LogLevel logLevel) => true;
-    
-    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-    {
-        LogEntries.Add(new LogEntry(logLevel, formatter(state, exception), state?.ToString()));
-    }
-}
-
-internal class TestLogger<T> : ILogger<T>
-{
-    public List<LogEntry> LogEntries { get; } = new();
-
-    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-    public bool IsEnabled(LogLevel logLevel) => true;
-
-    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-    {
-        LogEntries.Add(new LogEntry(logLevel, formatter(state, exception), state?.ToString()));
-    }
-}
-
-internal record LogEntry(LogLevel Level, string Message, string? StructuredState);
-
 public class BpmnParserObservabilityTests
 {
-    private const string SimpleXml = """
+	private const string SimpleXml = """
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <process id="testProcess">
     <startEvent id="start"/>
@@ -48,7 +19,7 @@ public class BpmnParserObservabilityTests
 </definitions>
 """;
 
-    private const string ComplexXml = """
+	private const string ComplexXml = """
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
              xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
   <process id="complexProcess">
@@ -69,138 +40,137 @@ public class BpmnParserObservabilityTests
 </definitions>
 """;
 
-    [Fact]
-    public async Task EnableTracing_CreatesSpanWithExpectedAttributes()
-    {
-        // Arrange
-        using var activitySource = new ActivitySource("TestSource");
-        using var activityListener = new ActivityListener
-        {
-            ShouldListenTo = source => source.Name == "TestSource",
-            Sample = (ref ActivityCreationOptions<ActivityContext> options) => ActivitySamplingResult.AllData
-        };
-        ActivitySource.AddActivityListener(activityListener);
+	[Fact]
+	public async Task EnableTracing_CreatesSpanWithExpectedAttributes()
+	{
+		// Arrange
+		using var activitySource = new ActivitySource("TestSource");
+		using var activityListener = new ActivityListener
+		{
+			ShouldListenTo = source => source.Name == "TestSource",
+			Sample = (ref _) => ActivitySamplingResult.AllData
+		};
+		ActivitySource.AddActivityListener(activityListener);
 
-        Activity? capturedActivity = null;
-        activityListener.ActivityStarted = activity => capturedActivity = activity;
-        
-        var options = new BpmnParserOptions
-        {
-            EnableTracing = true,
-            TracingActivitySource = activitySource,
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            BuildRuntimeProjection = true,
-            NormalizeVendorExtensions = true
-        };
+		Activity? capturedActivity = null;
+		activityListener.ActivityStarted = activity => capturedActivity = activity;
 
-        var parser = new BpmnParser(options);
+		var options = new BpmnParserOptions
+		{
+			EnableTracing = true,
+			TracingActivitySource = activitySource,
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			BuildRuntimeProjection = true,
+			NormalizeVendorExtensions = true
+		};
 
-        // Act
-        var model = await parser.ParseAsync(ComplexXml, TestContext.Current.CancellationToken);
+		var parser = new BpmnParser(options);
 
-        // Assert
-        Assert.NotNull(capturedActivity);
-        Assert.Equal("BpmnParser.ParseAsync", capturedActivity!.DisplayName);
-        
-        // Expected attributes
-        Assert.Contains(capturedActivity.Tags, t => t.Key == "bpmn.process_id" && t.Value == "complexProcess");
-        Assert.Contains(capturedActivity.Tags, t => t.Key == "bpmn.node_count" && int.Parse(t.Value!) > 0);
-        Assert.Contains(capturedActivity.Tags, t => t.Key == "bpmn.flow_count" && int.Parse(t.Value!) > 0);
-        Assert.Contains(capturedActivity.Tags, t => t.Key == "bpmn.roundtrip_mode" && t.Value == "Strict");
-        Assert.Contains(capturedActivity.Tags, t => t.Key == "bpmn.runtime_projection" && t.Value == "true");
-        Assert.Contains(capturedActivity.Tags, t => t.Key == "bpmn.vendor_normalization" && t.Value == "true");
-    }
+		// Act
+		await parser.ParseAsync(ComplexXml, TestContext.Current.CancellationToken);
 
-    [Fact]
-    public async Task EnableLogging_CapturesStructuredMessages()
-    {
-        // Arrange
-        var logger = new TestLogger<BpmnParser>();
-        var options = new BpmnParserOptions
-        {
-            EnableLogging = true,
-            Logger = logger,
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            BuildRuntimeProjection = true,
-            EnableAdvancedValidation = true
-        };
+		// Assert
+		Assert.NotNull(capturedActivity);
+		Assert.Equal("BpmnParser.ParseAsync", capturedActivity.DisplayName);
 
-        var parser = new BpmnParser(options, logger);
+		// Expected attributes
+		Assert.Contains(capturedActivity.Tags, t => t.Key == "bpmn.process_id" && t.Value == "complexProcess");
+		Assert.Contains(capturedActivity.Tags, t => t.Key == "bpmn.node_count" && int.Parse(t.Value!) > 0);
+		Assert.Contains(capturedActivity.Tags, t => t.Key == "bpmn.flow_count" && int.Parse(t.Value!) > 0);
+		Assert.Contains(capturedActivity.Tags, t => t.Key == "bpmn.roundtrip_mode" && t.Value == "Strict");
+		Assert.Contains(capturedActivity.Tags, t => t.Key == "bpmn.runtime_projection" && t.Value == "true");
+		Assert.Contains(capturedActivity.Tags, t => t.Key == "bpmn.vendor_normalization" && t.Value == "true");
+	}
 
-        // Act
-        var model = await parser.ParseAsync(SimpleXml, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task EnableLogging_CapturesStructuredMessages()
+	{
+		// Arrange
+		var logger = new TestLogger<BpmnParser>();
+		var options = new BpmnParserOptions
+		{
+			EnableLogging = true,
+			Logger = logger,
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			BuildRuntimeProjection = true,
+			EnableAdvancedValidation = true
+		};
 
-        // Assert
-        var logs = logger.LogEntries;
-        
-        // Expected log messages at different stages
-        Assert.Contains(logs, l => l.Message.Contains("ParseStart") && l.Level == LogLevel.Debug);
-        Assert.Contains(logs, l => l.Message.Contains("PhaseComplete") && l.Level == LogLevel.Debug);
-        
-        // If there are validation diagnostics, we should see ValidationSummary
-        if (model.ValidationDiagnostics?.Count > 0)
-        {
-            Assert.Contains(logs, l => l.Message.Contains("ValidationSummary") && l.Level == LogLevel.Information);
-        }
-        
-        // Since BuildRuntimeProjection is enabled, we should see ProjectionBuilt
-        Assert.Contains(logs, l => l.Message.Contains("ProjectionBuilt") && l.Level == LogLevel.Debug);
-        
-        // Verify structured data contains ProcessId
-        var parseStartLog = logs.First(l => l.Message.Contains("ParseStart"));
-        Assert.NotNull(parseStartLog.StructuredState);
-    }
+		var parser = new BpmnParser(options, logger);
 
-    [Fact]
-    public async Task TracingDisabled_NoAllocationOverhead()
-    {
-        // Arrange - tracing disabled by default
-        var logger = new TestLogger<BpmnParser>();
-        var options = new BpmnParserOptions
-        {
-            EnableTracing = false, // explicit
-            EnableLogging = false,
-            RoundtripMode = BpmnRoundtripMode.Normalized
-        };
+		// Act
+		var model = await parser.ParseAsync(SimpleXml, TestContext.Current.CancellationToken);
 
-        var parser = new BpmnParser(options, logger);
+		// Assert
+		var logs = logger.LogEntries;
 
-        // Act & Assert - should not throw or allocate tracing objects
-        var model = await parser.ParseAsync(SimpleXml, TestContext.Current.CancellationToken);
-        
-        Assert.NotNull(model);
-        Assert.Equal("testProcess", model.ProcessId);
-        // No way to directly test "zero allocation" but ensuring it doesn't crash
-        // and basic parsing still works when observability is disabled
-    }
+		// Expected log messages at different stages
+		Assert.Contains(logs, l => l.Message.Contains("ParseStart", StringComparison.Ordinal) && l.Level == LogLevel.Debug);
+		Assert.Contains(logs, l => l.Message.Contains("PhaseComplete", StringComparison.Ordinal) && l.Level == LogLevel.Debug);
 
-    [Fact]
-    public async Task LoggingDisabled_NoLoggerCalls()
-    {
-        // Arrange
-        var mockLogger = new TestLogger<BpmnParser>();
-        var options = new BpmnParserOptions
-        {
-            EnableLogging = false,
-            Logger = mockLogger,
-            RoundtripMode = BpmnRoundtripMode.Normalized
-        };
+		// If there are validation diagnostics, we should see ValidationSummary
+		if (model.ValidationDiagnostics?.Count > 0)
+		{
+			Assert.Contains(logs, l => l.Message.Contains("ValidationSummary", StringComparison.Ordinal) && l.Level == LogLevel.Information);
+		}
 
-        var parser = new BpmnParser(options, mockLogger);
+		// Since BuildRuntimeProjection is enabled, we should see ProjectionBuilt
+		Assert.Contains(logs, l => l.Message.Contains("ProjectionBuilt", StringComparison.Ordinal) && l.Level == LogLevel.Debug);
 
-        // Act
-        var model = await parser.ParseAsync(SimpleXml, TestContext.Current.CancellationToken);
+		// Verify structured data contains ProcessId
+		var parseStartLog = logs.First(l => l.Message.Contains("ParseStart", StringComparison.Ordinal));
+		Assert.NotNull(parseStartLog.StructuredState);
+	}
 
-        // Assert - no logs should be captured when logging is disabled
-        var logs = mockLogger.LogEntries;
-        Assert.Empty(logs);
-    }
+	[Fact]
+	public async Task TracingDisabled_NoAllocationOverhead()
+	{
+		// Arrange - tracing disabled by default
+		var logger = new TestLogger<BpmnParser>();
+		var options = new BpmnParserOptions
+		{
+			EnableTracing = false, // explicit
+			EnableLogging = false,
+			RoundtripMode = BpmnRoundtripMode.Normalized
+		};
 
-    [Fact]
-    public async Task TracingWithValidationWarnings_IncludesWarningCount()
-    {
-        // Arrange - XML with validation issues to generate warnings
-        const string xmlWithWarnings = """
+		var parser = new BpmnParser(options, logger);
+
+		// Act & Assert - should not throw or allocate tracing objects
+		var model = await parser.ParseAsync(SimpleXml, TestContext.Current.CancellationToken);
+
+		Assert.NotNull(model);
+		Assert.Equal("testProcess", model.ProcessId);
+		// No way to directly test "zero allocation" but ensuring it doesn't crash
+		// and basic parsing still works when observability is disabled
+	}
+
+	[Fact]
+	public async Task LoggingDisabled_NoLoggerCalls()
+	{
+		// Arrange
+		var mockLogger = new TestLogger<BpmnParser>();
+		var options = new BpmnParserOptions
+		{
+			EnableLogging = false,
+			Logger = mockLogger,
+			RoundtripMode = BpmnRoundtripMode.Normalized
+		};
+
+		var parser = new BpmnParser(options, mockLogger);
+
+		// Act
+		// Assert - no logs should be captured when logging is disabled
+		await parser.ParseAsync(SimpleXml, TestContext.Current.CancellationToken);
+		var logs = mockLogger.LogEntries;
+		Assert.Empty(logs);
+	}
+
+	[Fact]
+	public async Task TracingWithValidationWarnings_IncludesWarningCount()
+	{
+		// Arrange - XML with validation issues to generate warnings
+		const string xmlWithWarnings = """
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <process id="warningProcess">
     <startEvent id="start"/>
@@ -219,33 +189,33 @@ public class BpmnParserObservabilityTests
 </definitions>
 """;
 
-        using var activitySource = new ActivitySource("TestSource");
-        using var activityListener = new ActivityListener
-        {
-            ShouldListenTo = source => source.Name == "TestSource",
-            Sample = (ref ActivityCreationOptions<ActivityContext> options) => ActivitySamplingResult.AllData
-        };
-        ActivitySource.AddActivityListener(activityListener);
+		using var activitySource = new ActivitySource("TestSource");
+		using var activityListener = new ActivityListener
+		{
+			ShouldListenTo = source => source.Name == "TestSource",
+			Sample = (ref _) => ActivitySamplingResult.AllData
+		};
+		ActivitySource.AddActivityListener(activityListener);
 
-        Activity? capturedActivity = null;
-        activityListener.ActivityStarted = activity => capturedActivity = activity;
-        
-        var options = new BpmnParserOptions
-        {
-            EnableTracing = true,
-            TracingActivitySource = activitySource,
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = true
-        };
+		Activity? capturedActivity = null;
+		activityListener.ActivityStarted = activity => capturedActivity = activity;
 
-        var parser = new BpmnParser(options);
+		var options = new BpmnParserOptions
+		{
+			EnableTracing = true,
+			TracingActivitySource = activitySource,
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = true
+		};
 
-        // Act
-        var model = await parser.ParseAsync(xmlWithWarnings, TestContext.Current.CancellationToken);
+		var parser = new BpmnParser(options);
 
-        // Assert
-        Assert.NotNull(capturedActivity);
-        Assert.Contains(capturedActivity!.Tags, t => t.Key == "bpmn.validation_warnings" && int.Parse(t.Value!) >= 0);
-        Assert.Contains(capturedActivity.Tags, t => t.Key == "bpmn.validation_errors" && int.Parse(t.Value!) >= 0);
-    }
+		// Act
+		await parser.ParseAsync(xmlWithWarnings, TestContext.Current.CancellationToken);
+
+		// Assert
+		Assert.NotNull(capturedActivity);
+		Assert.Contains(capturedActivity.Tags, t => t.Key == "bpmn.validation_warnings" && int.Parse(t.Value!) >= 0);
+		Assert.Contains(capturedActivity.Tags, t => t.Key == "bpmn.validation_errors" && int.Parse(t.Value!) >= 0);
+	}
 }

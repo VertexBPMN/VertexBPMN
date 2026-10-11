@@ -53,7 +53,7 @@ public sealed class PollingSchedulerServiceTests
 
 		var connectorRuntime = new Mock<IConnectorRuntime>();
 		connectorRuntime.Setup(x => x.ExecuteAsync(It.IsAny<ConnectorExecutionContext>(), It.IsAny<CancellationToken>()))
-			.ReturnsAsync(new ConnectorExecutionResult(true, 200, new Dictionary<string, object> { ["lastSeenId"] = 7 }));
+			.ReturnsAsync(new ConnectorExecutionResult(true, 200, new Dictionary<string, object>(StringComparer.Ordinal) { ["lastSeenId"] = 7 }));
 
 		var runtimeService = BuildRuntimeService(key);
 		var (scheduler, _) = Build(repository, connectorRuntime, runtimeService);
@@ -78,7 +78,7 @@ public sealed class PollingSchedulerServiceTests
 
 		var connectorRuntime = new Mock<IConnectorRuntime>();
 		connectorRuntime.Setup(x => x.ExecuteAsync(It.IsAny<ConnectorExecutionContext>(), It.IsAny<CancellationToken>()))
-			.ReturnsAsync(new ConnectorExecutionResult(true, 200, new Dictionary<string, object> { ["lastSeenId"] = 7 }));
+			.ReturnsAsync(new ConnectorExecutionResult(true, 200, new Dictionary<string, object>(StringComparer.Ordinal) { ["lastSeenId"] = 7 }));
 
 		var runtimeService = BuildRuntimeService(key);
 		var (scheduler, _) = Build(repository, connectorRuntime, runtimeService);
@@ -105,7 +105,7 @@ public sealed class PollingSchedulerServiceTests
 
 		var connectorRuntime = new Mock<IConnectorRuntime>();
 		connectorRuntime.Setup(x => x.ExecuteAsync(It.IsAny<ConnectorExecutionContext>(), It.IsAny<CancellationToken>()))
-			.ReturnsAsync(new ConnectorExecutionResult(false, 503, new Dictionary<string, object>(), "remote_server_error"));
+			.ReturnsAsync(new ConnectorExecutionResult(false, 503, new Dictionary<string, object>(StringComparer.Ordinal), "remote_server_error"));
 
 		var runtimeService = BuildRuntimeService(key);
 		var (scheduler, _) = Build(repository, connectorRuntime, runtimeService);
@@ -113,7 +113,7 @@ public sealed class PollingSchedulerServiceTests
 		await scheduler.RunIterationAsync(TestContext.Current.CancellationToken);
 
 		Assert.NotNull(captured);
-		Assert.Equal(1, captured!.ConsecutiveFailures);
+		Assert.Equal(1, captured.ConsecutiveFailures);
 		Assert.True(captured.NextDueAt > DateTime.UtcNow.AddSeconds(50)); // backoff >= interval (60s)
 		runtimeService.Verify(x => x.StartProcessByKeyAsync(
 			It.IsAny<string>(), It.IsAny<IDictionary<string, object>>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);

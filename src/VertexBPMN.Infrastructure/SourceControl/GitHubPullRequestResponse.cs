@@ -11,22 +11,9 @@ internal static class GitHubPullRequestResponse
     internal static PullRequestReceipt Read(JsonElement response, RepositoryBinding binding,
         PullRequestCommand command)
     {
-        ArgumentNullException.ThrowIfNull(binding);
-        ArgumentNullException.ThrowIfNull(command);
         try
         {
-            var repository = binding.Remote.AbsolutePath.Trim('/');
-            if (repository.EndsWith(".git", StringComparison.Ordinal))
-            {
-                repository = repository[..^4];
-            }
-            if (binding.Remote.Scheme != Uri.UriSchemeHttps || binding.Remote.Host != "github.com"
-                || repository.Split('/').Length != 2 || !string.IsNullOrEmpty(binding.Remote.Query)
-                || !string.IsNullOrEmpty(binding.Remote.Fragment) || !string.IsNullOrEmpty(binding.Remote.UserInfo))
-            {
-                throw InvalidResponse();
-            }
-
+            var repository = ValidateTarget(binding, command);
             var head = response.GetProperty("head");
             var target = response.GetProperty("base");
             var commit = new GitCommitId(head.GetProperty("sha").GetString()!);
@@ -62,13 +49,39 @@ internal static class GitHubPullRequestResponse
             // treat that SHA as the actual merged revision or release evidence.
             var mergeCommit = merged ? new GitCommitId(response.GetProperty("merge_commit_sha").GetString()!) : null;
             return new PullRequestReceipt(command.OperationId, "github", number, url,
-                merged ? PullRequestState.Merged : state == "open" ? PullRequestState.Open : PullRequestState.Closed,
-                commit, mergeCommit);
+                ResolveState(merged, state), commit, mergeCommit);
         }
         catch (Exception error) when (error is JsonException or InvalidOperationException or KeyNotFoundException or ArgumentException or FormatException)
         {
             throw InvalidResponse();
         }
+    }
+
+    private static string ValidateTarget(RepositoryBinding binding, PullRequestCommand command)
+    {
+        ArgumentNullException.ThrowIfNull(binding);
+        ArgumentNullException.ThrowIfNull(command);
+        var repository = binding.Remote.AbsolutePath.Trim('/');
+        if (repository.EndsWith(".git", StringComparison.Ordinal))
+        {
+            repository = repository[..^4];
+        }
+        if (binding.Remote.Scheme != Uri.UriSchemeHttps || binding.Remote.Host != "github.com"
+            || repository.Split('/').Length != 2 || !string.IsNullOrEmpty(binding.Remote.Query)
+            || !string.IsNullOrEmpty(binding.Remote.Fragment) || !string.IsNullOrEmpty(binding.Remote.UserInfo))
+        {
+            throw InvalidResponse();
+        }
+        return repository;
+    }
+
+    private static PullRequestState ResolveState(bool merged, string state)
+    {
+        if (merged)
+        {
+            return PullRequestState.Merged;
+        }
+        return state == "open" ? PullRequestState.Open : PullRequestState.Closed;
     }
 
     private static SourceControlSecurityException InvalidResponse() =>

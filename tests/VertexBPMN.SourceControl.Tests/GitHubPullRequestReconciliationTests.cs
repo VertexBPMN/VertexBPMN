@@ -50,7 +50,10 @@ public sealed class GitHubPullRequestReconciliationTests
 
 	private static JsonElement Detail(string? body = null) => JsonSerializer.SerializeToElement(new
 	{
-		number = 7, html_url = "https://github.com/example/models/pull/7", state = "open", merged = false,
+		number = 7,
+		html_url = "https://github.com/example/models/pull/7",
+		state = "open",
+		merged = false,
 		body = body ?? GitHubPullRequestReconciliation.RequestBody(Command),
 		head = new { sha = Command.HeadCommit.Value, @ref = Command.WorkBranch, repo = new { full_name = "example/models" } },
 		@base = new { @ref = Command.BaseBranch, repo = new { full_name = "example/models" } }

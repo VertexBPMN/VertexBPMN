@@ -21,31 +21,31 @@ public class SemanticKernelServiceTaskHandler : IServiceTaskHandler
 	}
 
 	public async Task ExecuteAsync(
-		IDictionary<string, string> taskAttributes,
-		IDictionary<string, object> processVariables,
-		CancellationToken cancellationToken = default)
+		IDictionary<string, string> attributes,
+		IDictionary<string, object> variables,
+		CancellationToken ct = default)
 	{
 		// 1. Attribute auslesen
-		var resultVariable = GetAttribute(taskAttributes, "resultVariable", "llmResult");
-		var promptSource = GetAttribute(taskAttributes, "prompt", null);
+		var resultVariable = GetAttribute(attributes, "resultVariable", "llmResult");
+		var promptSource = GetAttribute(attributes, "prompt", null);
 
 		// 2. Prompttext aus Prozessvariablen holen
-		var promptText = processVariables.TryGetValue(promptSource ?? "", out var promptVar)
+		var promptText = variables.TryGetValue(promptSource ?? "", out var promptVar)
 			? promptVar?.ToString() ?? ""
 			: promptSource ?? "";
 
 		// 3. Kernel von der Factory holen (entweder neu erstellt oder aus dem Cache)
-		var kernel = _kernelFactory.GetKernel(taskAttributes);
+		var kernel = _kernelFactory.GetKernel(attributes);
 		var promptFunction = kernel.CreateFunctionFromPrompt(promptText);
 
 		// 4. LLM-Call mit Retry-Policy ausführen
 		var result = await _retryPolicy.ExecuteAsync(ct =>
 				kernel.InvokeAsync(promptFunction, cancellationToken: ct),
-			cancellationToken
+			ct
 		);
 
 		// 5. Ergebnis in Prozessvariable schreiben
-		processVariables[resultVariable] = result.GetValue<string>() ?? "";
+		variables[resultVariable] = result.GetValue<string>() ?? "";
 
 	}
 

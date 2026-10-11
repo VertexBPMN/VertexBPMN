@@ -19,152 +19,158 @@ namespace VertexBPMN.Tests.Integration.Handlers;
 /// <summary>
 /// Unit-Tests f�r SemanticKernelServiceTaskHandler mit Mocking der IKernelFactory.
 /// </summary>
-public class SemanticKernelServiceTaskHandlerTests
+public sealed class SemanticKernelServiceTaskHandlerTests : IDisposable
 {
-    private readonly Mock<HttpMessageHandler> _httpMessageHandlerMock;
-    private readonly HttpClient _httpClient;
+	public void Dispose() => _httpClient.Dispose();
 
-    public SemanticKernelServiceTaskHandlerTests()
-    {
-        _httpMessageHandlerMock = new Mock<HttpMessageHandler>();
-        _httpClient = new HttpClient(_httpMessageHandlerMock.Object);
-    }
+	private readonly Mock<HttpMessageHandler> _httpMessageHandlerMock;
+	private readonly HttpClient _httpClient;
 
-    [Theory]
-    [InlineData("OpenAI", "gpt-4o-mini", "Hallo, wie kann ich helfen?", "llmResult", "Fake-OpenAI-Antwort")]
-    [InlineData("Ollama", "llama2", "Was ist BPMN?", "llmResult", "Fake-Ollama-Antwort")]
-    public async Task ServiceTaskHandler_SetsResultVariable_ForVariousProviders(
-        string provider, string modelId, string promptText, string resultVariable, string expectedResult)
-    {
-        // ARRANGE
+	public SemanticKernelServiceTaskHandlerTests()
+	{
+		_httpMessageHandlerMock = new Mock<HttpMessageHandler>();
+		_httpClient = new HttpClient(_httpMessageHandlerMock.Object);
+	}
 
-        // 1. Mocke den untersten Service (die eigentliche KI-Arbeit).
-        var mockChatService = new Mock<IChatCompletionService>();
-        mockChatService
-            .Setup(s => s.GetChatMessageContentsAsync(
-                It.IsAny<ChatHistory>(),
-                It.IsAny<PromptExecutionSettings>(),
-                It.IsAny<Kernel>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new(AuthorRole.Assistant, expectedResult)]);
+	[Theory]
+	[InlineData("OpenAI", "gpt-4o-mini", "Hallo, wie kann ich helfen?", "llmResult", "Fake-OpenAI-Antwort")]
+	[InlineData("Ollama", "llama2", "Was ist BPMN?", "llmResult", "Fake-Ollama-Antwort")]
+	public async Task ServiceTaskHandler_SetsResultVariable_ForVariousProviders(
+		string provider, string modelId, string promptText, string resultVariable, string expectedResult)
+	{
+		// ARRANGE
 
-        // 2. Erstelle einen echten Kernel, der den gemockten Service enth�lt.
-        var kernelBuilder = Kernel.CreateBuilder();
-        kernelBuilder.Services.AddSingleton<IChatCompletionService>(mockChatService.Object);
-        var kernel = kernelBuilder.Build();
+		// 1. Mocke den untersten Service (die eigentliche KI-Arbeit).
+		var mockChatService = new Mock<IChatCompletionService>();
+		mockChatService
+			.Setup(s => s.GetChatMessageContentsAsync(
+				It.IsAny<ChatHistory>(),
+				It.IsAny<PromptExecutionSettings>(),
+				It.IsAny<Kernel>(),
+				It.IsAny<CancellationToken>()))
+			.ReturnsAsync([new(AuthorRole.Assistant, expectedResult)]);
 
-        // 3. Mocke die KernelFactory.
-        var mockKernelFactory = new Mock<IKernelFactory>();
+		// 2. Erstelle einen echten Kernel, der den gemockten Service enth�lt.
+		var kernelBuilder = Kernel.CreateBuilder();
+		kernelBuilder.Services.AddSingleton<IChatCompletionService>(mockChatService.Object);
+		var kernel = kernelBuilder.Build();
 
-        // 4. Bringe der gemockten Factory bei, unseren pr�parierten Kernel zur�ckzugeben,
-        //    wenn ihre GetKernel-Methode aufgerufen wird.
-        mockKernelFactory
-            .Setup(f => f.GetKernel(It.IsAny<IDictionary<string, string>>()))
-            .Returns(kernel);
+		// 3. Mocke die KernelFactory.
+		var mockKernelFactory = new Mock<IKernelFactory>();
 
-        // 5. Erstelle die Instanz des Handlers mit der gemockten Factory.
-        var handler = new SemanticKernelServiceTaskHandler(mockKernelFactory.Object);
+		// 4. Bringe der gemockten Factory bei, unseren pr�parierten Kernel zur�ckzugeben,
+		//    wenn ihre GetKernel-Methode aufgerufen wird.
+		mockKernelFactory
+			.Setup(f => f.GetKernel(It.IsAny<IDictionary<string, string>>()))
+			.Returns(kernel);
 
-        // Die BPMN-Attribute und Prozessvariablen bleiben gleich.
-        var attributes = new Dictionary<string, string>
-        {
-            { "provider", provider },
-            { "modelId", modelId },
-            { "prompt", "customerMessage" },
-            { "resultVariable", resultVariable }
-        };
-        var processVariables = new Dictionary<string, object>
-        {
-            { "customerMessage", promptText }
-        };
+		// 5. Erstelle die Instanz des Handlers mit der gemockten Factory.
+		var handler = new SemanticKernelServiceTaskHandler(mockKernelFactory.Object);
 
-        // ACT
-        await handler.ExecuteAsync(attributes, processVariables, TestContext.Current.CancellationToken);
+		// Die BPMN-Attribute und Prozessvariablen bleiben gleich.
+		var attributes = new Dictionary<string, string>(StringComparer.Ordinal)
+		{
+			{ "provider", provider },
+			{ "modelId", modelId },
+			{ "prompt", "customerMessage" },
+			{ "resultVariable", resultVariable }
+		};
+		var processVariables = new Dictionary<string, object>(StringComparer.Ordinal)
+		{
+			{ "customerMessage", promptText }
+		};
 
-        // ASSERT
-        Assert.True(processVariables.ContainsKey(resultVariable));
-        Assert.Equal(expectedResult, processVariables[resultVariable]);
+		// ACT
+		await handler.ExecuteAsync(attributes, processVariables, TestContext.Current.CancellationToken);
 
-        // Optional, aber empfohlen: Verifiziere, dass die Factory aufgerufen wurde.
-        mockKernelFactory.Verify(f => f.GetKernel(attributes), Times.Once);
-    }
+		// ASSERT
+		Assert.True(processVariables.ContainsKey(resultVariable));
+		Assert.Equal(expectedResult, processVariables[resultVariable]);
 
-    [Fact]
-    public async Task Executes_MultiInstanceSubprocess_FlowsToEnd()
-    {
-        // Arrange
-        var bpmnFile = Path.Combine(Directory.GetCurrentDirectory(), "TestData", "SemanticKernelTestProcess.bpmn");
-        var xml = File.ReadAllText(bpmnFile);
-        var logger = new Mock<ILogger<BpmnParser>>();var parser = new BpmnParser(logger.Object, TracerProvider.Default);
-        var processVariables = new Dictionary<string, object>
-        {
-            { "customerMessage", "Wie ist das Wetter heute?" }
-        };
-        var model = await parser.ParseAsync(xml.Replace('\'', '"'), TestContext.Current.CancellationToken);
-        model = model with {ProcessVariables = processVariables};
-        Assert.NotNull(model);
+		// Optional, aber empfohlen: Verifiziere, dass die Factory aufgerufen wurde.
+		mockKernelFactory.Verify(f => f.GetKernel(attributes), Times.Once);
+	}
 
-        var task = Assert.Single(model.Tasks);
-        Assert.Equal("serviceTask", task.Type);
-        Assert.Equal("semanticKernelServiceTask", task.Implementation);
-        Assert.NotNull(task.Attributes);
-        Assert.Equal("OpenAI", task.Attributes["provider"]);
-        Assert.Equal("gpt-4o", task.Attributes["modelId"]);
-        Assert.Equal("customerMessage", task.Attributes["prompt"]);
-        Assert.Equal("llmResult", task.Attributes["resultVariable"]);
+	[Fact]
+	public async Task Executes_MultiInstanceSubprocess_FlowsToEnd()
+	{
+		// Arrange
+		var bpmnFile = Path.Combine(Directory.GetCurrentDirectory(), "TestData", "SemanticKernelTestProcess.bpmn");
+		var xml = await File.ReadAllTextAsync(bpmnFile, TestContext.Current.CancellationToken);
+		var logger = new Mock<ILogger<BpmnParser>>();
+		var parser = new BpmnParser(logger.Object, TracerProvider.Default);
+		var processVariables = new Dictionary<string, object>(StringComparer.Ordinal)
+		{
+			{ "customerMessage", "Wie ist das Wetter heute?" }
+		};
+		var model = await parser.ParseAsync(xml.Replace('\'', '"'), TestContext.Current.CancellationToken);
+		model = model with { ProcessVariables = processVariables };
+		Assert.NotNull(model);
 
-        // Set up the service collection and registry
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddServiceTaskHandlers(); // Use the updated ServiceTaskRegistryExtensions
+		Assert.NotNull(model.Tasks);
+		var task = Assert.Single(model.Tasks);
+		Assert.Equal("serviceTask", task.Type);
+		Assert.Equal("semanticKernelServiceTask", task.Implementation);
+		Assert.NotNull(task.Attributes);
+		Assert.Equal("OpenAI", task.Attributes["provider"]);
+		Assert.Equal("gpt-4o", task.Attributes["modelId"]);
+		Assert.Equal("customerMessage", task.Attributes["prompt"]);
+		Assert.Equal("llmResult", task.Attributes["resultVariable"]);
 
-        var provider = services.BuildServiceProvider();
-        var registry = provider.GetRequiredService<IServiceTaskRegistry>();
-        registry.Register("semanticKernelServiceTask", new FakeSemanticKernelHandler());
-        // Verify that the registry resolves the handler correctly
-        Assert.True(registry.TryResolve("semanticKernelServiceTask", out var semanticKernelHandler));
-        Assert.NotNull(semanticKernelHandler);
+		// Set up the service collection and registry
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddServiceTaskHandlers(); // Use the updated ServiceTaskRegistryExtensions
 
-        var engine = new ProcessEngine(NullLogger<ProcessEngine>.Instance, registry);
-    
-        // Act
-        var trace = engine.Execute(model);
+		var provider = services.BuildServiceProvider();
+		var registry = provider.GetRequiredService<IServiceTaskRegistry>();
+		registry.Register("semanticKernelServiceTask", new FakeSemanticKernelHandler());
+		// Verify that the registry resolves the handler correctly
+		Assert.True(registry.TryResolve("semanticKernelServiceTask", out var semanticKernelHandler));
+		Assert.NotNull(semanticKernelHandler);
 
-        // Assert
-        Assert.Contains(trace, r => r.ToString().Contains("ServiceTask: SK_ServiceTask_1"));
-        Assert.Contains(trace, r => r.ToString().Contains("EndEvent: EndEvent_1"));
-        Assert.True(model.ProcessVariables.ContainsKey("customerMessage"));
-        Assert.Equal("Das Wetter ist sonnig.", model.ProcessVariables["llmResult"]);
-    }
+		var engine = new ProcessEngine(NullLogger<ProcessEngine>.Instance, registry);
 
-    [Fact]
-    public async Task Parse_ServiceTask_WithAttributesAndExtensionElements()
-    {
-        // Arrange: Minimal BPMN XML with serviceTask
-        var xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<bpmn:definitions xmlns:bpmn=\"http://www.omg.org/spec/BPMN/20100524/MODEL\">\n  <bpmn:process id=\"TestProcess\" name=\"Test Process\" isExecutable=\"true\">\n    <bpmn:serviceTask id=\"ServiceTask_1\" name=\"AI Task\" implementation=\"semanticKernelServiceTask\">\n      <bpmn:extensionElements>\n        <bpmn:property name=\"provider\" value=\"OpenAI\"/>\n        <bpmn:property name=\"modelId\" value=\"gpt-4o\"/>\n        <bpmn:property name=\"prompt\" value=\"customerMessage\"/>\n        <bpmn:property name=\"resultVariable\" value=\"llmResult\"/>\n      </bpmn:extensionElements>\n    </bpmn:serviceTask>\n  </bpmn:process>\n</bpmn:definitions>";
+		// Act
+		var trace = await engine.ExecuteAsync(model, TestContext.Current.CancellationToken);
 
-        var logger = new Mock<ILogger<BpmnParser>>();var parser = new BpmnParser(logger.Object, TracerProvider.Default);
+		// Assert
+		Assert.Contains(trace, r => r.Contains("ServiceTask: SK_ServiceTask_1", StringComparison.Ordinal));
+		Assert.Contains(trace, r => r.Contains("EndEvent: EndEvent_1", StringComparison.Ordinal));
+		Assert.True(model.ProcessVariables.ContainsKey("customerMessage"));
+		Assert.Equal("Das Wetter ist sonnig.", model.ProcessVariables["llmResult"]);
+	}
 
-        // Act
-        var model = await parser.ParseAsync(xml.Replace('\'', '"'), TestContext.Current.CancellationToken);
-        // Assert
-        var task = Assert.Single(model.Tasks);
-        Assert.Equal("serviceTask", task.Type);
-        Assert.Equal("semanticKernelServiceTask", task.Implementation);
-        Assert.NotNull(task.Attributes);
-        Assert.Equal("OpenAI", task.Attributes["provider"]);
-        Assert.Equal("gpt-4o", task.Attributes["modelId"]);
-        Assert.Equal("customerMessage", task.Attributes["prompt"]);
-        Assert.Equal("llmResult", task.Attributes["resultVariable"]);
-    }
+	[Fact]
+	public async Task Parse_ServiceTask_WithAttributesAndExtensionElements()
+	{
+		// Arrange: Minimal BPMN XML with serviceTask
+		const string xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<bpmn:definitions xmlns:bpmn=\"http://www.omg.org/spec/BPMN/20100524/MODEL\">\n  <bpmn:process id=\"TestProcess\" name=\"Test Process\" isExecutable=\"true\">\n    <bpmn:serviceTask id=\"ServiceTask_1\" name=\"AI Task\" implementation=\"semanticKernelServiceTask\">\n      <bpmn:extensionElements>\n        <bpmn:property name=\"provider\" value=\"OpenAI\"/>\n        <bpmn:property name=\"modelId\" value=\"gpt-4o\"/>\n        <bpmn:property name=\"prompt\" value=\"customerMessage\"/>\n        <bpmn:property name=\"resultVariable\" value=\"llmResult\"/>\n      </bpmn:extensionElements>\n    </bpmn:serviceTask>\n  </bpmn:process>\n</bpmn:definitions>";
 
-    private class FakeSemanticKernelHandler : IServiceTaskHandler
-    {
-        public Task ExecuteAsync(IDictionary<string, string> attributes, IDictionary<string, object> variables, CancellationToken cancellationToken)
-        {
-            variables["llmResult"] = "Das Wetter ist sonnig.";
-            return Task.CompletedTask;
-        }
-    }
+		var logger = new Mock<ILogger<BpmnParser>>();
+		var parser = new BpmnParser(logger.Object, TracerProvider.Default);
+
+		// Act
+		var model = await parser.ParseAsync(xml.Replace('\'', '"'), TestContext.Current.CancellationToken);
+		// Assert
+		Assert.NotNull(model.Tasks);
+		var task = Assert.Single(model.Tasks);
+		Assert.Equal("serviceTask", task.Type);
+		Assert.Equal("semanticKernelServiceTask", task.Implementation);
+		Assert.NotNull(task.Attributes);
+		Assert.Equal("OpenAI", task.Attributes["provider"]);
+		Assert.Equal("gpt-4o", task.Attributes["modelId"]);
+		Assert.Equal("customerMessage", task.Attributes["prompt"]);
+		Assert.Equal("llmResult", task.Attributes["resultVariable"]);
+	}
+
+	private sealed class FakeSemanticKernelHandler : IServiceTaskHandler
+	{
+		public Task ExecuteAsync(IDictionary<string, string> attributes, IDictionary<string, object> variables, CancellationToken ct = default)
+		{
+			variables["llmResult"] = "Das Wetter ist sonnig.";
+			return Task.CompletedTask;
+		}
+	}
 }
 

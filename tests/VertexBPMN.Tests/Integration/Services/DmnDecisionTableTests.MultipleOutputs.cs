@@ -5,35 +5,34 @@
 using VertexBPMN.Domain.Model.Dmn;
 
 
-namespace VertexBPMN.Tests.Integration.Services
+namespace VertexBPMN.Tests.Integration.Services;
+
+public partial class DmnDecisionTableTests
 {
-    public partial class DmnDecisionTableTests
-    {
-        [Fact]
-        public void Evaluate_MultipleOutputs_AllOutputsReturned()
-        {
-            // Arrange: Table with two outputs
-            var table = new DmnDecisionTable(
-                key: "d1",
-                name: "Test",
-                inputs: new List<DmnInput> { new DmnInput("i1", "input1") },
-                outputs: new List<DmnOutput> { new DmnOutput("o1", "output1"), new DmnOutput("o2", "output2") },
-                rules: new List<DmnRule>
-                {
-                    new DmnRule(new List<string> { "42" }, new List<string> { "A", "X" })
-                },
-                hitPolicy: "UNIQUE"
-            );
-            var input = new Dictionary<string, object> { { "i1", 42 } };
+	[Fact]
+	public void Evaluate_MultipleOutputs_AllOutputsReturned()
+	{
+		// Arrange: Table with two outputs
+		var table = new DmnDecisionTable(
+			key: "d1",
+			name: "Test",
+			inputs: [new("i1", "input1")],
+			outputs: [new("o1", "output1"), new("o2", "output2")],
+			rules:
+			[
+				new(["42"], ["A", "X"])
+			],
+			hitPolicy: "UNIQUE"
+		);
+		var input = new Dictionary<string, object>(StringComparer.Ordinal) { { "i1", 42 } };
 
-            // Act
-            var result = table.Evaluate(input);
+		// Act
+		var result = table.Evaluate(input);
 
-            // Assert: Both outputs should be present
-            Assert.NotNull(result);
-            Assert.Equal(2, result.Count);
-            Assert.Equal("A", result["output1"]);
-            Assert.Equal("X", result["output2"]);
-        }
-    }
+		// Assert: Both outputs should be present
+		Assert.NotNull(result);
+		Assert.Equal(2, result.Count);
+		Assert.Equal("A", result["output1"]);
+		Assert.Equal("X", result["output2"]);
+	}
 }

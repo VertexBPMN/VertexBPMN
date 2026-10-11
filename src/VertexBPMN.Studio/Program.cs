@@ -21,100 +21,86 @@ var builder = WebApplication.CreateBuilder(args);
 // Keep warning/error diagnostics without logging callback query credentials at Information.
 builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Warning);
 builder.AddServiceDefaults();
-var isUiTest = builder.Environment.IsEnvironment("UiTest")
-    && string.Equals(
-        builder.Configuration["StudioAuthentication:UiTestEnabled"],
-        "true",
-        StringComparison.OrdinalIgnoreCase);
-var isLocalDevelopment = builder.Environment.IsDevelopment()
-    && builder.Configuration.GetValue<bool>("StudioAuthentication:LocalDevelopmentEnabled");
-var httpsRedirectionEnabled = builder.Configuration.GetValue(
-    "StudioHttpsRedirection:Enabled",
-    true);
+var isUiTest = builder.Environment.IsEnvironment("UiTest") && string.Equals(builder.Configuration["StudioAuthentication:UiTestEnabled"], "true", StringComparison.OrdinalIgnoreCase);
+var isLocalDevelopment = builder.Environment.IsDevelopment() && builder.Configuration.GetValue<bool>("StudioAuthentication:LocalDevelopmentEnabled");
+var httpsRedirectionEnabled = builder.Configuration.GetValue("StudioHttpsRedirection:Enabled", true);
 var operationalMode = builder.Configuration["OperationalMode"] ?? builder.Environment.EnvironmentName;
 var dataProtection = builder.Services.AddDataProtection().SetApplicationName("VertexBPMN.Studio");
 var dataProtectionProvider = builder.Configuration["DataProtection:Provider"];
 var dataProtectionKeyRingPath = builder.Configuration["DataProtection:KeyRingPath"];
-var dataProtectionIsAzure = string.Equals(
-    dataProtectionProvider, "AzureBlobKeyVault", StringComparison.OrdinalIgnoreCase);
-if (operationalMode.Equals("Production", StringComparison.OrdinalIgnoreCase)
-    || operationalMode.Equals("Stage", StringComparison.OrdinalIgnoreCase))
+var dataProtectionIsAzure = string.Equals(dataProtectionProvider, "AzureBlobKeyVault", StringComparison.OrdinalIgnoreCase);
+if (operationalMode.Equals("Production", StringComparison.OrdinalIgnoreCase) || operationalMode.Equals("Stage", StringComparison.OrdinalIgnoreCase))
 {
-    if (dataProtectionIsAzure)
-    {
-        // In Azure, the filesystem fallback is forbidden. Blob + Key Vault via Managed Identity only.
-        if (string.IsNullOrWhiteSpace(builder.Configuration["DataProtection:BlobUri"])
-            || string.IsNullOrWhiteSpace(builder.Configuration["DataProtection:KeyVaultKeyIdentifier"]))
-        {
-            throw new InvalidOperationException(
-                "DataProtection:BlobUri and DataProtection:KeyVaultKeyIdentifier are required in Production/Stage "
-                + "when DataProtection:Provider=AzureBlobKeyVault so Studio replicas share durable, encrypted keys.");
-        }
-    }
-    else if (string.IsNullOrWhiteSpace(dataProtectionKeyRingPath))
-    {
-        throw new InvalidOperationException(
-            "DataProtection:KeyRingPath is required in Production and Stage so Studio replicas share durable authentication keys.");
-    }
+	if (dataProtectionIsAzure)
+	{
+		// In Azure, the filesystem fallback is forbidden. Blob + Key Vault via Managed Identity only.
+		if (string.IsNullOrWhiteSpace(builder.Configuration["DataProtection:BlobUri"]) || string.IsNullOrWhiteSpace(builder.Configuration["DataProtection:KeyVaultKeyIdentifier"]))
+		{
+			throw new InvalidOperationException("DataProtection:BlobUri and DataProtection:KeyVaultKeyIdentifier are required in Production/Stage when DataProtection:Provider=AzureBlobKeyVault so Studio replicas share durable, encrypted keys.");
+		}
+	}
+	else if (string.IsNullOrWhiteSpace(dataProtectionKeyRingPath))
+	{
+		throw new InvalidOperationException("DataProtection:KeyRingPath is required in Production and Stage so Studio replicas share durable authentication keys.");
+	}
 }
+
 if (dataProtectionIsAzure)
 {
-    var blobUri = builder.Configuration["DataProtection:BlobUri"]!;
-    var keyIdentifier = new Uri(builder.Configuration["DataProtection:KeyVaultKeyIdentifier"]!);
-    var credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions
-    {
-        ExcludeSharedTokenCacheCredential = true,
-        ExcludeVisualStudioCredential = true,
-        ExcludeVisualStudioCodeCredential = true,
-        ExcludeInteractiveBrowserCredential = true,
-    });
-    dataProtection.PersistKeysToAzureBlobStorage(new Uri(blobUri), credential);
-    dataProtection.ProtectKeysWithAzureKeyVault(keyIdentifier, credential);
+	var blobUri = builder.Configuration["DataProtection:BlobUri"]!;
+	var keyIdentifier = new Uri(builder.Configuration["DataProtection:KeyVaultKeyIdentifier"]!);
+	var credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions { ExcludeVisualStudioCredential = true, ExcludeVisualStudioCodeCredential = true, ExcludeInteractiveBrowserCredential = true, });
+	dataProtection.PersistKeysToAzureBlobStorage(new Uri(blobUri), credential);
+	dataProtection.ProtectKeysWithAzureKeyVault(keyIdentifier, credential);
 }
 else if (!string.IsNullOrWhiteSpace(dataProtectionKeyRingPath))
 {
-    dataProtection.PersistKeysToFileSystem(
-        Directory.CreateDirectory(Path.GetFullPath(dataProtectionKeyRingPath)));
+	dataProtection.PersistKeysToFileSystem(Directory.CreateDirectory(Path.GetFullPath(dataProtectionKeyRingPath)));
 }
+
 var reverseProxyEnabled = builder.Configuration.GetValue<bool>("ReverseProxy:Enabled");
-var knownProxyValues = builder.Configuration
-    .GetSection("ReverseProxy:KnownProxies")
-    .Get<string[]>() ?? [];
+var knownProxyValues = builder.Configuration.GetSection("ReverseProxy:KnownProxies").Get<string[]>() ?? [];
 var knownProxies = new List<IPAddress>();
 foreach (var value in knownProxyValues)
 {
-    if (!IPAddress.TryParse(value, out var address))
-        throw new InvalidOperationException($"ReverseProxy:KnownProxies contains invalid IP address '{value}'.");
-    knownProxies.Add(address);
+	if (!IPAddress.TryParse(value, out var address))
+	{
+		throw new InvalidOperationException($"ReverseProxy:KnownProxies contains invalid IP address '{value}'.");
+	}
+
+	knownProxies.Add(address);
 }
+
 if (reverseProxyEnabled && knownProxies.Count == 0)
 {
-    throw new InvalidOperationException(
-        "ReverseProxy:KnownProxies must contain at least one explicit proxy IP when ReverseProxy:Enabled is true.");
+	throw new InvalidOperationException("ReverseProxy:KnownProxies must contain at least one explicit proxy IP when ReverseProxy:Enabled is true.");
 }
+
 if (reverseProxyEnabled)
 {
-    builder.Services.Configure<ForwardedHeadersOptions>(options =>
-    {
-        // The proxy must preserve the public Host header. Deliberately do not
-        // consume X-Forwarded-Host, so it cannot rewrite OIDC callback origins.
-        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-        options.ForwardLimit = 1;
-        options.RequireHeaderSymmetry = true;
-        options.KnownProxies.Clear();
-        options.KnownIPNetworks.Clear();
-        foreach (var address in knownProxies)
-            options.KnownProxies.Add(address);
-    });
+	builder.Services.Configure<ForwardedHeadersOptions>(options =>
+	{
+		// The proxy must preserve the public Host header. Deliberately do not
+		// consume X-Forwarded-Host, so it cannot rewrite OIDC callback origins.
+		options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+		options.ForwardLimit = 1;
+		options.RequireHeaderSymmetry = true;
+		options.KnownProxies.Clear();
+		options.KnownIPNetworks.Clear();
+		foreach (var address in knownProxies)
+		{
+			options.KnownProxies.Add(address);
+		}
+	});
 }
 
 if (isUiTest)
-    builder.WebHost.UseStaticWebAssets();
+{
+	builder.WebHost.UseStaticWebAssets();
+}
 
 // Add services to the container.
-builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
-
+builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 builder.Services.AddControllers();
 builder.Services.AddMudServices();
 builder.Services.AddHttpContextAccessor();
@@ -122,7 +108,6 @@ builder.Services.AddSingleton(TimeProvider.System);
 RegisterOidcSessionStore(builder);
 builder.Services.AddSingleton<OidcSessionTokenStore>();
 builder.Services.AddScoped<OidcCookieRefreshEvents>();
-
 var oidcAuthority = builder.Configuration["StudioAuthentication:Authority"];
 var oidcBackchannelAuthority = builder.Configuration["StudioAuthentication:BackchannelAuthority"];
 LocalOidcBackchannelHandler.Validate(oidcBackchannelAuthority, oidcAuthority, builder.Environment.IsEnvironment("OidcTest"));
@@ -131,139 +116,141 @@ var oidcClientSecret = builder.Configuration["StudioAuthentication:ClientSecret"
 var oidcApiScope = builder.Configuration["StudioAuthentication:ApiScope"];
 var oidcClaimsScope = builder.Configuration["StudioAuthentication:ClaimsScope"];
 var oidcRequireClientSecret = builder.Configuration.GetValue<bool>("StudioAuthentication:RequireClientSecret");
-var oidcRequireHttpsMetadata = builder.Configuration.GetValue<bool?>("StudioAuthentication:RequireHttpsMetadata")
-    ?? !builder.Environment.IsDevelopment();
+var oidcRequireHttpsMetadata = builder.Configuration.GetValue<bool?>("StudioAuthentication:RequireHttpsMetadata") ?? !builder.Environment.IsDevelopment();
 if (!isUiTest && !isLocalDevelopment && (string.IsNullOrWhiteSpace(oidcAuthority) || string.IsNullOrWhiteSpace(oidcClientId)))
 {
-    throw new InvalidOperationException(
-        "StudioAuthentication:Authority and StudioAuthentication:ClientId must be configured before starting VertexBPMN Studio.");
+	throw new InvalidOperationException("StudioAuthentication:Authority and StudioAuthentication:ClientId must be configured before starting VertexBPMN Studio.");
 }
+
 if (!isUiTest && !isLocalDevelopment && oidcRequireClientSecret && string.IsNullOrWhiteSpace(oidcClientSecret))
 {
-    throw new InvalidOperationException(
-        "StudioAuthentication:ClientSecret must be supplied by a secret store for this confidential OIDC client.");
+	throw new InvalidOperationException("StudioAuthentication:ClientSecret must be supplied by a secret store for this confidential OIDC client.");
 }
-if (!oidcRequireHttpsMetadata
-    && !builder.Environment.IsDevelopment()
-    && !(builder.Environment.IsEnvironment("OidcTest") && IsLoopbackHttpAuthority(oidcAuthority)))
+
+if (!oidcRequireHttpsMetadata && !builder.Environment.IsDevelopment() && !(builder.Environment.IsEnvironment("OidcTest") && IsLoopbackHttpAuthority(oidcAuthority)))
 {
-    throw new InvalidOperationException(
-        "StudioAuthentication:RequireHttpsMetadata may be disabled outside Development only for the OidcTest profile with a loopback Authority.");
+	throw new InvalidOperationException("StudioAuthentication:RequireHttpsMetadata may be disabled outside Development only for the OidcTest profile with a loopback Authority.");
 }
 
 if (isUiTest || isLocalDevelopment)
 {
-    builder.Services.AddAuthentication(options =>
-    {
-        options.DefaultAuthenticateScheme = UiTestAuthenticationHandler.Scheme;
-        options.DefaultChallengeScheme = UiTestAuthenticationHandler.Scheme;
-    })
-    .AddScheme<AuthenticationSchemeOptions, UiTestAuthenticationHandler>(
-        UiTestAuthenticationHandler.Scheme,
-        _ => { });
+	builder.Services.AddAuthentication(options =>
+	{
+		options.DefaultAuthenticateScheme = UiTestAuthenticationHandler.Scheme;
+		options.DefaultChallengeScheme = UiTestAuthenticationHandler.Scheme;
+	}).AddScheme<AuthenticationSchemeOptions, UiTestAuthenticationHandler>(UiTestAuthenticationHandler.Scheme, _ =>
+	{
+	});
 }
 else
 {
-    builder.Services.AddAuthentication(options =>
-    {
-        options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-        options.DefaultChallengeScheme = OpenIdConnectDefaults.AuthenticationScheme;
-    })
-    .AddCookie(options =>
-    {
-        options.LoginPath = "/authentication/login";
-        options.LogoutPath = "/authentication/logout";
-        options.AccessDeniedPath = "/authentication/access-denied";
-        options.Cookie.HttpOnly = true;
-        options.Cookie.SameSite = SameSiteMode.Lax;
-        options.Cookie.SecurePolicy = oidcRequireHttpsMetadata
-            ? CookieSecurePolicy.Always
-            : CookieSecurePolicy.SameAsRequest;
-        options.EventsType = typeof(OidcCookieRefreshEvents);
-    })
-    .AddOpenIdConnect(options =>
-    {
-        options.Authority = oidcAuthority;
-        if (!string.IsNullOrWhiteSpace(oidcBackchannelAuthority))
-            options.BackchannelHttpHandler = new LocalOidcBackchannelHandler(oidcAuthority!, oidcBackchannelAuthority,
-                builder.Environment.IsEnvironment("OidcTest"), new HttpClientHandler());
-        options.ClientId = oidcClientId;
-        options.ClientSecret = oidcClientSecret;
-        options.RequireHttpsMetadata = oidcRequireHttpsMetadata;
-        options.ResponseType = OpenIdConnectResponseType.Code;
-        options.UsePkce = true;
-        options.SaveTokens = true;
-        options.GetClaimsFromUserInfoEndpoint = true;
-        options.MapInboundClaims = false;
-        options.TokenValidationParameters.NameClaimType = "preferred_username";
-        options.TokenValidationParameters.RoleClaimType = ClaimTypes.Role;
-        options.TokenValidationParameters.ClockSkew = TimeSpan.FromSeconds(30);
-        options.Events.OnTokenValidated = context =>
-        {
-            var identity = context.Principal?.Identities.FirstOrDefault(item => item.IsAuthenticated);
-            if (identity is null)
-            {
-                context.Fail("OIDC did not produce an authenticated identity.");
-                return Task.CompletedTask;
-            }
-            if (!identity.HasClaim(claim => claim.Type == OidcSessionTokenStore.SessionIdClaim))
-                identity.AddClaim(new Claim(OidcSessionTokenStore.SessionIdClaim, Guid.NewGuid().ToString("N")));
-            if (!VertexOidcClaims.TryNormalize(context.Principal!, out var error))
-                context.Fail(error);
-            return Task.CompletedTask;
-        };
-        options.Events.OnTicketReceived = context =>
-        {
-            var store = context.HttpContext.RequestServices.GetRequiredService<OidcSessionTokenStore>();
-            try
-            {
-                store.Register(context.Principal!, context.Properties!);
-            }
-            catch (OidcSessionExpiredException exception)
-            {
-                context.Fail(exception);
-            }
-            return Task.CompletedTask;
-        };
-        options.Scope.Add("openid");
-        options.Scope.Add("profile");
-        if (string.IsNullOrWhiteSpace(oidcClaimsScope))
-        {
-            // Backwards-compatible defaults for existing generic OIDC deployments.
-            options.Scope.Add("roles");
-            options.Scope.Add("tenant_id");
-        }
-        else
-        {
-            options.Scope.Add(oidcClaimsScope);
-        }
-        if (!string.IsNullOrWhiteSpace(oidcApiScope))
-            options.Scope.Add(oidcApiScope);
-    });
+	builder.Services.AddAuthentication(options =>
+	{
+		options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+		options.DefaultChallengeScheme = OpenIdConnectDefaults.AuthenticationScheme;
+	}).AddCookie(options =>
+	{
+		options.LoginPath = "/authentication/login";
+		options.LogoutPath = "/authentication/logout";
+		options.AccessDeniedPath = "/authentication/access-denied";
+		options.Cookie.HttpOnly = true;
+		options.Cookie.SameSite = SameSiteMode.Lax;
+		options.Cookie.SecurePolicy = oidcRequireHttpsMetadata ? CookieSecurePolicy.Always : CookieSecurePolicy.SameAsRequest;
+		options.EventsType = typeof(OidcCookieRefreshEvents);
+	}).AddOpenIdConnect(options =>
+	{
+		options.Authority = oidcAuthority;
+		if (!string.IsNullOrWhiteSpace(oidcBackchannelAuthority))
+		{
+			options.BackchannelHttpHandler = new LocalOidcBackchannelHandler(oidcAuthority!, oidcBackchannelAuthority, builder.Environment.IsEnvironment("OidcTest"), new HttpClientHandler());
+		}
+
+		options.ClientId = oidcClientId;
+		options.ClientSecret = oidcClientSecret;
+		options.RequireHttpsMetadata = oidcRequireHttpsMetadata;
+		options.ResponseType = OpenIdConnectResponseType.Code;
+		options.UsePkce = true;
+		options.SaveTokens = true;
+		options.GetClaimsFromUserInfoEndpoint = true;
+		options.MapInboundClaims = false;
+		options.TokenValidationParameters.NameClaimType = "preferred_username";
+		options.TokenValidationParameters.RoleClaimType = ClaimTypes.Role;
+		options.TokenValidationParameters.ClockSkew = TimeSpan.FromSeconds(30);
+		options.Events.OnTokenValidated = context =>
+		{
+			var identity = context.Principal?.Identities.FirstOrDefault(item => item.IsAuthenticated);
+			if (identity is null)
+			{
+				context.Fail("OIDC did not produce an authenticated identity.");
+				return Task.CompletedTask;
+			}
+
+			if (!identity.HasClaim(claim => claim.Type == OidcSessionTokenStore.SessionIdClaim))
+			{
+				identity.AddClaim(new Claim(OidcSessionTokenStore.SessionIdClaim, Guid.NewGuid().ToString("N")));
+			}
+
+			if (!VertexOidcClaims.TryNormalize(context.Principal!, out var error))
+			{
+				context.Fail(error);
+			}
+
+			return Task.CompletedTask;
+		};
+		options.Events.OnTicketReceived = context =>
+		{
+			var store = context.HttpContext.RequestServices.GetRequiredService<OidcSessionTokenStore>();
+			try
+			{
+				store.Register(context.Principal!, context.Properties!);
+			}
+			catch (OidcSessionExpiredException exception)
+			{
+				context.Fail(exception);
+			}
+
+			return Task.CompletedTask;
+		};
+		options.Scope.Add("openid");
+		options.Scope.Add("profile");
+		if (string.IsNullOrWhiteSpace(oidcClaimsScope))
+		{
+			// Backwards-compatible defaults for existing generic OIDC deployments.
+			options.Scope.Add("roles");
+			options.Scope.Add("tenant_id");
+		}
+		else
+		{
+			options.Scope.Add(oidcClaimsScope);
+		}
+
+		if (!string.IsNullOrWhiteSpace(oidcApiScope))
+		{
+			options.Scope.Add(oidcApiScope);
+		}
+	});
 }
+
 builder.Services.AddAuthorization();
 builder.Services.AddCascadingAuthenticationState();
 if (!isUiTest && !isLocalDevelopment)
-    builder.Services.AddScoped<Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider,
-        OidcCircuitAuthenticationStateProvider>();
+{
+	builder.Services.AddScoped<Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider, OidcCircuitAuthenticationStateProvider>();
+}
 
 // Configure HTTP clients
-
 var apiBaseUrl = builder.Configuration["ApiBaseUrl"];
 if (string.IsNullOrWhiteSpace(apiBaseUrl) || !Uri.TryCreate(apiBaseUrl, UriKind.Absolute, out var apiUri))
 {
-    throw new InvalidOperationException("ApiBaseUrl must be an absolute URI.");
+	throw new InvalidOperationException("ApiBaseUrl must be an absolute URI.");
 }
 
 builder.Services.AddHttpClient("VertexBPMN.Api", client =>
 {
-    client.BaseAddress = apiUri;
-    client.Timeout = TimeSpan.FromSeconds(30);
-})
-.AddHttpMessageHandler<StudioApiAuthorizationHandler>();
-
+	client.BaseAddress = apiUri;
+	client.Timeout = TimeSpan.FromSeconds(30);
+}).AddHttpMessageHandler<StudioApiAuthorizationHandler>();
 builder.Services.AddTransient<StudioApiAuthorizationHandler>();
-
 // Register HTTP-based services
 builder.Services.AddScoped<IBpmnEngineService, HttpBpmnEngineService>();
 builder.Services.AddScoped<IRepositoryService, RepositoryService>();
@@ -291,7 +278,6 @@ builder.Services.AddScoped<IExecutionDetailsService, HttpExecutionDetailsService
 builder.Services.AddScoped<IExternalTaskOperationsService, HttpExternalTaskOperationsService>();
 builder.Services.AddScoped<IPluginService, HttpPluginService>();
 builder.Services.AddScoped<IWorkflowTriggerService, HttpWorkflowTriggerService>();
-
 builder.Services.AddScoped<IConnectorService, HttpConnectorService>();
 builder.Services.AddScoped<HttpSourceControlService>();
 builder.Services.AddScoped<IConnectorTemplateService, HttpConnectorTemplateService>();
@@ -299,146 +285,126 @@ builder.Services.AddScoped<IDebuggingService, HttpDebuggingService>();
 builder.Services.AddScoped<ICaseManagementService, HttpCaseManagementService>();
 builder.Services.AddScoped<NotificationClient>();
 builder.Services.AddScoped<ActiveEngineService>();
-
 // Add logging
 builder.Services.AddLogging();
-
 var app = builder.Build();
 app.MapDefaultEndpoints();
-
 if (reverseProxyEnabled)
-    app.UseForwardedHeaders();
+{
+	app.UseForwardedHeaders();
+}
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
-    app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    app.UseHsts();
+	app.UseExceptionHandler("/Error", createScopeForErrors: true);
+	app.UseHsts();
 }
 
 if (!isUiTest && httpsRedirectionEnabled)
-    app.UseHttpsRedirection();
+{
+	app.UseHttpsRedirection();
+}
+
 app.UseAuthentication();
 app.Use(async (context, next) =>
 {
-    if (context.Request.Path.StartsWithSegments("/oauth2/callback"))
-    {
-        context.Response.Headers.CacheControl = "no-store";
-        context.Response.Headers["Referrer-Policy"] = "no-referrer";
-    }
-    await next();
+	if (context.Request.Path.StartsWithSegments("/oauth2/callback", StringComparison.OrdinalIgnoreCase))
+	{
+		context.Response.Headers.CacheControl = "no-store";
+		context.Response.Headers["Referrer-Policy"] = "no-referrer";
+	}
+
+	await next();
 });
 app.UseAuthorization();
 app.UseAntiforgery();
-
-app.MapGet("/authentication/login", (HttpContext httpContext, string? returnUrl) =>
+app.MapGet("/authentication/login", (string? returnUrl) =>
 {
-    var target = IsLocalReturnUrl(returnUrl) ? returnUrl! : "/";
-    return Results.Challenge(
-        new AuthenticationProperties { RedirectUri = target },
-        [OpenIdConnectDefaults.AuthenticationScheme]);
+	var target = IsLocalReturnUrl(returnUrl) ? returnUrl! : "/";
+	return Results.Challenge(new AuthenticationProperties { RedirectUri = target }, [OpenIdConnectDefaults.AuthenticationScheme]);
 }).AllowAnonymous();
-
 app.MapPost("/authentication/logout", async (HttpContext httpContext, IAntiforgery antiforgery) =>
 {
-    try
-    {
-        await antiforgery.ValidateRequestAsync(httpContext);
-    }
-    catch (AntiforgeryValidationException)
-    {
-        return Results.BadRequest();
-    }
+	try
+	{
+		await antiforgery.ValidateRequestAsync(httpContext);
+	}
+	catch (AntiforgeryValidationException)
+	{
+		return Results.BadRequest();
+	}
 
-    if (isUiTest || isLocalDevelopment)
-        return Results.Redirect("/");
+	if (isUiTest || isLocalDevelopment)
+	{
+		return Results.Redirect("/");
+	}
 
-    var tokenStore = httpContext.RequestServices.GetRequiredService<OidcSessionTokenStore>();
-    var idToken = tokenStore.GetIdToken(httpContext.User)
-        ?? await httpContext.GetTokenAsync("id_token");
-    tokenStore.Remove(httpContext.User);
-    var logoutProperties = new AuthenticationProperties { RedirectUri = "/" };
-    if (!string.IsNullOrWhiteSpace(idToken))
-    {
-        logoutProperties.StoreTokens(
-            [new AuthenticationToken { Name = "id_token", Value = idToken }]);
-    }
+	var tokenStore = httpContext.RequestServices.GetRequiredService<OidcSessionTokenStore>();
+	var idToken = tokenStore.GetIdToken(httpContext.User) ?? await httpContext.GetTokenAsync("id_token");
+	tokenStore.Remove(httpContext.User);
+	var logoutProperties = new AuthenticationProperties
+	{
+		RedirectUri = "/"
+	};
+	if (!string.IsNullOrWhiteSpace(idToken))
+	{
+		logoutProperties.StoreTokens([new AuthenticationToken { Name = "id_token", Value = idToken }]);
+	}
 
-    return Results.SignOut(
-        logoutProperties,
-        [CookieAuthenticationDefaults.AuthenticationScheme, OpenIdConnectDefaults.AuthenticationScheme]);
+	return Results.SignOut(logoutProperties, [CookieAuthenticationDefaults.AuthenticationScheme, OpenIdConnectDefaults.AuthenticationScheme]);
 }).RequireAuthorization();
-
 app.MapPost("/authentication/session/refresh", async (HttpContext httpContext, IAntiforgery antiforgery) =>
 {
-    // Background renewal must not challenge OIDC: fetch would follow the login
-    // redirect instead of delivering the 401 that lets the editor warn the user.
-    if (httpContext.User.Identity?.IsAuthenticated != true)
-    {
-        return Results.Unauthorized();
-    }
+	// Background renewal must not challenge OIDC: fetch would follow the login
+	// redirect instead of delivering the 401 that lets the editor warn the user.
+	if (httpContext.User.Identity?.IsAuthenticated != true)
+	{
+		return Results.Unauthorized();
+	}
 
-    try
-    {
-        await antiforgery.ValidateRequestAsync(httpContext);
-    }
-    catch (AntiforgeryValidationException)
-    {
-        return Results.BadRequest();
-    }
+	try
+	{
+		await antiforgery.ValidateRequestAsync(httpContext);
+	}
+	catch (AntiforgeryValidationException)
+	{
+		return Results.BadRequest();
+	}
 
-    return Results.Ok(new
-    {
-        renewed = httpContext.Items.ContainsKey(OidcSessionTokenStore.SessionRenewedItem)
-    });
+	return Results.Ok(new { renewed = httpContext.Items.ContainsKey(OidcSessionTokenStore.SessionRenewedItem) });
 }).AllowAnonymous();
-
-app.MapGet("/authentication/access-denied", () => Results.Problem(
-    statusCode: StatusCodes.Status403Forbidden,
-    title: "Access denied",
-    detail: "The authenticated identity is not authorized to use VertexBPMN Studio.")).AllowAnonymous();
-
+app.MapGet("/authentication/access-denied", () => Results.Problem(detail: "The authenticated identity is not authorized to use VertexBPMN Studio.", statusCode: StatusCodes.Status403Forbidden, title: "Access denied")).AllowAnonymous();
 app.MapStaticAssets();
-var razorComponents = app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
+var razorComponents = app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 if (!isUiTest)
-    razorComponents.RequireAuthorization();
-
-app.MapControllers();
-app.Run();
-
-static bool IsLoopbackHttpAuthority(string? authority) =>
-    Uri.TryCreate(authority, UriKind.Absolute, out var uri)
-    && uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
-    && uri.IsLoopback;
-
-static bool IsLocalReturnUrl(string? returnUrl) =>
-    !string.IsNullOrWhiteSpace(returnUrl)
-    && returnUrl[0] == '/'
-    && (returnUrl.Length == 1 || (returnUrl[1] != '/' && returnUrl[1] != '\\'))
-    && !returnUrl.Contains('\r', StringComparison.Ordinal)
-    && !returnUrl.Contains('\n', StringComparison.Ordinal);
-
-static void RegisterOidcSessionStore(WebApplicationBuilder builder)
 {
-    var connectionString = builder.Configuration.GetConnectionString("OidcSessionStore")
-        ?? builder.Configuration["OidcSessionStore:ConnectionString"];
-    var provider = OidcSessionStoreProvider.Resolve(
-        connectionString,
-        builder.Configuration["OidcSessionStore:Provider"]);
-
-    if (OidcSessionStoreProvider.IsSqlite(provider) || string.IsNullOrWhiteSpace(connectionString))
-    {
-        // Lokaler Standard: In-Process-Store (kein Azure-Zugang nötig, identisches Verhalten).
-        builder.Services.AddSingleton<ISharedOidcSessionStore, InMemorySharedOidcSessionStore>();
-        return;
-    }
-
-    // Geteilter, verschlüsselter Store auf PostgreSQL (Azure): alle Replikas teilen
-    // denselben Sitzungszustand und dieselben Refresh-Locks (P4.5).
-    builder.Services.AddDbContextFactory<OidcSessionStoreDbContext>(options =>
-        OidcSessionStoreProvider.Configure(options, provider, connectionString!));
-    builder.Services.AddSingleton<ISharedOidcSessionStore, PersistentOidcSessionStore>();
+	razorComponents.RequireAuthorization();
 }
 
-public partial class Program;
+app.MapControllers();
+await app.RunAsync();
+static bool IsLoopbackHttpAuthority(string? authority) => Uri.TryCreate(authority, UriKind.Absolute, out var uri) && uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) && uri.IsLoopback;
+static bool IsLocalReturnUrl(string? returnUrl) => !string.IsNullOrWhiteSpace(returnUrl) && returnUrl[0] == '/' && (returnUrl.Length == 1 || (returnUrl[1] != '/' && returnUrl[1] != '\\')) && !returnUrl.Contains('\r', StringComparison.Ordinal) && !returnUrl.Contains('\n', StringComparison.Ordinal);
+static void RegisterOidcSessionStore(WebApplicationBuilder builder)
+{
+	var connectionString = builder.Configuration.GetConnectionString("OidcSessionStore") ?? builder.Configuration["OidcSessionStore:ConnectionString"];
+	var provider = OidcSessionStoreProvider.Resolve(connectionString, builder.Configuration["OidcSessionStore:Provider"]);
+	if (OidcSessionStoreProvider.IsSqlite(provider) || string.IsNullOrWhiteSpace(connectionString))
+	{
+		// Lokaler Standard: In-Process-Store (kein Azure-Zugang nötig, identisches Verhalten).
+		builder.Services.AddSingleton<ISharedOidcSessionStore, InMemorySharedOidcSessionStore>();
+		return;
+	}
+
+	// Geteilter, verschlüsselter Store auf PostgreSQL (Azure): alle Replikas teilen
+	// denselben Sitzungszustand und dieselben Refresh-Locks (P4.5).
+	builder.Services.AddDbContextFactory<OidcSessionStoreDbContext>(options => OidcSessionStoreProvider.Configure(options, provider, connectionString));
+	builder.Services.AddSingleton<ISharedOidcSessionStore, PersistentOidcSessionStore>();
+}
+
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "WebApplicationFactory integration tests require a public application entry point.")]
+public partial class Program
+{
+    protected Program() { }
+}

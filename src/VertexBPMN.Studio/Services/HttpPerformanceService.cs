@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace VertexBPMN.Studio.Services;
 
-public sealed class HttpPerformanceService(IHttpClientFactory httpClientFactory) : IPerformanceService
+internal sealed class HttpPerformanceService(IHttpClientFactory httpClientFactory) : IPerformanceService
 {
     public Task<JsonElement> GetMetricsAsync(CancellationToken cancellationToken = default) =>
         GetJsonAsync("/api/performance/metrics", cancellationToken);

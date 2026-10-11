@@ -18,6 +18,8 @@ public class AnthropicServiceTaskHandler : IServiceTaskHandler
 	private readonly ILogger<AnthropicServiceTaskHandler> _logger;
 	private readonly TracerProvider? _tracerProvider;
 	private readonly ISecretProvider? _secretProvider;
+
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Minor Code Smell", "S1075", Justification = "Canonical third-party Anthropic API endpoint that must remain fixed.")]
 	private const string BaseUrl = "https://api.anthropic.com/v1/messages";
 
 	public AnthropicServiceTaskHandler(HttpClient httpClient, ILogger<AnthropicServiceTaskHandler> logger, TracerProvider? tracerProvider = null, ISecretProvider? secretProvider = null)
@@ -31,7 +33,7 @@ public class AnthropicServiceTaskHandler : IServiceTaskHandler
 	/// <summary>
 	/// Executes Claude-powered tasks including reasoning, analysis, creative writing, and structured data processing.
 	/// </summary>
-	public async Task ExecuteAsync(IDictionary<string, string> attributes, IDictionary<string, object> variables, CancellationToken cancellationToken = default)
+	public async Task ExecuteAsync(IDictionary<string, string> attributes, IDictionary<string, object> variables, CancellationToken ct = default)
 	{
 		var tracer = _tracerProvider?.GetTracer("VertexBPMN.AI.Anthropic");
 		using var span = tracer?.StartActiveSpan("Anthropic.ExecuteTask");
@@ -57,55 +59,7 @@ public class AnthropicServiceTaskHandler : IServiceTaskHandler
 				return;
 			}
 
-			// Get API key
-			var apiKey = GetApiKey(attributes);
-
-			// Build context from input variables
-			var context = BuildContextString(config.InputVariables, variables);
-			var userMessage = BuildClaudePrompt(config, context);
-
-			// Prepare Anthropic API request
-			var requestBody = new
-			{
-				model = config.Model,
-				max_tokens = config.MaxTokens,
-				temperature = config.Temperature,
-				system = config.SystemMessage,
-				messages = new[]
-				{
-					new { role = "user", content = userMessage }
-				}
-			};
-
-			var requestJson = JsonSerializer.Serialize(requestBody, JsonOptions);
-			using var content = new StringContent(requestJson, Encoding.UTF8, "application/json");
-
-			// Add Anthropic API key and headers
-			_httpClient.DefaultRequestHeaders.Clear();
-			_httpClient.DefaultRequestHeaders.Add("x-api-key", apiKey);
-			_httpClient.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
-
-			span?.SetAttribute("ai.request_size", requestJson.Length);
-
-			// Execute Anthropic API call
-			var response = await _httpClient.PostAsync(BaseUrl, content, cancellationToken);
-
-			if (!response.IsSuccessStatusCode)
-			{
-				var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-				var errorMessage = $"Anthropic API error: {response.StatusCode} - {errorContent}";
-				_logger.LogError(errorMessage);
-				span?.SetStatus(Status.Error.WithDescription(errorMessage));
-				throw new ServiceTaskExecutionException(errorMessage);
-			}
-
-			var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
-			var claudeResponse = JsonSerializer.Deserialize<ClaudeResponse>(responseJson, JsonOptions);
-
-			if (claudeResponse?.Content?.Any() != true)
-			{
-				throw new ServiceTaskExecutionException("Anthropic API returned no content");
-			}
+			var claudeResponse = await RequestResponseAsync(config, attributes, variables, span, ct);
 
 			// Process and store results
 			ProcessClaudeResponse(claudeResponse, config, variables);
@@ -128,10 +82,65 @@ public class AnthropicServiceTaskHandler : IServiceTaskHandler
 		catch (Exception ex) when (ex is not ServiceTaskExecutionException)
 		{
 			var errorMessage = $"Anthropic service task execution failed: {ex.Message}";
-			_logger.LogError(ex, errorMessage);
+			_logger.LogError("Anthropic service task execution failed.");
 			span?.SetStatus(Status.Error.WithDescription(errorMessage));
 			throw new ServiceTaskExecutionException(errorMessage, ex);
 		}
+	}
+
+	private async Task<ClaudeResponse> RequestResponseAsync(ClaudeConfiguration config, IDictionary<string, string> attributes, IDictionary<string, object> variables, TelemetrySpan? span, CancellationToken ct)
+	{
+		// Get API key
+		var apiKey = GetApiKey(attributes);
+
+		// Build context from input variables
+		var context = BuildContextString(config.InputVariables, variables);
+		var userMessage = BuildClaudePrompt(config, context);
+
+		// Prepare Anthropic API request
+		var requestBody = new
+		{
+			model = config.Model,
+			max_tokens = config.MaxTokens,
+			temperature = config.Temperature,
+			system = config.SystemMessage,
+			messages = new[]
+			{
+				new { role = "user", content = userMessage }
+			}
+		};
+
+		var requestJson = JsonSerializer.Serialize(requestBody, JsonOptions);
+		using var content = new StringContent(requestJson, Encoding.UTF8, "application/json");
+
+		// Add Anthropic API key and headers
+		_httpClient.DefaultRequestHeaders.Clear();
+		_httpClient.DefaultRequestHeaders.Add("x-api-key", apiKey);
+		_httpClient.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
+
+		span?.SetAttribute("ai.request_size", requestJson.Length);
+
+		// Execute Anthropic API call
+		using var response = await _httpClient.PostAsync(BaseUrl, content, ct);
+
+		if (!response.IsSuccessStatusCode)
+		{
+			var errorContent = await response.Content.ReadAsStringAsync(ct);
+			var errorMessage = $"Anthropic API error: {response.StatusCode} - {errorContent}";
+			_logger.LogError("Anthropic API returned status {StatusCode}", response.StatusCode);
+			span?.SetStatus(Status.Error.WithDescription(errorMessage));
+			throw new ServiceTaskExecutionException(errorMessage);
+		}
+
+		var responseJson = await response.Content.ReadAsStringAsync(ct);
+		var claudeResponse = JsonSerializer.Deserialize<ClaudeResponse>(responseJson, JsonOptions);
+
+		if (claudeResponse?.Content is not { Length: > 0 })
+		{
+			throw new ServiceTaskExecutionException("Anthropic API returned no content");
+		}
+
+		return claudeResponse;
 	}
 
 	private ClaudeConfiguration ParseConfiguration(IDictionary<string, string> attributes)
@@ -256,24 +265,35 @@ public class AnthropicServiceTaskHandler : IServiceTaskHandler
 
 	private sealed record ClaudeResponse
 	{
+		[System.Text.Json.Serialization.JsonInclude]
 		public string Id { get; init; } = "";
+		[System.Text.Json.Serialization.JsonInclude]
 		public string Type { get; init; } = "";
+		[System.Text.Json.Serialization.JsonInclude]
 		public string Role { get; init; } = "";
+		[System.Text.Json.Serialization.JsonInclude]
 		public ClaudeContent[] Content { get; init; } = [];
+		[System.Text.Json.Serialization.JsonInclude]
 		public string Model { get; init; } = "";
+		[System.Text.Json.Serialization.JsonInclude]
 		public string StopReason { get; init; } = "";
+		[System.Text.Json.Serialization.JsonInclude]
 		public ClaudeUsage? Usage { get; init; }
 	}
 
 	private sealed record ClaudeContent
 	{
+		[System.Text.Json.Serialization.JsonInclude]
 		public string Type { get; init; } = "";
+		[System.Text.Json.Serialization.JsonInclude]
 		public string Text { get; init; } = "";
 	}
 
 	private sealed record ClaudeUsage
 	{
+		[System.Text.Json.Serialization.JsonInclude]
 		public int InputTokens { get; init; }
+		[System.Text.Json.Serialization.JsonInclude]
 		public int OutputTokens { get; init; }
 	}
 

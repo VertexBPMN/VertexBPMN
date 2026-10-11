@@ -13,7 +13,7 @@ public sealed class RecordedOutputServiceTaskHandler(
 	public Task ExecuteAsync(
 		IDictionary<string, string> attributes,
 		IDictionary<string, object> variables,
-		CancellationToken cancellationToken = default)
+		CancellationToken ct = default)
 	{
 		foreach (var kvp in outputs)
 		{

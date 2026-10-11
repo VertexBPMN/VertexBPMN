@@ -1,6 +1,6 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using VertexBPMN.Domain.Entities;
-using System.Text.Json;
 
 namespace VertexBPMN.Infrastructure.Persistence;
 
@@ -310,7 +310,7 @@ public class BpmnDbContext : DbContext
         entity.Property(e => e.Variables)
             .HasConversion(
                 v => JsonSerializer.Serialize(v, (JsonSerializerOptions)null!),
-                v => JsonSerializer.Deserialize<Dictionary<string, object>>(v, (JsonSerializerOptions)null!) ?? new Dictionary<string, object>());
+                v => JsonSerializer.Deserialize<Dictionary<string, object>>(v, (JsonSerializerOptions)null!) ?? new Dictionary<string, object>(StringComparer.Ordinal));
 
         entity.Property(e => e.ActiveTasks)
             .HasConversion(
@@ -349,7 +349,7 @@ public class BpmnDbContext : DbContext
         entity.Property(e => e.Variables)
             .HasConversion(
                 v => JsonSerializer.Serialize(v, (JsonSerializerOptions)null!),
-                v => JsonSerializer.Deserialize<Dictionary<string, object>>(v, (JsonSerializerOptions)null!) ?? new Dictionary<string, object>());
+                v => JsonSerializer.Deserialize<Dictionary<string, object>>(v, (JsonSerializerOptions)null!) ?? new Dictionary<string, object>(StringComparer.Ordinal));
 
         // FK -> ProcessInstance
         entity.HasOne<ProcessInstance>()
@@ -428,7 +428,7 @@ public class BpmnDbContext : DbContext
             .HasConversion(
                 value => JsonSerializer.Serialize(value, (JsonSerializerOptions)null!),
                 value => JsonSerializer.Deserialize<Dictionary<string, object>>(value, (JsonSerializerOptions)null!)
-                         ?? new Dictionary<string, object>());
+                         ?? new Dictionary<string, object>(StringComparer.Ordinal));
         entity.Property(e => e.CandidateUsers)
             .HasConversion(
                 value => JsonSerializer.Serialize(value, (JsonSerializerOptions)null!),

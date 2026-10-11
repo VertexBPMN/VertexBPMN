@@ -22,12 +22,12 @@ public sealed class RuntimeInboxOptions
     /// <summary>Azure Service Bus MaxDeliveryCount: redeliveries before a message is dead-lettered.</summary>
     public int MaxDeliveryCount { get; set; } = 10;
 
-    /// <summary>Seconds of lock renewal for long-running handlers (0 = no renewal).</summary>
-    public int LockRenewalSeconds { get; set; } = 0;
+	/// <summary>Seconds of lock renewal for long-running handlers (0 = no renewal).</summary>
+	public int LockRenewalSeconds { get; set; }
 
-    /// <summary>
-    /// Seconds after which an incomplete inbox claim is considered stale and reclaimable (recovery after a
-    /// crash mid-processing). Separately configured from the outbox lease.
-    /// </summary>
-    public int ClaimTimeoutSeconds { get; set; } = 120;
+	/// <summary>
+	/// Seconds after which an incomplete inbox claim is considered stale and reclaimable (recovery after a
+	/// crash mid-processing). Separately configured from the outbox lease.
+	/// </summary>
+	public int ClaimTimeoutSeconds { get; set; } = 120;
 }

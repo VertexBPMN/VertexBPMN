@@ -7,8 +7,13 @@ namespace VertexBPMN.Api.Controllers;
 /// <summary>Public ingress for BPMN-declared vertex:webhook start events.</summary>
 [ApiController]
 [Route("api/webhooks")]
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public controller required for ASP.NET Core MVC discovery and activation.")]
 public sealed class WebhookIngressController(IWorkflowTriggerService triggerService) : ControllerBase
 {
+	[FromHeader(Name = "X-VertexBPMN-Timestamp")]
+	public string? Timestamp { get; set; }
+	[FromHeader(Name = "X-VertexBPMN-Delivery-Id")]
+	public string? DeliveryId { get; set; }
 	[AcceptVerbs("GET", "POST", "PUT", "PATCH", "DELETE")]
 	[AllowAnonymous]
 	[Route("{**path}")]
@@ -20,7 +25,7 @@ public sealed class WebhookIngressController(IWorkflowTriggerService triggerServ
 	{
 		await using var content = new MemoryStream();
 		await Request.Body.CopyToAsync(content, cancellationToken);
-		var result = await triggerService.InvokeWebhookAsync("/" + (path ?? string.Empty), Request.Method, triggerSecret, signature, content.ToArray(), Request.Headers["X-VertexBPMN-Timestamp"].ToString(), Request.Headers["X-VertexBPMN-Delivery-Id"].ToString(), cancellationToken);
+		var result = await triggerService.InvokeWebhookAsync(string.Concat('/', path), Request.Method, triggerSecret, signature, content.ToArray(), Timestamp ?? string.Empty, DeliveryId ?? string.Empty, cancellationToken);
 		return result.Status switch
 		{
 			WorkflowTriggerInvocationStatus.Started => Created($"/api/runtime/{result.ProcessInstance!.Id}", result.ProcessInstance),

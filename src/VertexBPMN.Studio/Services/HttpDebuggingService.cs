@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace VertexBPMN.Studio.Services;
 
-public sealed class HttpDebuggingService(IHttpClientFactory httpClientFactory) : IDebuggingService
+internal sealed class HttpDebuggingService(IHttpClientFactory httpClientFactory) : IDebuggingService
 {
     public async Task<JsonElement> TraceAsync(
         string bpmnXml,

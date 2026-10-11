@@ -33,7 +33,7 @@ public sealed class ProductionProcessInstanceStore : IProcessInstanceStore
         else
         {
             existing.BpmnXml = bpmnXml;
-            existing.Version += 1;
+			existing.Version++;
         }
         await _db.SaveChangesAsync();
     }
@@ -54,8 +54,10 @@ public sealed class ProductionProcessInstanceStore : IProcessInstanceStore
     {
         var tracked = await _db.ProcessInstances.FindAsync(instance.Id);
         if (tracked == null)
-            _db.ProcessInstances.Add(instance);
-        else
+		{
+			_db.ProcessInstances.Add(instance);
+		}
+		else
         {
             tracked.State = instance.State;
             tracked.EndedAt = instance.EndedAt;
@@ -174,7 +176,7 @@ public sealed class ProductionProcessInstanceStore : IProcessInstanceStore
 
         return records.Select(record => new HistoricalCaseData(
             record.CaseId,
-            JsonSerializer.Deserialize<Dictionary<string, object>>(record.CaseFileJson, _json) ?? new(),
+            JsonSerializer.Deserialize<Dictionary<string, object>>(record.CaseFileJson, _json) ?? new(StringComparer.Ordinal),
             JsonSerializer.Deserialize<List<string>>(record.CompletedPlanItemsJson, _json) ?? new(),
             record.Timestamp)).ToList();
     }

@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace VertexBPMN.Studio.Services;
 
-public sealed class HttpExecutionDetailsService(IHttpClientFactory httpClientFactory) : IExecutionDetailsService
+internal sealed class HttpExecutionDetailsService(IHttpClientFactory httpClientFactory) : IExecutionDetailsService
 {
     public Task<JsonElement> GetJobsAsync(string? tenantId = null, CancellationToken cancellationToken = default) =>
         GetAsync(BuildUri("/api/vertex/job", tenantId), cancellationToken);

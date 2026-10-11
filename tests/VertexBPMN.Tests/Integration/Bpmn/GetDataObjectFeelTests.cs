@@ -18,52 +18,59 @@ namespace VertexBPMN.Tests.Integration.Bpmn;
 /// </summary>
 public class GetDataObjectFeelTests
 {
-    private const string Model =
-        @"<?xml version=""1.0"" encoding=""UTF-8""?>
-<bpmn:definitions xmlns:bpmn=""http://www.omg.org/spec/BPMN/20100524/MODEL""
-                  xmlns:xsi=""http://www.w3.org/2001/XMLSchema-instance""
-                  xmlns:zeebe=""http://camunda.org/schema/zeebe/1.0""
-                  targetNamespace=""t"">
-  <bpmn:process id=""proc"" isExecutable=""true"">
-    <bpmn:startEvent id=""s"" />
-    <bpmn:sequenceFlow id=""f1"" sourceRef=""s"" targetRef=""gw"" />
-    <bpmn:exclusiveGateway id=""gw"" default=""fNo"">
+	private const string Model =
+		"""
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
+                  targetNamespace="t">
+  <bpmn:process id="proc" isExecutable="true">
+    <bpmn:startEvent id="s" />
+    <bpmn:sequenceFlow id="f1" sourceRef="s" targetRef="gw" />
+    <bpmn:exclusiveGateway id="gw" default="fNo">
       <bpmn:incoming>f1</bpmn:incoming>
       <bpmn:outgoing>fYes</bpmn:outgoing>
       <bpmn:outgoing>fNo</bpmn:outgoing>
     </bpmn:exclusiveGateway>
-    <bpmn:sequenceFlow id=""fYes"" sourceRef=""gw"" targetRef=""eYes"">
-      <bpmn:conditionExpression xsi:type=""bpmn:tFormalExpression"">bpmn:getDataObject('status') = 'ok'</bpmn:conditionExpression>
+    <bpmn:sequenceFlow id="fYes" sourceRef="gw" targetRef="eYes">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">bpmn:getDataObject('status') = 'ok'</bpmn:conditionExpression>
     </bpmn:sequenceFlow>
-    <bpmn:sequenceFlow id=""fNo"" sourceRef=""gw"" targetRef=""eNo"" />
-    <bpmn:endEvent id=""eYes"" />
-    <bpmn:endEvent id=""eNo"" />
+    <bpmn:sequenceFlow id="fNo" sourceRef="gw" targetRef="eNo" />
+    <bpmn:endEvent id="eYes" />
+    <bpmn:endEvent id="eNo" />
   </bpmn:process>
-</bpmn:definitions>";
+</bpmn:definitions>
+""";
 
-    [Theory]
-    [InlineData("ok", "eYes")]    // FEEL getDataObject resolves -> 'ok' branch
-    [InlineData("fail", "eNo")]   // condition false -> default branch
-    public async Task Executes_GetDataObject_Condition_Through_Engine(string status, string expectedEnd)
-    {
-        var logger = new Mock<ILogger<BpmnParser>>();
-        var parser = new BpmnParser(logger.Object, TracerProvider.Default);
-        var model = await parser.ParseAsync(Model, TestContext.Current.CancellationToken);
+	[Theory]
+	[InlineData("ok", "eYes")]    // FEEL getDataObject resolves -> 'ok' branch
+	[InlineData("fail", "eNo")]   // condition false -> default branch
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1849", Justification = "Exercises the synchronous execution contract with initial variables. ExecuteAsync has no equivalent variables overload; dropping inputs would invalidate the FEEL acceptance test.")]
+	public async Task Executes_GetDataObject_Condition_Through_Engine(string status, string expectedEnd)
+	{
+		var logger = new Mock<ILogger<BpmnParser>>();
+		var parser = new BpmnParser(logger.Object, TracerProvider.Default);
+		var model = await parser.ParseAsync(Model, TestContext.Current.CancellationToken);
 
-        var vars = new Dictionary<string, object> { ["status"] = status };
-        var engine = new ProcessEngine();
-        var trace = engine.Execute(model, vars);
+		var vars = new Dictionary<string, object>(StringComparer.Ordinal) { ["status"] = status };
+		var engine = new ProcessEngine();
+		var trace = engine.Execute(model, vars);
 
-        Assert.NotNull(trace);
-        Assert.NotEmpty(trace!);
-        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
-        foreach (var line in trace!)
-        {
-            foreach (var id in new[] { "eYes", "eNo" })
-                if (line.Contains(id, StringComparison.Ordinal))
-                    counts[id] = counts.GetValueOrDefault(id) + 1;
-        }
-        var executed = counts.Where(kv => kv.Value > 0).Select(kv => kv.Key).ToList();
-        Assert.Equal(expectedEnd, Assert.Single(executed));
-    }
+		Assert.NotNull(trace);
+		Assert.NotEmpty(trace);
+		var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+		foreach (var line in trace)
+		{
+			foreach (var id in new[] { "eYes", "eNo" })
+			{
+				if (line.Contains(id, StringComparison.Ordinal))
+				{
+					counts[id] = counts.GetValueOrDefault(id) + 1;
+				}
+			}
+		}
+		var executed = counts.Where(kv => kv.Value > 0).Select(kv => kv.Key).ToList();
+		Assert.Equal(expectedEnd, Assert.Single(executed));
+	}
 }

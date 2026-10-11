@@ -1,9 +1,10 @@
 ﻿using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
+#pragma warning disable MA0048
 
-namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
-{
+namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn;
+
     /// <inheritdoc />
     public partial class Phase3OperationalReadiness : Migration
     {
@@ -25,4 +26,3 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                 table: "RuntimeOutbox");
         }
     }
-}

@@ -3,18 +3,17 @@ using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Authorization;
 
 namespace VertexBPMN.Api.Controllers;
-
-using Microsoft.AspNetCore.Authorization;
 [ApiController]
 [Route("api/vertex/authorization")]
 [Authorize(Policy = "ReadOnly")]
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public controller required for ASP.NET Core MVC discovery and activation.")]
 public class VertexAuthorizationController : ControllerBase
 {
 	private readonly IIdentityService _identityService;
 	private readonly BpmnDbContext _db;
-
 	public VertexAuthorizationController(IIdentityService identityService, BpmnDbContext db)
 	{
 		_identityService = identityService;
@@ -27,14 +26,7 @@ public class VertexAuthorizationController : ControllerBase
 		var authorizations = new List<AuthorizationDto>();
 		await foreach (var authorization in _identityService.ListAuthorizationsAsync(CurrentTenantId(), cancellationToken))
 		{
-			authorizations.Add(new AuthorizationDto
-			{
-				Id = authorization.Id,
-				UserId = authorization.UserId,
-				GroupId = authorization.GroupId,
-				Resource = authorization.Resource,
-				Permissions = authorization.Permissions
-			});
+			authorizations.Add(new AuthorizationDto { Id = authorization.Id, UserId = authorization.UserId, GroupId = authorization.GroupId, Resource = authorization.Resource, Permissions = authorization.Permissions });
 		}
 
 		return Ok(authorizations);
@@ -42,18 +34,19 @@ public class VertexAuthorizationController : ControllerBase
 
 	[HttpPost]
 	[Authorize(Policy = "AdminOnly")]
-	public async Task<ActionResult<AuthorizationDto>> Create(
-		[FromBody] AuthorizationDto request,
-		CancellationToken cancellationToken)
+	public async Task<ActionResult<AuthorizationDto>> Create([FromBody] AuthorizationDto request, CancellationToken cancellationToken)
 	{
-		if (string.IsNullOrWhiteSpace(request.UserId) || string.IsNullOrWhiteSpace(request.GroupId) ||
-			string.IsNullOrWhiteSpace(request.Resource) || string.IsNullOrWhiteSpace(request.Permissions))
+		if (string.IsNullOrWhiteSpace(request.UserId) || string.IsNullOrWhiteSpace(request.GroupId) || string.IsNullOrWhiteSpace(request.Resource) || string.IsNullOrWhiteSpace(request.Permissions))
+		{
 			return ValidationProblem("UserId, GroupId, Resource and Permissions are required.");
+		}
 
 		var group = await _db.IdentityGroups.SingleOrDefaultAsync(group => group.Id == request.GroupId, cancellationToken);
 		var user = await _db.Users.SingleOrDefaultAsync(user => user.Id == request.UserId, cancellationToken);
 		if (group is null || user is null || (group.TenantId is not null && user.TenantId != group.TenantId))
+		{
 			return NotFound();
+		}
 
 		var authorization = new IdentityAuthorizationRecord
 		{
@@ -75,16 +68,17 @@ public class VertexAuthorizationController : ControllerBase
 	{
 		var authorization = await _db.IdentityAuthorizations.FindAsync([id], cancellationToken);
 		if (authorization is null)
+		{
 			return NotFound();
+		}
+
 		_db.IdentityAuthorizations.Remove(authorization);
 		await _db.SaveChangesAsync(cancellationToken);
 		return NoContent();
 	}
 
-	private string? CurrentTenantId() => User.IsInRole("Admin")
-		? null
-		: User.FindFirstValue("tenant_id");
-
+	private string? CurrentTenantId() => User.IsInRole("Admin") ? null : User.FindFirstValue("tenant_id");
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public contract type AuthorizationDto retained for exposed HTTP action signatures and controller activation (VertexAuthorizationController).")]
 	public class AuthorizationDto
 	{
 		public string Id { get; set; } = string.Empty;

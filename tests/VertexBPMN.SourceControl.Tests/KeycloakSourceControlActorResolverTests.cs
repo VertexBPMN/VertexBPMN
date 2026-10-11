@@ -21,8 +21,8 @@ public sealed class KeycloakSourceControlActorResolverTests
 		handler.Roles = "[]";
 		Assert.Empty(await resolver.ResolveAsync(context, client, TestContext.Current.CancellationToken));
 		Assert.Equal(8, handler.Requests.Count);
-		Assert.EndsWith("/users/actor/role-mappings/clients/api-id/composite", handler.Requests[3]);
-		Assert.EndsWith("/clients?clientId=vertexbpmn-api", handler.Requests[2]);
+		Assert.EndsWith("/users/actor/role-mappings/clients/api-id/composite", handler.Requests[3], StringComparison.Ordinal);
+		Assert.EndsWith("/clients?clientId=vertexbpmn-api", handler.Requests[2], StringComparison.Ordinal);
 	}
 
 	[Theory]
@@ -53,12 +53,15 @@ public sealed class KeycloakSourceControlActorResolverTests
 	}
 
 	private static KeycloakSourceControlActorResolver CreateResolver(string authority = "https://identity.example/realms/vertex") => new(
-		new Credentials(), new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+		new Credentials(), new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>(StringComparer.Ordinal)
 		{
-			["Jwt:Authority"] = authority, ["Jwt:Audience"] = "vertexbpmn-api"
+			["Jwt:Authority"] = authority,
+			["Jwt:Audience"] = "vertexbpmn-api"
 		}).Build(), Options.Create(new SourceControlOptions
 		{
-			Enabled = true, IdentityAuthority = authority, IdentityCredentialReference = "identity-reader"
+			Enabled = true,
+			IdentityAuthority = authority,
+			IdentityCredentialReference = "identity-reader"
 		}));
 
 	private sealed class IdentityHandler : HttpMessageHandler
@@ -77,16 +80,19 @@ public sealed class KeycloakSourceControlActorResolverTests
 			{
 				Assert.Equal(HttpMethod.Post, request.Method);
 				var form = await request.Content!.ReadAsStringAsync(cancellationToken);
-				Assert.Contains("grant_type=client_credentials", form);
+				Assert.Contains("grant_type=client_credentials", form, StringComparison.Ordinal);
 				json = "{\"access_token\":\"fixture-token\"}";
 			}
 			else
 			{
 				Assert.Equal("Bearer", request.Headers.Authorization?.Scheme);
 				Assert.Equal("fixture-token", request.Headers.Authorization?.Parameter);
-				json = uri.Contains("/clients?", StringComparison.Ordinal) ? "[{\"id\":\"api-id\",\"clientId\":\"vertexbpmn-api\"}]"
-					: uri.EndsWith("/composite", StringComparison.Ordinal) ? Roles
-					: System.Text.Json.JsonSerializer.Serialize(new { id = "actor", enabled = Enabled, attributes = new { tenant_id = new[] { Tenant } } });
+				json = uri switch
+				{
+					var address when address.Contains("/clients?", StringComparison.Ordinal) => "[{\"id\":\"api-id\",\"clientId\":\"vertexbpmn-api\"}]",
+					var address when address.EndsWith("/composite", StringComparison.Ordinal) => Roles,
+					_ => System.Text.Json.JsonSerializer.Serialize(new { id = "actor", enabled = Enabled, attributes = new { tenant_id = new[] { Tenant } } })
+				};
 			}
 			return new(HttpStatusCode.OK) { Content = new StringContent(json) };
 		}

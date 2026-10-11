@@ -6,6 +6,7 @@ using VertexBPMN.Domain.Interfaces;
 namespace VertexBPMN.Api.Debug;
 
 [Authorize(Policy = "TenantReadOnly")]
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public hub retained for ASP.NET Core SignalR activation and typed clients.")]
 public class DebugHub(IRuntimeService runtime) : Hub
 {
     public async Task JoinProcessGroup(string processInstanceId)

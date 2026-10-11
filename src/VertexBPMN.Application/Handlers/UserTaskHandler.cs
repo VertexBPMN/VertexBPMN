@@ -33,57 +33,12 @@ public class UserTaskHandler
 	{
 		try
 		{
-			if (context == null)
-			{
-				throw new ArgumentNullException(nameof(context));
-			}
-
-			if (context.TaskId == Guid.Empty || context.ProcessInstanceId == Guid.Empty)
-			{
-				throw new ArgumentException("TaskId and ProcessInstanceId must be provided");
-			}
-
-			var processInstance = await _processRepository.GetByIdAsync(context.ProcessInstanceId);
-			if (processInstance == null)
-			{
-				throw new ServiceTaskExecutionException($"Process instance {context.ProcessInstanceId} not found");
-			}
-
-			var userTask = await _taskService.GetByIdAsync(context.TaskId);
-			if (userTask == null)
-			{
-				throw new ServiceTaskExecutionException($"User task {context.TaskId} not found");
-			}
-
-			if (!await HasUserPermissionAsync(context.UserId, userTask))
-			{
-				_logger.LogWarning("User {UserId} has no permission for task {TaskId}", context.UserId, context.TaskId);
-				throw new UnauthorizedAccessException("User has no permission to perform this task");
-			}
-
-			if (userTask.Status != UserTaskStatus.Pending)
-			{
-				_logger.LogWarning("Task {TaskId} is in invalid state: {Status}", context.TaskId, userTask.Status);
-				throw new InvalidOperationException($"Task is in {userTask.Status} state");
-			}
-
-			var validationResult = await ValidateTaskDataAsync(userTask, context.TaskData);
-			if (!validationResult.IsValid)
-			{
-				_logger.LogWarning("Task data validation failed: {Errors}", string.Join("; ", validationResult.Errors));
-				throw new BpmnValidationException("Task data validation failed", validationResult.Errors.ToList());
-			}
+			var processInstance = await EnsureValidContextAsync(context);
+			var userTask = await ValidateTaskAsync(context);
 
 			var result = await ExecuteUserTaskAsync(userTask, context);
 
-			userTask.Status = context.Action switch
-			{
-				UserTaskAction.Complete => UserTaskStatus.Completed,
-				UserTaskAction.Delegate => UserTaskStatus.Delegated,
-				UserTaskAction.Reject => UserTaskStatus.Rejected,
-				_ => throw new NotSupportedException($"Unsupported task action: {context.Action}")
-			};
-
+			userTask.Status = ResolveUserTaskStatus(context.Action);
 			userTask.LastModified = DateTime.UtcNow;
 			userTask.ModifiedBy = context.UserId;
 
@@ -111,9 +66,57 @@ public class UserTaskHandler
 		}
 	}
 
+	private async Task<ProcessInstance> EnsureValidContextAsync(UserTaskContext context)
+	{
+		ArgumentNullException.ThrowIfNull(context);
+
+		if (context.TaskId == Guid.Empty || context.ProcessInstanceId == Guid.Empty)
+		{
+			throw new ArgumentException("TaskId and ProcessInstanceId must be provided");
+		}
+
+		return await _processRepository.GetByIdAsync(context.ProcessInstanceId)
+			?? throw new ServiceTaskExecutionException($"Process instance {context.ProcessInstanceId} not found");
+	}
+
+	private async Task<UserTask> ValidateTaskAsync(UserTaskContext context)
+	{
+		var userTask = await _taskService.GetByIdAsync(context.TaskId)
+			?? throw new ServiceTaskExecutionException($"User task {context.TaskId} not found");
+
+		if (!await HasUserPermissionAsync(context.UserId, userTask))
+		{
+			_logger.LogWarning("User {UserId} has no permission for task {TaskId}", context.UserId, context.TaskId);
+			throw new UnauthorizedAccessException("User has no permission to perform this task");
+		}
+
+		if (userTask.Status != UserTaskStatus.Pending)
+		{
+			_logger.LogWarning("Task {TaskId} is in invalid state: {Status}", context.TaskId, userTask.Status);
+			throw new InvalidOperationException($"Task is in {userTask.Status} state");
+		}
+
+		var validationResult = await ValidateTaskDataAsync(userTask, context.TaskData);
+		if (!validationResult.IsValid)
+		{
+			_logger.LogWarning("Task data validation failed: {Errors}", string.Join("; ", validationResult.Errors));
+			throw new BpmnValidationException("Task data validation failed", validationResult.Errors.ToList());
+		}
+
+		return userTask;
+	}
+
+	private static UserTaskStatus ResolveUserTaskStatus(UserTaskAction action) => action switch
+	{
+		UserTaskAction.Complete => UserTaskStatus.Completed,
+		UserTaskAction.Delegate => UserTaskStatus.Delegated,
+		UserTaskAction.Reject => UserTaskStatus.Rejected,
+		_ => throw new NotSupportedException($"Unsupported task action: {action}")
+	};
+
 	private async Task<bool> HasUserPermissionAsync(string userId, UserTask userTask)
 	{
-		var user = await _userRepository.GetUserAsync(userId); // resolves User type via repository
+		await _userRepository.GetUserAsync(userId);
 		return userTask.Assignee == userId ||
 			   userTask.CandidateUsers.Contains(userId) ||
 			   await _userRepository.IsInRoleAsync(userId, userTask.CandidateRole);
@@ -159,7 +162,7 @@ public class UserTaskHandler
 		if (!string.IsNullOrWhiteSpace(userTask.Assignee))
 		{
 			notifications.Add(new Notification(
-				userTask.Assignee!,
+				userTask.Assignee,
 				$"Task {userTask.Name} has been {context.Action.ToString().ToLowerInvariant()}"));
 		}
 

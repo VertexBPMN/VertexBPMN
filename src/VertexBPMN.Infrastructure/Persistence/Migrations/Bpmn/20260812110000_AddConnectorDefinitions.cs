@@ -1,15 +1,16 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using VertexBPMN.Infrastructure.Persistence;
 
 #nullable disable
+#pragma warning disable CA1861, MA0048
 
 namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn;
 
 [DbContext(typeof(BpmnDbContext))]
 [Migration("20260812110000_AddConnectorDefinitions")]
-public partial class AddConnectorDefinitions : Migration
+public class AddConnectorDefinitions : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
     {

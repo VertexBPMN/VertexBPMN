@@ -5,7 +5,7 @@ namespace VertexBPMN.Tests.Parsing.Validation;
 
 public class Phase3AdvancedValidationDefaultFlowConditionTests
 {
-    private const string XmlWithDefaultCondition = """
+	private const string XmlWithDefaultCondition = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <bpmn:process id="p1">
@@ -28,7 +28,7 @@ public class Phase3AdvancedValidationDefaultFlowConditionTests
 </bpmn:definitions>
 """;
 
-    private const string XmlWithoutDefaultCondition = """
+	private const string XmlWithoutDefaultCondition = """
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <bpmn:process id="p1">
     <bpmn:startEvent id="start"/>
@@ -48,46 +48,46 @@ public class Phase3AdvancedValidationDefaultFlowConditionTests
 </bpmn:definitions>
 """;
 
-    [Fact]
-    public async Task DefaultFlowCondition_Disabled_NoStructuredDiagnostics()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = false
-        }).ParseAsync(XmlWithDefaultCondition, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task DefaultFlowCondition_Disabled_NoStructuredDiagnostics()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = false
+		}).ParseAsync(XmlWithDefaultCondition, TestContext.Current.CancellationToken);
 
-        Assert.Null(model.ValidationDiagnostics);
-    }
+		Assert.Null(model.ValidationDiagnostics);
+	}
 
-    [Fact]
-    public async Task DefaultFlowCondition_Enabled_FindsViolation()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = true
-        }).ParseAsync(XmlWithDefaultCondition, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task DefaultFlowCondition_Enabled_FindsViolation()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = true
+		}).ParseAsync(XmlWithDefaultCondition, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(model.ValidationDiagnostics);
-        Assert.Contains(model.ValidationDiagnostics!, d =>
-            d.Code == "SEM-DEFAULT-WITH-CONDITION" &&
-            d.ElementId == "flow_default" &&
-            d.Severity == ValidationSeverity.Error);
-        // Ensure non-default conditional flow not flagged
-        Assert.DoesNotContain(model.ValidationDiagnostics!, d => d.ElementId == "flow_other" && d.Code == "SEM-DEFAULT-WITH-CONDITION");
-    }
+		Assert.NotNull(model.ValidationDiagnostics);
+		Assert.Contains(model.ValidationDiagnostics, d =>
+			d.Code == "SEM-DEFAULT-WITH-CONDITION" &&
+			d.ElementId == "flow_default" &&
+			d.Severity == ValidationSeverity.Error);
+		// Ensure non-default conditional flow not flagged
+		Assert.DoesNotContain(model.ValidationDiagnostics, d => d.ElementId == "flow_other" && d.Code == "SEM-DEFAULT-WITH-CONDITION");
+	}
 
-    [Fact]
-    public async Task DefaultFlowCondition_Enabled_NoViolationWhenValid()
-    {
-        var model = await new BpmnParser(new BpmnParserOptions
-        {
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = true
-        }).ParseAsync(XmlWithoutDefaultCondition, TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task DefaultFlowCondition_Enabled_NoViolationWhenValid()
+	{
+		var model = await new BpmnParser(new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = true
+		}).ParseAsync(XmlWithoutDefaultCondition, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(model.ValidationDiagnostics);
-        Assert.DoesNotContain(model.ValidationDiagnostics!, d => d.Code == "SEM-DEFAULT-WITH-CONDITION");
-    }
+		Assert.NotNull(model.ValidationDiagnostics);
+		Assert.DoesNotContain(model.ValidationDiagnostics, d => d.Code == "SEM-DEFAULT-WITH-CONDITION");
+	}
 }

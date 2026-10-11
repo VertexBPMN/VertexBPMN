@@ -74,209 +74,232 @@ public class JobExecutorService : BackgroundService
 			var jobRepo = scope.ServiceProvider.GetRequiredService<IJobRepository>();
 			var eventSink = scope.ServiceProvider.GetService<IProcessMiningEventSink>();
 
-
 			await foreach (var job in jobRepo.ListDueAsync(DateTime.UtcNow, stoppingToken))
 			{
-				try
-				{
-					if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
-					{
-						_logger.LogInformation("Executing job {JobId} of type {JobType}", job.Id, job.Type);
-					}
-					if (job.Type.Equals("timer", StringComparison.OrdinalIgnoreCase))
-					{
-						var executionRuntime = scope.ServiceProvider.GetRequiredService<IProcessExecutionRuntime>();
-						await executionRuntime.ExecuteJobAsync(
-							job.Id,
-							$"{Environment.MachineName}:{Environment.ProcessId}",
-							stoppingToken);
-						continue;
-					}
-					if (!await jobRepo.TryLeaseAsync(
-							job,
-							$"{Environment.MachineName}:{Environment.ProcessId}",
-							DateTime.UtcNow.AddSeconds(30),
-							stoppingToken))
-					{
-						if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug))
-						{
-							_logger.LogDebug("Job {JobId} was leased by another worker", job.Id);
-						}
-						continue;
-					}
-					if (!_serviceTaskRegistry.TryResolve(job.Type, out var handler) || handler is null)
-					{
-						throw new InvalidOperationException($"No service task handler registered for job type '{job.Type}'.");
-					}
-
-					var payload = ParsePayload(job.Payload);
-					var inputSnapshot = new Dictionary<string, object>(payload.Variables, StringComparer.Ordinal);
-					Exception? executionError = null;
-					var snapshotRecorder = scope.ServiceProvider.GetService<ITaskIoSnapshotRecorder>();
-					try
-					{
-						await handler.ExecuteAsync(payload.Attributes, payload.Variables, stoppingToken);
-					}
-					catch (Exception ex)
-					{
-						executionError = ex;
-						throw;
-					}
-					finally
-					{
-						if (snapshotRecorder != null)
-						{
-							var outputSnapshot = new Dictionary<string, object>(payload.Variables, StringComparer.Ordinal);
-							await snapshotRecorder.RecordAsync(
-								job.ProcessInstanceId,
-								job.ActivityId,
-								job.TenantId ?? "default",
-								inputSnapshot,
-								outputSnapshot,
-								executionError is null,
-								executionError?.Message,
-								stoppingToken);
-						}
-					}
-					await jobRepo.DeleteAsync(job.Id, stoppingToken);
-
-					if (eventSink != null)
-					{
-						await eventSink.EmitAsync(new ProcessMiningEvent
-						{
-							EventType = JobEventTypes.Executed,
-							ProcessInstanceId = job.ProcessInstanceId.ToString(),
-							TenantId = job.TenantId,
-							Timestamp = DateTimeOffset.UtcNow,
-							PayloadJson = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?>(StringComparer.Ordinal)
-							{
-								["JobId"] = job.Id.ToString(),
-								["Type"] = job.Type
-							})
-						}, stoppingToken);
-					}
-				}
-				catch (Exception ex)
-				{
-					_logger.LogError(ex, "Job {JobId} failed (attempt {Attempt})", job.Id, job.Retries + 1);
-
-					var maxRetries = GetMaxRetries(job);
-					var currentAttempt = job.Retries + 1;
-
-					if (eventSink != null)
-					{
-						await eventSink.EmitAsync(new ProcessMiningEvent
-						{
-							EventType = JobEventTypes.Failed,
-							ProcessInstanceId = job.ProcessInstanceId.ToString(),
-							TenantId = job.TenantId,
-							Timestamp = DateTimeOffset.UtcNow,
-							PayloadJson = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?>(StringComparer.Ordinal)
-							{
-								["JobId"] = job.Id.ToString(),
-								["Type"] = job.Type,
-								["Attempt"] = currentAttempt,
-								["MaxRetries"] = maxRetries,
-								["ErrorMessage"] = ex.Message
-							})
-						}, stoppingToken);
-					}
-
-					if (currentAttempt >= maxRetries)
-					{
-						_logger.LogWarning("Job {JobId} reached max retries ({MaxRetries}) and is now permanently failed", job.Id, maxRetries);
-						job.Retries = currentAttempt;
-						job.State = "DeadLetter";
-						job.CompletedAt = DateTime.UtcNow;
-						job.LockOwner = null;
-						job.LockedUntil = null;
-						job.ErrorMessage = ex.ToString();
-						await jobRepo.UpdateAsync(job, stoppingToken);
-						var incidentRepository = scope.ServiceProvider.GetRequiredService<IIncidentRepository>();
-						await incidentRepository.AddAsync(new Incident
-						{
-							Id = Guid.NewGuid(),
-							ProcessInstanceId = job.ProcessInstanceId,
-							ActivityId = job.ActivityId,
-							Type = "JobDeadLetter",
-							Message = ex.Message,
-							CreatedAt = DateTime.UtcNow,
-							TenantId = job.TenantId,
-							State = "DeadLetter",
-							RetryCount = currentAttempt
-						}, stoppingToken);
-
-						if (eventSink != null)
-						{
-							await eventSink.EmitAsync(new ProcessMiningEvent
-							{
-								EventType = JobEventTypes.PermanentlyFailed,
-								ProcessInstanceId = job.ProcessInstanceId.ToString(),
-								TenantId = job.TenantId,
-								Timestamp = DateTimeOffset.UtcNow,
-								PayloadJson = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?>(StringComparer.Ordinal)
-								{
-									["JobId"] = job.Id.ToString(),
-									["Type"] = job.Type,
-									["Attempts"] = currentAttempt,
-									["MaxRetries"] = maxRetries,
-									["ErrorMessage"] = ex.ToString()
-								})
-							}, stoppingToken);
-						}
-					}
-					else
-					{
-						var delay = ComputeBackoffDelay(currentAttempt);
-						var nextDue = DateTime.UtcNow + delay;
-						job.Retries = currentAttempt;
-						job.State = "Scheduled";
-						job.LockOwner = null;
-						job.LockedUntil = null;
-						SetNextDue(job, nextDue);
-						SetErrorMessage(job, ex.Message);
-						await jobRepo.UpdateAsync(job, stoppingToken);
-
-						if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
-						{
-							_logger.LogInformation("Job {JobId} scheduled for retry {RetryAttempt}/{MaxRetries} at {NextDue} (in {Delay}s)",
-							job.Id, currentAttempt, maxRetries, nextDue, delay.TotalSeconds);
-						}
-
-						if (eventSink != null)
-						{
-							await eventSink.EmitAsync(new ProcessMiningEvent
-							{
-								EventType = JobEventTypes.RetryScheduled,
-								ProcessInstanceId = job.ProcessInstanceId.ToString(),
-								TenantId = job.TenantId,
-								Timestamp = DateTimeOffset.UtcNow,
-								PayloadJson = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?>(StringComparer.Ordinal)
-								{
-									["JobId"] = job.Id.ToString(),
-									["Type"] = job.Type,
-									["RetryAttempt"] = currentAttempt,
-									["MaxRetries"] = maxRetries,
-									["NextDueUtc"] = nextDue,
-									["BackoffSeconds"] = delay.TotalSeconds
-								})
-							}, stoppingToken);
-						}
-					}
-				}
+				await ProcessJobAsync(scope, jobRepo, eventSink, job, stoppingToken);
 			}
-
 		}
 		catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
 		{
-			// Swallow � iteration canceled
+			// Swallow — iteration canceled
 		}
 		catch (Exception ex)
 		{
 			_logger.LogError(ex, "Job polling iteration failed");
 		}
 	}
+
+	private static async Task ExecuteHandlerWithSnapshotAsync(IServiceScope scope, IJobRepository jobRepo, IProcessMiningEventSink? eventSink, Job job, IServiceTaskHandler handler, CancellationToken stoppingToken)
+	{
+		var payload = ParsePayload(job.Payload);
+		var inputSnapshot = new Dictionary<string, object>(payload.Variables, StringComparer.Ordinal);
+		Exception? executionError = null;
+		var snapshotRecorder = scope.ServiceProvider.GetService<ITaskIoSnapshotRecorder>();
+		try
+		{
+			await handler.ExecuteAsync(payload.Attributes, payload.Variables, stoppingToken);
+		}
+		catch (Exception ex)
+		{
+			executionError = ex;
+			throw;
+		}
+		finally
+		{
+			if (snapshotRecorder != null)
+			{
+				var outputSnapshot = new Dictionary<string, object>(payload.Variables, StringComparer.Ordinal);
+				await snapshotRecorder.RecordAsync(
+					job.ProcessInstanceId,
+					job.ActivityId,
+					job.TenantId ?? "default",
+					inputSnapshot,
+					outputSnapshot,
+					executionError is null,
+					executionError?.Message,
+					stoppingToken);
+			}
+		}
+		await jobRepo.DeleteAsync(job.Id, stoppingToken);
+
+		if (eventSink != null)
+		{
+			await eventSink.EmitAsync(new ProcessMiningEvent
+			{
+				EventType = JobEventTypes.Executed,
+				ProcessInstanceId = job.ProcessInstanceId.ToString(),
+				TenantId = job.TenantId,
+				Timestamp = DateTimeOffset.UtcNow,
+				PayloadJson = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?>(StringComparer.Ordinal)
+				{
+					["JobId"] = job.Id.ToString(),
+					["Type"] = job.Type
+				})
+			}, stoppingToken);
+		}
+	}
+
+	private async Task ProcessJobAsync(IServiceScope scope, IJobRepository jobRepo, IProcessMiningEventSink? eventSink, Job job, CancellationToken stoppingToken)
+	{
+		try
+		{
+			if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
+			{
+				_logger.LogInformation("Executing job {JobId} of type {JobType}", job.Id, job.Type);
+			}
+			if (job.Type.Equals("timer", StringComparison.OrdinalIgnoreCase))
+			{
+				var executionRuntime = scope.ServiceProvider.GetRequiredService<IProcessExecutionRuntime>();
+				await executionRuntime.ExecuteJobAsync(
+					job.Id,
+					$"{Environment.MachineName}:{Environment.ProcessId}",
+					stoppingToken);
+				return;
+			}
+			if (!await jobRepo.TryLeaseAsync(
+					job,
+					$"{Environment.MachineName}:{Environment.ProcessId}",
+					DateTime.UtcNow.AddSeconds(30),
+					stoppingToken))
+			{
+				if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug))
+				{
+					_logger.LogDebug("Job {JobId} was leased by another worker", job.Id);
+				}
+				return;
+			}
+			if (!_serviceTaskRegistry.TryResolve(job.Type, out var handler) || handler is null)
+			{
+				throw new InvalidOperationException($"No service task handler registered for job type '{job.Type}'.");
+			}
+
+			await ExecuteHandlerWithSnapshotAsync(scope, jobRepo, eventSink, job, handler, stoppingToken);
+		}
+		catch (Exception ex)
+		{
+			await HandleJobFailureAsync(scope, jobRepo, eventSink, job, ex, stoppingToken);
+		}
+	}
+
+	private async Task HandleJobFailureAsync(IServiceScope scope, IJobRepository jobRepo, IProcessMiningEventSink? eventSink, Job job, Exception ex, CancellationToken stoppingToken)
+	{
+		_logger.LogError(ex, "Job {JobId} failed (attempt {Attempt})", job.Id, job.Retries + 1);
+
+		var maxRetries = GetMaxRetries(job);
+		var currentAttempt = job.Retries + 1;
+
+		if (eventSink != null)
+		{
+			await eventSink.EmitAsync(new ProcessMiningEvent
+			{
+				EventType = JobEventTypes.Failed,
+				ProcessInstanceId = job.ProcessInstanceId.ToString(),
+				TenantId = job.TenantId,
+				Timestamp = DateTimeOffset.UtcNow,
+				PayloadJson = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?>(StringComparer.Ordinal)
+				{
+					["JobId"] = job.Id.ToString(),
+					["Type"] = job.Type,
+					["Attempt"] = currentAttempt,
+					["MaxRetries"] = maxRetries,
+					["ErrorMessage"] = ex.Message
+				})
+			}, stoppingToken);
+		}
+
+		if (currentAttempt >= maxRetries)
+		{
+			await HandlePermanentFailureAsync(scope, jobRepo, eventSink, job, ex, maxRetries, currentAttempt, stoppingToken);
+		}
+		else
+		{
+			await HandleRetrySchedulingAsync(jobRepo, eventSink, job, ex, maxRetries, currentAttempt, stoppingToken);
+		}
+	}
+	private async Task HandlePermanentFailureAsync(IServiceScope scope, IJobRepository jobRepo, IProcessMiningEventSink? eventSink, Job job, Exception ex, int maxRetries, int currentAttempt, CancellationToken stoppingToken)
+	{
+		_logger.LogWarning("Job {JobId} reached max retries ({MaxRetries}) and is now permanently failed", job.Id, maxRetries);
+		job.Retries = currentAttempt;
+		job.State = "DeadLetter";
+		job.CompletedAt = DateTime.UtcNow;
+		job.LockOwner = null;
+		job.LockedUntil = null;
+		job.ErrorMessage = ex.ToString();
+		await jobRepo.UpdateAsync(job, stoppingToken);
+		var incidentRepository = scope.ServiceProvider.GetRequiredService<IIncidentRepository>();
+		await incidentRepository.AddAsync(new Incident
+		{
+			Id = Guid.NewGuid(),
+			ProcessInstanceId = job.ProcessInstanceId,
+			ActivityId = job.ActivityId,
+			Type = "JobDeadLetter",
+			Message = ex.Message,
+			CreatedAt = DateTime.UtcNow,
+			TenantId = job.TenantId,
+			State = "DeadLetter",
+			RetryCount = currentAttempt
+		}, stoppingToken);
+	
+		if (eventSink != null)
+		{
+			await eventSink.EmitAsync(new ProcessMiningEvent
+			{
+				EventType = JobEventTypes.PermanentlyFailed,
+				ProcessInstanceId = job.ProcessInstanceId.ToString(),
+				TenantId = job.TenantId,
+				Timestamp = DateTimeOffset.UtcNow,
+				PayloadJson = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?>(StringComparer.Ordinal)
+				{
+					["JobId"] = job.Id.ToString(),
+					["Type"] = job.Type,
+					["Attempts"] = currentAttempt,
+					["MaxRetries"] = maxRetries,
+					["ErrorMessage"] = ex.ToString()
+				})
+			}, stoppingToken);
+		}
+	}
+	private async Task HandleRetrySchedulingAsync(IJobRepository jobRepo, IProcessMiningEventSink? eventSink, Job job, Exception ex, int maxRetries, int currentAttempt, CancellationToken stoppingToken)
+	{
+		var delay = ComputeBackoffDelay(currentAttempt);
+		var nextDue = DateTime.UtcNow + delay;
+		job.Retries = currentAttempt;
+		job.State = "Scheduled";
+		job.LockOwner = null;
+		job.LockedUntil = null;
+		SetNextDue(job, nextDue);
+		SetErrorMessage(job, ex.Message);
+		await jobRepo.UpdateAsync(job, stoppingToken);
+	
+		if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
+		{
+			_logger.LogInformation("Job {JobId} scheduled for retry {RetryAttempt}/{MaxRetries} at {NextDue} (in {Delay}s)",
+			job.Id, currentAttempt, maxRetries, nextDue, delay.TotalSeconds);
+		}
+	
+		if (eventSink != null)
+		{
+			await eventSink.EmitAsync(new ProcessMiningEvent
+			{
+				EventType = JobEventTypes.RetryScheduled,
+				ProcessInstanceId = job.ProcessInstanceId.ToString(),
+				TenantId = job.TenantId,
+				Timestamp = DateTimeOffset.UtcNow,
+				PayloadJson = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?>(StringComparer.Ordinal)
+				{
+					["JobId"] = job.Id.ToString(),
+					["Type"] = job.Type,
+					["RetryAttempt"] = currentAttempt,
+					["MaxRetries"] = maxRetries,
+					["NextDueUtc"] = nextDue,
+					["BackoffSeconds"] = delay.TotalSeconds
+				})
+			}, stoppingToken);
+		}
+	}
+
 	// Compute exponential backoff with jitter
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA5394:Do not use insecure randomness", Justification = "Jitter uses non-security random sampling to stagger retries; no security-sensitive values (IDs, tokens, keys) are produced here.")]
 	private static TimeSpan ComputeBackoffDelay(int attempt)
 	{
 		// attempt is 1-based
@@ -288,7 +311,7 @@ public class JobExecutorService : BackgroundService
 		}
 
 		// Jitter factor +/-20%
-		var jitterFactor = 1 + (Random.Shared.NextDouble() * 0.4 - 0.2);
+		var jitterFactor = 1 + ((Random.Shared.NextDouble() * 0.4) - 0.2);
 		var jittered = TimeSpan.FromMilliseconds(raw.TotalMilliseconds * jitterFactor);
 		return jittered < TimeSpan.Zero ? BaseRetryDelay : jittered;
 	}

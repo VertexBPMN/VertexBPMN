@@ -20,9 +20,11 @@ public sealed class OAuth2CredentialFlowServiceTests
 	[Fact]
 	public async Task StartAuthorization_CreatesTenantScopedStateAndRedirect()
 	{
-		var db = NewDb();
+		await using var db = NewDb();
 		var cred = await CredentialAsync(db, "tenant-a");
-		var flow = CreateFlow(db, new ScriptedHandler(_ => TokenResponse("authorization_code")));
+		using var handler = new ScriptedHandler(_ => TokenResponse());
+		using var client = new HttpClient(handler, disposeHandler: false);
+		var flow = CreateFlow(db, client);
 
 		var start = await flow.StartAuthorizationAsync(
 "tenant-a", cred, new OAuth2AuthorizationConfig(
@@ -44,10 +46,11 @@ public sealed class OAuth2CredentialFlowServiceTests
 	[Fact]
 	public async Task CompleteAuthorization_StoresTokensAndRemovesState()
 	{
-		var db = NewDb();
+		await using var db = NewDb();
 		var cred = await CredentialAsync(db, "tenant-a");
-		var handler = new ScriptedHandler(_ => TokenResponse("authorization_code"));
-		var flow = CreateFlow(db, handler);
+		using var handler = new ScriptedHandler(_ => TokenResponse());
+		using var client = new HttpClient(handler, disposeHandler: false);
+		var flow = CreateFlow(db, client);
 
 		var start = await flow.StartAuthorizationAsync(
 "tenant-a", cred, new OAuth2AuthorizationConfig(
@@ -57,7 +60,7 @@ public sealed class OAuth2CredentialFlowServiceTests
 		var completed = await flow.CompleteAuthorizationAsync(start.State, "auth-code", null, TestContext.Current.CancellationToken);
 		Assert.True(completed);
 		Assert.Equal(1, handler.CallCount);
-		Assert.Null(await db.OAuth2FlowStates.FindAsync(new object[] { start.State }, TestContext.Current.CancellationToken));
+		Assert.Null(await db.OAuth2FlowStates.FindAsync([start.State], TestContext.Current.CancellationToken));
 
 		Assert.Equal(AccessToken, await SecretAsync(db, "tenant-a", cred, "access_token"));
 		Assert.Equal(RefreshToken, await SecretAsync(db, "tenant-a", cred, "refresh_token"));
@@ -68,9 +71,11 @@ public sealed class OAuth2CredentialFlowServiceTests
 	[Fact]
 	public async Task CompleteAuthorization_RejectsUnknownOrExpiredState()
 	{
-		var db = NewDb();
+		await using var db = NewDb();
 		var cred = await CredentialAsync(db, "tenant-a");
-		var flow = CreateFlow(db, new ScriptedHandler(_ => TokenResponse("authorization_code")));
+		using var handler = new ScriptedHandler(_ => TokenResponse());
+		using var client = new HttpClient(handler, disposeHandler: false);
+		var flow = CreateFlow(db, client);
 
 		Assert.False(await flow.CompleteAuthorizationAsync("does-not-exist", "code", null, TestContext.Current.CancellationToken));
 
@@ -84,19 +89,20 @@ public sealed class OAuth2CredentialFlowServiceTests
 		await db.SaveChangesAsync(TestContext.Current.CancellationToken);
 
 		Assert.False(await flow.CompleteAuthorizationAsync(start.State, "code", null, TestContext.Current.CancellationToken));
-		Assert.Null(await db.OAuth2FlowStates.FindAsync(new object[] { start.State }, TestContext.Current.CancellationToken));
+		Assert.Null(await db.OAuth2FlowStates.FindAsync([start.State], TestContext.Current.CancellationToken));
 	}
 
 	[Fact]
 	public async Task ResolveValidAccessToken_ReturnsFreshTokenWithoutRefresh()
 	{
-		var db = NewDb();
+		await using var db = NewDb();
 		var cred = await CredentialAsync(db, "tenant-a");
-		var handler = new ScriptedHandler(_ => TokenResponse("refresh_token"));
-		var flow = CreateFlow(db, handler);
+		using var handler = new ScriptedHandler(_ => TokenResponse());
+		using var client = new HttpClient(handler, disposeHandler: false);
+		var flow = CreateFlow(db, client);
 
-		await RotateAsync(db, "tenant-a", cred, "access_token", "still-fresh", "access_token");
-		await RotateAsync(db, "tenant-a", cred, "expires_at", DateTime.UtcNow.AddMinutes(30).ToString("o", CultureInfo.InvariantCulture), "expires_at");
+		await RotateAsync(db, "tenant-a", cred, "access_token", "still-fresh");
+		await RotateAsync(db, "tenant-a", cred, "expires_at", DateTime.UtcNow.AddMinutes(30).ToString("o", CultureInfo.InvariantCulture));
 
 		Assert.Equal("still-fresh", await flow.ResolveValidAccessTokenAsync("tenant-a", cred, TestContext.Current.CancellationToken));
 		Assert.Equal(0, handler.CallCount);
@@ -105,15 +111,16 @@ public sealed class OAuth2CredentialFlowServiceTests
 	[Fact]
 	public async Task ResolveValidAccessToken_RefreshesWhenExpired()
 	{
-		var db = NewDb();
+		await using var db = NewDb();
 		var cred = await CredentialAsync(db, "tenant-a");
-		var handler = new ScriptedHandler(_ => TokenResponse("refresh_token"));
-		var flow = CreateFlow(db, handler);
+		using var handler = new ScriptedHandler(_ => TokenResponse());
+		using var client = new HttpClient(handler, disposeHandler: false);
+		var flow = CreateFlow(db, client);
 
-		await RotateAsync(db, "tenant-a", cred, "access_token", "expired-token", "access_token");
-		await RotateAsync(db, "tenant-a", cred, "expires_at", DateTime.UtcNow.AddMinutes(-5).ToString("o", CultureInfo.InvariantCulture), "expires_at");
-		await RotateAsync(db, "tenant-a", cred, "refresh_token", RefreshToken, "refresh_token");
-		await RotateAsync(db, "tenant-a", cred, "token_url", "https://auth.example/token", "token_url");
+		await RotateAsync(db, "tenant-a", cred, "access_token", "expired-token");
+		await RotateAsync(db, "tenant-a", cred, "expires_at", DateTime.UtcNow.AddMinutes(-5).ToString("o", CultureInfo.InvariantCulture));
+		await RotateAsync(db, "tenant-a", cred, "refresh_token", RefreshToken);
+		await RotateAsync(db, "tenant-a", cred, "token_url", "https://auth.example/token");
 
 		var token = await flow.ResolveValidAccessTokenAsync("tenant-a", cred, TestContext.Current.CancellationToken);
 		Assert.Equal(AccessToken, token);
@@ -127,9 +134,11 @@ public sealed class OAuth2CredentialFlowServiceTests
 	[Fact]
 	public async Task ResolveValidAccessToken_ReturnsNull_WhenNoRefreshPossible()
 	{
-		var db = NewDb();
+		await using var db = NewDb();
 		var cred = await CredentialAsync(db, "tenant-a");
-		var flow = CreateFlow(db, new ScriptedHandler(_ => TokenResponse("refresh_token")));
+		using var handler = new ScriptedHandler(_ => TokenResponse());
+		using var client = new HttpClient(handler, disposeHandler: false);
+		var flow = CreateFlow(db, client);
 
 		Assert.Null(await flow.ResolveValidAccessTokenAsync("tenant-a", cred, TestContext.Current.CancellationToken));
 	}
@@ -137,10 +146,11 @@ public sealed class OAuth2CredentialFlowServiceTests
 	[Fact]
 	public async Task CompleteAuthorization_RejectsLoopbackTokenUrl_WithoutHttpPost()
 	{
-		var db = NewDb();
+		await using var db = NewDb();
 		var cred = await CredentialAsync(db, "tenant-a");
-		var handler = new ScriptedHandler(_ => TokenResponse("authorization_code"));
-		var flow = CreateFlow(db, handler);
+		using var handler = new ScriptedHandler(_ => TokenResponse());
+		using var client = new HttpClient(handler, disposeHandler: false);
+		var flow = CreateFlow(db, client);
 
 		var start = await flow.StartAuthorizationAsync(
 "tenant-a", cred, new OAuth2AuthorizationConfig(
@@ -157,15 +167,16 @@ public sealed class OAuth2CredentialFlowServiceTests
 	[Fact]
 	public async Task ResolveValidAccessToken_RejectsPrivateTokenUrl()
 	{
-		var db = NewDb();
+		await using var db = NewDb();
 		var cred = await CredentialAsync(db, "tenant-a");
-		var handler = new ScriptedHandler(_ => TokenResponse("refresh_token"));
-		var flow = CreateFlow(db, handler);
+		using var handler = new ScriptedHandler(_ => TokenResponse());
+		using var client = new HttpClient(handler, disposeHandler: false);
+		var flow = CreateFlow(db, client);
 
-		await RotateAsync(db, "tenant-a", cred, "access_token", "expired-token", "access_token");
-		await RotateAsync(db, "tenant-a", cred, "expires_at", DateTime.UtcNow.AddMinutes(-5).ToString("o", CultureInfo.InvariantCulture), "expires_at");
-		await RotateAsync(db, "tenant-a", cred, "refresh_token", RefreshToken, "refresh_token");
-		await RotateAsync(db, "tenant-a", cred, "token_url", "http://10.224.0.5/token", "token_url");
+		await RotateAsync(db, "tenant-a", cred, "access_token", "expired-token");
+		await RotateAsync(db, "tenant-a", cred, "expires_at", DateTime.UtcNow.AddMinutes(-5).ToString("o", CultureInfo.InvariantCulture));
+		await RotateAsync(db, "tenant-a", cred, "refresh_token", RefreshToken);
+		await RotateAsync(db, "tenant-a", cred, "token_url", "http://10.224.0.5/token");
 
 		// Private-Range token URL must be rejected before any HTTP POST.
 		var token = await flow.ResolveValidAccessTokenAsync("tenant-a", cred, TestContext.Current.CancellationToken);
@@ -187,8 +198,9 @@ public sealed class OAuth2CredentialFlowServiceTests
 	{
 		await using var db = NewDb();
 		var credential = await CredentialAsync(db, "tenant-a");
-		var handler = new ScriptedHandler(_ => TokenResponse("authorization_code"));
-		var flow = CreateFlow(db, handler);
+		using var handler = new ScriptedHandler(_ => TokenResponse());
+		using var client = new HttpClient(handler, disposeHandler: false);
+		var flow = CreateFlow(db, client);
 		var binding = new OAuth2FlowBinding("issuer:user-a:tenant-a", new string('A', 44));
 		var ct = TestContext.Current.CancellationToken;
 		var start = await flow.StartAuthorizationAsync("tenant-a", credential, new OAuth2AuthorizationConfig("https://auth.example/authorize", "https://auth.example/token", "client", "https://studio.example/oauth2/callback", "read"), binding, ct);
@@ -209,7 +221,7 @@ public sealed class OAuth2CredentialFlowServiceTests
 			Mock.Of<IAuditLogService>(), Mock.Of<ILogger<PersistentCredentialService>>());
 		var meta = await credService.CreateAsync(tenant, new CredentialWriteRequest(
 			"OAuth2 cred", "oauth2", null,
-			new Dictionary<string, string>
+			new Dictionary<string, string>(StringComparer.Ordinal)
 			{
 				["client_id"] = "client-1",
 				["client_secret"] = "super-secret-client"
@@ -228,9 +240,10 @@ public sealed class OAuth2CredentialFlowServiceTests
 		await using var seed = new BpmnDbContext(options);
 		await seed.Database.EnsureCreatedAsync(ct);
 		var credentialId = await CredentialAsync(seed, "tenant-a");
-		var handler = new ScriptedHandler(_ => TokenResponse("authorization_code"));
+		using var handler = new ScriptedHandler(_ => TokenResponse());
 		var binding = new OAuth2FlowBinding("user-a", new string('A', 44));
-		var start = await CreateFlow(seed, handler).StartAuthorizationAsync("tenant-a", credentialId, new OAuth2AuthorizationConfig("https://auth.example/authorize", "https://auth.example/token", "client", "https://studio.example/oauth2/callback", "read"), binding, ct);
+		using var client = new HttpClient(handler, disposeHandler: false);
+		var start = await CreateFlow(seed, client).StartAuthorizationAsync("tenant-a", credentialId, new OAuth2AuthorizationConfig("https://auth.example/authorize", "https://auth.example/token", "client", "https://studio.example/oauth2/callback", "read"), binding, ct);
 		var arrivals = 0;
 		var barrier = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 		var credentials = new Mock<ICredentialService>();
@@ -238,14 +251,17 @@ public sealed class OAuth2CredentialFlowServiceTests
 			.Returns(async () =>
 			{
 				if (Interlocked.Increment(ref arrivals) == 2)
+				{
 					barrier.TrySetResult();
+				}
+
 				await barrier.Task.WaitAsync(TimeSpan.FromSeconds(15), ct);
 				return "secret";
 			});
 		credentials.Setup(x => x.RotateSecretAsync("tenant-a", credentialId, It.IsAny<CredentialSecretRotation>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
 		await using var firstDb = new BpmnDbContext(options);
 		await using var secondDb = new BpmnDbContext(options);
-		var clients = new FakeClientFactory(new HttpClient(handler));
+		var clients = new FakeClientFactory(client);
 		OAuth2CredentialFlowService Flow(BpmnDbContext db) => new(db, credentials.Object, clients,
 			Mock.Of<IAuditLogService>(), Mock.Of<ILogger<OAuth2CredentialFlowService>>());
 		var results = await Task.WhenAll(
@@ -263,7 +279,7 @@ public sealed class OAuth2CredentialFlowServiceTests
 		return await credService.ResolveSecretAsync(tenant, cred, key, TestContext.Current.CancellationToken);
 	}
 
-	private static async Task RotateAsync(BpmnDbContext db, string tenant, string cred, string key, string value, string _unused)
+	private static async Task RotateAsync(BpmnDbContext db, string tenant, string cred, string key, string value)
 	{
 		var credService = new PersistentCredentialService(
 			db, DataProtectionProvider.Create("VertexBPMN.Tests"),
@@ -271,9 +287,8 @@ public sealed class OAuth2CredentialFlowServiceTests
 		await credService.RotateSecretAsync(tenant, cred, new CredentialSecretRotation(key, value), TestContext.Current.CancellationToken);
 	}
 
-	private static OAuth2CredentialFlowService CreateFlow(BpmnDbContext db, ScriptedHandler handler)
+	private static OAuth2CredentialFlowService CreateFlow(BpmnDbContext db, HttpClient client)
 	{
-		var client = new HttpClient(handler);
 		var factory = new FakeClientFactory(client);
 		return new OAuth2CredentialFlowService(
 			db,
@@ -282,7 +297,7 @@ public sealed class OAuth2CredentialFlowServiceTests
 			factory, Mock.Of<IAuditLogService>(), Mock.Of<ILogger<OAuth2CredentialFlowService>>());
 	}
 
-	private static HttpResponseMessage TokenResponse(string grantType) => new(HttpStatusCode.OK)
+	private static HttpResponseMessage TokenResponse() => new(HttpStatusCode.OK)
 	{
 		Content = new StringContent(JsonSerializer.Serialize(new
 		{

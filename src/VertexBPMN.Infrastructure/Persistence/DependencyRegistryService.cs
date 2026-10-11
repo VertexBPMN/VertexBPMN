@@ -46,9 +46,11 @@ public sealed class DependencyRegistryService(DependencyRegistryDbContext dbCont
     {
         var entry = await dbContext.Entries.SingleOrDefaultAsync(candidate => candidate.Key == key, cancellationToken);
         if (entry is null)
-            return false;
+		{
+			return false;
+		}
 
-        dbContext.Entries.Remove(entry);
+		dbContext.Entries.Remove(entry);
         await dbContext.SaveChangesAsync(cancellationToken);
         return true;
     }
@@ -56,6 +58,8 @@ public sealed class DependencyRegistryService(DependencyRegistryDbContext dbCont
     private static void ValidateKey(string key)
     {
         if (string.IsNullOrWhiteSpace(key) || key.Any(char.IsWhiteSpace))
-            throw new ArgumentException("Configuration key must not be empty or contain whitespace.", nameof(key));
-    }
+		{
+			throw new ArgumentException("Configuration key must not be empty or contain whitespace.", nameof(key));
+		}
+	}
 }

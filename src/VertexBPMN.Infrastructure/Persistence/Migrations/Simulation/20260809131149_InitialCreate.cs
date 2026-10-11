@@ -1,12 +1,16 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+﻿using System.Diagnostics.CodeAnalysis;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace VertexBPMN.Infrastructure.Persistence.Migrations.Simulation
-{
+namespace VertexBPMN.Infrastructure.Persistence.Migrations.Simulation;
+
     /// <inheritdoc />
+    [SuppressMessage("Meziantou.Analyzer", "MA0048", Justification = "EF migration snapshot / generated code.")]
     public partial class InitialCreate : Migration
     {
+        private static readonly string[] ScenarioColumns = new[] { "Id", "BpmnXml", "Description", "MaxSteps", "Name", "ProcessDefinitionId", "TenantId" };
+
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -29,7 +33,7 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Simulation
 
             migrationBuilder.InsertData(
                 table: "Scenarios",
-                columns: new[] { "Id", "BpmnXml", "Description", "MaxSteps", "Name", "ProcessDefinitionId", "TenantId" },
+                columns: ScenarioColumns,
                 values: new object[] { "sim-sample-1", null, "Ein einfacher Simulationstest", 100, "Throughput Test", "22222222-2222-2222-2222-222222222222", "tenant-default" });
         }
 
@@ -40,4 +44,3 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Simulation
                 name: "Scenarios");
         }
     }
-}

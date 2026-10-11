@@ -21,7 +21,7 @@ public class CalculateScoreServiceTaskHandler : IServiceTaskHandler
 		}
 
 		// Simuliere die Berechnung des Scores
-		var creditScore = CalculateCreditScore(applicantName.ToString()!, applicantAge);
+		var creditScore = CalculateCreditScore(applicantAge);
 
 		// Speichere das Ergebnis in den Prozessvariablen
 		variables["creditScore"] = creditScore;
@@ -30,10 +30,10 @@ public class CalculateScoreServiceTaskHandler : IServiceTaskHandler
 		await Task.CompletedTask; // Simuliert asynchrone Verarbeitung
 	}
 
-	private static int CalculateCreditScore(string applicantName, int age)
+	private static int CalculateCreditScore(int age)
 	{
 		// Beispiel-Logik: Höheres Alter ergibt einen höheren Score
-		var baseScore = 500;
+		const int baseScore = 500;
 		var ageFactor = age * 2;
 
 		// Zusätzliche Logik kann hier hinzugefügt werden

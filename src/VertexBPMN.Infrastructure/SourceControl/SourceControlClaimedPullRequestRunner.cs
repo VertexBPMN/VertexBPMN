@@ -1,11 +1,9 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using VertexBPMN.Application.SourceControl;
 using VertexBPMN.SourceControl.Abstractions;
 
 namespace VertexBPMN.Infrastructure.SourceControl;
-
-internal sealed record ClaimedPullRequestOutcome(SourceControlOperationState State, PullRequestReceipt? Receipt,
-	SourceControlErrorCode? Error);
 
 internal sealed class SourceControlClaimedPullRequestRunner(IServiceScopeFactory scopes)
 {
@@ -18,6 +16,7 @@ internal sealed class SourceControlClaimedPullRequestRunner(IServiceScopeFactory
 		Func<SourceControlPullRequestExecutor, CancellationToken, Task<PullRequestReceipt>> execute, CancellationToken cancellationToken) =>
 		RunCoreAsync(context, id, worker, fence, resolveRoles, execute, cancellationToken);
 
+	[SuppressMessage("Roslynator", "RCS1075", Justification = "Broadly catching finalization failure is intentional: a lost lease must not propagate provider diagnostics.")]
 	private async Task<ClaimedPullRequestOutcome> RunCoreAsync(SourceControlContext context, Guid id, string worker, long fence,
 		Func<CancellationToken, Task<IReadOnlyCollection<string>>> resolveRoles,
 		Func<SourceControlPullRequestExecutor, CancellationToken, Task<PullRequestReceipt>>? prepared, CancellationToken cancellationToken)
@@ -45,12 +44,8 @@ internal sealed class SourceControlClaimedPullRequestRunner(IServiceScopeFactory
 				await using var finish = scopes.CreateAsyncScope();
 				var current = finish.ServiceProvider.GetRequiredService<PersistentSourceControlStore>();
 				var intent = await current.ReadSavedResultAsync(context.TenantId, id, worker, fence, DateTimeOffset.UtcNow, deadline.Token);
-				var code = error is SourceControlSecurityException safe ? safe.Code
-					: error is OperationCanceledException ? SourceControlErrorCode.Cancelled : SourceControlErrorCode.ProviderUnavailable;
-				var state = intent is not null || startingState == SourceControlOperationState.Reconciling
-					|| code == SourceControlErrorCode.ResultUnknown ? SourceControlOperationState.ResultUnknown
-					: code == SourceControlErrorCode.RevisionConflict ? SourceControlOperationState.Conflict
-					: error is OperationCanceledException ? SourceControlOperationState.Cancelled : SourceControlOperationState.Failed;
+				var code = ClassifyCode(error);
+				var state = ClassifyState(error, code, intent is not null, startingState);
 				if (await current.FinishAsync(context.TenantId, id, worker, fence, state, DateTimeOffset.UtcNow, deadline.Token, code))
 				{
 					return new(state, null, code);
@@ -62,5 +57,36 @@ internal sealed class SourceControlClaimedPullRequestRunner(IServiceScopeFactory
 			}
 			return new(SourceControlOperationState.ResultUnknown, null, SourceControlErrorCode.ResultUnknown);
 		}
+	}
+
+	private static SourceControlErrorCode ClassifyCode(Exception error)
+	{
+		if (error is SourceControlSecurityException safe)
+		{
+			return safe.Code;
+		}
+		if (error is OperationCanceledException)
+		{
+			return SourceControlErrorCode.Cancelled;
+		}
+		return SourceControlErrorCode.ProviderUnavailable;
+	}
+
+	private static SourceControlOperationState ClassifyState(Exception error, SourceControlErrorCode code,
+		bool hasIntent, SourceControlOperationState startingState)
+	{
+		if (hasIntent || startingState == SourceControlOperationState.Reconciling || code == SourceControlErrorCode.ResultUnknown)
+		{
+			return SourceControlOperationState.ResultUnknown;
+		}
+		if (code == SourceControlErrorCode.RevisionConflict)
+		{
+			return SourceControlOperationState.Conflict;
+		}
+		if (error is OperationCanceledException)
+		{
+			return SourceControlOperationState.Cancelled;
+		}
+		return SourceControlOperationState.Failed;
 	}
 }

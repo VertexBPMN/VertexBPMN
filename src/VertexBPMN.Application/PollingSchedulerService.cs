@@ -59,12 +59,9 @@ public sealed class PollingSchedulerService(
 			PollingTriggerPoller.ApplyOutcome(trigger, outcome, DateTime.UtcNow);
 			await repository.UpdateAsync(trigger, stoppingToken);
 
-			if (outcome.Status == PollTriggerStatus.Started)
+			if (outcome.Status == PollTriggerStatus.Started && logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
 			{
-				if (logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
-				{
-					logger.LogInformation("Polling trigger {TriggerId} started instance {InstanceId}", trigger.Id, outcome.InstanceId);
-				}
+				logger.LogInformation("Polling trigger {TriggerId} started instance {InstanceId}", trigger.Id, outcome.InstanceId);
 			}
 		}
 	}

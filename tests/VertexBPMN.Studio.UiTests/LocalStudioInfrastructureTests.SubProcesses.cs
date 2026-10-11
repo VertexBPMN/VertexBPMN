@@ -10,39 +10,39 @@ namespace VertexBPMN.Studio.UiTests;
 
 public sealed partial class LocalStudioInfrastructureTests
 {
-    [Fact]
-    [Trait("Category", "LocalStudioE2E")]
-    public async Task SubProcesses_EmbeddedSubProcess_ExecutesContainedTaskThenCompletes()
-    {
-        Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
-        using var apiClient = host.CreateApiClient();
-        var processKey = $"StudioE2E_SubP_{host.RunId}";
+	[Fact]
+	[Trait("Category", "LocalStudioE2E")]
+	public async Task SubProcesses_EmbeddedSubProcess_ExecutesContainedTaskThenCompletes()
+	{
+		Assert.SkipUnless(LocalStudioE2ETestHost.IsEnabled, "Local real E2E tests run only through scripts/test-studio-e2e.ps1.");
+		using var apiClient = host.CreateApiClient();
+		var processKey = $"StudioE2E_SubP_{host.RunId}";
 
-        await DeployUnderTestAsync(apiClient, processKey, BuildEmbeddedSubProcessBpmn(processKey));
-        host.RegisterProcessDefinitionCleanup(processKey);
+		await DeployUnderTestAsync(apiClient, processKey, BuildEmbeddedSubProcessBpmn(processKey));
+		host.RegisterProcessDefinitionCleanup(processKey);
 
-        var instanceId = await StartProcessAsync(apiClient, processKey, null, $"subp-{host.RunId}");
+		var instanceId = await StartProcessAsync(apiClient, processKey, null, $"subp-{host.RunId}");
 
-        // The contained user task is the only open task (the sub-process is active).
-        await WaitForOpenTaskCountAsync(instanceId, 1);
-        var open = await GetOpenTasksAsync(instanceId);
-        Assert.Equal(1, open.Length);
-        Assert.Equal("sp-task", open[0].GetProperty("activityId").GetString());
+		// The contained user task is the only open task (the sub-process is active).
+		await WaitForOpenTaskCountAsync(instanceId, 1);
+		var open = await GetOpenTasksAsync(instanceId);
+		Assert.Single(open);
+		Assert.Equal("sp-task", open[0].GetProperty("activityId").GetString());
 
-        // Completing the inner task completes the sub-process and then the whole instance.
-        await CompleteTaskAsync(open[0].GetProperty("id").GetGuid());
-        await WaitForInstanceStateAsync(instanceId, "Completed");
+		// Completing the inner task completes the sub-process and then the whole instance.
+		await CompleteTaskAsync(open[0].GetProperty("id").GetGuid());
+		await WaitForInstanceStateAsync(instanceId, "Completed");
 
-        var history = await GetHistoryAsync(instanceId);
-        Assert.Contains(history, e => EventHasElementId(e, "sp-task") && IsEventType(e, "USER_TASK_COMPLETED"));
-        Assert.Contains(history, e => EventHasElementId(e, "end") && IsEndEventReached(e));
-    }
+		var history = await GetHistoryAsync(instanceId);
+		Assert.Contains(history, e => EventHasElementId(e, "sp-task") && IsEventType(e, "USER_TASK_COMPLETED"));
+		Assert.Contains(history, e => EventHasElementId(e, "end") && IsEndEventReached(e));
+	}
 
-    // ---- helpers ----
+	// ---- helpers ----
 
-    private static string BuildEmbeddedSubProcessBpmn(string processKey)
-    {
-        return $$"""
+	private static string BuildEmbeddedSubProcessBpmn(string processKey)
+	{
+		return $$"""
             <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
                          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                          xmlns:vertex="http://vertexbpmn.dev/schema"
@@ -64,5 +64,5 @@ public sealed partial class LocalStudioInfrastructureTests
               </process>
             </definitions>
             """;
-    }
+	}
 }

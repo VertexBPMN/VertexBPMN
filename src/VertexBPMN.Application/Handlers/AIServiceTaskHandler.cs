@@ -21,6 +21,16 @@ public class AIServiceTaskHandler : IServiceTaskHandler
 	private readonly IAiDecisionService? _aiDecisionService;
 	private readonly AiDependencyOptions _aiOptions;
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Minor Vulnerability", "S5332", Justification = "Default endpoint for the internal MCP service; overridable via the 'ai:mcpServerUrl' attribute.")]
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Minor Code Smell", "S1075", Justification = "Default endpoint for the internal MCP service; overridable via the 'ai:mcpServerUrl' attribute.")]
+	private const string DefaultMcpServerUrl = "http://mcp-server:8080/api/mcp";
+
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Minor Code Smell", "S1075", Justification = "Canonical third-party OpenAI endpoint that must remain fixed.")]
+	private const string OpenAiEndpoint = "https://api.openai.com/v1/chat/completions";
+
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Minor Code Smell", "S1075", Justification = "Canonical third-party Anthropic endpoint that must remain fixed.")]
+	private const string AnthropicEndpoint = "https://api.anthropic.com/v1/messages";
+
 	public AIServiceTaskHandler(
 		ILogger<AIServiceTaskHandler> logger,
 		HttpClient httpClient,
@@ -48,32 +58,20 @@ public class AIServiceTaskHandler : IServiceTaskHandler
 		{
 			var config = ParseAIConfiguration(attributes);
 
-			span?.SetAttribute("ai.provider", config.Provider);
-			span?.SetAttribute("ai.model", config.Model);
-			span?.SetAttribute("ai.task_type", config.TaskType);
-
-			if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
-			{
-				_logger.LogInformation("Executing AI service task with provider {Provider}, model {Model}",
-				config.Provider, config.Model);
-			}
+			SetAITaskSpanAttributes(span, config);
+			LogAITaskStart(config);
 
 			// Context Enrichment vor AI-Ausführung
 			if (config.ContextEnrichment && _aiDecisionService != null)
 			{
-				await EnrichContextAsync(config, variables, ct);
+				await EnrichContextAsync(variables, ct);
 			}
 
 			// AI Task ausführen basierend auf Provider
 			var result = await ExecuteAITaskAsync(config, variables, ct);
 
 			// Ergebnis in Variablen speichern
-			variables[config.ResultVariable] = result.Content;
-
-			if (config.IncludeMetadata && result.Metadata != null)
-			{
-				variables[$"{config.ResultVariable}_metadata"] = result.Metadata;
-			}
+			StoreAITaskResult(config, variables, result);
 
 			// MCP Integration nach AI-Ausführung
 			if (config.McpIntegration && _aiDecisionService != null)
@@ -81,18 +79,14 @@ public class AIServiceTaskHandler : IServiceTaskHandler
 				await ExecuteMcpIntegrationAsync(config, variables, result, ct);
 			}
 
-			if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
-			{
-				_logger.LogInformation("AI service task completed successfully. Result stored in variable '{ResultVariable}'",
-				config.ResultVariable);
-			}
+			LogAITaskCompletion(config);
 
 			span?.SetStatus(Status.Ok);
 		}
 		catch (Exception ex)
 		{
 			var errorMessage = $"AI service task execution failed: {ex.Message}";
-			_logger.LogError(ex, errorMessage);
+			_logger.LogError(ex, "AI service task execution failed: {ErrorMessage}", ex.Message);
 			span?.SetStatus(Status.Error.WithDescription(errorMessage));
 
 			// Fehler in Variablen für Error Handling in BPMN
@@ -100,6 +94,42 @@ public class AIServiceTaskHandler : IServiceTaskHandler
 			variables["aiTask_failed"] = true;
 
 			throw new ServiceTaskExecutionException(errorMessage, ex);
+		}
+	}
+
+	private static void SetAITaskSpanAttributes(TelemetrySpan? span, AITaskConfiguration config)
+	{
+		span?.SetAttribute("ai.provider", config.Provider);
+		span?.SetAttribute("ai.model", config.Model);
+		span?.SetAttribute("ai.task_type", config.TaskType);
+	}
+
+	private void LogAITaskStart(AITaskConfiguration config)
+	{
+		if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
+		{
+			_logger.LogInformation("Executing AI service task with provider {Provider}, model {Model}",
+			config.Provider, config.Model);
+		}
+	}
+
+	private void LogAITaskCompletion(AITaskConfiguration config)
+	{
+		if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
+		{
+			_logger.LogInformation("AI service task completed successfully. Result stored in variable '{ResultVariable}'",
+			config.ResultVariable);
+		}
+	}
+
+	private static void StoreAITaskResult(AITaskConfiguration config, IDictionary<string, object> variables, AITaskResult result)
+	{
+		// Ergebnis in Variablen speichern
+		variables[config.ResultVariable] = result.Content;
+
+		if (config.IncludeMetadata && result.Metadata != null)
+		{
+			variables[$"{config.ResultVariable}_metadata"] = result.Metadata;
 		}
 	}
 
@@ -125,7 +155,7 @@ public class AIServiceTaskHandler : IServiceTaskHandler
 			InputVariables = attributes.GetValueOrDefault("ai:inputVariables", "").Split(',', StringSplitOptions.RemoveEmptyEntries),
 			ContextEnrichment = string.Equals(attributes.GetValueOrDefault("ai:contextEnrichment", "false"), "true", StringComparison.InvariantCultureIgnoreCase),
 			McpIntegration = string.Equals(attributes.GetValueOrDefault("ai:mcpIntegration", "false"), "true", StringComparison.InvariantCultureIgnoreCase),
-			McpServerUrl = attributes.GetValueOrDefault("ai:mcpServerUrl", "http://mcp-server:8080/api/mcp"),
+			McpServerUrl = attributes.GetValueOrDefault("ai:mcpServerUrl", DefaultMcpServerUrl),
 			McpMethod = attributes.GetValueOrDefault("ai:mcpMethod", "process_result"),
 			IncludeMetadata = string.Equals(attributes.GetValueOrDefault("ai:includeMetadata", "false"), "true", StringComparison.InvariantCultureIgnoreCase),
 			Timeout = int.TryParse(attributes.GetValueOrDefault("ai:timeout", "60"), out var timeout) ? timeout : 60,
@@ -180,7 +210,7 @@ public class AIServiceTaskHandler : IServiceTaskHandler
 	/// <summary>
 	/// Führt Context Enrichment durch externe Datenquellen aus.
 	/// </summary>
-	private async Task EnrichContextAsync(AITaskConfiguration config, IDictionary<string, object> variables, CancellationToken ct)
+	private async Task EnrichContextAsync(IDictionary<string, object> variables, CancellationToken ct)
 	{
 		if (_aiDecisionService == null)
 		{
@@ -258,7 +288,7 @@ public class AIServiceTaskHandler : IServiceTaskHandler
 			max_tokens = config.MaxTokens
 		};
 
-		return await ExecuteHttpAIRequest(config.Endpoint ?? "https://api.openai.com/v1/chat/completions", requestBody,
+		return await ExecuteHttpAIRequest(config.Endpoint ?? OpenAiEndpoint, requestBody,
 			apiKey, "Bearer", config, ct);
 	}
 
@@ -284,7 +314,7 @@ public class AIServiceTaskHandler : IServiceTaskHandler
 		};
 
 		// Anthropic verwendet x-api-key Header
-		return await ExecuteHttpAIRequest(config.Endpoint ?? "https://api.anthropic.com/v1/messages", requestBody,
+		return await ExecuteHttpAIRequest(config.Endpoint ?? AnthropicEndpoint, requestBody,
 			apiKey, "x-api-key", config, ct);
 	}
 
@@ -359,25 +389,37 @@ public class AIServiceTaskHandler : IServiceTaskHandler
 		using var content = new StringContent(requestJson, Encoding.UTF8, "application/json");
 		using var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = content };
 
-		// Authentication Header setzen
-		if (!string.IsNullOrEmpty(apiKey))
-		{
-			if (authHeaderName == "Bearer")
-			{
-				request.Headers.Authorization = new("Bearer", apiKey);
-			}
-			else if (!string.IsNullOrEmpty(authHeaderName))
-			{
-				request.Headers.Add(authHeaderName, apiKey);
-			}
-		}
+		ApplyAuthenticationHeaders(request, apiKey, authHeaderName);
 
 		// Anthropic spezifische Header
-		if (url.Contains("anthropic"))
+		if (url.Contains("anthropic", StringComparison.Ordinal))
 		{
 			request.Headers.Add("anthropic-version", "2023-06-01");
 		}
 
+		return await SendAIRequestWithRetryAsync(request, config, ct);
+	}
+
+	private static void ApplyAuthenticationHeaders(HttpRequestMessage request, string? apiKey, string? authHeaderName)
+	{
+		// Authentication Header setzen
+		if (string.IsNullOrEmpty(apiKey))
+		{
+			return;
+		}
+
+		if (authHeaderName == "Bearer")
+		{
+			request.Headers.Authorization = new("Bearer", apiKey);
+		}
+		else if (!string.IsNullOrEmpty(authHeaderName))
+		{
+			request.Headers.Add(authHeaderName, apiKey);
+		}
+	}
+
+	private async Task<AITaskResult> SendAIRequestWithRetryAsync(HttpRequestMessage request, AITaskConfiguration config, CancellationToken ct)
+	{
 		// Retry-Logic mit Exponential Backoff
 		var retryCount = 0;
 		while (retryCount <= config.RetryCount)
@@ -409,9 +451,9 @@ public class AIServiceTaskHandler : IServiceTaskHandler
 			{
 				throw;
 			}
-			catch (OperationCanceledException)
+			catch (OperationCanceledException ex)
 			{
-				throw new ServiceTaskExecutionException($"AI request timed out after {config.Timeout} seconds");
+				throw new ServiceTaskExecutionException($"AI request timed out after {config.Timeout} seconds", ex);
 			}
 			catch (Exception) when (retryCount < config.RetryCount)
 			{

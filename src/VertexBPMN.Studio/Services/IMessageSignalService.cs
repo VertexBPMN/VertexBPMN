@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace VertexBPMN.Studio.Services;
 
-public interface IMessageSignalService
+internal interface IMessageSignalService
 {
     Task<JsonElement> CorrelateMessageAsync(
         string messageName,

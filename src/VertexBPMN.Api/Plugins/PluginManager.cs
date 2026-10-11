@@ -3,578 +3,545 @@ using System.Reflection;
 using System.Text.Json;
 
 namespace VertexBPMN.Api.Plugins;
-
-public class PluginManager : IPluginManager, IDisposable
+internal sealed class PluginManager : IPluginManager, IDisposable
 {
-    private readonly ILogger<PluginManager> _logger;
-    private readonly IServiceProvider _serviceProvider;
-    private readonly IConfiguration _configuration;
-    private readonly ConcurrentDictionary<string, LoadedPlugin> _loadedPlugins = new();
-    private readonly ConcurrentDictionary<string, PluginExtensionPoint> _extensionPoints = new();
-    private readonly ConcurrentDictionary<string, PluginAssemblyLoadContext> _assemblyContexts = new();
-    private readonly PluginSecurityManager _securityManager;
+	private readonly ILogger<PluginManager> _logger;
+	private readonly IServiceProvider _serviceProvider;
+	private readonly IConfiguration _configuration;
+	private readonly ConcurrentDictionary<string, LoadedPlugin> _loadedPlugins = new(StringComparer.Ordinal);
+	private readonly ConcurrentDictionary<string, PluginExtensionPoint> _extensionPoints = new(StringComparer.Ordinal);
+	private readonly ConcurrentDictionary<string, PluginAssemblyLoadContext> _assemblyContexts = new(StringComparer.Ordinal);
+	private readonly PluginSecurityManager _securityManager;
+	public PluginManager(ILogger<PluginManager> logger, IServiceProvider serviceProvider, IConfiguration configuration)
+	{
+		_logger = logger;
+		_serviceProvider = serviceProvider;
+		_configuration = configuration;
+		_securityManager = new PluginSecurityManager(logger);
+		// Register default extension points
+		InitializeDefaultExtensionPoints();
+	}
 
-    public PluginManager(
-        ILogger<PluginManager> logger,
-        IServiceProvider serviceProvider,
-        IConfiguration configuration)
-    {
-        _logger = logger;
-        _serviceProvider = serviceProvider;
-        _configuration = configuration;
-        _securityManager = new PluginSecurityManager(logger);
-        
-        // Register default extension points
-        InitializeDefaultExtensionPoints();
-    }
+	public int LoadedPluginCount => _loadedPlugins.Count;
 
-    public int LoadedPluginCount => _loadedPlugins.Count;
+	public async Task<PluginLoadResult> LoadPluginAsync(string pluginPath)
+	{
+		try
+		{
+			if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
+			{
+				_logger.LogInformation("Loading plugin from path: {PluginPath}", pluginPath);
+			}
+			var (metadata, validationError) = await ValidatePluginForLoadingAsync(pluginPath);
+			if (metadata is null)
+			{
+				return new PluginLoadResult { Success = false, Error = validationError };
+			}
 
-    public async Task<PluginLoadResult> LoadPluginAsync(string pluginPath)
-    {
-        try
-        {
-            _logger.LogInformation("Loading plugin from path: {PluginPath}", pluginPath);
+			// Create assembly load context
+			var assemblyContext = new PluginAssemblyLoadContext(metadata.Id);
+			var assembly = assemblyContext.LoadFromAssemblyPath(pluginPath);
+			// Load plugin instance
+			var pluginInstance = await CreatePluginInstanceAsync(assembly);
+			if (pluginInstance == null)
+			{
+				return new PluginLoadResult
+				{
+					Success = false,
+					Error = "Failed to create plugin instance"
+				};
+			}
 
-            // Validate plugin file
-            if (!File.Exists(pluginPath))
-            {
-                return new PluginLoadResult
-                {
-                    Success = false,
-                    Error = $"Plugin file not found: {pluginPath}"
-                };
-            }
+			// Register plugin services
+			var serviceContainer = new PluginServiceContainer();
+			await pluginInstance.RegisterServicesAsync(serviceContainer);
+			// Create loaded plugin
+			var loadedPlugin = CreateLoadedPlugin(metadata, pluginInstance, assembly, assemblyContext, serviceContainer);
+			_loadedPlugins[metadata.Id] = loadedPlugin;
+			_assemblyContexts[metadata.Id] = assemblyContext;
+			// Initialize plugin
+			await pluginInstance.InitializeAsync(CreatePluginContext(loadedPlugin));
+			// Register extension points
+			await RegisterPluginExtensionPointsAsync(loadedPlugin);
+			if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
+			{
+				_logger.LogInformation("Plugin {PluginId} loaded successfully", metadata.Id);
+			}
+			return new PluginLoadResult
+			{
+				Success = true,
+				PluginId = metadata.Id,
+				PluginInfo = CreatePluginInfo(loadedPlugin)
+			};
+		}
+		catch (Exception ex)
+		{
+			_logger.LogError(ex, "Error loading plugin from path: {PluginPath}", pluginPath);
+			return new PluginLoadResult
+			{
+				Success = false,
+				Error = ex.Message
+			};
+		}
+	}
 
-            // Security validation
-            var securityResult = await _securityManager.ValidatePluginAsync(pluginPath);
-            if (!securityResult.IsValid)
-            {
-                return new PluginLoadResult
-                {
-                    Success = false,
-                    Error = $"Security validation failed: {securityResult.Reason}"
-                };
-            }
+	private static LoadedPlugin CreateLoadedPlugin(PluginMetadata metadata, IPlugin instance, Assembly assembly, PluginAssemblyLoadContext context, PluginServiceContainer services) => new()
+	{
+		Id = metadata.Id,
+		Metadata = metadata,
+		Instance = instance,
+		Assembly = assembly,
+		AssemblyContext = context,
+		ServiceContainer = services,
+		LoadedAt = DateTime.UtcNow,
+		IsEnabled = true,
+		Status = PluginStatus.Loaded
+	};
 
-            // Load plugin metadata
-            var metadata = await LoadPluginMetadataAsync(pluginPath);
-            if (metadata == null)
-            {
-                return new PluginLoadResult
-                {
-                    Success = false,
-                    Error = "Failed to load plugin metadata"
-                };
-            }
+	private async Task<(PluginMetadata? Metadata, string? Error)> ValidatePluginForLoadingAsync(string pluginPath)
+	{
+		if (!File.Exists(pluginPath))
+		{
+			return (null, $"Plugin file not found: {pluginPath}");
+		}
 
-            // Check if plugin is already loaded
-            if (_loadedPlugins.ContainsKey(metadata.Id))
-            {
-                return new PluginLoadResult
-                {
-                    Success = false,
-                    Error = $"Plugin {metadata.Id} is already loaded"
-                };
-            }
+		var securityResult = await _securityManager.ValidatePluginAsync(pluginPath);
+		if (!securityResult.IsValid)
+		{
+			return (null, $"Security validation failed: {securityResult.Reason}");
+		}
 
-            // Validate dependencies
-            var dependencyResult = await ValidatePluginDependenciesAsync(metadata);
-            if (!dependencyResult.IsValid)
-            {
-                return new PluginLoadResult
-                {
-                    Success = false,
-                    Error = $"Dependency validation failed: {dependencyResult.Reason}"
-                };
-            }
+		var metadata = await LoadPluginMetadataAsync(pluginPath);
+		if (metadata is null)
+		{
+			return (null, "Failed to load plugin metadata");
+		}
 
-            // Create assembly load context
-            var assemblyContext = new PluginAssemblyLoadContext(metadata.Id);
-            var assembly = assemblyContext.LoadFromAssemblyPath(pluginPath);
+		if (_loadedPlugins.ContainsKey(metadata.Id))
+		{
+			return (null, $"Plugin {metadata.Id} is already loaded");
+		}
 
-            // Load plugin instance
-            var pluginInstance = await CreatePluginInstanceAsync(assembly, metadata);
-            if (pluginInstance == null)
-            {
-                return new PluginLoadResult
-                {
-                    Success = false,
-                    Error = "Failed to create plugin instance"
-                };
-            }
+		var dependencies = await ValidatePluginDependenciesAsync(metadata);
+		return dependencies.IsValid ? (metadata, null) : (null, $"Dependency validation failed: {dependencies.Reason}");
+	}
 
-            // Register plugin services
-            var serviceContainer = new PluginServiceContainer();
-            await pluginInstance.RegisterServicesAsync(serviceContainer);
+	public async Task<bool> UnloadPluginAsync(string pluginId)
+	{
+		try
+		{
+			if (!_loadedPlugins.TryRemove(pluginId, out var loadedPlugin))
+			{
+				_logger.LogWarning("Plugin {PluginId} not found for unloading", pluginId);
+				return false;
+			}
 
-            // Create loaded plugin
-            var loadedPlugin = new LoadedPlugin
-            {
-                Id = metadata.Id,
-                Metadata = metadata,
-                Instance = pluginInstance,
-                Assembly = assembly,
-                AssemblyContext = assemblyContext,
-                ServiceContainer = serviceContainer,
-                LoadedAt = DateTime.UtcNow,
-                IsEnabled = true,
-                Status = PluginStatus.Loaded
-            };
+			if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
+			{
+				_logger.LogInformation("Unloading plugin {PluginId}", pluginId);
+			}
+			// Shutdown plugin
+			await loadedPlugin.Instance.ShutdownAsync();
+			// Unregister extension points
+			await UnregisterPluginExtensionPointsAsync(loadedPlugin);
+			// Dispose resources
+			if (loadedPlugin.Instance is IDisposable disposableInstance)
+			{
+				disposableInstance.Dispose();
+			}
 
-            _loadedPlugins[metadata.Id] = loadedPlugin;
-            _assemblyContexts[metadata.Id] = assemblyContext;
+			// Unload assembly context
+			if (_assemblyContexts.TryRemove(pluginId, out var assemblyContext))
+			{
+				assemblyContext.Unload();
+			}
 
-            // Initialize plugin
-            await pluginInstance.InitializeAsync(CreatePluginContext(loadedPlugin));
+			if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
+			{
+				_logger.LogInformation("Plugin {PluginId} unloaded successfully", pluginId);
+			}
+			return true;
+		}
+		catch (Exception ex)
+		{
+			_logger.LogError(ex, "Error unloading plugin {PluginId}", pluginId);
+			return false;
+		}
+	}
 
-            // Register extension points
-            await RegisterPluginExtensionPointsAsync(loadedPlugin);
+	public async Task<List<PluginInfo>> GetLoadedPluginsAsync()
+	{
+		return await Task.FromResult(_loadedPlugins.Values.Select(CreatePluginInfo).ToList());
+	}
 
-            _logger.LogInformation("Plugin {PluginId} loaded successfully", metadata.Id);
+	public async Task<PluginInfo?> GetPluginInfoAsync(string pluginId)
+	{
+		if (_loadedPlugins.TryGetValue(pluginId, out var loadedPlugin))
+		{
+			return await Task.FromResult(CreatePluginInfo(loadedPlugin));
+		}
 
-            return new PluginLoadResult
-            {
-                Success = true,
-                PluginId = metadata.Id,
-                PluginInfo = CreatePluginInfo(loadedPlugin)
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error loading plugin from path: {PluginPath}", pluginPath);
-            return new PluginLoadResult
-            {
-                Success = false,
-                Error = ex.Message
-            };
-        }
-    }
+		return null;
+	}
 
-    public async Task<bool> UnloadPluginAsync(string pluginId)
-    {
-        try
-        {
-            if (!_loadedPlugins.TryRemove(pluginId, out var loadedPlugin))
-            {
-                _logger.LogWarning("Plugin {PluginId} not found for unloading", pluginId);
-                return false;
-            }
+	public async Task<bool> EnablePluginAsync(string pluginId)
+	{
+		try
+		{
+			if (_loadedPlugins.TryGetValue(pluginId, out var loadedPlugin))
+			{
+				if (!loadedPlugin.IsEnabled)
+				{
+					loadedPlugin.IsEnabled = true;
+					loadedPlugin.Status = PluginStatus.Enabled;
+					await loadedPlugin.Instance.EnableAsync();
+					if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
+					{
+						_logger.LogInformation("Plugin {PluginId} enabled", pluginId);
+					}
+				}
 
-            _logger.LogInformation("Unloading plugin {PluginId}", pluginId);
+				return true;
+			}
 
-            // Shutdown plugin
-            await loadedPlugin.Instance.ShutdownAsync();
+			return false;
+		}
+		catch (Exception ex)
+		{
+			_logger.LogError(ex, "Error enabling plugin {PluginId}", pluginId);
+			return false;
+		}
+	}
 
-            // Unregister extension points
-            await UnregisterPluginExtensionPointsAsync(loadedPlugin);
+	public async Task<bool> DisablePluginAsync(string pluginId)
+	{
+		try
+		{
+			if (_loadedPlugins.TryGetValue(pluginId, out var loadedPlugin))
+			{
+				if (loadedPlugin.IsEnabled)
+				{
+					loadedPlugin.IsEnabled = false;
+					loadedPlugin.Status = PluginStatus.Disabled;
+					await loadedPlugin.Instance.DisableAsync();
+					if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
+					{
+						_logger.LogInformation("Plugin {PluginId} disabled", pluginId);
+					}
+				}
 
-            // Dispose resources
-            if (loadedPlugin.Instance is IDisposable disposableInstance)
-            {
-                disposableInstance.Dispose();
-            }
+				return true;
+			}
 
-            // Unload assembly context
-            if (_assemblyContexts.TryRemove(pluginId, out var assemblyContext))
-            {
-                assemblyContext.Unload();
-            }
+			return false;
+		}
+		catch (Exception ex)
+		{
+			_logger.LogError(ex, "Error disabling plugin {PluginId}", pluginId);
+			return false;
+		}
+	}
 
-            _logger.LogInformation("Plugin {PluginId} unloaded successfully", pluginId);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error unloading plugin {PluginId}", pluginId);
-            return false;
-        }
-    }
+	public async Task<T?> GetPluginServiceAsync<T>(string pluginId)
+		where T : class
+	{
+		if (_loadedPlugins.TryGetValue(pluginId, out var loadedPlugin) && loadedPlugin.IsEnabled)
+		{
+			return await Task.FromResult(loadedPlugin.ServiceContainer.GetService<T>());
+		}
 
-    public async Task<List<PluginInfo>> GetLoadedPluginsAsync()
-    {
-        return await Task.FromResult(_loadedPlugins.Values.Select(CreatePluginInfo).ToList());
-    }
+		return null;
+	}
 
-    public async Task<PluginInfo?> GetPluginInfoAsync(string pluginId)
-    {
-        if (_loadedPlugins.TryGetValue(pluginId, out var loadedPlugin))
-        {
-            return await Task.FromResult(CreatePluginInfo(loadedPlugin));
-        }
-        return null;
-    }
+	public async Task<PluginExecutionResult> ExecutePluginMethodAsync(string pluginId, string methodName, params object[] parameters)
+	{
+		try
+		{
+			if (!_loadedPlugins.TryGetValue(pluginId, out var loadedPlugin))
+			{
+				return new PluginExecutionResult
+				{
+					Success = false,
+					Error = $"Plugin {pluginId} not found"};
+			}
 
-    public async Task<bool> EnablePluginAsync(string pluginId)
-    {
-        try
-        {
-            if (_loadedPlugins.TryGetValue(pluginId, out var loadedPlugin))
-            {
-                if (!loadedPlugin.IsEnabled)
-                {
-                    loadedPlugin.IsEnabled = true;
-                    loadedPlugin.Status = PluginStatus.Enabled;
-                    await loadedPlugin.Instance.EnableAsync();
-                    _logger.LogInformation("Plugin {PluginId} enabled", pluginId);
-                }
-                return true;
-            }
-            return false;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error enabling plugin {PluginId}", pluginId);
-            return false;
-        }
-    }
+			if (!loadedPlugin.IsEnabled)
+			{
+				return new PluginExecutionResult
+				{
+					Success = false,
+					Error = $"Plugin {pluginId} is disabled"};
+			}
 
-    public async Task<bool> DisablePluginAsync(string pluginId)
-    {
-        try
-        {
-            if (_loadedPlugins.TryGetValue(pluginId, out var loadedPlugin))
-            {
-                if (loadedPlugin.IsEnabled)
-                {
-                    loadedPlugin.IsEnabled = false;
-                    loadedPlugin.Status = PluginStatus.Disabled;
-                    await loadedPlugin.Instance.DisableAsync();
-                    _logger.LogInformation("Plugin {PluginId} disabled", pluginId);
-                }
-                return true;
-            }
-            return false;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error disabling plugin {PluginId}", pluginId);
-            return false;
-        }
-    }
+			// Security check
+			if (!await _securityManager.CanExecuteMethodAsync(methodName))
+			{
+				return new PluginExecutionResult
+				{
+					Success = false,
+					Error = $"Security policy prevents execution of method {methodName}"};
+			}
 
-    public async Task<T?> GetPluginServiceAsync<T>(string pluginId) where T : class
-    {
-        if (_loadedPlugins.TryGetValue(pluginId, out var loadedPlugin) && loadedPlugin.IsEnabled)
-        {
-            return await Task.FromResult(loadedPlugin.ServiceContainer.GetService<T>());
-        }
-        return null;
-    }
+			var result = await loadedPlugin.Instance.ExecuteMethodAsync(methodName, parameters);
+			return new PluginExecutionResult
+			{
+				Success = true,
+				Result = result
+			};
+		}
+		catch (Exception ex)
+		{
+			_logger.LogError(ex, "Error executing method {MethodName} in plugin {PluginId}", methodName, pluginId);
+			return new PluginExecutionResult
+			{
+				Success = false,
+				Error = ex.Message
+			};
+		}
+	}
 
-    public async Task<PluginExecutionResult> ExecutePluginMethodAsync(string pluginId, string methodName, params object[] parameters)
-    {
-        try
-        {
-            if (!_loadedPlugins.TryGetValue(pluginId, out var loadedPlugin))
-            {
-                return new PluginExecutionResult
-                {
-                    Success = false,
-                    Error = $"Plugin {pluginId} not found"
-                };
-            }
+	public async Task<List<PluginExtensionPoint>> GetAvailableExtensionPointsAsync()
+	{
+		return await Task.FromResult(_extensionPoints.Values.ToList());
+	}
 
-            if (!loadedPlugin.IsEnabled)
-            {
-                return new PluginExecutionResult
-                {
-                    Success = false,
-                    Error = $"Plugin {pluginId} is disabled"
-                };
-            }
+	public async Task<bool> RegisterExtensionPointAsync(PluginExtensionPoint extensionPoint)
+	{
+		try
+		{
+			_extensionPoints[extensionPoint.Id] = extensionPoint;
+			if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug))
+			{
+				_logger.LogDebug("Extension point {ExtensionPointId} registered", extensionPoint.Id);
+			}
+			return await Task.FromResult(true);
+		}
+		catch (Exception ex)
+		{
+			_logger.LogError(ex, "Error registering extension point {ExtensionPointId}", extensionPoint.Id);
+			return false;
+		}
+	}
 
-            // Security check
-            if (!await _securityManager.CanExecuteMethodAsync(pluginId, methodName))
-            {
-                return new PluginExecutionResult
-                {
-                    Success = false,
-                    Error = $"Security policy prevents execution of method {methodName}"
-                };
-            }
+	// Helper methods
+	private void InitializeDefaultExtensionPoints()
+	{
+		var defaultExtensionPoints = CreateDefaultExtensionPoints();
+		foreach (var extensionPoint in defaultExtensionPoints)
+		{
+			_extensionPoints[extensionPoint.Id] = extensionPoint;
+		}
+	}
 
-            var result = await loadedPlugin.Instance.ExecuteMethodAsync(methodName, parameters);
-            
-            return new PluginExecutionResult
-            {
-                Success = true,
-                Result = result
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error executing method {MethodName} in plugin {PluginId}", methodName, pluginId);
-            return new PluginExecutionResult
-            {
-                Success = false,
-                Error = ex.Message
-            };
-        }
-    }
+	private static PluginExtensionPoint[] CreateDefaultExtensionPoints() =>
+	[
+		CreateDefaultExtensionPoint("process-execution-listener", "Process Execution Listener", "Listen to process execution events", typeof(IProcessExecutionListener), "eventType"),
+		CreateDefaultExtensionPoint("activity-behavior", "Custom Activity Behavior", "Implement custom activity behaviors", typeof(ICustomActivityBehavior), "activityType"),
+		CreateDefaultExtensionPoint("variable-resolver", "Variable Resolver", "Resolve custom variable expressions", typeof(IVariableResolver)),
+		CreateDefaultExtensionPoint("connector", "External System Connector", "Connect to external systems", typeof(IExternalConnector), "systemType")
+	];
 
-    public async Task<List<PluginExtensionPoint>> GetAvailableExtensionPointsAsync()
-    {
-        return await Task.FromResult(_extensionPoints.Values.ToList());
-    }
+	private static PluginExtensionPoint CreateDefaultExtensionPoint(string id, string name, string description, Type interfaceType, string? parameterName = null)
+	{
+		var parameters = new Dictionary<string, PluginParameter>(StringComparer.Ordinal);
+		if (parameterName is not null)
+		{
+			parameters.Add(parameterName, new PluginParameter { Name = parameterName, Type = "string", Required = true });
+		}
 
-    public async Task<bool> RegisterExtensionPointAsync(PluginExtensionPoint extensionPoint)
-    {
-        try
-        {
-            _extensionPoints[extensionPoint.Id] = extensionPoint;
-            _logger.LogDebug("Extension point {ExtensionPointId} registered", extensionPoint.Id);
-            return await Task.FromResult(true);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error registering extension point {ExtensionPointId}", extensionPoint.Id);
-            return false;
-        }
-    }
+		return new PluginExtensionPoint { Id = id, Name = name, Description = description, InterfaceType = interfaceType.FullName!, Parameters = parameters };
+	}
 
-    // Helper methods
-    private void InitializeDefaultExtensionPoints()
-    {
-        var defaultExtensionPoints = new[]
-        {
-            new PluginExtensionPoint
-            {
-                Id = "process-execution-listener",
-                Name = "Process Execution Listener",
-                Description = "Listen to process execution events",
-                InterfaceType = typeof(IProcessExecutionListener).FullName!,
-                Parameters = new Dictionary<string, PluginParameter>
-                {
-                    { "eventType", new PluginParameter { Name = "eventType", Type = "string", Required = true } }
-                }
-            },
-            new PluginExtensionPoint
-            {
-                Id = "activity-behavior",
-                Name = "Custom Activity Behavior",
-                Description = "Implement custom activity behaviors",
-                InterfaceType = typeof(ICustomActivityBehavior).FullName!,
-                Parameters = new Dictionary<string, PluginParameter>
-                {
-                    { "activityType", new PluginParameter { Name = "activityType", Type = "string", Required = true } }
-                }
-            },
-            new PluginExtensionPoint
-            {
-                Id = "variable-resolver",
-                Name = "Variable Resolver",
-                Description = "Resolve custom variable expressions",
-                InterfaceType = typeof(IVariableResolver).FullName!,
-                Parameters = new Dictionary<string, PluginParameter>()
-            },
-            new PluginExtensionPoint
-            {
-                Id = "connector",
-                Name = "External System Connector",
-                Description = "Connect to external systems",
-                InterfaceType = typeof(IExternalConnector).FullName!,
-                Parameters = new Dictionary<string, PluginParameter>
-                {
-                    { "systemType", new PluginParameter { Name = "systemType", Type = "string", Required = true } }
-                }
-            }
-        };
+	private async Task<PluginMetadata?> LoadPluginMetadataAsync(string pluginPath)
+	{
+		try
+		{
+			var pluginDirectory = Path.GetDirectoryName(pluginPath);
+			var metadataPath = Path.Combine(pluginDirectory!, "plugin.json");
+			if (!File.Exists(metadataPath))
+			{
+				_logger.LogWarning("Plugin metadata file not found: {MetadataPath}", metadataPath);
+				return null;
+			}
 
-        foreach (var extensionPoint in defaultExtensionPoints)
-        {
-            _extensionPoints[extensionPoint.Id] = extensionPoint;
-        }
-    }
+			var metadataJson = await File.ReadAllTextAsync(metadataPath);
+			return JsonSerializer.Deserialize<PluginMetadata>(metadataJson);
+		}
+		catch (Exception ex)
+		{
+			_logger.LogError(ex, "Error loading plugin metadata from {PluginPath}", pluginPath);
+			return null;
+		}
+	}
 
-    private async Task<PluginMetadata?> LoadPluginMetadataAsync(string pluginPath)
-    {
-        try
-        {
-            var pluginDirectory = Path.GetDirectoryName(pluginPath);
-            var metadataPath = Path.Combine(pluginDirectory!, "plugin.json");
-            
-            if (!File.Exists(metadataPath))
-            {
-                _logger.LogWarning("Plugin metadata file not found: {MetadataPath}", metadataPath);
-                return null;
-            }
+	private async Task<ValidationResult> ValidatePluginDependenciesAsync(PluginMetadata metadata)
+	{
+		try
+		{
+			foreach (var dependency in metadata.Dependencies)
+			{
+				if (dependency.Required)
+				{
+					// Check if dependency is available
+					var isDependencyAvailable = await CheckDependencyAvailabilityAsync(dependency);
+					if (!isDependencyAvailable)
+					{
+						return new ValidationResult
+						{
+							IsValid = false,
+							Reason = $"Required dependency not available: {dependency.Name} {dependency.Version}"};
+					}
+				}
+			}
 
-            var metadataJson = await File.ReadAllTextAsync(metadataPath);
-            return JsonSerializer.Deserialize<PluginMetadata>(metadataJson);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error loading plugin metadata from {PluginPath}", pluginPath);
-            return null;
-        }
-    }
+			return new ValidationResult
+			{
+				IsValid = true
+			};
+		}
+		catch (Exception ex)
+		{
+			_logger.LogError(ex, "Error validating plugin dependencies");
+			return new ValidationResult
+			{
+				IsValid = false,
+				Reason = ex.Message
+			};
+		}
+	}
 
-    private async Task<ValidationResult> ValidatePluginDependenciesAsync(PluginMetadata metadata)
-    {
-        try
-        {
-            foreach (var dependency in metadata.Dependencies)
-            {
-                if (dependency.Required)
-                {
-                    // Check if dependency is available
-                    var isDependencyAvailable = await CheckDependencyAvailabilityAsync(dependency);
-                    if (!isDependencyAvailable)
-                    {
-                        return new ValidationResult
-                        {
-                            IsValid = false,
-                            Reason = $"Required dependency not available: {dependency.Name} {dependency.Version}"
-                        };
-                    }
-                }
-            }
+	private static async Task<bool> CheckDependencyAvailabilityAsync(PluginDependency dependency)
+	{
+		await Task.CompletedTask;
+		var assembly = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(candidate => string.Equals(candidate.GetName().Name, dependency.Name, StringComparison.OrdinalIgnoreCase));
+		if (assembly is null)
+		{
+			return false;
+		}
 
-            return new ValidationResult { IsValid = true };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error validating plugin dependencies");
-            return new ValidationResult { IsValid = false, Reason = ex.Message };
-        }
-    }
+		return !Version.TryParse(dependency.Version, out var requiredVersion) || (assembly.GetName().Version is { } loadedVersion && loadedVersion >= requiredVersion);
+	}
 
-    private async Task<bool> CheckDependencyAvailabilityAsync(PluginDependency dependency)
-    {
-        await Task.CompletedTask;
+	private async Task<IPlugin?> CreatePluginInstanceAsync(Assembly assembly)
+	{
+		try
+		{
+			var pluginType = assembly.GetTypes().FirstOrDefault(t => typeof(IPlugin).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract);
+			if (pluginType == null)
+			{
+				_logger.LogError("No plugin implementation found in assembly");
+				return null;
+			}
 
-        var assembly = AppDomain.CurrentDomain.GetAssemblies()
-            .FirstOrDefault(candidate => string.Equals(candidate.GetName().Name, dependency.Name, StringComparison.OrdinalIgnoreCase));
-        if (assembly is null)
-            return false;
+			var instance = Activator.CreateInstance(pluginType) as IPlugin;
+			return await Task.FromResult(instance);
+		}
+		catch (Exception ex)
+		{
+			_logger.LogError(ex, "Error creating plugin instance");
+			return null;
+		}
+	}
 
-        return !Version.TryParse(dependency.Version, out var requiredVersion) ||
-               (assembly.GetName().Version is { } loadedVersion && loadedVersion >= requiredVersion);
-    }
+	private PluginContext CreatePluginContext(LoadedPlugin loadedPlugin)
+	{
+		return new PluginContext
+		{
+			PluginId = loadedPlugin.Id,
+			ServiceProvider = _serviceProvider,
+			Configuration = _configuration,
+			Logger = _logger,
+			ExtensionPoints = _extensionPoints.Values.ToList()
+		};
+	}
 
-    private async Task<IPlugin?> CreatePluginInstanceAsync(Assembly assembly, PluginMetadata metadata)
-    {
-        try
-        {
-            var pluginType = assembly.GetTypes()
-                .FirstOrDefault(t => typeof(IPlugin).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract);
+	private async Task RegisterPluginExtensionPointsAsync(LoadedPlugin loadedPlugin)
+	{
+		try
+		{
+			var pluginExtensionPoints = await loadedPlugin.Instance.GetExtensionPointsAsync();
+			foreach (var extensionPoint in pluginExtensionPoints)
+			{
+				extensionPoint.ProviderId = loadedPlugin.Id;
+				_extensionPoints[extensionPoint.Id] = extensionPoint;
+				if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug))
+				{
+					_logger.LogDebug("Registered extension point {ExtensionPointId} from plugin {PluginId}", extensionPoint.Id, loadedPlugin.Id);
+				}
+			}
+		}
+		catch (Exception ex)
+		{
+			_logger.LogError(ex, "Error registering extension points for plugin {PluginId}", loadedPlugin.Id);
+		}
+	}
 
-            if (pluginType == null)
-            {
-                _logger.LogError("No plugin implementation found in assembly");
-                return null;
-            }
+	private async Task UnregisterPluginExtensionPointsAsync(LoadedPlugin loadedPlugin)
+	{
+		try
+		{
+			var pluginExtensionPoints = _extensionPoints.Values.Where(ep => ep.ProviderId == loadedPlugin.Id).ToList();
+			foreach (var extensionPointId in pluginExtensionPoints.Select(extensionPoint => extensionPoint.Id))
+			{
+				_extensionPoints.TryRemove(extensionPointId, out _);
+				if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug))
+				{
+					_logger.LogDebug("Unregistered extension point {ExtensionPointId} from plugin {PluginId}", extensionPointId, loadedPlugin.Id);
+				}
+			}
 
-            var instance = Activator.CreateInstance(pluginType) as IPlugin;
-            return await Task.FromResult(instance);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error creating plugin instance");
-            return null;
-        }
-    }
+			await Task.CompletedTask; // Satisfy async requirement
+		}
+		catch (Exception ex)
+		{
+			_logger.LogError(ex, "Error unregistering extension points for plugin {PluginId}", loadedPlugin.Id);
+		}
+	}
 
-    private PluginContext CreatePluginContext(LoadedPlugin loadedPlugin)
-    {
-        return new PluginContext
-        {
-            PluginId = loadedPlugin.Id,
-            ServiceProvider = _serviceProvider,
-            Configuration = _configuration,
-            Logger = _logger,
-            ExtensionPoints = _extensionPoints.Values.ToList()
-        };
-    }
+	private PluginInfo CreatePluginInfo(LoadedPlugin loadedPlugin)
+	{
+		return new PluginInfo
+		{
+			Id = loadedPlugin.Id,
+			Name = loadedPlugin.Metadata.Name,
+			Version = loadedPlugin.Metadata.Version,
+			Description = loadedPlugin.Metadata.Description,
+			Author = loadedPlugin.Metadata.Author,
+			IsEnabled = loadedPlugin.IsEnabled,
+			Status = loadedPlugin.Status,
+			LoadedAt = loadedPlugin.LoadedAt,
+			Dependencies = loadedPlugin.Metadata.Dependencies,
+			ExtensionPoints = _extensionPoints.Values.Where(ep => ep.ProviderId == loadedPlugin.Id).ToList()
+		};
+	}
 
-    private async Task RegisterPluginExtensionPointsAsync(LoadedPlugin loadedPlugin)
-    {
-        try
-        {
-            var pluginExtensionPoints = await loadedPlugin.Instance.GetExtensionPointsAsync();
-            foreach (var extensionPoint in pluginExtensionPoints)
-            {
-                extensionPoint.ProviderId = loadedPlugin.Id;
-                _extensionPoints[extensionPoint.Id] = extensionPoint;
-                _logger.LogDebug("Registered extension point {ExtensionPointId} from plugin {PluginId}", 
-                    extensionPoint.Id, loadedPlugin.Id);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error registering extension points for plugin {PluginId}", loadedPlugin.Id);
-        }
-    }
+	public void Dispose()
+	{
+		// Unload all plugins
+		var pluginIds = _loadedPlugins.Keys.ToList();
+		foreach (var pluginId in pluginIds)
+		{
+			try
+			{
+				UnloadPluginAsync(pluginId).GetAwaiter().GetResult();
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "Error during plugin cleanup: {PluginId}", pluginId);
+			}
+		}
 
-    private async Task UnregisterPluginExtensionPointsAsync(LoadedPlugin loadedPlugin)
-    {
-        try
-        {
-            var pluginExtensionPoints = _extensionPoints.Values
-                .Where(ep => ep.ProviderId == loadedPlugin.Id)
-                .ToList();
-
-            foreach (var extensionPoint in pluginExtensionPoints)
-            {
-                _extensionPoints.TryRemove(extensionPoint.Id, out _);
-                _logger.LogDebug("Unregistered extension point {ExtensionPointId} from plugin {PluginId}", 
-                    extensionPoint.Id, loadedPlugin.Id);
-            }
-            
-            await Task.CompletedTask; // Satisfy async requirement
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error unregistering extension points for plugin {PluginId}", loadedPlugin.Id);
-        }
-    }
-
-    private PluginInfo CreatePluginInfo(LoadedPlugin loadedPlugin)
-    {
-        return new PluginInfo
-        {
-            Id = loadedPlugin.Id,
-            Name = loadedPlugin.Metadata.Name,
-            Version = loadedPlugin.Metadata.Version,
-            Description = loadedPlugin.Metadata.Description,
-            Author = loadedPlugin.Metadata.Author,
-            IsEnabled = loadedPlugin.IsEnabled,
-            Status = loadedPlugin.Status,
-            LoadedAt = loadedPlugin.LoadedAt,
-            Dependencies = loadedPlugin.Metadata.Dependencies,
-            ExtensionPoints = _extensionPoints.Values.Where(ep => ep.ProviderId == loadedPlugin.Id).ToList()
-        };
-    }
-
-    public void Dispose()
-    {
-        // Unload all plugins
-        var pluginIds = _loadedPlugins.Keys.ToList();
-        foreach (var pluginId in pluginIds)
-        {
-            try
-            {
-                UnloadPluginAsync(pluginId).GetAwaiter().GetResult();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error during plugin cleanup: {PluginId}", pluginId);
-            }
-        }
-
-        // Dispose assembly contexts
-        foreach (var assemblyContext in _assemblyContexts.Values)
-        {
-            try
-            {
-                assemblyContext.Unload();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error disposing assembly context");
-            }
-        }
-    }
+		// Dispose assembly contexts
+		foreach (var assemblyContext in _assemblyContexts.Values)
+		{
+			try
+			{
+				assemblyContext.Unload();
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "Error disposing assembly context");
+			}
+		}
+	}
 }
-

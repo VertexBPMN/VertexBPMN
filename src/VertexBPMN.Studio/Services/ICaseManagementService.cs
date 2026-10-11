@@ -1,6 +1,6 @@
 namespace VertexBPMN.Studio.Services;
 
-public interface ICaseManagementService
+internal interface ICaseManagementService
 {
     Task RegisterModelAsync(string caseId, string cmmnXml, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<string>> ExecuteCaseAsync(string caseId, CancellationToken cancellationToken = default);
@@ -9,9 +9,3 @@ public interface ICaseManagementService
     Task GenerateAdHocSubprocessAsync(string caseId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<HistoricalCaseSnapshot>> GetHistoricalContextAsync(string caseId, CancellationToken cancellationToken = default);
 }
-
-public sealed record HistoricalCaseSnapshot(
-    string CaseId,
-    IReadOnlyDictionary<string, string> CaseFile,
-    IReadOnlyList<string> CompletedPlanItems,
-    DateTime Timestamp);

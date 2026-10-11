@@ -12,62 +12,59 @@ namespace VertexBPMN.Tests.Integration.Api;
 /// geschützt. ReadOnly-Benutzer (X-Test-User-Header) müssen 403 erhalten, Admins (Standard-Principal) OK.
 /// </summary>
 [Collection("IntegratedApi")]
-public class PrivilegeGateSecurityTests
+public class PrivilegeGateSecurityTests(CustomWebApplicationFactory factory, SharedSqliteDbFixture dbFixture, ITestOutputHelper output)
 {
-    private readonly HttpClient _client;
+	private readonly HttpClient _client = factory.WithSharedFixture(dbFixture).CreateClient(output);
 
-    public PrivilegeGateSecurityTests(CustomWebApplicationFactory factory, SharedSqliteDbFixture dbFixture, ITestOutputHelper output)
-    {
-        _client = factory.WithSharedFixture(dbFixture).CreateClient(output);
-    }
+	private static HttpRequestMessage WithReadOnly(HttpRequestMessage request)
+	{
+		request.Headers.Add("X-Test-User", "readonly-user");
+		request.Headers.Add("X-Test-Tenant", "vertexbpmn");
+		return request;
+	}
 
-    private HttpRequestMessage WithReadOnly(HttpRequestMessage request)
-    {
-        request.Headers.Add("X-Test-User", "readonly-user");
-        request.Headers.Add("X-Test-Tenant", "vertexbpmn");
-        return request;
-    }
+	[Theory]
+	[InlineData("POST", "/api/health/gc", "")]
+	[InlineData("POST", "/api/health/rate-limits/test-identifier/reset", "?policy=default")]
+	[InlineData("GET", "/api/identity/list-tenants", "")]
+	[InlineData("DELETE", "/api/load-balancer/workers/worker-1", "")]
+	[InlineData("POST", "/api/load-balancer/rebalance", "")]
+	[InlineData("PUT", "/api/load-balancer/config", "")]
+	[InlineData("POST", "/api/load-balancer/workers", "")]
+	[InlineData("POST", "/api/load-balancer/workers/worker-1/heartbeat", "")]
+	[InlineData("POST", "/api/ml/train", "")]
+	[InlineData("POST", "/api/simulation-scenario", "")]
+	[InlineData("PUT", "/api/simulation-scenario/scenario-1", "")]
+	[InlineData("DELETE", "/api/simulation-scenario/scenario-1", "")]
+	[InlineData("POST", "/api/visual-debug/session/start/00000000-0000-0000-0000-000000000001", "")]
+	[InlineData("POST", "/api/visual-debug/step/over/00000000-0000-0000-0000-000000000001", "")]
+	[InlineData("POST", "/api/management/suspend-process-instance/00000000-0000-0000-0000-000000000001", "")]
+	[InlineData("POST", "/api/management/resume-process-instance/00000000-0000-0000-0000-000000000001", "")]
+	[InlineData("POST", "/api/management/delete-process-instance/00000000-0000-0000-0000-000000000001", "")]
+	public async Task AdminOnlyEndpoints_ReadOnlyUser_IsForbidden(string method, string path, string query)
+	{
+		using var request = WithReadOnly(new HttpRequestMessage(new HttpMethod(method), path + query));
+		if (string.Equals(method, "PUT", StringComparison.Ordinal))
+		{
+			request.Content = new StringContent("{}", Encoding.UTF8, "application/json");
+		}
 
-    [Theory]
-    [InlineData("POST", "/api/health/gc", "")]
-    [InlineData("POST", "/api/health/rate-limits/test-identifier/reset", "?policy=default")]
-    [InlineData("GET", "/api/identity/list-tenants", "")]
-    [InlineData("DELETE", "/api/load-balancer/workers/worker-1", "")]
-    [InlineData("POST", "/api/load-balancer/rebalance", "")]
-    [InlineData("PUT", "/api/load-balancer/config", "")]
-    [InlineData("POST", "/api/load-balancer/workers", "")]
-    [InlineData("POST", "/api/load-balancer/workers/worker-1/heartbeat", "")]
-    [InlineData("POST", "/api/ml/train", "")]
-    [InlineData("POST", "/api/simulation-scenario", "")]
-    [InlineData("PUT", "/api/simulation-scenario/scenario-1", "")]
-    [InlineData("DELETE", "/api/simulation-scenario/scenario-1", "")]
-    [InlineData("POST", "/api/visual-debug/session/start/00000000-0000-0000-0000-000000000001", "")]
-    [InlineData("POST", "/api/visual-debug/step/over/00000000-0000-0000-0000-000000000001", "")]
-    [InlineData("POST", "/api/management/suspend-process-instance/00000000-0000-0000-0000-000000000001", "")]
-    [InlineData("POST", "/api/management/resume-process-instance/00000000-0000-0000-0000-000000000001", "")]
-    [InlineData("POST", "/api/management/delete-process-instance/00000000-0000-0000-0000-000000000001", "")]
-    public async Task AdminOnlyEndpoints_ReadOnlyUser_IsForbidden(string method, string path, string query)
-    {
-        var request = WithReadOnly(new HttpRequestMessage(new HttpMethod(method), path + query));
-        if (string.Equals(method, "PUT", StringComparison.Ordinal))
-            request.Content = new StringContent("{}", Encoding.UTF8, "application/json");
+		var response = await _client.SendAsync(request, TestContext.Current.CancellationToken);
 
-        var response = await _client.SendAsync(request, TestContext.Current.CancellationToken);
+		Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+	}
 
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-    }
+	[Fact]
+	public async Task HealthGc_AdminUser_IsAllowed()
+	{
+		var response = await _client.PostAsync("/api/health/gc", null, TestContext.Current.CancellationToken);
+		Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+	}
 
-    [Fact]
-    public async Task HealthGc_AdminUser_IsAllowed()
-    {
-        var response = await _client.PostAsync("/api/health/gc", null, TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task IdentityListTenants_AdminUser_IsAllowed()
-    {
-        var response = await _client.GetAsync("/api/identity/list-tenants", TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-    }
+	[Fact]
+	public async Task IdentityListTenants_AdminUser_IsAllowed()
+	{
+		var response = await _client.GetAsync("/api/identity/list-tenants", TestContext.Current.CancellationToken);
+		Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+	}
 }

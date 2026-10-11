@@ -1,8 +1,8 @@
-﻿using OpenTelemetry.Trace;
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using OpenTelemetry.Trace;
 using VertexBPMN.Application;
 using VertexBPMN.Cli;
 using VertexBPMN.Engine;
@@ -26,7 +26,7 @@ builder.Services.AddLogging(logging => logging.AddSimpleConsole(options =>
 builder.Services.AddSingleton<DashboardLauncher>();
 builder.Services.AddSingleton<TracerProvider>(TracerProvider.Default);
 builder.Services.AddAllEngineDbContexts(builder.Configuration);
-builder.Services.AddBpmnPersistenceServices(builder.Configuration);
+builder.Services.AddRuntimePersistenceServices(builder.Configuration);
 builder.Services.AddApplicationServices(builder.Configuration);
 builder.Services.AddEngineServices(builder.Configuration);
 

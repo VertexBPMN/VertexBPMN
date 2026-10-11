@@ -5,47 +5,49 @@ using VertexBPMN.Application.Handlers;
 
 namespace VertexBPMN.Tests.Integration.Handlers;
 
-public class ContextEnrichmentServiceTaskHandlerTests
+public sealed class ContextEnrichmentServiceTaskHandlerTests : IDisposable
 {
-    private readonly Mock<HttpMessageHandler> _httpMessageHandlerMock;
-    private readonly HttpClient _httpClient;
+	public void Dispose() => _httpClient.Dispose();
 
-    public ContextEnrichmentServiceTaskHandlerTests()
-    {
-        _httpMessageHandlerMock = new Mock<HttpMessageHandler>();
-        _httpClient = new HttpClient(_httpMessageHandlerMock.Object);
-    }
+	private readonly Mock<HttpMessageHandler> _httpMessageHandlerMock;
+	private readonly HttpClient _httpClient;
 
-    [Theory]
-    [InlineData("customer", "customer123")]
-    [InlineData("order", "order456")]
-    [InlineData("product", "product789")]
-    [InlineData("account", "account101")]
-    public async Task ExecuteAsync_WithDifferentDataTypes_ShouldEnrichAppropriately(string dataType, string entityId)
-    {
-        // Arrange
-        var logger = new Mock<ILogger<ContextEnrichmentServiceTaskHandler>>();
-        var handler = new ContextEnrichmentServiceTaskHandler(_httpClient, logger.Object, null);
+	public ContextEnrichmentServiceTaskHandlerTests()
+	{
+		_httpMessageHandlerMock = new Mock<HttpMessageHandler>();
+		_httpClient = new HttpClient(_httpMessageHandlerMock.Object);
+	}
 
-        var attributes = new Dictionary<string, string>
-        {
-            { "context:sourceType", "mock" },
-            { "context:dataType", dataType },
-            { "context:resultVariable", $"{dataType}Context" }
-        };
+	[Theory]
+	[InlineData("customer", "customer123")]
+	[InlineData("order", "order456")]
+	[InlineData("product", "product789")]
+	[InlineData("account", "account101")]
+	public async Task ExecuteAsync_WithDifferentDataTypes_ShouldEnrichAppropriately(string dataType, string entityId)
+	{
+		// Arrange
+		var logger = new Mock<ILogger<ContextEnrichmentServiceTaskHandler>>();
+		var handler = new ContextEnrichmentServiceTaskHandler(_httpClient, logger.Object, OpenTelemetry.Trace.TracerProvider.Default);
 
-        var variables = new Dictionary<string, object>
-        {
-            { "entityId", entityId }
-        };
+		var attributes = new Dictionary<string, string>(StringComparer.Ordinal)
+		{
+			{ "context:sourceType", "mock" },
+			{ "context:dataType", dataType },
+			{ "context:resultVariable", $"{dataType}Context" }
+		};
 
-        // Act
-        await handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken);
+		var variables = new Dictionary<string, object>(StringComparer.Ordinal)
+		{
+			{ "entityId", entityId }
+		};
 
-        // Assert
-        variables.ShouldContainKey($"{dataType}Context");
-        var result = Assert.IsType<string>(variables[$"{dataType}Context"]);
-        result.ShouldContain(dataType);
-        result.ShouldContain(entityId);
-    }
+		// Act
+		await handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken);
+
+		// Assert
+		variables.ShouldContainKey($"{dataType}Context");
+		var result = Assert.IsType<string>(variables[$"{dataType}Context"]);
+		result.ShouldContain(dataType);
+		result.ShouldContain(entityId);
+	}
 }

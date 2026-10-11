@@ -13,8 +13,12 @@ internal sealed class SourceControlMaintenanceHostedService(
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (!options.Value.Enabled) return;
-        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
+        if (!options.Value.Enabled)
+		{
+			return;
+		}
+
+		using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
         do
         {
             try

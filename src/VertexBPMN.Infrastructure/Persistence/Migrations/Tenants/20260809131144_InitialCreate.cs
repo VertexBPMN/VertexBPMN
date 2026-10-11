@@ -1,15 +1,19 @@
 ﻿using System;
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 #pragma warning disable CA1814 // Prefer jagged arrays over multidimensional
 
-namespace VertexBPMN.Infrastructure.Persistence.Migrations.Tenants
-{
+namespace VertexBPMN.Infrastructure.Persistence.Migrations.Tenants;
+
     /// <inheritdoc />
+    [SuppressMessage("Meziantou.Analyzer", "MA0048", Justification = "EF migration snapshot / generated code.")]
     public partial class InitialCreate : Migration
     {
+        private static readonly string[] TenantColumns = new[] { "Id", "CreatedAt", "Description", "Name" };
+
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -29,7 +33,7 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Tenants
 
             migrationBuilder.InsertData(
                 table: "Tenants",
-                columns: new[] { "Id", "CreatedAt", "Description", "Name" },
+                columns: TenantColumns,
                 values: new object[,]
                 {
                     { "tenant-acme", new DateTime(2025, 1, 2, 0, 0, 0, 0, DateTimeKind.Utc), "Beispielkunde", "Acme Corp" },
@@ -49,4 +53,3 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Tenants
                 name: "Tenants");
         }
     }
-}

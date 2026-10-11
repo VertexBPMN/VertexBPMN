@@ -1,5 +1,6 @@
 namespace VertexBPMN.Api.Migration;
 
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public contract type MigrationCompatibilityIssue retained for exposed HTTP action signatures and controller activation (MigrationCompatibilityIssue).")]
 public class MigrationCompatibilityIssue
 {
     public string Type { get; set; } = string.Empty;

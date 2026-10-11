@@ -13,14 +13,13 @@ public class SendGridServiceTaskHandler(ISendGridClient client) : IServiceTaskHa
 		CancellationToken ct = default)
 	{
 		// Extrahiere notwendige Variablen
-		var apiKey = GetVariable(variables, "apiKey");
+		// Preserve the legacy input validation; the injected client owns authentication.
+		_ = GetVariable(variables, "apiKey");
 		var toEmail = GetVariable(variables, "to.email");
 		var fromEmail = GetVariable(variables, "from.email");
 		var subject = GetAttribute(attributes, "subject", "Default Subject");
 		var body = GetAttribute(attributes, "body", "Default Body");
 
-		// Initialisiere SendGrid-Client
-		// var client = new SendGridClient(apiKey);
 		var from = new EmailAddress(fromEmail, "Sender Name");
 		var to = new EmailAddress(toEmail, "Recipient Name");
 		var msg = MailHelper.CreateSingleEmail(from, to, subject, body, body);

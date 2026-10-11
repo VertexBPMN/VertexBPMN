@@ -63,6 +63,33 @@ internal static class GitRemoteReferences
 		{
 			throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
 		}
+		var heads = ParseHeads(text, cancellationToken);
+		// Changing ANY head invalidates a continuation, including a reset retaining branch names.
+		var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+			binding.Id.ToString("N") + "\n" + binding.TenantId + "\n" + binding.Remote.AbsoluteUri + "\n"
+			+ string.Join('\n', heads.Select(head => head.Key + "\t" + head.Value)))));
+		var prefix = fingerprint + ":";
+		var ordered = heads.Keys.ToArray();
+		var offset = 0;
+		if (cursor is not null)
+		{
+			if (!cursor.StartsWith(prefix, StringComparison.Ordinal))
+			{
+				throw new SourceControlSecurityException(SourceControlErrorCode.RevisionConflict);
+			}
+			var previous = Array.IndexOf(ordered, cursor[prefix.Length..]);
+			if (previous < 0)
+			{
+				throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+			}
+			offset = previous + 1;
+		}
+		var page = ordered.Skip(offset).Take(pageSize).ToArray();
+		return new(page, offset + page.Length < ordered.Length ? prefix + page[^1] : null);
+	}
+
+	private static SortedDictionary<string, string> ParseHeads(string text, CancellationToken cancellationToken)
+	{
 		var heads = new SortedDictionary<string, string>(StringComparer.Ordinal);
 		var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 		foreach (var line in text.Split('\n', StringSplitOptions.RemoveEmptyEntries))
@@ -89,27 +116,6 @@ internal static class GitRemoteReferences
 			}
 			heads.Add(name, oid);
 		}
-		// Changing ANY head invalidates a continuation, including a reset retaining branch names.
-		var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
-			binding.Id.ToString("N") + "\n" + binding.TenantId + "\n" + binding.Remote.AbsoluteUri + "\n"
-			+ string.Join('\n', heads.Select(head => head.Key + "\t" + head.Value)))));
-		var prefix = fingerprint + ":";
-		var ordered = heads.Keys.ToArray();
-		var offset = 0;
-		if (cursor is not null)
-		{
-			if (!cursor.StartsWith(prefix, StringComparison.Ordinal))
-			{
-				throw new SourceControlSecurityException(SourceControlErrorCode.RevisionConflict);
-			}
-			var previous = Array.IndexOf(ordered, cursor[prefix.Length..]);
-			if (previous < 0)
-			{
-				throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
-			}
-			offset = previous + 1;
-		}
-		var page = ordered.Skip(offset).Take(pageSize).ToArray();
-		return new(page, offset + page.Length < ordered.Length ? prefix + page[^1] : null);
+		return heads;
 	}
 }

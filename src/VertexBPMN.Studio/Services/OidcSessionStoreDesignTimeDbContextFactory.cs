@@ -8,7 +8,7 @@ namespace VertexBPMN.Studio.Services;
 /// Repos gegen SQLite (kanonisches Modell); PostgreSQL/Kompatibilität wird im Acceptance-Test
 /// über den vollständigen Migrationspfad nachgewiesen.
 /// </summary>
-public sealed class OidcSessionStoreDesignTimeDbContextFactory : IDesignTimeDbContextFactory<OidcSessionStoreDbContext>
+internal sealed class OidcSessionStoreDesignTimeDbContextFactory : IDesignTimeDbContextFactory<OidcSessionStoreDbContext>
 {
     public OidcSessionStoreDbContext CreateDbContext(string[] args)
     {

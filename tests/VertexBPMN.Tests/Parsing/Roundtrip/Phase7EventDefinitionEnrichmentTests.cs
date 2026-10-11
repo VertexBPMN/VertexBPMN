@@ -10,11 +10,7 @@ namespace VertexBPMN.Tests.Parsing.Roundtrip;
 /// </summary>
 public class Phase7EventDefinitionEnrichmentTests
 {
-    [Fact]
-    public async Task StandardEventDefinitions_ShouldNormalizeCorrectly()
-    {
-        // Arrange - Standard BPMN event definitions
-        const string xml = """
+	private const string StandardEventDefinitionsXml = """
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <process id="testProcess">
     <startEvent id="start">
@@ -41,56 +37,68 @@ public class Phase7EventDefinitionEnrichmentTests
 </definitions>
 """;
 
-        var options = new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict };
-        var parser = new BpmnParser(options);
+	[Fact]
+	public async Task StandardEventDefinitions_ShouldNormalizeCorrectly()
+	{
+		// Arrange - Standard BPMN event definitions
+		const string xml = StandardEventDefinitionsXml;
 
-        // Act
-        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		var options = new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict };
+		var parser = new BpmnParser(options);
 
-        // Assert - Should have strongly-typed event definitions
-        Assert.Equal(5, model.Events.Count);
-        
-        // Timer event
-        var timerEvent = model.Events.First(e => e.Id == "start");
-        Assert.Single(timerEvent.Definitions);
-        Assert.IsType<TimerEventDefinition>(timerEvent.Definitions[0]);
-        var timerDef = (TimerEventDefinition)timerEvent.Definitions[0];
-        Assert.Equal("2025-01-01T10:00:00Z", timerDef.TimeDate);
-        Assert.Null(timerDef.TimeDuration);
-        Assert.Null(timerDef.TimeCycle);
+		// Act
+		var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
 
-        // Message event
-        var messageEvent = model.Events.First(e => e.Id == "message1");
-        Assert.Single(messageEvent.Definitions);
-        Assert.IsType<MessageEventDefinition>(messageEvent.Definitions[0]);
-        var messageDef = (MessageEventDefinition)messageEvent.Definitions[0];
-        Assert.Equal("msg1", messageDef.MessageRef);
+		// Assert - Should have strongly-typed event definitions
+		Assert.NotNull(model.Events);
+		Assert.Equal(5, model.Events.Count);
 
-        // Signal event  
-        var signalEvent = model.Events.First(e => e.Id == "signal1");
-        Assert.Single(signalEvent.Definitions);
-        Assert.IsType<SignalEventDefinition>(signalEvent.Definitions[0]);
-        var signalDef = (SignalEventDefinition)signalEvent.Definitions[0];
-        Assert.Equal("sig1", signalDef.SignalRef);
+		// Timer event
+		var timerEvent = model.Events.First(e => e.Id == "start");
+		Assert.NotNull(timerEvent.Definitions);
+		Assert.Single(timerEvent.Definitions);
+		Assert.IsType<TimerEventDefinition>(timerEvent.Definitions[0]);
+		var timerDef = (TimerEventDefinition)timerEvent.Definitions[0];
+		Assert.Equal("2025-01-01T10:00:00Z", timerDef.TimeDate);
+		Assert.Null(timerDef.TimeDuration);
+		Assert.Null(timerDef.TimeCycle);
 
-        // Error event
-        var errorEvent = model.Events.First(e => e.Id == "error1");
-        Assert.Single(errorEvent.Definitions);
-        Assert.IsType<ErrorEventDefinition>(errorEvent.Definitions[0]);
-        var errorDef = (ErrorEventDefinition)errorEvent.Definitions[0];
-        Assert.Equal("err1", errorDef.ErrorRef);
+		// Message event
+		var messageEvent = model.Events.First(e => e.Id == "message1");
+		Assert.NotNull(messageEvent.Definitions);
+		Assert.Single(messageEvent.Definitions);
+		Assert.IsType<MessageEventDefinition>(messageEvent.Definitions[0]);
+		var messageDef = (MessageEventDefinition)messageEvent.Definitions[0];
+		Assert.Equal("msg1", messageDef.MessageRef);
 
-        // Terminate event
-        var terminateEvent = model.Events.First(e => e.Id == "end");
-        Assert.Single(terminateEvent.Definitions);
-        Assert.IsType<TerminateEventDefinition>(terminateEvent.Definitions[0]);
-    }
+		// Signal event  
+		var signalEvent = model.Events.First(e => e.Id == "signal1");
+		Assert.NotNull(signalEvent.Definitions);
+		Assert.Single(signalEvent.Definitions);
+		Assert.IsType<SignalEventDefinition>(signalEvent.Definitions[0]);
+		var signalDef = (SignalEventDefinition)signalEvent.Definitions[0];
+		Assert.Equal("sig1", signalDef.SignalRef);
 
-    [Fact]
-    public async Task VendorEventDefinitions_ShouldCaptureRawAndDiagnose()
-    {
-        // Arrange - Model with vendor/unknown event definitions
-        const string xml = """
+		// Error event
+		var errorEvent = model.Events.First(e => e.Id == "error1");
+		Assert.NotNull(errorEvent.Definitions);
+		Assert.Single(errorEvent.Definitions);
+		Assert.IsType<ErrorEventDefinition>(errorEvent.Definitions[0]);
+		var errorDef = (ErrorEventDefinition)errorEvent.Definitions[0];
+		Assert.Equal("err1", errorDef.ErrorRef);
+
+		// Terminate event
+		var terminateEvent = model.Events.First(e => e.Id == "end");
+		Assert.NotNull(terminateEvent.Definitions);
+		Assert.Single(terminateEvent.Definitions);
+		Assert.IsType<TerminateEventDefinition>(terminateEvent.Definitions[0]);
+	}
+
+	[Fact]
+	public async Task VendorEventDefinitions_ShouldCaptureRawAndDiagnose()
+	{
+		// Arrange - Model with vendor/unknown event definitions
+		const string xml = """
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
              xmlns:custom="http://example.com/custom">
   <process id="testProcess">
@@ -104,42 +112,43 @@ public class Phase7EventDefinitionEnrichmentTests
 </definitions>
 """;
 
-        var options = new BpmnParserOptions 
-        { 
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = true
-        };
-        var parser = new BpmnParser(options);
+		var options = new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = true
+		};
+		var parser = new BpmnParser(options);
 
-        // Act
-        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		// Act
+		var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
 
-        // Assert - Should handle unknown event definitions gracefully
-        Assert.Equal(2, model.Events.Count);
-        
-        // Should have captured raw event definitions in metadata
-        Assert.NotNull(model.RawMetadata?.RawEventDefinitions);
-        Assert.True(model.RawMetadata.RawEventDefinitions.ContainsKey("start"));
-        Assert.True(model.RawMetadata.RawEventDefinitions.ContainsKey("vendor1"));
-        
-        // Should have validation diagnostics for unknown event definitions
-        Assert.NotNull(model.ValidationDiagnostics);
-        var vendorDiagnostics = model.ValidationDiagnostics
-            .Where(d => d.Code == "VEN-UNKNOWN-EVENT-DEFINITION").ToList();
-        Assert.Equal(2, vendorDiagnostics.Count);
+		// Assert - Should handle unknown event definitions gracefully
+		Assert.NotNull(model.Events);
+		Assert.Equal(2, model.Events.Count);
 
-        // Check diagnostic details
-        Assert.Contains(vendorDiagnostics, d => d.ElementId == "start" &&
-            d.Message.Contains("custom:customEventDefinition"));
-        Assert.Contains(vendorDiagnostics, d => d.ElementId == "vendor1" &&
-            d.Message.Contains("custom:vendorSpecificEvent"));
-    }
+		// Should have captured raw event definitions in metadata
+		Assert.NotNull(model.RawMetadata?.RawEventDefinitions);
+		Assert.True(model.RawMetadata.RawEventDefinitions.ContainsKey("start"));
+		Assert.True(model.RawMetadata.RawEventDefinitions.ContainsKey("vendor1"));
 
-    [Fact]
-    public async Task MultipleEventDefinitions_ShouldNormalizeAll()
-    {
-        // Arrange - Event with multiple definitions (BPMN 2.0 allows this)
-        const string xml = """
+		// Should have validation diagnostics for unknown event definitions
+		Assert.NotNull(model.ValidationDiagnostics);
+		var vendorDiagnostics = model.ValidationDiagnostics
+			.Where(d => d.Code == "VEN-UNKNOWN-EVENT-DEFINITION").ToList();
+		Assert.Equal(2, vendorDiagnostics.Count);
+
+		// Check diagnostic details
+		Assert.Contains(vendorDiagnostics, d => d.ElementId == "start" &&
+			d.Message.Contains("custom:customEventDefinition", StringComparison.Ordinal));
+		Assert.Contains(vendorDiagnostics, d => d.ElementId == "vendor1" &&
+			d.Message.Contains("custom:vendorSpecificEvent", StringComparison.Ordinal));
+	}
+
+	[Fact]
+	public async Task MultipleEventDefinitions_ShouldNormalizeAll()
+	{
+		// Arrange - Event with multiple definitions (BPMN 2.0 allows this)
+		const string xml = """
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <process id="testProcess">
     <intermediateCatchEvent id="multi1">
@@ -153,32 +162,34 @@ public class Phase7EventDefinitionEnrichmentTests
 </definitions>
 """;
 
-        var options = new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict };
-        var parser = new BpmnParser(options);
+		var options = new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict };
+		var parser = new BpmnParser(options);
 
-        // Act
-        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		// Act
+		var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
 
-        // Assert - Should have both event definitions
-        var multiEvent = model.Events.First(e => e.Id == "multi1");
-        Assert.Equal(2, multiEvent.Definitions.Count);
-        
-        // Check both definitions are parsed correctly
-        Assert.Contains(multiEvent.Definitions, d => d is TimerEventDefinition);
-        Assert.Contains(multiEvent.Definitions, d => d is MessageEventDefinition);
-        
-        var timerDef = multiEvent.Definitions.OfType<TimerEventDefinition>().First();
-        Assert.Equal("PT5M", timerDef.TimeDuration);
-        
-        var messageDef = multiEvent.Definitions.OfType<MessageEventDefinition>().First();
-        Assert.Equal("msg1", messageDef.MessageRef);
-    }
+		// Assert - Should have both event definitions
+		Assert.NotNull(model.Events);
+		var multiEvent = model.Events.First(e => e.Id == "multi1");
+		Assert.NotNull(multiEvent.Definitions);
+		Assert.Equal(2, multiEvent.Definitions.Count);
 
-    [Fact]  
-    public async Task EventDefinitionProjection_ShouldMaintainConsistentCounts()
-    {
-        // Arrange
-        const string xml = """
+		// Check both definitions are parsed correctly
+		Assert.Contains(multiEvent.Definitions, d => d is TimerEventDefinition);
+		Assert.Contains(multiEvent.Definitions, d => d is MessageEventDefinition);
+
+		var timerDef = multiEvent.Definitions.OfType<TimerEventDefinition>().First();
+		Assert.Equal("PT5M", timerDef.TimeDuration);
+
+		var messageDef = multiEvent.Definitions.OfType<MessageEventDefinition>().First();
+		Assert.Equal("msg1", messageDef.MessageRef);
+	}
+
+	[Fact]
+	public async Task EventDefinitionProjection_ShouldMaintainConsistentCounts()
+	{
+		// Arrange
+		const string xml = """
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <process id="testProcess">
     <startEvent id="start">
@@ -197,46 +208,48 @@ public class Phase7EventDefinitionEnrichmentTests
 </definitions>
 """;
 
-        var options = new BpmnParserOptions 
-        { 
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            BuildRuntimeProjection = true
-        };
-        var parser = new BpmnParser(options);
+		var options = new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			BuildRuntimeProjection = true
+		};
+		var parser = new BpmnParser(options);
 
-        // Act
-        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		// Act
+		var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
 
-        // Assert - Runtime projection should see consistent event definition counts
-        Assert.NotNull(model.Runtime);
-        
-        // Count event definitions in strict model
-        var strictEventDefCount = model.Events.Sum(e => e.Definitions.Count);
-        Assert.Equal(3, strictEventDefCount); // timer + message + terminate
-        
-        // Verify runtime projection has the same events as flow nodes
-        var runtimeEventNodes = model.Runtime.FlowNodes.Where(n => n.Type.EndsWith("Event")).ToList();
-        Assert.Equal(model.Events.Count, runtimeEventNodes.Count); // Should have same number of event nodes
-        Assert.Equal(3, runtimeEventNodes.Count); // start, catch1, end
-        
-        // Verify event IDs match between strict and runtime models
-        var strictEventIds = model.Events.Select(e => e.Id).OrderBy(id => id).ToList();
-        var runtimeEventIds = runtimeEventNodes.Select(n => n.Id).OrderBy(id => id).ToList();
-        Assert.Equal(strictEventIds, runtimeEventIds);
-        
-        // Verify that events with definitions exist in runtime
-        var eventsWithDefinitions = model.Events.Where(e => e.Definitions.Count > 0).Select(e => e.Id).ToList();
-        foreach (var eventId in eventsWithDefinitions)
-        {
-            Assert.Contains(runtimeEventNodes, n => n.Id == eventId);
-        }
-    }
+		// Assert - Runtime projection should see consistent event definition counts
+		Assert.NotNull(model.Runtime);
 
-    [Fact]
-    public async Task EventDefinitionRoundtrip_ShouldBeByteIdentical()
-    {
-        // Arrange - Complex event definitions for roundtrip test
-        const string xml = """
+		// Count event definitions in strict model
+		Assert.NotNull(model.Events);
+		Assert.All(model.Events, e => Assert.NotNull(e.Definitions));
+		var strictEventDefCount = model.Events.Sum(e => e.Definitions!.Count);
+		Assert.Equal(3, strictEventDefCount); // timer + message + terminate
+
+		// Verify runtime projection has the same events as flow nodes
+		var runtimeEventNodes = model.Runtime.FlowNodes.Where(n => n.Type.EndsWith("Event", StringComparison.Ordinal)).ToList();
+		Assert.Equal(model.Events.Count, runtimeEventNodes.Count); // Should have same number of event nodes
+		Assert.Equal(3, runtimeEventNodes.Count); // start, catch1, end
+
+		// Verify event IDs match between strict and runtime models
+		var strictEventIds = model.Events.Select(e => e.Id).OrderBy(id => id, StringComparer.Ordinal).ToList();
+		var runtimeEventIds = runtimeEventNodes.Select(n => n.Id).OrderBy(id => id, StringComparer.Ordinal).ToList();
+		Assert.Equal(strictEventIds, runtimeEventIds);
+
+		// Verify that events with definitions exist in runtime
+		var eventsWithDefinitions = model.Events.Where(e => e.Definitions!.Count > 0).Select(e => e.Id).ToList();
+		foreach (var eventId in eventsWithDefinitions)
+		{
+			Assert.Contains(runtimeEventNodes, n => n.Id == eventId);
+		}
+	}
+
+	[Fact]
+	public async Task EventDefinitionRoundtrip_ShouldBeByteIdentical()
+	{
+		// Arrange - Complex event definitions for roundtrip test
+		const string xml = """
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <process id="testProcess">
     <startEvent id="start">
@@ -261,41 +274,45 @@ public class Phase7EventDefinitionEnrichmentTests
 </definitions>
 """;
 
-        var options = new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict, EnableNormalizedProjectionSerializer = true };
-        var parser = new BpmnParser(options);
+		var options = new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict, EnableNormalizedProjectionSerializer = true };
+		var parser = new BpmnParser(options);
 
-        // Act
-        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
-        var serialized = parser.Serialize(model);
+		// Act
+		var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		var serialized = parser.Serialize(model);
 
-        // Assert - Roundtrip should be byte-identical (or canonically equivalent)
-        // This is a placeholder - actual implementation should normalize whitespace
-        Assert.Contains("<timerEventDefinition>", serialized);
-        Assert.Contains("<timeDate>2025-01-01T00:00:00Z</timeDate>", serialized);
-        Assert.Contains("<messageEventDefinition", serialized);
-        Assert.Contains("messageRef=\"msg1\"", serialized);
-        Assert.Contains("correlationKey=\"key1\"", serialized);
-        Assert.Contains("<conditionalEventDefinition>", serialized);
-        Assert.Contains("<![CDATA[${variable > 100}]]>", serialized);
-        Assert.Contains("<escalationEventDefinition", serialized);
-        Assert.Contains("escalationRef=\"esc1\"", serialized);
-        
-        // Verify no data loss in roundtrip
-        var reparsed = await parser.ParseAsync(serialized, TestContext.Current.CancellationToken);
-        Assert.Equal(model.Events.Count, reparsed.Events.Count);
-        
-        foreach (var originalEvent in model.Events)
-        {
-            var reparsedEvent = reparsed.Events.First(e => e.Id == originalEvent.Id);
-            Assert.Equal(originalEvent.Definitions.Count, reparsedEvent.Definitions.Count);
-        }
-    }
+		// Assert - Roundtrip should be byte-identical (or canonically equivalent)
+		// This is a placeholder - actual implementation should normalize whitespace
+		Assert.Contains("<timerEventDefinition>", serialized, StringComparison.Ordinal);
+		Assert.Contains("<timeDate>2025-01-01T00:00:00Z</timeDate>", serialized, StringComparison.Ordinal);
+		Assert.Contains("<messageEventDefinition", serialized, StringComparison.Ordinal);
+		Assert.Contains("messageRef=\"msg1\"", serialized, StringComparison.Ordinal);
+		Assert.Contains("correlationKey=\"key1\"", serialized, StringComparison.Ordinal);
+		Assert.Contains("<conditionalEventDefinition>", serialized, StringComparison.Ordinal);
+		Assert.Contains("<![CDATA[${variable > 100}]]>", serialized, StringComparison.Ordinal);
+		Assert.Contains("<escalationEventDefinition", serialized, StringComparison.Ordinal);
+		Assert.Contains("escalationRef=\"esc1\"", serialized, StringComparison.Ordinal);
 
-    [Fact]
-    public async Task UnknownEventDefinitionMutation_ShouldProduceDiagnostic()
-    {
-        // Arrange - Test diagnostic when raw path is chosen for unknown definitions
-        const string xml = """
+		// Verify no data loss in roundtrip
+		var reparsed = await parser.ParseAsync(serialized, TestContext.Current.CancellationToken);
+		Assert.NotNull(model.Events);
+		Assert.NotNull(reparsed.Events);
+		Assert.Equal(model.Events.Count, reparsed.Events.Count);
+
+		foreach (var originalEvent in model.Events)
+		{
+			var reparsedEvent = reparsed.Events.First(e => e.Id == originalEvent.Id);
+			Assert.NotNull(originalEvent.Definitions);
+			Assert.NotNull(reparsedEvent.Definitions);
+			Assert.Equal(originalEvent.Definitions.Count, reparsedEvent.Definitions.Count);
+		}
+	}
+
+	[Fact]
+	public async Task UnknownEventDefinitionMutation_ShouldProduceDiagnostic()
+	{
+		// Arrange - Test diagnostic when raw path is chosen for unknown definitions
+		const string xml = """
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
              xmlns:unknown="http://vendor.com/unknown">
   <process id="testProcess">
@@ -306,35 +323,35 @@ public class Phase7EventDefinitionEnrichmentTests
 </definitions>
 """;
 
-        var options = new BpmnParserOptions 
-        { 
-            RoundtripMode = BpmnRoundtripMode.Strict,
-            EnableAdvancedValidation = true,
-            ValidateRuntimeSemantics = true
-        };
-        var parser = new BpmnParser(options);
+		var options = new BpmnParserOptions
+		{
+			RoundtripMode = BpmnRoundtripMode.Strict,
+			EnableAdvancedValidation = true,
+			ValidateRuntimeSemantics = true
+		};
+		var parser = new BpmnParser(options);
 
-        // Act
-        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		// Act
+		var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
 
-        // Assert - Should have diagnostic about unknown event definition
-        Assert.NotNull(model.ValidationDiagnostics);
-        var unknownDiagnostic = model.ValidationDiagnostics
-            .FirstOrDefault(d => d.Code == "VEN-UNKNOWN-EVENT-DEFINITION");
-        Assert.Equal("start", unknownDiagnostic.ElementId);
-        Assert.Contains("unknown:proprietaryEventDefinition", unknownDiagnostic.Message);
-        Assert.Equal(ValidationSeverity.Info, unknownDiagnostic.Severity);
-        
-        // Raw event definition should still be captured
-        Assert.NotNull(model.RawMetadata?.RawEventDefinitions);
-        Assert.True(model.RawMetadata.RawEventDefinitions.ContainsKey("start"));
-    }
+		// Assert - Should have diagnostic about unknown event definition
+		Assert.NotNull(model.ValidationDiagnostics);
+		var unknownDiagnostic = model.ValidationDiagnostics
+			.FirstOrDefault(d => d.Code == "VEN-UNKNOWN-EVENT-DEFINITION");
+		Assert.Equal("start", unknownDiagnostic.ElementId);
+		Assert.Contains("unknown:proprietaryEventDefinition", unknownDiagnostic.Message, StringComparison.Ordinal);
+		Assert.Equal(ValidationSeverity.Info, unknownDiagnostic.Severity);
 
-    [Fact] 
-    public async Task EmptyEventDefinitions_ShouldBeHandledGracefully()
-    {
-        // Arrange - Events without event definitions (plain events)
-        const string xml = """
+		// Raw event definition should still be captured
+		Assert.NotNull(model.RawMetadata?.RawEventDefinitions);
+		Assert.True(model.RawMetadata.RawEventDefinitions.ContainsKey("start"));
+	}
+
+	[Fact]
+	public async Task EmptyEventDefinitions_ShouldBeHandledGracefully()
+	{
+		// Arrange - Events without event definitions (plain events)
+		const string xml = """
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <process id="testProcess">
     <startEvent id="start"/>
@@ -343,24 +360,27 @@ public class Phase7EventDefinitionEnrichmentTests
 </definitions>
 """;
 
-        var options = new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict };
-        var parser = new BpmnParser(options);
+		var options = new BpmnParserOptions { RoundtripMode = BpmnRoundtripMode.Strict };
+		var parser = new BpmnParser(options);
 
-        // Act
-        var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		// Act
+		var model = await parser.ParseAsync(xml, TestContext.Current.CancellationToken);
 
-        // Assert - Should handle events without definitions
-        Assert.Equal(2, model.Events.Count);
-        
-        var startEvent = model.Events.First(e => e.Id == "start");
-        var endEvent = model.Events.First(e => e.Id == "end");
-        
-        Assert.Empty(startEvent.Definitions);
-        Assert.Empty(endEvent.Definitions);
-        
-        // No diagnostics should be generated for plain events
-        var eventDefDiagnostics = model.ValidationDiagnostics?
-            .Where(d => d.Code.StartsWith("VEN-UNKNOWN-EVENT")) ?? [];
-        Assert.Empty(eventDefDiagnostics);
-    }
+		// Assert - Should handle events without definitions
+		Assert.NotNull(model.Events);
+		Assert.Equal(2, model.Events.Count);
+
+		var startEvent = model.Events.First(e => e.Id == "start");
+		var endEvent = model.Events.First(e => e.Id == "end");
+
+		Assert.NotNull(startEvent.Definitions);
+		Assert.Empty(startEvent.Definitions);
+		Assert.NotNull(endEvent.Definitions);
+		Assert.Empty(endEvent.Definitions);
+
+		// No diagnostics should be generated for plain events
+		var eventDefDiagnostics = model.ValidationDiagnostics?
+			.Where(d => d.Code.StartsWith("VEN-UNKNOWN-EVENT", StringComparison.Ordinal)) ?? [];
+		Assert.Empty(eventDefDiagnostics);
+	}
 }

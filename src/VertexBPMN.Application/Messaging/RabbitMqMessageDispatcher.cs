@@ -7,7 +7,7 @@ using VertexBPMN.Domain.Model.Cmn;
 
 namespace VertexBPMN.Application.Messaging;
 
-public class RabbitMqMessageDispatcher : IMessageDispatcher
+public class RabbitMqMessageDispatcher : IMessageDispatcher, IDisposable
 {
 	private readonly string _rabbitMqConnectionString;
 	private IConnection? _connection;
@@ -32,7 +32,7 @@ public class RabbitMqMessageDispatcher : IMessageDispatcher
 
 		var factory = new ConnectionFactory { Uri = new Uri(_rabbitMqConnectionString) };
 		_connection = await factory.CreateConnectionAsync(cancellationToken);
-		_channel = await _connection.CreateChannelAsync();
+		_channel = await _connection.CreateChannelAsync(cancellationToken: cancellationToken);
 		await _channel.ExchangeDeclareAsync("service_tasks", ExchangeType.Direct, durable: true, cancellationToken: cancellationToken);
 		return _channel;
 	}
@@ -57,9 +57,11 @@ public class RabbitMqMessageDispatcher : IMessageDispatcher
 		var body = Encoding.UTF8.GetBytes(messageBody);
 
 		// Publish the message to the RabbitMQ exchange
-		var properties = new BasicProperties();
-		properties.ContentType = "text/plain";
-		properties.DeliveryMode = DeliveryModes.Persistent;
+		var properties = new BasicProperties
+		{
+			ContentType = "text/plain",
+			DeliveryMode = DeliveryModes.Persistent
+		};
 
 
 		var channel = await GetChannelAsync(ct);
@@ -68,13 +70,23 @@ public class RabbitMqMessageDispatcher : IMessageDispatcher
 			routingKey: targetWorkerId, // Use the worker ID as the routing key
 			mandatory: true,
 			basicProperties: properties,
-			body: body);
+			body: body,
+			cancellationToken: ct);
 	}
 
 	public void Dispose()
 	{
-		_channel?.Dispose();
-		_connection?.Dispose();
+		Dispose(true);
+		GC.SuppressFinalize(this);
+	}
+
+	protected virtual void Dispose(bool disposing)
+	{
+		if (disposing)
+		{
+			_channel?.Dispose();
+			_connection?.Dispose();
+		}
 	}
 
 	public Task DispatchServiceTaskAsync(string targetWorkerId, string implementation, Dictionary<string, string> attributes, Dictionary<string, object> variables, Guid? processInstanceId = null, string? tenantId = null, CancellationToken cancellationToken = default)
@@ -105,7 +117,7 @@ public class RabbitMqMessageDispatcher : IMessageDispatcher
 		return Task.CompletedTask;
 	}
 
-	public Task<Dictionary<string, object>> DispatchDmnTaskAsync(string targetWorker, string decisionRef, Dictionary<string, object> variables,
+	public Task<Dictionary<string, object?>> DispatchDmnTaskAsync(string targetWorker, string decisionRef, Dictionary<string, object> variables,
 		CancellationToken cancellationToken = default)
 	{
 		throw new NotSupportedException("RabbitMQ DMN dispatch requires a response-consumer contract.");

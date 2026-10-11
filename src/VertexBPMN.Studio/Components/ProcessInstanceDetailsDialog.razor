@@ -343,7 +343,7 @@
         Snackbar.Add("Process instance details refreshed", Severity.Success);
     }
 
-    private Color GetStateColor(string state) => state?.ToLower() switch
+    private static Color GetStateColor(string state) => state?.ToLower() switch
     {
         "active" or "running" => Color.Success,
         "incident" => Color.Error,
@@ -390,7 +390,7 @@
         };
     }
 
-    private Color GetEventColor(string eventType) => eventType?.ToLower() switch
+    private static Color GetEventColor(string eventType) => eventType?.ToLower() switch
     {
         "process_started" => Color.Success,
         "process_completed" => Color.Info,

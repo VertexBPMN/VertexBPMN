@@ -27,9 +27,9 @@ internal sealed class SourceControlJobsHostedService(IServiceScopeFactory scopes
 					(x.Kind == (int)SourceControlOperationKind.Commit || x.Kind == (int)SourceControlOperationKind.Push
 						|| x.Kind == (int)SourceControlOperationKind.PullRequest)
 					&& (x.State == (int)SourceControlOperationState.Queued
-						|| x.State == (int)SourceControlOperationState.ResultUnknown && x.UpdatedUtcTicks <= retryBefore
-						|| x.Kind == (int)SourceControlOperationKind.PullRequest && x.LeaseUntilUtcTicks <= now.UtcTicks
-							&& (x.State == (int)SourceControlOperationState.Running || x.State == (int)SourceControlOperationState.Reconciling)))
+						|| (x.State == (int)SourceControlOperationState.ResultUnknown && x.UpdatedUtcTicks <= retryBefore)
+						|| (x.Kind == (int)SourceControlOperationKind.PullRequest && x.LeaseUntilUtcTicks <= now.UtcTicks
+							&& (x.State == (int)SourceControlOperationState.Running || x.State == (int)SourceControlOperationState.Reconciling))))
 					.OrderBy(x => x.UpdatedUtcTicks).Take(8).ToArrayAsync(stoppingToken);
 				foreach (var job in jobs)
 				{
@@ -37,17 +37,27 @@ internal sealed class SourceControlJobsHostedService(IServiceScopeFactory scopes
 					var store = scope.ServiceProvider.GetRequiredService<PersistentSourceControlStore>();
 					var worker = "host-" + Guid.NewGuid().ToString("N");
 					var fence = await store.TryClaimAsync(job.TenantId, job.Id, worker, DateTimeOffset.UtcNow, TimeSpan.FromMinutes(2), stoppingToken);
-					if (fence is null) continue;
+					if (fence is null)
+					{
+						continue;
+					}
+
 					var actors = scope.ServiceProvider.GetRequiredService<ISourceControlActorResolver>();
 					if (job.Kind == (int)SourceControlOperationKind.Commit)
+					{
 						await scope.ServiceProvider.GetRequiredService<SourceControlClaimedCommitRunner>()
 							.RunAsync(context, job.Id, worker, fence.Value, token => actors.ResolveAsync(context, token), stoppingToken);
+					}
 					else if (job.Kind == (int)SourceControlOperationKind.Push)
+					{
 						await scope.ServiceProvider.GetRequiredService<SourceControlClaimedPushRunner>()
 							.RunAsync(context, job.Id, worker, fence.Value, token => actors.ResolveAsync(context, token), stoppingToken);
+					}
 					else
+					{
 						await scope.ServiceProvider.GetRequiredService<SourceControlClaimedPullRequestRunner>()
 							.RunAsync(context, job.Id, worker, fence.Value, token => actors.ResolveAsync(context, token), stoppingToken);
+					}
 				}
 			}
 			catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return; }

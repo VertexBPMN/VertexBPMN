@@ -36,8 +36,12 @@ public sealed class WorkflowTriggerRepository(BpmnDbContext db) : IWorkflowTrigg
     public async Task<bool> DeleteAsync(Guid id, string? tenantId = null, CancellationToken cancellationToken = default)
     {
         var trigger = await GetAsync(id, tenantId, cancellationToken);
-        if (trigger is null) return false;
-        db.WorkflowTriggers.Remove(trigger);
+        if (trigger is null)
+		{
+			return false;
+		}
+
+		db.WorkflowTriggers.Remove(trigger);
         await db.SaveChangesAsync(cancellationToken);
         return true;
     }

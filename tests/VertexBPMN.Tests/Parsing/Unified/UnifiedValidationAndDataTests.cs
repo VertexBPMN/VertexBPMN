@@ -4,26 +4,27 @@ namespace VertexBPMN.Tests.Parsing.Unified;
 
 public class UnifiedValidationAndDataTests
 {
-    private readonly BpmnParser _parser = new();
+	private readonly BpmnParser _parser = new();
 
-    [Fact]
-    public async Task Reports_No_Start_Event()
-    {
-        var xml = """
+	[Fact]
+	public async Task Reports_No_Start_Event()
+	{
+		const string xml = """
 <definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <process id='p1'>
     <endEvent id='e1'/>
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
-        Assert.Contains(model.Diagnostics, d => d.Contains("No startEvent"));
-    }
+		var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		Assert.NotNull(model.Diagnostics);
+		Assert.Contains(model.Diagnostics, d => d.Contains("No startEvent", StringComparison.Ordinal));
+	}
 
-    [Fact]
-    public async Task Detects_Default_Flow_With_Condition()
-    {
-        var xml = """
+	[Fact]
+	public async Task Detects_Default_Flow_With_Condition()
+	{
+		const string xml = """
 <definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>
  <process id='p1'>
    <exclusiveGateway id='g1' default='f2'/>
@@ -38,14 +39,15 @@ public class UnifiedValidationAndDataTests
  </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
-        Assert.Contains(model.Diagnostics, d => d.Contains("Default flow") && d.Contains("f2"));
-    }
+		var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		Assert.NotNull(model.Diagnostics);
+		Assert.Contains(model.Diagnostics, d => d.Contains("Default flow", StringComparison.Ordinal) && d.Contains("f2", StringComparison.Ordinal));
+	}
 
-    [Fact]
-    public async Task Reports_Invalid_Boundary_Attachment()
-    {
-        var xml = """
+	[Fact]
+	public async Task Reports_Invalid_Boundary_Attachment()
+	{
+		const string xml = """
 <definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>
  <process id='p1'>
    <startEvent id='s1'/>
@@ -55,14 +57,15 @@ public class UnifiedValidationAndDataTests
  </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
-        Assert.Contains(model.Diagnostics, d => d.Contains("attachedToRef") && d.Contains("missing"));
-    }
+		var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		Assert.NotNull(model.Diagnostics);
+		Assert.Contains(model.Diagnostics, d => d.Contains("attachedToRef", StringComparison.Ordinal) && d.Contains("missing", StringComparison.Ordinal));
+	}
 
-    [Fact]
-    public async Task Reports_Unmatched_Link()
-    {
-        var xml = """
+	[Fact]
+	public async Task Reports_Unmatched_Link()
+	{
+		const string xml = """
 <definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>
  <process id='p1'>
    <intermediateThrowEvent id='throwLink'>
@@ -71,14 +74,15 @@ public class UnifiedValidationAndDataTests
  </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
-        Assert.Contains(model.Diagnostics, d => d.Contains("Unmatched link") && d.Contains("L_A"));
-    }
+		var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		Assert.NotNull(model.Diagnostics);
+		Assert.Contains(model.Diagnostics, d => d.Contains("Unmatched link", StringComparison.Ordinal) && d.Contains("L_A", StringComparison.Ordinal));
+	}
 
-    [Fact]
-    public async Task Parses_DataObjects_Stores_And_Properties()
-    {
-        var xml = """
+	[Fact]
+	public async Task Parses_DataObjects_Stores_And_Properties()
+	{
+		const string xml = """
 <definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <process id='p1'>
     <dataObject id='do_invoice' name='Invoice'/>
@@ -90,18 +94,23 @@ public class UnifiedValidationAndDataTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
-        Assert.Single(model.DataObjects);
-        Assert.Single(model.DataObjectReferences);
-        Assert.Single(model.DataStores);
-        Assert.Single(model.DataStoreReferences);
-        Assert.Equal(2, model.Properties.Count);
-    }
+		var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		Assert.NotNull(model.DataObjects);
+		Assert.Single(model.DataObjects);
+		Assert.NotNull(model.DataObjectReferences);
+		Assert.Single(model.DataObjectReferences);
+		Assert.NotNull(model.DataStores);
+		Assert.Single(model.DataStores);
+		Assert.NotNull(model.DataStoreReferences);
+		Assert.Single(model.DataStoreReferences);
+		Assert.NotNull(model.Properties);
+		Assert.Equal(2, model.Properties.Count);
+	}
 
-    [Fact]
-    public async Task Parses_Task_IO_Spec_With_Associations()
-    {
-        var xml = """
+	[Fact]
+	public async Task Parses_Task_IO_Spec_With_Associations()
+	{
+		const string xml = """
 <definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'>
   <process id='p1'>
     <userTask id='task1'>
@@ -123,11 +132,12 @@ public class UnifiedValidationAndDataTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
-        var io = Assert.Single(model.ActivityIo);
-        Assert.Single(io.DataInputs);
-        Assert.Single(io.DataOutputs);
-        Assert.Single(io.InputAssociations);
-        Assert.Single(io.OutputAssociations);
-    }
+		var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		Assert.NotNull(model.ActivityIo);
+		var io = Assert.Single(model.ActivityIo);
+		Assert.Single(io.DataInputs);
+		Assert.Single(io.DataOutputs);
+		Assert.Single(io.InputAssociations);
+		Assert.Single(io.OutputAssociations);
+	}
 }

@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace VertexBPMN.Studio.Services;
 
-public interface ISimulationScenarioService
+internal interface ISimulationScenarioService
 {
     Task<JsonElement> GetAllAsync(string? tenantId = null, CancellationToken cancellationToken = default);
     Task<JsonElement> GetByIdAsync(string id, CancellationToken cancellationToken = default);

@@ -9,12 +9,12 @@ internal sealed partial class ControlledGitProcess
 {
 	internal Task<GitCommitId?> ReadPushHeadAsync(GitWorkspace workspace, RepositoryBinding binding,
 		PushCommand command, GitHubTokenLease lease, CancellationToken cancellationToken) =>
-		WithPushRemoteAsync(workspace, binding, command, lease,
+		WithPushRemoteAsync(workspace, binding, command,
 			(addresses, token) => ReadRemoteHeadCoreAsync(workspace, binding.Remote, command.WorkBranch, lease, addresses, null, token), cancellationToken);
 
 	internal async Task PushAsync(GitWorkspace workspace, RepositoryBinding binding, PushCommand command,
 		GitHubTokenLease lease, CancellationToken cancellationToken) =>
-		_ = await WithPushRemoteAsync(workspace, binding, command, lease, async (addresses, token) =>
+		_ = await WithPushRemoteAsync(workspace, binding, command, async (addresses, token) =>
 		{
 			await PushCoreAsync(workspace, binding, command, lease, addresses, null, token);
 			return true;
@@ -36,8 +36,8 @@ internal sealed partial class ControlledGitProcess
 		return PushCoreAsync(workspace, binding, command, lease, [IPAddress.Loopback], certificateAuthorityFile, cancellationToken);
 	}
 
-	private async Task<T> WithPushRemoteAsync<T>(GitWorkspace workspace, RepositoryBinding binding, PushCommand command,
-		GitHubTokenLease lease, Func<IPAddress[], CancellationToken, Task<T>> execute, CancellationToken cancellationToken)
+	private async Task<T> WithPushRemoteAsync<T>(GitWorkspace workspace, RepositoryBinding binding, PushCommand command
+		, Func<IPAddress[], CancellationToken, Task<T>> execute, CancellationToken cancellationToken)
 	{
 		ValidatePush(binding, command);
 		SourceControlHttps.ValidateTarget(binding.Remote, options.Value.AllowedHosts);

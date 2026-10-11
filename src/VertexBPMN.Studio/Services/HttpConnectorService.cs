@@ -2,7 +2,7 @@ using System.Net.Http.Json;
 
 namespace VertexBPMN.Studio.Services;
 
-public sealed class HttpConnectorService(IHttpClientFactory httpClientFactory) : IConnectorService
+internal sealed class HttpConnectorService(IHttpClientFactory httpClientFactory) : IConnectorService
 {
     public async Task<IReadOnlyList<StudioConnector>> ListAsync(string tenantId, CancellationToken cancellationToken = default)
     {

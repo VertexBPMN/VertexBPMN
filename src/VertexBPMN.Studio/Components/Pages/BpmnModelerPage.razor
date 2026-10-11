@@ -72,7 +72,7 @@
             <MudText Typo="Typo.h6">n8n import report</MudText>
             @foreach (var item in _n8nImportReport)
             {
-                <MudAlert Dense="true" Severity="@(item.Disposition == "Migrated" ? Severity.Success : item.Disposition == "NeedsReview" ? Severity.Warning : Severity.Error)" Class="mt-2">
+                <MudAlert Dense="true" Severity="@(item.Disposition switch { "Migrated" => Severity.Success, "NeedsReview" => Severity.Warning, _ => Severity.Error })" Class="mt-2">
                     <strong>@item.NodeName</strong> (@item.NodeType): @item.Message
                 </MudAlert>
             }
@@ -241,6 +241,8 @@
 </MudStack>
 
 @code {
+    private void OnEngineStatusChanged(object? sender, EventArgs args) => _ = InvokeAsync(StateHasChanged);
+
     private string _bpmnXml = FallbackBpmn;
     private BpmnModelerSurface? _modeler;
     private BpmnViewerSurface? _viewer;
@@ -385,7 +387,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        ActiveEngineService.OnChange += StateHasChanged;
+        ActiveEngineService.OnChange += OnEngineStatusChanged;
         TenantContext.Changed += OnTenantChanged;
         await LoadBpmnXml(showNotification: false);
         await LoadConnectorTemplatesAsync();
@@ -396,11 +398,11 @@
 
     public void Dispose()
     {
-        ActiveEngineService.OnChange -= StateHasChanged;
+        ActiveEngineService.OnChange -= OnEngineStatusChanged;
         TenantContext.Changed -= OnTenantChanged;
     }
 
-    private async void OnTenantChanged()
+    private async void OnTenantChanged(object? sender, EventArgs args)
     {
         await InvokeAsync(async () =>
         {
@@ -538,7 +540,7 @@
             return;
         }
 
-        await using var stream = file.OpenReadStream(10 * 1024 * 1024);
+        await using var stream = StudioModelUpload.OpenReadStream(file);
         using var reader = new StreamReader(stream);
         _bpmnXml = await reader.ReadToEndAsync();
         _xmlPreview = _bpmnXml;
@@ -550,7 +552,7 @@
     {
         var file = args.File;
         if (file.Size > 10 * 1024 * 1024) { Snackbar.Add("n8n files must not exceed 10 MB.", Severity.Warning); return; }
-        await using var stream = file.OpenReadStream(10 * 1024 * 1024);
+        await using var stream = StudioModelUpload.OpenReadStream(file);
         using var reader = new StreamReader(stream);
         var workflowJson = await reader.ReadToEndAsync();
         try

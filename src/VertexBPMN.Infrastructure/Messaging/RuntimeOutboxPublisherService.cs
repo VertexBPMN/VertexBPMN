@@ -29,8 +29,10 @@ public sealed class RuntimeOutboxPublisherService(
             {
                 var published = await RunOnceAsync(stoppingToken);
                 if (published == 0)
-                    await Task.Delay(TimeSpan.FromMilliseconds(options.PollIntervalMilliseconds), stoppingToken);
-            }
+				{
+					await Task.Delay(TimeSpan.FromMilliseconds(options.PollIntervalMilliseconds), stoppingToken);
+				}
+			}
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 break;
@@ -63,11 +65,24 @@ public sealed class RuntimeOutboxPublisherService(
         {
             var message = await TryLeaseAsync(id, cancellationToken);
             if (message is null)
-                continue;
+			{
+				continue;
+			}
 
-            using var activity = RuntimeTelemetry.ActivitySource.StartActivity(
-                "runtime.outbox.publish",
-                ActivityKind.Producer);
+			if (await PublishSingleAsync(message, cancellationToken))
+            {
+                published++;
+            }
+        }
+
+        return published;
+    }
+
+    private async Task<bool> PublishSingleAsync(RuntimeOutboxMessage message, CancellationToken cancellationToken)
+    {
+        using var activity = RuntimeTelemetry.ActivitySource.StartActivity(
+            "runtime.outbox.publish",
+            ActivityKind.Producer);
             activity?.SetTag("messaging.message.id", message.Id);
             activity?.SetTag("messaging.destination.name", options.Destination);
             activity?.SetTag("vertexbpmn.event.type", message.EventType);
@@ -81,7 +96,7 @@ public sealed class RuntimeOutboxPublisherService(
                 await MarkPublishedAsync(message.Id, cancellationToken);
                 RuntimeTelemetry.OutboxPublished.Add(1,
                     new KeyValuePair<string, object?>("event.type", message.EventType));
-                published++;
+                return true;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -97,6 +112,7 @@ public sealed class RuntimeOutboxPublisherService(
                     "Outbox message {MessageId} failed on attempt {Attempt}",
                     message.Id,
                     message.Attempts);
+                return false;
             }
             finally
             {
@@ -104,9 +120,6 @@ public sealed class RuntimeOutboxPublisherService(
                     Stopwatch.GetElapsedTime(started).TotalMilliseconds,
                     new KeyValuePair<string, object?>("event.type", message.EventType));
             }
-        }
-
-        return published;
     }
 
     private async Task<RuntimeOutboxMessage?> TryLeaseAsync(Guid id, CancellationToken cancellationToken)
@@ -126,9 +139,11 @@ public sealed class RuntimeOutboxPublisherService(
                     .SetProperty(item => item.Attempts, item => item.Attempts + 1),
                 cancellationToken);
         if (changed != 1)
-            return null;
+		{
+			return null;
+		}
 
-        return await db.RuntimeOutbox.AsNoTracking().SingleAsync(item => item.Id == id, cancellationToken);
+		return await db.RuntimeOutbox.AsNoTracking().SingleAsync(item => item.Id == id, cancellationToken);
     }
 
     private async Task MarkPublishedAsync(Guid id, CancellationToken cancellationToken)
@@ -157,9 +172,11 @@ public sealed class RuntimeOutboxPublisherService(
             : DateTime.UtcNow.AddSeconds(Math.Clamp(options.RetryDelaySeconds, 0, 86_400));
         var error = exception.ToString();
         if (error.Length > 4_000)
-            error = error[..4_000];
+		{
+			error = error[..4_000];
+		}
 
-        await using var scope = scopeFactory.CreateAsyncScope();
+		await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<BpmnDbContext>();
         await db.RuntimeOutbox
             .Where(item => item.Id == message.Id && item.State == "InFlight" && item.LockOwner == _owner)

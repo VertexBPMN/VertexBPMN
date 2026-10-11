@@ -11,7 +11,7 @@ namespace VertexBPMN.Studio.Services;
 /// jede Sitzung den verschlüsselten Token-Satz inklusive Hauptprüfsumme (sub)
 /// und einer monoton steigenden Revision (für verteiltes Lease/Fencing).
 /// </summary>
-public interface ISharedOidcSessionStore
+internal interface ISharedOidcSessionStore
 {
     /// <summary>Holt den gespeicherten Token-Satz einer Sitzung; null, wenn unbekannt/abgelaufen.</summary>
     Task<StoredOidcSession?> TryGetAsync(string sessionId, CancellationToken cancellationToken = default);
@@ -37,13 +37,3 @@ public interface ISharedOidcSessionStore
     /// <summary>Entfernt abgelaufene Sitzungen (TTL-Reinigung).</summary>
     Task<int> RemoveExpiredAsync(DateTimeOffset cutoffUtc, CancellationToken cancellationToken = default);
 }
-
-/// <summary>Gespeicherter Sitzungsinhalt mit Versionsprüfung.</summary>
-public sealed record StoredOidcSession(
-    string SessionId,
-    ClaimsPrincipal Principal,
-    string AccessToken,
-    string RefreshToken,
-    string? IdToken,
-    DateTimeOffset ExpiresAt,
-    long Revision);

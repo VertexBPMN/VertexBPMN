@@ -59,21 +59,23 @@
 </MudPaper>
 
 @code {
+    private void OnEngineStatusChanged(object? sender, EventArgs args) => _ = InvokeAsync(StateHasChanged);
+
     private IEnumerable<VertexBPMN.Studio.Services.Deployment> _deployments = new List<VertexBPMN.Studio.Services.Deployment>();
-    private const long MaximumUploadSize = 10 * 1024 * 1024;
+    private const long MaximumUploadSize = StudioModelUpload.MaximumBytes;
     private const int MaximumFileCount = 10;
     private bool _isLoading = false;
 
     protected override async Task OnInitializedAsync()
     {
-        ActiveEngineService.OnChange += StateHasChanged;
+        ActiveEngineService.OnChange += OnEngineStatusChanged;
         TenantContext.Changed += OnTenantChanged;
         await LoadDeployments();
     }
 
     public void Dispose()
     {
-        ActiveEngineService.OnChange -= StateHasChanged;
+        ActiveEngineService.OnChange -= OnEngineStatusChanged;
         TenantContext.Changed -= OnTenantChanged;
     }
 
@@ -82,7 +84,7 @@
         _deployments = await RepositoryService.GetDeploymentsAsync(TenantContext.CurrentTenantId);
     }
 
-    private async void OnTenantChanged()
+    private async void OnTenantChanged(object? sender, EventArgs args)
     {
         await LoadDeployments();
         await InvokeAsync(StateHasChanged);
@@ -150,7 +152,7 @@
     {
         try
         {
-            await using var stream = file.OpenReadStream(MaximumUploadSize);
+            await using var stream = StudioModelUpload.OpenReadStream(file);
             var document = await XDocument.LoadAsync(stream, LoadOptions.None, CancellationToken.None);
             return document.Root?.Name.LocalName == "definitions"
                 && document.Descendants().Any(element => element.Name.LocalName == "process");

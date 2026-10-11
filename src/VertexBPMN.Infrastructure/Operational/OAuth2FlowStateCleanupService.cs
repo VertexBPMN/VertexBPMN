@@ -28,9 +28,11 @@ public sealed class OAuth2FlowStateCleanupService(
                 var removed = await db.OAuth2FlowStates
                     .Where(s => s.ExpiresAt <= DateTime.UtcNow)
                     .ExecuteDeleteAsync(stoppingToken);
-                if (removed > 0)
+                if (removed > 0 && logger.IsEnabled(LogLevel.Information))
+                {
                     logger.LogInformation("Removed {Count} expired OAuth2 flow states", removed);
-            }
+                }
+			}
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 break;

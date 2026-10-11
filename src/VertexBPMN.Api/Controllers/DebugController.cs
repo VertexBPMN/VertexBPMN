@@ -5,19 +5,18 @@ namespace VertexBPMN.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public controller required for ASP.NET Core MVC discovery and activation.")]
 public class DebugController : ControllerBase
 {
-    private readonly IRepositoryService _repositoryService;
     private readonly IBpmnParser _parser;
     private readonly IProcessEngine _processEngine;
-    private readonly IRuntimeService _runtimeService;
 
     public DebugController(IRepositoryService repositoryService, IBpmnParser parser, IProcessEngine processEngine, IRuntimeService runtimeService)
     {
-        _repositoryService = repositoryService;
+        ArgumentNullException.ThrowIfNull(repositoryService);
         _parser = parser;
         _processEngine = processEngine;
-        _runtimeService = runtimeService;
+        ArgumentNullException.ThrowIfNull(runtimeService);
     }
 
     // Simulates a BPMN process and returns the execution trace for visual debugging.
@@ -25,10 +24,11 @@ public class DebugController : ControllerBase
     public async Task<ActionResult<List<string>>> Trace([FromBody] TraceRequest request)
     {
 
-        var model = await _parser.ParseAsync(request.BpmnXml);
-        var trace = _processEngine.Execute(model);
+        var model = await _parser.ParseAsync(request.BpmnXml, HttpContext.RequestAborted);
+        var trace = await _processEngine.ExecuteAsync(model, HttpContext.RequestAborted);
         return Ok(trace);
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public contract type TraceRequest retained for exposed HTTP action signatures and controller activation (DebugController).")]
     public record TraceRequest(string BpmnXml, IDictionary<string, object>? Variables);
 }

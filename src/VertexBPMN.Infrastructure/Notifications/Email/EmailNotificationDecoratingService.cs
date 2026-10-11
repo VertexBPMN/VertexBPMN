@@ -29,10 +29,12 @@ public sealed class EmailNotificationDecoratingService : INotificationService
     {
         var list = notifications as IList<Notification> ?? notifications.ToList();
         if (list.Count == 0)
-            return;
+		{
+			return;
+		}
 
-        // Deliver through primary channel first
-        await _inner.SendNotificationsAsync(list, cancellationToken);
+		// Deliver through primary channel first
+		await _inner.SendNotificationsAsync(list, cancellationToken);
 
         // Auxiliary email channel (swallow errors)
         try

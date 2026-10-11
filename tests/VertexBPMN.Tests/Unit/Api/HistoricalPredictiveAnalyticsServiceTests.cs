@@ -10,136 +10,136 @@ namespace VertexBPMN.Tests.Unit.Api;
 
 public sealed class HistoricalPredictiveAnalyticsServiceTests
 {
-    [Fact(Timeout = 30_000)]
-    public async Task PredictDuration_UsesCompletedHistoricalInstancesForCurrentTenant()
-    {
-        await using var db = CreateContext();
-        db.Events.AddRange(
-            Event("tenant-a", "instance-1", "ProcessStarted", DateTimeOffset.Parse("2026-01-01T08:00:00Z"),
-                """{"processDefinitionKey":"invoice","variables":{"amount":100}}"""),
-            Event("tenant-a", "instance-1", "ProcessEnded", DateTimeOffset.Parse("2026-01-01T08:10:00Z"),
-                """{"processDefinitionKey":"invoice"}"""),
-            Event("tenant-a", "instance-2", "ProcessStarted", DateTimeOffset.Parse("2026-01-02T09:00:00Z"),
-                """{"processDefinitionKey":"invoice","variables":{"amount":200,"priority":"high"}}"""),
-            Event("tenant-a", "instance-2", "ProcessEnded", DateTimeOffset.Parse("2026-01-02T09:30:00Z"),
-                """{"processDefinitionKey":"invoice"}"""),
-            Event("tenant-b", "instance-3", "ProcessStarted", DateTimeOffset.Parse("2026-01-03T09:00:00Z"),
-                """{"processDefinitionKey":"invoice"}"""),
-            Event("tenant-b", "instance-3", "ProcessEnded", DateTimeOffset.Parse("2026-01-03T10:30:00Z"),
-                """{"processDefinitionKey":"invoice"}"""));
-        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+	[Fact(Timeout = 30_000)]
+	public async Task PredictDuration_UsesCompletedHistoricalInstancesForCurrentTenant()
+	{
+		await using var db = CreateContext();
+		db.Events.AddRange(
+			Event("tenant-a", "instance-1", "ProcessStarted", DateTimeOffset.Parse("2026-01-01T08:00:00Z", System.Globalization.CultureInfo.InvariantCulture),
+				"""{"processDefinitionKey":"invoice","variables":{"amount":100}}"""),
+			Event("tenant-a", "instance-1", "ProcessEnded", DateTimeOffset.Parse("2026-01-01T08:10:00Z", System.Globalization.CultureInfo.InvariantCulture),
+				"""{"processDefinitionKey":"invoice"}"""),
+			Event("tenant-a", "instance-2", "ProcessStarted", DateTimeOffset.Parse("2026-01-02T09:00:00Z", System.Globalization.CultureInfo.InvariantCulture),
+				"""{"processDefinitionKey":"invoice","variables":{"amount":200,"priority":"high"}}"""),
+			Event("tenant-a", "instance-2", "ProcessEnded", DateTimeOffset.Parse("2026-01-02T09:30:00Z", System.Globalization.CultureInfo.InvariantCulture),
+				"""{"processDefinitionKey":"invoice"}"""),
+			Event("tenant-b", "instance-3", "ProcessStarted", DateTimeOffset.Parse("2026-01-03T09:00:00Z", System.Globalization.CultureInfo.InvariantCulture),
+				"""{"processDefinitionKey":"invoice"}"""),
+			Event("tenant-b", "instance-3", "ProcessEnded", DateTimeOffset.Parse("2026-01-03T10:30:00Z", System.Globalization.CultureInfo.InvariantCulture),
+				"""{"processDefinitionKey":"invoice"}"""));
+		await db.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        var service = CreateService(db, "tenant-a");
-        var prediction = await service.PredictProcessDurationAsync(
-            "invoice",
-            new Dictionary<string, object> { ["amount"] = 50 });
+		var service = CreateService(db, "tenant-a");
+		var prediction = await service.PredictProcessDurationAsync(
+			"invoice",
+			new Dictionary<string, object>(StringComparer.Ordinal) { ["amount"] = 50 });
 
-        Assert.Equal("invoice", prediction.ProcessDefinitionKey);
-        Assert.InRange(prediction.EstimatedDurationMinutes, 0.1f, 60f);
-        Assert.InRange(prediction.ConfidenceScore, 0.1f, 0.95f);
-        Assert.Contains("2 completed historical instances", prediction.InfluencingFactors);
-    }
+		Assert.Equal("invoice", prediction.ProcessDefinitionKey);
+		Assert.InRange(prediction.EstimatedDurationMinutes, 0.1f, 60f);
+		Assert.InRange(prediction.ConfidenceScore, 0.1f, 0.95f);
+		Assert.Contains("2 completed historical instances", prediction.InfluencingFactors, StringComparer.Ordinal);
+	}
 
-    [Fact(Timeout = 30_000)]
-    public async Task PredictDuration_TrainsRegressionForThreeSamples()
-    {
-        await using var db = CreateContext();
-        var started = DateTimeOffset.UtcNow.AddHours(-2);
-        for (var index = 1; index <= 3; index++)
-        {
-            var variables = Enumerable.Range(1, index).ToDictionary(
-                number => $"variable-{number}", number => (object)number, StringComparer.Ordinal);
-            var payload = System.Text.Json.JsonSerializer.Serialize(new { processDefinitionKey = "invoice", variables });
-            db.Events.AddRange(
-                Event("tenant-a", $"regression-{index}", "ProcessStarted", started, payload),
-                Event("tenant-a", $"regression-{index}", "ProcessEnded", started.AddMinutes(index * 10), payload));
-        }
-        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+	[Fact(Timeout = 30_000)]
+	public async Task PredictDuration_TrainsRegressionForThreeSamples()
+	{
+		await using var db = CreateContext();
+		var started = DateTimeOffset.UtcNow.AddHours(-2);
+		for (var index = 1; index <= 3; index++)
+		{
+			var variables = Enumerable.Range(1, index).ToDictionary(
+				number => $"variable-{number}", number => (object)number, StringComparer.Ordinal);
+			var payload = System.Text.Json.JsonSerializer.Serialize(new { processDefinitionKey = "invoice", variables });
+			db.Events.AddRange(
+				Event("tenant-a", $"regression-{index}", "ProcessStarted", started, payload),
+				Event("tenant-a", $"regression-{index}", "ProcessEnded", started.AddMinutes(index * 10), payload));
+		}
+		await db.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        var prediction = await CreateService(db, "tenant-a").PredictProcessDurationAsync(
-            "invoice", new Dictionary<string, object> { ["amount"] = 50, ["priority"] = "high" });
+		var prediction = await CreateService(db, "tenant-a").PredictProcessDurationAsync(
+			"invoice", new Dictionary<string, object>(StringComparer.Ordinal) { ["amount"] = 50, ["priority"] = "high" });
 
-        Assert.True(float.IsFinite(prediction.EstimatedDurationMinutes));
-        Assert.True(prediction.EstimatedDurationMinutes > 0);
-        Assert.InRange(prediction.ConfidenceScore, 0.1f, 0.95f);
-        Assert.Contains("3 completed historical instances", prediction.InfluencingFactors);
-        Assert.True(prediction.MinDuration <= prediction.EstimatedDurationMinutes);
-        Assert.True(prediction.MaxDuration >= prediction.EstimatedDurationMinutes);
-    }
+		Assert.True(float.IsFinite(prediction.EstimatedDurationMinutes));
+		Assert.True(prediction.EstimatedDurationMinutes > 0);
+		Assert.InRange(prediction.ConfidenceScore, 0.1f, 0.95f);
+		Assert.Contains("3 completed historical instances", prediction.InfluencingFactors, StringComparer.Ordinal);
+		Assert.True(prediction.MinDuration <= prediction.EstimatedDurationMinutes);
+		Assert.True(prediction.MaxDuration >= prediction.EstimatedDurationMinutes);
+	}
 
-    [Fact]
-    public async Task ExportTrainingData_IsTenantIsolatedAndContainsModelFeatures()
-    {
-        await using var db = CreateContext();
-        db.Events.AddRange(
-            Event("tenant-a", "instance-1", "ProcessStarted", DateTimeOffset.Parse("2026-01-01T08:00:00Z"),
-                """{"processDefinitionKey":"invoice","variables":{"amount":100}}"""),
-            Event("tenant-a", "instance-1", "ProcessEnded", DateTimeOffset.Parse("2026-01-01T08:10:00Z"),
-                """{"processDefinitionKey":"invoice"}"""),
-            Event("tenant-b", "instance-2", "ProcessStarted", DateTimeOffset.Parse("2026-01-01T08:00:00Z"),
-                """{"processDefinitionKey":"invoice"}"""),
-            Event("tenant-b", "instance-2", "ProcessEnded", DateTimeOffset.Parse("2026-01-01T08:20:00Z"),
-                """{"processDefinitionKey":"invoice"}"""));
-        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+	[Fact]
+	public async Task ExportTrainingData_IsTenantIsolatedAndContainsModelFeatures()
+	{
+		await using var db = CreateContext();
+		db.Events.AddRange(
+			Event("tenant-a", "instance-1", "ProcessStarted", DateTimeOffset.Parse("2026-01-01T08:00:00Z", System.Globalization.CultureInfo.InvariantCulture),
+				"""{"processDefinitionKey":"invoice","variables":{"amount":100}}"""),
+			Event("tenant-a", "instance-1", "ProcessEnded", DateTimeOffset.Parse("2026-01-01T08:10:00Z", System.Globalization.CultureInfo.InvariantCulture),
+				"""{"processDefinitionKey":"invoice"}"""),
+			Event("tenant-b", "instance-2", "ProcessStarted", DateTimeOffset.Parse("2026-01-01T08:00:00Z", System.Globalization.CultureInfo.InvariantCulture),
+				"""{"processDefinitionKey":"invoice"}"""),
+			Event("tenant-b", "instance-2", "ProcessEnded", DateTimeOffset.Parse("2026-01-01T08:20:00Z", System.Globalization.CultureInfo.InvariantCulture),
+				"""{"processDefinitionKey":"invoice"}"""));
+		await db.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        var csv = await CreateService(db, "tenant-a").ExportTrainingDataAsync("invoice");
+		var csv = await CreateService(db, "tenant-a").ExportTrainingDataAsync("invoice");
 
-        Assert.Contains("tenantId,processDefinitionKey,processInstanceId", csv);
-        Assert.Contains("\"tenant-a\"", csv);
-        Assert.DoesNotContain("\"tenant-b\"", csv);
-        Assert.Contains(",10,", csv);
-    }
+		Assert.Contains("tenantId,processDefinitionKey,processInstanceId", csv, StringComparison.Ordinal);
+		Assert.Contains("\"tenant-a\"", csv, StringComparison.Ordinal);
+		Assert.DoesNotContain("\"tenant-b\"", csv, StringComparison.Ordinal);
+		Assert.Contains(",10,", csv, StringComparison.Ordinal);
+	}
 
-    [Fact]
-    public async Task RequestedTenantOutsideClaim_IsRejected()
-    {
-        await using var db = CreateContext();
-        var service = CreateService(db, "tenant-a");
+	[Fact]
+	public async Task RequestedTenantOutsideClaim_IsRejected()
+	{
+		await using var db = CreateContext();
+		var service = CreateService(db, "tenant-a");
 
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            service.ExportTrainingDataAsync(requestedTenantId: "tenant-b"));
-    }
+		await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+			service.ExportTrainingDataAsync(tenantId: "tenant-b"));
+	}
 
-    private static HistoricalPredictiveAnalyticsService CreateService(
-        ProcessMiningEventDbContext db,
-        string tenantId)
-    {
-        var httpContextAccessor = new HttpContextAccessor
-        {
-            HttpContext = new DefaultHttpContext
-            {
-                User = new ClaimsPrincipal(new ClaimsIdentity(
-                    [new Claim("tenant_id", tenantId)],
-                    "Test"))
-            }
-        };
+	private static HistoricalPredictiveAnalyticsService CreateService(
+		ProcessMiningEventDbContext db,
+		string tenantId)
+	{
+		var httpContextAccessor = new HttpContextAccessor
+		{
+			HttpContext = new DefaultHttpContext
+			{
+				User = new ClaimsPrincipal(new ClaimsIdentity(
+					[new Claim("tenant_id", tenantId)],
+					"Test"))
+			}
+		};
 
-        return new HistoricalPredictiveAnalyticsService(
-            db,
-            httpContextAccessor,
-            NullLogger<HistoricalPredictiveAnalyticsService>.Instance);
-    }
+		return new HistoricalPredictiveAnalyticsService(
+			db,
+			httpContextAccessor,
+			NullLogger<HistoricalPredictiveAnalyticsService>.Instance);
+	}
 
-    private static ProcessMiningEvent Event(
-        string tenantId,
-        string instanceId,
-        string eventType,
-        DateTimeOffset timestamp,
-        string payload) =>
-        new()
-        {
-            EventType = eventType,
-            ProcessInstanceId = instanceId,
-            TenantId = tenantId,
-            Timestamp = timestamp,
-            PayloadJson = payload
-        };
+	private static ProcessMiningEvent Event(
+		string tenantId,
+		string instanceId,
+		string eventType,
+		DateTimeOffset timestamp,
+		string payload) =>
+		new()
+		{
+			EventType = eventType,
+			ProcessInstanceId = instanceId,
+			TenantId = tenantId,
+			Timestamp = timestamp,
+			PayloadJson = payload
+		};
 
-    private static ProcessMiningEventDbContext CreateContext()
-    {
-        var options = new DbContextOptionsBuilder<ProcessMiningEventDbContext>()
-            .UseInMemoryDatabase($"ml-tests-{Guid.NewGuid():N}")
-            .Options;
-        return new ProcessMiningEventDbContext(options);
-    }
+	private static ProcessMiningEventDbContext CreateContext()
+	{
+		var options = new DbContextOptionsBuilder<ProcessMiningEventDbContext>()
+			.UseInMemoryDatabase($"ml-tests-{Guid.NewGuid():N}")
+			.Options;
+		return new ProcessMiningEventDbContext(options);
+	}
 }

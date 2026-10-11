@@ -12,8 +12,8 @@ public sealed class RuntimeMetricsReader(BpmnDbContext db) : IRuntimeMetricsRead
     {
         var activeWorkerCutoff = DateTime.UtcNow.AddMinutes(-2);
 
-        return new Dictionary<string, long>
-        {
+        return new Dictionary<string, long>(StringComparer.Ordinal)
+		{
             ["process_instances_total"] = await db.ProcessInstances.LongCountAsync(cancellationToken),
             ["process_instances_running"] = await db.ProcessInstances
                 .LongCountAsync(item => item.Status == ProcessInstanceStatus.Running, cancellationToken),

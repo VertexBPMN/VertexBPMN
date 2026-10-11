@@ -1,6 +1,6 @@
 namespace VertexBPMN.Api.Migration;
 
-public class ProcessInstanceInfo
+internal class ProcessInstanceInfo
 {
     public Guid Id { get; set; }
     public string ProcessDefinitionKey { get; set; } = string.Empty;

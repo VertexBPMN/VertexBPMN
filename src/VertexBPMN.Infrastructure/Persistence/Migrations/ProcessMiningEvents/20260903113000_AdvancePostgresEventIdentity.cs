@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using VertexBPMN.Infrastructure.Persistence.Services;
@@ -8,6 +9,7 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.ProcessMiningEvents;
 
 [DbContext(typeof(ProcessMiningEventDbContext))]
 [Migration("20260903113000_AdvancePostgresEventIdentity")]
+[SuppressMessage("Meziantou.Analyzer", "MA0048", Justification = "EF migration snapshot / generated code.")]
 public sealed class AdvancePostgresEventIdentity : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
@@ -26,6 +28,7 @@ public sealed class AdvancePostgresEventIdentity : Migration
     }
 
     protected override void Down(MigrationBuilder migrationBuilder)
-    {
-    }
+	{
+		// Method intentionally left empty.
+	}
 }

@@ -45,6 +45,11 @@ internal static class ExternalTaskMapping
         attempt.Property(x => x.FailureHash).HasMaxLength(64);
         attempt.Property(x => x.ErrorCode).HasMaxLength(128);
 
+        ConfigureContinuation(model);
+    }
+
+    private static void ConfigureContinuation(ModelBuilder model)
+    {
         var continuation = model.Entity<ExternalTaskContinuation>();
         continuation.HasKey(x => x.Id);
         continuation.HasIndex(x => x.JobId).IsUnique();

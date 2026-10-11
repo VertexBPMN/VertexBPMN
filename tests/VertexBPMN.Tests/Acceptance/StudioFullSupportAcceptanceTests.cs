@@ -7,21 +7,18 @@ namespace VertexBPMN.Tests.Acceptance;
 
 [Collection("IntegratedApi")]
 [Trait("Category", "FullProductSupportAcceptance")]
-public sealed class StudioFullSupportAcceptanceTests
+public sealed class StudioFullSupportAcceptanceTests(
+	CustomWebApplicationFactory factory,
+	SharedSqliteDbFixture database,
+	ITestOutputHelper output)
 {
-    private readonly HttpClient _client;
+	private readonly HttpClient _client = factory.WithSharedFixture(database).CreateClient(output);
 
-    public StudioFullSupportAcceptanceTests(
-        CustomWebApplicationFactory factory,
-        SharedSqliteDbFixture database,
-        ITestOutputHelper output) =>
-        _client = factory.WithSharedFixture(database).CreateClient(output);
-
-    [Fact]
-    public async Task FPS_STUDIO_01_Production_adapters_deploy_and_execute_a_modeler_roundtrip_artifact()
-    {
-        var processKey = $"fps-studio-{Guid.NewGuid():N}";
-        var bpmn = $$"""
+	[Fact]
+	public async Task FPS_STUDIO_01_Production_adapters_deploy_and_execute_a_modeler_roundtrip_artifact()
+	{
+		var processKey = $"fps-studio-{Guid.NewGuid():N}";
+		var bpmn = $$"""
             <?xml version="1.0" encoding="UTF-8"?>
             <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
                               xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
@@ -51,33 +48,33 @@ public sealed class StudioFullSupportAcceptanceTests
               </bpmndi:BPMNDiagram>
             </bpmn:definitions>
             """;
-        var engine = new HttpBpmnEngineService(
-            new FixedHttpClientFactory(_client),
-            NullLogger<HttpBpmnEngineService>.Instance);
-        var repository = new RepositoryService(engine);
-        var workflow = new WorkflowService(engine);
+		var engine = new HttpBpmnEngineService(
+			new FixedHttpClientFactory(_client),
+			NullLogger<HttpBpmnEngineService>.Instance);
+		var repository = new RepositoryService(engine);
+		var workflow = new WorkflowService(engine);
 
-        var definition = await repository.DeployXmlAsync(bpmn, "studio-full-support.bpmn");
-        var started = await workflow.StartProcessAsync(
-            definition.Definition.Key,
-            new Dictionary<string, object?> { ["source"] = "studio" },
-            $"studio-{Guid.NewGuid():N}");
+		var definition = await repository.DeployXmlAsync(bpmn, "studio-full-support.bpmn");
+		var started = await workflow.StartProcessAsync(
+			definition.Definition.Key,
+			new Dictionary<string, object?>(StringComparer.Ordinal) { ["source"] = "studio" },
+			$"studio-{Guid.NewGuid():N}");
 
-        Assert.Equal(ProcessInstanceStatus.Running, started.Status);
-        Assert.NotEmpty(started.ActiveTasks);
-        var task = Assert.Single((await engine.GetTasksAsync())
+		Assert.Equal(ProcessInstanceStatus.Running, started.Status);
+		Assert.NotEmpty(started.ActiveTasks);
+		var task = Assert.Single(await engine.GetTasksAsync()
 , candidate => candidate.ProcessInstanceId == started.Id);
 
-        await engine.CompleteTaskAsync(task.Id, new Dictionary<string, object?> { ["approved"] = true });
+		await engine.CompleteTaskAsync(task.Id, new Dictionary<string, object?>(StringComparer.Ordinal) { ["approved"] = true });
 
-        var completed = Assert.Single((await workflow.GetProcessInstancesAsync())
+		var completed = Assert.Single(await workflow.GetProcessInstancesAsync()
 , instance => instance.Id == started.Id);
-        Assert.Equal(ProcessInstanceStatus.Completed, completed.Status);
-        Assert.Empty(completed.ActiveTasks);
-    }
+		Assert.Equal(ProcessInstanceStatus.Completed, completed.Status);
+		Assert.Empty(completed.ActiveTasks);
+	}
 
-    private sealed class FixedHttpClientFactory(HttpClient client) : IHttpClientFactory
-    {
-        public HttpClient CreateClient(string name) => client;
-    }
+	private sealed class FixedHttpClientFactory(HttpClient client) : IHttpClientFactory
+	{
+		public HttpClient CreateClient(string name) => client;
+	}
 }

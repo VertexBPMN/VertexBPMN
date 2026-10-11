@@ -2,34 +2,33 @@
 using VertexBPMN.Domain.Model.Dmn;
 
 
-namespace VertexBPMN.Tests.Integration.Dmn
+namespace VertexBPMN.Tests.Integration.Dmn;
+
+public partial class DmnDecisionTableTests
 {
-    public partial class DmnDecisionTableTests
-    {
-        [Fact]
-        public void Evaluate_OutputOrderHitPolicy_EmptyResultIfNoMatch()
-        {
-            // Arrange: OUTPUT ORDER, but no rule matches
-            var table = new DmnDecisionTable(
-                key: "d1",
-                name: "Test",
-                inputs: new List<DmnInput> { new DmnInput("i1", "input1") },
-                outputs: new List<DmnOutput> { new DmnOutput("o1", "output1") },
-                rules: new List<DmnRule>
-                {
-                    new DmnRule(new List<string> { "2" }, new List<string> { "B" }),
-                    new DmnRule(new List<string> { "3" }, new List<string> { "A" })
-                },
-                hitPolicy: "OUTPUT ORDER"
-            );
-            var input = new Dictionary<string, object> { { "i1", 1 } };
+	[Fact]
+	public void Evaluate_OutputOrderHitPolicy_EmptyResultIfNoMatch()
+	{
+		// Arrange: OUTPUT ORDER, but no rule matches
+		var table = new DmnDecisionTable(
+			key: "d1",
+			name: "Test",
+			inputs: [new("i1", "input1")],
+			outputs: [new("o1", "output1")],
+			rules:
+			[
+				new(["2"], ["B"]),
+					new(["3"], ["A"])
+			],
+			hitPolicy: "OUTPUT ORDER"
+		);
+		var input = new Dictionary<string, object>(StringComparer.Ordinal) { { "i1", 1 } };
 
-            // Act
-            var result = table.Evaluate(input);
+		// Act
+		var result = table.Evaluate(input);
 
-            // Assert: Should return empty result
-            Assert.NotNull(result);
-            Assert.Empty(result);
-        }
-    }
+		// Assert: Should return empty result
+		Assert.NotNull(result);
+		Assert.Empty(result);
+	}
 }

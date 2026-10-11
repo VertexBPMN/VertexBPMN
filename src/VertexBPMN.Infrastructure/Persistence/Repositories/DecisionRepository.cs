@@ -25,8 +25,6 @@ public class DecisionRepository : IDecisionRepository
         }
         else
         {
-            bool dmnChanged = !string.Equals(existing.DmnXml, definition.DmnXml, StringComparison.Ordinal);
-
             existing.Name = definition.Name;
             existing.DmnXml = definition.DmnXml;
 
@@ -52,11 +50,16 @@ public class DecisionRepository : IDecisionRepository
         var query = _db.DecisionDefinitions.AsNoTracking().AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(key))
-            query = query.Where(d => d.Key == key);
-        if (!string.IsNullOrWhiteSpace(tenantId))
-            query = query.Where(d => d.TenantId == tenantId);
+		{
+			query = query.Where(d => d.Key == key);
+		}
 
-        await foreach (var d in query
+		if (!string.IsNullOrWhiteSpace(tenantId))
+		{
+			query = query.Where(d => d.TenantId == tenantId);
+		}
+
+		await foreach (var d in query
             .OrderBy(d => d.Key)
             .AsAsyncEnumerable()
             .WithCancellation(ct))
@@ -72,11 +75,16 @@ public class DecisionRepository : IDecisionRepository
     {
         var query = _db.DecisionInstances.AsNoTracking().AsQueryable();
         if (!string.IsNullOrWhiteSpace(decisionKey))
-            query = query.Where(i => i.DecisionDefinitionKey == decisionKey);
-        if (!string.IsNullOrWhiteSpace(tenantId))
-            query = query.Where(i => i.TenantId == tenantId);
+		{
+			query = query.Where(i => i.DecisionDefinitionKey == decisionKey);
+		}
 
-        await foreach (var i in query
+		if (!string.IsNullOrWhiteSpace(tenantId))
+		{
+			query = query.Where(i => i.TenantId == tenantId);
+		}
+
+		await foreach (var i in query
             .OrderByDescending(i => i.EvaluationTime)
             .AsAsyncEnumerable()
             .WithCancellation(ct))

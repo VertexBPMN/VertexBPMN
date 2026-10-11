@@ -1,7 +1,8 @@
-using Microsoft.EntityFrameworkCore.Infrastructure;
+﻿using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
+#pragma warning disable MA0048
 
 namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn;
 
@@ -12,7 +13,7 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn;
 /// </summary>
 [DbContext(typeof(VertexBPMN.Infrastructure.Persistence.BpmnDbContext))]
 [Migration("20260906180000_AddTaskIoSnapshotsFeatureFlag")]
-public partial class AddTaskIoSnapshotsFeatureFlag : Migration
+public class AddTaskIoSnapshotsFeatureFlag : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
     {

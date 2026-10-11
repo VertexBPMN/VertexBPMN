@@ -1,12 +1,10 @@
 using VertexBPMN.Domain.Entities;
 
 namespace VertexBPMN.Studio.Services;
-
-public class HttpHistoryService : IHistoryService
+internal class HttpHistoryService : IHistoryService
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<HttpHistoryService> _logger;
-
     public HttpHistoryService(IHttpClientFactory httpClientFactory, ILogger<HttpHistoryService> logger)
     {
         _httpClient = httpClientFactory.CreateClient("VertexBPMN.Api");
@@ -15,20 +13,9 @@ public class HttpHistoryService : IHistoryService
 
     public async Task<IEnumerable<HistoryEvent>> GetHistoryAsync(string? tenantId = null, CancellationToken cancellationToken = default)
     {
-        try
-        {
-            var query = string.IsNullOrWhiteSpace(tenantId)
-                ? string.Empty
-                : $"?tenantId={Uri.EscapeDataString(tenantId)}";
-            var events = await _httpClient.GetFromJsonAsync<IEnumerable<HistoryEvent>>(
-                $"api/history{query}", cancellationToken);
-            return events ?? Enumerable.Empty<HistoryEvent>();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error fetching history for tenant {TenantId}", tenantId);
-            throw;
-        }
+        var query = string.IsNullOrWhiteSpace(tenantId) ? string.Empty : $"?tenantId={Uri.EscapeDataString(tenantId)}";
+        var events = await _httpClient.GetFromJsonAsync<IEnumerable<HistoryEvent>>($"api/history{query}", cancellationToken);
+        return events ?? Enumerable.Empty<HistoryEvent>();
     }
 
     public async Task<IEnumerable<HistoryEvent>> GetHistoryByProcessInstanceAsync(Guid processInstanceId)
@@ -51,7 +38,7 @@ public class HttpHistoryService : IHistoryService
         {
             return await _httpClient.GetFromJsonAsync<HistoryEvent>($"api/history/{id}");
         }
-        catch (HttpRequestException ex) when (ex.Message.Contains("404"))
+        catch (HttpRequestException ex) when (ex.Message.Contains("404", StringComparison.Ordinal))
         {
             return null;
         }

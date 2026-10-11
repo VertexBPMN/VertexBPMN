@@ -1,16 +1,16 @@
-﻿namespace VertexBPMN.Infrastructure.Converters;
-
+﻿
 
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
+namespace VertexBPMN.Infrastructure.Converters;
 public class DictionaryConverter : ValueConverter<Dictionary<string, object>, string>
 {
     public DictionaryConverter()
         : base(
             dictionary => JsonSerializer.Serialize(dictionary, (JsonSerializerOptions?)null),
             json => JsonSerializer.Deserialize<Dictionary<string, object>>(json, (JsonSerializerOptions?)null)
-                    ?? new Dictionary<string, object>())
+                    ?? new Dictionary<string, object>(StringComparer.Ordinal))
     {
     }
 }

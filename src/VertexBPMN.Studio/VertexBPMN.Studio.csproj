@@ -37,6 +37,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="VertexBPMN.Tests" />
+    <InternalsVisibleTo Include="VertexBPMN.Studio.UiTests" />
+    <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Protobuf Include="..\VertexBPMN.Api\Protos\vertexbpmn.proto" GrpcServices="Client" />
     <Protobuf Include="..\VertexBPMN.Api\Protos\vertexbpmn_mcp.proto" GrpcServices="Client" />
   </ItemGroup>

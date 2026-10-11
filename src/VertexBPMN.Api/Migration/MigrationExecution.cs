@@ -1,5 +1,6 @@
 namespace VertexBPMN.Api.Migration;
 
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public contract type MigrationExecution retained for exposed HTTP action signatures and controller activation (MigrationExecution).")]
 public class MigrationExecution
 {
     public Guid Id { get; set; }

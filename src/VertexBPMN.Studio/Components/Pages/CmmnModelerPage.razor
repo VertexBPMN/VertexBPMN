@@ -184,7 +184,7 @@
             return;
         }
 
-        await using var stream = file.OpenReadStream(10 * 1024 * 1024);
+        await using var stream = StudioModelUpload.OpenReadStream(file);
         using var reader = new StreamReader(stream);
         _cmmnXml = await reader.ReadToEndAsync();
         if (_modeler is not null)

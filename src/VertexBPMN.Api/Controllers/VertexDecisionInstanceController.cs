@@ -5,33 +5,43 @@ using VertexBPMN.Api.Dto;
 using VertexBPMN.Domain.Interfaces;
 
 namespace VertexBPMN.Api.Controllers;
-
 [ApiController]
 [Route("api/vertex/decision-instance")]
 [Authorize]
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public controller required for ASP.NET Core MVC discovery and activation.")]
 public class VertexDecisionInstanceController : ControllerBase
 {
-    private readonly IDecisionService _decisionService;
+	private readonly IDecisionService _decisionService;
+	public VertexDecisionInstanceController(IDecisionService decisionService)
+	{
+		_decisionService = decisionService;
+	}
 
-    public VertexDecisionInstanceController(IDecisionService decisionService)
-    {
-        _decisionService = decisionService;
-    }
+	[HttpGet]
+	public async Task<ActionResult<IReadOnlyList<DecisionInstanceDto>>> GetAll([FromQuery] string? decisionKey = null, [FromQuery] string? tenantId = null)
+	{
+		var effectiveTenantId = ResolveTenantId(tenantId);
+		if (effectiveTenantId is null && !User.IsInRole("Admin"))
+		{
+			return Forbid();
+		}
 
-    [HttpGet]
-    public async Task<ActionResult<IReadOnlyList<DecisionInstanceDto>>> GetAll([FromQuery] string? decisionKey = null, [FromQuery] string? tenantId = null)
-    {
-        var effectiveTenantId = ResolveTenantId(tenantId);
-        if (effectiveTenantId is null && !User.IsInRole("Admin")) return Forbid();
-        var instances = new List<DecisionInstanceDto>();
-        await foreach (var inst in _decisionService.ListInstancesAsync(decisionKey, effectiveTenantId))
-            instances.Add(new DecisionInstanceDto { Id = inst.Id, DecisionKey = inst.DecisionDefinitionKey, Result = inst.OutputVariables.Values, EvaluatedAt = inst.EvaluationTime, TenantId = inst.TenantId ?? string.Empty });
-        return instances;
-    }
+		var instances = new List<DecisionInstanceDto>();
+		await foreach (var inst in _decisionService.ListInstancesAsync(decisionKey, effectiveTenantId))
+		{
+			instances.Add(new DecisionInstanceDto { Id = inst.Id, DecisionKey = inst.DecisionDefinitionKey, Result = inst.OutputVariables.Values, EvaluatedAt = inst.EvaluationTime, TenantId = inst.TenantId ?? string.Empty });
+		}
 
-    private string? ResolveTenantId(string? requestedTenantId) =>
-        User.IsInRole("Admin")
-            ? (string.IsNullOrWhiteSpace(requestedTenantId) ? null : requestedTenantId.Trim())
-            : User.FindFirstValue("tenant_id");
+		return instances;
+	}
 
+	private string? ResolveTenantId(string? requestedTenantId)
+	{
+		if (!User.IsInRole("Admin"))
+		{
+			return User.FindFirstValue("tenant_id");
+		}
+
+		return string.IsNullOrWhiteSpace(requestedTenantId) ? null : requestedTenantId.Trim();
+	}
 }

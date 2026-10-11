@@ -6,7 +6,7 @@ namespace VertexBPMN.Api.ML;
 /// <summary>
 /// Explicitly reports that predictive analytics is unavailable until it is backed by persisted execution data.
 /// </summary>
-public sealed class UnavailablePredictiveAnalyticsService : IPredictiveAnalyticsService
+internal sealed class UnavailablePredictiveAnalyticsService : IPredictiveAnalyticsService
 {
     private static NotSupportedException Unavailable() =>
         new("Predictive analytics requires a configured historical-data pipeline and is not available yet.");

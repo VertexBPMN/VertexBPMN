@@ -39,7 +39,11 @@ internal sealed class SourceControlPullRequestExecutor(PersistentSourceControlSt
 		}
 		else
 		{
-			if (saved is null) throw new SourceControlSecurityException(SourceControlErrorCode.ResultUnknown);
+			if (saved is null)
+			{
+				throw new SourceControlSecurityException(SourceControlErrorCode.ResultUnknown);
+			}
+
 			try
 			{
 				var intent = JsonSerializer.Deserialize<StoredPullRequest>(saved);

@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace VertexBPMN.Studio.Services;
 
-public interface IMigrationService
+internal interface IMigrationService
 {
     Task<JsonElement> PreviewAsync(string sourceProcessDefinitionId, string targetProcessDefinitionId, CancellationToken cancellationToken = default);
     Task<JsonElement> ExecuteAsync(JsonElement plan, CancellationToken cancellationToken = default);

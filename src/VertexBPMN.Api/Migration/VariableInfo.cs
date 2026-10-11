@@ -1,6 +1,6 @@
 namespace VertexBPMN.Api.Migration;
 
-public class VariableInfo
+internal class VariableInfo
 {
     public string Name { get; set; } = string.Empty;
     public string Type { get; set; } = string.Empty;

@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace VertexBPMN.Studio.Services;
 
-public sealed class HttpSimulationScenarioService(IHttpClientFactory httpClientFactory) : ISimulationScenarioService
+internal sealed class HttpSimulationScenarioService(IHttpClientFactory httpClientFactory) : ISimulationScenarioService
 {
     public async Task<JsonElement> GetAllAsync(string? tenantId = null, CancellationToken cancellationToken = default)
     {

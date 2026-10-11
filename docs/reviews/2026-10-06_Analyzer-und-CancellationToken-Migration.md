@@ -35,7 +35,7 @@ Externe Aufrufer sollten den Token benennen, beispielsweise
 `ListUsersAsync(tenantId: tenant, cancellationToken: token)`.
 Die fachliche Bedeutung der Parameter und die Tenant-Prüfungen bleiben unverändert.
 
-## Abnahmestand
+## Historischer Abnahmestand vom 6. Oktober 2026
 
 - Solution-Restore mit aktualisierten Paketen: erfolgreich.
 - Die strikte Analyzer-Konfiguration ist weiterhin aktiv.
@@ -73,3 +73,101 @@ Die fachliche Bedeutung der Parameter und die Tenant-Prüfungen bleiben unverän
   kein Nachweis eines erfolgreichen strikten Builds.
 - Weitere Analyzer-Funde werden schrittweise behoben; diese Änderung ist noch
   kein Abschluss der gesamten Analyzer-Bereinigung.
+
+## Aktualisierung vom 11. Oktober 2026
+
+Der historische Stand oben ist überholt. Die strikte Release-Kompilierung der
+gesamten Solution ist jetzt erfolgreich: **0 Warnungen, 0 Fehler**. Analyzer und
+Warnungseskalation bleiben aktiv; der Nachweis stammt nicht aus einem Build mit
+deaktivierten Analyzern. Editor-Assets wurden nicht geändert.
+
+```text
+dotnet build VertexBPMN.sln --configuration Release --no-restore -p:SkipBpmnIoAssetBuild=true -m:1 --disable-build-servers
+```
+
+Nachweis: `solution-strict-final.log`, Dauer 2m 10,74s. Dieser Lauf umfasst auch
+API, Studio, Engine, Infrastruktur, AppHost, SDK, CLI, MCP-Projekte, sämtliche
+Testprojekte sowie Benchmark- und Test-Runner-Projekte.
+
+### Korrigierte Ursachen der anschließenden Regression
+
+- Die gemeinsame SQLite-Testumgebung verwendet das aktuelle BPMN-Migrationsschema
+  und getrennte Datenbanken für zusätzliche EF-Kontexte. Der Sample-Seed verwendet
+  bestehende, von den Migrationen angelegte Metadaten idempotent wieder. Betroffen:
+  `tests/VertexBPMN.Tests/Infrastructure/SharedSqliteDbFixture.cs` und
+  `CustomWebApplicationFactory.cs` im selben Verzeichnis.
+- Der SendGrid-Test prüft den tatsächlich serialisierten Versand-Payload der
+  aktualisierten Paketversion einschließlich Betreff, Empfänger und Inhalt.
+  Betroffen: `tests/VertexBPMN.Tests/Integration/Handlers/SendGridServiceTaskHandlerTests.cs`.
+- Negative MCP-Tests berücksichtigen die echte Worker-Registrierung des
+  Engine-Konstruktors; fehlende Server-Adressen werden weiterhin abgewiesen.
+- C.8.0 verwendet das unveränderte Originalmodell `Vacation Approval.dmn` aus dem
+  offiziellen MIWG-Demo-Repository und echte Datums-/Urlaubsguthaben-Eingaben.
+  Das vereinfachte Modell mit derselben Entscheidungs-ID wird nicht als Ersatz
+  für den abweichenden Originalvertrag verwendet. Quelle und Commit stehen in
+  `tests/VertexBPMN.Tests/TestData/Reference/Vacation Approval.source.md`.
+- `DmnParser` liest den Namensraum der Modellelemente, nicht einen möglicherweise
+  abweichenden XML-Standardnamensraum. Ein zusätzlicher Regressionstest belegt dies.
+- `BpmnParser` projiziert Zeebe-Task-Header beider verwendeter Namensräume in die
+  Laufzeitattribute. `ProcessEngine` löst deren `decisionRef` auf und bindet das
+  lokale Entscheidungsergebnis für namensbasierte FEEL-Ausgabemappings.
+- `DmnDecisionGraph` übergibt native `DateTimeOffset`-/`DateTime`-Eingaben mit
+  deklarierter DMN-Datumszeit als typisierte FEEL-Zeitwerte statt als gewöhnliche
+  JSON-Zeichenketten.
+
+Die ursprünglichen C.8.0-Ausführungsassertionen bleiben erhalten. Zusätzlich werden
+die echte DMN-Berechnung (`Approved`), Entscheidungsreferenz, Entscheidungsausführung
+ohne `DecisionError` und das echte BPMN-Ausgabemapping geprüft. Keine vorab gesetzten
+Ergebnisvariablen, Decision-Service-Mocks, veränderten BPMN-Fixtures oder
+Parser-only-Ersatzprüfungen. Gezielter C.8.0-Lauf: **1 bestanden, 0 Fehler**.
+
+### Abschließende Testläufe
+
+| Lauf | Gesamt | Bestanden | Fehler | Übersprungen | Dauer |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Hauptsuite mit unveränderten CI-sicheren Ausschlüssen | 1457 | 1449 | 0 | 8 | 1m 26,672s |
+| Dienstunabhängige SourceControl-Suite | 105 | 105 | 0 | 0 | 3,475s |
+| C.8.0 mit originalem externem DMN-Modell | 1 | 1 | 0 | 0 | 4,799s |
+
+Die gezielte C.8.0-Prüfung ist außerdem Bestandteil der Hauptsuite, keine zusätzliche
+einzigartige Testanzahl. Nachweise: `main-tests-strict-final-results.log`,
+`sourcecontrol-tests-strict-final-results.log`, `c8-original-test.log`.
+Alle Läufe verwenden die erfolgreichen aktuellen strikten Release-Builds mit
+`--no-build --no-restore`. Die acht übersprungenen Fälle benötigen externe lokale
+Dienste oder Live-Zugangsdaten und gelten ausdrücklich nicht als bestanden.
+
+Die separate SourceControl-Prüfung schließt nur diese lokalen Abnahmeklassen aus:
+`PostgresAcceptanceTests`, `NativeGitBoundaryTests`, `GitHttpsTransportTests`,
+`CredentialChannelAcceptanceTests`, `CommitExecutionAcceptanceTests` und
+`KeycloakGitLocalAcceptanceTests`. Deren Kompilierung ist nachgewiesen, ihre erneute
+Laufzeitabnahme nicht.
+
+### Gezielte Clean-Code-Nachprüfung
+
+Scope der letzten Nachprüfung: `C_8_0_Test.cs`, `DmnParserTests.cs`,
+`DmnParser.cs`, `BpmnXmlNamespaces.cs` (vier C#-Dateien). D1–D7-Suchen und
+manuelle Prüfung der geänderten Logik wurden ausgeführt. Keine bestätigten neuen
+Clean-Code-Funde in diesem Scope. Dies ist keine vollständige manuelle Prüfung
+aller schon zuvor vorhandenen Änderungen des umfangreichen Worktrees.
+
+| Regel | Ergebnis / Begrenzung |
+| --- | --- |
+| Async-Verträge und Cancellation | PASS; I/O propagiert den Test-Token. Die bestehende synchrone Engine-Überladung mit Eingabevariablen hat eine begründete CA1849-Einzelausnahme. |
+| Collection-Verträge | PASS; keine neuen unklaren öffentlichen Collection-Verträge. |
+| Bool-Modusschalter | PASS; keine neuen Modusschalter. |
+| Verantwortungsnamen | PASS; keine neuen Sammeltypen. |
+| Regions und Struktur | PASS; keine neuen Regions. |
+| Interfaces und Grenzen | N/A für neue Verträge; bestehendes IDmnParser bleibt unverändert erhalten. |
+| Vererbung | N/A für neue Hierarchien; keine neue Klassenvererbung. |
+| Lesbarkeit | PASS im genannten Scope; Assertions sind echte Berechnungs-/Ausführungsprüfungen. Kein repositoryweiter Formatter-Lauf. |
+
+### Noch nicht erneut abgenommen
+
+Der Build belegt Kompilierbarkeit mit der aktuellen strikten Konfiguration, nicht
+Produktionsreife sämtlicher Integrationen. PostgreSQL-/Keycloak-/WSLC-, reale
+Git-Transport-, Browser-, Ausfall-, Wiederherstellungs-, Last-/Soak- und
+Cloud-Abnahmen wurden in dieser Bereinigung nicht erneut durchgeführt.
+Die CI-sichere Regression verwendet unverändert die Ausschlüsse aus
+`.github/workflows/ci.yml`; keine weiteren Fälle wurden zum Erzielen eines grünen
+Ergebnisses ausgeschlossen. Der bestehende MCP-Demo-Antwortpfad bleibt die oben
+dokumentierte, separate Funktionsgrenze.

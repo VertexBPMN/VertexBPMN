@@ -13,10 +13,15 @@ public class VariableRepository : IVariableRepository
     {
         var existing = await _db.Variables.FindAsync(new object[] { variable.Id }, cancellationToken);
         if (existing == null)
-            await _db.Variables.AddAsync(variable, cancellationToken);
-        else
-            _db.Entry(existing).CurrentValues.SetValues(variable);
-        await _db.SaveChangesAsync(cancellationToken);
+		{
+			await _db.Variables.AddAsync(variable, cancellationToken);
+		}
+		else
+		{
+			_db.Entry(existing).CurrentValues.SetValues(variable);
+		}
+
+		await _db.SaveChangesAsync(cancellationToken);
     }
 
     public async ValueTask<Variable?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
@@ -28,8 +33,10 @@ public class VariableRepository : IVariableRepository
     {
         var query = _db.Variables.AsNoTracking().Where(v => v.ScopeId == scopeId);
         await foreach (var variable in query.AsAsyncEnumerable().WithCancellation(cancellationToken))
-            yield return variable;
-    }
+		{
+			yield return variable;
+		}
+	}
 
     public async ValueTask DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {

@@ -13,21 +13,20 @@ namespace VertexBPMN.Tests.Acceptance;
 
 [Collection("IntegratedApi")]
 [Trait("Category", "FullProductSupportAcceptance")]
-public sealed class DmnFeelDrdFullSupportAcceptanceTests
+public sealed class DmnFeelDrdFullSupportAcceptanceTests(
+	CustomWebApplicationFactory factory,
+	SharedSqliteDbFixture database,
+	ITestOutputHelper output)
 {
-    private readonly HttpClient _client;
+	private static readonly int[] ExpectedIterationInputs = [1, 2, 3];
+	private static readonly int[] ExpectedIterationOutputs = [2, 4, 6];
+	private readonly HttpClient _client = factory.WithSharedFixture(database).CreateClient(output);
 
-    public DmnFeelDrdFullSupportAcceptanceTests(
-        CustomWebApplicationFactory factory,
-        SharedSqliteDbFixture database,
-        ITestOutputHelper output) =>
-        _client = factory.WithSharedFixture(database).CreateClient(output);
-
-    [Fact]
-    public async Task FPS_DMN_01_Feel_iteration_context_quantifier_and_temporal_values_execute_through_api()
-    {
-        var key = $"fps-feel-{Guid.NewGuid():N}";
-        var dmn = $$"""
+	[Fact]
+	public async Task FPS_DMN_01_Feel_iteration_context_quantifier_and_temporal_values_execute_through_api()
+	{
+		var key = $"fps-feel-{Guid.NewGuid():N}";
+		var dmn = $$"""
             <definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/">
               <decision id="{{key}}" name="Advanced FEEL">
                 <variable name="analysis" />
@@ -36,23 +35,23 @@ public sealed class DmnFeelDrdFullSupportAcceptanceTests
             </definitions>
             """;
 
-        await DeployAsync(key, dmn);
-        using var result = await EvaluateAsync(key, new Dictionary<string, object>
-        {
-            ["scores"] = new[] { 1, 2, 3 }
-        });
+		await DeployAsync(key, dmn);
+		using var result = await EvaluateAsync(key, new Dictionary<string, object>(StringComparer.Ordinal)
+		{
+			["scores"] = ExpectedIterationInputs
+		});
 
-        var analysis = result.RootElement.GetProperty("variables").GetProperty("analysis");
-        Assert.Equal(new[] { 2, 4, 6 }, analysis.GetProperty("doubled").EnumerateArray().Select(x => x.GetInt32()));
-        Assert.True(analysis.GetProperty("allPositive").GetBoolean());
-        Assert.True(analysis.GetProperty("dateOrder").GetBoolean());
-    }
+		var analysis = result.RootElement.GetProperty("variables").GetProperty("analysis");
+		Assert.Equal(ExpectedIterationOutputs, analysis.GetProperty("doubled").EnumerateArray().Select(x => x.GetInt32()));
+		Assert.True(analysis.GetProperty("allPositive").GetBoolean());
+		Assert.True(analysis.GetProperty("dateOrder").GetBoolean());
+	}
 
-    [Fact]
-    public async Task FPS_DMN_02_Multi_level_drd_and_decision_service_return_all_declared_outputs()
-    {
-        var serviceKey = $"fps-service-{Guid.NewGuid():N}";
-        var dmn = $$"""
+	[Fact]
+	public async Task FPS_DMN_02_Multi_level_drd_and_decision_service_return_all_declared_outputs()
+	{
+		var serviceKey = $"fps-service-{Guid.NewGuid():N}";
+		var dmn = $$"""
             <definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/">
               <inputData id="applicantData" name="Applicant">
                 <variable name="score" />
@@ -81,38 +80,38 @@ public sealed class DmnFeelDrdFullSupportAcceptanceTests
             </definitions>
             """;
 
-        await DeployAsync(serviceKey, dmn);
-        using var result = await EvaluateAsync(serviceKey, new Dictionary<string, object> { ["score"] = 75 });
+		await DeployAsync(serviceKey, dmn);
+		using var result = await EvaluateAsync(serviceKey, new Dictionary<string, object>(StringComparer.Ordinal) { ["score"] = 75 });
 
-        var variables = result.RootElement.GetProperty("variables");
-        Assert.Equal("low", variables.GetProperty("risk").GetString());
-        Assert.True(variables.GetProperty("approved").GetBoolean());
-        Assert.False(variables.TryGetProperty("adjustedScore", out _));
-    }
+		var variables = result.RootElement.GetProperty("variables");
+		Assert.Equal("low", variables.GetProperty("risk").GetString());
+		Assert.True(variables.GetProperty("approved").GetBoolean());
+		Assert.False(variables.TryGetProperty("adjustedScore", out _));
+	}
 
-    [Theory]
-    [InlineData("ANY", null, "\"same\"")]
-    [InlineData("COLLECT", "SUM", "30")]
-    [InlineData("RULE ORDER", null, "[\"low\",\"high\"]")]
-    [InlineData("OUTPUT ORDER", null, "[\"high\",\"low\"]")]
-    public async Task FPS_DMN_03_All_multi_hit_policies_execute_with_standard_semantics(
-        string hitPolicy,
-        string? aggregation,
-        string expectedJson)
-    {
-        var key = $"fps-policy-{Guid.NewGuid():N}";
-        var outputValues = hitPolicy == "OUTPUT ORDER"
-            ? "<outputValues><text>&quot;high&quot;, &quot;low&quot;</text></outputValues>"
-            : string.Empty;
-        var firstOutput = hitPolicy == "ANY" ? "same" : "low";
-        var secondOutput = hitPolicy == "ANY" ? "same" : "high";
-        if (hitPolicy == "COLLECT")
-        {
-            firstOutput = "10";
-            secondOutput = "20";
-        }
-        var aggregationAttribute = aggregation is null ? string.Empty : $" aggregation=\"{aggregation}\"";
-        var dmn = $$"""
+	[Theory]
+	[InlineData("ANY", null, "\"same\"")]
+	[InlineData("COLLECT", "SUM", "30")]
+	[InlineData("RULE ORDER", null, "[\"low\",\"high\"]")]
+	[InlineData("OUTPUT ORDER", null, "[\"high\",\"low\"]")]
+	public async Task FPS_DMN_03_All_multi_hit_policies_execute_with_standard_semantics(
+		string hitPolicy,
+		string? aggregation,
+		string expectedJson)
+	{
+		var key = $"fps-policy-{Guid.NewGuid():N}";
+		var outputValues = hitPolicy == "OUTPUT ORDER"
+			? "<outputValues><text>&quot;high&quot;, &quot;low&quot;</text></outputValues>"
+			: string.Empty;
+		var firstOutput = hitPolicy == "ANY" ? "same" : "low";
+		var secondOutput = hitPolicy == "ANY" ? "same" : "high";
+		if (hitPolicy == "COLLECT")
+		{
+			firstOutput = "10";
+			secondOutput = "20";
+		}
+		var aggregationAttribute = aggregation is null ? string.Empty : $" aggregation=\"{aggregation}\"";
+		var dmn = $$"""
             <definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/">
               <decision id="{{key}}">
                 <decisionTable hitPolicy="{{hitPolicy}}"{{aggregationAttribute}}>
@@ -125,17 +124,17 @@ public sealed class DmnFeelDrdFullSupportAcceptanceTests
             </definitions>
             """;
 
-        await DeployAsync(key, dmn);
-        using var result = await EvaluateAsync(key, new Dictionary<string, object> { ["amount"] = 1 });
-        var actual = result.RootElement.GetProperty("variables").GetProperty("result");
-        Assert.Equal(expectedJson, actual.GetRawText());
-    }
+		await DeployAsync(key, dmn);
+		using var result = await EvaluateAsync(key, new Dictionary<string, object>(StringComparer.Ordinal) { ["amount"] = 1 });
+		var actual = result.RootElement.GetProperty("variables").GetProperty("result");
+		Assert.Equal(expectedJson, actual.GetRawText());
+	}
 
-    [Fact]
-    public async Task FPS_DMN_04_Invalid_Feel_is_rejected_during_deployment()
-    {
-        var key = $"fps-invalid-{Guid.NewGuid():N}";
-        var dmn = $$"""
+	[Fact]
+	public async Task FPS_DMN_04_Invalid_Feel_is_rejected_during_deployment()
+	{
+		var key = $"fps-invalid-{Guid.NewGuid():N}";
+		var dmn = $$"""
             <definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/">
               <decision id="{{key}}"><decisionTable hitPolicy="UNIQUE">
                 <input id="input"><inputExpression><text>amount</text></inputExpression></input>
@@ -145,21 +144,21 @@ public sealed class DmnFeelDrdFullSupportAcceptanceTests
             </definitions>
             """;
 
-        using var response = await _client.PostAsJsonAsync("/api/decision/deploy", new
-        {
-            decisionKey = key,
-            name = key,
-            dmnXml = dmn
-        }, TestContext.Current.CancellationToken);
+		using var response = await _client.PostAsJsonAsync("/api/decision/deploy", new
+		{
+			decisionKey = key,
+			name = key,
+			dmnXml = dmn
+		}, TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-    }
+		Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+	}
 
-    [Fact]
-    public async Task FPS_DMN_05_Local_ProcessEngine_uses_the_same_drd_and_feel_runtime()
-    {
-        const string targetDecision = "answerDecision";
-        const string dmn = """
+	[Fact]
+	public async Task FPS_DMN_05_Local_ProcessEngine_uses_the_same_drd_and_feel_runtime()
+	{
+		const string targetDecision = "answerDecision";
+		const string dmn = """
             <definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/">
               <decision id="baseDecision">
                 <variable name="baseValue" />
@@ -172,66 +171,66 @@ public sealed class DmnFeelDrdFullSupportAcceptanceTests
               </decision>
             </definitions>
             """;
-        var parser = new DmnParser(NullLogger<DmnParser>.Instance);
-        var dmnEngine = new DmnEngine(NullLogger<DmnEngine>.Instance);
-        var processEngine = new ProcessEngine(
-            NullLogger<ProcessEngine>.Instance,
-            NullServiceTaskRegistry.Instance,
-            dmnParser: parser,
-            dmnEngine: dmnEngine);
-        var variables = new Dictionary<string, object>();
-        var model = new BpmnModel(
-            "local-dmn-process",
-            "Local DMN process",
-            Events: [new BpmnEvent("start", "startEvent"), new BpmnEvent("end", "endEvent")],
-            Gateways: [],
-            Subprocesses: [],
-            SequenceFlows:
-            [
-                new BpmnSequenceFlow("toDecision", "start", "decide"),
-                new BpmnSequenceFlow("toEnd", "decide", "end")
-            ],
-            Tasks:
-            [
-                new BpmnTask("decide", "businessRuleTask", Attributes: new Dictionary<string, string>
-                {
-                    ["decisionRef"] = targetDecision
-                })
-            ],
-            ProcessVariables: variables);
+		var parser = new DmnParser(NullLogger<DmnParser>.Instance);
+		var dmnEngine = new DmnEngine(NullLogger<DmnEngine>.Instance);
+		var processEngine = new ProcessEngine(
+			NullLogger<ProcessEngine>.Instance,
+			NullServiceTaskRegistry.Instance,
+			dmnParser: parser,
+			dmnEngine: dmnEngine);
+		var variables = new Dictionary<string, object>(StringComparer.Ordinal);
+		var model = new BpmnModel(
+			"local-dmn-process",
+			"Local DMN process",
+			Events: [new BpmnEvent("start", "startEvent"), new BpmnEvent("end", "endEvent")],
+			Gateways: [],
+			Subprocesses: [],
+			SequenceFlows:
+			[
+				new BpmnSequenceFlow("toDecision", "start", "decide"),
+				new BpmnSequenceFlow("toEnd", "decide", "end")
+			],
+			Tasks:
+			[
+				new BpmnTask("decide", "businessRuleTask", Attributes: new Dictionary<string, string>(StringComparer.Ordinal)
+				{
+					["decisionRef"] = targetDecision
+				})
+			],
+			ProcessVariables: variables);
 
-        await processEngine.RegisterDmnModelAsync(targetDecision, dmn);
-        var trace = await processEngine.ExecuteAsync(model, TestContext.Current.CancellationToken);
+		await processEngine.RegisterDmnModelAsync(targetDecision, dmn);
+		var trace = await processEngine.ExecuteAsync(model, TestContext.Current.CancellationToken);
 
-        Assert.Contains(trace, entry => entry.Contains($"DecisionEvaluated: {targetDecision} (local)", StringComparison.Ordinal));
-        Assert.Equal(42m, variables["answer"]);
-    }
+		Assert.Contains(trace, entry => entry.Contains($"DecisionEvaluated: {targetDecision} (local)", StringComparison.Ordinal));
+		Assert.Equal(42m, variables["answer"]);
+	}
 
-    private async Task DeployAsync(string key, string dmn)
-    {
-        using var response = await _client.PostAsJsonAsync("/api/decision/deploy", new
-        {
-            decisionKey = key,
-            name = key,
-            dmnXml = dmn
-        }, TestContext.Current.CancellationToken);
-        response.EnsureSuccessStatusCode();
-    }
+	private async Task DeployAsync(string key, string dmn)
+	{
+		using var response = await _client.PostAsJsonAsync("/api/decision/deploy", new
+		{
+			decisionKey = key,
+			name = key,
+			dmnXml = dmn
+		}, TestContext.Current.CancellationToken);
+		response.EnsureSuccessStatusCode();
+	}
 
-    private async Task<JsonDocument> EvaluateAsync(string key, Dictionary<string, object> inputs)
-    {
-        using var response = await _client.PostAsJsonAsync("/api/decision/evaluate", new
-        {
-            decisionKey = key,
-            inputs
-        }, TestContext.Current.CancellationToken);
-        response.EnsureSuccessStatusCode();
-        return JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
-    }
+	private async Task<JsonDocument> EvaluateAsync(string key, Dictionary<string, object> inputs)
+	{
+		using var response = await _client.PostAsJsonAsync("/api/decision/evaluate", new
+		{
+			decisionKey = key,
+			inputs
+		}, TestContext.Current.CancellationToken);
+		response.EnsureSuccessStatusCode();
+		return JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+	}
 
-    private static string FeelLiteral(string value) =>
-        decimal.TryParse(value, System.Globalization.NumberStyles.Number,
-            System.Globalization.CultureInfo.InvariantCulture, out _)
-            ? value
-            : $"\"{value}\"";
+	private static string FeelLiteral(string value) =>
+		decimal.TryParse(value, System.Globalization.NumberStyles.Number,
+			System.Globalization.CultureInfo.InvariantCulture, out _)
+			? value
+			: $"\"{value}\"";
 }

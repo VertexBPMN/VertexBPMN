@@ -5,16 +5,17 @@ namespace VertexBPMN.Tests.Parsing.Runtime;
 
 public class RuntimeProjectionAdvancedTests
 {
-    private readonly BpmnParser _parser = new(new BpmnParserOptions {
-        RoundtripMode = BpmnRoundtripMode.Strict,
-        BuildRuntimeProjection = true,
-        NormalizeVendorExtensions = true
-    });
+	private readonly BpmnParser _parser = new(new BpmnParserOptions
+	{
+		RoundtripMode = BpmnRoundtripMode.Strict,
+		BuildRuntimeProjection = true,
+		NormalizeVendorExtensions = true
+	});
 
-    [Fact]
-    public async Task DefaultFlow_TargetNode_FlagIsSet()
-    {
-        const string xml = """
+	[Fact]
+	public async Task DefaultFlow_TargetNode_FlagIsSet()
+	{
+		const string xml = """
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <process id="p1">
     <startEvent id="start"/>
@@ -32,19 +33,19 @@ public class RuntimeProjectionAdvancedTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
-        var rt = model.Runtime!;
-        var taskA = rt.FlowNodes.Single(n => n.Id == "taskA");
-        var taskB = rt.FlowNodes.Single(n => n.Id == "taskB");
+		var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		var rt = model.Runtime!;
+		var taskA = rt.FlowNodes.Single(n => n.Id == "taskA");
+		var taskB = rt.FlowNodes.Single(n => n.Id == "taskB");
 
-        Assert.True(taskA.IsDefaultGatewayTarget);
-        Assert.False(taskB.IsDefaultGatewayTarget);
-    }
+		Assert.True(taskA.IsDefaultGatewayTarget);
+		Assert.False(taskB.IsDefaultGatewayTarget);
+	}
 
-    [Fact]
-    public async Task MultiInstance_Task_FlagsDetected_SequentialAndParallel()
-    {
-        const string xml = """
+	[Fact]
+	public async Task MultiInstance_Task_FlagsDetected_SequentialAndParallel()
+	{
+		const string xml = """
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <process id="p1">
     <startEvent id="start"/>
@@ -65,16 +66,16 @@ public class RuntimeProjectionAdvancedTests
   </process>
 </definitions>
 """;
-        var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
-        var rt = model.Runtime!;
+		var model = await _parser.ParseAsync(xml, TestContext.Current.CancellationToken);
+		var rt = model.Runtime!;
 
-        var miSeq = rt.FlowNodes.Single(n => n.Id == "miSeq");
-        var miPar = rt.FlowNodes.Single(n => n.Id == "miPar");
+		var miSeq = rt.FlowNodes.Single(n => n.Id == "miSeq");
+		var miPar = rt.FlowNodes.Single(n => n.Id == "miPar");
 
-        Assert.True(miSeq.IsMultiInstance);
-        Assert.True(miSeq.IsMultiInstanceSequential);
+		Assert.True(miSeq.IsMultiInstance);
+		Assert.True(miSeq.IsMultiInstanceSequential);
 
-        Assert.True(miPar.IsMultiInstance);
-        Assert.False(miPar.IsMultiInstanceSequential);
-    }
+		Assert.True(miPar.IsMultiInstance);
+		Assert.False(miPar.IsMultiInstanceSequential);
+	}
 }

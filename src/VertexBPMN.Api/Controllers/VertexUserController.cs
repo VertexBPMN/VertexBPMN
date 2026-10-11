@@ -3,18 +3,17 @@ using Microsoft.EntityFrameworkCore;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Authorization;
 
 namespace VertexBPMN.Api.Controllers;
-
-using Microsoft.AspNetCore.Authorization;
 [ApiController]
 [Route("api/vertex/user")]
 [Authorize]
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public controller required for ASP.NET Core MVC discovery and activation.")]
 public class VertexUserController : ControllerBase
 {
 	private readonly IIdentityService _identityService;
 	private readonly BpmnDbContext _db;
-
 	public VertexUserController(IIdentityService identityService, BpmnDbContext db)
 	{
 		_identityService = identityService;
@@ -26,7 +25,14 @@ public class VertexUserController : ControllerBase
 	{
 		var tenantId = User.IsInRole("Admin") ? null : User.FindFirst("tenant_id")?.Value;
 		await foreach (var user in _identityService.ListUsersAsync(tenantId))
-			yield return new UserDto { Id = user.Id, Username = user.Username, Email = user.Email };
+		{
+			yield return new UserDto
+			{
+				Id = user.Id,
+				Username = user.Username,
+				Email = user.Email
+			};
+		}
 	}
 
 	[HttpGet("{id}")]
@@ -35,8 +41,16 @@ public class VertexUserController : ControllerBase
 		var tenantId = User.IsInRole("Admin") ? null : User.FindFirst("tenant_id")?.Value;
 		var user = await _identityService.GetUserByIdAsync(id, tenantId);
 		if (user is null)
+		{
 			return NotFound();
-		return new UserDto { Id = user.Id, Username = user.Username, Email = user.Email };
+		}
+
+		return new UserDto
+		{
+			Id = user.Id,
+			Username = user.Username,
+			Email = user.Email
+		};
 	}
 
 	[HttpPost]
@@ -44,10 +58,14 @@ public class VertexUserController : ControllerBase
 	public async Task<ActionResult<UserDto>> Create([FromBody] UserWriteDto request, CancellationToken cancellationToken)
 	{
 		if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Email))
+		{
 			return ValidationProblem("Username and email are required.");
+		}
 
 		if (await _db.Users.AnyAsync(user => user.Username == request.Username, cancellationToken))
+		{
 			return Conflict(new ProblemDetails { Title = "Username already exists" });
+		}
 
 		var user = new User
 		{
@@ -67,7 +85,10 @@ public class VertexUserController : ControllerBase
 	{
 		var user = await _db.Users.SingleOrDefaultAsync(user => user.Id == id, cancellationToken);
 		if (user is null)
+		{
 			return NotFound();
+		}
+
 		user.Username = request.Username.Trim();
 		user.Email = request.Email.Trim();
 		user.TenantId = request.TenantId;
@@ -83,14 +104,22 @@ public class VertexUserController : ControllerBase
 	{
 		var user = await _db.Users.SingleOrDefaultAsync(user => user.Id == id, cancellationToken);
 		if (user is null)
+		{
 			return NotFound();
+		}
+
 		_db.Users.Remove(user);
 		await _db.SaveChangesAsync(cancellationToken);
 		return NoContent();
 	}
 
-	private static UserDto ToDto(User user) => new() { Id = user.Id, Username = user.Username, Email = user.Email };
-
+	private static UserDto ToDto(User user) => new()
+	{
+		Id = user.Id,
+		Username = user.Username,
+		Email = user.Email
+	};
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public contract type UserDto retained for exposed HTTP action signatures and controller activation (VertexUserController).")]
 	public class UserDto
 	{
 		public string Id { get; set; } = string.Empty;
@@ -98,6 +127,7 @@ public class VertexUserController : ControllerBase
 		public string Email { get; set; } = string.Empty;
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public contract type UserWriteDto retained for exposed HTTP action signatures and controller activation (VertexUserController).")]
 	public sealed class UserWriteDto
 	{
 		public string Username { get; set; } = string.Empty;

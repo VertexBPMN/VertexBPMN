@@ -37,7 +37,11 @@ public sealed partial class PersistentSourceControlStore
 	{
 		var operation = await GetOperationAsync(context, id, roles, cancellationToken);
 		if (operation?.ActorId != context.ActorId || operation.Kind != SourceControlOperationKind.PullRequest
-			|| operation.State != SourceControlOperationState.Succeeded) return null;
+			|| operation.State != SourceControlOperationState.Succeeded)
+		{
+			return null;
+		}
+
 		var access = await FindAsync(context.TenantId, operation.RepositoryId, cancellationToken)
 			?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
 		RepositoryAccessPolicy.Demand(context, access.Binding, roles, access.Grants, RepositoryPermission.PullRequest);
@@ -67,7 +71,11 @@ public sealed partial class PersistentSourceControlStore
 		foreach (var row in rows)
 		{
 			var access = await FindAsync(context.TenantId, row.Id, cancellationToken);
-			if (access is null) continue;
+			if (access is null)
+			{
+				continue;
+			}
+
 			try { RepositoryAccessPolicy.Demand(context, access.Binding, roles, access.Grants, RepositoryPermission.Read); }
 			catch (SourceControlSecurityException exception) when (exception.Code == SourceControlErrorCode.NotFound) { continue; }
 			visible.Add(access);
@@ -80,14 +88,25 @@ public sealed partial class PersistentSourceControlStore
 	{
 		var operation = await GetOperationAsync(context, id, roles, cancellationToken);
 		if (operation?.ActorId != context.ActorId || operation.Kind != SourceControlOperationKind.Commit
-			|| operation.State != SourceControlOperationState.CommittedLocal) return null;
+			|| operation.State != SourceControlOperationState.CommittedLocal)
+		{
+			return null;
+		}
+
 		var row = await db.SourceControlOperations.AsNoTracking().SingleAsync(x => x.Id == id && x.TenantId == context.TenantId, cancellationToken);
-		if (row.ProtectedResult is null) return null;
+		if (row.ProtectedResult is null)
+		{
+			return null;
+		}
+
 		try
 		{
 			var stored = JsonSerializer.Deserialize<StoredLocalCommit>(Unprotect(context, row.RepositoryId, row.ProtectedResult));
 			if (stored?.SchemaVersion != 1 || stored.RepositoryId != row.RepositoryId || stored.Receipt.OperationId != id)
+			{
 				throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
+			}
+
 			return stored.Receipt;
 		}
 		catch (JsonException) { throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe); }
@@ -107,11 +126,18 @@ public sealed partial class PersistentSourceControlStore
 		var accepted = JsonSerializer.Deserialize<AcceptedPush>(Unprotect(context, push.RepositoryId, push.ProtectedRequest))
 			?? throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
 		if (accepted.SchemaVersion != 1 || accepted.Source.SessionId != sessionId || accepted.Source.ActorAuthority != options.Value.IdentityAuthority)
+		{
 			throw new SourceControlSecurityException(SourceControlErrorCode.RevisionConflict);
+		}
+
 		var session = await db.SourceControlSessions.AsNoTracking().SingleOrDefaultAsync(x => x.Id == sessionId
 			&& x.TenantId == context.TenantId && x.ActorId == context.ActorId && x.RepositoryId == push.RepositoryId, cancellationToken)
 			?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
-		if (session.BaseCommit == accepted.Receipt.Commit.Value) return true;
+		if (session.BaseCommit == accepted.Receipt.Commit.Value)
+		{
+			return true;
+		}
+
 		var now = DateTimeOffset.UtcNow;
 		return await db.SourceControlSessions.Where(x => x.Id == sessionId && x.TenantId == context.TenantId && x.ActorId == context.ActorId
 			&& x.Revision == expectedRevision && x.BaseCommit == accepted.Source.BaseCommit && x.ExpiresUtcTicks > now.UtcTicks)

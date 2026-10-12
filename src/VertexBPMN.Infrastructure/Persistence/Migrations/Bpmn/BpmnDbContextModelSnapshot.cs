@@ -1426,6 +1426,31 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                     b.ToTable("SourceControlBindings", (string)null);
                 });
 
+            modelBuilder.Entity("VertexBPMN.Domain.Entities.SourceControlConnectionProfileRecord", b =>
+                {
+                    b.Property<string>("TenantId")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsRevoked")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ProfileJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("TenantId", "Id");
+
+                    b.ToTable("SourceControlConnectionProfiles", (string)null);
+                });
+
             modelBuilder.Entity("VertexBPMN.Domain.Entities.SourceControlOperationRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1439,6 +1464,11 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
 
                     b.Property<int?>("ErrorCode")
                         .HasColumnType("INTEGER");
+
+                    b.Property<int>("ExecutionContractVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(0);
 
                     b.Property<long>("Fence")
                         .IsConcurrencyToken()
@@ -1458,6 +1488,9 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
 
                     b.Property<long?>("LeaseUntilUtcTicks")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("ProtectedExecutionTarget")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("ProtectedRequest")
                         .IsRequired()

@@ -11,7 +11,8 @@ public sealed class SharedSqliteDbFixture : IAsyncLifetime
 {
 	private bool _initialized;
 
-	public SqliteConnection Connection { get; } = new("Data Source=:memory:;Mode=Memory;Cache=Shared");
+	// Share within this collection fixture, never across independently created collections.
+	public SqliteConnection Connection { get; } = new($"Data Source=vertex-fixture-{Guid.NewGuid():N};Mode=Memory;Cache=Shared");
 
 	public DbContextOptions<BpmnDbContext> BpmnOptions => new DbContextOptionsBuilder<BpmnDbContext>().UseSqlite(Connection).Options;
 	private readonly Dictionary<string, SqliteConnection> _auxiliaryConnections = new(StringComparer.Ordinal);

@@ -75,6 +75,27 @@ public static class SourceControlHttps
         Justification = "HttpClient takes ownership of the SocketsHttpHandler/TargetGuard chain and disposes both in Dispose().")]
     internal static HttpClient CreateClient(IReadOnlyList<string> allowedHosts, TimeSpan timeout,
         Func<string, CancellationToken, Task<IPAddress[]>> resolve)
+        => CreateClient(allowedHosts, timeout, resolve, null);
+
+    internal static HttpClient CreateProfiledGitHubClient(ApprovedGitHttpsTarget approved, TimeSpan timeout)
+    {
+        ValidateTarget(approved.Remote, ["api.github.com"]);
+        var addresses = approved.CopyAddresses();
+        return CreateClient(["api.github.com"], timeout, (host, cancellation) =>
+        {
+            cancellation.ThrowIfCancellationRequested();
+            if (host != approved.Remote.IdnHost)
+            {
+                Reject();
+            }
+            return Task.FromResult(addresses.ToArray());
+        }, approved.Remote);
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
+        Justification = "HttpClient owns the handler chain and disposes it.")]
+    private static HttpClient CreateClient(IReadOnlyList<string> allowedHosts, TimeSpan timeout,
+        Func<string, CancellationToken, Task<IPAddress[]>> resolve, Uri? repositoryScope)
     {
         var hosts = allowedHosts.ToArray();
         var handler = new SocketsHttpHandler
@@ -110,14 +131,24 @@ public static class SourceControlHttps
                 throw new SourceControlSecurityException(SourceControlErrorCode.ProviderUnavailable);
             }
         };
-        return new HttpClient(new TargetGuard(handler, hosts)) { Timeout = timeout };
+        return new HttpClient(new TargetGuard(handler, hosts, repositoryScope)) { Timeout = timeout };
     }
 
-    private sealed class TargetGuard(HttpMessageHandler inner, string[] hosts) : DelegatingHandler(inner)
+    private sealed class TargetGuard(HttpMessageHandler inner, string[] hosts, Uri? repositoryScope) : DelegatingHandler(inner)
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             ValidateRequestTarget(request.RequestUri!, hosts);
+            if (repositoryScope is not null)
+            {
+                var target = request.RequestUri!;
+                if (target.IdnHost != repositoryScope.IdnHost || target.Port != repositoryScope.Port
+                    || (target.AbsolutePath != repositoryScope.AbsolutePath
+                        && !target.AbsolutePath.StartsWith(repositoryScope.AbsolutePath + "/", StringComparison.Ordinal)))
+                {
+                    Reject();
+                }
+            }
             return base.SendAsync(request, cancellationToken);
         }
     }

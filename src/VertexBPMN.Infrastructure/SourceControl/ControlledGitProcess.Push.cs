@@ -8,12 +8,12 @@ namespace VertexBPMN.Infrastructure.SourceControl;
 internal sealed partial class ControlledGitProcess
 {
 	internal Task<GitCommitId?> ReadPushHeadAsync(GitWorkspace workspace, RepositoryBinding binding,
-		PushCommand command, GitHubTokenLease lease, CancellationToken cancellationToken) =>
+		PushCommand command, IGitCredentialLease lease, CancellationToken cancellationToken) =>
 		WithPushRemoteAsync(workspace, binding, command,
 			(addresses, token) => ReadRemoteHeadCoreAsync(workspace, binding.Remote, command.WorkBranch, lease, addresses, null, token), cancellationToken);
 
 	internal async Task PushAsync(GitWorkspace workspace, RepositoryBinding binding, PushCommand command,
-		GitHubTokenLease lease, CancellationToken cancellationToken) =>
+		IGitCredentialLease lease, CancellationToken cancellationToken) =>
 		_ = await WithPushRemoteAsync(workspace, binding, command, async (addresses, token) =>
 		{
 			await PushCoreAsync(workspace, binding, command, lease, addresses, null, token);
@@ -21,7 +21,7 @@ internal sealed partial class ControlledGitProcess
 		}, cancellationToken);
 
 	internal Task<GitCommitId?> ReadPushHeadLocalAcceptanceAsync(GitWorkspace workspace, RepositoryBinding binding,
-		PushCommand command, GitHubTokenLease lease, string certificateAuthorityFile, CancellationToken cancellationToken)
+		PushCommand command, IGitCredentialLease lease, string certificateAuthorityFile, CancellationToken cancellationToken)
 	{
 		ValidatePush(binding, command);
 		ValidateLocalAcceptanceTarget(binding.Remote, certificateAuthorityFile);
@@ -29,7 +29,7 @@ internal sealed partial class ControlledGitProcess
 	}
 
 	internal Task PushLocalAcceptanceAsync(GitWorkspace workspace, RepositoryBinding binding, PushCommand command,
-		GitHubTokenLease lease, string certificateAuthorityFile, CancellationToken cancellationToken)
+		IGitCredentialLease lease, string certificateAuthorityFile, CancellationToken cancellationToken)
 	{
 		ValidatePush(binding, command);
 		ValidateLocalAcceptanceTarget(binding.Remote, certificateAuthorityFile);
@@ -60,7 +60,7 @@ internal sealed partial class ControlledGitProcess
 	}
 
 	private async Task PushCoreAsync(GitWorkspace workspace, RepositoryBinding binding, PushCommand command,
-		GitHubTokenLease lease, IPAddress[] addresses, string? caFile, CancellationToken cancellationToken)
+		IGitCredentialLease lease, IPAddress[] addresses, string? caFile, CancellationToken cancellationToken)
 	{
 		await VersionAsync(workspace, cancellationToken);
 		var before = await ReadRemoteHeadCoreAsync(workspace, binding.Remote, command.WorkBranch, lease, addresses, caFile, cancellationToken);

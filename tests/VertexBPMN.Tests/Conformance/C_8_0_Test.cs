@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
+using Moq;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Engine.Execution;
 using VertexBPMN.Engine.Parsing;
@@ -21,11 +23,12 @@ public sealed class C_8_0_Test
 		Assert.NotNull(ruleTask.Attributes);
 		Assert.Equal("_9ba1b7b0-c84d-484f-9203-3792edc6dcbd", ruleTask.Attributes["zeebe:taskHeaders.decisionRef"]);
 		var dmnXml = await File.ReadAllTextAsync(Path.Combine(Directory.GetCurrentDirectory(), "TestData", "Reference", "Vacation Approval.dmn"), TestContext.Current.CancellationToken);
+		var decisionLogger = new Mock<ILogger<DmnEngine>>();
 		var engine = new ProcessEngine(
 			NullLogger<ProcessEngine>.Instance,
 			NullServiceTaskRegistry.Instance,
 			dmnParser: new DmnParser(NullLogger<DmnParser>.Instance),
-			dmnEngine: new DmnEngine(NullLogger<DmnEngine>.Instance));
+			dmnEngine: new DmnEngine(decisionLogger.Object));
 		await engine.RegisterDmnModelAsync("_9ba1b7b0-c84d-484f-9203-3792edc6dcbd", dmnXml);
 		var from = DateTimeOffset.UtcNow.AddDays(30);
 		var inputs = new Dictionary<string, object>(StringComparer.Ordinal)
@@ -39,7 +42,16 @@ public sealed class C_8_0_Test
 		var decision = await new DmnParser(NullLogger<DmnParser>.Instance).ParseAsync(dmnXml, TestContext.Current.CancellationToken);
 		var decisionResult = await new DmnEngine(NullLogger<DmnEngine>.Instance).EvaluateDecisionAsync(decision, inputs, TestContext.Current.CancellationToken);
 		Assert.True(Equals("Approved", decisionResult["Approval"]), System.Text.Json.JsonSerializer.Serialize(decisionResult));
-		var result = engine.Execute(model, inputs);
+		List<string> result;
+		try
+		{
+			result = engine.Execute(model, inputs);
+		}
+		catch (Exception failure)
+		{
+			var decisionFailures = decisionLogger.Invocations.SelectMany(invocation => invocation.Arguments).OfType<Exception>();
+			throw new AggregateException("BPMN execution failed; preceding DMN failures are included for diagnosis.", decisionFailures.Append(failure));
+		}
 		Assert.NotNull(result);
 		Assert.Contains(result, item => item.StartsWith("DecisionEvaluated:", StringComparison.Ordinal));
 		Assert.DoesNotContain(result, item => item.StartsWith("DecisionError:", StringComparison.Ordinal));

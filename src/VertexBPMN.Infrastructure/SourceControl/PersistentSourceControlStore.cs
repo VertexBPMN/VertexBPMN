@@ -14,7 +14,8 @@ using VertexBPMN.SourceControl.Abstractions;
 namespace VertexBPMN.Infrastructure.SourceControl;
 
 /// <summary>Relational-only store. Each worker/request uses its own scoped DbContext.</summary>
-public sealed partial class PersistentSourceControlStore(BpmnDbContext db, IDataProtectionProvider protection, IOptions<SourceControlOptions> options)
+public sealed partial class PersistentSourceControlStore(BpmnDbContext db, IDataProtectionProvider protection, IOptions<SourceControlOptions> options,
+	IOptionsMonitor<SourceControlOptions>? liveOptions = null, IRepositoryHostingTargetResolver? hostingTargets = null)
     : ISourceControlAccessStore
 {
     private void Relational()
@@ -38,6 +39,8 @@ public sealed partial class PersistentSourceControlStore(BpmnDbContext db, IData
 		{
 			throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
 		}
+		// Profile association is a separate revision-checked administrative operation.
+		DemandLegacyBinding(binding);
 
 		SourceControlHttps.ValidateTarget(binding.Remote, options.Value.AllowedHosts);
         SourceControlInputPolicy.ValidateBranch(binding.DefaultBranch);
@@ -217,15 +220,7 @@ public sealed partial class PersistentSourceControlStore(BpmnDbContext db, IData
         var access = await FindAsync(context.TenantId, repositoryId, cancellationToken)
             ?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
         RepositoryAccessPolicy.Demand(context, access.Binding, copiedRoles, access.Grants, RepositoryPermission.Commit);
-        foreach (var snapshot in snapshots)
-		{
-			SourceControlInputPolicy.DemandSafeBpmn(snapshot, access.Binding, options.Value.Limits);
-		}
-
-		if (snapshots.Sum(x => (long)x.ContentLength) > options.Value.Limits.MaxRepositoryBytes)
-		{
-			throw new SourceControlSecurityException(SourceControlErrorCode.PayloadTooLarge);
-		}
+		DemandCommitContent(access.Binding, snapshots);
 
 		SourceControlInputPolicy.ValidateBranch(submission.WorkBranch);
         if (submission.WorkBranch != SourceControlInputPolicy.WorkBranch(submission.SessionId)
@@ -234,10 +229,12 @@ public sealed partial class PersistentSourceControlStore(BpmnDbContext db, IData
 			throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
 		}
 
+		var execution = access.Binding.ConnectionProfileId is null ? null
+			: await CaptureWriteExecutionAsync(context, access, copiedRoles, SourceControlOperationKind.Commit, cancellationToken);
 		var identity = new AcceptedCommit(1, submission.SessionId,
             submission.SessionRevision, submission.BaseCommit.Value, submission.WorkBranch, submission.Message,
             snapshots.Select(x => new AcceptedSnapshot(x.Path, x.Kind, x.DocumentGeneration, x.LocalRevision, x.ContentSha256, x.CopyContent())).ToArray(),
-            ActorAuthority: options.Value.IdentityAuthority);
+            ActorAuthority: options.Value.IdentityAuthority, ExecutionFingerprint: execution is null ? null : WriteExecutionFingerprint(execution));
         var identityBytes = JsonSerializer.SerializeToUtf8Bytes(identity);
         var existing = await db.SourceControlOperations.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == context.TenantId
             && x.RepositoryId == repositoryId && x.Kind == (int)SourceControlOperationKind.Commit
@@ -253,6 +250,7 @@ public sealed partial class PersistentSourceControlStore(BpmnDbContext db, IData
 			{
 				throw new SourceControlSecurityException(SourceControlErrorCode.IdempotencyConflict);
 			}
+			await DemandWriteExecutionAsync(context, existing, copiedRoles, cancellationToken);
 
 			await transaction.CommitAsync(cancellationToken);
             return existing.Id; // An identical retry remains valid after the editor advances to N+1.
@@ -266,11 +264,24 @@ public sealed partial class PersistentSourceControlStore(BpmnDbContext db, IData
         return id;
     }
 
+	private void DemandCommitContent(RepositoryBinding binding, ModelSnapshot[] snapshots)
+	{
+		foreach (var snapshot in snapshots)
+		{
+			SourceControlInputPolicy.DemandSafeBpmn(snapshot, binding, options.Value.Limits);
+		}
+		if (snapshots.Sum(snapshot => (long)snapshot.ContentLength) > options.Value.Limits.MaxRepositoryBytes)
+		{
+			throw new SourceControlSecurityException(SourceControlErrorCode.PayloadTooLarge);
+		}
+	}
+
     private sealed record AcceptedCommit(int SchemaVersion, Guid SessionId, long SessionRevision,
         string BaseCommit, string WorkBranch, string Message, AcceptedSnapshot[] Snapshots,
         [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] long AcceptedUtcTicks = 0,
         [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] long BindingRevision = 0,
-        [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? ActorAuthority = null);
+        [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? ActorAuthority = null,
+		[property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? ExecutionFingerprint = null);
     private sealed record AcceptedSnapshot(string Path, SourceModelKind Kind, Guid Generation,
         long Revision, string ContentSha256, byte[] Bytes);
 
@@ -344,10 +355,17 @@ public sealed partial class PersistentSourceControlStore(BpmnDbContext db, IData
             ?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
         var permission = ResolvePermission(kind);
         RepositoryAccessPolicy.Demand(context, access.Binding, authenticatedRoles, access.Grants, permission);
+		var execution = access.Binding.ConnectionProfileId is null ? null
+			: await CaptureWriteExecutionAsync(context, access, authenticatedRoles, kind, cancellationToken);
+		if (execution is not null)
+		{
+			DemandWriteRequestFingerprint(kind, request, execution);
+			execution = execution with { WriteRequestDigest = Convert.ToHexStringLower(SHA256.HashData(request)) };
+		}
         // The application supplies a canonical, validated request; snapshot-copy before any await.
         var hash = RequestHash(access.Revision, identityRequest?.ToArray() ?? request);
         return await InsertOrReconcileAsync(context, repositoryId, kind, key, hash,
-            Protect(context, repositoryId, request), cancellationToken);
+            Protect(context, repositoryId, request), execution, cancellationToken);
     }
 
     private static RepositoryPermission ResolvePermission(SourceControlOperationKind kind) => kind switch
@@ -362,8 +380,12 @@ public sealed partial class PersistentSourceControlStore(BpmnDbContext db, IData
 
     private async Task<Guid> InsertOrReconcileAsync(SourceControlContext context, Guid repositoryId,
         SourceControlOperationKind kind, SourceControlIdempotencyKey key, string hash,
-        string protectedRequest, CancellationToken cancellationToken)
+        string protectedRequest, AcceptedGitHttpsExecution? execution, CancellationToken cancellationToken, AcceptedHostingExecution? hosting = null)
     {
+        if (execution is not null && hosting is not null)
+        {
+            throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+        }
         Task<SourceControlOperationRecord?> LookupAsync() => db.SourceControlOperations.AsNoTracking().SingleOrDefaultAsync(
             x => x.TenantId == context.TenantId && x.RepositoryId == repositoryId
                 && x.Kind == (int)kind && x.IdempotencyKey == key.Value, cancellationToken);
@@ -378,6 +400,7 @@ public sealed partial class PersistentSourceControlStore(BpmnDbContext db, IData
 			{
 				throw new SourceControlSecurityException(SourceControlErrorCode.IdempotencyConflict);
 			}
+			DemandInsertExecutionMatches(existing, execution, hosting);
 
 			return existing.Id;
         }
@@ -394,6 +417,7 @@ public sealed partial class PersistentSourceControlStore(BpmnDbContext db, IData
             ProtectedRequest = protectedRequest,
             State = (int)SourceControlOperationState.Queued, UpdatedUtcTicks = DateTimeOffset.UtcNow.UtcTicks
         };
+		BindAcceptedExecution(row, execution, hosting);
         db.SourceControlOperations.Add(row);
         try { await db.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateException)
@@ -410,6 +434,41 @@ public sealed partial class PersistentSourceControlStore(BpmnDbContext db, IData
         }
         return row.Id;
     }
+
+	private void BindAcceptedExecution(SourceControlOperationRecord row, AcceptedGitHttpsExecution? execution, AcceptedHostingExecution? hosting)
+	{
+		if (hosting is not null)
+		{
+			row.ExecutionContractVersion = AcceptedHostingExecution.ContractVersion;
+			row.ProtectedExecutionTarget = new HostingExecutionProtection(protection).Protect(row, hosting);
+		}
+		else if (execution is not null)
+		{
+			row.ExecutionContractVersion = AcceptedGitHttpsExecution.ContractVersion;
+			row.ProtectedExecutionTarget = new GitHttpsExecutionProtection(protection).Protect(row, execution);
+		}
+	}
+
+	private void DemandInsertExecutionMatches(SourceControlOperationRecord existing, AcceptedGitHttpsExecution? execution, AcceptedHostingExecution? hosting)
+	{
+		if (hosting is not null)
+		{
+			if (HostingFingerprint(new HostingExecutionProtection(protection).Unprotect(existing)) != HostingFingerprint(hosting))
+			{
+				throw new SourceControlSecurityException(SourceControlErrorCode.IdempotencyConflict);
+			}
+			return;
+		}
+		if (execution is null)
+		{
+			DemandLegacyExecutionContract(existing);
+			return;
+		}
+		if (WriteExecutionFingerprint(new GitHttpsExecutionProtection(protection).Unprotect(existing)) != WriteExecutionFingerprint(execution))
+		{
+			throw new SourceControlSecurityException(SourceControlErrorCode.IdempotencyConflict);
+		}
+	}
 
     public async Task<long?> TryClaimAsync(string tenantId, Guid id, string worker, DateTimeOffset now,
         TimeSpan duration, CancellationToken cancellationToken)
@@ -434,7 +493,7 @@ public sealed partial class PersistentSourceControlStore(BpmnDbContext db, IData
 
 			var row = await db.SourceControlOperations.AsNoTracking().SingleOrDefaultAsync(
             x => x.TenantId == tenantId && x.Id == id, cancellationToken);
-        if (row is null)
+		if (row is null || row.ExecutionContractVersion != 0 || row.ProtectedExecutionTarget is not null)
 			{
 				return null;
 			}
@@ -450,6 +509,7 @@ public sealed partial class PersistentSourceControlStore(BpmnDbContext db, IData
 			}
 
 			var changed = await db.SourceControlOperations.Where(x => x.Id == id && x.TenantId == tenantId
+            && x.ExecutionContractVersion == 0 && x.ProtectedExecutionTarget == null
             && x.Fence == row.Fence && x.State == row.State
             && (!x.LeaseUntilUtcTicks.HasValue || x.LeaseUntilUtcTicks <= now.UtcTicks))
             .ExecuteUpdateAsync(update => update
@@ -484,6 +544,7 @@ public sealed partial class PersistentSourceControlStore(BpmnDbContext db, IData
         var access = await FindAsync(context.TenantId, row.RepositoryId, cancellationToken)
             ?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
         RepositoryAccessPolicy.Demand(context, access.Binding, currentRoles, access.Grants, RepositoryPermission.Commit);
+		await DemandWriteExecutionAsync(context, row, currentRoles, cancellationToken);
         return DecodeCommitWork(context, row, access);
     }
 
@@ -554,6 +615,7 @@ public sealed partial class PersistentSourceControlStore(BpmnDbContext db, IData
 			throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
 		}
 
+		await LockWriteProfileAsync(context, work.Command.OperationId, cancellationToken);
 		await publish(cancellationToken);
         if (!await FinishAsync(context.TenantId, work.Command.OperationId, worker, fence,
             SourceControlOperationState.CommittedLocal, DateTimeOffset.UtcNow, cancellationToken))

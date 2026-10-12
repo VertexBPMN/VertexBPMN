@@ -32,6 +32,7 @@ public sealed partial class PersistentSourceControlStore
 			&& x.RepositoryId == repositoryId && x.TenantId == context.TenantId && x.ActorId == context.ActorId
 			&& x.Kind == (int)SourceControlOperationKind.Commit && x.State == (int)SourceControlOperationState.CommittedLocal,
 			cancellationToken) ?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
+		await DemandWriteMetadataAsync(context, source, access, cancellationToken);
 		var work = DecodeCommitWork(context, source, access);
 		StoredLocalCommit saved;
 		AcceptedCommit accepted;
@@ -56,8 +57,10 @@ public sealed partial class PersistentSourceControlStore
 		{
 			throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
 		}
+		var execution = access.Binding.ConnectionProfileId is null ? null
+			: await CaptureWriteExecutionAsync(context, access, copiedRoles, SourceControlOperationKind.Push, cancellationToken);
 		var request = new AcceptedPush(1, access.Revision, source.Id, source.IdempotencyKey, source.RequestHash, accepted,
-			saved.Receipt, submission.ExpectedRemote.Commit?.Value);
+			saved.Receipt, submission.ExpectedRemote.Commit?.Value, execution is null ? null : WriteExecutionFingerprint(execution));
 		var id = await EnqueueAsync(context, repositoryId, copiedRoles, SourceControlOperationKind.Push, key,
 			JsonSerializer.SerializeToUtf8Bytes(request), cancellationToken);
 		await transaction.CommitAsync(cancellationToken);
@@ -77,6 +80,7 @@ public sealed partial class PersistentSourceControlStore
 		var access = await FindAsync(context.TenantId, row.RepositoryId, cancellationToken)
 			?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
 		RepositoryAccessPolicy.Demand(context, access.Binding, currentRoles, access.Grants, RepositoryPermission.Push);
+		await DemandWriteExecutionAsync(context, row, currentRoles, cancellationToken);
 		try
 		{
 			var bytes = Unprotect(context, row.RepositoryId, row.ProtectedRequest);
@@ -143,6 +147,7 @@ public sealed partial class PersistentSourceControlStore
 			throw new SourceControlSecurityException(SourceControlErrorCode.ResultUnknown);
 		}
 		deadline.CancelAfter(remaining);
+		await LockWriteProfileAsync(context, work.Command.OperationId, deadline.Token);
 		await publish(deadline.Token);
 		if (!await FinishAsync(context.TenantId, work.Command.OperationId, worker, fence,
 			SourceControlOperationState.Pushed, DateTimeOffset.UtcNow, deadline.Token))
@@ -167,5 +172,6 @@ public sealed partial class PersistentSourceControlStore
 	}
 
 	private sealed record AcceptedPush(int SchemaVersion, long BindingRevision, Guid CommitOperationId,
-		string CommitKey, string SourceRequestHash, AcceptedCommit Source, CommitReceipt Receipt, string? ExpectedCommit);
+		string CommitKey, string SourceRequestHash, AcceptedCommit Source, CommitReceipt Receipt, string? ExpectedCommit,
+		[property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? ExecutionFingerprint = null);
 }

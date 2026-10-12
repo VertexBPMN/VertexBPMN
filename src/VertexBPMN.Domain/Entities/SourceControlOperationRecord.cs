@@ -11,6 +11,8 @@ public sealed class SourceControlOperationRecord
 	public string IdempotencyKey { get; set; } = "";
 	public string RequestHash { get; set; } = "";
 	public string ProtectedRequest { get; set; } = "";
+	public int ExecutionContractVersion { get; set; }
+	public string? ProtectedExecutionTarget { get; set; }
 	public int State { get; set; }
 	public long UpdatedUtcTicks { get; set; }
 	public long Fence { get; set; }

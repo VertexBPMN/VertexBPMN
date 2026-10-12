@@ -14,6 +14,7 @@ public sealed class SourceControlOptionsValidator : IValidateOptions<SourceContr
 		}
 
 		var failures = new List<string>();
+		ValidateHttpsConfiguration(options, failures);
 		if (!SafeAbsolutePath(options.GitExecutablePath))
 		{
 			failures.Add("An absolute Git executable path is required.");
@@ -66,6 +67,18 @@ public sealed class SourceControlOptionsValidator : IValidateOptions<SourceContr
 		}
 
 		return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
+	}
+
+	private static void ValidateHttpsConfiguration(SourceControlOptions options, List<string> failures)
+	{
+		try
+		{
+			GitHttpsConfigurationPolicy.Validate(options);
+		}
+		catch (Exception error) when (error is SourceControlSecurityException or ArgumentException)
+		{
+			failures.Add("HTTPS network and trust policies must have unique tenant identities, valid scopes, revisions, CIDRs and public CA certificates.");
+		}
 	}
 
 	private static bool SafeAbsolutePath(string? path) => !string.IsNullOrWhiteSpace(path)

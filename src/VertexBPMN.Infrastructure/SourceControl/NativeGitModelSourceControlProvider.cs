@@ -8,14 +8,19 @@ namespace VertexBPMN.Infrastructure.SourceControl;
 internal sealed class NativeGitModelSourceControlProvider(PersistentSourceControlStore store,
 	SourceControlWorkspace workspaces, ControlledGitProcess git, GitHubAppTokenBroker tokens,
 	ISourceControlActorResolver actors, SourceControlClaimedCommitRunner commits,
-	SourceControlClaimedPushRunner pushes, IOptions<SourceControlOptions> options) : IModelSourceControlProvider
+	SourceControlClaimedPushRunner pushes, IOptions<SourceControlOptions> options, ProfiledGitReadService profiledReads) : IModelSourceControlProvider
 {
 	public Task<SourceControlAvailability> GetAvailabilityAsync(CancellationToken cancellationToken)
 	{
 		cancellationToken.ThrowIfCancellationRequested();
 		var reason = ResolveAvailabilityReason();
+		var capabilities = SourceControlCapability.Read;
+		if (!string.IsNullOrWhiteSpace(options.Value.IdentityCredentialReference))
+		{
+			capabilities |= SourceControlCapability.Commit | SourceControlCapability.Push;
+		}
 		return Task.FromResult(new SourceControlAvailability(reason is null,
-			reason is null ? SourceControlCapability.Read | SourceControlCapability.Commit | SourceControlCapability.Push : SourceControlCapability.None, reason));
+			reason is null ? capabilities : SourceControlCapability.None, reason));
 	}
 
 	private SourceControlErrorCode? ResolveAvailabilityReason()
@@ -28,31 +33,41 @@ internal sealed class NativeGitModelSourceControlProvider(PersistentSourceContro
 		{
 			return SourceControlErrorCode.GitUnavailable;
 		}
-		if (string.IsNullOrWhiteSpace(options.Value.IdentityCredentialReference))
-		{
-			return SourceControlErrorCode.CredentialUnavailable;
-		}
 		return null;
 	}
 
 	public Task<SourceControlPage<string>> ListBranchesAsync(SourceControlContext context, RepositoryBinding binding,
-		int pageSize, string? cursor, CancellationToken cancellationToken) => ReadAsync(context, binding, null,
+		int pageSize, string? cursor, CancellationToken cancellationToken) => binding.ConnectionProfileId is not null
+		? profiledReads.ReadAsync<SourceControlPage<string>>(context, binding, null,
+			new(GitReadQueryKind.Branches) { PageSize = pageSize, Cursor = cursor }, cancellationToken)
+		: ReadAsync(context, binding, null,
 		(workspace, current, lease, token) => git.ListRemoteBranchesAsync(workspace, current, lease, pageSize, cursor, token), cancellationToken);
 
 	public Task<RevisionSelection> ResolveBranchAsync(SourceControlContext context, RepositoryBinding binding,
-		string branch, CancellationToken cancellationToken) => ReadAsync(context, binding, null,
+		string branch, CancellationToken cancellationToken) => binding.ConnectionProfileId is not null
+		? profiledReads.ReadAsync<RevisionSelection>(context, binding, null, new(GitReadQueryKind.ResolveBranch) { Path = branch }, cancellationToken)
+		: ReadAsync(context, binding, null,
 		(workspace, current, lease, token) => git.ResolveRemoteBranchAsync(workspace, context, current, branch, lease, token), cancellationToken);
 
 	public Task<SourceControlPage<RepositoryFile>> ListFilesAsync(SourceControlContext context, RepositoryBinding binding,
-		TreeRequest request, CancellationToken cancellationToken) => ReadAsync(context, binding, request.Commit,
+		TreeRequest request, CancellationToken cancellationToken) => binding.ConnectionProfileId is not null
+		? profiledReads.ReadAsync<SourceControlPage<RepositoryFile>>(context, binding, request.Commit,
+			new(GitReadQueryKind.ListFiles) { Path = request.Root, PageSize = request.PageSize, Cursor = request.Cursor }, cancellationToken)
+		: ReadAsync(context, binding, request.Commit,
 		(workspace, current, _, token) => git.ListModelsAsync(workspace, current, request, token), cancellationToken);
 
 	public Task<ModelSnapshot> ReadFileAsync(SourceControlContext context, RepositoryBinding binding,
-		FileReadRequest request, Guid documentGeneration, CancellationToken cancellationToken) => ReadAsync(context, binding, request.Commit,
+		FileReadRequest request, Guid documentGeneration, CancellationToken cancellationToken) => binding.ConnectionProfileId is not null
+		? profiledReads.ReadAsync<ModelSnapshot>(context, binding, request.Commit,
+			new(GitReadQueryKind.File) { Path = request.Path, Generation = documentGeneration }, cancellationToken)
+		: ReadAsync(context, binding, request.Commit,
 		(workspace, current, _, token) => git.ReadModelAsync(workspace, current, request, documentGeneration, token), cancellationToken);
 
 	public Task<SourceControlPage<CommitSummary>> ReadHistoryAsync(SourceControlContext context, RepositoryBinding binding,
-		HistoryRequest request, CancellationToken cancellationToken) => ReadAsync(context, binding, request.Commit,
+		HistoryRequest request, CancellationToken cancellationToken) => binding.ConnectionProfileId is not null
+		? profiledReads.ReadAsync<SourceControlPage<CommitSummary>>(context, binding, request.Commit,
+			new(GitReadQueryKind.History) { Path = request.Path, PageSize = request.PageSize, Cursor = request.Cursor }, cancellationToken)
+		: ReadAsync(context, binding, request.Commit,
 		async (workspace, current, lease, token) =>
 		{
 			await git.FetchHistoryAsync(workspace, current.Remote, request.Commit, lease, token);
@@ -60,7 +75,13 @@ internal sealed class NativeGitModelSourceControlProvider(PersistentSourceContro
 		}, cancellationToken);
 
 	public Task<ModelDiff> CompareAsync(SourceControlContext context, RepositoryBinding binding,
-		DiffRequest request, CancellationToken cancellationToken) => ReadAsync(context, binding, request.BaseCommit,
+		DiffRequest request, CancellationToken cancellationToken) => binding.ConnectionProfileId is not null
+		? profiledReads.ReadAsync<ModelDiff>(context, binding, request.BaseCommit, new(GitReadQueryKind.Diff)
+		{
+			Snapshot = new(request.Snapshot.Path, request.Snapshot.Kind, request.Snapshot.DocumentGeneration,
+				request.Snapshot.LocalRevision, request.Snapshot.ContentSha256, request.Snapshot.CopyContent())
+		}, cancellationToken)
+		: ReadAsync(context, binding, request.BaseCommit,
 		(workspace, current, _, token) => git.CompareModelAsync(workspace, current, request, token), cancellationToken);
 
 	private async Task<T> ReadAsync<T>(SourceControlContext context, RepositoryBinding supplied, GitCommitId? revision,
@@ -138,10 +159,12 @@ internal sealed class NativeGitModelSourceControlProvider(PersistentSourceContro
 		CommitCommand command, CancellationToken cancellationToken)
 	{
 		var roles = await actors.ResolveAsync(context, cancellationToken);
-		await AuthorizeAsync(context, binding.Id, roles, RepositoryPermission.Commit, cancellationToken);
+		var access = await AuthorizeAsync(context, binding.Id, roles, RepositoryPermission.Commit, cancellationToken);
 		await DemandOwnedOperationAsync(context, binding, command.OperationId, SourceControlOperationKind.Commit, roles, cancellationToken);
 		var worker = "commit-" + Guid.NewGuid().ToString("N");
-		var fence = await store.TryClaimAsync(context.TenantId, command.OperationId, worker, DateTimeOffset.UtcNow, TimeSpan.FromMinutes(2), cancellationToken)
+		var fence = (access.Binding.ConnectionProfileId is null
+			? await store.TryClaimAsync(context.TenantId, command.OperationId, worker, DateTimeOffset.UtcNow, TimeSpan.FromMinutes(2), cancellationToken)
+			: await store.TryClaimProfiledWriteAsync(context, command.OperationId, worker, DateTimeOffset.UtcNow, TimeSpan.FromMinutes(2), roles, cancellationToken))
 			?? throw new SourceControlSecurityException(SourceControlErrorCode.RevisionConflict);
 		var work = await store.ReadCommitWorkAsync(context, command.OperationId, worker, fence, roles, cancellationToken);
 		if (work.Command.SessionId != command.SessionId || work.Command.BaseCommit != command.BaseCommit
@@ -160,10 +183,12 @@ internal sealed class NativeGitModelSourceControlProvider(PersistentSourceContro
 		PushCommand command, CancellationToken cancellationToken)
 	{
 		var roles = await actors.ResolveAsync(context, cancellationToken);
-		await AuthorizeAsync(context, binding.Id, roles, RepositoryPermission.Push, cancellationToken);
+		var access = await AuthorizeAsync(context, binding.Id, roles, RepositoryPermission.Push, cancellationToken);
 		await DemandOwnedOperationAsync(context, binding, command.OperationId, SourceControlOperationKind.Push, roles, cancellationToken);
 		var worker = "push-" + Guid.NewGuid().ToString("N");
-		var fence = await store.TryClaimAsync(context.TenantId, command.OperationId, worker, DateTimeOffset.UtcNow, TimeSpan.FromMinutes(2), cancellationToken)
+		var fence = (access.Binding.ConnectionProfileId is null
+			? await store.TryClaimAsync(context.TenantId, command.OperationId, worker, DateTimeOffset.UtcNow, TimeSpan.FromMinutes(2), cancellationToken)
+			: await store.TryClaimProfiledWriteAsync(context, command.OperationId, worker, DateTimeOffset.UtcNow, TimeSpan.FromMinutes(2), roles, cancellationToken))
 			?? throw new SourceControlSecurityException(SourceControlErrorCode.RevisionConflict);
 		var work = await store.ReadPushWorkAsync(context, command.OperationId, worker, fence, roles, cancellationToken);
 		if (work.Command != command)

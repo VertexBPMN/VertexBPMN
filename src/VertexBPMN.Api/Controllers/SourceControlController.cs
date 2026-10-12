@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using VertexBPMN.Application.SourceControl;
 using VertexBPMN.Infrastructure.SourceControl;
 using VertexBPMN.SourceControl.Abstractions;
@@ -11,14 +12,24 @@ namespace VertexBPMN.Api.Controllers;
 [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
 [RequestSizeLimit(3 * 1024 * 1024)]
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public controller required for ASP.NET Core MVC discovery and activation.")]
-public sealed class SourceControlController(PersistentSourceControlStore store, IModelSourceControlProvider provider, ISourceControlActorResolver actors, SourceControlPullRequestStatusReader pullRequests) : ControllerBase
+public sealed partial class SourceControlController(PersistentSourceControlStore store, IModelSourceControlProvider provider, ISourceControlActorResolver actors, SourceControlPullRequestStatusReader pullRequests,
+	IOptionsMonitor<SourceControlOptions> profileOptions) : ControllerBase
 {
 	[HttpGet("availability")]
 	public Task<ActionResult<SourceControlAvailability>> Availability(CancellationToken cancellationToken) => RunAsync(async () => await provider.GetAvailabilityAsync(cancellationToken));
 	[HttpGet("repositories")]
 	public Task<ActionResult<IReadOnlyList<RepositoryAccessSnapshot>>> Repositories(CancellationToken cancellationToken) => RunAsync(async () => await store.ListBindingsAsync(Context(), await RolesAsync(cancellationToken), cancellationToken));
 	[HttpPost("repositories")]
-	public Task<ActionResult<RepositoryAccessSnapshot>> CreateRepository(BindingRequest request, CancellationToken cancellationToken) => RunAsync(async () => await store.CreateBindingAsync(Context(), await RolesAsync(cancellationToken), new(Guid.NewGuid(), Context().TenantId, new(request.Remote, UriKind.Absolute), request.CredentialReference, request.DefaultBranch, request.ReleaseBranch, request.ModelRoots), cancellationToken));
+	public Task<ActionResult<RepositoryAccessSnapshot>> CreateRepository(BindingRequest request, CancellationToken cancellationToken) => RunAsync(async () =>
+	{
+		var context = Context();
+		var roles = await RolesAsync(cancellationToken);
+		var binding = new RepositoryBinding(Guid.NewGuid(), context.TenantId, new(request.Remote, UriKind.Absolute), request.CredentialReference,
+			request.DefaultBranch, request.ReleaseBranch, request.ModelRoots);
+		return request.ConnectionProfileId is { } profileId
+			? await store.CreateProfiledBindingAsync(context, roles, binding, profileId, request.ProfileRevision ?? 0, cancellationToken)
+			: await store.CreateBindingAsync(context, roles, binding, cancellationToken);
+	});
 	[HttpPut("repositories/{id:guid}/grants")]
 	public Task<ActionResult<bool>> Grants(Guid id, GrantsRequest request, CancellationToken cancellationToken) => RunAsync(async () => await store.ReplaceGrantsAsync(Context(), id, await RolesAsync(cancellationToken), request.Revision, request.Grants, cancellationToken));
 	[HttpGet("repositories/{id:guid}/branches")]
@@ -80,7 +91,14 @@ public sealed class SourceControlController(PersistentSourceControlStore store, 
 		return new(tenants[0].Value, subjects[0].Value);
 	}
 
-	private Task<IReadOnlyCollection<string>> RolesAsync(CancellationToken cancellationToken) => actors.ResolveAsync(Context(), cancellationToken);
+	private Task<IReadOnlyCollection<string>> RolesAsync(CancellationToken cancellationToken)
+	{
+		if (!profileOptions.CurrentValue.Enabled)
+		{
+			throw new SourceControlSecurityException(SourceControlErrorCode.Disabled);
+		}
+		return actors.ResolveAsync(Context(), cancellationToken);
+	}
 	private async Task<RepositoryBinding> BindingAsync(Guid id, CancellationToken cancellationToken) => (await store.FindAsync(Context().TenantId, id, cancellationToken))?.Binding ?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
 	private async Task<ActionResult<T>> RunAsync<T>(Func<Task<T>> execute)
 	{
@@ -114,7 +132,11 @@ public sealed class SourceControlController(PersistentSourceControlStore store, 
 	}
 
 	[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public contract type BindingRequest retained for exposed HTTP action signatures and controller activation (SourceControlController).")]
-	public sealed record BindingRequest(string Remote, string? CredentialReference, string DefaultBranch, string ReleaseBranch, string[] ModelRoots);
+	public sealed record BindingRequest(string Remote, string? CredentialReference, string DefaultBranch, string ReleaseBranch, string[] ModelRoots)
+	{
+		public Guid? ConnectionProfileId { get; init; }
+		public long? ProfileRevision { get; init; }
+	}
 	[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public contract type GrantsRequest retained for exposed HTTP action signatures and controller activation (SourceControlController).")]
 	public sealed record GrantsRequest([property: System.Text.Json.Serialization.JsonRequired] long Revision, RepositoryGrant[] Grants);
 	[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public contract type SessionRequest retained for exposed HTTP action signatures and controller activation (SourceControlController).")]

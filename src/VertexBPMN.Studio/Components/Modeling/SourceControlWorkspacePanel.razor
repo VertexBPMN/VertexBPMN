@@ -12,6 +12,10 @@
         <MudStack Spacing="2">
             <MudText Typo="Typo.body2">Git versions source models. Commit, push and runtime deployment are separate actions.</MudText>
             <MudButton OnClick="RefreshRepositories" Disabled="_busy" data-testid="git-refresh">Connect / refresh repositories</MudButton>
+            @if (ProfiledReadOnly && _profileAvailability?.Available == true)
+            {
+                <MudAlert Severity="Severity.Info">This connection is read-only. Review takes place externally.</MudAlert>
+            }
             @if (_error is not null) { <MudAlert Severity="Severity.Error" data-testid="git-error">@_error</MudAlert> }
             @if (_status is not null) { <MudAlert Severity="Severity.Info" data-testid="git-status">@_status</MudAlert> }
             @if (_busy) { <MudButton OnClick="CancelWaiting">Cancel waiting (accepted jobs continue)</MudButton> }
@@ -41,18 +45,18 @@
                 <MudStack Row="true" Wrap="Wrap.Wrap">
                     <MudButton OnClick="ShowDiff" Disabled="_busy" data-testid="git-diff">Compare current snapshot</MudButton>
                     <MudButton OnClick="ShowHistory" Disabled="_busy" data-testid="git-history">Git history</MudButton>
-                    <MudButton OnClick="SaveSnapshot" Disabled="_busy">Save draft snapshot</MudButton>
+                    <MudButton OnClick="SaveSnapshot" Disabled="@(_busy || !CanCommitSource)">Save draft snapshot</MudButton>
                 </MudStack>
-                <MudTextField T="string" Label="Commit message" @bind-Value="_message" Disabled="_busy" data-testid="git-message" />
-                <MudButton OnClick="CommitSnapshot" Disabled="@(_busy || string.IsNullOrWhiteSpace(_message) || JobActive)" data-testid="git-commit">Commit confirmed editor snapshot</MudButton>
+                <MudTextField T="string" Label="Commit message" @bind-Value="_message" Disabled="@(_busy || !CanCommitSource)" data-testid="git-message" />
+                <MudButton OnClick="CommitSnapshot" Disabled="@(_busy || !CanCommitSource || string.IsNullOrWhiteSpace(_message) || JobActive)" data-testid="git-commit">Commit confirmed editor snapshot</MudButton>
                 @if (_pendingCommit is not null) { <MudButton OnClick="RetryCommit" Disabled="_busy">Retry same accepted snapshot</MudButton> }
                 @if (_receipt is not null)
                 {
                     <MudText Typo="Typo.caption">Local commit: @_receipt.Commit.Value · @_receipt.WorkBranch</MudText>
-                    <MudButton OnClick="PushCommit" Disabled="@(_busy || JobActive || _expectedRemote == _receipt.Commit)" data-testid="git-push">Push last confirmed commit only</MudButton>
+                    <MudButton OnClick="PushCommit" Disabled="@(_busy || !CanPushSource || JobActive || _expectedRemote == _receipt.Commit)" data-testid="git-push">Push last confirmed commit only</MudButton>
                 }
                 @if (_jobId is not null) { <MudButton OnClick="RefreshJob" Disabled="_busy" data-testid="git-job-refresh">Refresh durable job status</MudButton> }
-                @if (_confirmedPush is not null)
+                @if (_confirmedPush is not null && CanUseHosting)
                 {
                     <MudSelect T="string" Label="Pull request target" @bind-Value="_prBase" Disabled="@(_busy || _pendingPullRequest is not null)" data-testid="git-pr-base">
                         @foreach (var target in new[] { SelectedRepository!.Binding.DefaultBranch, SelectedRepository.Binding.ReleaseBranch }.Distinct())
@@ -68,8 +72,15 @@
                 @if (_historyCursor is not null) { <MudButton OnClick="MoreHistory" Disabled="_busy">More history</MudButton> }
                 <MudButton OnClick="ExportOriginal" Disabled="_busy">Download original source bytes</MudButton>
             }
-            <MudTextField T="string" Label="Confirmed PR operation ID" @bind-Value="_resumePullRequestId" Immediate="true" Disabled="_busy" data-testid="git-pr-resume-id" />
-            <MudButton OnClick="ReopenPullRequestAsync" Disabled="@(_busy || _repositoryId == Guid.Empty || string.IsNullOrWhiteSpace(_resumePullRequestId))" data-testid="git-pr-resume">Reopen stored PR receipt (read only)</MudButton>
+            @if (CanUseHosting)
+            {
+                <MudTextField T="string" Label="Confirmed PR operation ID" @bind-Value="_resumePullRequestId" Immediate="true" Disabled="_busy" data-testid="git-pr-resume-id" />
+                <MudButton OnClick="ReopenPullRequestAsync" Disabled="@(_busy || _repositoryId == Guid.Empty || string.IsNullOrWhiteSpace(_resumePullRequestId))" data-testid="git-pr-resume">Reopen stored PR receipt (read only)</MudButton>
+            }
+            else if (HasConnectionProfile)
+            {
+                <MudText Typo="Typo.caption">Git versioning is available; review takes place externally.</MudText>
+            }
             @if (_pullRequestReceipt is not null)
             {
                 <MudText data-testid="git-pr-state">Confirmed PR state: @_pullRequestReceipt.State (not a live review approval)</MudText>
@@ -86,7 +97,15 @@
                 <MudDivider />
                 <MudText Typo="Typo.subtitle2">Repository administration</MudText>
                 <MudTextField T="string" Label="HTTPS repository URL" @bind-Value="_remote" />
-                <MudTextField T="string" Label="Protected GitHubApp credential reference (not a secret)" @bind-Value="_credential" />
+                <MudTextField T="string" Label="Approved connection profile ID (empty for existing GitHub App connections)" @bind-Value="_connectionProfileId" data-testid="git-connection-profile" />
+                @if (!string.IsNullOrWhiteSpace(_connectionProfileId))
+                {
+                    <MudNumericField T="long" Label="Connection profile revision" @bind-Value="_connectionProfileRevision" Min="1" />
+                }
+                else
+                {
+                    <MudTextField T="string" Label="Protected GitHubApp credential reference (not a secret)" @bind-Value="_credential" />
+                }
                 <MudTextField T="string" Label="Default branch" @bind-Value="_defaultBranch" />
                 <MudTextField T="string" Label="Release branch" @bind-Value="_releaseBranch" />
                 <MudTextField T="string" Label="Model directory" @bind-Value="_modelRoot" />

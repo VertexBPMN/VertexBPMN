@@ -14,6 +14,12 @@ if (args[1] is "store" or "erase")
 	return 0; // No credential persistence.
 }
 
+if (args[1] == "capability")
+{
+	await Console.Out.WriteAsync("version 0\ncapability authtype\n");
+	return 0;
+}
+
 if (args[1] != "get")
 {
 	return 2;
@@ -24,6 +30,7 @@ try
 {
     var fields = new Dictionary<string, string>(StringComparer.Ordinal);
     var total = 0;
+	var supportsAuthType = false;
     while (await BoundedProtocol.ReadLineAsync(Console.In, 4096, timeout.Token) is { Length: > 0 } line)
     {
         total += line.Length;
@@ -41,7 +48,12 @@ try
 		var name = line[..separator];
         // Git's credential protocol has repeatable, advisory metadata arrays.
         // They are not identity or authorization input; never retain/echo them.
-        if (name is "capability[]" or "wwwauth[]" or "state[]")
+		if (name == "capability[]")
+		{
+			supportsAuthType |= line[(separator + 1)..] == "authtype";
+			continue;
+		}
+		if (name is "wwwauth[]" or "state[]")
 		{
 			continue;
 		}
@@ -57,8 +69,10 @@ try
 		return 2;
 	}
 
-	var invalidUsername = fields.TryGetValue("username", out var suppliedUser) && suppliedUser != "x-access-token";
-	if (fields.ContainsKey("password") || invalidUsername)
+	var invalidUsername = fields.TryGetValue("username", out var suppliedUser)
+		&& (string.IsNullOrWhiteSpace(suppliedUser) || suppliedUser.Length > 128
+			|| suppliedUser != suppliedUser.Trim() || suppliedUser.Any(char.IsControl));
+	if (fields.ContainsKey("password") || fields.ContainsKey("credential") || fields.ContainsKey("authtype") || invalidUsername)
 	{
 		return 2;
 	}
@@ -67,10 +81,22 @@ try
     await pipe.ConnectAsync(timeout.Token);
     using var writer = new StreamWriter(pipe, new UTF8Encoding(false), leaveOpen: true) { AutoFlush = true };
     using var reader = new StreamReader(pipe, new UTF8Encoding(false), leaveOpen: true);
-    await writer.WriteLineAsync($"{protocol}\n{host}\n{path}".AsMemory(), timeout.Token);
+    await writer.WriteLineAsync($"{protocol}\n{host}\n{path}\ncapability={(supportsAuthType ? "authtype" : "none")}".AsMemory(), timeout.Token);
     var username = await BoundedProtocol.ReadLineAsync(reader, 128, timeout.Token);
     var password = await BoundedProtocol.ReadLineAsync(reader, 16 * 1024, timeout.Token);
-    if (username != "x-access-token" || string.IsNullOrEmpty(password) || password.Any(char.IsControl))
+	if (username == ":vertex-bearer-v1:")
+	{
+		if (!supportsAuthType || suppliedUser is not null || string.IsNullOrWhiteSpace(password)
+			|| password.Any(character => char.IsControl(character) || char.IsWhiteSpace(character)))
+		{
+			return 2;
+		}
+		await Console.Out.WriteAsync($"capability[]=authtype\nauthtype=Bearer\ncredential={password}\nephemeral=true\n\n");
+		return 0;
+	}
+    if (string.IsNullOrWhiteSpace(username) || username != username.Trim() || username.Any(char.IsControl)
+		|| (suppliedUser is not null && suppliedUser != username)
+		|| string.IsNullOrEmpty(password) || password.Any(char.IsControl))
 	{
 		return 2;
 	}

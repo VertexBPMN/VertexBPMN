@@ -14,6 +14,8 @@ public sealed class SourceControlOptions
     public string? IdentityCredentialReference { get; init; }
     public string? IdentityAuthority { get; set; }
     public IReadOnlyList<string> AllowedHosts { get; init; } = [];
+    public IReadOnlyList<GitHttpsNetworkPolicy> HttpsNetworkPolicies { get; init; } = [];
+    public IReadOnlyList<GitHttpsTrustProfile> HttpsTrustProfiles { get; init; } = [];
     public string WorkBranchPrefix { get; init; } = "vertex/";
     public SourceControlLimits Limits { get; init; } = new();
 }

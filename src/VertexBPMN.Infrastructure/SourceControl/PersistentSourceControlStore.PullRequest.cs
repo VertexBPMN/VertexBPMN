@@ -26,7 +26,7 @@ public sealed partial class PersistentSourceControlStore
         var access = await FindAsync(context.TenantId, repositoryId, cancellationToken)
             ?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
         RepositoryAccessPolicy.Demand(context, access.Binding, copiedRoles, access.Grants, RepositoryPermission.PullRequest);
-        if (access.Binding.Remote.Host != "github.com"
+        if ((access.Binding.ConnectionProfileId is null && access.Binding.Remote.Host != "github.com")
             || (submission.BaseBranch != access.Binding.DefaultBranch && submission.BaseBranch != access.Binding.ReleaseBranch))
         {
             throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
@@ -37,6 +37,7 @@ public sealed partial class PersistentSourceControlStore
             && x.State == (int)SourceControlOperationState.Pushed, cancellationToken)
             ?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
         StoredRemotePush saved;
+        await DemandWriteMetadataAsync(context, source, access, cancellationToken);
         try
         {
             saved = JsonSerializer.Deserialize<StoredRemotePush>(Unprotect(context, repositoryId, source.ProtectedResult ?? ""))!;
@@ -53,10 +54,17 @@ public sealed partial class PersistentSourceControlStore
         {
             throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
         }
-        var accepted = new AcceptedPullRequest(1, access.Revision, source.Id, saved.Receipt.WorkBranch,
-            submission.BaseBranch, saved.Receipt.Commit.Value, submission.Title, submission.Description);
-        var id = await EnqueueAsync(context, repositoryId, copiedRoles, SourceControlOperationKind.PullRequest,
-            key, JsonSerializer.SerializeToUtf8Bytes(accepted), cancellationToken);
+        var hosting = access.Binding.ConnectionProfileId is null ? null
+            : await CaptureHostingExecutionAsync(context, access, copiedRoles, cancellationToken);
+        var accepted = new AcceptedPullRequest(hosting is null ? 1 : 2, access.Revision, source.Id, saved.Receipt.WorkBranch,
+            submission.BaseBranch, saved.Receipt.Commit.Value, submission.Title, submission.Description,
+            hosting is null ? null : HostingFingerprint(hosting));
+        var request = JsonSerializer.SerializeToUtf8Bytes(accepted);
+        var id = hosting is null
+            ? await EnqueueAsync(context, repositoryId, copiedRoles, SourceControlOperationKind.PullRequest, key, request, cancellationToken)
+            : await InsertOrReconcileAsync(context, repositoryId, SourceControlOperationKind.PullRequest, key,
+                RequestHash(access.Revision, request), Protect(context, repositoryId, request), null, cancellationToken,
+                hosting with { RequestDigest = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(request)) });
         await transaction.CommitAsync(cancellationToken);
         return id;
     }
@@ -75,15 +83,25 @@ public sealed partial class PersistentSourceControlStore
         var access = await FindAsync(context.TenantId, row.RepositoryId, cancellationToken)
             ?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
         RepositoryAccessPolicy.Demand(context, access.Binding, roles, access.Grants, RepositoryPermission.PullRequest);
+        AcceptedHostingExecution? hosting = null;
+        if (row.ExecutionContractVersion == AcceptedHostingExecution.ContractVersion)
+        {
+            hosting = await DemandHostingRowAsync(context, row, roles, cancellationToken);
+        }
+        else
+        {
+            DemandLegacyExecutionContract(row);
+            DemandLegacyBinding(access.Binding);
+        }
         try
         {
             var bytes = Unprotect(context, row.RepositoryId, row.ProtectedRequest);
             var accepted = JsonSerializer.Deserialize<AcceptedPullRequest>(bytes);
-            if (accepted is null || accepted.SchemaVersion != 1 || accepted.PushOperationId == Guid.Empty
+            if (accepted is null || accepted.SchemaVersion != (hosting is null ? 1 : 2) || accepted.PushOperationId == Guid.Empty
 				|| string.IsNullOrWhiteSpace(accepted.Title) || accepted.Title.Length > 256
 				|| accepted.Title.Any(char.IsControl) || accepted.Description is null || accepted.Description.Length > 16_384
 				|| accepted.WorkBranch?.StartsWith("vertex/", StringComparison.Ordinal) != true
-				|| accepted.WorkBranch == accepted.BaseBranch || access.Binding.Remote.Host != "github.com"
+				|| accepted.WorkBranch == accepted.BaseBranch || (hosting is null && access.Binding.Remote.Host != "github.com")
                 || (accepted.BaseBranch != access.Binding.DefaultBranch && accepted.BaseBranch != access.Binding.ReleaseBranch))
             {
                 throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
@@ -96,7 +114,7 @@ public sealed partial class PersistentSourceControlStore
             SourceControlInputPolicy.ValidateBranch(accepted.BaseBranch);
             return new(access.Binding, access.Revision, accepted.PushOperationId,
                 new(id, new(row.IdempotencyKey), accepted.WorkBranch, accepted.BaseBranch, new(accepted.HeadCommit),
-                    accepted.Title, accepted.Description), (SourceControlOperationState)row.State);
+                    accepted.Title, accepted.Description), (SourceControlOperationState)row.State, hosting);
         }
         catch (Exception error) when (error is JsonException or ArgumentException or NullReferenceException)
         {
@@ -113,7 +131,8 @@ public sealed partial class PersistentSourceControlStore
             throw new SourceControlSecurityException(SourceControlErrorCode.ResultUnknown);
         }
         return await SaveResultAsync(context.TenantId, id, worker, fence,
-            JsonSerializer.SerializeToUtf8Bytes(new StoredPullRequest(1, work.Binding.Id, work.Command, null)),
+            JsonSerializer.SerializeToUtf8Bytes(new StoredPullRequest(work.Hosting is null ? 1 : 2,
+                work.Binding.Id, work.Command, null, work.Hosting?.HostingTarget)),
             DateTimeOffset.UtcNow, cancellationToken);
     }
 
@@ -123,6 +142,10 @@ public sealed partial class PersistentSourceControlStore
     {
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         var work = await ReadPullRequestWorkAsync(context, id, worker, fence, roles, cancellationToken);
+        if (work.Hosting is not null)
+        {
+            await LockHostingProfileAsync(context, work.Hosting, cancellationToken);
+        }
         if (await db.SourceControlBindings.Where(x => x.Id == work.Binding.Id && x.TenantId == context.TenantId
             && x.Revision == work.BindingRevision).ExecuteUpdateAsync(update => update.SetProperty(x => x.Revision, x => x.Revision), cancellationToken) != 1)
         {
@@ -168,26 +191,12 @@ public sealed partial class PersistentSourceControlStore
         {
             throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
         }
-        if (intent is null || intent.SchemaVersion != 1 || intent.RepositoryId != work.Binding.Id
-            || intent.Command != work.Command || intent.Receipt is not null
-            || receipt.OperationId != id || receipt.HeadCommit != work.Command.HeadCommit || receipt.ProviderId != "github"
-            || receipt.Number <= 0 || receipt.Url is null)
+        if (intent is null || intent.SchemaVersion != (work.Hosting is null ? 1 : 2) || intent.RepositoryId != work.Binding.Id
+            || intent.Command != work.Command || intent.Receipt is not null || intent.HostingTarget != work.Hosting?.HostingTarget)
         {
             throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
         }
-        var repository = work.Binding.Remote.AbsolutePath.Trim('/');
-        if (repository.EndsWith(".git", StringComparison.Ordinal))
-		{
-			repository = repository[..^4];
-		}
-
-		var expectedUrl = new Uri($"https://github.com/{repository}/pull/{receipt.Number.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
-        if (receipt.Url != expectedUrl || !Enum.IsDefined(receipt.State)
-            || (receipt.State == PullRequestState.Merged && receipt.MergeCommit is null)
-			|| (receipt.State != PullRequestState.Merged && receipt.MergeCommit is not null))
-        {
-            throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
-        }
+        RepositoryHostingReceiptPolicy.Demand(work.Hosting?.HostingTarget ?? RepositoryHostingTargetPolicy.LegacyGitHub(work.Binding), work.Command, receipt);
         var payload = Protect(context, work.Binding.Id,
             JsonSerializer.SerializeToUtf8Bytes(intent with { Receipt = receipt }));
         var changed = await db.SourceControlOperations.Where(x => x.Id == id && x.TenantId == context.TenantId
@@ -204,5 +213,6 @@ public sealed partial class PersistentSourceControlStore
     }
 
     private sealed record AcceptedPullRequest(int SchemaVersion, long BindingRevision, Guid PushOperationId,
-        string WorkBranch, string BaseBranch, string HeadCommit, string Title, string Description);
+        string WorkBranch, string BaseBranch, string HeadCommit, string Title, string Description,
+        [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? ExecutionFingerprint = null);
 }

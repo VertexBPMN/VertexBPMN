@@ -46,6 +46,7 @@ public class BpmnDbContext : DbContext
     public DbSet<PollingTriggerRecord> PollingTriggers => Set<PollingTriggerRecord>();
     public DbSet<OAuth2FlowStateRecord> OAuth2FlowStates => Set<OAuth2FlowStateRecord>();
     public DbSet<SourceControlBindingRecord> SourceControlBindings => Set<SourceControlBindingRecord>();
+	public DbSet<SourceControlConnectionProfileRecord> SourceControlConnectionProfiles => Set<SourceControlConnectionProfileRecord>();
     public DbSet<SourceControlSessionRecord> SourceControlSessions => Set<SourceControlSessionRecord>();
     public DbSet<SourceControlOperationRecord> SourceControlOperations => Set<SourceControlOperationRecord>();
 

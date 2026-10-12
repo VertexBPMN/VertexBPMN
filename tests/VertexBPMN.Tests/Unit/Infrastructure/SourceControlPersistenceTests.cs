@@ -20,7 +20,7 @@ using ModelSnapshot = VertexBPMN.SourceControl.Abstractions.ModelSnapshot;
 
 namespace VertexBPMN.Tests.Unit.Infrastructure;
 
-public sealed class SourceControlPersistenceTests
+public sealed partial class SourceControlPersistenceTests
 {
 	private static readonly SourceControlContext Actor = new("tenant-a", "issuer|alice");
 	private static CancellationToken Cancellation => TestContext.Current.CancellationToken;
@@ -155,10 +155,11 @@ public sealed class SourceControlPersistenceTests
 	{
 		Assert.Equal(prReceipt, await store.GetPullRequestReceiptAsync(Actor, operation, ["Admin"], Cancellation));
 		Assert.Null(await store.GetPullRequestReceiptAsync(new("tenant-b", Actor.ActorId), operation, ["Admin"], Cancellation));
-		var (Binding, Command, Receipt) = await store.ReadConfirmedPullRequestAsync(Actor, operation, ["Admin"], Cancellation);
+		var (Binding, Command, Receipt, Hosting) = await store.ReadConfirmedPullRequestAsync(Actor, operation, ["Admin"], Cancellation);
 		Assert.Equal(repositoryId, Binding.Id);
 		Assert.Equal(expectedCommand, Command);
 		Assert.Equal(prReceipt, Receipt);
+		Assert.Null(Hosting);
 		await Assert.ThrowsAsync<SourceControlSecurityException>(() => store.ReadConfirmedPullRequestAsync(
 			new("tenant-b", Actor.ActorId), operation, ["Admin"], Cancellation));
 		await Assert.ThrowsAsync<SourceControlSecurityException>(() => store.ReadConfirmedPullRequestAsync(

@@ -31,7 +31,11 @@ internal sealed class GitHubAppTokenBroker(SourceControlCredentialResolver resol
         HttpClient client, CancellationToken cancellationToken)
     {
         var access = await resolver.AuthorizeAsync(context, repositoryId, authenticatedRoles, permission, cancellationToken);
-        if (access.Binding.Remote.Host != "github.com")
+        if (access.Binding.ConnectionProfileId is not null)
+		{
+			throw new SourceControlSecurityException(SourceControlErrorCode.ProviderUnavailable);
+		}
+		if (access.Binding.Remote.Host != "github.com")
 		{
 			Fail();
 		}

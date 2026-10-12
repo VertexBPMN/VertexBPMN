@@ -21,6 +21,6 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
     <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.12" />
     <PackageReference Include="Microsoft.ML" Version="5.0.0" />
-    <PackageReference Include="Microsoft.SemanticKernel.Abstractions" Version="1.80.1" />
+    <PackageReference Include="Microsoft.SemanticKernel.Abstractions" Version="1.81.0" />
   </ItemGroup>
 </Project>

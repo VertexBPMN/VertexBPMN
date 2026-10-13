@@ -206,6 +206,8 @@ public static class InfrastructureModule
 		services.AddScoped<SourceControl.RepositoryHostingRegistry>();
         services.AddScoped<SourceControl.ProfiledGitCredentialBroker>();
 		services.AddScoped<SourceControl.ProfiledSshCredentialBroker>();
+		services.AddScoped<SourceControl.GitSshPolicyRegistry>();
+		services.AddScoped<SourceControl.ProfiledGitSshTransport>();
         services.AddScoped<SourceControl.IAzureDevOpsTokenIssuer, SourceControl.AzureDevOpsTokenIssuer>();
         services.AddScoped<SourceControl.GitHttpsPolicyRegistry>();
         services.AddScoped<SourceControl.ProfiledGitHttpsTransport>();

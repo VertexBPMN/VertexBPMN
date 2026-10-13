@@ -46,6 +46,7 @@
 </MudDialog>
 
 @code {
+#nullable enable
     [CascadingParameter] public MudBlazor.IMudDialogInstance Dialog { get; set; } = default!;
     [Parameter] public string BpmnXml { get; set; } = string.Empty;
     [Parameter] public string Title { get; set; } = "BPMN Viewer";

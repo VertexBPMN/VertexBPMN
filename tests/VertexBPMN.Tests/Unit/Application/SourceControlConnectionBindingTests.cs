@@ -187,8 +187,10 @@ public sealed partial class SourceControlConnectionBindingTests
 			Binding = new(Guid.NewGuid(), Context.TenantId, remote ?? new Uri("https://github.com/team/repository.git"),
 				"legacy-reference", "main", "release", ["models"]);
 			Db = NewContext();
-			Profile = new(Guid.NewGuid(), Context.TenantId, 1, GitTransportKind.Https,
-				GitAuthenticationKind.HttpBasic, new(Binding.Remote, "repository-network"), "new-reference",
+			var ssh = Binding.Remote.Scheme == "ssh";
+			Profile = new(Guid.NewGuid(), Context.TenantId, 1, ssh ? GitTransportKind.Ssh : GitTransportKind.Https,
+				ssh ? GitAuthenticationKind.SshKey : GitAuthenticationKind.HttpBasic,
+				new(Binding.Remote, "repository-network", ssh ? "repository-trust" : null), "new-reference",
 				SourceControlCapability.Read | SourceControlCapability.Commit | SourceControlCapability.Push);
 		}
 

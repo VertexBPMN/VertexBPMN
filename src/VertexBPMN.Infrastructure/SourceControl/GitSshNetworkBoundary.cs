@@ -13,7 +13,11 @@ internal static class GitSshNetworkBoundary
 		network = GitSshConfigurationPolicy.Snapshot(network);
 		trust = GitSshConfigurationPolicy.Snapshot(trust);
 		RepositoryConnectionProfilePolicy.DemandRepository(context, binding, target.Profile);
-		if (target.Remote.AbsoluteUri != binding.Remote.AbsoluteUri || binding.ConnectionProfileId != target.Profile.Id
+		if (target.SchemaVersion != SourceControlExecutionTarget.CurrentSchemaVersion || target.RepositoryId != binding.Id
+			|| target.Profile.Transport != GitTransportKind.Ssh || target.Profile.Authentication != GitAuthenticationKind.SshKey
+			|| target.RequiredCapabilities is not (SourceControlCapability.Read or SourceControlCapability.Commit or SourceControlCapability.Push)
+			|| (target.Profile.GitCapabilities & target.RequiredCapabilities) != target.RequiredCapabilities
+			|| target.Remote.AbsoluteUri != binding.Remote.AbsoluteUri || binding.ConnectionProfileId != target.Profile.Id
 			|| network.IsRevoked || trust.IsRevoked || network.TenantId != context.TenantId || trust.TenantId != context.TenantId
 			|| network.Id != target.Profile.GitEndpoint.NetworkPolicyReference || trust.Id != target.Profile.GitEndpoint.TrustProfileReference)
 		{ throw new SourceControlSecurityException(SourceControlErrorCode.ProviderUnavailable); }

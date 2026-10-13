@@ -121,4 +121,96 @@ public sealed class GitSshBoundaryTests
 			Assert.Equal(SourceControlErrorCode.TimedOut, (await Assert.ThrowsAsync<SourceControlSecurityException>(FetchAsync)).Code);
 		}
 	}
+
+	[Theory]
+	[InlineData("schema")]
+	[InlineData("repository")]
+	[InlineData("capability")]
+	[InlineData("combined-capability")]
+	public async Task Invalid_execution_targets_are_rejected_before_DNS(string mismatch)
+	{
+		var target = mismatch switch
+		{
+			"schema" => Target with { SchemaVersion = 99 },
+			"repository" => Target with { RepositoryId = Guid.NewGuid() },
+			"capability" => Target with { RequiredCapabilities = SourceControlCapability.Push },
+			_ => Target with { RequiredCapabilities = SourceControlCapability.Read | SourceControlCapability.Commit }
+		};
+		var calls = 0;
+		await Assert.ThrowsAsync<SourceControlSecurityException>(() => GitSshNetworkBoundary.ResolveAsync(Context, Binding, target, Network, Trust,
+			(_, _) => { calls++; return Task.FromResult(new[] { IPAddress.Parse("8.8.8.8") }); }, TestContext.Current.CancellationToken));
+		Assert.Equal(0, calls);
+	}
+
+	[Theory]
+	[InlineData("branches")]
+	[InlineData("resolve")]
+	[InlineData("history")]
+	public async Task Remote_reads_recheck_authority_before_starting_a_process(string operation)
+	{
+		var approved = await GitSshNetworkBoundary.ResolveAsync(Context, Binding, Target, Network, Trust,
+			(_, _) => Task.FromResult(new[] { IPAddress.Parse("8.8.8.8") }), TestContext.Current.CancellationToken);
+		using var lease = new GitSshCredentialLease(Binding.Remote, "git", SyntheticKey, DateTimeOffset.UtcNow.AddMinutes(2));
+		var process = new ControlledGitProcess(Options.Create(new SourceControlOptions { Enabled = true }));
+		var calls = 0;
+		Task DemandAsync(CancellationToken cancellationToken)
+		{
+			cancellationToken.ThrowIfCancellationRequested();
+			calls++;
+			throw new SourceControlSecurityException(SourceControlErrorCode.Forbidden);
+		}
+		async Task ReadAsync()
+		{
+			var workspace = new GitWorkspace("unused", "unused", Guid.NewGuid(), 1);
+			switch (operation)
+			{
+				case "branches":
+					_ = await process.ListApprovedSshBranchesAsync(workspace, Context, Binding, approved, lease, 10, null, DemandAsync, TestContext.Current.CancellationToken);
+					break;
+				case "resolve":
+					_ = await process.ResolveApprovedSshBranchAsync(workspace, Context, Binding, approved, lease, "main", DemandAsync, TestContext.Current.CancellationToken);
+					break;
+				default:
+					await process.FetchApprovedSshHistoryAsync(workspace, approved, new(new string('a', 40)), lease, DemandAsync, TestContext.Current.CancellationToken);
+					break;
+			}
+		}
+		Assert.Equal(SourceControlErrorCode.Forbidden, (await Assert.ThrowsAsync<SourceControlSecurityException>(ReadAsync)).Code);
+		Assert.Equal(1, calls);
+	}
+
+	[Theory]
+	[InlineData("tenant")]
+	[InlineData("repository")]
+	[InlineData("branch")]
+	[InlineData("page")]
+	public async Task Invalid_remote_read_inputs_release_no_credential_and_start_no_process(string mismatch)
+	{
+		var approved = await GitSshNetworkBoundary.ResolveAsync(Context, Binding, Target, Network, Trust,
+			(_, _) => Task.FromResult(new[] { IPAddress.Parse("8.8.8.8") }), TestContext.Current.CancellationToken);
+		using var lease = new GitSshCredentialLease(Binding.Remote, "git", SyntheticKey, DateTimeOffset.UtcNow.AddMinutes(2));
+		var process = new ControlledGitProcess(Options.Create(new SourceControlOptions { Enabled = true }));
+		var calls = 0;
+		Task DemandAsync(CancellationToken cancellationToken)
+		{
+			cancellationToken.ThrowIfCancellationRequested();
+			calls++;
+			return Task.CompletedTask;
+		}
+		async Task ReadAsync()
+		{
+			var workspace = new GitWorkspace("unused", "unused", Guid.NewGuid(), 1);
+			if (mismatch == "page")
+			{
+				_ = await process.ListApprovedSshBranchesAsync(workspace, Context, Binding, approved, lease, 0, null, DemandAsync, TestContext.Current.CancellationToken);
+				return;
+			}
+			_ = await process.ResolveApprovedSshBranchAsync(workspace,
+				mismatch == "tenant" ? new("foreign", Context.ActorId) : Context,
+				mismatch == "repository" ? Binding with { Id = Guid.NewGuid() } : Binding,
+				approved, lease, mismatch == "branch" ? "../main" : "main", DemandAsync, TestContext.Current.CancellationToken);
+		}
+		await Assert.ThrowsAsync<SourceControlSecurityException>(ReadAsync);
+		Assert.Equal(0, calls);
+	}
 }

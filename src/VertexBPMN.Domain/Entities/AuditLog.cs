@@ -3,6 +3,7 @@ namespace VertexBPMN.Domain.Entities;
 public sealed class AuditLog
 {
     public long Id { get; set; }
+	public Guid? SourceControlEventId { get; set; }
     public DateTimeOffset Timestamp { get; set; }
     public string Action { get; set; } = string.Empty;
     public string? Resource { get; set; }

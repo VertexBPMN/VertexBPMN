@@ -197,12 +197,15 @@ public static class InfrastructureModule
     {
         services.AddScoped<ICredentialService, PersistentCredentialService>();
         services.AddScoped<SourceControl.PersistentSourceControlStore>();
+		services.AddScoped<SourceControl.SourceControlAuditExporter>();
         services.AddSingleton<VertexBPMN.SourceControl.Abstractions.IRepositoryHostingTargetResolver, VertexBPMN.Application.SourceControl.RepositoryHostingTargetPolicy>();
         services.AddScoped<SourceControl.ProfiledHostingCredentialBroker>();
         services.AddScoped<SourceControl.GitHubAppTokenBroker>();
 		services.AddScoped<SourceControl.IRepositoryHostingAdapter, SourceControl.GitHubHostingAdapter>();
+		services.AddScoped<SourceControl.IRepositoryHostingAdapter, SourceControl.AzureDevOpsHostingAdapter>();
 		services.AddScoped<SourceControl.RepositoryHostingRegistry>();
         services.AddScoped<SourceControl.ProfiledGitCredentialBroker>();
+		services.AddScoped<SourceControl.ProfiledSshCredentialBroker>();
         services.AddScoped<SourceControl.IAzureDevOpsTokenIssuer, SourceControl.AzureDevOpsTokenIssuer>();
         services.AddScoped<SourceControl.GitHttpsPolicyRegistry>();
         services.AddScoped<SourceControl.ProfiledGitHttpsTransport>();
@@ -230,6 +233,7 @@ public static class InfrastructureModule
         {
             services.AddHostedService<SourceControl.SourceControlMaintenanceHostedService>();
             services.AddHostedService<SourceControl.SourceControlJobsHostedService>();
+			services.AddHostedService<SourceControl.SourceControlAuditHostedService>();
         }
     }
 

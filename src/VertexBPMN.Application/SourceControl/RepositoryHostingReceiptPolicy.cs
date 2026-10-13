@@ -22,6 +22,7 @@ public static class RepositoryHostingReceiptPolicy
 		var suffix = target.ProviderId switch
 		{
 			"github" => "/pull/",
+			AzureDevOpsHostingTargetPolicy.ProviderId => "/pullrequest/",
 			_ => throw new SourceControlSecurityException(SourceControlErrorCode.ProviderUnavailable)
 		};
 		var expected = target.WebRepositoryUri.AbsoluteUri + suffix + receipt.Number.ToString(CultureInfo.InvariantCulture);

@@ -20,4 +20,7 @@ public sealed class SourceControlOperationRecord
 	public long? LeaseUntilUtcTicks { get; set; }
 	public int? ErrorCode { get; set; }
 	public string? ProtectedResult { get; set; }
+	public bool AuditPending { get; set; }
+	public long? AuditExportedUtcTicks { get; set; }
+	public long? AuditRetryAfterUtcTicks { get; set; }
 }

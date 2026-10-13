@@ -1,6 +1,20 @@
 # Profilgebundene Git-Verbindungen
 
-Stand: 12. Oktober 2026, lokaler Entwicklungsbranch `codex/git-generic-servers`. Der generische HTTPS-Pfad einschließlich profilgebundenem, extern ausgestelltem Bearer-Token ist implementiert; Lieferstufe A ist noch nicht vollständig abgenommen. Für Azure DevOps Services ist zusätzlich eine explizite Entra-Anwendungsidentität angeschlossen. Ihre echte Anbieterabnahme, SSH und zusätzliche Hostingadapter sind offen. Anbieterfreigaben ausschließlich nach dem [Implementierungsplan](../reviews/2026-10-09_Git-Generische-Server-Unterstuetzung_Implementierungsplan.md) erteilen.
+Stand: 13. Oktober 2026, Entwicklungsbranch `codex/git-generic-servers`. Generisches HTTPS, Azure-Services-PR-Adapter und Export bestätigter Schreibbelege ins Audit sind implementiert. SSH hat einen vorbereiteten internen Read-Transport; öffentlicher Jobpfad, Passphrase-/Crash-Recovery und reale Serverabnahmen bleiben offen. Lieferstufen und Anbieter sind noch nicht vollständig abgenommen. Fortschritt und Grenzen: [Azure, SSH und Audit](../reviews/2026-10-13_Git-GS06-GS07_Azure-SSH-und-Audit.md).
+
+### Azure DevOps Services: Hostingprofil
+
+Provider-ID `azure-devops-services`, feste REST-Version 7.1. Git-URL: `https://dev.azure.com/{organisation}/{projektname}/_git/{repositoryname}`. `Hosting.RepositoryId`: `{organisation}/{projekt-guid}/{repository-guid}` mit kanonischen nichtleeren GUIDs. `Hosting.ApiEndpoint.BaseUri`: `https://dev.azure.com/{organisation}/{projektname}/_apis/git/repositories/{repository-guid}`. Git- und API-Netzwerkpolicy jeweils explizit freigeben; Capability `PullRequest` erst mit passenden Vertex-Grants verwenden. URLs, Namen und GUIDs müssen dieselbe Ressource bezeichnen.
+
+API-Credentials separat referenzieren: `HostingAzureDevOpsPat` oder `HostingHttpBearer` mit `token` und `expiresAt` im invarianten Roundtripformat `O`; alternativ `HostingAzureDevOpsEntra` mit `tenantId`, `clientId`, `clientSecret`. Keine Secretwerte in Profile kopieren. PAT verwendet Standard-Basic mit festem Benutzernamen `VertexBPMN`; Entra verwendet die explizite Anwendung und die vorhandene Azure-DevOps-Audience. Leases sind auf zwei Minuten beziehungsweise tatsächlichen Ablauf begrenzt; mindestens 30 Sekunden Restgültigkeit sind erforderlich.
+
+Der Adapter schreibt keine Policies und leitet aus Votes keine Releasefreigabe ab. Azure DevOps Server, alte Visual-Studio-Hostnamen und andere Entra-Clouds sind damit nicht qualifiziert.
+
+### Auditrollout und SSH-Vorbereitung
+
+Vor Aktivierung des Audit-Workers müssen beide neuen Migrationen (`BpmnDbContext`, `ProcessMiningEventDbContext`) im autorisierten vorhandenen Migrationsverfahren angewendet sein. Der zentrale Eventindex schützt Wiederanlauf und Mehrfachzustellung. Bei Exportausfall bleibt `AuditPending` gesetzt; Quelldetails werden noch nicht gelöscht. Keine nachträgliche Auditmarkierung alter Belege und kein automatischer Down-Rollback.
+
+SSH-Konfiguration bleibt optional. Ein vorbereitetes SSH-Profil braucht `SshKey`, einen expliziten Port, `GitSshKey` mit `username`/`privateKey`, exakte Netzwerk-/Hostkeyreferenzen und einen administrativ freigegebenen absoluten `SshExecutablePath`. Hostkeys enthalten ausschließlich Algorithmus und Base64, keine freien known_hosts-Zeilen. Agent und interaktive Passwort-/Passphraseeingaben werden nicht übernommen. Diese Konfiguration macht SSH noch nicht über API oder Studio nutzbar; den offenen dauerhaften SSH-Vertrag zuerst schließen.
 
 ## Voraussetzungen
 

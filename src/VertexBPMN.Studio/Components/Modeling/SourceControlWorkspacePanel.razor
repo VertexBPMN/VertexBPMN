@@ -85,13 +85,17 @@
             {
                 <MudText data-testid="git-pr-state">Confirmed PR state: @_pullRequestReceipt.State (not a live review approval)</MudText>
                 <MudText data-testid="git-pr-operation">PR operation: @_pullRequestReceipt.OperationId</MudText>
-                <MudButton OnClick="RefreshPullRequestStatusAsync" Disabled="_busy" data-testid="git-pr-status-refresh">Check current GitHub PR status</MudButton>
+                <MudButton OnClick="RefreshPullRequestStatusAsync" Disabled="_busy" data-testid="git-pr-status-refresh">Check current PR status</MudButton>
                 @if (_livePullRequestReceipt is not null)
                 {
-                    <MudText data-testid="git-pr-live-state">Last checked GitHub state: @_livePullRequestReceipt.State · merge commit: @(_livePullRequestReceipt.MergeCommit?.Value ?? "none") — not a deployment approval</MudText>
+                    <MudText data-testid="git-pr-live-state">Last checked PR state: @_livePullRequestReceipt.State · merge commit: @(_livePullRequestReceipt.MergeCommit?.Value ?? "none") — not a deployment approval</MudText>
                     <MudText data-testid="git-pr-review-state">Reviews: @(_livePullRequestReceipt.Reviews switch { null => "not checked", { Count: 0 } => "none", var reviews => string.Join("; ", reviews.Select(review => $"{review.Reviewer}: {review.State} at {review.Commit.Value}")) }) — not a release approval</MudText>
+					@if (_livePullRequestReceipt.CurrentVotes is { } votes)
+					{
+						<MudText data-testid="git-pr-current-votes">Current votes: @string.Join("; ", votes.Select(vote => $"{vote.Reviewer}: {vote.Vote}"))</MudText>
+					}
                 }
-                <a href="@_pullRequestReceipt.Url.AbsoluteUri" target="_blank" rel="noopener noreferrer" data-testid="git-pr-link">Open pull request #@_pullRequestReceipt.Number on GitHub</a>
+                <a href="@_pullRequestReceipt.Url.AbsoluteUri" target="_blank" rel="noopener noreferrer" data-testid="git-pr-link">Open pull request #@_pullRequestReceipt.Number</a>
             }
             <AuthorizeView Roles="Admin">
                 <MudDivider />

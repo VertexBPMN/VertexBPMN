@@ -14,7 +14,7 @@ public sealed class SourceControlOptionsValidator : IValidateOptions<SourceContr
 		}
 
 		var failures = new List<string>();
-		ValidateHttpsConfiguration(options, failures);
+		ValidateRemoteConfiguration(options, failures);
 		if (!SafeAbsolutePath(options.GitExecutablePath))
 		{
 			failures.Add("An absolute Git executable path is required.");
@@ -69,7 +69,7 @@ public sealed class SourceControlOptionsValidator : IValidateOptions<SourceContr
 		return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
 	}
 
-	private static void ValidateHttpsConfiguration(SourceControlOptions options, List<string> failures)
+	private static void ValidateRemoteConfiguration(SourceControlOptions options, List<string> failures)
 	{
 		try
 		{
@@ -79,6 +79,17 @@ public sealed class SourceControlOptionsValidator : IValidateOptions<SourceContr
 		{
 			failures.Add("HTTPS network and trust policies must have unique tenant identities, valid scopes, revisions, CIDRs and public CA certificates.");
 		}
+		ValidateSshConfiguration(options, failures);
+	}
+
+	private static void ValidateSshConfiguration(SourceControlOptions options, List<string> failures)
+	{
+		try { GitSshConfigurationPolicy.Validate(options); }
+		catch (Exception error) when (error is SourceControlSecurityException or ArgumentException)
+		{ failures.Add("SSH network and host-key profiles must have unique identities and valid scopes."); }
+		if (options.SshExecutablePath is not null && (!SafeAbsolutePath(options.SshExecutablePath)
+			|| options.SshExecutablePath.Any(character => character is '\'' or '"' or '$' or '`')))
+		{ failures.Add("The optional SSH executable must be an absolute trusted path."); }
 	}
 
 	private static bool SafeAbsolutePath(string? path) => !string.IsNullOrWhiteSpace(path)

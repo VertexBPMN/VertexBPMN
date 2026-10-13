@@ -70,6 +70,13 @@ internal static class GitHttpsNetworkBoundary
 		return networks;
 	}
 
+	internal static void DemandAddresses(IPAddress[] answers, IReadOnlyList<string> allowedRanges, IReadOnlyList<string> deniedRanges)
+	{
+		var allowed = ParseRanges(allowedRanges);
+		var denied = ParseRanges(deniedRanges);
+		if (answers.Length is 0 or > 32 || answers.Any(address => !Allowed(address, allowed, denied))) { Reject(); }
+	}
+
 	private static bool Allowed(IPAddress address, IPNetwork[] allowed, IPNetwork[] denied)
 	{
 		if (address.AddressFamily == AddressFamily.InterNetworkV6 && address.ScopeId != 0)

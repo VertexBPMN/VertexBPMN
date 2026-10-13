@@ -7,8 +7,8 @@ using VertexBPMN.SourceControl.Abstractions;
 namespace VertexBPMN.Infrastructure.SourceControl;
 
 /// <summary>Hosting uses its own explicit credential reference and current PR authorization.</summary>
-internal sealed class ProfiledHostingCredentialBroker(PersistentSourceControlStore store, ICredentialService credentials,
-	ISourceControlActorResolver actors, IOptions<SourceControlOptions> options)
+internal sealed partial class ProfiledHostingCredentialBroker(PersistentSourceControlStore store, ICredentialService credentials,
+	ISourceControlActorResolver actors, IOptions<SourceControlOptions> options, IAzureDevOpsTokenIssuer? entraTokens = null)
 {
 	internal async Task<GitHubTokenLease> IssueGitHubAsync(SourceControlContext context, AcceptedHostingExecution execution,
 		ApprovedGitHttpsTarget approved, CancellationToken cancellationToken)

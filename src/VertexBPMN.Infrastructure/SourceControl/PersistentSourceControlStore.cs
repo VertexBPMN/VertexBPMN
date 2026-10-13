@@ -725,6 +725,9 @@ public sealed partial class PersistentSourceControlStore(BpmnDbContext db, IData
                 && (state != SourceControlOperationState.Pushed || x.Kind == (int)SourceControlOperationKind.Push)
                 && (state != SourceControlOperationState.Succeeded || (x.Kind != (int)SourceControlOperationKind.Commit && x.Kind != (int)SourceControlOperationKind.Push)))
             .ExecuteUpdateAsync(update => update.SetProperty(x => x.State, (int)state)
+                .SetProperty(x => x.AuditPending, x => x.ProtectedResult != null
+                    && (state == SourceControlOperationState.CommittedLocal || state == SourceControlOperationState.Pushed
+                        || (state == SourceControlOperationState.Succeeded && x.Kind == (int)SourceControlOperationKind.PullRequest)))
                 .SetProperty(x => x.ErrorCode, errorCode.HasValue ? (int?)errorCode.Value : null)
                 .SetProperty(x => x.LeaseOwner, (string?)null).SetProperty(x => x.LeaseUntilUtcTicks, (long?)null)
                 .SetProperty(x => x.UpdatedUtcTicks, now.UtcTicks), cancellationToken) == 1;
@@ -845,6 +848,7 @@ public sealed partial class PersistentSourceControlStore(BpmnDbContext db, IData
             .ExecuteDeleteAsync(cancellationToken);
         count += await db.SourceControlOperations.Where(x => x.UpdatedUtcTicks <= cutoff
             && x.ProtectedRequest != ""
+            && !x.AuditPending
             && (x.State == (int)SourceControlOperationState.Pushed
                 || x.State == (int)SourceControlOperationState.Succeeded || x.State == (int)SourceControlOperationState.Conflict
                 || x.State == (int)SourceControlOperationState.Failed || x.State == (int)SourceControlOperationState.Cancelled))

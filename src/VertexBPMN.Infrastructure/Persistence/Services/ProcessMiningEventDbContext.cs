@@ -26,18 +26,7 @@ namespace VertexBPMN.Infrastructure.Persistence.Services;
             entity.HasIndex(e => e.TenantId);
             entity.HasIndex(e => e.Timestamp);
 
-            var audit = modelBuilder.Entity<AuditLog>();
-            audit.HasKey(e => e.Id);
-            audit.Property(e => e.Action).HasMaxLength(200).IsRequired();
-            audit.Property(e => e.Resource).HasMaxLength(300);
-            audit.Property(e => e.ResourceId).HasMaxLength(200);
-            audit.Property(e => e.UserId).HasMaxLength(200);
-            audit.Property(e => e.TenantId).HasMaxLength(64);
-            audit.Property(e => e.CorrelationId).HasMaxLength(128);
-            audit.Property(e => e.DetailsJson).HasMaxLength(8000);
-            audit.HasIndex(e => e.Timestamp);
-            audit.HasIndex(e => new { e.TenantId, e.Timestamp });
-            audit.HasIndex(e => e.Action);
+			ConfigureAudit(modelBuilder);
 
             // Seed sample events (if empty DB after first migration)
             var seedTime = new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero);
@@ -70,4 +59,21 @@ namespace VertexBPMN.Infrastructure.Persistence.Services;
 
             base.OnModelCreating(modelBuilder);
         }
+
+		private static void ConfigureAudit(ModelBuilder modelBuilder)
+		{
+			var audit = modelBuilder.Entity<AuditLog>();
+			audit.HasKey(e => e.Id);
+			audit.Property(e => e.Action).HasMaxLength(200).IsRequired();
+			audit.Property(e => e.Resource).HasMaxLength(300);
+			audit.Property(e => e.ResourceId).HasMaxLength(200);
+			audit.Property(e => e.UserId).HasMaxLength(512);
+			audit.Property(e => e.TenantId).HasMaxLength(64);
+			audit.Property(e => e.CorrelationId).HasMaxLength(128);
+			audit.Property(e => e.DetailsJson).HasMaxLength(8000);
+			audit.HasIndex(e => e.Timestamp);
+			audit.HasIndex(e => new { e.TenantId, e.Timestamp });
+			audit.HasIndex(e => e.Action);
+			audit.HasIndex(e => e.SourceControlEventId).IsUnique().HasFilter("\"SourceControlEventId\" IS NOT NULL");
+		}
     }

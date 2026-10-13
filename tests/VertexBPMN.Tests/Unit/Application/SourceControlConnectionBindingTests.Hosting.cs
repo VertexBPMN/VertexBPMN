@@ -130,12 +130,12 @@ public sealed partial class SourceControlConnectionBindingTests
 	private static Task<Guid> AcceptHostingAsync(Fixture fixture, HostedSetup setup) =>
 		setup.Store.EnqueuePullRequestAsync(Context, fixture.Binding.Id, Admin, new("profiled-hosting"), setup.Submission, Token);
 
-	private static async Task<HostedSetup> HostedPushAsync(Fixture fixture)
+	private static async Task<HostedSetup> HostedPushAsync(Fixture fixture, RepositoryHostingConnection? hosting = null)
 	{
 		var profile = fixture.Profile with
 		{
 			Revision = 2,
-			Hosting = new("github", new(new Uri("https://api.github.com/repos/team/repository"), "api-network"),
+			Hosting = hosting ?? new("github", new(new Uri("https://api.github.com/repos/team/repository"), "api-network"),
 				"team/repository", "api-credential", SourceControlCapability.PullRequest)
 		};
 		Assert.True(await fixture.Store.ReplaceConnectionProfileAsync(Context, Admin, 1, profile, Token));

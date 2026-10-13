@@ -16,6 +16,9 @@ public sealed class SourceControlOptions
     public IReadOnlyList<string> AllowedHosts { get; init; } = [];
     public IReadOnlyList<GitHttpsNetworkPolicy> HttpsNetworkPolicies { get; init; } = [];
     public IReadOnlyList<GitHttpsTrustProfile> HttpsTrustProfiles { get; init; } = [];
+	public string? SshExecutablePath { get; init; }
+	public IReadOnlyList<GitSshNetworkPolicy> SshNetworkPolicies { get; init; } = [];
+	public IReadOnlyList<GitSshTrustProfile> SshTrustProfiles { get; init; } = [];
     public string WorkBranchPrefix { get; init; } = "vertex/";
     public SourceControlLimits Limits { get; init; } = new();
 }

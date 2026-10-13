@@ -31,7 +31,10 @@ public sealed class SourceControlPullRequestStatusReader
 		{
 			throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
 		}
-		receipt = receipt with { Reviews = await session.ReadReviewsAsync(confirmed.Receipt.Number, cancellationToken) };
+		if (receipt.ProviderId != AzureDevOpsHostingTargetPolicy.ProviderId)
+		{
+			receipt = receipt with { Reviews = await session.ReadReviewsAsync(confirmed.Receipt.Number, cancellationToken) };
+		}
 		// A revocation during the remote read must not publish the result to the caller.
 		await store.ReadConfirmedPullRequestAsync(context, operationId,
 			await actors.ResolveAsync(context, cancellationToken), cancellationToken);

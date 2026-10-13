@@ -9,6 +9,10 @@ public sealed class RepositoryHostingTargetPolicy : IRepositoryHostingTargetReso
 	{
 		RepositoryConnectionProfilePolicy.DemandRepository(context, binding, profile);
 		var hosting = profile.Hosting ?? throw new SourceControlSecurityException(SourceControlErrorCode.ProviderUnavailable);
+		if (hosting.ProviderId == AzureDevOpsHostingTargetPolicy.ProviderId)
+		{
+			return AzureDevOpsHostingTargetPolicy.Resolve(binding, hosting);
+		}
 		if (hosting.ProviderId != "github")
 		{
 			throw new SourceControlSecurityException(SourceControlErrorCode.ProviderUnavailable);

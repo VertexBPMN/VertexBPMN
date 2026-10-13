@@ -234,6 +234,7 @@ public static class InfrastructureModule
         services.AddScoped<SourceControl.SourceControlClaimedPullRequestRunner>();
         services.AddScoped<VertexBPMN.Application.SourceControl.ISourceControlActorResolver, SourceControl.KeycloakSourceControlActorResolver>();
         services.AddScoped<VertexBPMN.SourceControl.Abstractions.IModelSourceControlProvider, SourceControl.NativeGitModelSourceControlProvider>();
+		ConfigureSshAuthenticationFiles(services, mode);
         if (mode != "Test" && configuration.GetValue<bool>("SourceControl:Enabled"))
         {
             services.AddHostedService<SourceControl.SourceControlMaintenanceHostedService>();
@@ -241,6 +242,15 @@ public static class InfrastructureModule
 			services.AddHostedService<SourceControl.SourceControlAuditHostedService>();
         }
     }
+
+	private static void ConfigureSshAuthenticationFiles(IServiceCollection services, string mode)
+	{
+		services.AddScoped<SourceControl.GitSshAuthenticationFileRecovery>();
+		if (mode != "Test")
+		{
+			services.AddHostedService<SourceControl.SourceControlSshAuthenticationCleanupHostedService>();
+		}
+	}
 
     private static void ConfigureRuntimeOutbox(
         IServiceCollection services,

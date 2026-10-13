@@ -8,7 +8,7 @@ namespace VertexBPMN.Infrastructure.SourceControl;
 /// <summary>Typed accepted reads and durable results; the public provider resolves a server-owned binding before routing here.</summary>
 internal sealed partial class ProfiledGitReadService(PersistentSourceControlStore store, ISourceControlActorResolver actors,
 	GitHttpsPolicyRegistry policies, SourceControlClaimedReadRunner runner, ControlledGitProcess git,
-	ProfiledGitHttpsTransport transport, IOptions<SourceControlOptions> options)
+	ProfiledGitHttpsTransport transport, IOptions<SourceControlOptions> options, ProfiledSshReadService? sshReads = null)
 {
 	internal async Task<T> ReadAsync<T>(SourceControlContext context, RepositoryBinding supplied, GitCommitId? revision,
 		AcceptedGitReadQuery query, CancellationToken cancellationToken)
@@ -19,6 +19,11 @@ internal sealed partial class ProfiledGitReadService(PersistentSourceControlStor
 		}
 		var roles = await actors.ResolveAsync(context, cancellationToken);
 		var target = await store.CaptureConnectionTargetAsync(context, supplied.Id, roles, SourceControlOperationKind.Read, cancellationToken);
+		if (target.Profile.Transport == GitTransportKind.Ssh)
+		{
+			return await (sshReads ?? throw new SourceControlSecurityException(SourceControlErrorCode.ProviderUnavailable))
+				.ReadAsync<T>(context, supplied, revision, query, cancellationToken);
+		}
 		var binding = (await store.FindAsync(context.TenantId, supplied.Id, cancellationToken))?.Binding
 			?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
 		query.Validate(binding, revision, options.Value.Limits);

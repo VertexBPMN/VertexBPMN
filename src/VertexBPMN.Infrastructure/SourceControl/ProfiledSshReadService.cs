@@ -7,6 +7,30 @@ namespace VertexBPMN.Infrastructure.SourceControl;
 internal sealed class ProfiledSshReadService(PersistentSourceControlStore store, ISourceControlActorResolver actors,
 	GitSshPolicyRegistry policies, SourceControlClaimedSshReadRunner runner, ControlledGitProcess git, ProfiledGitSshTransport transport)
 {
+	internal async Task<T> ReadAsync<T>(SourceControlContext context, RepositoryBinding supplied, GitCommitId? revision,
+		AcceptedGitReadQuery query, CancellationToken cancellationToken)
+	{
+		if (context.TenantId != supplied.TenantId)
+		{
+			throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
+		}
+		var roles = await actors.ResolveAsync(context, cancellationToken);
+		var target = await store.CaptureConnectionTargetAsync(context, supplied.Id, roles, SourceControlOperationKind.Read, cancellationToken);
+		var id = await store.EnqueueSshReadAsync(context, target, roles, new(Guid.NewGuid().ToString("N")),
+			new(revision) { Query = query }, policies, cancellationToken);
+		var worker = "ssh-read-" + Guid.NewGuid().ToString("N");
+		var fence = await store.TryClaimSshReadAsync(context, id, worker, DateTimeOffset.UtcNow, TimeSpan.FromMinutes(2),
+			await actors.ResolveAsync(context, cancellationToken), policies, cancellationToken)
+			?? throw new SourceControlSecurityException(SourceControlErrorCode.QuotaExceeded);
+		var outcome = await runner.RunAsync<T>(context, id, worker, fence,
+			(workspace, work, token) => ProjectAsync<T>(workspace, context, id, worker, fence, work, token), cancellationToken);
+		if (outcome.State != SourceControlOperationState.Succeeded)
+		{
+			throw new SourceControlSecurityException(outcome.Error ?? SourceControlErrorCode.ResultUnknown);
+		}
+		return await store.ReadSshResultAsync<T>(context, id, await actors.ResolveAsync(context, cancellationToken), policies, cancellationToken);
+	}
+
 	internal async Task<SourceControlOperationState> RunClaimedAsync(SourceControlContext context, Guid id, string worker,
 		long fence, CancellationToken cancellationToken)
 	{

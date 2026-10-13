@@ -5,7 +5,7 @@ namespace VertexBPMN.Infrastructure.SourceControl;
 
 internal sealed partial class ControlledGitProcess
 {
-	/// <summary>Prepared SSH read transport; durable SSH job dispatch is intentionally not advertised yet.</summary>
+	/// <summary>Fixed-revision SSH fetch; current authority is rechecked throughout the native operation.</summary>
 	internal async Task FetchApprovedSshRevisionAsync(GitWorkspace workspace, ApprovedGitSshTarget approved, GitCommitId revision,
 		GitSshCredentialLease lease, Func<CancellationToken, Task> demandCurrent, CancellationToken cancellationToken)
 		=> _ = await FetchApprovedSshAsync(workspace, approved, revision, 1, lease, demandCurrent, cancellationToken);
@@ -42,7 +42,8 @@ internal sealed partial class ControlledGitProcess
 		{
 			await demandCurrent(deadline.Token);
 			await VersionAsync(workspace, deadline.Token);
-			await using var files = await GitSshAuthenticationFiles.CreateAsync(approved, lease, deadline.Token);
+			await using var files = await GitSshAuthenticationFiles.CreateAsync(approved, lease,
+				sshFiles ?? throw new SourceControlSecurityException(SourceControlErrorCode.ProviderUnavailable), deadline.Token);
 			var executable = options.Value.SshExecutablePath ?? throw new SourceControlSecurityException(SourceControlErrorCode.GitUnavailable);
 			var sshCommand = files.Command(executable, approved, lease, timeout);
 			var environment = new Dictionary<string, string>(StringComparer.Ordinal)

@@ -12,21 +12,31 @@ namespace VertexBPMN.Infrastructure.SourceControl;
 internal sealed class GitSshAuthenticationFiles : IAsyncDisposable
 {
 	private readonly string directory;
+	private bool ownsDirectory;
 	internal string KeyFile => Path.Combine(directory, "identity");
 	internal string KnownHostsFile => Path.Combine(directory, "known_hosts");
 	internal string EmptyConfigFile => Path.Combine(directory, "empty_config");
+	internal string OwnershipFile => Path.Combine(directory, ".vertex-ssh-owner");
 	internal string HostAlias { get; }
 	private GitSshAuthenticationFiles(Uri remote)
 	{
 		directory = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "vertex-ssh-" + Guid.NewGuid().ToString("N")));
 		HostAlias = "vertex-" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(remote.IdnHost + ":" + remote.Port.ToString(System.Globalization.CultureInfo.InvariantCulture))));
 	}
-	internal static async Task<GitSshAuthenticationFiles> CreateAsync(ApprovedGitSshTarget approved, GitSshCredentialLease lease, CancellationToken cancellationToken)
+	internal static async Task<GitSshAuthenticationFiles> CreateAsync(ApprovedGitSshTarget approved, GitSshCredentialLease lease,
+		GitSshAuthenticationFileRecovery recovery, CancellationToken cancellationToken)
 	{
 		var files = new GitSshAuthenticationFiles(approved.Target.Remote);
 		try
 		{
 			files.CreateDirectory();
+			GitSshAuthenticationPath.DemandPrivateDirectory(files.directory);
+			if (Directory.EnumerateFileSystemEntries(files.directory).Any())
+			{
+				throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
+			}
+			files.ownsDirectory = true;
+			await recovery.WriteOwnershipAsync(files.directory, lease.ExpiresAt, cancellationToken);
 			var key = lease.CopyKey(approved.Target.Remote);
 			try
 			{ await files.WriteAsync(files.KeyFile, key, cancellationToken); }
@@ -40,6 +50,7 @@ internal sealed class GitSshAuthenticationFiles : IAsyncDisposable
 
 	private void CreateDirectory()
 	{
+		GitSshAuthenticationPath.Demand(directory);
 		if (Directory.Exists(directory))
 		{ throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe); }
 		if (OperatingSystem.IsWindows())
@@ -91,11 +102,10 @@ internal sealed class GitSshAuthenticationFiles : IAsyncDisposable
 	}
 	public ValueTask DisposeAsync()
 	{
-		if (!Directory.Exists(directory))
+		if (!ownsDirectory || !Directory.Exists(directory))
 		{ return ValueTask.CompletedTask; }
-		if ((new DirectoryInfo(directory).Attributes & FileAttributes.ReparsePoint) != FileAttributes.None)
-		{ throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe); }
-		foreach (var path in new[] { KeyFile, KnownHostsFile, EmptyConfigFile })
+		GitSshAuthenticationPath.DemandPrivateDirectory(directory);
+		foreach (var path in new[] { KeyFile, KnownHostsFile, EmptyConfigFile, OwnershipFile })
 		{ File.Delete(path); }
 		Directory.Delete(directory);
 		return ValueTask.CompletedTask;

@@ -8,7 +8,7 @@ using VertexBPMN.SourceControl.Abstractions;
 namespace VertexBPMN.Infrastructure.SourceControl;
 
 /// <summary>Fixed commands only. Bare repositories avoid untrusted checkout filters and hooks.</summary>
-internal sealed partial class ControlledGitProcess(IOptions<SourceControlOptions> options)
+internal sealed partial class ControlledGitProcess(IOptions<SourceControlOptions> options, GitSshAuthenticationFileRecovery? sshFiles = null)
 {
     private static readonly Regex GitVersionPattern = new Regex(@"^git version (?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)",
         RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture | RegexOptions.NonBacktracking,

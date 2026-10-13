@@ -2,6 +2,8 @@
 
 Stand: 13. Oktober 2026, Entwicklungsbranch `codex/git-generic-servers`. Fortsetzung von [SSH-Auftragsannahme und Claiming](2026-10-13_Git-GS07_SSH-Auftragsannahme-und-Claiming.md).
 
+Spätere Fortsetzung desselben Tages: Geschützte Authentifizierungsdatei-Recovery und Studio-/synchrone Providerreads sind inzwischen angeschlossen. Details und neue Prüfungen: [Dateirecovery und Studio-Reads](2026-10-13_Git-GS07_SSH-Dateirecovery-und-Studio-Reads.md). Der folgende Bericht dokumentiert den vorherigen geprüften Zwischenstand.
+
 ## Implementierter Umfang
 
 Der produktive `SourceControlJobsHostedService` selektiert jetzt auch SSH-Read-Verträge der Version 4. Claim und Dispatch bleiben nach Version getrennt; Legacy-, HTTPS- und Hostingaufträge behalten ihre bestehenden Wege. Untypisierte interne SSH-Reads werden vor dem Workerclaim abgewiesen; unverändert ungestartete ungültige Aufträge werden abgeschlossen, damit weitere Aufträge fortschreiten können. Ein bereits übernommener Auftrag wird dabei nicht überschrieben.

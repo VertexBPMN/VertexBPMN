@@ -1,6 +1,7 @@
 using System.Net;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Options;
 using VertexBPMN.Application.SourceControl;
 using VertexBPMN.Infrastructure.SourceControl;
@@ -57,7 +58,8 @@ public sealed class GitSshBoundaryTests
 		var approved = await GitSshNetworkBoundary.ResolveAsync(Context, Binding, Target, Network, Trust,
 			(_, _) => Task.FromResult(new[] { IPAddress.Parse("8.8.8.8") }), TestContext.Current.CancellationToken);
 		using var lease = new GitSshCredentialLease(Binding.Remote, "git", SyntheticKey, DateTimeOffset.UtcNow.AddMinutes(2));
-		var files = await GitSshAuthenticationFiles.CreateAsync(approved, lease, TestContext.Current.CancellationToken);
+		var files = await GitSshAuthenticationFiles.CreateAsync(approved, lease,
+			new(new EphemeralDataProtectionProvider()), TestContext.Current.CancellationToken);
 		var path = files.KeyFile;
 		try
 		{

@@ -68,15 +68,6 @@ public static class SourceControlHttps
             && !(b[0] == 0x3f && b[1] == 0xff);
     }
 
-    public static HttpClient CreateClient(IReadOnlyList<string> allowedHosts, TimeSpan timeout)
-        => CreateClient(allowedHosts, timeout, Dns.GetHostAddressesAsync);
-
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
-        Justification = "HttpClient takes ownership of the SocketsHttpHandler/TargetGuard chain and disposes both in Dispose().")]
-    internal static HttpClient CreateClient(IReadOnlyList<string> allowedHosts, TimeSpan timeout,
-        Func<string, CancellationToken, Task<IPAddress[]>> resolve)
-        => CreateClient(allowedHosts, timeout, resolve, null);
-
     internal static HttpClient CreateProfiledGitHubClient(ApprovedGitHttpsTarget approved, TimeSpan timeout)
     {
         ValidateTarget(approved.Remote, ["api.github.com"]);
@@ -92,9 +83,18 @@ public static class SourceControlHttps
         }, approved.Remote);
     }
 
+    public static HttpClient CreateClient(IReadOnlyList<string> allowedHosts, TimeSpan timeout)
+        => CreateClient(allowedHosts, timeout, Dns.GetHostAddressesAsync);
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
+        Justification = "HttpClient takes ownership of the SocketsHttpHandler/TargetGuard chain and disposes both in Dispose().")]
+    internal static HttpClient CreateClient(IReadOnlyList<string> allowedHosts, TimeSpan timeout,
+        Func<string, CancellationToken, Task<IPAddress[]>> resolve)
+        => CreateClient(allowedHosts, timeout, resolve, null);
+
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
         Justification = "HttpClient owns the handler chain and disposes it.")]
-    private static HttpClient CreateClient(IReadOnlyList<string> allowedHosts, TimeSpan timeout,
+    internal static HttpClient CreateClient(IReadOnlyList<string> allowedHosts, TimeSpan timeout,
         Func<string, CancellationToken, Task<IPAddress[]>> resolve, Uri? repositoryScope)
     {
         var hosts = allowedHosts.ToArray();
@@ -141,13 +141,7 @@ public static class SourceControlHttps
             ValidateRequestTarget(request.RequestUri!, hosts);
             if (repositoryScope is not null)
             {
-                var target = request.RequestUri!;
-                if (target.IdnHost != repositoryScope.IdnHost || target.Port != repositoryScope.Port
-                    || (target.AbsolutePath != repositoryScope.AbsolutePath
-                        && !target.AbsolutePath.StartsWith(repositoryScope.AbsolutePath + "/", StringComparison.Ordinal)))
-                {
-                    Reject();
-                }
+                GitHubHostingHttpPolicy.Demand(request, repositoryScope);
             }
             return base.SendAsync(request, cancellationToken);
         }

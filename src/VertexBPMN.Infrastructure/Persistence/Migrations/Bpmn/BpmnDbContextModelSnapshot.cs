@@ -1462,14 +1462,11 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                         .HasMaxLength(512)
                         .HasColumnType("TEXT");
 
-                    b.Property<long?>("AuditExportedUtcTicks")
-                        .HasColumnType("INTEGER");
+                    b.Property<long?>("AuditExportedUtcTicks");
 
-                    b.Property<bool>("AuditPending")
-                        .HasColumnType("INTEGER");
+                    b.Property<bool>("AuditPending");
 
-                    b.Property<long?>("AuditRetryAfterUtcTicks")
-                        .HasColumnType("INTEGER");
+                    b.Property<long?>("AuditRetryAfterUtcTicks");
 
                     b.Property<int?>("ErrorCode")
                         .HasColumnType("INTEGER");

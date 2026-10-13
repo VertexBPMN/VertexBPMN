@@ -47,8 +47,7 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.ProcessMiningEvents
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
-                    b.Property<Guid?>("SourceControlEventId")
-                        .HasColumnType("TEXT");
+                    b.Property<Guid?>("SourceControlEventId");
 
                     b.Property<int>("StatusCode")
                         .HasColumnType("INTEGER");
@@ -61,8 +60,7 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.ProcessMiningEvents
                         .HasColumnType("TEXT");
 
                     b.Property<string>("UserId")
-                        .HasMaxLength(512)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(512);
 
                     b.HasKey("Id");
 

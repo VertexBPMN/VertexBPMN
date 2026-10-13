@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+- Optionaler Studio-Link zur externen Verwaltung von Anmeldemethoden und lokales Keycloak-Passkey-Pilotprofil mit gezielter Registrierung und opt-in Browser-Abnahme.
+- Opt-in OIDC-Aktion „Add a passkey“ für Keycloak mit geschütztem Rücksprung sowie PAR-/Abbruch- und Tenant-Negativtests.
+
+### Fixed
+- Getrennte SQLite-Verbindungen pro Kontext in der gemeinsamen Testfixture verhindern Funktionsregistrierung auf einer Verbindung mit aktivem Reader.
+
 ## [1.0.0] - 2025-08-13
 
 ### Added

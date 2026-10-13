@@ -12,20 +12,21 @@ public sealed class SharedSqliteDbFixture : IAsyncLifetime
 	private bool _initialized;
 
 	// Share within this collection fixture, never across independently created collections.
-	public SqliteConnection Connection { get; } = new($"Data Source=vertex-fixture-{Guid.NewGuid():N};Mode=Memory;Cache=Shared");
+	public SqliteConnection Connection { get; } = new($"Data Source=vertex-fixture-{Guid.NewGuid():N};Mode=Memory;Cache=Shared;Pooling=False");
 
-	public DbContextOptions<BpmnDbContext> BpmnOptions => new DbContextOptionsBuilder<BpmnDbContext>().UseSqlite(Connection).Options;
+	// The anchor keeps the database alive; each context owns a separate connection.
+	public DbContextOptions<BpmnDbContext> BpmnOptions => new DbContextOptionsBuilder<BpmnDbContext>().UseSqlite(Connection.ConnectionString).Options;
 	private readonly Dictionary<string, SqliteConnection> _auxiliaryConnections = new(StringComparer.Ordinal);
-	public DbContextOptions<TenantDbContext> TenantOptions => new DbContextOptionsBuilder<TenantDbContext>().UseSqlite(GetConnection("tenants")).Options;
-	public DbContextOptions<SimulationScenarioDbContext> SimulationOptions => new DbContextOptionsBuilder<SimulationScenarioDbContext>().UseSqlite(GetConnection("simulation")).Options;
-	public DbContextOptions<DecisionDbContext> DecisionOptions => new DbContextOptionsBuilder<DecisionDbContext>().UseSqlite(GetConnection("decision")).Options;
-	public DbContextOptions<ProcessMiningEventDbContext> ProcessMiningOptions => new DbContextOptionsBuilder<ProcessMiningEventDbContext>().UseSqlite(GetConnection("procmining")).Options;
+	public DbContextOptions<TenantDbContext> TenantOptions => new DbContextOptionsBuilder<TenantDbContext>().UseSqlite(GetConnection("tenants").ConnectionString).Options;
+	public DbContextOptions<SimulationScenarioDbContext> SimulationOptions => new DbContextOptionsBuilder<SimulationScenarioDbContext>().UseSqlite(GetConnection("simulation").ConnectionString).Options;
+	public DbContextOptions<DecisionDbContext> DecisionOptions => new DbContextOptionsBuilder<DecisionDbContext>().UseSqlite(GetConnection("decision").ConnectionString).Options;
+	public DbContextOptions<ProcessMiningEventDbContext> ProcessMiningOptions => new DbContextOptionsBuilder<ProcessMiningEventDbContext>().UseSqlite(GetConnection("procmining").ConnectionString).Options;
 
 	internal SqliteConnection GetConnection(string label)
 	{
 		if (!_auxiliaryConnections.TryGetValue(label, out var connection))
 		{
-			connection = new SqliteConnection("Data Source=:memory:");
+			connection = new SqliteConnection($"Data Source=vertex-fixture-{Guid.NewGuid():N}-{label};Mode=Memory;Cache=Shared;Pooling=False");
 			connection.Open();
 			_auxiliaryConnections.Add(label, connection);
 		}

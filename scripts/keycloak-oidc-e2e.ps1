@@ -3,6 +3,9 @@ param(
     [ValidateRange(60, 300)]
     [int]$AccessTokenLifespan = 70,
     [switch]$SecurityAcceptance,
+    [switch]$PasskeyAcceptance,
+    [ValidatePattern("^[a-z0-9-]{0,40}$")]
+    [string]$TestInstance = $env:VERTEXBPMN_KEYCLOAK_TEST_INSTANCE,
     [switch]$DiagnosticBuild,
     [switch]$GitIdentityAcceptance,
     [string]$TestMethod,
@@ -28,6 +31,10 @@ $requiredVariables = @(
 )
 $apiProcess = $null
 $studioProcess = $null
+$previousTestInstance = $env:VERTEXBPMN_KEYCLOAK_TEST_INSTANCE
+$previousAccountManagementUrl = $env:StudioAuthentication__AccountManagementUrl
+$previousPasskeyRegistration = $env:StudioAuthentication__PasskeyRegistrationEnabled
+$previousPasskeyAcceptance = $env:VERTEXBPMN_KEYCLOAK_PASSKEY_ACCEPTANCE
 
 function Assert-Prerequisites {
     if (-not (Get-Command wslc.exe -ErrorAction SilentlyContinue)) {
@@ -128,7 +135,8 @@ if ($LASTEXITCODE -ne 0) { throw "The Studio publish failed with exit code $LAST
 
 try {
     Write-Host "Starting the dedicated Keycloak test realm..."
-    & $keycloakScript -Action Start -AccessTokenLifespan $AccessTokenLifespan -SecurityAcceptance:$SecurityAcceptance
+    $env:VERTEXBPMN_KEYCLOAK_TEST_INSTANCE = $TestInstance
+    & $keycloakScript -Action Start -AccessTokenLifespan $AccessTokenLifespan -SecurityAcceptance:$SecurityAcceptance -RequirePasskeyEnrollment:$PasskeyAcceptance
 
     $env:ASPNETCORE_ENVIRONMENT = "OidcTest"
     $env:DOTNET_ENVIRONMENT = "OidcTest"
@@ -162,6 +170,10 @@ try {
     $env:DataProtection__KeyRingPath = Join-Path $resultsDirectory "studio-keyring"
     $env:StudioHttpsRedirection__Enabled = "false"
     $env:StudioAuthentication__Authority = "http://localhost:58080/realms/vertexbpmn"
+    if ($PasskeyAcceptance) {
+        $env:StudioAuthentication__PasskeyRegistrationEnabled = "true"
+        $env:StudioAuthentication__AccountManagementUrl = "http://localhost:58080/realms/vertexbpmn/account/"
+    }
     $env:StudioAuthentication__ClientId = "vertexbpmn-studio"
     $env:StudioAuthentication__ClientSecret = $env:VERTEXBPMN_KEYCLOAK_STUDIO_CLIENT_SECRET
     $env:StudioAuthentication__ClaimsScope = "vertexbpmn-claims"
@@ -194,7 +206,8 @@ try {
     $env:VERTEXBPMN_OIDC_TEST_API_ASSEMBLY = $apiAssembly
     $env:VERTEXBPMN_OIDC_TEST_RESULTS_DIR = $resultsDirectory
     $env:VERTEXBPMN_KEYCLOAK_TEST_USER = "vertexbpmn-user"
-    $env:VERTEXBPMN_KEYCLOAK_TEST_CONTAINER = "vertexbpmn-keycloak-test"
+    $env:VERTEXBPMN_KEYCLOAK_TEST_CONTAINER = "vertexbpmn-keycloak-test$(if ($TestInstance) { "-$TestInstance" })"
+    $env:VERTEXBPMN_KEYCLOAK_PASSKEY_ACCEPTANCE = if ($PasskeyAcceptance) { "1" } else { "0" }
     $env:VERTEXBPMN_KEYCLOAK_TEST_SCRIPT = $keycloakScript
     $env:VERTEXBPMN_KEYCLOAK_STUDIO_CLIENT_ID = "vertexbpmn-studio"
     $env:VERTEXBPMN_KEYCLOAK_SECURITY_CLIENT_ID = "vertexbpmn-security-test"
@@ -207,13 +220,19 @@ try {
         if ($SecurityAcceptance) {
             $classes += @("-class", "*KeycloakOidcSecurityAcceptanceTests")
         }
+        if ($PasskeyAcceptance -and -not $SecurityAcceptance) {
+            $classes = @("-class", "*KeycloakOidcSecurityAcceptanceTests", "-trait", "Category=KeycloakPasskeyAcceptance")
+        }
         $classes
     }
     else {
         @("-method", $TestMethod)
     }
+    if (-not $PasskeyAcceptance) {
+        $testFilters += @("-trait-", "Category=KeycloakPasskeyAcceptance")
+    }
     Write-Host "Running real browser login, API authorization, refresh and logout$(if ($SecurityAcceptance) { ' plus K05 security acceptance' })..."
-    & dotnet $uiTestAssembly @testFilters -parallelMode none
+    & dotnet $uiTestAssembly @testFilters -parallelMode none -result-xml (Join-Path $resultsDirectory "acceptance.xml")
     if ($LASTEXITCODE -ne 0) {
         throw "The Keycloak browser acceptance test failed with exit code $LASTEXITCODE."
     }
@@ -246,4 +265,8 @@ finally {
     if (-not $KeepKeycloak) {
         & $keycloakScript -Action Remove
     }
+    $env:VERTEXBPMN_KEYCLOAK_TEST_INSTANCE = $previousTestInstance
+    $env:StudioAuthentication__AccountManagementUrl = $previousAccountManagementUrl
+    $env:StudioAuthentication__PasskeyRegistrationEnabled = $previousPasskeyRegistration
+    $env:VERTEXBPMN_KEYCLOAK_PASSKEY_ACCEPTANCE = $previousPasskeyAcceptance
 }

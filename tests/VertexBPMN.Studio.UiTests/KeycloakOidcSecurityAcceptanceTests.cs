@@ -21,7 +21,7 @@ namespace VertexBPMN.Studio.UiTests;
 /// The dedicated password-grant client exists only in that disposable acceptance realm;
 /// the Studio browser login continues to use Authorization Code with PKCE.
 /// </summary>
-public sealed class KeycloakOidcSecurityAcceptanceTests
+public sealed partial class KeycloakOidcSecurityAcceptanceTests
 {
 	[Fact]
 	[Trait("Category", "KeycloakOidcSecurityAcceptance")]
@@ -576,8 +576,10 @@ public sealed class KeycloakOidcSecurityAcceptanceTests
 		try
 		{
 			using var refresh = await RefreshBrowserSessionAsync(page, manualRedirect: true);
-			Assert.Equal("opaqueredirect", refresh.RootElement.GetProperty("type").GetString());
-			Assert.Equal(0, refresh.RootElement.GetProperty("status").GetInt32());
+			// Background refresh returns 401 without an OIDC redirect; interactive navigation still challenges below.
+			Assert.Equal("basic", refresh.RootElement.GetProperty("type").GetString());
+			Assert.Equal(401, refresh.RootElement.GetProperty("status").GetInt32());
+			Assert.Equal(new Uri(new Uri(studioUrl), "authentication/session/refresh").ToString(), refresh.RootElement.GetProperty("url").GetString());
 
 			var cookies = await context.CookiesAsync([studioUrl]);
 			Assert.DoesNotContain(cookies, cookie => cookie.Name == ".AspNetCore.Cookies");

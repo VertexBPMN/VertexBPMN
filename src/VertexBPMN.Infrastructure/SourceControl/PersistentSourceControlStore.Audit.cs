@@ -72,8 +72,8 @@ public sealed partial class PersistentSourceControlStore
 		}
 		else
 		{ throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe); }
-		if (row.ExecutionContractVersion == AcceptedGitHttpsExecution.ContractVersion)
-		{ target = new GitHttpsExecutionProtection(protection).Unprotect(row).Target; }
+		if (row.ExecutionContractVersion is AcceptedGitHttpsExecution.ContractVersion or AcceptedGitSshWriteExecution.ContractVersion)
+		{ target = ReadProtectedWriteExecution(row).Target; }
 		return new(row.RepositoryId, row.Fence, commit, sourcePush, provider, target?.BindingRevision,
 			target?.Profile.Id, target?.Profile.Revision, "VertexBPMN <source-control@vertexbpmn.invalid>",
 			target?.Profile.GitCredentialReference, target?.Profile.Hosting?.CredentialReference);

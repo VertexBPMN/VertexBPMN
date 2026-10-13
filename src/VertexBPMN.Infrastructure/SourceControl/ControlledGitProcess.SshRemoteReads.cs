@@ -11,7 +11,7 @@ internal sealed partial class ControlledGitProcess
 	{
 		DemandSshReadBinding(context, binding, approved);
 		GitRemoteReferences.ValidatePage(pageSize, cursor, options.Value.Limits);
-		var output = await RunApprovedSshReadAsync(workspace, approved, lease, demandCurrent,
+		var output = await RunApprovedSshAsync(workspace, approved, lease, demandCurrent,
 			["ls-remote", "--quiet", "--branches", "--refs", "--", binding.Remote.AbsoluteUri],
 			options.Value.Limits.ReadTimeout, cancellationToken);
 		return GitRemoteReferences.ReadPage(output, binding, pageSize, cursor, options.Value.Limits, cancellationToken);
@@ -23,7 +23,7 @@ internal sealed partial class ControlledGitProcess
 	{
 		DemandSshReadBinding(context, binding, approved);
 		SourceControlInputPolicy.ValidateBranch(branch);
-		var output = await RunApprovedSshReadAsync(workspace, approved, lease, demandCurrent,
+		var output = await RunApprovedSshAsync(workspace, approved, lease, demandCurrent,
 			["ls-remote", "--quiet", "--branches", "--refs", "--", binding.Remote.AbsoluteUri, "refs/heads/" + branch],
 			options.Value.Limits.ReadTimeout, cancellationToken);
 		var commit = GitRemoteReferences.ReadHead(output, branch)

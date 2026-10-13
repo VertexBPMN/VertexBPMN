@@ -2,6 +2,12 @@ using System.IO.Pipes;
 using System.Text;
 using VertexBPMN.SourceControl.Security;
 
+var sshChannel = Environment.GetEnvironmentVariable("VERTEX_SOURCE_CONTROL_SSH_PASSPHRASE_PIPE");
+if (!string.IsNullOrEmpty(sshChannel))
+{
+	return await SshPassphraseClient.RunAsync(sshChannel, args);
+}
+
 // Fixed-purpose Git helper. No token in command line, environment or filesystem.
 if (args.Length != 2 || !args[0].StartsWith("vertex-source-control-", StringComparison.Ordinal)
     || args[0].Length > 100 || args[0].Any(c => !char.IsAsciiLetterOrDigit(c) && c != '-'))

@@ -112,15 +112,15 @@ public sealed partial class SourceControlConnectionBindingTests
 		{
 			await AssignBearerAsync(fixture);
 		}
-		else
+		else if (fixture.Binding.Remote.Scheme != "ssh")
 		{
 			Assert.True(await fixture.AssignAsync());
 		}
-		var store = fixture.NewStore(fixture.Db, HttpsPreparationOptions(fixture));
+		var store = fixture.NewStore(fixture.Db, fixture.Binding.Remote.Scheme == "ssh" ? SshConfigurationOptions(fixture) : HttpsPreparationOptions(fixture));
 		var generation = Guid.NewGuid();
 		var session = await store.CreateSessionAsync(Context, fixture.Binding.Id, Admin, ReadRevision, generation, Token);
 		var snapshot = new ModelSnapshot("models/process.bpmn", SourceModelKind.Bpmn, generation, 1,
-			Encoding.UTF8.GetBytes("<definitions xmlns=\"http://www.omg.org/spec/BPMN/20100524/MODEL\"/>") );
+			Encoding.UTF8.GetBytes("<definitions xmlns=\"http://www.omg.org/spec/BPMN/20100524/MODEL\"/>"));
 		Assert.True(await store.SaveSnapshotsAsync(Context, session, Admin, 0, [snapshot], Token));
 		var submission = new CommitJobSubmission(session, 1, ReadRevision, SourceControlInputPolicy.WorkBranch(session), "Confirmed", [snapshot]);
 		return (store, await store.EnqueueCommitAsync(Context, fixture.Binding.Id, Admin, new("profiled-commit"), submission, Token), submission);

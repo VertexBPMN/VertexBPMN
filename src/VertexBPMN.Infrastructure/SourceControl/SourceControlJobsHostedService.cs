@@ -32,6 +32,8 @@ internal sealed class SourceControlJobsHostedService(IServiceScopeFactory scopes
 							&& x.ProtectedExecutionTarget != null)
 						|| (x.Kind == (int)SourceControlOperationKind.Read
 							&& x.ExecutionContractVersion == AcceptedGitSshExecution.ContractVersion && x.ProtectedExecutionTarget != null)
+						|| ((x.Kind == (int)SourceControlOperationKind.Commit || x.Kind == (int)SourceControlOperationKind.Push)
+							&& x.ExecutionContractVersion == AcceptedGitSshWriteExecution.ContractVersion && x.ProtectedExecutionTarget != null)
 						|| (x.Kind == (int)SourceControlOperationKind.PullRequest
 							&& x.ExecutionContractVersion == AcceptedHostingExecution.ContractVersion && x.ProtectedExecutionTarget != null))
 					&& (x.State == (int)SourceControlOperationState.Queued

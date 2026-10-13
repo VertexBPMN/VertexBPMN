@@ -5,12 +5,18 @@ using VertexBPMN.SourceControl.Abstractions;
 
 namespace VertexBPMN.Infrastructure.SourceControl;
 
-/// <summary>Current actor, accepted write context and one pinned HTTPS approval for each bounded native operation.</summary>
-internal sealed class ProfiledGitWriteTransport(PersistentSourceControlStore store, ISourceControlActorResolver actors,
-	ProfiledGitCredentialBroker credentials, ControlledGitProcess git)
+/// <summary>Current actor, accepted write context and one pinned transport approval for each bounded native operation.</summary>
+internal sealed partial class ProfiledGitWriteTransport(PersistentSourceControlStore store, ISourceControlActorResolver actors,
+	ProfiledGitCredentialBroker credentials, ControlledGitProcess git, ProfiledSshCredentialBroker? sshCredentials = null)
 {
 	internal async Task FetchBaseAsync(GitWorkspace workspace, SourceControlContext context, Guid id, string worker,
-		long fence, GitCommitId revision, CancellationToken cancellationToken) =>
+		long fence, GitCommitId revision, CancellationToken cancellationToken)
+	{
+		if (await IsSshAsync(context, id, worker, fence, cancellationToken))
+		{
+			await FetchSshBaseAsync(workspace, context, id, worker, fence, revision, cancellationToken);
+			return;
+		}
 		_ = await WithCurrentAsync(workspace, context, id, worker, fence, async (binding, approved, lease, token) =>
 		{
 			var roles = await actors.ResolveAsync(context, token);
@@ -22,19 +28,31 @@ internal sealed class ProfiledGitWriteTransport(PersistentSourceControlStore sto
 			await git.FetchApprovedProfileRevisionAsync(workspace, context, binding, approved, revision, lease, token);
 			return true;
 		}, ProfiledGitRemoteOperation.Fetch, cancellationToken);
+	}
 
-	internal Task<GitCommitId?> ReadHeadAsync(GitWorkspace workspace, SourceControlContext context, Guid id, string worker,
-		long fence, PushCommand command, CancellationToken cancellationToken) =>
-		WithCurrentAsync(workspace, context, id, worker, fence,
+	internal async Task<GitCommitId?> ReadHeadAsync(GitWorkspace workspace, SourceControlContext context, Guid id, string worker,
+		long fence, PushCommand command, CancellationToken cancellationToken)
+	{
+		if (await IsSshAsync(context, id, worker, fence, cancellationToken))
+		{
+			return await ReadSshHeadAsync(workspace, context, id, worker, fence, command, cancellationToken);
+		}
+		return await WithCurrentAsync(workspace, context, id, worker, fence,
 			async (binding, approved, lease, token) =>
 			{
 				await DemandAcceptedPushAsync(context, id, worker, fence, command, token);
 				return await git.ReadApprovedProfilePushHeadAsync(workspace, context, binding, approved, command, lease, token);
 			}, ProfiledGitRemoteOperation.InspectRef, cancellationToken);
+	}
 
 	internal async Task PushAsync(GitWorkspace workspace, SourceControlContext context, Guid id, string worker, long fence,
 		PushCommand command, CancellationToken cancellationToken)
 	{
+		if (await IsSshAsync(context, id, worker, fence, cancellationToken))
+		{
+			await PushSshAsync(workspace, context, id, worker, fence, command, cancellationToken);
+			return;
+		}
 		_ = await WithCurrentAsync(workspace, context, id, worker, fence, async (binding, approved, lease, token) =>
 		{
 			await DemandAcceptedPushAsync(context, id, worker, fence, command, token);
@@ -75,10 +93,10 @@ internal sealed class ProfiledGitWriteTransport(PersistentSourceControlStore sto
 		var binding = (await store.FindAsync(context.TenantId, execution.Target.RepositoryId, cancellationToken))?.Binding
 			?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
 		var approval = await GitHttpsNetworkBoundary.ResolveAsync(context, binding, execution.Target.Profile,
-			execution.Policy.Network, Dns.GetHostAddressesAsync, cancellationToken);
+			execution.Https!.Policy.Network, Dns.GetHostAddressesAsync, cancellationToken);
 		approval = new(approval.Remote, approval.Profile, approval.CopyAddresses())
 		{
-			AdministrativePolicy = execution.Policy,
+			AdministrativePolicy = execution.Https.Policy,
 			RequiredCapabilities = execution.Target.RequiredCapabilities
 		};
 		DemandSameExecution(execution, await CurrentAsync(context, id, worker, fence, cancellationToken));
@@ -98,11 +116,11 @@ internal sealed class ProfiledGitWriteTransport(PersistentSourceControlStore sto
 		return result;
 	}
 
-	private async Task<AcceptedGitHttpsExecution> CurrentAsync(SourceControlContext context, Guid id, string worker, long fence,
+	private async Task<AcceptedGitWriteExecution> CurrentAsync(SourceControlContext context, Guid id, string worker, long fence,
 		CancellationToken cancellationToken) => await store.ReadClaimedWriteExecutionAsync(context, id, worker, fence,
 		await actors.ResolveAsync(context, cancellationToken), cancellationToken);
 
-	private static void DemandSameExecution(AcceptedGitHttpsExecution expected, AcceptedGitHttpsExecution current)
+	private static void DemandSameExecution(AcceptedGitWriteExecution expected, AcceptedGitWriteExecution current)
 	{
 		if (JsonSerializer.Serialize(expected) != JsonSerializer.Serialize(current))
 		{

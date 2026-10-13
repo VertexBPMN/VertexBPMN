@@ -38,7 +38,7 @@ public sealed partial class PersistentSourceControlStore
 			var target = await CaptureConnectionTargetAsync(context, repositoryId, currentRoles, SourceControlOperationKind.Read, cancellationToken);
 			if (target.Profile.Transport == GitTransportKind.Ssh)
 			{
-				return SshReadAvailability(context, access.Binding, target.Profile, configuration);
+				return SshAvailability(context, access, currentRoles, target.Profile, configuration);
 			}
 			if (target.Profile.Transport != GitTransportKind.Https
 				|| target.Profile.Authentication is not (GitAuthenticationKind.HttpBasic or GitAuthenticationKind.HttpBearer or GitAuthenticationKind.Anonymous))
@@ -87,12 +87,13 @@ public sealed partial class PersistentSourceControlStore
 		return capabilities;
 	}
 
-	private static SourceControlAvailability SshReadAvailability(SourceControlContext context, RepositoryBinding binding,
+	private static SourceControlAvailability SshAvailability(SourceControlContext context, RepositoryAccessSnapshot access,
+		IReadOnlyCollection<string> roles,
 		RepositoryConnectionProfile profile, IOptionsMonitor<SourceControlOptions> configuration)
 	{
-		_ = new GitSshPolicyRegistry(configuration).Resolve(context, binding, profile);
+		_ = new GitSshPolicyRegistry(configuration).Resolve(context, access.Binding, profile);
 		return File.Exists(configuration.CurrentValue.SshExecutablePath)
-			? new(true, SourceControlCapability.Read, null)
+			? new(true, SourceControlCapability.Read | ProfiledWriteCapabilities(context, access, roles, profile), null)
 			: new(false, SourceControlCapability.None, SourceControlErrorCode.GitUnavailable);
 	}
 

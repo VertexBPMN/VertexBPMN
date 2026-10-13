@@ -19,7 +19,7 @@ public sealed partial class PersistentSourceControlStore
 			var row = await db.SourceControlOperations.AsNoTracking().SingleOrDefaultAsync(candidate => candidate.Id == id
 				&& candidate.TenantId == context.TenantId && candidate.ActorId == context.ActorId, cancellationToken);
 			if (row is null || row.Kind is not ((int)SourceControlOperationKind.Commit or (int)SourceControlOperationKind.Push)
-				|| row.ExecutionContractVersion != AcceptedGitHttpsExecution.ContractVersion)
+				|| row.ExecutionContractVersion is not (AcceptedGitHttpsExecution.ContractVersion or AcceptedGitSshWriteExecution.ContractVersion))
 			{
 				return null;
 			}

@@ -9,7 +9,7 @@ namespace VertexBPMN.Infrastructure.SourceControl;
 
 public sealed partial class PersistentSourceControlStore
 {
-	private async Task<AcceptedGitHttpsExecution> CaptureWriteExecutionAsync(SourceControlContext context, RepositoryAccessSnapshot access,
+	private async Task<AcceptedGitWriteExecution> CaptureWriteExecutionAsync(SourceControlContext context, RepositoryAccessSnapshot access,
 		IReadOnlyCollection<string> roles, SourceControlOperationKind kind, CancellationToken cancellationToken)
 	{
 		if (kind is not (SourceControlOperationKind.Commit or SourceControlOperationKind.Push))
@@ -17,18 +17,26 @@ public sealed partial class PersistentSourceControlStore
 			throw new SourceControlSecurityException(SourceControlErrorCode.ProviderUnavailable);
 		}
 		var target = await CaptureConnectionTargetAsync(context, access.Binding.Id, roles, kind, cancellationToken);
-		if (target.BindingRevision != access.Revision || target.Profile.Transport != GitTransportKind.Https
-			|| target.Profile.Authentication is not (GitAuthenticationKind.HttpBasic or GitAuthenticationKind.HttpBearer))
+		if (target.BindingRevision != access.Revision)
 		{
 			throw new SourceControlSecurityException(SourceControlErrorCode.ProviderUnavailable);
 		}
-		return new(target, GitHttpsPolicyRegistry.Resolve(context, access.Binding, target.Profile, liveOptions?.CurrentValue ?? options.Value));
+		var configuration = liveOptions?.CurrentValue ?? options.Value;
+		if (target.Profile.Transport == GitTransportKind.Ssh)
+		{
+			return new(null, new(target, GitSshPolicyRegistry.Resolve(context, access.Binding, target.Profile, configuration)));
+		}
+		if (target.Profile.Transport != GitTransportKind.Https || target.Profile.Authentication is not (GitAuthenticationKind.HttpBasic or GitAuthenticationKind.HttpBearer))
+		{
+			throw new SourceControlSecurityException(SourceControlErrorCode.ProviderUnavailable);
+		}
+		return new(new(target, GitHttpsPolicyRegistry.Resolve(context, access.Binding, target.Profile, configuration)), null);
 	}
 
-	private static string WriteExecutionFingerprint(AcceptedGitHttpsExecution execution) =>
-		Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(execution with { WriteRequestDigest = null })));
+	private static string WriteExecutionFingerprint(AcceptedGitWriteExecution execution) =>
+		Convert.ToHexStringLower(SHA256.HashData(execution.FingerprintBytes()));
 
-	private static void DemandWriteRequestFingerprint(SourceControlOperationKind kind, byte[] request, AcceptedGitHttpsExecution execution)
+	private static void DemandWriteRequestFingerprint(SourceControlOperationKind kind, byte[] request, AcceptedGitWriteExecution execution)
 	{
 		try
 		{
@@ -49,7 +57,7 @@ public sealed partial class PersistentSourceControlStore
 		}
 	}
 
-	private async Task<AcceptedGitHttpsExecution?> DemandWriteExecutionAsync(SourceControlContext context, SourceControlOperationRecord row,
+	private async Task<AcceptedGitWriteExecution?> DemandWriteExecutionAsync(SourceControlContext context, SourceControlOperationRecord row,
 		IReadOnlyCollection<string> roles, CancellationToken cancellationToken)
 	{
 		var currentRoles = roles.ToArray();
@@ -59,7 +67,7 @@ public sealed partial class PersistentSourceControlStore
 		return await DemandWriteMetadataAsync(context, row, access, cancellationToken);
 	}
 
-	private async Task<AcceptedGitHttpsExecution?> DemandWriteMetadataAsync(SourceControlContext context, SourceControlOperationRecord row,
+	private async Task<AcceptedGitWriteExecution?> DemandWriteMetadataAsync(SourceControlContext context, SourceControlOperationRecord row,
 		RepositoryAccessSnapshot access, CancellationToken cancellationToken)
 	{
 		if (row.ExecutionContractVersion == 0)
@@ -68,7 +76,7 @@ public sealed partial class PersistentSourceControlStore
 			DemandLegacyBinding(access.Binding);
 			return null;
 		}
-		if (row.ExecutionContractVersion != AcceptedGitHttpsExecution.ContractVersion || access.Binding.ConnectionProfileId is null)
+		if (row.ExecutionContractVersion is not (AcceptedGitHttpsExecution.ContractVersion or AcceptedGitSshWriteExecution.ContractVersion) || access.Binding.ConnectionProfileId is null)
 		{
 			throw new SourceControlSecurityException(SourceControlErrorCode.ProviderUnavailable);
 		}
@@ -77,7 +85,7 @@ public sealed partial class PersistentSourceControlStore
 		{
 			throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
 		}
-		var execution = new GitHttpsExecutionProtection(protection).Unprotect(row);
+		var execution = ReadProtectedWriteExecution(row);
 		var request = Unprotect(context, row.RepositoryId, row.ProtectedRequest);
 		if (execution.Target.RepositoryId != row.RepositoryId
 			|| execution.Target.RequiredCapabilities != RequiredCapability((SourceControlOperationKind)row.Kind)
@@ -88,16 +96,27 @@ public sealed partial class PersistentSourceControlStore
 		DemandWriteRequestFingerprint((SourceControlOperationKind)row.Kind, request, execution);
 		var profile = await ReadAssignedProfileAsync(context, access.Binding, cancellationToken);
 		SourceControlExecutionTargetPolicy.DemandCurrent(context, access, profile, execution.Target);
-		var current = GitHttpsPolicyRegistry.Resolve(context, access.Binding, profile, liveOptions?.CurrentValue ?? options.Value);
-		if (profile.Transport != GitTransportKind.Https || profile.Authentication is not (GitAuthenticationKind.HttpBasic or GitAuthenticationKind.HttpBearer)
-			|| !execution.Policy.Matches(current))
+		var configuration = liveOptions?.CurrentValue ?? options.Value;
+		if (execution.Ssh is { } ssh)
 		{
-			throw new SourceControlSecurityException(SourceControlErrorCode.RevisionConflict);
+			if (!ssh.Policy.Matches(GitSshPolicyRegistry.Resolve(context, access.Binding, profile, configuration)))
+			{
+				throw new SourceControlSecurityException(SourceControlErrorCode.RevisionConflict);
+			}
+		}
+		else
+		{
+			var current = GitHttpsPolicyRegistry.Resolve(context, access.Binding, profile, configuration);
+			if (profile.Transport != GitTransportKind.Https || profile.Authentication is not (GitAuthenticationKind.HttpBasic or GitAuthenticationKind.HttpBearer)
+				|| !execution.Https!.Policy.Matches(current))
+			{
+				throw new SourceControlSecurityException(SourceControlErrorCode.RevisionConflict);
+			}
 		}
 		return execution;
 	}
 
-	internal async Task<AcceptedGitHttpsExecution> ReadClaimedWriteExecutionAsync(SourceControlContext context, Guid id, string worker,
+	internal async Task<AcceptedGitWriteExecution> ReadClaimedWriteExecutionAsync(SourceControlContext context, Guid id, string worker,
 		long fence, IReadOnlyCollection<string> roles, CancellationToken cancellationToken)
 	{
 		Relational();
@@ -111,6 +130,13 @@ public sealed partial class PersistentSourceControlStore
 		return await DemandWriteExecutionAsync(context, row, currentRoles, cancellationToken)
 			?? throw new SourceControlSecurityException(SourceControlErrorCode.ProviderUnavailable);
 	}
+
+	private AcceptedGitWriteExecution ReadProtectedWriteExecution(SourceControlOperationRecord row) => row.ExecutionContractVersion switch
+	{
+		AcceptedGitHttpsExecution.ContractVersion => new(new GitHttpsExecutionProtection(protection).Unprotect(row), null),
+		AcceptedGitSshWriteExecution.ContractVersion => new(null, new GitSshWriteExecutionProtection(protection).Unprotect(row)),
+		_ => throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe)
+	};
 
 	private async Task LockWriteProfileAsync(SourceControlContext context, Guid id, CancellationToken cancellationToken)
 	{

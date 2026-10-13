@@ -14,7 +14,7 @@ public sealed partial class SourceControlConnectionBindingTests
 	[InlineData("configured")]
 	[InlineData("missing-client")]
 	[InlineData("revoked-trust")]
-	public async Task Ssh_repository_availability_exposes_only_implemented_reads(string scenario)
+	public async Task Ssh_repository_availability_exposes_implemented_git_capabilities(string scenario)
 	{
 		await using var fixture = await Fixture.OpenAsync(new("ssh://git.example:2222/repositories/models.git"));
 		var configuration = SshConfigurationOptions(fixture);
@@ -29,7 +29,7 @@ public sealed partial class SourceControlConnectionBindingTests
 		monitor.SetupGet(value => value.CurrentValue).Returns(configuration);
 		var availability = await fixture.Store.GetRepositoryAvailabilityAsync(Context, fixture.Binding.Id, Admin, monitor.Object, Token);
 		Assert.Equal(scenario == "configured", availability.Available);
-		Assert.Equal(scenario == "configured" ? SourceControlCapability.Read : SourceControlCapability.None, availability.Capabilities);
+		Assert.Equal(scenario == "configured" ? SourceControlCapability.Read | SourceControlCapability.Commit | SourceControlCapability.Push : SourceControlCapability.None, availability.Capabilities);
 	}
 
 	[Fact]

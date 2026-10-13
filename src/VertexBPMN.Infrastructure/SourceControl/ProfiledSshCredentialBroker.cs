@@ -21,11 +21,21 @@ internal sealed class ProfiledSshCredentialBroker(PersistentSourceControlStore s
 			var username = await credentials.ResolveSecretAsync(context.TenantId, reference, "username", deadline.Token);
 			await DemandCurrentAsync(context, approved, deadline.Token);
 			var key = await credentials.ResolveSecretAsync(context.TenantId, reference, "privateKey", deadline.Token);
+			string? passphrase = null;
+			if (before.SecretKeys.Contains("passphrase", StringComparer.Ordinal))
+			{
+				await DemandCurrentAsync(context, approved, deadline.Token);
+				passphrase = await credentials.ResolveSecretAsync(context.TenantId, reference, "passphrase", deadline.Token);
+				if (string.IsNullOrEmpty(passphrase))
+				{
+					throw new SourceControlSecurityException(SourceControlErrorCode.CredentialUnavailable);
+				}
+			}
 			var after = await MetadataAsync(context, reference, deadline.Token);
 			if (before.LastModified != after.LastModified || !before.SecretKeys.SequenceEqual(after.SecretKeys, StringComparer.Ordinal))
 			{ throw new SourceControlSecurityException(SourceControlErrorCode.CredentialUnavailable); }
 			await DemandCurrentAsync(context, approved, deadline.Token);
-			return new(approved.Target.Remote, username ?? "", key ?? "", DateTimeOffset.UtcNow.AddMinutes(2));
+			return new(approved.Target.Remote, username ?? "", key ?? "", DateTimeOffset.UtcNow.AddMinutes(2), passphrase);
 		}
 		catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
 		{ throw new SourceControlSecurityException(SourceControlErrorCode.TimedOut); }

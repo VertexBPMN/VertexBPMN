@@ -9,7 +9,12 @@ internal sealed class GitSshPolicyRegistry(IOptionsMonitor<SourceControlOptions>
 {
 	internal ResolvedGitSshPolicy Resolve(SourceControlContext context, RepositoryBinding binding, RepositoryConnectionProfile profile)
 	{
-		var configuration = options.CurrentValue;
+		return Resolve(context, binding, profile, options.CurrentValue);
+	}
+
+	internal static ResolvedGitSshPolicy Resolve(SourceControlContext context, RepositoryBinding binding, RepositoryConnectionProfile profile,
+		SourceControlOptions configuration)
+	{
 		if (!configuration.Enabled)
 		{
 			throw new SourceControlSecurityException(SourceControlErrorCode.Disabled);

@@ -360,7 +360,7 @@ public sealed partial class PersistentSourceControlStore(BpmnDbContext db, IData
 		if (execution is not null)
 		{
 			DemandWriteRequestFingerprint(kind, request, execution);
-			execution = execution with { WriteRequestDigest = Convert.ToHexStringLower(SHA256.HashData(request)) };
+			execution = execution.WithDigest(Convert.ToHexStringLower(SHA256.HashData(request)));
 		}
         // The application supplies a canonical, validated request; snapshot-copy before any await.
         var hash = RequestHash(access.Revision, identityRequest?.ToArray() ?? request);
@@ -380,7 +380,7 @@ public sealed partial class PersistentSourceControlStore(BpmnDbContext db, IData
 
     private async Task<Guid> InsertOrReconcileAsync(SourceControlContext context, Guid repositoryId,
         SourceControlOperationKind kind, SourceControlIdempotencyKey key, string hash,
-        string protectedRequest, AcceptedGitHttpsExecution? execution, CancellationToken cancellationToken, AcceptedHostingExecution? hosting = null)
+        string protectedRequest, AcceptedGitWriteExecution? execution, CancellationToken cancellationToken, AcceptedHostingExecution? hosting = null)
     {
         if (execution is not null && hosting is not null)
         {
@@ -435,7 +435,7 @@ public sealed partial class PersistentSourceControlStore(BpmnDbContext db, IData
         return row.Id;
     }
 
-	private void BindAcceptedExecution(SourceControlOperationRecord row, AcceptedGitHttpsExecution? execution, AcceptedHostingExecution? hosting)
+	private void BindAcceptedExecution(SourceControlOperationRecord row, AcceptedGitWriteExecution? execution, AcceptedHostingExecution? hosting)
 	{
 		if (hosting is not null)
 		{
@@ -444,12 +444,14 @@ public sealed partial class PersistentSourceControlStore(BpmnDbContext db, IData
 		}
 		else if (execution is not null)
 		{
-			row.ExecutionContractVersion = AcceptedGitHttpsExecution.ContractVersion;
-			row.ProtectedExecutionTarget = new GitHttpsExecutionProtection(protection).Protect(row, execution);
+			row.ExecutionContractVersion = execution.ContractVersion;
+			row.ProtectedExecutionTarget = execution.Https is { } https
+				? new GitHttpsExecutionProtection(protection).Protect(row, https)
+				: new GitSshWriteExecutionProtection(protection).Protect(row, execution.Ssh!);
 		}
 	}
 
-	private void DemandInsertExecutionMatches(SourceControlOperationRecord existing, AcceptedGitHttpsExecution? execution, AcceptedHostingExecution? hosting)
+	private void DemandInsertExecutionMatches(SourceControlOperationRecord existing, AcceptedGitWriteExecution? execution, AcceptedHostingExecution? hosting)
 	{
 		if (hosting is not null)
 		{
@@ -464,7 +466,7 @@ public sealed partial class PersistentSourceControlStore(BpmnDbContext db, IData
 			DemandLegacyExecutionContract(existing);
 			return;
 		}
-		if (WriteExecutionFingerprint(new GitHttpsExecutionProtection(protection).Unprotect(existing)) != WriteExecutionFingerprint(execution))
+		if (WriteExecutionFingerprint(ReadProtectedWriteExecution(existing)) != WriteExecutionFingerprint(execution))
 		{
 			throw new SourceControlSecurityException(SourceControlErrorCode.IdempotencyConflict);
 		}

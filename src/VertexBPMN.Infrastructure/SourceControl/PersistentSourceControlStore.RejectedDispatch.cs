@@ -9,7 +9,7 @@ public sealed partial class PersistentSourceControlStore
 	internal async Task RejectUnstartedProfiledDispatchAsync(SourceControlOperationRecord observed,
 		SourceControlErrorCode reason, CancellationToken cancellationToken)
 	{
-		if (observed.ExecutionContractVersion is not (AcceptedGitHttpsExecution.ContractVersion or AcceptedHostingExecution.ContractVersion
+		if (observed.ExecutionContractVersion is not (AcceptedGitHttpsExecution.ContractVersion or AcceptedGitSshWriteExecution.ContractVersion or AcceptedHostingExecution.ContractVersion
 			or AcceptedGitSshExecution.ContractVersion) || observed.Fence != 0)
 		{
 			return;

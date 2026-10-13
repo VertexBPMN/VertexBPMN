@@ -4,6 +4,8 @@ Stand: 2026-10-13. Planungsbasis: `2e772249c448292edefda4c3136cea386c8bef7b` auf
 
 Status: **Plan erstellt. Die hier beschriebenen Erweiterungen sind nicht begonnen.**
 
+Planergänzung vom 2026-10-13: Für Entwicklung und manuelle Prüfung aller in diesem Plan neu eingeführten oder geänderten HTTP-Endpunkte werden ausführbare `.http`-Dateien als verbindliches Lieferartefakt ergänzt. Die Umsetzung folgt dem vorhandenen ASP.NET-Web-API-Projekt und dem integrierten HTTP-Editor von Visual Studio.
+
 VertexBPMN soll zusätzlich zur Prozessmodellierung die Erstellung von Fachanwendungen ermöglichen: Daten abrufen und zuordnen, eigene Seiten zusammenstellen, Aufgaben bearbeiten, technische Integrationen visuell programmieren und die zusammengehörigen Artefakte gemeinsam veröffentlichen. Die vorhandene persistente BPMN-Runtime bleibt verantwortlich für Geschäftsprozesse, Aufgaben und deren Fortsetzung.
 
 Die empfohlene Architektur besteht aus einem konfigurierbaren .NET-Fachportal und einer optional betriebenen Node-RED-Laufzeit für technische Flows. Zuerst werden die bestehenden Connector- und Formularpfade geschlossen. Anschließend folgen Anwendungsdefinitionen, Portal, Designer, Flow-Anbindung und gemeinsame Releases. Eine eigene allgemeine Flow-Engine gehört nicht zum ersten Ausbau.
@@ -56,6 +58,7 @@ Alle Stufen gehören zum Gesamtplan. Die Node-RED-Funktion bleibt im Betrieb opt
 | Ein verschlüsselter persistenter OIDC-Session-Store existiert; lokale Registrierung kann einen In-Memory-Store wählen | `src/VertexBPMN.Studio/Services/PersistentOidcSessionStore.cs`, `OidcSessionStoreProvider.cs`, `Program.cs` | Vorhandene Authentifizierung prüfen und wiederverwenden; verteilte Portal-Sitzungen separat abnehmen |
 | Source Control besitzt Deploy-Befehle und Provenienz; der Git-Plan enthält G10 für weitere Artefakte und Manifeste | `src/VertexBPMN.SourceControl.Abstractions/DeploymentCommand.cs`, `DeploymentProvenance.cs`, Git-Implementierungsplan | Gemeinsames Release-Manifest abstimmen; kein zweites konkurrierendes Git-System |
 | Editor-Bundles haben eine reproduzierbare Buildpipeline | `src/VertexBPMN.Studio/package.json`, `VertexBPMN.Studio.csproj`, `tools/bpmn-io/` | Quellen ändern und Bundles über vorhandene Targets bauen |
+| Das API-Projekt enthält eine `.http`-Datei mit einem Weatherforecast-Template, aber keinen Low-Code-Requestkatalog | `src/VertexBPMN.Api/VertexBPMN.Api.http`, `Properties/launchSettings.json` | Vorhandenen Einstieg auf tatsächliche API-Routen ausrichten und thematische Requestdateien ergänzen |
 
 Der Template-Befund wurde am 2026-10-13 durch Ausführen der bestehenden JavaScript-Erzeugungsfunktion und Serialisieren mit dem tatsächlichen Vertex-Moddle reproduziert. Der daraus erwartete API-Ausführungsfehler wurde nicht gegen einen laufenden API-Host reproduziert. LC00 und LC02 enthalten diesen Nachweis als Pflichtprüfung.
 
@@ -143,6 +146,28 @@ Alle Namen und Tabellen sind vorgeschlagen. LC01/LC05 legen die Zuordnung zu bes
 
 Bestehend bleiben insbesondere `/api/repository`, `/api/runtime`, `/api/task`, `/api/forms`, `/api/connector-templates` und `/api/external-tasks`. Neue fachliche Aktionen delegieren an diese Dienste bzw. deren Application-Orchestrierung. Es gibt keinen generischen Proxy mit frei wählbarem Ziel und keine Browserroute zur Secret-Auflösung.
 
+### 4.3 HTTP Dateien als verbindlicher API Lieferumfang
+
+Jeder neu eingeführte oder geänderte HTTP-Endpunkt erhält im zugehörigen Arbeitspaket ausführbare Requests für Entwicklung und manuelle Prüfung. Abgedeckt werden der reguläre Ablauf, relevante Validierungs-/Berechtigungsfehler und bei mutierenden Operationen Konkurrenz bzw. Idempotenz. Die Requests werden gegen die tatsächlichen Controller-/OpenAPI-Verträge geschrieben und mit deren Änderungen gemeinsam gepflegt. Zukünftige Routen werden erst mit ihrer Implementierung als ausführbar bezeichnet.
+
+Die bestehende `src/VertexBPMN.Api/VertexBPMN.Api.http` bleibt ein kurzer Einstieg mit gültigen Smoke-Requests und Hinweisen auf den Katalog. Weitere Dateien liegen vorgeschlagen unter `src/VertexBPMN.Api/Http/`; Namen und Inhalt sind neue Lieferartefakte:
+
+| Datei | Requestumfang | Lieferpakete |
+| --- | --- | --- |
+| `runtime-baseline.http` | Definition deployen, Prozess starten/lesen, Variablen und Aufgabenstatus prüfen; IDs aus tatsächlichen Antworten übernehmen | LC00, LC02 |
+| `connectors-and-mapping.http` | Template-/OpenAPI-Import, unterstützte Connectoroperationen, Input-/Output-Mapping und ungültige Eingaben | LC02, LC03 |
+| `forms-and-tasks.http` | Formular erstellen, Revisionen lesen, Aufgabe übernehmen/abschließen; feste Version, ungültige Formulardaten und doppelte Completion | LC04 |
+| `applications.http` | Anwendungsentwurf, Revisionen, Datenquellen-/Aktionsreferenzen; Save-Konflikt und Fremdtenantreferenz | LC05, LC07 |
+| `app-runtime.http` | Veröffentlichte Query/Aktion, Prozessstart, `202`-Operation und Status; Berechtigungs- und Schemafehler | LC06, LC07, LC09 |
+| `external-tasks.http` | Claim, Status, Heartbeat, Complete und Fail; Job/Lease/Generation/Completion-ID und Ablehnung veralteter Leases | LC08 |
+| `events-and-endpoints.http` | Subscription/Cursor/Replay, definierte Anwendungsendpunkte, Parameterprüfung und lange Operationen | LC09 |
+| `application-releases.http` | Release vorbereiten, aktivieren, Status abfragen und zurückrollen; gleicher Idempotenzschlüssel und konkurrierende Revision | LC10 |
+| `authorization-and-errors.http` | Fehlender Token, ReadOnly-/Fremdtenantzugriff, falscher Worker-Topic und relevante ProblemDetails | LC01, anschließend je betroffenem Paket |
+
+Für Portal-BFF-Endpunkte wird bei LC06 zusätzlich `src/VertexBPMN.Portal/Http/portal-bff.http` mit der tatsächlich unterstützten Cookie-/CSRF-Authentifizierung ergänzt. Die Datei umgeht den Anmeldevertrag nicht; vollständige OIDC-, Browser- und Offline-Abläufe bleiben Browserabnahmen.
+
+Die Zuordnung von Methode, Route, Requestdatei, Requestname, Voraussetzung, erwarteter Antwort und Abnahme-ID wird vorgeschlagen in `docs/testing/low-code-http-endpoints.md` geführt. Nicht HTTP-bezogene Effekte wie Workerabsturz oder Datenbank-Recovery können dort auf ihren gesonderten Abnahmenachweis verweisen.
+
 ## 5 Arbeitspakete und Abhängigkeiten
 
 S bedeutet kleiner, M mittlerer, L großer und XL sehr großer Umfang. Diese Größen enthalten Implementierung, Regression und die zugeordnete Abnahme; sie sind keine Zeit- oder Lieferzusage.
@@ -171,6 +196,7 @@ Der kürzeste Weg zur ersten Fachanwendung ist LC00 bis LC07, LC10 ohne Flow-Art
 
 - Branch, Arbeitsbaum, relevante Diffs, SDK, aktive Provider und lokale Dienste erfassen; fremde Änderungen erhalten. Für spätere Implementierung einen isolierten Feature-Branch bzw. geeigneten Worktree verwenden.
 - Den aktuellen Plan vollständig lesen. Gegen vorhandene Low-Code-, Workspace-, Git- und Authentifizierungsimplementierung abgleichen.
+- Vorhandene `.http`-Datei, Launchprofile und API-Routen abgleichen; gültige lokale Smoke-/Runtime-Requests unter `VertexBPMN.Api.http` und `Http/runtime-baseline.http` vorbereiten. Umgebungs- und Identitätskonventionen aus LC01 vor authentifizierten Ausführungsketten finalisieren.
 - Den importierten HTTP-Template-Pfad über reale Studio-Serialisierung, Repository-Deployment und persistente Runtime reproduzieren. Den bestehenden Executor-Direkttest als gesonderten Teilnachweis erhalten.
 - HTTP-Antwortdaten, DB-Abfragen, Formularbindung, Completion-Validierung und External-Task-Inputs inventarisieren; ein Beweis je Befund statt historischer Statusübernahme.
 - Restore/Build nach Voraussetzungen, betroffene Tests und CI-safe Suite ausführen. Browser und externe Abnahme mit getrennten Voraussetzungen dokumentieren.
@@ -190,6 +216,7 @@ Der kürzeste Weg zur ersten Fachanwendung ist LC00 bis LC07, LC10 ohne Flow-Art
 - Gemeinsam nutzbare OIDC-Bausteine inventarisieren; Token-Refresh, Rotation, Logout und zwei Portal-Replikate als eigene Verträge definieren.
 - Datenhaltung und additive Migrationen je unterstütztem Provider, `--migrate-only`, Backup und Anwendungsrollback festlegen. Das lokale In-Memory-Session-Profil ist keine Produktionspersistenz.
 - Betriebsoptionen als neue Optionsklassen und mögliche Namen dokumentieren; vorhandene Schlüssel zuerst prüfen. Disabled-Verhalten und Startvalidierung sind Teil des Vertrags.
+- Gemeinsame `.http`-Konventionen aus Abschnitt 7.3 festlegen: Basisadressen, Testmandanten, getrennte Nutzer-/Workeridentitäten, Response-Variablen, erwartete ProblemDetails und Secretquellen. Den Requestkatalog an Methoden und Routen des aktuellen OpenAPI-Vertrags ausrichten.
 
 **Dateien:** `src/VertexBPMN.Domain/Interfaces/`, `src/VertexBPMN.ServiceDefaults/Security/`, vorhandene OIDC-Services; neu vorgeschlagen `docs/adr/` und `docs/reference/low-code-application-contracts.md`.
 
@@ -204,6 +231,7 @@ Der kürzeste Weg zur ersten Fachanwendung ist LC00 bis LC07, LC10 ohne Flow-Art
 - IO-Mappings vor/nach Ausführung an einer gemeinsamen Application-/Engine-Grenze auswerten. Keine stille Umdeutung ungebundener Einträge; Konflikte zwischen Legacy-Konfiguration und neuem Binding explizit ablehnen.
 - Vorhandene Templates und deployte Modelle per Compatibility-Matrix schützen; unbekannte Erweiterungen im Roundtrip erhalten.
 - Den realen Importpfad testen: OpenAPI importieren, Werte im Studio setzen, XML exportieren, deployen, starten, Test-HTTP-Request auf Methode/URL/Body/Parameter prüfen und fachlichen Folgeschritt ausführen.
+- `Http/connectors-and-mapping.http` und `Http/runtime-baseline.http` mit manuellen Import-/Deploy-/Start-/Statusrequests liefern. Sie ergänzen den echten Studio-Roundtrip; manuell erzeugte XML gilt nicht als Beweis der Studio-Serialisierung.
 
 **Dateien:** `ConnectorTemplateProperty.cs`, `OpenApiConnectorTemplateImporter.cs`, `PersistentConnectorTemplateService.cs`, `bpmn-modeler.js`, `tools/bpmn-io/src/vertex.json`, `vertex-properties-provider.js`, `VertexBpmnExtensions.cs`, `BpmnSerializer.Context.cs`, `VertexConnectorServiceTaskHandler.cs`.
 
@@ -219,6 +247,7 @@ Der kürzeste Weg zur ersten Fachanwendung ist LC00 bis LC07, LC10 ohne Flow-Art
 - Den Mapper im Studio um Eingabe-/Ausgabeschema, Feldwahl, explizite Transformation, Beispieldaten und Vorschau ergänzen. Null, fehlendes Feld, Datum, Dezimalwert, Liste und Objekt haben dokumentierte Semantik.
 - OpenAPI-Import für unterstützte Parameter-/Bodies und Responses ausbauen. Nicht unterstützte Referenzen/Auth-/Schemaformen als Reviewbedarf kennzeichnen; n8n-Import bleibt ein explizit begrenzter Konverter.
 - Durchgehenden Datenfall abnehmen: Kundenantwort lesen, Betrag/Kundengruppe mappen, DMN auswerten, tatsächlichen BPMN-Pfad prüfen.
+- Den `.http`-Katalog um unterstützte Datenquellen-/Mappingrequests, Beispielantworten ohne sensible Daten sowie Schema-/Limit-/Timeoutfehler erweitern. Abhängige Testdienste und Parameter je Request dokumentieren.
 
 **Dateien:** `src/VertexBPMN.Application/Connectors/`, `Import/OpenApiConnectorTemplateImporter.cs`, `FeelEvaluator.cs`, `src/VertexBPMN.Studio/Components/Modeling/ConnectorTemplatePalette.razor`; neue Mapping-Services und Designer-Komponenten nach LC01.
 
@@ -234,6 +263,7 @@ Der kürzeste Weg zur ersten Fachanwendung ist LC00 bis LC07, LC10 ohne Flow-Art
 - Einen gemeinsamen serverseitigen Abschlussvertrag schaffen. Required-Felder, Typen, erlaubte Werte, erlaubte Ergebnisvariablen und Berechtigung gegen das Task-Schema prüfen. JSON-Syntaxprüfung allein reicht nicht.
 - Listenaktion, Dialog und Portal verwenden denselben Abschluss. Formulargebundene Tasks werden nicht über den direkten Listenbutton ohne Formular erledigt. Konkurrierende Completion, veralteter Offline-Stand und abgelaufene Berechtigung haben definierte Konflikte.
 - CRUD-Kompatibilität sowie Zugriff auf konkrete Revisionen in API, Studio und benötigten SDK-Verträgen ergänzen; Löschung referenzierter Revisionen blockieren.
+- `Http/forms-and-tasks.http` für Formularrevisionen und den vollständigen Claim-/Complete-Ablauf ergänzen; gültige und ungültige Formulardaten, Versionsbindung und wiederholten Abschluss nachvollziehbar prüfen.
 
 **Dateien:** `FormDefinitionRecord.cs`, `IFormDefinitionService.cs`, `PersistentFormDefinitionService.cs`, `BpmnDbContext.cs`, `FormController.cs`, `TaskController.cs`, `PersistentProcessExecutionRuntime.cs`, `TaskDetailsDialog.razor`, `Tasks.razor`, `FormBuilderPage.razor`, `form-viewer.js`; additive Migrationen und neue Revisionstypen.
 
@@ -249,6 +279,7 @@ Der kürzeste Weg zur ersten Fachanwendung ist LC00 bis LC07, LC10 ohne Flow-Art
 - Berechtigungen, Lokalisierung, Audit, Löschschutz und Quoten integrieren. Personenbezogene Beispielwerte nicht als globale Designerdefaults speichern.
 - Release-Manifest mit dem Git-G10-Plan abstimmen. Fachportal darf ausschließlich veröffentlichte, freigegebene Revisionen lesen; Designer-Vorschau ist ein anderer Zugriffspfad.
 - Instanzen und asynchrone Aktionen erhalten eine optionale `ApplicationReleaseId` für die durchgängige Versionsbindung. Vorhandene Instanzen ohne App-Release bleiben gültig; die Migration ordnet ihnen kein erfundenes Release zu.
+- `Http/applications.http` für Entwurfs-/Revisionsoperationen und negative Referenz-/Konkurrenzfälle mitliefern; tatsächliche Response-IDs und Revisionen in Folgeanfragen verwenden.
 
 **Dateien:** neue Typen unter `src/VertexBPMN.Domain/Entities/` und `Interfaces/`, Dienste unter `VertexBPMN.Application/Applications/`, Persistenz unter `VertexBPMN.Infrastructure/Persistence/`, Controller unter `VertexBPMN.Api/Controllers/`; bestehende Source-Control-Abstractions nach Bedarf erweitern.
 
@@ -264,6 +295,7 @@ Der kürzeste Weg zur ersten Fachanwendung ist LC00 bis LC07, LC10 ohne Flow-Art
 - Datenquellen/Aktionen serverseitig gegen veröffentlichtes Release und Nutzerrechte auflösen. Fehler-, Leer-, Lade-, Konflikt- und Wiederverbindungszustände verständlich anzeigen.
 - Aufgabenformular, Suche, Paging, Navigation, Statusanzeige und responsive Bedienung implementieren. UI-Verstecken ersetzt keine Autorisierung.
 - Erste Fachanwendung aus handverfassten, gültigen Metadaten rendern; dieses Zwischenziel ist noch kein Designer-Nachweis.
+- `Http/app-runtime.http` für veröffentlichte Queries/Aktionen und `Portal/Http/portal-bff.http` für unterstützte BFF-Requests ergänzen. Nutzeridentität und CSRF müssen dieselben serverseitigen Regeln wie im Portal erfüllen.
 
 **Dateien:** neu vorgeschlagen `src/VertexBPMN.Portal/`, `src/VertexBPMN.Portal.Client/`; gemeinsame OIDC-Bibliothek nur nach LC01-Entscheidung; `VertexBPMN.sln`, `VertexBpmnAppHostTopology.cs`, neue API-/Portaltests.
 
@@ -278,6 +310,7 @@ Der kürzeste Weg zur ersten Fachanwendung ist LC00 bis LC07, LC10 ohne Flow-Art
 - Bestehende Workspace-Konventionen für Dirty-State, Save, Revision, Tenantwechsel und verspätete Antworten nutzen. Fehlende gemeinsame Bausteine gezielt ergänzen statt einen zweiten Entwurfsmechanismus zu schaffen.
 - Vorschau mit redigierten Testdaten und ausdrücklich ausgewähltem Testziel anbieten. Vorschau löst keine produktiven Schreibaktionen oder Starttrigger automatisch aus.
 - Verbindung zwischen Prozess-, Formular-, App- und Datenmapper-Editor herstellen; Referenzen auswählen statt technische Schlüssel abschreiben.
+- Requestdateien für geänderte Designer-/App-Endpunkte und den Referenzablauf aktualisieren; Bedienpfade bleiben durch reale Browserfälle abgesichert.
 
 **Dateien:** `src/VertexBPMN.Studio/Components/Pages/` und `Components/Modeling/`, neue Application-HTTP-Dienste; `docs/testing/studio-use-cases.tsv`, `studio-acceptance-coverage.md` und lokale UI-Tests.
 
@@ -295,6 +328,7 @@ Der kürzeste Weg zur ersten Fachanwendung ist LC00 bis LC07, LC10 ohne Flow-Art
 - Pro externer Wirkung fachliche Idempotenz verwenden. Verarbeitungsabsturz, Antwortverlust und Wiederholung des Tasks testen; Completion erst nach bestätigter Fachwirkung. Alte Flowrevisionen für laufende gebundene Jobs erhalten.
 - Paket-Allowlist, reproduzierbare Installation, Admin-Auth, getrennte Edit-/Deployrechte, Netz-/Dateigrenzen, Ressourcenlimits und Secretweitergabe festlegen. Credentialauflösung bleibt ein eng berechtigter interner Vorgang, kein generischer Secret-Node für beliebige Flows.
 - Native lokale Prozessführung und Existing-Service-Modus sowie optional WSLC-/Containerprofil anbieten. Kein Node-RED-Autostart oder npm-Download im normalen .NET-Testlauf.
+- `Http/external-tasks.http` mit tatsächlichem Worker-Vertrag liefern. Leasedaten aus Antworten übernehmen; positive Completion/Fail sowie verloren gegangene Lease, falsches Schema und fremde Workeridentität getrennt prüfen. Die Datei ersetzt keine reale Node-RED-/Kill-/Restart-Abnahme.
 
 **Dateien:** neu vorgeschlagen `integrations/node-red/vertex-nodes/`, `integrations/node-red/runtime/`, `deploy/node-red/`; vorhandene External-Task-API, Lease-Service, Worker- und Vertragsresolver; neue isolierte Adaptertests.
 
@@ -310,6 +344,7 @@ Der kürzeste Weg zur ersten Fachanwendung ist LC00 bis LC07, LC10 ohne Flow-Art
 - Im Studio einen Designer für Endpunkte mit Methode, Pfadparametern, Input-/Output-Schema, Berechtigung, Limits und Aktionsbindung ergänzen. Routen können nur den freigegebenen Aktionskatalog ansprechen. Synchrone Antworten sind zeitbegrenzt; lange Prozesse liefern `202` und eine Operationsreferenz.
 - Neue Endpunkte liegen an der Vertex-API-/BFF-Grenze. Die Node-RED-Admin-API und beliebige HTTP-In-Nodes werden nicht als öffentliche API freigegeben. Benutzeraktionen werden vor Übergabe autorisiert; Backgroundflows besitzen eigene Dienstrechte.
 - Flowvorschau und Debugger mit Testdaten, korrelierter Job-/Release-ID und redigierten Inputs/Outputs verbinden. Catch/Retry/Subflow-Verhalten und dessen Grenzen sichtbar machen.
+- `Http/events-and-endpoints.http` um Cursor-/Replayrequests, definierte API-Parameter, synchrone Antworten, `202`-Statusketten und relevante Negativfälle ergänzen.
 
 **Dateien:** vorgeschlagene Flow-/App-Module, `RuntimeOutboxAnalyticsProjectionService.cs` als vorhandenes Muster für dauerhafte Projektion, neue Event-Subscription-Persistenz/API, Studio-Designer, Node-Paket und API-/Browser-/Adaptertests.
 
@@ -328,6 +363,7 @@ Der kürzeste Weg zur ersten Fachanwendung ist LC00 bis LC07, LC10 ohne Flow-Art
 - Aktiven Releasezeiger atomar und revisionsgeprüft wechseln. API-/Portal-Replikate beziehen denselben Zustand; Caches sind an Release-ID gebunden. Vorbereitung und fehlgeschlagene Aktivierung bleiben gegenüber Anwendern als solche sichtbar.
 - Vorgangsbindung auf Prozessdefinition-, Formular-, App- und Flowrevision sichern. Alte Workerrevisionen bleiben für bereits gebundene Jobs verfügbar und werden kontrolliert geleert. Rollback ändert neue Starts; Prozessmigration ist eine getrennte bestehende Funktion.
 - Git-Provenienz und G10-Manifest wiederverwenden. SDK/CLI erhalten gezielte Validate/Prepare/Activate/Status/Rollback-Verträge; vorhandene Befehle und Helptexte bleiben kompatibel. Keine automatische Git-Mutation oder Cloud-Veröffentlichung aus einer App-Aktivierung.
+- `Http/application-releases.http` für Prepare/Activate/Status/Rollback liefern. Wiederholungen verwenden bewusst dieselbe Operationsidentität; Rollback und Cleanup sind separat benannte Requests für isolierte Testdaten.
 
 **Dateien:** neue Application-Release-Orchestrierung und Persistenz; bestehende `RepositoryService.cs`, `RepositoryController.cs`, `WorkflowTriggerService.cs`, Source-Control-Abstractions; neue Portal-/API-/SDK-/CLI-Verträge und Runbook `docs/runbooks/low-code-application-releases.md`.
 
@@ -357,6 +393,7 @@ Der kürzeste Weg zur ersten Fachanwendung ist LC00 bis LC07, LC10 ohne Flow-Art
 - Lastprofil für konkrete Nutzer-/Task-/Flowzahlen nach LC00 festlegen; Latenzen, Begrenzungen, Datenmengen und Fehlerquote messen. Ohne Lastnachweis keine erfundenen Skalierungszahlen veröffentlichen.
 - Betriebsdokumentation mit Installation ohne Node-RED, opt-in Laufzeit, Paketupdates, Replay, Konflikten, Datenschutzgrenzen, Monitoring und Fehlerdiagnose erstellen. Cleanup entfernt nur isolierte Testressourcen.
 - Nach C#-Änderungen den Skill `.agents/skills/dotnet-clean-code-review/SKILL.md` auf die geänderten Dateien anwenden; keine unabhängige Security-/Produktabnahme daraus ableiten.
+- `.http`-Requestkatalog anhand des OpenAPI-Vertrags auf Vollständigkeit prüfen, jede freigegebene Requestkette gegen eine isolierte laufende API ausführen und Ergebnisse gemäß Abschnitt 7.3 dokumentieren. Dateien, erwartete Antworten und Einrichtungsanleitung zusammen mit der API ausliefern.
 
 **Dateien:** `docs/reference/product-support-matrix.md`, `README.md`, `docs/testing/`, neue Runbooks, gezielte CI-Workflows und Abnahmeberichte.
 
@@ -387,6 +424,7 @@ Der kürzeste Weg zur ersten Fachanwendung ist LC00 bis LC07, LC10 ohne Flow-Art
 | LC-AC-19 | Offline-Entwurf nach Storno, Rollenentzug, Logout oder Tenantwechsel | Konflikt statt unberechtigter Completion; keine fremden lokalen Daten | D, Browser und API |
 | LC-AC-20 | Bestehende Installation mit deaktivierten App-/Flowmodulen | BPMN/DMN/CMMN/Studio/SDK/CLI und vorhandene Provider funktionieren ohne neue externe Dienste | alle Stufen, Regression |
 | LC-AC-21 | Bestehende DB auf additive Revision-/App-Schemata upgraden | Erhaltene Daten und bekannte Versionen; kein erfundener Verlauf; Backup-/Wiederanlaufvertrag erfüllt | A/B, Provider-Migrationsabnahme |
+| LC-AC-22 | `.http`-Katalog für neue/geänderte Endpunkte im integrierten HTTP-Editor gegen isolierte API ausführen | Dokumentierte reguläre und relevante negative Requests funktionieren mit auswählbarer Umgebung und getrennten Testidentitäten; keine Secrets in versionierten Dateien | alle Stufen, manueller API-Nachweis und Vertragsabgleich |
 
 Tests prüfen die fachliche Wirkung und gespeicherte Daten. Eine Node-Anzeige, HTTP-200-Antwort, Parserassertion oder erfolgreich erzeugte Datei allein ersetzt diese Nachweise nicht.
 
@@ -422,6 +460,31 @@ Nach betroffenen Prüfungen den Befehl und **sämtliche Ausschlüsse** aus `.git
 - CI-safe enthält deterministische Vertrags-, Mapping-, Autorisierungs- und Persistenztests ohne externe Dienste. Echte Browser, Node-RED, PostgreSQL-Replikate, Keycloak, Broker und Last/Recovery laufen getrennt mit dokumentierten Voraussetzungen.
 - Neue Migrationen werden erstellt und in isolierten Testdatenbanken überprüft; Anwendung auf Nutzer-/Produktionsdatenbanken erfolgt nur im autorisierten Migrationsauftrag über den bestehenden Migrationspfad.
 
+### 7.3 Manuelle API Prüfung mit HTTP Dateien
+
+Die `.http`-Dateien sind das vorgesehene Werkzeug für manuelle Requests während Entwicklung und API-Abnahme. Sie verwenden die dokumentierte Visual-Studio-Syntax: Requests durch `###` trennen, Namen mit `# @name` vergeben und Eingaben über `{{variable}}` einsetzen. Antwortwerte können innerhalb derselben Datei über benannte Requests weiterverwendet werden. Voraussetzungrequests werden in der beschriebenen Reihenfolge ausdrücklich ausgeführt; der Editor führt diese Abhängigkeiten nicht automatisch aus. Zusätzliche IDE-/Client-Syntax wird nicht als allgemein unterstützt vorausgesetzt.
+
+**Umgebungen und Identitäten:**
+
+- Neu vorgeschlagen `src/VertexBPMN.Api/http-client.env.json` für versionierte, nicht sensitive Basiswerte. Die Umgebungen `local-http` und `local-https` richten sich nach den tatsächlich verwendeten Launchprofilen; aktuell `http://localhost:5263` im Profil `http` und `https://localhost:51869` im Profil `VertexBPMN.Api`. AppHost-/Existing-Service-Adressen werden separat und ausdrücklich konfiguriert.
+- Variablen umfassen nach Bedarf `baseUrl`, `portalBaseUrl`, `tenantId`, `otherTenantId`, `appKey`, Objekt-/Revisions-IDs und Idempotenzschlüssel. Lokale IDs werden durch Voraussetzungen erstellt bzw. aus tatsächlichen Antworten übernommen. Es gibt kein vorkonfiguriertes Produktionsziel.
+- Tokens für Admin, Fachnutzer, ReadOnly und External-Task-Worker stammen aus getrennten Testidentitäten mit tatsächlich passenden Claims. Die Requestdateien referenzieren diese Werte, enthalten aber keine gültigen Tokens oder Passwörter. Vorhandene OIDC-/Keycloak-Testprofile bzw. Standard-Tokenbeschaffung verwenden; keine Authentifizierung zur Vereinfachung abschalten.
+- Bevorzugt ASP.NET Core User Secrets über die vom HTTP-Editor unterstützten Providerreferenzen verwenden. Persönliche Werte können alternativ in der nicht versionierten `http-client.env.json.user` liegen; diese liegt neben der gemeinsamen Umgebungsdatei. Den vorhandenen `.gitignore`-Ausschluss `*.user` mit `git check-ignore` prüfen. Für das Portal analog eine passende Umgebungsdatei am eigenen Projekt vorsehen.
+- Basisadressen nicht zusätzlich in `.http` fest überschreiben, wenn sie aus der gewählten Umgebung stammen sollen: lokale `@`-Definitionen haben Vorrang vor Umgebungswerten. Keine Bearertokens über Response-Variablen in Logs, Dokumente oder gespeicherte Beispielantworten übernehmen.
+
+**Aufbau und Ausführung:**
+
+1. Jede Datei beginnt mit Ziel, Voraussetzungen, benötigter Identität und Reihenfolge. Requests besitzen sprechende Namen; kommentierte Sollwerte beschreiben Statuscode, relevante Responsefelder/ProblemDetails und erwartete Fachwirkung.
+2. Reguläre Abläufe und negative Requests werden getrennt bezeichnet. Fehlende Authentifizierung, unberechtigter Tenant, ungültige Daten, Revisionskonflikt, doppelte Operation und verlorene Lease werden dort aufgenommen, wo der jeweilige Vertrag diese Fälle vorsieht. Statuscodes entsprechen der konkreten API-Policy, nicht einer pauschalen Annahme.
+3. Create-/Deploy-/Start-/Read-/Complete-Ketten verwenden tatsächliche Antworten. Ein `.http`-Response-Verweis gilt nur innerhalb seiner Datei; dateiübergreifende Voraussetzungen werden explizit beschrieben oder über persönliche Umgebungswerte übergeben.
+4. Mutationen, Rollbacks und Cleanup bleiben einzeln auswählbare Requests mit klarer Beschriftung. Cleanup arbeitet ausschließlich mit zuvor erzeugten isolierten Ressourcen-IDs und entfernt keine fremden Test-/Nutzerdaten. Beispielwerte benötigen keine echten Kunden- oder Rechnungsdaten.
+5. LC00/LC01 legen die tatsächlich verfügbare Visual-Studio-Version samt erforderlicher HTTP-Editorfunktionen fest. Anleitung: Test-API mit gewähltem Profil starten, `.http` öffnen, Umgebung auswählen, benötigte Identität bereitstellen und den gewünschten Request senden. TLS-Vertrauen wird korrekt eingerichtet; Zertifikatsprüfung bleibt aktiv.
+6. Pro Abnahmelauf Requestname, Umgebung, Testidentität ohne Tokenwert, Soll-/Iststatus, fachlichen Datenbanknachweis und zugehörige LC-AC-ID dokumentieren. Sensible Responses nicht als Abnahmeartefakte speichern. Nicht ausgeführte Requests bleiben offen.
+
+Die Dateien liefern reproduzierbare manuelle Requests. Automatisierte Assertions bleiben in den vorhandenen Contract-/Integrationstests und Browsertests; ein HTTP-200 allein beweist keine fachliche Wirkung. Für `.http` wird kein zusätzlicher Runner und keine Skript-Assertion-Funktion vorausgesetzt. Falls später ein automatischer Runner benötigt wird, Werkzeug und Dialekt getrennt begründen und qualifizieren.
+
+**Definition of Done je HTTP-Endpunkt:** Requestdatei vorhanden und im gewählten Editor ausführbar; Methode/Route/DTO/Auth stimmen mit OpenAPI und Code überein; regulärer und relevante negative Fälle sind dokumentiert und ausgeführt; Requestkatalog und Testanleitung aktualisiert; automatisierte Regression des geänderten Verhaltens weiterhin vorhanden. Ein Arbeitspaket gilt ohne diesen API-Lieferumfang nicht als vollständig.
+
 ## 8 Entscheidungen Risiken und Liefergrenzen
 
 | Entscheidung oder Risiko | Festlegung und Prüfpunkt |
@@ -447,6 +510,7 @@ Für jedes abgeschlossene Paket enthält der Bericht:
 - Ausgangs-/Ergebniscommit oder uncommitteten Diff sowie betroffene Dateien;
 - tatsächlich implementierte Nutzerfunktion und erhaltene Altverträge;
 - ausgeführte Befehle, Laufzahlen, Fehler und Skips;
+- gelieferte `.http`-Dateien und tatsächlich ausgeführte Requestnamen mit Umgebung, Soll-/Iststatus und API-Vertragsabgleich;
 - erfüllte Abnahme-IDs und ihre Artefakte;
 - verbleibende externe Prüfungen und konkrete Voraussetzung;
 - Migration-/Rollout-/Rollbackfolgen und das nächste abhängige Paket.
@@ -460,6 +524,7 @@ Für jedes abgeschlossene Paket enthält der Bericht:
 - [Node-RED eigene Nodes](https://nodered.org/docs/creating-nodes/): offizieller Erweiterungsmechanismus und Paketkonventionen.
 - [Node-RED absichern](https://nodered.org/docs/user-guide/runtime/securing-node-red): getrennte Schutzbereiche für Editor/Admin-API und HTTP-/Dashboardpfade.
 - [Node-RED Context](https://nodered.org/docs/user-guide/context): Context-Speicherung und ihre Grenzen gegenüber einer persistenten Geschäftsprozessruntime.
+- [Microsoft Learn zu HTTP-Dateien in Visual Studio](https://learn.microsoft.com/de-de/aspnet/core/test/http-files?view=aspnetcore-10.0): Requestsyntax, benannte Antworten, Umgebungsdateien und Secretprovider für den manuellen API-Katalog.
 - `AGENTS.md`, `README.md`, `global.json`, `Directory.Build.props`, `.editorconfig`, `.github/workflows/ci.yml`: aktuelle Repository- und Prüfkonventionen.
 - [Produkt-Support-Matrix](../reference/product-support-matrix.md) und [bpmn.io Studio Shell](../reference/bpmn-io-studio-shell.md): bestehender Funktions- und Assetkontext.
 

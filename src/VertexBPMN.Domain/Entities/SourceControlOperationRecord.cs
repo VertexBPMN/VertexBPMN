@@ -11,6 +11,8 @@ public sealed class SourceControlOperationRecord
 	public string IdempotencyKey { get; set; } = "";
 	public string RequestHash { get; set; } = "";
 	public string ProtectedRequest { get; set; } = "";
+	public int ExecutionContractVersion { get; set; }
+	public string? ProtectedExecutionTarget { get; set; }
 	public int State { get; set; }
 	public long UpdatedUtcTicks { get; set; }
 	public long Fence { get; set; }
@@ -18,4 +20,7 @@ public sealed class SourceControlOperationRecord
 	public long? LeaseUntilUtcTicks { get; set; }
 	public int? ErrorCode { get; set; }
 	public string? ProtectedResult { get; set; }
+	public bool AuditPending { get; set; }
+	public long? AuditExportedUtcTicks { get; set; }
+	public long? AuditRetryAfterUtcTicks { get; set; }
 }

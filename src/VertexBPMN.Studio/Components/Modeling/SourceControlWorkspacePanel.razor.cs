@@ -46,6 +46,14 @@ public sealed partial class SourceControlWorkspacePanel
 	private SourceControlOperation? _job;
 	private ModelDiff? _diff;
 	private string _remote = "", _credential = "", _defaultBranch = "master", _releaseBranch = "release", _modelRoot = "models", _grantsJson = "[]";
+	private string _connectionProfileId = "";
+	private long _connectionProfileRevision = 1;
+	private bool HasConnectionProfile => SelectedRepository?.Binding.ConnectionProfileId is not null;
+	private bool CanCommitSource => !HasConnectionProfile || _profileAvailability?.Capabilities.HasFlag(SourceControlCapability.Commit) == true;
+	private bool CanPushSource => !HasConnectionProfile || _profileAvailability?.Capabilities.HasFlag(SourceControlCapability.Push) == true;
+	private bool CanUseHosting => !HasConnectionProfile || _profileAvailability?.Capabilities.HasFlag(SourceControlCapability.PullRequest) == true;
+	private bool ProfiledReadOnly => HasConnectionProfile && !CanCommitSource && !CanPushSource;
+	private SourceControlAvailability? _profileAvailability;
 	private StudioGitRepository? SelectedRepository => _repositories.SingleOrDefault(x => x.Binding.Id == _repositoryId);
 	private bool JobActive => _jobId is not null && (_job is null || _job.State is SourceControlOperationState.Queued or SourceControlOperationState.Running or SourceControlOperationState.Reconciling);
 
@@ -95,6 +103,7 @@ public sealed partial class SourceControlWorkspacePanel
 
 	private void DetachDocument()
 	{
+		_profileAvailability = null;
 		_branches.Clear();
 		_files.Clear();
 		_history.Clear();
@@ -200,6 +209,17 @@ public sealed partial class SourceControlWorkspacePanel
 		token.ThrowIfCancellationRequested();
 		DetachDocument();
 		_repositoryId = id;
+		if (HasConnectionProfile)
+		{
+			var availability = await Git.RepositoryAvailabilityAsync(id, token);
+			token.ThrowIfCancellationRequested();
+			_profileAvailability = availability;
+			if (!availability.Available)
+			{
+				_status = $"This connection is unavailable: {availability.UnavailableReason}.";
+				return;
+			}
+		}
 		_root = SelectedRepository?.Binding.ModelRoots is { Count: > 0 } roots ? roots[0] : "";
 		_grantsJson = JsonSerializer.Serialize(SelectedRepository?.Grants ?? []);
 		await LoadBranchesAsync(token);
@@ -481,7 +501,21 @@ public sealed partial class SourceControlWorkspacePanel
 	});
 	private Task CreateRepository() => RunAsync(async token =>
 	{
-		var repository = await Git.CreateAsync(new(_remote, _credential, _defaultBranch, _releaseBranch, [_modelRoot]), token);
+		Guid? profileId = null;
+		if (!string.IsNullOrWhiteSpace(_connectionProfileId))
+		{
+			if (!Guid.TryParse(_connectionProfileId, out var parsed) || parsed == Guid.Empty || _connectionProfileRevision < 1)
+			{
+				throw new InvalidOperationException("A valid approved connection profile and its revision are required.");
+			}
+			profileId = parsed;
+		}
+		var request = new StudioGitBindingRequest(_remote, profileId is null ? _credential : null, _defaultBranch, _releaseBranch, [_modelRoot])
+		{
+			ConnectionProfileId = profileId,
+			ProfileRevision = profileId is null ? null : _connectionProfileRevision
+		};
+		var repository = await Git.CreateAsync(request, token);
 		token.ThrowIfCancellationRequested();
 		_repositories = [.._repositories, repository];
 		_status = "Binding created with Read/Manage only. Explicitly grant Commit/Push before writing.";

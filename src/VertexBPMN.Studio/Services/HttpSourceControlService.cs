@@ -8,6 +8,8 @@ internal sealed class HttpSourceControlService(IHttpClientFactory clients)
 	private const string Prefix = "/api/source-control";
 	private static string Escape(string value) => Uri.EscapeDataString(value);
 	public Task<SourceControlAvailability> AvailabilityAsync(CancellationToken token) => GetAsync<SourceControlAvailability>(Prefix + "/availability", token);
+	public Task<SourceControlAvailability> RepositoryAvailabilityAsync(Guid id, CancellationToken token) =>
+		GetAsync<SourceControlAvailability>($"{Prefix}/repositories/{id}/availability", token);
 	public Task<StudioGitRepository[]> RepositoriesAsync(CancellationToken token) => GetAsync<StudioGitRepository[]>(Prefix + "/repositories", token);
 	public Task<StudioGitRepository> CreateAsync(StudioGitBindingRequest request, CancellationToken token) => PostAsync<StudioGitRepository>(Prefix + "/repositories", request, token);
 	public Task<bool> GrantsAsync(Guid repositoryId, long revision, RepositoryGrant[] grants, CancellationToken token) =>

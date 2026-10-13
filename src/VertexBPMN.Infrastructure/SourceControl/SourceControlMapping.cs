@@ -7,6 +7,13 @@ internal static class SourceControlMapping
 {
     public static void Configure(ModelBuilder model)
     {
+		var profile = model.Entity<SourceControlConnectionProfileRecord>();
+		profile.ToTable("SourceControlConnectionProfiles");
+		profile.HasKey(x => new { x.TenantId, x.Id });
+		profile.Property(x => x.TenantId).HasMaxLength(64).IsRequired();
+		profile.Property(x => x.Revision).IsConcurrencyToken();
+		profile.Property(x => x.ProfileJson).IsRequired();
+
         var binding = model.Entity<SourceControlBindingRecord>();
         binding.ToTable("SourceControlBindings");
         binding.HasKey(x => x.Id);
@@ -34,6 +41,7 @@ internal static class SourceControlMapping
         job.Property(x => x.RequestHash).HasMaxLength(64).IsRequired();
         job.Property(x => x.LeaseOwner).HasMaxLength(128);
         job.Property(x => x.Fence).IsConcurrencyToken();
+		job.Property(x => x.ExecutionContractVersion).HasDefaultValue(0);
         job.HasIndex(x => new { x.TenantId, x.RepositoryId, x.Kind, x.IdempotencyKey }).IsUnique();
         job.HasIndex(x => new { x.State, x.LeaseUntilUtcTicks });
     }

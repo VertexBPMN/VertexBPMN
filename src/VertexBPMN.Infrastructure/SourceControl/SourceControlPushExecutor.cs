@@ -6,7 +6,7 @@ namespace VertexBPMN.Infrastructure.SourceControl;
 
 /// <summary>Finite push executor. The trusted host supplies fresh actor/tenant roles, never invented worker grants.</summary>
 internal sealed class SourceControlPushExecutor(PersistentSourceControlStore store,
-	SourceControlWorkspace workspaces, ControlledGitProcess git, GitHubAppTokenBroker tokens)
+	SourceControlWorkspace workspaces, ControlledGitProcess git, GitHubAppTokenBroker tokens, ProfiledGitWriteTransport? profiled = null)
 {
 	internal async Task<PushReceipt> ExecuteAsync(SourceControlContext context, Guid id, string worker, long fence,
 		Func<CancellationToken, Task<IReadOnlyCollection<string>>> resolveCurrentRoles, CancellationToken cancellationToken)
@@ -15,6 +15,10 @@ internal sealed class SourceControlPushExecutor(PersistentSourceControlStore sto
 		var work = await store.ReadPushWorkAsync(context, id, worker, fence, roles, cancellationToken);
 		var workspace = await workspaces.CreateAsync(context, id, worker, fence, cancellationToken);
 		await git.InitializeAsync(workspace, work.LocalCommit.Command.BaseCommit, cancellationToken);
+		if (work.Binding.ConnectionProfileId is not null)
+		{
+			return await ExecuteProfiledAsync(context, id, worker, fence, resolveCurrentRoles, work, workspace, cancellationToken);
+		}
 		using var lease = await tokens.IssueAsync(context, work.Binding.Id, roles, RepositoryPermission.Push, cancellationToken);
 		var saved = await store.ReadSavedResultAsync(context.TenantId, id, worker, fence, DateTimeOffset.UtcNow, cancellationToken);
 		if (saved is null && work.State != SourceControlOperationState.Reconciling)
@@ -24,6 +28,21 @@ internal sealed class SourceControlPushExecutor(PersistentSourceControlStore sto
 		return await ExecutePreparedAsync(context, id, worker, fence, resolveCurrentRoles, workspace,
 			(command, token) => git.ReadPushHeadAsync(workspace, work.Binding, command, lease, token),
 			(command, token) => git.PushAsync(workspace, work.Binding, command, lease, token), cancellationToken);
+	}
+
+	private async Task<PushReceipt> ExecuteProfiledAsync(SourceControlContext context, Guid id, string worker, long fence,
+		Func<CancellationToken, Task<IReadOnlyCollection<string>>> resolveCurrentRoles, AcceptedPushWork work,
+		GitWorkspace workspace, CancellationToken cancellationToken)
+	{
+		var transport = profiled ?? throw new SourceControlSecurityException(SourceControlErrorCode.ProviderUnavailable);
+		var saved = await store.ReadSavedResultAsync(context.TenantId, id, worker, fence, DateTimeOffset.UtcNow, cancellationToken);
+		if (saved is null && work.State != SourceControlOperationState.Reconciling)
+		{
+			await transport.FetchBaseAsync(workspace, context, id, worker, fence, work.LocalCommit.Command.BaseCommit, cancellationToken);
+		}
+		return await ExecutePreparedAsync(context, id, worker, fence, resolveCurrentRoles, workspace,
+			(command, token) => transport.ReadHeadAsync(workspace, context, id, worker, fence, command, token),
+			(command, token) => transport.PushAsync(workspace, context, id, worker, fence, command, token), cancellationToken);
 	}
 
 	// Isolated acceptance may supply a real local HTTPS transport and a prepared job-owned repository.

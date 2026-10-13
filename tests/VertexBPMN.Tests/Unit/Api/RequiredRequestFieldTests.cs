@@ -19,6 +19,9 @@ public sealed class RequiredRequestFieldTests
 			new ExternalTaskController.ExternalTaskCompleteRequest(generation, 1, Guid.NewGuid(), JsonSerializer.SerializeToElement(new { accepted = true })),
 			new ExternalTaskController.ExternalTaskFailRequest(generation, 1, Guid.NewGuid(), "technical", "timeout"),
 			new SourceControlController.GrantsRequest(0, []),
+			new SourceControlController.ProfileAssignment(1, generation, 1),
+			new SourceControlController.ReadRequest(VertexBPMN.SourceControl.Abstractions.GitReadQueryKind.File,
+				"read", "commit", "models/process.bpmn", 0, null, generation, null),
 			new SourceControlController.SessionRequest("base", generation),
 			new SourceControlController.SnapshotResponse("process.bpmn", generation, 0, [1], "hash"),
 			new SourceControlController.SnapshotsRequest(0, []),
@@ -43,7 +46,7 @@ public sealed class RequiredRequestFieldTests
 			}
 		}
 
-		Assert.Equal(21, checkedFields);
+		Assert.Equal(27, checkedFields);
 	}
 
 	[Fact]

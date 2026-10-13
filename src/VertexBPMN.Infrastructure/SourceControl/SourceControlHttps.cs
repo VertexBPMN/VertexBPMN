@@ -68,6 +68,33 @@ public static class SourceControlHttps
             && !(b[0] == 0x3f && b[1] == 0xff);
     }
 
+    internal static HttpClient CreateProfiledGitHubClient(ApprovedGitHttpsTarget approved, TimeSpan timeout)
+    {
+        ValidateTarget(approved.Remote, ["api.github.com"]);
+        var addresses = approved.CopyAddresses();
+        return CreateClient(["api.github.com"], timeout, (host, cancellation) =>
+        {
+            cancellation.ThrowIfCancellationRequested();
+            if (host != approved.Remote.IdnHost)
+            {
+                Reject();
+            }
+            return Task.FromResult(addresses.ToArray());
+        }, approved.Remote);
+    }
+
+    internal static HttpClient CreateAzureDevOpsClient(ApprovedGitHttpsTarget approved, TimeSpan timeout)
+    {
+        ValidateTarget(approved.Remote, ["dev.azure.com"]);
+        var addresses = approved.CopyAddresses();
+        return CreateClient(["dev.azure.com"], timeout, (host, cancellation) =>
+        {
+            cancellation.ThrowIfCancellationRequested();
+            if (host != approved.Remote.IdnHost) { Reject(); }
+            return Task.FromResult(addresses.ToArray());
+        }, null, request => AzureDevOpsHostingHttpPolicy.Demand(request, approved.Remote));
+    }
+
     public static HttpClient CreateClient(IReadOnlyList<string> allowedHosts, TimeSpan timeout)
         => CreateClient(allowedHosts, timeout, Dns.GetHostAddressesAsync);
 
@@ -75,6 +102,18 @@ public static class SourceControlHttps
         Justification = "HttpClient takes ownership of the SocketsHttpHandler/TargetGuard chain and disposes both in Dispose().")]
     internal static HttpClient CreateClient(IReadOnlyList<string> allowedHosts, TimeSpan timeout,
         Func<string, CancellationToken, Task<IPAddress[]>> resolve)
+        => CreateClient(allowedHosts, timeout, resolve, null);
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
+        Justification = "HttpClient owns the handler chain and disposes it.")]
+    internal static HttpClient CreateClient(IReadOnlyList<string> allowedHosts, TimeSpan timeout,
+        Func<string, CancellationToken, Task<IPAddress[]>> resolve, Uri? repositoryScope)
+        => CreateClient(allowedHosts, timeout, resolve, repositoryScope, null);
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
+        Justification = "HttpClient owns the handler chain and disposes it.")]
+    internal static HttpClient CreateClient(IReadOnlyList<string> allowedHosts, TimeSpan timeout,
+        Func<string, CancellationToken, Task<IPAddress[]>> resolve, Uri? repositoryScope, Action<HttpRequestMessage>? hostingPolicy)
     {
         var hosts = allowedHosts.ToArray();
         var handler = new SocketsHttpHandler
@@ -83,7 +122,8 @@ public static class SourceControlHttps
             Credentials = null, ConnectTimeout = timeout, MaxResponseHeadersLength = 32,
             ConnectCallback = async (context, cancellation) =>
             {
-                ValidateRequestTarget(context.InitialRequestMessage.RequestUri!, hosts);
+                if (hostingPolicy is null) { ValidateRequestTarget(context.InitialRequestMessage.RequestUri!, hosts); }
+                else { hostingPolicy(context.InitialRequestMessage); }
                 if (context.DnsEndPoint.Port != 443)
 				{
 					Reject();
@@ -110,14 +150,20 @@ public static class SourceControlHttps
                 throw new SourceControlSecurityException(SourceControlErrorCode.ProviderUnavailable);
             }
         };
-        return new HttpClient(new TargetGuard(handler, hosts)) { Timeout = timeout };
+        return new HttpClient(new TargetGuard(handler, hosts, repositoryScope, hostingPolicy)) { Timeout = timeout };
     }
 
-    private sealed class TargetGuard(HttpMessageHandler inner, string[] hosts) : DelegatingHandler(inner)
+    private sealed class TargetGuard(HttpMessageHandler inner, string[] hosts, Uri? repositoryScope,
+        Action<HttpRequestMessage>? hostingPolicy) : DelegatingHandler(inner)
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            ValidateRequestTarget(request.RequestUri!, hosts);
+            if (hostingPolicy is null) { ValidateRequestTarget(request.RequestUri!, hosts); }
+            else { hostingPolicy(request); }
+            if (repositoryScope is not null)
+            {
+                GitHubHostingHttpPolicy.Demand(request, repositoryScope);
+            }
             return base.SendAsync(request, cancellationToken);
         }
     }

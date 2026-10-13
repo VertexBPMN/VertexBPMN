@@ -1,0 +1,72 @@
+# Git-Plugin: Azure-PR-Adapter, SSH und Audit
+
+Stand: 13. Oktober 2026. Entwicklungsbranch: `codex/git-generic-servers`; Ausgangscommit: `44aa932bd64f45a790e4ae68d159b2c5b27f3590`. Die DeepSeek-Übergabe bleibt verschoben. GS05, GS06 und GS07 bleiben als Gesamtpakete offen.
+
+## Azure DevOps Services
+
+Der fest registrierte `AzureDevOpsHostingAdapter` verwendet den bestehenden geschützten Hostingvertrag v3, die persistente PR-Annahme, Claims/Fences, Current-Authority-Prüfungen und Unknown-Reconciliation. Kein neuer paralleler Jobpfad.
+
+- `AzureDevOpsHostingTargetPolicy` bindet den HTTPS-Git-Endpunkt, Organisation, Projekt-GUID, Repository-GUID und den API-Repositoryendpunkt. Projekt-/Repositoryname, GUIDs und Git-URL werden auch gegen die Detailantwort geprüft. Ein unter gleichem Namen neu angelegtes Repository wird abgewiesen.
+- Provider-ID: `azure-devops-services`. API-Version 7.1 ist im Hostingziel gespeichert; der unveränderliche Ausführungsvertrag und die aktuelle Zielprüfung umfassen sie. Azure DevOps Server und `*.visualstudio.com` sind nicht angeschlossen.
+- Eigene HTTP-Policy erlaubt ausschließlich PR-Create, gefilterte vollständige begrenzte Listen, Detailabfrage und Iterationen mit den fest erlaubten Queryparametern. DNS-Adressen werden wie beim GitHub-Profil direkt an den Socket gebunden; Proxy, Redirects, Cookies und Umgebungs-Credentials bleiben aus.
+- `ProfiledHostingCredentialBroker.Azure` trennt `HostingAzureDevOpsPat`, extern ausgestellte `HostingHttpBearer` und explizite `HostingAzureDevOpsEntra`-Anwendungsidentität. Git- und API-Referenzen bleiben getrennt. Keine implizite Hostidentität, kein Auth-Fallback. Rotation wird auch vor Entra-Tokenbeschaffung geprüft.
+- Ein Create ist ein einzelner POST. Nach Antwortverlust wird ausschließlich gelesen. Azure kürzt Beschreibungen in Listen; deshalb werden zugehörige Detailantworten vor dem Operationsmarkerabgleich gelesen. Doppelte Marker, nicht vollständiges Paging und widersprüchliche Daten bleiben unbekannt beziehungsweise unsicher.
+- `active`, `completed` und `abandoned` werden getrennt normalisiert. Ein Merge benötigt tatsächliches erfolgreiches Mergeergebnis und Commit-ID. Aktuelle UUID-bezogene Votes stehen in `CurrentVotes`; sie werden nicht als GitHub-Reviewhistorie oder commitbezogene Releasefreigabe ausgegeben. Iterationen enthalten Source-/Target-Commitbezüge und müssen zum angenommenen Head passen.
+- Studio-Beschriftungen sind providerneutral und zeigen aktuelle Votes getrennt. Razor kompiliert; eine Browserabnahme ist damit nicht nachgewiesen.
+
+Offiziell nachgeprüfte Grundlagen: [PR Create, REST 7.1](https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/create?view=azure-devops-rest-7.1), [PR List mit gekürzten Beschreibungen](https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/get-pull-requests?view=azure-devops-rest-7.1), [Iterations](https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-request-iterations/list?view=azure-devops-rest-7.1), [Repositoryidentität](https://learn.microsoft.com/en-us/rest/api/azure/devops/git/repositories/get-repository?view=azure-devops-rest-7.1).
+
+## Dauerhafter Audit-Export
+
+Bestätigte Commit-/Push-/PR-Abschlüsse markieren den Export innerhalb derselben BPMN-Datenbankänderung als offen. Geschützte Auftrags-/Ergebnisbelege bleiben bis zur Auditübernahme erhalten. Der separate Hintergrundexport schreibt in die bestehende zentrale `AuditLogs`-Tabelle und quittiert danach in der Quelldatenbank.
+
+`AuditLog.SourceControlEventId` hat einen eindeutigen gefilterten Index. Ein Neustart nach zentralem Commit vor Quittierung führt zur Prüfung desselben unveränderten Eintrags, nicht zu einem Duplikat. Widersprüchliche vorhandene Einträge werden nicht überschrieben. Fehler bleiben offen, werden ohne Exception-/Secretinhalt protokolliert und verzögert erneut versucht; andere Einträge können weiterlaufen.
+
+Der Auditdatensatz enthält ursprünglichen Vertex-Actor/Tenant, Repository, Operation, Fence, Commit, gegebenenfalls Pushbezug sowie Profil-/Credentialreferenzen und den festen Gitautor. `HostingIdentityReference` ist eine Credentialreferenz, kein unabhängig nachgewiesener Hostingprincipal. Token, Schlüssel, Modellbytes, PR-Titel und Beschreibung werden nicht exportiert. Langfristige Audits aller Annahmen/Fehlversuche und eine genauer aufgelöste Hostingidentität bleiben offen.
+
+Schemaänderungen: `SourceControlAuditExport` für `BpmnDbContext`; `SourceControlAuditIdempotency` für `ProcessMiningEventDbContext`. Typen sind providerneutral; Actor-ID-Länge wird auf 512 erweitert. Lokale Migrationsprüfungen verwenden isolierte SQLite-Datenbanken. Es wurden keine bestehenden oder produktiven Datenbanken migriert. Kein automatischer Down-Rollback nach neuen Auditdaten. Die neuen Felder und die Actor-Länge enthalten auch in den generierten Zielmodellen keine SQLite-Typbindung. Zwei verbindungslose SQL-Generatortests prüfen PostgreSQL-Boolean/UUID sowie SQL-Server-Bit/Uniqueidentifier und Actor-Länge 512; das ersetzt keinen echten Server-Migrationslauf.
+
+## SSH: vorbereiteter interner Read-Pfad
+
+Neue administrative `SshNetworkPolicies`, `SshTrustProfiles` und `SshExecutablePath` bleiben optional. `GitSshNetworkBoundary` prüft exakte Repository-/Tenant-/Profilbezüge, alle DNS-Antworten und explizite private CIDRs. `ProfiledSshCredentialBroker` prüft aktuelle Rechte, Profil, Netzwerk-/Hostkeyrevisionen und Credentialmetadaten vor Ausgabe einer kurzlebigen Lease.
+
+`ControlledGitProcess.FetchApprovedSshRevisionAsync` bereitet einen kontrollierten OpenSSH-Fetch auf einen festen Commit vor. `HostName` ist die freigegebene numerische IP, Hostkeys sind an einen festen Host-/Portalias gebunden. Globale SSH-Konfiguration, Agent, Proxy, Forwarding, Passwortdialoge und Verbindungswiederverwendung werden ausgeschlossen. Native Git-Quoten, Ausgabegrenzen und Prozessbaumbeendigung bleiben aktiv. Interner Timeout und Aufruferabbruch werden getrennt behandelt.
+
+Schlüsseldateien liegen außerhalb Repository und Shared Workspace in einem zufälligen privaten Verzeichnis: Windows-DACL nur für das Dienstkonto, Unix-Verzeichnis 0700/Datei 0600. Normales Ende, Fehler und Cancellation räumen die eigenen Dateien auf. Administrativer Hostzugriff und Dateiexposition während der Sitzung bleiben zu berücksichtigen; nach abruptem Host-/Prozessabbruch ist die Orphan-Recovery noch nicht implementiert.
+
+**SSH ist weiterhin nicht am öffentlichen Job-/API-/Studio-Pfad verfügbar.** Branch-Liste, Branch-Auflösung und begrenzter History-Fetch sind ebenfalls als interne native SSH-Operationen vorbereitet. Sie verwenden denselben privaten Authentifizierungs- und IP-/Hostkeypfad, aktuelle Rechteprüfungen vor und nach dem Prozess sowie die vorhandenen strikten Ref-/Cursorparser. Der History-Fetch lädt höchstens die konfigurierte Commitgrenze plus einen Eintrag; die vollständige Historyprojektion bleibt an den späteren Jobpfad zu binden. Offen sind geschützter SSH-Ausführungsvertrag und Workerdispatch, öffentliche Branch-/Historyanbindung, Commit/Push samt Ref-CAS/Reconciliation, Passphrase-/Schlüsselrotation-/Crash-Recovery und echte Windows-/Linux-Serverabnahmen. Die vorhandenen Tests nutzen synthetische Schlüsseldaten; sie belegen keine SSH-Anmeldung. Auf diesem Windows-Host ist der Client vorhanden, `sshd` wurde nicht gefunden; WSL/WSLC wurde für einen SSH-Serverlauf nicht verwendet. Profile verwenden explizite SSH-Ports und derzeit einfache sichere Repositorypfade.
+
+Grundlagen: [OpenSSH-Konfiguration](https://man.openbsd.org/ssh_config), [OpenSSH-Schlüsselformat](https://github.com/openssh/openssh-portable/blob/master/PROTOCOL.key). Kein selbst entwickeltes kryptografisches Verfahren.
+
+## Prüfungen und nächste Schritte
+
+Vollständiger Release-Build mit dem bestehenden Asset-Skip-Schalter; Editorassets unverändert. Gezielte Klassen: `SourceControlAuditMigrationSqlTests`, `AzureDevOpsHostingTests`, `GitSshBoundaryTests`, `SourceControlConnectionBindingTests`, `SourceControlPersistenceTests`, `SourceControlOptionsTests`, `RepositoryHostingTargetTests`, `RepositoryHostingReceiptTests`, `GitHubHostingHttpPolicyTests`. Bestehende GitHub-Transport-/Response-/Reconciliationklassen zusätzlich geprüft. CI-safe verwendet exakt die Ausschlüsse aus `.github/workflows/ci.yml`.
+
+Lokale Logs: `artifacts/git-generic-servers/azure-ssh-audit-*.log` (nicht versioniert). Vollständiger Release-Build: null Warnungen/Fehler (3:40,92). 327 gezielte Erfolge, keine Skips (48,356 Sekunden); 31 GitHub-Regressionsfälle, keine Skips (0,418 Sekunden). CI-safe: 1.906 Erfolge, acht bestehende externe Skips, keine Fehler (2:01,520). Beide EF-Modelchecks melden keine unversionierten Modelländerungen. Die zentrale Migration ist auch im isolierten SQLite-Audittest ausgeführt; keine Abnahme von SQL Server/PostgreSQL daraus ableiten. Bestehende externe Skips bleiben unperformierte Abnahmen. Der historische C.8.0-FEEL-Timeout ist durch diesen grünen Lauf nicht als behoben nachgewiesen.
+
+Neue C#-Dateien sind check-only formatgeprüft; die gemeldeten Leerraumkorrekturen wurden nur in eigenen Dateien angewendet. D1–D7 und manuelle Prüfung aller acht Clean-Code-Regeln gemäß `.agents/skills/dotnet-clean-code-review/SKILL.md`: 42 eigene C#-Dateien beziehungsweise geänderte Mitglieder, keine verbleibenden Maintainability-Befunde in diesem Umfang. Generierte Designer/Snapshots sind aus dem Kandidatensweep ausgeschlossen; die beiden Migrationen sind zusätzlich manuell geprüft. Razoränderung separat auf Escaping und providerneutrale Darstellung gelesen; Browser nicht ausgeführt.
+
+| Regel | Ergebnis im geprüften Umfang |
+| --- | --- |
+| Async/Cancellation | Awaitbare Verträge und Tokenweitergabe; SSH-Deadline gegenüber Aufruferabbruch durch zwei Regressionen getrennt; Lease-/Client-/Dateilebensdauer geprüft |
+| Collections | Materialisierte begrenzte Listen; nullable Receipt-Properties bedeuten absichtlich „nicht geprüft“, nicht „keine Einträge“ |
+| Boolean-Modi | Keine neuen Produktions-Modusschalter; AuditPending ist Zustand, callerCancels ein Testfallparameter |
+| Namen | Transport, Policy, Broker und Exporter nach Verantwortung getrennt; Session nur innerhalb des Azure-Adapters |
+| Regions/Struktur | Keine neuen Regions; kohäsive eigene Teildateien |
+| Interfaces | Bestehende Hostingports mit festen Implementierungen erhalten; keine unnötigen neuen Interfaces |
+| Vererbung | Nur vorhandene Partial-Typen und Framework-Basen für Handler/Hosted Service/Migration |
+| Lesbarkeit | Eigene Methoden, Parameter, Guards, Grenzen und Nullzustände manuell geprüft; fremde Formatierungsaltlasten erhalten |
+
+Nächster implementierbarer Schritt: SSH dauerhaft und versionsgetrennt anschließen, ohne HTTPS-/Legacyjobs falsch zu claimen. Danach native Windows-/Linux- und kombinierte API-/Studio-/Recoveryabnahmen. Azure benötigt reale getrennte PAT-/Entra-Abnahmen, Policyinformationen und Providerqualifikation. Audit benötigt zusätzliche Recovery-/Mehrreplikat-/Langzeitabnahmen. Keine Paket-, Anbieter- oder Produktionsfreigabe aus den lokalen Tests ableiten.
+
+## Fortsetzung: interne SSH-Leseoperationen
+
+Der Transport enthält nun `ListApprovedSshBranchesAsync`, `ResolveApprovedSshBranchAsync` und `FetchApprovedSshHistoryAsync`. Der gemeinsame Prozesspfad bindet die Lease an das genehmigte Remote, begrenzt jede Operation auf ihren Timeout und die verbleibende Leasezeit und prüft aktuelle Autorisierung vor und nach dem nativen Prozess. Die Netzwerkgrenze verwirft unbekannte Ausführungsschemata, fremde Repository-IDs und fehlende beziehungsweise kombinierte Fähigkeiten bereits vor DNS.
+
+19 neue Regressionen ergänzen die vorhandenen Tests: ungültige Ausführungsziele, Autorisierungsverweigerung vor Prozessstart, fremde Tenants/Repositorys, ungültige Refs/Paginierung, erfolgreicher Brokervertrag mit synthetischem Schlüssel sowie Rotation, Rechteentzug, Profilwiderruf und Hostkeyrevision während der Credentialauflösung. Ein zunächst als ungültig angenommener Semikolon-Branch war tatsächlich ein zulässiger Git-Ref; der neue Guard-Test verwendet jetzt `../main`. Die bestehende Refpolicy wurde nicht verschärft oder abgeschwächt.
+
+Finaler vollständiger Release-Build: null Warnungen und Fehler (1:20,46). 282 gezielte Tests erfolgreich, keine Fehler oder Skips (50,932 Sekunden). Check-only-Whitespaceprüfungen der drei Infrastrukturdateien und der beiden neuen/geänderten SSH-Testdateien erfolgreich. D1–D7 sowie alle acht manuellen Clean-Code-Regeln im Umfang von sechs eigenen C#-Dateien beziehungsweise geänderten Mitgliedern geprüft: keine bestätigten Befunde. Awaitbare Verträge/Token, begrenzte materialisierte Collections, Zustandsbooleans im Test, kohäsive Partial-Dateien, bestehende Ports und fehlende neue Vererbung bleiben nachvollziehbar; Testfallnamen und synthetische Daten sind begründete Ausnahmen. Die übrigen Mitglieder des bestehenden Fixture-Typs wurden nicht als neue Änderungen bewertet.
+
+Die neuen Prozess-Guards werden vor dem nativen Aufruf getestet. Erfolgreiche Branch-/Historyübertragung gegen einen echten SSH-Server, dauerhafte Annahme/Claiming/Worker/API/Studio, Commit/Push, Passphrase und Crash-Recovery bleiben offen. Keine SSH-Supportfreigabe aus diesen lokalen Ergebnissen ableiten. Azure- und Auditgrenzen des vorherigen Abschnitts gelten weiter.
+
+Die abschließende CI-safe-Prüfung dieses SSH-Schritts ist nicht grün: 1.924 Erfolge, ein Fehler in C.8.0, acht bestehende externe Skips, insgesamt 1.933 Fälle (2:09,130). Das protokollierte erste Problem ist ein FEEL-/Jint-Timeout; die anschließend fehlende Variable Vacation Approval ist Folge davon. Die DMN-/Engineimplementierung und Conformanceassertions wurden in diesem Schritt nicht verändert. Der isolierte C.8.0-Lauf besteht beide Tests ohne Skips (3,224 Sekunden); dies behebt oder widerlegt den Timeout im breiten Lauf nicht. Logs: ssh-remote-reads-final-build.log, ssh-remote-reads-targeted.log, ssh-remote-reads-ci.log und ssh-remote-reads-c8-isolated.log unter artifacts/git-generic-servers (nicht versioniert).

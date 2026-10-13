@@ -8,9 +8,9 @@ using VertexBPMN.SourceControl.Abstractions;
 namespace VertexBPMN.Infrastructure.SourceControl;
 
 /// <summary>Fixed commands only. Bare repositories avoid untrusted checkout filters and hooks.</summary>
-internal sealed partial class ControlledGitProcess(IOptions<SourceControlOptions> options)
+internal sealed partial class ControlledGitProcess(IOptions<SourceControlOptions> options, GitSshAuthenticationFileRecovery? sshFiles = null)
 {
-    private static readonly Regex GitVersionPattern = new Regex(@"^git version (\d+)\.(\d+)\.(\d+)",
+    private static readonly Regex GitVersionPattern = new Regex(@"^git version (?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)",
         RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture | RegexOptions.NonBacktracking,
         TimeSpan.FromSeconds(2));
 
@@ -18,8 +18,8 @@ internal sealed partial class ControlledGitProcess(IOptions<SourceControlOptions
     {
         var bytes = await RunAsync(workspace, ["--version"], null, options.Value.Limits.ReadTimeout, cancellationToken);
         var match = GitVersionPattern.Match(System.Text.Encoding.UTF8.GetString(bytes));
-        if (!match.Success || new Version(int.Parse(match.Groups[1].Value), int.Parse(match.Groups[2].Value),
-            int.Parse(match.Groups[3].Value)) < new Version(2, 56, 0))
+        if (!match.Success || new Version(int.Parse(match.Groups["major"].Value), int.Parse(match.Groups["minor"].Value),
+            int.Parse(match.Groups["patch"].Value)) < new Version(2, 56, 0))
 		{
 			throw new SourceControlSecurityException(SourceControlErrorCode.GitUnavailable);
 		}
@@ -45,7 +45,7 @@ internal sealed partial class ControlledGitProcess(IOptions<SourceControlOptions
             null, options.Value.Limits.ReadTimeout, cancellationToken);
     }
 
-    internal async Task FetchAsync(GitWorkspace workspace, Uri remote, string branch, GitHubTokenLease lease,
+    internal async Task FetchAsync(GitWorkspace workspace, Uri remote, string branch, IGitCredentialLease lease,
         CancellationToken cancellationToken)
     {
         SourceControlHttps.ValidateTarget(remote, options.Value.AllowedHosts);
@@ -63,7 +63,7 @@ internal sealed partial class ControlledGitProcess(IOptions<SourceControlOptions
     }
 
     internal async Task FetchRevisionAsync(GitWorkspace workspace, Uri remote, GitCommitId revision,
-        GitHubTokenLease lease, CancellationToken cancellationToken)
+        IGitCredentialLease lease, CancellationToken cancellationToken)
     {
         SourceControlHttps.ValidateTarget(remote, options.Value.AllowedHosts);
         await VersionAsync(workspace, cancellationToken);
@@ -79,7 +79,7 @@ internal sealed partial class ControlledGitProcess(IOptions<SourceControlOptions
     }
 
     // Explicitly isolated acceptance adapter, not a configurable production SSRF bypass.
-    internal Task FetchLocalAcceptanceAsync(GitWorkspace workspace, Uri remote, string branch, GitHubTokenLease lease,
+    internal Task FetchLocalAcceptanceAsync(GitWorkspace workspace, Uri remote, string branch, IGitCredentialLease? lease,
         string certificateAuthorityFile, CancellationToken cancellationToken, GitCommitId? revision = null)
     {
         if (!remote.IsAbsoluteUri || remote.Scheme != "https" || remote.Host != "localhost" || remote.Port == 443
@@ -93,7 +93,7 @@ internal sealed partial class ControlledGitProcess(IOptions<SourceControlOptions
         return FetchCoreAsync(workspace, remote, branch, lease, [IPAddress.Loopback], certificateAuthorityFile, cancellationToken, revision);
     }
 
-    private async Task FetchCoreAsync(GitWorkspace workspace, Uri remote, string branch, GitHubTokenLease lease,
+    private async Task FetchCoreAsync(GitWorkspace workspace, Uri remote, string branch, IGitCredentialLease? lease,
         IPAddress[] addresses, string? certificateAuthorityFile, CancellationToken cancellationToken, GitCommitId? revision = null,
         int depth = 1)
     {
@@ -104,7 +104,7 @@ internal sealed partial class ControlledGitProcess(IOptions<SourceControlOptions
     }
 
     internal async Task FetchHistoryAsync(GitWorkspace workspace, Uri remote, GitCommitId revision,
-        GitHubTokenLease lease, CancellationToken cancellationToken)
+        IGitCredentialLease lease, CancellationToken cancellationToken)
     {
         SourceControlHttps.ValidateTarget(remote, options.Value.AllowedHosts);
         GitModelHistory.ValidateLimit(options.Value.Limits);
@@ -128,7 +128,7 @@ internal sealed partial class ControlledGitProcess(IOptions<SourceControlOptions
     }
 
     internal Task FetchHistoryLocalAcceptanceAsync(GitWorkspace workspace, Uri remote, GitCommitId revision,
-        GitHubTokenLease lease, string certificateAuthorityFile, CancellationToken cancellationToken)
+        IGitCredentialLease lease, string certificateAuthorityFile, CancellationToken cancellationToken)
     {
         GitModelHistory.ValidateLimit(options.Value.Limits);
         if (!remote.IsAbsoluteUri || remote.Scheme != "https" || remote.Host != "localhost" || remote.Port == 443
@@ -142,7 +142,7 @@ internal sealed partial class ControlledGitProcess(IOptions<SourceControlOptions
     }
 
     internal async Task<SourceControlPage<string>> ListRemoteBranchesAsync(GitWorkspace workspace,
-        RepositoryBinding binding, GitHubTokenLease lease, int pageSize, string? cursor, CancellationToken cancellationToken)
+        RepositoryBinding binding, IGitCredentialLease lease, int pageSize, string? cursor, CancellationToken cancellationToken)
     {
         SourceControlHttps.ValidateTarget(binding.Remote, options.Value.AllowedHosts);
         GitRemoteReferences.ValidatePage(pageSize, cursor, options.Value.Limits);
@@ -164,7 +164,7 @@ internal sealed partial class ControlledGitProcess(IOptions<SourceControlOptions
     }
 
     internal Task<SourceControlPage<string>> ListRemoteBranchesLocalAcceptanceAsync(GitWorkspace workspace,
-        RepositoryBinding binding, GitHubTokenLease lease, int pageSize, string? cursor,
+        RepositoryBinding binding, IGitCredentialLease lease, int pageSize, string? cursor,
         string certificateAuthorityFile, CancellationToken cancellationToken)
     {
         if (binding.Remote.Scheme != "https" || binding.Remote.Host != "localhost" || binding.Remote.Port == 443
@@ -177,7 +177,7 @@ internal sealed partial class ControlledGitProcess(IOptions<SourceControlOptions
     }
 
     private async Task<SourceControlPage<string>> ListRemoteBranchesCoreAsync(GitWorkspace workspace,
-        RepositoryBinding binding, GitHubTokenLease lease, int pageSize, string? cursor, IPAddress[] addresses,
+        RepositoryBinding binding, IGitCredentialLease? lease, int pageSize, string? cursor, IPAddress[] addresses,
         string? certificateAuthorityFile, CancellationToken cancellationToken)
     {
         var limits = options.Value.Limits;
@@ -188,29 +188,20 @@ internal sealed partial class ControlledGitProcess(IOptions<SourceControlOptions
         return GitRemoteReferences.ReadPage(output, binding, pageSize, cursor, limits, cancellationToken);
     }
 
-    private async Task<byte[]> RunAuthenticatedRemoteAsync(GitWorkspace workspace, Uri remote, GitHubTokenLease lease,
+    private async Task<byte[]> RunAuthenticatedRemoteAsync(GitWorkspace workspace, Uri remote, IGitCredentialLease? lease,
         IPAddress[] addresses, string? certificateAuthorityFile, IReadOnlyList<string> command,
         TimeSpan timeout, CancellationToken cancellationToken,
         Func<byte[], SourceControlErrorCode>? classifyFailure = null)
     {
-        var helper = options.Value.AuthHelperExecutablePath ?? Path.Combine(AppContext.BaseDirectory,
-            "source-control-auth", "VertexBPMN.SourceControl.AuthHelper" + (OperatingSystem.IsWindows() ? ".exe" : ""));
-        if (string.IsNullOrEmpty(helper) || !Path.IsPathFullyQualified(helper) || !File.Exists(helper)
-            || helper.Any(c => c is '\r' or '\n' or '\'' or '"' or '$' or '`' or '\\'))
+        if (lease is null && (command.Count == 0 || command[0] is not ("fetch" or "ls-remote")))
         {
-            // Git's credential helper is intentionally a trusted fixed executable command.
-            // Normalize Windows separators before applying the shell quoting boundary.
-            helper = helper?.Replace('\\', '/');
-            if (string.IsNullOrEmpty(helper) || !Path.IsPathFullyQualified(helper) || !File.Exists(helper)
-                || helper.Any(c => c is '\r' or '\n' or '\'' or '"' or '$' or '`'))
-			{
-				throw new SourceControlSecurityException(SourceControlErrorCode.GitUnavailable);
-			}
-		}
-        await using var channel = new GitCredentialChannel(remote, lease, cancellationToken);
+            throw new SourceControlSecurityException(SourceControlErrorCode.CredentialUnavailable);
+        }
+        var helper = lease is null ? null : CredentialHelperPath();
+        await using var channel = lease is null ? null : new GitCredentialChannel(remote, lease, cancellationToken);
         var configuration = new Dictionary<string, string>(StringComparer.Ordinal)
 		{
-            ["credential.helper"] = $"!'{helper}' {channel.Name}",
+            ["credential.helper"] = channel is null ? "" : $"!'{helper}' {channel.Name}",
             ["http.curloptResolve"] = $"{remote.IdnHost}:{remote.Port}:{string.Join(',', addresses.Select(x => x.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 ? $"[{x}]" : x.ToString()))}"
         };
         if (command.Count > 0 && command[0] == "push")
@@ -232,6 +223,25 @@ internal sealed partial class ControlledGitProcess(IOptions<SourceControlOptions
 		}
         return await RunAsync(workspace, ["--git-dir=" + Path.Combine(workspace.Directory, "repository.git"), .. command],
             configuration, timeout, cancellationToken, classifyFailure: classifyFailure);
+    }
+
+    private string CredentialHelperPath()
+    {
+        var helper = options.Value.AuthHelperExecutablePath ?? Path.Combine(AppContext.BaseDirectory,
+            "source-control-auth", "VertexBPMN.SourceControl.AuthHelper" + (OperatingSystem.IsWindows() ? ".exe" : ""));
+        if (string.IsNullOrEmpty(helper) || !Path.IsPathFullyQualified(helper) || !File.Exists(helper)
+            || helper.Any(c => c is '\r' or '\n' or '\'' or '"' or '$' or '`' or '\\'))
+        {
+            // Git's credential helper is intentionally a trusted fixed executable command.
+            // Normalize Windows separators before applying the shell quoting boundary.
+            helper = helper?.Replace('\\', '/');
+            if (string.IsNullOrEmpty(helper) || !Path.IsPathFullyQualified(helper) || !File.Exists(helper)
+                || helper.Any(c => c is '\r' or '\n' or '\'' or '"' or '$' or '`'))
+			{
+				throw new SourceControlSecurityException(SourceControlErrorCode.GitUnavailable);
+			}
+		}
+        return helper;
     }
 
     private async Task<GitCommitId> WriteCommitTreeAsync(GitWorkspace workspace, CommitCommand command, string index,

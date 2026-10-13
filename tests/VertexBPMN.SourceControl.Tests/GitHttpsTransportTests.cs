@@ -447,6 +447,7 @@ public sealed partial class GitHttpsTransportTests
 		private readonly string _git;
 		private readonly bool _stall;
 		private readonly bool _hostile;
+		private readonly string? _username;
 		private WebApplication? _server;
 		private WebApplication? _revocationServer;
 		private X509Certificate2? _certificate;
@@ -454,6 +455,7 @@ public sealed partial class GitHttpsTransportTests
 		internal string Token { get; } = "test-only-" + Guid.NewGuid().ToString("N");
 		internal int Challenges;
 		internal int AuthenticatedRequests;
+		internal int AnonymousRequests;
 		internal int PushRequests;
 		internal bool DropPushResponse;
 		internal Func<Task>? BeforeReceivePack;
@@ -471,19 +473,24 @@ public sealed partial class GitHttpsTransportTests
 		internal string ExecutionMarker => Path.Combine(Root, "untrusted-program-executed");
 
 		private readonly string _objectFormat;
+		private readonly string _hostname;
+		private readonly GitAuthenticationKind _authentication;
 
-		private HttpsFixture(bool stall, bool hostile, string objectFormat)
+		private HttpsFixture(bool stall, bool hostile, string objectFormat, string? username, string hostname, GitAuthenticationKind authentication)
 		{
 			_stall = stall;
 			_hostile = hostile;
 			_objectFormat = objectFormat;
+			_username = username;
+			_hostname = hostname;
+			_authentication = authentication;
 			_git = Environment.GetEnvironmentVariable("VERTEXBPMN_TEST_GIT")!;
 			Assert.True(_git is not null && Path.IsPathFullyQualified(_git) && File.Exists(_git), "Configure the real Git executable for local acceptance.");
 		}
 
-		internal static async Task<HttpsFixture> CreateAsync(bool stall = false, bool hostile = false, string objectFormat = "sha1")
+		internal static async Task<HttpsFixture> CreateAsync(bool stall = false, bool hostile = false, string objectFormat = "sha1", string? username = "x-access-token", string hostname = "localhost", GitAuthenticationKind authentication = GitAuthenticationKind.HttpBasic)
 		{
-			var fixture = new HttpsFixture(stall, hostile, objectFormat);
+			var fixture = new HttpsFixture(stall, hostile, objectFormat, username, hostname, authentication);
 			try
 			{ await fixture.StartAsync(); return fixture; }
 			catch { await fixture.DisposeAsync(); throw; }
@@ -525,7 +532,7 @@ public sealed partial class GitHttpsTransportTests
 			{
 				Enabled = true,
 				GitExecutablePath = _git,
-				AuthHelperExecutablePath = helper,
+				AuthHelperExecutablePath = _username is null ? Path.Combine(Root, "missing-helper.exe") : helper,
 				Limits = new() { WriteTimeout = TimeSpan.FromSeconds(10) }
 			}));
 			var initialRevision = new GitCommitId(Encoding.UTF8.GetString(await GitAsync(["-C", source, "rev-parse", "HEAD"])).Trim());
@@ -582,7 +589,7 @@ public sealed partial class GitHttpsTransportTests
 			certRequest.CertificateExtensions.Add(CertificateRevocationListBuilder.BuildCrlDistributionPointExtension([crlAddress + "/issuer.crl"]));
 			certRequest.CertificateExtensions.Add(X509AuthorityKeyIdentifierExtension.CreateFromCertificate(issuer, true, false));
 			var names = new SubjectAlternativeNameBuilder();
-			names.AddDnsName("localhost");
+			names.AddDnsName(_hostname);
 			certRequest.CertificateExtensions.Add(names.Build());
 			certRequest.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, true));
 			certRequest.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, true));
@@ -605,20 +612,32 @@ public sealed partial class GitHttpsTransportTests
 			_server.Run(context => HandleAsync(context, repositories));
 			await _server.StartAsync(TestContext.Current.CancellationToken);
 			var address = _server.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
-			Remote = new Uri(address.Replace("127.0.0.1", "localhost", StringComparison.Ordinal) + "/models.git");
+			Remote = new Uri(address.Replace("127.0.0.1", _hostname, StringComparison.Ordinal) + "/models.git");
 		}
 
 		private async Task HandleAsync(HttpContext context, string repositories)
 		{
-			var expected = "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes("x-access-token:" + Token));
-			if (context.Request.Headers.Authorization != expected)
+			var expected = _authentication == GitAuthenticationKind.HttpBearer
+				? "Bearer " + Token : "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes(_username + ":" + Token));
+			var authorizationMatches = _username is null
+				? !context.Request.Headers.ContainsKey("Authorization")
+				: context.Request.Headers.Authorization == expected;
+			if (!authorizationMatches)
 			{
 				Interlocked.Increment(ref Challenges);
 				context.Response.StatusCode = 401;
-				context.Response.Headers.WWWAuthenticate = "Basic realm=\"isolated-git-test\"";
+				context.Response.Headers.WWWAuthenticate = _authentication == GitAuthenticationKind.HttpBearer
+					? "Bearer realm=\"isolated-git-test\"" : "Basic realm=\"isolated-git-test\"";
 				return;
 			}
-			Interlocked.Increment(ref AuthenticatedRequests);
+			if (_username is null)
+			{
+				Interlocked.Increment(ref AnonymousRequests);
+			}
+			else
+			{
+				Interlocked.Increment(ref AuthenticatedRequests);
+			}
 			var (receiving, writing, received) = await PrepareReceivePackAsync(context);
 			if (_stall)
 			{

@@ -197,11 +197,31 @@ public static class InfrastructureModule
     {
         services.AddScoped<ICredentialService, PersistentCredentialService>();
         services.AddScoped<SourceControl.PersistentSourceControlStore>();
+		services.AddScoped<SourceControl.SourceControlAuditExporter>();
+        services.AddSingleton<VertexBPMN.SourceControl.Abstractions.IRepositoryHostingTargetResolver, VertexBPMN.Application.SourceControl.RepositoryHostingTargetPolicy>();
+        services.AddScoped<SourceControl.ProfiledHostingCredentialBroker>();
         services.AddScoped<SourceControl.GitHubAppTokenBroker>();
+		services.AddScoped<SourceControl.IRepositoryHostingAdapter, SourceControl.GitHubHostingAdapter>();
+		services.AddScoped<SourceControl.IRepositoryHostingAdapter, SourceControl.AzureDevOpsHostingAdapter>();
+		services.AddScoped<SourceControl.RepositoryHostingRegistry>();
+        services.AddScoped<SourceControl.ProfiledGitCredentialBroker>();
+		services.AddScoped<SourceControl.ProfiledSshCredentialBroker>();
+		services.AddScoped<SourceControl.GitSshPolicyRegistry>();
+		services.AddScoped<SourceControl.ProfiledGitSshTransport>();
+		services.AddScoped<SourceControl.SourceControlSshReadExecutor>();
+		services.AddScoped<SourceControl.SourceControlClaimedSshReadRunner>();
+		services.AddScoped<SourceControl.ProfiledSshReadService>();
+        services.AddScoped<SourceControl.IAzureDevOpsTokenIssuer, SourceControl.AzureDevOpsTokenIssuer>();
+        services.AddScoped<SourceControl.GitHttpsPolicyRegistry>();
+        services.AddScoped<SourceControl.ProfiledGitHttpsTransport>();
         services.AddScoped<SourceControl.ControlledGitProcess>();
         services.AddScoped<SourceControl.SourceControlWorkspace>();
         services.AddScoped<SourceControl.SourceControlCommitExecutor>();
         services.AddScoped<SourceControl.SourceControlClaimedCommitRunner>();
+		services.AddScoped<SourceControl.SourceControlHttpsReadExecutor>();
+		services.AddScoped<SourceControl.SourceControlClaimedReadRunner>();
+		services.AddScoped<SourceControl.ProfiledGitReadService>();
+		services.AddScoped<SourceControl.ProfiledGitWriteTransport>();
         services.AddScoped<SourceControl.SourceControlPushExecutor>();
         services.AddScoped<SourceControl.SourceControlClaimedPushRunner>();
         services.AddScoped<SourceControl.SourceControlPullRequestExecutor>();
@@ -209,16 +229,28 @@ public static class InfrastructureModule
             sp.GetRequiredService<SourceControl.PersistentSourceControlStore>(),
             sp.GetRequiredService<SourceControl.GitHubAppTokenBroker>(),
             sp.GetRequiredService<VertexBPMN.Application.SourceControl.ISourceControlActorResolver>(),
-            sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<VertexBPMN.SourceControl.Abstractions.SourceControlOptions>>()));
+            sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<VertexBPMN.SourceControl.Abstractions.SourceControlOptions>>(),
+			sp.GetRequiredService<SourceControl.RepositoryHostingRegistry>()));
         services.AddScoped<SourceControl.SourceControlClaimedPullRequestRunner>();
         services.AddScoped<VertexBPMN.Application.SourceControl.ISourceControlActorResolver, SourceControl.KeycloakSourceControlActorResolver>();
         services.AddScoped<VertexBPMN.SourceControl.Abstractions.IModelSourceControlProvider, SourceControl.NativeGitModelSourceControlProvider>();
+		ConfigureSshAuthenticationFiles(services, mode);
         if (mode != "Test" && configuration.GetValue<bool>("SourceControl:Enabled"))
         {
             services.AddHostedService<SourceControl.SourceControlMaintenanceHostedService>();
             services.AddHostedService<SourceControl.SourceControlJobsHostedService>();
+			services.AddHostedService<SourceControl.SourceControlAuditHostedService>();
         }
     }
+
+	private static void ConfigureSshAuthenticationFiles(IServiceCollection services, string mode)
+	{
+		services.AddScoped<SourceControl.GitSshAuthenticationFileRecovery>();
+		if (mode != "Test")
+		{
+			services.AddHostedService<SourceControl.SourceControlSshAuthenticationCleanupHostedService>();
+		}
+	}
 
     private static void ConfigureRuntimeOutbox(
         IServiceCollection services,

@@ -6,19 +6,20 @@ using VertexBPMN.SourceControl.Abstractions;
 namespace VertexBPMN.Infrastructure.SourceControl;
 
 internal sealed class SourceControlPullRequestExecutor(PersistentSourceControlStore store,
-	GitHubAppTokenBroker tokens, IOptions<SourceControlOptions> options)
+	GitHubAppTokenBroker tokens, IOptions<SourceControlOptions> options, RepositoryHostingRegistry? hosting = null)
 {
 	internal async Task<PullRequestReceipt> ExecuteAsync(SourceControlContext context, Guid id, string worker,
 		long fence, Func<CancellationToken, Task<IReadOnlyCollection<string>>> resolveRoles, CancellationToken cancellationToken)
 	{
 		var roles = await resolveRoles(cancellationToken);
 		var work = await store.ReadPullRequestWorkAsync(context, id, worker, fence, roles, cancellationToken);
-		using var lease = await tokens.IssueAsync(context, work.Binding.Id, roles, RepositoryPermission.PullRequest, cancellationToken);
-		using var client = SourceControlHttps.CreateClient(options.Value.AllowedHosts, options.Value.Limits.ReadTimeout);
-		var transport = new GitHubPullRequestTransport(client);
+		var registry = hosting ?? new RepositoryHostingRegistry([new GitHubHostingAdapter(tokens, options)]);
+		using var session = work.Hosting is null
+			? await registry.OpenLegacyAsync(context, work.Binding, roles, RepositoryPermission.PullRequest, cancellationToken)
+			: await registry.OpenProfiledAsync(context, work.Binding, work.Hosting, roles, cancellationToken);
 		return await ExecutePreparedAsync(context, id, worker, fence, resolveRoles,
-			(current, token) => transport.CreateAsync(current.Binding, current.Command, lease, token),
-			(current, token) => transport.ReconcileAsync(current.Binding, current.Command, lease, token), cancellationToken);
+			(current, token) => session.CreateAsync(current.Command, token),
+			(current, token) => session.ReconcileAsync(current.Command, token), cancellationToken);
 	}
 
 	internal async Task<PullRequestReceipt> ExecutePreparedAsync(SourceControlContext context, Guid id, string worker,
@@ -47,8 +48,8 @@ internal sealed class SourceControlPullRequestExecutor(PersistentSourceControlSt
 			try
 			{
 				var intent = JsonSerializer.Deserialize<StoredPullRequest>(saved);
-				if (intent is null || intent.SchemaVersion != 1 || intent.RepositoryId != work.Binding.Id
-					|| intent.Command != work.Command || intent.Receipt is not null)
+				if (intent is null || intent.SchemaVersion != (work.Hosting is null ? 1 : 2) || intent.RepositoryId != work.Binding.Id
+					|| intent.Command != work.Command || intent.Receipt is not null || intent.HostingTarget != work.Hosting?.HostingTarget)
 				{
 					throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
 				}

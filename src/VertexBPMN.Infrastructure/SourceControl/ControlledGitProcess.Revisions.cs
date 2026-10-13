@@ -7,7 +7,7 @@ namespace VertexBPMN.Infrastructure.SourceControl;
 internal sealed partial class ControlledGitProcess
 {
 	internal async Task<RevisionSelection> ResolveRemoteBranchAsync(GitWorkspace workspace,
-		SourceControlContext context, RepositoryBinding binding, string branch, GitHubTokenLease lease,
+		SourceControlContext context, RepositoryBinding binding, string branch, IGitCredentialLease lease,
 		CancellationToken cancellationToken)
 	{
 		DemandReadBinding(context, binding, branch);
@@ -30,7 +30,7 @@ internal sealed partial class ControlledGitProcess
 	}
 
 	internal Task<RevisionSelection> ResolveRemoteBranchLocalAcceptanceAsync(GitWorkspace workspace,
-		SourceControlContext context, RepositoryBinding binding, string branch, GitHubTokenLease lease,
+		SourceControlContext context, RepositoryBinding binding, string branch, IGitCredentialLease lease,
 		string certificateAuthorityFile, CancellationToken cancellationToken)
 	{
 		DemandReadBinding(context, binding, branch);
@@ -39,7 +39,7 @@ internal sealed partial class ControlledGitProcess
 	}
 
 	private async Task<RevisionSelection> ResolveRemoteBranchCoreAsync(GitWorkspace workspace,
-		RepositoryBinding binding, string branch, GitHubTokenLease lease, IPAddress[] addresses,
+		RepositoryBinding binding, string branch, IGitCredentialLease? lease, IPAddress[] addresses,
 		string? certificateAuthorityFile, CancellationToken cancellationToken)
 	{
 		var commit = await ReadRemoteHeadCoreAsync(workspace, binding.Remote, branch, lease, addresses, certificateAuthorityFile, cancellationToken)
@@ -57,7 +57,7 @@ internal sealed partial class ControlledGitProcess
 	}
 
 	private async Task<GitCommitId?> ReadRemoteHeadCoreAsync(GitWorkspace workspace, Uri remote, string branch,
-		GitHubTokenLease lease, IPAddress[] addresses, string? certificateAuthorityFile, CancellationToken cancellationToken)
+		IGitCredentialLease? lease, IPAddress[] addresses, string? certificateAuthorityFile, CancellationToken cancellationToken)
 	{
 		await VersionAsync(workspace, cancellationToken);
 		var reference = "refs/heads/" + branch;

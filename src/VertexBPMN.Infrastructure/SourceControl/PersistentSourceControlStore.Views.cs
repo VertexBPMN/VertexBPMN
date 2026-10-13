@@ -7,7 +7,7 @@ namespace VertexBPMN.Infrastructure.SourceControl;
 
 public sealed partial class PersistentSourceControlStore
 {
-	internal async Task<(RepositoryBinding Binding, PullRequestCommand Command, PullRequestReceipt Receipt)> ReadConfirmedPullRequestAsync(
+	internal async Task<(RepositoryBinding Binding, PullRequestCommand Command, PullRequestReceipt Receipt, AcceptedHostingExecution? Hosting)> ReadConfirmedPullRequestAsync(
 		SourceControlContext context, Guid id, IReadOnlyCollection<string> roles, CancellationToken cancellationToken)
 	{
 		var receipt = await GetPullRequestReceiptAsync(context, id, roles, cancellationToken)
@@ -17,15 +17,18 @@ public sealed partial class PersistentSourceControlStore
 		var access = await FindAsync(context.TenantId, row.RepositoryId, cancellationToken)
 			?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
 		RepositoryAccessPolicy.Demand(context, access.Binding, roles, access.Grants, RepositoryPermission.PullRequest);
+		var hosting = row.ExecutionContractVersion == AcceptedHostingExecution.ContractVersion
+			? await DemandHostingRowAsync(context, row, roles, cancellationToken) : null;
 		try
 		{
 			var stored = JsonSerializer.Deserialize<StoredPullRequest>(Unprotect(context, row.RepositoryId, row.ProtectedResult ?? ""));
-			if (stored is null || stored.SchemaVersion != 1 || stored.RepositoryId != row.RepositoryId
-				|| stored.Command?.OperationId != id || stored.Receipt != receipt || stored.Command.HeadCommit != receipt.HeadCommit)
+			if (stored is null || stored.SchemaVersion != (hosting is null ? 1 : 2) || stored.RepositoryId != row.RepositoryId
+				|| stored.Command?.OperationId != id || stored.Receipt != receipt || stored.Command.HeadCommit != receipt.HeadCommit
+				|| stored.HostingTarget != hosting?.HostingTarget)
 			{
 				throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
 			}
-			return (access.Binding, stored.Command, receipt);
+			return (access.Binding, stored.Command, receipt, hosting);
 		}
 		catch (Exception error) when (error is JsonException or ArgumentException)
 		{
@@ -49,10 +52,24 @@ public sealed partial class PersistentSourceControlStore
 		try
 		{
 			var stored = JsonSerializer.Deserialize<StoredPullRequest>(Unprotect(context, row.RepositoryId, row.ProtectedResult ?? ""));
-			if (stored?.SchemaVersion != 1 || stored.RepositoryId != row.RepositoryId || stored.Command?.OperationId != id
+			var hosting = row.ExecutionContractVersion == AcceptedHostingExecution.ContractVersion
+				? ReadHistoricalHostingExecution(context, row) : null;
+			if (hosting is null)
+			{
+				DemandLegacyExecutionContract(row);
+			}
+			if (stored?.SchemaVersion != (hosting is null ? 1 : 2) || stored.RepositoryId != row.RepositoryId || stored.Command?.OperationId != id
 				|| stored.Receipt is null || stored.Receipt.OperationId != id || stored.Receipt.HeadCommit != stored.Command.HeadCommit)
 			{
 				throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
+			}
+			if (stored.HostingTarget != hosting?.HostingTarget)
+			{
+				throw new SourceControlSecurityException(SourceControlErrorCode.ContentUnsafe);
+			}
+			if (hosting is not null)
+			{
+				RepositoryHostingReceiptPolicy.Demand(hosting.HostingTarget, stored.Command, stored.Receipt);
 			}
 			return stored.Receipt;
 		}

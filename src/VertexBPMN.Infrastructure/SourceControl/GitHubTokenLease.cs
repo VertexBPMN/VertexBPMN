@@ -4,7 +4,7 @@ using VertexBPMN.SourceControl.Abstractions;
 
 namespace VertexBPMN.Infrastructure.SourceControl;
 
-internal sealed class GitHubTokenLease(string token, DateTimeOffset expiresAt) : IDisposable
+internal sealed class GitHubTokenLease(string token, DateTimeOffset expiresAt) : IGitCredentialLease
 {
     private char[]? _token = token.ToCharArray();
     internal DateTimeOffset ExpiresAt { get; } = expiresAt;
@@ -17,6 +17,15 @@ internal sealed class GitHubTokenLease(string token, DateTimeOffset expiresAt) :
 
 		return new("Bearer", new string(_token));
     }
+	public async Task WriteCredentialAsync(Uri remote, StreamWriter writer, CancellationToken cancellationToken)
+	{
+		ArgumentNullException.ThrowIfNull(remote);
+		ArgumentNullException.ThrowIfNull(writer);
+		var password = Authorization().Parameter!;
+		await writer.WriteLineAsync("x-access-token".AsMemory(), cancellationToken);
+		await writer.WriteLineAsync(password.AsMemory(), cancellationToken);
+	}
+
     public void Dispose()
     {
         if (_token is not null)

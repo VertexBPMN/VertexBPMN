@@ -9,7 +9,7 @@ namespace VertexBPMN.Infrastructure.SourceControl;
 /// no background scheduler may invent roles or copy them from browser input.
 /// </summary>
 internal sealed class SourceControlCommitExecutor(PersistentSourceControlStore store,
-    SourceControlWorkspace workspaces, ControlledGitProcess git, GitHubAppTokenBroker tokens)
+    SourceControlWorkspace workspaces, ControlledGitProcess git, GitHubAppTokenBroker tokens, ProfiledGitWriteTransport? profiled = null)
 {
     internal async Task<CommitReceipt> ExecuteAsync(SourceControlContext context, Guid id, string worker,
         long fence, Func<CancellationToken, Task<IReadOnlyCollection<string>>> resolveCurrentRoles, CancellationToken cancellationToken)
@@ -31,9 +31,17 @@ internal sealed class SourceControlCommitExecutor(PersistentSourceControlStore s
 
 			workspace = await workspaces.CreateAsync(context, id, worker, fence, cancellationToken);
             await git.InitializeAsync(workspace, work.Command.BaseCommit, cancellationToken);
-            using var token = await tokens.IssueAsync(context, work.Binding.Id, roles, RepositoryPermission.Commit, cancellationToken);
-            // No moving-head substitution: BuildCommit uses the accepted full base OID or fails.
-            await git.FetchRevisionAsync(workspace, work.Binding.Remote, work.Command.BaseCommit, token, cancellationToken);
+			if (work.Binding.ConnectionProfileId is not null)
+			{
+				await (profiled ?? throw new SourceControlSecurityException(SourceControlErrorCode.ProviderUnavailable))
+					.FetchBaseAsync(workspace, context, id, worker, fence, work.Command.BaseCommit, cancellationToken);
+			}
+			else
+			{
+				using var token = await tokens.IssueAsync(context, work.Binding.Id, roles, RepositoryPermission.Commit, cancellationToken);
+				// No moving-head substitution: BuildCommit uses the accepted full base OID or fails.
+				await git.FetchRevisionAsync(workspace, work.Binding.Remote, work.Command.BaseCommit, token, cancellationToken);
+			}
         }
         return await ExecutePreparedAsync(context, id, worker, fence, resolveCurrentRoles, workspace, cancellationToken);
     }

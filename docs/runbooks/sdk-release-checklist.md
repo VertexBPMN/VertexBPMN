@@ -18,8 +18,8 @@ The nuget.org policy must use repository owner `VertexBPMN`, repository `VertexB
 ## Release
 
 ```text
-git tag v1.0.1
-git push origin v1.0.1
+git tag v1.1.0
+git push origin v1.1.0
 ```
 
 The tag runs the same restore, Release build and central test project as `master`. The build job then creates SDK and CLI exactly once with the version from the tag and uploads them as one workflow artifact. The publish job downloads that artifact, exchanges GitHub OIDC for a short-lived NuGet key and publishes both packages with `--skip-duplicate`.

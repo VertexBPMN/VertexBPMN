@@ -5,7 +5,6 @@
     <Nullable>enable</Nullable>
     <IsPackable>true</IsPackable>
     <PackageId>VertexBPMN.Sdk</PackageId>
-    <Version>1.0.0</Version>
     <Authors>VertexBPMN</Authors>
     <Description>Typed .NET client SDK for the VertexBPMN REST API.</Description>
     <PackageTags>bpmn;workflow;process-automation;vertexbpmn;rest-client</PackageTags>

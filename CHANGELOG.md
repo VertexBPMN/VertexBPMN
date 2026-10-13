@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-13
+
 ### Added
 - Optionaler Studio-Link zur externen Verwaltung von Anmeldemethoden und lokales Keycloak-Passkey-Pilotprofil mit gezielter Registrierung und opt-in Browser-Abnahme.
 - Opt-in OIDC-Aktion „Add a passkey“ für Keycloak mit geschütztem Rücksprung sowie PAR-/Abbruch- und Tenant-Negativtests.

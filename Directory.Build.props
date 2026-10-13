@@ -1,5 +1,6 @@
 <Project>
   <PropertyGroup>
+    <Version>1.1.0</Version>
     <!-- The repository contains no .resx resources. Disabling the default glob also
          prevents MSBuild from treating **/*.resx as a literal file after Roslyn's
          BuildHost creates Windows-separator output directories on Linux/WSL. -->

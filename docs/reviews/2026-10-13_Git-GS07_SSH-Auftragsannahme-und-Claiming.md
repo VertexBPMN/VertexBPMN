@@ -2,6 +2,8 @@
 
 Stand: 13. Oktober 2026, Entwicklungsbranch `codex/git-generic-servers`. Fortsetzung des [gemeinsamen Azure-/SSH-/Audit-Berichts](2026-10-13_Git-GS06-GS07_Azure-SSH-und-Audit.md).
 
+Spätere Fortsetzung desselben Tages: Worker, Lebenszyklus und Ergebnisablage sowie die asynchronen Read-Job-/Ergebnis-API-Backends sind inzwischen angeschlossen. Details und neue Prüfungen: [SSH-Read-Worker und Ergebnisse](2026-10-13_Git-GS07_SSH-Read-Worker-und-Ergebnisse.md). Der folgende Bericht dokumentiert den vorherigen geprüften Zwischenstand.
+
 ## Implementierter Umfang
 
 Der interne SSH-Read-Vertrag verwendet `ExecutionContractVersion = 4`. `AcceptedGitSshExecution` enthält das vollständige akzeptierte Repository-/Profilziel sowie die administrative Netzwerk- und Hostschlüsselkonfiguration. DNS-Adressen, private Schlüssel und Credentialleases sind nicht Teil des dauerhaften Vertrags. Eine zusätzliche Datenbankmigration ist nicht erforderlich; die bestehenden Auftragsfelder werden verwendet.

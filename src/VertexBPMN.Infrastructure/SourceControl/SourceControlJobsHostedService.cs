@@ -30,6 +30,8 @@ internal sealed class SourceControlJobsHostedService(IServiceScopeFactory scopes
 						|| ((x.Kind == (int)SourceControlOperationKind.Read || x.Kind == (int)SourceControlOperationKind.Commit
 							|| x.Kind == (int)SourceControlOperationKind.Push) && x.ExecutionContractVersion == AcceptedGitHttpsExecution.ContractVersion
 							&& x.ProtectedExecutionTarget != null)
+						|| (x.Kind == (int)SourceControlOperationKind.Read
+							&& x.ExecutionContractVersion == AcceptedGitSshExecution.ContractVersion && x.ProtectedExecutionTarget != null)
 						|| (x.Kind == (int)SourceControlOperationKind.PullRequest
 							&& x.ExecutionContractVersion == AcceptedHostingExecution.ContractVersion && x.ProtectedExecutionTarget != null))
 					&& (x.State == (int)SourceControlOperationState.Queued
@@ -59,7 +61,7 @@ internal sealed class SourceControlJobsHostedService(IServiceScopeFactory scopes
 			var fence = await ClaimAsync(scope.ServiceProvider, context, job.Id, kind, job.ExecutionContractVersion, worker, stoppingToken);
 			if (fence is not null)
 			{
-				await DispatchAsync(scope.ServiceProvider, context, job.Id, kind, worker, fence.Value, stoppingToken);
+				await DispatchAsync(scope.ServiceProvider, context, job.Id, kind, job.ExecutionContractVersion, worker, fence.Value, stoppingToken);
 			}
 		}
 		catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { throw; }
@@ -84,6 +86,16 @@ internal sealed class SourceControlJobsHostedService(IServiceScopeFactory scopes
 			return await store.TryClaimAsync(context.TenantId, id, worker, DateTimeOffset.UtcNow, TimeSpan.FromMinutes(2), cancellationToken);
 		}
 		var roles = await services.GetRequiredService<ISourceControlActorResolver>().ResolveAsync(context, cancellationToken);
+		if (version == AcceptedGitSshExecution.ContractVersion && kind == SourceControlOperationKind.Read)
+		{
+			var policies = services.GetRequiredService<GitSshPolicyRegistry>();
+			var work = await store.ReadAcceptedSshReadAsync(context, id, roles, policies, cancellationToken);
+			if (work.Request.Query is null)
+			{
+				throw new SourceControlSecurityException(SourceControlErrorCode.InvalidInput);
+			}
+			return await store.TryClaimSshReadAsync(context, id, worker, DateTimeOffset.UtcNow, TimeSpan.FromMinutes(2), roles, policies, cancellationToken);
+		}
 		if (version == AcceptedHostingExecution.ContractVersion && kind == SourceControlOperationKind.PullRequest)
 		{
 			return await store.TryClaimHostingAsync(context, id, worker, DateTimeOffset.UtcNow, TimeSpan.FromMinutes(2), roles, cancellationToken);
@@ -95,8 +107,12 @@ internal sealed class SourceControlJobsHostedService(IServiceScopeFactory scopes
 	}
 
 	private static Task DispatchAsync(IServiceProvider services, SourceControlContext context, Guid id,
-		SourceControlOperationKind kind, string worker, long fence, CancellationToken cancellationToken)
+		SourceControlOperationKind kind, int version, string worker, long fence, CancellationToken cancellationToken)
 	{
+		if (version == AcceptedGitSshExecution.ContractVersion && kind == SourceControlOperationKind.Read)
+		{
+			return services.GetRequiredService<ProfiledSshReadService>().RunClaimedAsync(context, id, worker, fence, cancellationToken);
+		}
 		var actors = services.GetRequiredService<ISourceControlActorResolver>();
 		return kind switch
 		{

@@ -9,6 +9,11 @@ public sealed partial class PersistentSourceControlStore
 {
 	internal async Task<AcceptedGitSshReadWork> ReadAcceptedSshReadAsync(SourceControlContext context, Guid operationId,
 		IReadOnlyCollection<string> currentRoles, GitSshPolicyRegistry policies, CancellationToken cancellationToken)
+		=> (await ReadAcceptedSshReadRecordAsync(context, operationId, currentRoles, policies, cancellationToken)).Work;
+
+	private async Task<(VertexBPMN.Domain.Entities.SourceControlOperationRecord Row, AcceptedGitSshReadWork Work)> ReadAcceptedSshReadRecordAsync(
+		SourceControlContext context, Guid operationId, IReadOnlyCollection<string> currentRoles, GitSshPolicyRegistry policies,
+		CancellationToken cancellationToken)
 	{
 		Relational();
 		var roles = currentRoles.ToArray();
@@ -30,7 +35,7 @@ public sealed partial class PersistentSourceControlStore
 		var binding = (await FindAsync(context.TenantId, row.RepositoryId, cancellationToken))?.Binding
 			?? throw new SourceControlSecurityException(SourceControlErrorCode.NotFound);
 		policies.DemandCurrent(context, binding, execution.Target.Profile, execution.Policy);
-		return new(execution, DecodeSshReadRequest(bytes, binding));
+		return (row, new(execution, DecodeSshReadRequest(bytes, binding)));
 	}
 
 	private AcceptedGitRevisionRead DecodeSshReadRequest(byte[] bytes, RepositoryBinding binding)

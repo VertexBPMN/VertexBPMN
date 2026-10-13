@@ -1,4 +1,6 @@
 @page "/sso"
+@inject StudioAccountManagement AccountManagement
+@inject StudioPasskeyRegistration Passkeys
 
 <PageTitle>Single Sign-On</PageTitle>
 
@@ -10,4 +12,12 @@
     <MudListItem T="string" Icon="@Icons.Material.Filled.Security">Okta Integration</MudListItem>
     <MudListItem T="string" Icon="@Icons.Material.Filled.Security">Keycloak Integration</MudListItem>
 </MudList>
+@if (AccountManagement.Url is { } accountManagementUrl)
+{
+    <a href="@accountManagementUrl" target="_blank" rel="noopener noreferrer" data-testid="sso-manage-sign-in">Manage sign-in methods</a>
+}
 </MudPaper>
+@if (Passkeys.IsEnabled)
+{
+    <a href="/authentication/passkey/register" data-testid="sso-add-passkey">Add a passkey</a>
+}

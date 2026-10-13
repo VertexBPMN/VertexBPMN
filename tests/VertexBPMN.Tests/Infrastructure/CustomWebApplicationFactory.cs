@@ -157,20 +157,28 @@ public class CustomWebApplicationFactory : WebApplicationFactory<VertexBPMN.Api.
 		{
 			options.UseSqlite(_persistentBpmnConnectionString);
 		}
+		else if (_persistentBpmnConnection is null && _sharedFixture is not null)
+		{
+			options.UseSqlite(_sharedFixture.Connection.ConnectionString);
+		}
 		else
 		{
-			options.UseSqlite(_persistentBpmnConnection ?? _sharedFixture?.Connection ?? CreateAndTrack("bpmn"));
+			options.UseSqlite(_persistentBpmnConnection ?? CreateAndTrack("bpmn"));
 		}
 		options.EnableSensitiveDataLogging().EnableDetailedErrors();
 	}
 
 	private void ConfigureAuxiliaryTestDatabase(DbContextOptionsBuilder options, string label)
 	{
+		if (_persistentBpmnConnectionString is null && _persistentBpmnConnection is null && _sharedFixture is not null)
+		{
+			options.UseSqlite(_sharedFixture.GetConnection(label).ConnectionString).EnableSensitiveDataLogging().EnableDetailedErrors();
+			return;
+		}
+
 		// Persistent-BPMN profiles deliberately keep the auxiliary databases isolated,
 		// even if a shared fixture was also supplied.
-		var connection = _persistentBpmnConnectionString is null && _persistentBpmnConnection is null
-			? _sharedFixture?.GetConnection(label) ?? CreateAndTrack(label)
-			: CreateAndTrack(label);
+		var connection = CreateAndTrack(label);
 		options.UseSqlite(connection).EnableSensitiveDataLogging().EnableDetailedErrors();
 	}
 

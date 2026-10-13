@@ -72,6 +72,30 @@ Die Full-Product-Support-Suite umfasst 51 konkrete Acceptance-Fälle: 47 regulä
 - **Feature- und Dependency-Konfiguration:** API-gesteuerte Feature Flags und persistente Dependency Registry mit sicherer Konfigurationspriorität
 - **n8n-Import:** Import von Workflows mit Credential-Referenzen, Bedingungs-Mapping und expliziten Review-Markierungen
 
+## Passkeys mit Keycloak
+
+Studio unterstützt optional die passwortlose Anmeldung mit Passkeys über Keycloak.
+Keycloak übernimmt Registrierung, Speicherung und Prüfung; Studio und API nutzen
+weiterhin OIDC und JWT mit den bestehenden Rollen- und Tenantprüfungen.
+
+- **Anmeldemethoden verwalten:** `StudioAuthentication__AccountManagementUrl`
+  zeigt auf die HTTPS-Account-Console des Providers.
+- **Passkey hinzufügen:** `StudioAuthentication__PasskeyRegistrationEnabled=true`
+  aktiviert für Keycloak den Link **Add a passkey** auf der SSO-Seite. Standard ist
+  `false`; lokale Entwicklungs- und UI-Testauthentifizierung sind ausgeschlossen.
+- **Gezielte Einschreibung:** Die Realm-Vorlage ermöglicht Passkeys, verpflichtet
+  aber nicht alle Benutzer zur Registrierung.
+
+Mit Keycloak 26.7.3 lokal geprüft: Registrierung, erneute Passkeyanmeldung,
+Registrierung aus Studio über PAR, Abbruch mit intakter Sitzung und Ablehnung von
+Tokens ohne Tenant. Die kombinierte Browser-Sicherheitsabnahme bestand 20/20 Fälle
+mit einem virtuellen Chromium-Authenticator. Produktions-RP-ID, Recovery, MFA und
+reale Geräte müssen für die jeweilige Umgebung qualifiziert werden.
+
+Einrichtung: [Studio-Authentifizierung](docs/runbooks/studio-authentication.md),
+[lokaler Keycloak-Pilot](deploy/keycloak/README.md) und
+[Abnahmenachweis](docs/reviews/2026-10-13_Keycloak-Passkeys_AIA-und-Tenant-Abnahme.md).
+
 ## Architektur
 
 ```text

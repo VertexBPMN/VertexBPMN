@@ -8,6 +8,16 @@ namespace VertexBPMN.Studio.UiTests;
 
 public sealed class StudioUiContractTests(StudioUiTestHost host) : IClassFixture<StudioUiTestHost>
 {
+	[Fact]
+	public async Task Sso_OmitsAccountManagementLink_WhenUnconfigured()
+	{
+		var page = await host.Browser.NewPageAsync();
+		await page.GotoAsync(new Uri(host.BaseAddress, "sso").ToString());
+		await page.GetByRole(AriaRole.Heading, new() { Name = "Single Sign-On (SSO)", Exact = true }).WaitForAsync();
+		Assert.Equal(0, await page.GetByTestId("sso-manage-sign-in").CountAsync());
+		Assert.Equal(0, await page.GetByTestId("sso-add-passkey").CountAsync());
+	}
+
 	private static readonly string[] ExpectedNavigationRoutes =
 	[
 		"/", "/bpmn-modeler", "/dmn-modeler", "/cmmn-modeler", "/form-builder",

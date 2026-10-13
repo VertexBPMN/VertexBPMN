@@ -14,6 +14,31 @@ public sealed class KeycloakRealmTemplateTests
 		"deploy", "keycloak", "vertexbpmn-user-profile.json"));
 
 	[Fact]
+	public void RealmTemplate_EnablesVerifiedDiscoverablePasskeysWithoutMandatoryEnrollment()
+	{
+		using var document = JsonDocument.Parse(File.ReadAllText(RealmTemplatePath));
+		var root = document.RootElement;
+		Assert.True(root.GetProperty("webAuthnPolicyPasswordlessPasskeysEnabled").GetBoolean());
+		Assert.Equal("localhost", root.GetProperty("webAuthnPolicyPasswordlessRpId").GetString());
+		Assert.Equal("required", root.GetProperty("webAuthnPolicyPasswordlessResidentKey").GetString());
+		Assert.Equal("required", root.GetProperty("webAuthnPolicyPasswordlessUserVerificationRequirement").GetString());
+		Assert.Equal("none", root.GetProperty("webAuthnPolicyPasswordlessAttestationConveyancePreference").GetString());
+		Assert.Equal("not specified", root.GetProperty("webAuthnPolicyPasswordlessAuthenticatorAttachment").GetString());
+		var action = FindByName(root.GetProperty("requiredActions"), "alias", "webauthn-register-passwordless");
+		Assert.Equal("webauthn-register-passwordless", action.GetProperty("providerId").GetString());
+		Assert.True(action.GetProperty("enabled").GetBoolean());
+		Assert.False(action.GetProperty("defaultAction").GetBoolean());
+		// An explicit requiredActions list replaces Keycloak's defaults on import.
+		var totp = FindByName(root.GetProperty("requiredActions"), "alias", "CONFIGURE_TOTP");
+		Assert.True(totp.GetProperty("enabled").GetBoolean());
+		Assert.False(totp.GetProperty("defaultAction").GetBoolean());
+		foreach (var alias in new[] { "UPDATE_PROFILE", "VERIFY_EMAIL", "UPDATE_PASSWORD", "VERIFY_PROFILE", "delete_credential", "idp_link" })
+		{
+			Assert.True(FindByName(root.GetProperty("requiredActions"), "alias", alias).GetProperty("enabled").GetBoolean());
+		}
+	}
+
+	[Fact]
 	public void RealmTemplate_IsSecretFreeAndContainsNoUsers()
 	{
 		using var document = JsonDocument.Parse(File.ReadAllText(RealmTemplatePath));

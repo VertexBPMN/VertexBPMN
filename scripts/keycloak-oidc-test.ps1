@@ -10,6 +10,9 @@ param(
     [ValidateRange(10, 3600)]
     [int]$AccessTokenLifespan = 300,
     [switch]$SecurityAcceptance,
+    [switch]$RequirePasskeyEnrollment,
+    [ValidatePattern("^[a-z0-9-]{0,40}$")]
+    [string]$TestInstance = $env:VERTEXBPMN_KEYCLOAK_TEST_INSTANCE,
     [ValidatePattern("^[A-Za-z0-9._~-]+$")]
     [string]$AdminUser = "vertexbpmn-admin",
     [ValidatePattern("^[A-Za-z0-9._~-]+$")]
@@ -24,6 +27,12 @@ $networkName = "vertexbpmn-keycloak-test"
 $databaseContainer = "vertexbpmn-keycloak-postgres-test"
 $keycloakContainer = "vertexbpmn-keycloak-test"
 $databaseVolume = "vertexbpmn-keycloak-postgres-test-data"
+if (-not [string]::IsNullOrWhiteSpace($TestInstance)) {
+    $networkName += "-$TestInstance"
+    $databaseContainer += "-$TestInstance"
+    $keycloakContainer += "-$TestInstance"
+    $databaseVolume += "-$TestInstance"
+}
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $realmFile = Join-Path $repositoryRoot "deploy/keycloak/vertexbpmn-realm.json"
 $realmName = "vertexbpmn"
@@ -183,7 +192,9 @@ function Ensure-TestUser {
         [Parameter(Mandatory)][string]$Username,
         [AllowEmptyString()][string]$TenantId,
         [Parameter(Mandatory)][string]$Role,
-        [switch]$RequireMfaEnrollment
+        [switch]$RequireMfaEnrollment,
+        [switch]$RequirePasskeyEnrollment,
+        [switch]$ResetPasskeys
     )
 
     $lookup = Invoke-Kcadm -Arguments @("get", "users", "-r", $realmName, "-q", "username=$Username")
@@ -204,13 +215,16 @@ function Ensure-TestUser {
     }
 
     $userId = Get-KeycloakEntityId -Resource "users" -Query "username=$Username"
-    $requiredActions = if ($RequireMfaEnrollment) { '["CONFIGURE_TOTP"]' } else { '[]' }
+    $requiredActions = if ($RequireMfaEnrollment) { '["CONFIGURE_TOTP"]' }
+        elseif ($RequirePasskeyEnrollment) { '["webauthn-register-passwordless"]' }
+        else { '[]' }
     $updateArguments = @(
         "update", "users/$userId", "-r", $realmName,
         "-s", "email=$Username@vertexbpmn.test",
         "-s", "firstName=VertexBPMN",
         "-s", "lastName=Test User",
         "-s", "emailVerified=true",
+        "-s", "enabled=true",
         "-s", "requiredActions=$requiredActions"
     )
     $updateArguments += if ([string]::IsNullOrWhiteSpace($TenantId)) {
@@ -227,10 +241,13 @@ function Ensure-TestUser {
         "--username", $Username,
         "--new-password", $password
     )
-    if ($RequireMfaEnrollment) {
+    if ($RequireMfaEnrollment -or $ResetPasskeys) {
         $credentialLookup = Invoke-Kcadm -Arguments @("get", "users/$userId/credentials", "-r", $realmName)
         $credentials = @($credentialLookup.Output -join [Environment]::NewLine | ConvertFrom-Json)
-        foreach ($credential in @($credentials | Where-Object { $_.type -eq "otp" })) {
+        foreach ($credential in @($credentials | Where-Object {
+            ($RequireMfaEnrollment -and $_.type -eq "otp") -or
+            ($ResetPasskeys -and $_.type -in @("webauthn-passwordless", "webauthn"))
+        })) {
             if (-not [string]::IsNullOrWhiteSpace($credential.id)) {
                 $null = Invoke-Kcadm -Arguments @(
                     "delete", "users/$userId/credentials/$($credential.id)", "-r", $realmName
@@ -371,10 +388,37 @@ function Ensure-SecurityAcceptanceProfile {
     )
 }
 
+function Ensure-PasskeyPolicy {
+    # Read the secret-free template so initial import and existing realms share one policy.
+    $template = Get-Content -LiteralPath $realmFile -Raw | ConvertFrom-Json
+    $arguments = @("update", "realms/$realmName")
+    foreach ($property in $template.PSObject.Properties | Where-Object { $_.Name -like "webAuthnPolicyPasswordless*" }) {
+        $value = ConvertTo-Json -InputObject $property.Value -Compress
+        $arguments += @("-s", "$($property.Name)=$value")
+    }
+    $null = Invoke-Kcadm -Arguments $arguments
+    $action = $template.requiredActions | Where-Object { $_.alias -eq "webauthn-register-passwordless" }
+    $lookup = Invoke-Kcadm -Arguments @("get", "authentication/required-actions", "-r", $realmName)
+    $actions = @($lookup.Output -join [Environment]::NewLine | ConvertFrom-Json)
+    if (-not ($actions | Where-Object { $_.alias -eq $action.alias })) {
+        $null = Invoke-Kcadm -Arguments @(
+            "create", "authentication/required-actions", "-r", $realmName,
+            "-s", "alias=$($action.alias)", "-s", "providerId=$($action.providerId)",
+            "-s", "name=$($action.name)", "-s", "enabled=true", "-s", "defaultAction=false"
+        )
+    }
+    $null = Invoke-Kcadm -Arguments @(
+        "update", "authentication/required-actions/webauthn-register-passwordless", "-r", $realmName,
+        "-s", "enabled=true", "-s", "defaultAction=false",
+        "-s", "priority=$($action.priority)"
+    )
+}
+
 function Bootstrap-Realm {
     Assert-RequiredSecrets
     Wait-Keycloak
     Connect-Kcadm
+    Ensure-PasskeyPolicy
 
     $null = Invoke-Kcadm -Arguments @(
         "update", "realms/$realmName",
@@ -399,6 +443,13 @@ function Bootstrap-Realm {
 
     Ensure-TestUser -Username $TestUser -TenantId "tenant-a" -Role "ProcessManager"
     Ensure-TestUser -Username $MfaTestUser -TenantId "tenant-b" -Role "ReadOnly" -RequireMfaEnrollment
+    Ensure-TestUser -Username "vertexbpmn-passkey-user" -TenantId "tenant-a" -Role "ReadOnly" `
+        -RequirePasskeyEnrollment:$RequirePasskeyEnrollment -ResetPasskeys
+    if ($RequirePasskeyEnrollment) {
+        Ensure-TestUser -Username "vertexbpmn-passkey-aia-user" -TenantId "tenant-a" -Role "ReadOnly" -ResetPasskeys
+        # Enroll while valid; T15 removes the tenant before the subsequent passkey login.
+        Ensure-TestUser -Username "vertexbpmn-passkey-no-tenant" -TenantId "tenant-a" -Role "ReadOnly" -ResetPasskeys -RequirePasskeyEnrollment
+    }
     if ($SecurityAcceptance) {
         Ensure-SecurityAcceptanceProfile
     }

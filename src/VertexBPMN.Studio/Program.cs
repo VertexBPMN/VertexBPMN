@@ -23,6 +23,9 @@ builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.W
 builder.AddServiceDefaults();
 var isUiTest = builder.Environment.IsEnvironment("UiTest") && string.Equals(builder.Configuration["StudioAuthentication:UiTestEnabled"], "true", StringComparison.OrdinalIgnoreCase);
 var isLocalDevelopment = builder.Environment.IsDevelopment() && builder.Configuration.GetValue<bool>("StudioAuthentication:LocalDevelopmentEnabled");
+builder.Services.AddSingleton(new StudioAccountManagement(builder.Configuration["StudioAuthentication:AccountManagementUrl"], builder.Environment.EnvironmentName));
+var passkeyRegistration = new StudioPasskeyRegistration(configured: builder.Configuration.GetValue<bool>("StudioAuthentication:PasskeyRegistrationEnabled"), oidcActive: !isUiTest && !isLocalDevelopment);
+builder.Services.AddSingleton(passkeyRegistration);
 var httpsRedirectionEnabled = builder.Configuration.GetValue("StudioHttpsRedirection:Enabled", true);
 var operationalMode = builder.Configuration["OperationalMode"] ?? builder.Environment.EnvironmentName;
 var dataProtection = builder.Services.AddDataProtection().SetApplicationName("VertexBPMN.Studio");
@@ -170,6 +173,11 @@ else
 		options.RequireHttpsMetadata = oidcRequireHttpsMetadata;
 		options.ResponseType = OpenIdConnectResponseType.Code;
 		options.UsePkce = true;
+		options.Events.OnRedirectToIdentityProvider = context =>
+		{
+			StudioPasskeyRegistration.ApplyAction(context.Properties, context.ProtocolMessage);
+			return Task.CompletedTask;
+		};
 		options.SaveTokens = true;
 		options.GetClaimsFromUserInfoEndpoint = true;
 		options.MapInboundClaims = false;
@@ -319,9 +327,10 @@ app.Use(async (context, next) =>
 });
 app.UseAuthorization();
 app.UseAntiforgery();
+passkeyRegistration.MapEndpoints(app);
 app.MapGet("/authentication/login", (string? returnUrl) =>
 {
-	var target = IsLocalReturnUrl(returnUrl) ? returnUrl! : "/";
+	var target = StudioAuthenticationRedirects.LocalTarget(returnUrl, "/");
 	return Results.Challenge(new AuthenticationProperties { RedirectUri = target }, [OpenIdConnectDefaults.AuthenticationScheme]);
 }).AllowAnonymous();
 app.MapPost("/authentication/logout", async (HttpContext httpContext, IAntiforgery antiforgery) =>
@@ -385,7 +394,6 @@ if (!isUiTest)
 app.MapControllers();
 await app.RunAsync();
 static bool IsLoopbackHttpAuthority(string? authority) => Uri.TryCreate(authority, UriKind.Absolute, out var uri) && uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) && uri.IsLoopback;
-static bool IsLocalReturnUrl(string? returnUrl) => !string.IsNullOrWhiteSpace(returnUrl) && returnUrl[0] == '/' && (returnUrl.Length == 1 || (returnUrl[1] != '/' && returnUrl[1] != '\\')) && !returnUrl.Contains('\r', StringComparison.Ordinal) && !returnUrl.Contains('\n', StringComparison.Ordinal);
 static void RegisterOidcSessionStore(WebApplicationBuilder builder)
 {
 	var connectionString = builder.Configuration.GetConnectionString("OidcSessionStore") ?? builder.Configuration["OidcSessionStore:ConnectionString"];

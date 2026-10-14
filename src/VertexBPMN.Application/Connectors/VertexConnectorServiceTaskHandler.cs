@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Data.Common;
 using System.Diagnostics;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
@@ -20,6 +21,11 @@ public sealed class VertexConnectorServiceTaskHandler(
 {
 	public async Task ExecuteAsync(IDictionary<string, string> attributes, IDictionary<string, object> variables, CancellationToken ct = default)
 	{
+		// LC02/ADR-0006: the Studio persists connector config as ioMapping inputs
+		// (vertex:ioMapping.input.vertex:connector.*). Surface these under the plain
+		// vertex:connector.* keys so handler + executor share one view — without
+		// changing the parser/serializer round-trip contract.
+		attributes = NormalizeConnectorAttributes(attributes);
 		var type = Required(attributes, "vertex:connector.type");
 		var operationId = Required(attributes, "vertex:connector.operationId");
 		var tenantId = Value(attributes, "vertex:connector.tenantId") ?? GetVariable(variables, "tenantId") ?? "default";
@@ -121,6 +127,31 @@ public sealed class VertexConnectorServiceTaskHandler(
 
 	private static string Required(IDictionary<string, string> values, string key) => Value(values, key) ?? throw new ServiceTaskExecutionException($"'{key}' is required.");
 	private static string? Value(IDictionary<string, string> values, string key) => values.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value) ? value.Trim() : null;
+
+	// LC02/ADR-0006: bridge the Studio's ioMapping persistence back to the plain
+	// vertex:connector.* keys the runtime expects.
+	private static Dictionary<string, string> NormalizeConnectorAttributes(IDictionary<string, string> attributes)
+	{
+		const string ioMappingPrefix = "vertex:ioMapping.input.";
+		const string connectorMarker = "vertex:connector.";
+		var hasIoMappingConnector = attributes.Keys.Any(key => key.StartsWith(ioMappingPrefix + connectorMarker, StringComparison.Ordinal));
+		if (!hasIoMappingConnector)
+		{
+			return attributes is Dictionary<string, string> dict ? dict : new Dictionary<string, string>(attributes, StringComparer.Ordinal);
+		}
+
+		var normalized = new Dictionary<string, string>(attributes, StringComparer.Ordinal);
+		foreach (var (key, value) in attributes)
+		{
+			if (key.StartsWith(ioMappingPrefix + connectorMarker, StringComparison.Ordinal))
+			{
+				var plain = key[ioMappingPrefix.Length..];
+				normalized[plain] = value;
+			}
+		}
+
+		return normalized;
+	}
 
 	// LC02/ADR-0006: reject unknown/ambiguous binding versions at load instead of guessing.
 	// When no explicit version attribute is present the binding is treated as legacy (1).

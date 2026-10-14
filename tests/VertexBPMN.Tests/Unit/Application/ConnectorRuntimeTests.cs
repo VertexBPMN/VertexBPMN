@@ -245,6 +245,36 @@ public sealed class ConnectorRuntimeTests
 	}
 
 	[Fact]
+	public async Task Handler_BridgesStudioIoMappingFormToPlainConnectorKeys()
+	{
+		// Studio persists connector config as ioMapping inputs; the handler must
+		// surface vertex:ioMapping.input.vertex:connector.* under plain vertex:connector.*
+		ConnectorExecutionContext? capturedContext = null;
+		var runtime = new Mock<IConnectorRuntime>();
+		runtime.Setup(x => x.ExecuteAsync(It.IsAny<ConnectorExecutionContext>(), It.IsAny<CancellationToken>())).Callback<ConnectorExecutionContext, CancellationToken>((context, _) => capturedContext = context).ReturnsAsync(new ConnectorExecutionResult(true, 200, new Dictionary<string, object>(StringComparer.Ordinal)));
+		await using var provider = new ServiceCollection().AddSingleton<ICredentialService>(new Mock<ICredentialService>().Object).AddSingleton<IAuditLogService>(new Mock<IAuditLogService>().Object).BuildServiceProvider();
+		var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>(StringComparer.Ordinal)).Build();
+		var handler = new VertexConnectorServiceTaskHandler(runtime.Object, provider.GetRequiredService<IServiceScopeFactory>(), configuration);
+		var attributes = new Dictionary<string, string>(StringComparer.Ordinal)
+		{
+			["vertex:connector.type"] = "http",
+			["vertex:connector.operationId"] = "http.request",
+			["vertex:ioMapping.input.vertex:connector.endpoint"] = "https://api.example.test/orders",
+			["vertex:ioMapping.input.vertex:connector.method"] = "GET",
+			["vertex:ioMapping.input.vertex:connector.header.X-Api-Key"] = "abc123",
+			["vertex:ioMapping.input.vertex:connector.timeoutMs"] = "15000"
+		};
+
+		await handler.ExecuteAsync(attributes, new Dictionary<string, object>(StringComparer.Ordinal), TestContext.Current.CancellationToken);
+
+		Assert.NotNull(capturedContext);
+		Assert.Equal("https://api.example.test/orders", capturedContext.Attributes["vertex:connector.endpoint"]);
+		Assert.Equal("GET", capturedContext.Attributes["vertex:connector.method"]);
+		Assert.Equal("abc123", capturedContext.Attributes["vertex:connector.header.X-Api-Key"]);
+		Assert.Equal("15000", capturedContext.Attributes["vertex:connector.timeoutMs"]);
+	}
+
+	[Fact]
 	public async Task HttpExecutor_RejectsBlockedAndCtlBindingHeaders()
 	{
 		using var httpClientHandler = new RecordingHandler(_ => { });

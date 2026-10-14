@@ -22,8 +22,16 @@ in diesem Stand ist LC02 nicht als abgeschlossen zu werten und wird nicht als
 | `VertexConnectorServiceTaskHandler.cs` | `AssertSupportedBindingVersion` (unbekannte Versionen hart abgelehnt) | 1 Test |
 | `Http/connectors-and-mapping.http` (neu) | Import/List/Create/403 | Routen/DTOs aus Code |
 
-Build: **0 Errors, 0 Warnings**. Connector-/Importer-Tests **54/54 grün** (+ zusätzliche
-Sicherheitstests nach Review).
+Aktuell verifiziert: Build **0 Errors, 0 Warnings**, Connector-/Importer-Tests
+**58/58 grün**, 0 fehlgeschlagen, 0 übersprungen. Die Sicherheits-Härtung und
+Binding-Grundlage sind als Teilfortschritt in `e115823c` lokal committet, nicht gepusht.
+
+Option A ist lokal implementiert: Der Handler normalisiert
+`vertex:ioMapping.input.vertex:connector.*` zu `vertex:connector.*`, bevor er
+Endpoint, Version, Credentials und Transport-Kontext verarbeitet. Ein neuer
+Handler-Test prüft Endpoint/Methode/Header/Timeout im Runtime-Kontext. Parser,
+Serializer und Studio wurden dabei nicht verändert. Das ist **kein** ausgeführter
+Studio-/XML-Roundtrip und **kein** Nachweis eines echten HTTP-Requests.
 
 ## Offene Abnahmelücken (Review-Befunde, verbleibend)
 

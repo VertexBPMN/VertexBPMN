@@ -210,7 +210,7 @@ public static class ServiceTaskRegistryExtensions
 		services.AddHttpClient("VertexBPMN.PublicEndpoints")
 			.ConfigurePrimaryHttpMessageHandler(provider => provider.GetRequiredService<SocketsHttpHandler>())
 			.SetHandlerLifetime(Timeout.InfiniteTimeSpan);
-		services.AddSingleton<IConnectorExecutor, HttpConnectorExecutor>();
+		AddHttpConnector(services);
 		services.AddSingleton<IConnectorExecutor, DelayConnectorExecutor>();
 		services.AddSingleton<IConnectorExecutor, EmailConnectorExecutor>();
 		services.AddSingleton<IConnectorExecutor>(_ => new NamedEmailConnectorExecutor("smtp"));
@@ -233,6 +233,19 @@ public static class ServiceTaskRegistryExtensions
 			Sdk.CreateTracerProviderBuilder()
 				.AddSource("VertexBPMN")
 				.Build() ?? throw new InvalidOperationException("Failed to create TracerProvider"));
+	}
+
+	private static void AddHttpConnector(IServiceCollection services)
+	{
+		services.AddSingleton<HttpDataResponseReader>(provider =>
+		{
+			var configuration = provider.GetRequiredService<IConfiguration>();
+			var maxBytes = configuration.GetValue("ConnectorRuntime:MaxResponseBytes", 256 * 1024);
+			return new HttpDataResponseReader(maxBytes, provider.GetRequiredService<ConnectorRedactionPolicy>());
+		});
+		services.AddSingleton<IConnectorExecutor>(provider => new HttpConnectorExecutor(
+			provider.GetRequiredService<HttpClient>(),
+			provider.GetRequiredService<HttpDataResponseReader>()));
 	}
 
 	private static void RegisterHandlers(IServiceCollection services)

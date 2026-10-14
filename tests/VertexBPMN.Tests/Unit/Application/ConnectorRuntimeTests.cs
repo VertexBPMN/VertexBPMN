@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using System.Text;
 using VertexBPMN.Application.Connectors;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Exceptions;
@@ -330,6 +331,40 @@ public sealed class ConnectorRuntimeTests
 		{
 			var response = new HttpResponseMessage(System.Net.HttpStatusCode.OK);
 			response.Headers.Add("Set-Cookie", "sid=abc123; HttpOnly");
+			return Task.FromResult(response);
+		}
+	}
+
+	[Fact]
+	public async Task HttpExecutor_ExposesJsonResponseFieldsWithRedaction()
+	{
+		using var httpClientHandler = new JsonSendHandler("""{"customer":"A","amount":12.5,"secretToken":"s"}""");
+		using var httpClient = new HttpClient(httpClientHandler, disposeHandler: false);
+		var reader = new HttpDataResponseReader(4096, new ConnectorRedactionPolicy());
+		var executor = new HttpConnectorExecutor(httpClient, reader);
+		var context = new ConnectorExecutionContext(
+			"tenant-a", "http", "get.orders", new Uri("https://api.example.test/v1/orders"),
+			new Dictionary<string, string>(StringComparer.Ordinal) { ["vertex:connector.method"] = "GET" },
+			new Dictionary<string, object>(StringComparer.Ordinal),
+			new ConnectorRetryPolicy(0, TimeSpan.Zero, TimeSpan.Zero));
+
+		var result = await executor.ExecuteAsync(context, TestContext.Current.CancellationToken);
+
+		Assert.True(result.Success);
+		Assert.Equal("A", result.Outputs["httpBody.customer"]);
+		Assert.Equal(12.5, result.Outputs["httpBody.amount"]);
+		Assert.Equal("***", result.Outputs["httpBody.secretToken"]);
+		Assert.Equal("application/json", result.Outputs["httpContentType"]);
+	}
+
+	private sealed class JsonSendHandler(string json) : HttpMessageHandler
+	{
+		protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+		{
+			var response = new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+			{
+				Content = new StringContent(json, Encoding.UTF8, "application/json")
+			};
 			return Task.FromResult(response);
 		}
 	}

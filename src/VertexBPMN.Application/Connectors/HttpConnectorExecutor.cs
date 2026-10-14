@@ -6,7 +6,7 @@ using VertexBPMN.Domain.Exceptions;
 
 namespace VertexBPMN.Application.Connectors;
 
-public class HttpConnectorExecutor(HttpClient client) : IConnectorExecutor
+public class HttpConnectorExecutor(HttpClient client, HttpDataResponseReader? dataResponseReader = null) : IConnectorExecutor
 {
 	public virtual string Type => "http";
 
@@ -34,12 +34,40 @@ public class HttpConnectorExecutor(HttpClient client) : IConnectorExecutor
 		using var timeoutCts = CreateTimeoutSource(context, cancellationToken);
 		using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token);
 		var outputs = CollectOutputs(context.Attributes, response);
+		await AddDataResponseFieldsAsync(outputs, response, timeoutCts.Token);
 
 		return new ConnectorExecutionResult(
 			response.IsSuccessStatusCode,
 			(int)response.StatusCode,
 			outputs,
 			response.IsSuccessStatusCode ? null : MapHttpError(response.StatusCode));
+	}
+
+	// LC03: bound and read the response body (JSON/text), apply size limit + deep
+	// redaction, and expose the fields so they can drive the process path. Errors
+	// (too large, invalid body) produce a defined failure without partial mapping.
+	private async Task AddDataResponseFieldsAsync(
+		Dictionary<string, object> outputs,
+		HttpResponseMessage response,
+		CancellationToken cancellationToken)
+	{
+		if (dataResponseReader is null)
+		{
+			return;
+		}
+
+		var data = await dataResponseReader.ReadAsync(response, cancellationToken);
+		if (!data.Success)
+		{
+			throw new ServiceTaskExecutionException($"HTTP response could not be read: {data.ErrorCode}.");
+		}
+
+		outputs["httpContentType"] = data.ContentType ?? string.Empty;
+		outputs["httpBody"] = data.RawBody;
+		foreach (var (key, value) in data.Fields)
+		{
+			outputs["httpBody." + key] = value;
+		}
 	}
 
 	private static void TrySetBody(HttpRequestMessage request, IReadOnlyDictionary<string, string> attributes)

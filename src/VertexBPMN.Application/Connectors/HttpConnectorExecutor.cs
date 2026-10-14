@@ -1,7 +1,6 @@
-using System.Data.Common;
+using System.Linq;
 using System.Net;
 using System.Net.Http.Headers;
-using System.Net.Mail;
 using System.Text;
 using VertexBPMN.Domain.Exceptions;
 
@@ -21,10 +20,8 @@ public class HttpConnectorExecutor(HttpClient client) : IConnectorExecutor
 		var method = context.Attributes.TryGetValue("vertex:connector.method", out var configured) ? configured : HttpMethod.Post.Method;
 		var endpoint = ResolveEndpoint(context.Endpoint, context.Variables);
 		using var request = new HttpRequestMessage(new HttpMethod(method), endpoint);
-		if (context.Attributes.TryGetValue("vertex:connector.body", out var body))
-		{
-			request.Content = new StringContent(body, Encoding.UTF8, context.Attributes.TryGetValue("vertex:connector.contentType", out var contentType) ? contentType : "application/json");
-		}
+
+		TrySetBody(request, context.Attributes);
 
 		if (!string.IsNullOrEmpty(context.CredentialSecret))
 		{
@@ -32,14 +29,120 @@ public class HttpConnectorExecutor(HttpClient client) : IConnectorExecutor
 			request.Headers.Authorization = new AuthenticationHeaderValue(scheme, context.CredentialSecret);
 		}
 
-		using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+		AppendBindingHeaders(request, context.Attributes);
+
+		using var timeoutCts = CreateTimeoutSource(context, cancellationToken);
+		using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token);
+		var outputs = CollectOutputs(context.Attributes, response);
+
 		return new ConnectorExecutionResult(
 			response.IsSuccessStatusCode,
 			(int)response.StatusCode,
-			new Dictionary<string, object>(StringComparer.Ordinal) { ["httpStatus"] = (int)response.StatusCode },
+			outputs,
 			response.IsSuccessStatusCode ? null : MapHttpError(response.StatusCode));
 	}
 
+	private static void TrySetBody(HttpRequestMessage request, IReadOnlyDictionary<string, string> attributes)
+	{
+		if (!attributes.TryGetValue("vertex:connector.body", out var body))
+		{
+			return;
+		}
+
+		var contentType = attributes.TryGetValue("vertex:connector.contentType", out var configured) ? configured : "application/json";
+		request.Content = new StringContent(body, Encoding.UTF8, contentType);
+	}
+
+	private static readonly HashSet<string> BlockedHeaders = new(StringComparer.OrdinalIgnoreCase)
+	{
+		"Authorization",
+		"Proxy-Authorization",
+		"Host",
+		"Connection",
+		"Content-Length"
+	};
+
+	private static readonly HashSet<string> BlockedResponseHeaders = new(StringComparer.OrdinalIgnoreCase)
+	{
+		"Set-Cookie",
+		"Cookie"
+	};
+
+	private static void AppendBindingHeaders(HttpRequestMessage request, IReadOnlyDictionary<string, string> attributes)
+	{
+		const string prefix = "vertex:connector.header.";
+		foreach (var attribute in attributes)
+		{
+			if (!attribute.Key.StartsWith(prefix, StringComparison.Ordinal) || string.IsNullOrWhiteSpace(attribute.Value))
+			{
+				continue;
+			}
+
+			var headerName = attribute.Key[prefix.Length..];
+			if (BlockedHeaders.Contains(headerName))
+			{
+				throw new ServiceTaskExecutionException($"Binding header '{headerName}' is not allowed.");
+			}
+
+			if (ContainsCtl(headerName) || ContainsCtl(attribute.Value))
+			{
+				throw new ServiceTaskExecutionException($"Binding header '{headerName}' contains control characters.");
+			}
+
+			request.Headers.TryAddWithoutValidation(headerName, attribute.Value);
+		}
+	}
+
+	private static bool ContainsCtl(string value) => value.Any(char.IsControl);
+
+	private static CancellationTokenSource CreateTimeoutSource(ConnectorExecutionContext context, CancellationToken cancellationToken)
+	{
+		var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+		var timeoutMs = ReadTimeoutMs(context);
+		if (timeoutMs > 0)
+		{
+			source.CancelAfter(timeoutMs);
+		}
+
+		return source;
+	}
+
+	private static int ReadTimeoutMs(ConnectorExecutionContext context)
+	{
+		if (context.Attributes.TryGetValue("vertex:connector.timeoutMs", out var configured) && int.TryParse(configured, out var parsed))
+		{
+			return parsed;
+		}
+
+		var effective = context.RetryPolicy.EffectiveTimeout.TotalMilliseconds;
+		return effective > 0 ? (int)effective : Timeout.Infinite;
+	}
+
+	private static Dictionary<string, object> CollectOutputs(IReadOnlyDictionary<string, string> attributes, HttpResponseMessage response)
+	{
+		var outputs = new Dictionary<string, object>(StringComparer.Ordinal) { ["httpStatus"] = (int)response.StatusCode };
+		const string echoPrefix = "vertex:connector.outputHeader.";
+		foreach (var (key, _) in attributes)
+		{
+			if (!key.StartsWith(echoPrefix, StringComparison.Ordinal))
+			{
+				continue;
+			}
+
+			var headerName = key[echoPrefix.Length..];
+			if (BlockedResponseHeaders.Contains(headerName))
+			{
+				continue; // never export credential/session-carrying response headers into process variables
+			}
+
+			if (response.Headers.TryGetValues(headerName, out var values))
+			{
+				outputs[headerName] = string.Join(", ", values);
+			}
+		}
+
+		return outputs;
+	}
 
 	private static Uri ResolveEndpoint(Uri template, IDictionary<string, object> variables)
 	{

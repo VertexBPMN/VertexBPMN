@@ -1,0 +1,78 @@
+# =============================================================================
+# HTTP-Request-Catalog · connectors-and-mapping.http
+# Paket: LC02 (Template-/Connectorbindung) · erweitert in LC03 (Datenantworten)
+# Ziel: ConnectorTemplate-Bindung (import → persist → list) und unify-Transport
+#       (method/endpoint/header/body/timeout).
+# Voraussetzungen: laufende API (local-http), Testidentitäten, KEINE Tokens hier.
+# Identitäten: {{VERTEXBPMN_STAGE_TOKEN}} (ProcessManager),
+#              {{VERTEXBPMN_ADMIN_TOKEN}} (AdminOnly für Create/PUT/DELETE),
+#              {{VERTEXBPMN_READONLY_TOKEN}} (ReadOnly-Check).
+# Reihenfolge: 01→05. Sollwerte sind Kommentare; 200 beweist keine Fachwirkung.
+# =============================================================================
+@baseUrl = {{baseUrl}}
+@tenantId = {{tenantId}}
+@token = {{VERTEXBPMN_STAGE_TOKEN}}
+@adminToken = {{VERTEXBPMN_ADMIN_TOKEN}}
+
+### 01 — OpenAPI importieren (ProcessManager) → Report (LC02 Importpfad)
+# @name openapiImport
+POST {{baseUrl}}/api/import/openapi
+Authorization: Bearer {{token}}
+Content-Type: application/json
+# Soll: 200; Report-Array mit operationId + disposition je Operation
+
+{
+  "openApiJson": "{\"openapi\":\"3.0.0\",\"info\":{\"title\":\"Demo\",\"version\":\"1.0\"},\"paths\":{\"/users/{id}\":{\"get\":{\"operationId\":\"getUser\",\"parameters\":[{\"name\":\"id\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"integer\"}},{\"name\":\"X-Trace\",\"in\":\"header\",\"schema\":{\"type\":\"string\"}}]},\"post\":{\"operationId\":\"updateUser\",\"parameters\":[{\"name\":\"id\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"integer\"}}],\"requestBody\":{\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"}}}}}}}}}}",
+  "tenantId": "{{tenantId}}"
+}
+# Erwartete Template-Propertys für updateUser: vertex:connector.method=post,
+#   vertex:connector.endpoint=<server>/users/{id}, vertex:connector.timeoutMs,
+#   vertex:connector.header.X-Trace bei get (BindingVersion 2).
+
+### 02 — Connector-Templates listen (ReadOnly ok) → 200 mit Properties+BindingVersion
+GET {{baseUrl}}/api/connector-templates
+Authorization: Bearer {{token}}
+Accept: application/json
+# Soll: 200; Array von ConnectorTemplateMetadata inkl. Properties[].bindingVersion
+
+### 03 — Template lesen (nach openapiImport, aus tatsächlicher Antwort-ID)
+GET {{baseUrl}}/api/connector-templates
+Authorization: Bearer {{token}}
+Accept: application/json
+# Soll: 200; hier wird die echte Id aus 02 übernommen (nicht erfunden)
+
+### 04 — Template anlegen (AdminOnly) → 201 Created (Binding-Version 2 nach LC02)
+# @name createTemplate
+POST {{baseUrl}}/api/connector-templates
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+# Soll: 201 Created; Location auf GET {id}
+
+{
+  "tenantId": "{{tenantId}}",
+  "name": "Demo GetUser",
+  "category": "http",
+  "appliesTo": ["serviceTask"],
+  "runtime": "http",
+  "icon": null,
+  "properties": [
+    { "key": "vertex:connector.method", "type": "string", "required": true, "default": "GET", "bindingVersion": 2 },
+    { "key": "vertex:connector.endpoint", "type": "string", "required": true, "default": "https://api.example.test/v1/users", "bindingVersion": 2 },
+    { "key": "vertex:connector.timeoutMs", "type": "number", "required": false, "bindingVersion": 2 },
+    { "key": "vertex:connector.header.X-Trace", "type": "string", "required": false, "bindingVersion": 2 }
+  ]
+}
+
+### 05 — ReadOnly darf Create NICHT ausführen → 403 (Berechtigungsmatrix LC01)
+POST {{baseUrl}}/api/connector-templates
+Authorization: Bearer {{VERTEXBPMN_READONLY_TOKEN}}
+Content-Type: application/json
+# Soll: 403 Forbidden; ProblemDetails
+{
+  "tenantId": "{{tenantId}}",
+  "name": "ShouldFail",
+  "category": "http",
+  "appliesTo": ["serviceTask"],
+  "runtime": "http",
+  "properties": []
+}

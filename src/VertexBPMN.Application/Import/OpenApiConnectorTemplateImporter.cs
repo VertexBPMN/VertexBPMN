@@ -80,12 +80,14 @@ public sealed class OpenApiConnectorTemplateImporter : IOpenApiConnectorTemplate
 
 		var finalProps = new List<ConnectorTemplateProperty>(props)
 		{
-			new("vertex:connector.method", "string", true, method, null),
-			new("vertex:connector.endpoint", "string", true, serverUrl + path, null)
+			new("vertex:connector.method", "string", true, method, null, ConnectorBindingVersion.Versioned),
+			new("vertex:connector.endpoint", "string", true, serverUrl + path, null, ConnectorBindingVersion.Versioned),
+			new("vertex:connector.timeoutMs", "number", false, null, null, ConnectorBindingVersion.Versioned),
+			new("vertex:connector.bindingVersion", "number", true, ConnectorBindingVersion.Versioned.ToString(), null, ConnectorBindingVersion.Versioned)
 		};
 		if (auth != null)
 		{
-			finalProps.Add(new("vertex:connector.authScheme", "string", true, auth, null));
+			finalProps.Add(new("vertex:connector.authScheme", "string", true, auth, null, ConnectorBindingVersion.Versioned));
 		}
 
 		templates.Add(new ConnectorTemplateWriteRequest(
@@ -147,7 +149,11 @@ public sealed class OpenApiConnectorTemplateImporter : IOpenApiConnectorTemplate
 				type = MapType(schema, ref needsReview, notes);
 			}
 
-			props.Add(new ConnectorTemplateProperty(name, type, Required: location == "path"));
+			// LC02: header parameters are exported under the unified vertex:connector.header.<name>
+			// key so @HttpConnectorExecutor transports them on the request. Path/query stay on the
+			// raw name (path becomes an endpoint placeholder, query is assembled at mapping time).
+			var propKey = location == "header" ? "vertex:connector.header." + name : name;
+			props.Add(new ConnectorTemplateProperty(propKey, type, Required: location == "path", BindingVersion: ConnectorBindingVersion.Versioned));
 		}
 	}
 

@@ -23,6 +23,7 @@ public sealed class VertexConnectorServiceTaskHandler(
 		var type = Required(attributes, "vertex:connector.type");
 		var operationId = Required(attributes, "vertex:connector.operationId");
 		var tenantId = Value(attributes, "vertex:connector.tenantId") ?? GetVariable(variables, "tenantId") ?? "default";
+		AssertSupportedBindingVersion(attributes);
 		var endpoint = Uri.TryCreate(Value(attributes, "vertex:connector.endpoint"), UriKind.Absolute, out var parsed) ? parsed : null;
 		var credentialId = Value(attributes, "vertex:connector.credentialRef") ?? Value(attributes, "vertex:credential.id");
 		var secretKey = Value(attributes, "vertex:connector.secretKey") ?? "token";
@@ -120,6 +121,27 @@ public sealed class VertexConnectorServiceTaskHandler(
 
 	private static string Required(IDictionary<string, string> values, string key) => Value(values, key) ?? throw new ServiceTaskExecutionException($"'{key}' is required.");
 	private static string? Value(IDictionary<string, string> values, string key) => values.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value) ? value.Trim() : null;
+
+	// LC02/ADR-0006: reject unknown/ambiguous binding versions at load instead of guessing.
+	// When no explicit version attribute is present the binding is treated as legacy (1).
+	private static void AssertSupportedBindingVersion(IDictionary<string, string> attributes)
+	{
+		if (!attributes.TryGetValue("vertex:connector.bindingVersion", out var raw))
+		{
+			return;
+		}
+
+		if (!int.TryParse(raw, out var version))
+		{
+			throw new ServiceTaskExecutionException($"Invalid connector binding version '{raw}'.");
+		}
+
+		if (!ConnectorBindingVersion.IsSupported(version))
+		{
+			throw new ServiceTaskExecutionException($"Unsupported connector binding version '{version}'; supported versions are {ConnectorBindingVersion.Legacy} (legacy) and {ConnectorBindingVersion.Versioned}.");
+		}
+	}
+
 	private static string? GetVariable(IDictionary<string, object> values, string key) => values.TryGetValue(key, out var value) ? Convert.ToString(value) : null;
 	private static int GetInt(IDictionary<string, string> values, string key, int fallback, int min, int max) => values.TryGetValue(key, out var raw) && int.TryParse(raw, out var parsed) ? Math.Clamp(parsed, min, max) : fallback;
 }

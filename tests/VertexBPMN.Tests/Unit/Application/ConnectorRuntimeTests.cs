@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using VertexBPMN.Application.Connectors;
 using VertexBPMN.Domain.Entities;
+using VertexBPMN.Domain.Exceptions;
 using VertexBPMN.Domain.Interfaces;
 
 namespace VertexBPMN.Tests.Unit.Application;
@@ -167,6 +168,142 @@ public sealed class ConnectorRuntimeTests
 		Assert.Equal("http://example.test/users/42", captured!.ToString());
 	}
 
+	[Fact]
+	public async Task HttpExecutor_TransportsBindingHeadersOnRequest()
+	{
+		HttpRequestMessage? captured = null;
+		using var httpClientHandler = new RecordingHandler(r => captured = r);
+		using var httpClient = new HttpClient(httpClientHandler, disposeHandler: false);
+		var executor = new HttpConnectorExecutor(httpClient);
+		var context = new ConnectorExecutionContext(
+			"tenant-a", "http", "get.user", new Uri("https://api.example.test/v1/users"),
+			new Dictionary<string, string>(StringComparer.Ordinal)
+			{
+				["vertex:connector.method"] = "POST",
+				["vertex:connector.contentType"] = "application/json",
+				["vertex:connector.body"] = "{\"a\":1}",
+				["vertex:connector.header.X-Correlation-Id"] = "corr-123",
+				["vertex:connector.header.Accept"] = "application/json"
+			},
+			new Dictionary<string, object>(StringComparer.Ordinal),
+			new ConnectorRetryPolicy(0, TimeSpan.Zero, TimeSpan.Zero));
+		await executor.ExecuteAsync(context, TestContext.Current.CancellationToken);
+
+		Assert.Equal(HttpMethod.Post, captured!.Method);
+		Assert.Equal("corr-123", captured.Headers.GetValues("X-Correlation-Id").Single());
+		Assert.Equal("application/json", captured.Headers.GetValues("Accept").Single());
+	}
+
+	[Fact]
+	public async Task HttpExecutor_HonoursBindingTimeoutOverGlobalRetryTimeout()
+	{
+		using var httpClientHandler = new DelayingSendHandler(TimeSpan.FromMilliseconds(600));
+		using var httpClient = new HttpClient(httpClientHandler, disposeHandler: false);
+		var executor = new HttpConnectorExecutor(httpClient);
+		var context = new ConnectorExecutionContext(
+			"tenant-a", "http", "slow", new Uri("https://api.example.test/slow"),
+			new Dictionary<string, string>(StringComparer.Ordinal)
+			{
+				["vertex:connector.method"] = "GET",
+				["vertex:connector.timeoutMs"] = "50"
+			},
+			new Dictionary<string, object>(StringComparer.Ordinal),
+			new ConnectorRetryPolicy(0, TimeSpan.FromSeconds(5), TimeSpan.Zero));
+		await Assert.ThrowsAnyAsync<OperationCanceledException>(
+			() => executor.ExecuteAsync(context, TestContext.Current.CancellationToken));
+	}
+
+	[Fact]
+	public void BindingVersion_SupportsLegacyAndCurrentAndRejectsUnknown()
+	{
+		Assert.True(ConnectorBindingVersion.IsSupported(ConnectorBindingVersion.Legacy));
+		Assert.True(ConnectorBindingVersion.IsSupported(ConnectorBindingVersion.Versioned));
+		Assert.False(ConnectorBindingVersion.IsSupported(3));
+		Assert.False(ConnectorBindingVersion.IsSupported(0));
+	}
+
+	[Fact]
+	public void ValueResolver_ResolvesLiteralVariableAndMixedSources()
+	{
+		var vars = new Dictionary<string, object?>(StringComparer.Ordinal)
+		{
+			["userId"] = "42",
+			["kind"] = "premium"
+		};
+		Assert.Equal("http://x.test", ConnectorValueResolver.Resolve("http://x.test", vars));
+		Assert.Equal("42", ConnectorValueResolver.Resolve("{{userId}}", vars));
+		Assert.Equal("42/premium", ConnectorValueResolver.Resolve("{{userId}}/{{kind}}", vars));
+		Assert.Equal("id=42", ConnectorValueResolver.Resolve("id={{userId}}", vars));
+	}
+
+	[Fact]
+	public void ValueResolver_ThrowsOnUnresolvedVariable()
+	{
+		var vars = new Dictionary<string, object?>(StringComparer.Ordinal);
+		Assert.Throws<ServiceTaskExecutionException>(() => ConnectorValueResolver.Resolve("{{missing}}", vars));
+		Assert.Throws<ServiceTaskExecutionException>(() => ConnectorValueResolver.Resolve("a {{broken", vars));
+	}
+
+	[Fact]
+	public async Task HttpExecutor_RejectsBlockedAndCtlBindingHeaders()
+	{
+		using var httpClientHandler = new RecordingHandler(_ => { });
+		using var httpClient = new HttpClient(httpClientHandler, disposeHandler: false);
+		var executor = new HttpConnectorExecutor(httpClient);
+		async Task Run(IDictionary<string, string> attributes)
+		{
+			var context = new ConnectorExecutionContext(
+				"tenant-a", "http", "x", new Uri("https://api.example.test/v1"),
+				new Dictionary<string, string>(attributes, StringComparer.Ordinal),
+				new Dictionary<string, object>(StringComparer.Ordinal),
+				new ConnectorRetryPolicy(0, TimeSpan.Zero, TimeSpan.Zero));
+			await executor.ExecuteAsync(context, TestContext.Current.CancellationToken);
+		}
+
+		await Assert.ThrowsAsync<ServiceTaskExecutionException>(() => Run(new Dictionary<string, string>(StringComparer.Ordinal) { ["vertex:connector.header.Authorization"] = "Bearer abc" }));
+		await Assert.ThrowsAsync<ServiceTaskExecutionException>(() => Run(new Dictionary<string, string>(StringComparer.Ordinal) { ["vertex:connector.header.Host"] = "other.example.test" }));
+		await Assert.ThrowsAsync<ServiceTaskExecutionException>(() => Run(new Dictionary<string, string>(StringComparer.Ordinal) { ["vertex:connector.header.X-Custom"] = "a\r\nInjected: yes" }));
+	}
+
+	[Fact]
+	public async Task HttpExecutor_NeverExportsSetCookieHeader()
+	{
+		using var httpClientHandler = new SetCookieHandler();
+		using var httpClient = new HttpClient(httpClientHandler, disposeHandler: false);
+		var executor = new HttpConnectorExecutor(httpClient);
+		var context = new ConnectorExecutionContext(
+			"tenant-a", "http", "x", new Uri("https://api.example.test/v1"),
+			new Dictionary<string, string>(StringComparer.Ordinal) { ["vertex:connector.method"] = "GET", ["vertex:connector.outputHeader.Set-Cookie"] = "Set-Cookie" },
+			new Dictionary<string, object>(StringComparer.Ordinal),
+			new ConnectorRetryPolicy(0, TimeSpan.Zero, TimeSpan.Zero));
+		var result = await executor.ExecuteAsync(context, TestContext.Current.CancellationToken);
+		Assert.True(result.Success);
+		Assert.False(result.Outputs.ContainsKey("Set-Cookie"));
+	}
+
+	[Fact]
+	public async Task Handler_RejectsUnsupportedBindingVersion()
+	{
+		var handler = new VertexConnectorServiceTaskHandler(Mock.Of<IConnectorRuntime>(), Mock.Of<IServiceScopeFactory>(), Mock.Of<IConfiguration>());
+		var attributes = new Dictionary<string, string>(StringComparer.Ordinal)
+		{
+			["vertex:connector.type"] = "http",
+			["vertex:connector.operationId"] = "x",
+			["vertex:connector.bindingVersion"] = "3"
+		};
+		await Assert.ThrowsAsync<ServiceTaskExecutionException>(() => handler.ExecuteAsync(attributes, new Dictionary<string, object>(StringComparer.Ordinal), TestContext.Current.CancellationToken));
+	}
+
+	private sealed class SetCookieHandler : HttpMessageHandler
+	{
+		protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+		{
+			var response = new HttpResponseMessage(System.Net.HttpStatusCode.OK);
+			response.Headers.Add("Set-Cookie", "sid=abc123; HttpOnly");
+			return Task.FromResult(response);
+		}
+	}
+
 	private sealed class RecordingHandler(Action<HttpRequestMessage> onRequest) : HttpMessageHandler
 	{
 		protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -175,7 +312,6 @@ public sealed class ConnectorRuntimeTests
 			return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK));
 		}
 	}
-
 	private sealed class DelayingExecutor : IConnectorExecutor
 	{
 		public string Type => "test";
@@ -189,6 +325,15 @@ public sealed class ConnectorRuntimeTests
 	private sealed class SuccessfulHandler : HttpMessageHandler
 	{
 		protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) => Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK));
+	}
+
+	private sealed class DelayingSendHandler(TimeSpan delay) : HttpMessageHandler
+	{
+		protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+		{
+			await Task.Delay(delay, cancellationToken);
+			return new HttpResponseMessage(System.Net.HttpStatusCode.OK);
+		}
 	}
 
 	private sealed class ScriptedExecutor(params ConnectorExecutionResult[] results) : IConnectorExecutor

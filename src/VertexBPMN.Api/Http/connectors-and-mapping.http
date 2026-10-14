@@ -76,3 +76,46 @@ Content-Type: application/json
   "runtime": "http",
   "properties": []
 }
+
+# =============================================================================
+# LC03 · Datenantworten & Input-Mapping (Fortschrittsstand, Teilfortschritt)
+# Ziel: begrenzt lesen (JSON/Text), Query-/Body-Mapping, definierte Fehler.
+# Beispielantworten hier OHNE sensible Daten; Secret-Felder → *** (Redaction).
+# Abhängige Testdienste: ein lokaler Echo-/JSON-Dienst hinter {{dataServiceUrl}}.
+# =============================================================================
+
+### 10 — Connector-Request mit Query-Mapping + strukturiertem Body (LC03 Input-Mapping)
+# @name dataCall
+POST {{baseUrl}}/api/engine/capabilities
+Authorization: Bearer {{VERTEXBPMN_STAGE_TOKEN}}
+Content-Type: application/json
+# Soll: 200; Nachrichten-Echo der gemappten Felder; Referenz auf echten Lauf.
+# Konzept: vertex:connector.query.<name> → URL-Query (resolved+encoded),
+#   vertex:connector.bodyField.<name> → JSON-Body-Feld (resolved, escaped),
+#   {{var}}-Referenzen auflösen, unaufgelöst → definierter Fehler.
+
+### 11 — Begrenzte JSON-Antwort mit tiefer Redaction (LC03 Datenantworten)
+# Konzept: Response-Felder via httpBody.<field> in Prozessvariablen übernehmen;
+#   secretToken / nested.apiKey / list[].token → *** (nicht in Variablen/History).
+# ...
+# Beispielantwort (Testdienst, KEINE sensiblen Daten):
+# {
+#   "customer": "A",
+#   "amount": 12.5,
+#   "group": "basic",
+#   "nested": { "apiKey": "***" }
+# }
+# Erwartete Prozessvariablen: connector.output.httpBody.customer="A",
+#   connector.output.httpBody.amount=12.5, connector.output.httpBody.nested.apiKey="***".
+
+### 12 — Zu große Antwort → definierter Fehler ohne Teilzuordnung
+# Konzept: Antwort größer als ConnectorRuntime:MaxResponseBytes (Default 256 KiB)
+#   wird abgebrochen; Status/Header/Body werden NICHT teilweise zugeordnet.
+# Soll: connector.success=false, Fehlercode responseTooLarge, keine httpBody.*-Variablen.
+
+### 13 — Malformiertes/nicht-JSON-Antwort → definierter Fehler
+# Konzept: invalidBody / nonJsonText; keine Teilzuordnung; Fehler ohne Teilwerte.
+
+### 14 — Timeout (bestehender Retry-Pfad)
+# Konzept: vertex:retryPolicy.timeoutMs überschreiten → definiertes timeout,
+#   keine Teilzuordnung der (nicht gelesenen) Antwort.

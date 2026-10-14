@@ -74,6 +74,20 @@ implementierten und getesteten Stränge.
 - Tests: `FieldMapperTests` 8× + `FieldMappingPreviewServiceTests` 3× grün; Studio +
   API kompilieren.
 
+### Strang G — Mapper-Binding-Integration (Z.247 Rest)
+- **Output-Mapping im Executor**: neues Bindungs-Attribut `vertex:connector.outputMapping`
+  (JSON-Array von `{sourcePath, targetKey, transform, required}`). Die Runtime wendet
+  bei einer echten Datenantwort `FieldMapper` auf die gelesenen Response-Felder an und
+  stellt die Zielwerte als Prozessvariablen bereit.
+- **Fail-closed**: schlägt das Mapping fehl (fehlendes Pflichtfeld, unbekannter Transform,
+  ungültiges JSON), wird die Service-Task-Execution-Exception geworfen, **bevor irgendein
+  Output exponiert wird** — keine Teilzuordnung (auch nicht `httpBody.*`).
+- Transform-Werte werden case-insensitive geparst; unbekannter Transform bricht mit
+  definiertem Fehler ab (statt still auf `Copy` zu fallen).
+- Tests (rot→grün, TDD): `AppliesOutputMappingFromBinding` (ToText+ToNumber → Zielwerte),
+  `RejectsFailedOutputMapping_WithoutPartialExposure` (required-Missing → Exception),
+  plus wiederhergestellter `ExposesJsonResponseFieldsWithRedaction`.
+
 ## Was verifiziert ist
 
 - Build: **0 Errors, 0 Warnings.**
@@ -93,11 +107,11 @@ implementierten und getesteten Stränge.
    Read-only-Rollen-Abnahme (Infra) und die explizite „nur administrativ freigegebene
    Queries"-Konfig (Browser-Designer sendet keine beliebige SQL) — der harte
    SELECT-Guard schützt den Lesepfad bereits.
-2. **Studio-Mapper (Z.247, Teil)**: `FieldMapper` + Preview-API + `FieldMapperPanel.razor`
-   (Feldwahl, Transformation, Beispieldaten, Vorschau) sind implementiert und getestet.
-   Es fehlt die **Integration in den Connector-Binding-Flow** (die Feldwahl speist noch
-   nicht automatisch ein zu übernehmendes Mapping/Binding) und eine **visuelle
-   Laufzeit-Prüfung** der Komponente (nur Kompilation verifiziert).
+2. **Studio-Mapper (Z.247, Rest)**: `FieldMapper` + Preview-API + `FieldMapperPanel.razor`
+   (Feldwahl, Transformation, Beispieldaten, Vorschau) und die **Integration in den
+   Connector-Binding-Flow** (`vertex:connector.outputMapping`, fail-closed im Executor)
+   sind implementiert und getestet. Es fehlt nur noch eine **visuelle Laufzeit-Prüfung**
+   der Komponente (bisher nur Kompilation verifiziert) und der volle End-to-End-Datenfall.
 3. **Sensitive-Felder-Schutz History/Audit (Z.245)**: Design bereits erfüllt
    (Redaction vor Variablen; Audit speichert keine Body-Felder), aber nicht durch
    einen eigenen Test belegt.
@@ -109,12 +123,12 @@ implementierten und getesteten Stränge.
 
 ## Nächste Schritte (vorgeschlagene Reihenfolge)
 
-1. **Mapper in Connector-Binding-Flow integrieren** (Z.247 Rest): der Studio-Mapper
-   übernimmt das konfigurierte Mapping in ein Bindungs-Attribut (z. B. ein erwartetes
-   Output-Mapping), das die Runtime bei einer echten Datenantwort anwendet — damit ist die
-   Feldwahl nicht mehr nur Vorschau, sondern steuernd.
-2. Durchgehender Datenfall (Z.249) — erfordert Input- + Mapper-Strang vollständig
-   und schließlich einen echten Studio→Runtime-Nachweis.
+1. **Durchgehender Datenfall (Z.249)**: Kundenantwort lesen → Output-Mapping
+   (`vertex:connector.outputMapping`, jetzt im Executor aktiv) → Betrag/Kundengruppe als
+   Prozessvariablen → DMN auswerten → tatsächlicher BPMN-Pfad. Erfordert einen echten
+   Studio→Deploy→Start→Request→Folgeschritt-Nachweis (bisher nur Unit-Tests).
+2. Visuelle Laufzeit-Prüfung von `FieldMapperPanel.razor` im Studio (nur Kompilation
+   verifiziert bisher).
 3. DB-Read-only-/Admin-Approval-Verfeinerung, falls Infra-Zugriff besteht.
 
 Kein Cloud-Deployment, keine Produktionsänderung für die verbleibende lokale Arbeit.

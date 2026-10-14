@@ -35,7 +35,7 @@ public class HttpConnectorExecutor(HttpClient client, HttpDataResponseReader? da
 		using var timeoutCts = CreateTimeoutSource(context, cancellationToken);
 		using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token);
 		var outputs = CollectOutputs(context.Attributes, response);
-		await AddDataResponseFieldsAsync(outputs, response, timeoutCts.Token);
+		await AddDataResponseFieldsAsync(outputs, response, context.Attributes, timeoutCts.Token);
 
 		return new ConnectorExecutionResult(
 			response.IsSuccessStatusCode,
@@ -50,6 +50,7 @@ public class HttpConnectorExecutor(HttpClient client, HttpDataResponseReader? da
 	private async Task AddDataResponseFieldsAsync(
 		Dictionary<string, object> outputs,
 		HttpResponseMessage response,
+		IReadOnlyDictionary<string, string> attributes,
 		CancellationToken cancellationToken)
 	{
 		if (dataResponseReader is null)
@@ -63,12 +64,85 @@ public class HttpConnectorExecutor(HttpClient client, HttpDataResponseReader? da
 			throw new ServiceTaskExecutionException($"HTTP response could not be read: {data.ErrorCode}.");
 		}
 
+		// LC03 Z.247: optional explicit output mapping. When configured, the runtime
+		// applies FieldMapper to the response body values first; a failed mapping
+		// aborts before ANY output is exposed (fail-closed, no partial assignment).
+		if (TryParseOutputMapping(attributes, out var mappings))
+		{
+			var mapped = FieldMapper.Apply(data.Fields, mappings);
+			if (!mapped.Success)
+			{
+				throw new ServiceTaskExecutionException($"Output mapping failed: {string.Join("; ", mapped.Errors)}.");
+			}
+
+			foreach (var (key, value) in mapped.Values)
+			{
+				// A null target is a legitimate mapped value; the outputs dictionary
+				// tolerates null boxes, so suppress the NRT warning for this store.
+				outputs[key] = value!;
+			}
+		}
+
 		outputs["httpContentType"] = data.ContentType ?? string.Empty;
 		outputs["httpBody"] = data.RawBody;
 		foreach (var (key, value) in data.Fields)
 		{
 			outputs["httpBody." + key] = value;
 		}
+	}
+
+	private static readonly JsonSerializerOptions OutputMappingOptions = new()
+	{
+		// Binding JSON uses camelCase (sourcePath/targetKey/transform/required) while the
+		// DTO properties are PascalCase; properties would silently stay default otherwise.
+		PropertyNameCaseInsensitive = true
+	};
+
+	private static bool TryParseOutputMapping(IReadOnlyDictionary<string, string> attributes, out IReadOnlyList<FieldMapping> mappings)
+	{
+		mappings = Array.Empty<FieldMapping>();
+		if (!attributes.TryGetValue("vertex:connector.outputMapping", out var json) || string.IsNullOrWhiteSpace(json))
+		{
+			return false;
+		}
+
+		List<OutputMappingDto>? items;
+		try
+		{
+			items = JsonSerializer.Deserialize<List<OutputMappingDto>>(json, OutputMappingOptions);
+		}
+		catch (JsonException ex)
+		{
+			throw new ServiceTaskExecutionException("Output mapping is invalid JSON.", ex);
+		}
+
+		mappings = items!.Select(ToFieldMapping).ToList();
+		return true;
+	}
+
+	private static FieldMapping ToFieldMapping(OutputMappingDto dto)
+	{
+		// Absent/blank transform defaults to Copy; parse explicitly for present values.
+		// Unknown transforms fail closed rather than silently falling back.
+		if (string.IsNullOrWhiteSpace(dto.Transform))
+		{
+			return new FieldMapping(dto.SourcePath, dto.TargetKey, FieldTransform.Copy, dto.Required);
+		}
+
+		if (Enum.TryParse<FieldTransform>(dto.Transform, ignoreCase: true, out var parsed))
+		{
+			return new FieldMapping(dto.SourcePath, dto.TargetKey, parsed, dto.Required);
+		}
+
+		throw new ServiceTaskExecutionException($"Output mapping has unknown transform '{dto.Transform}' for '{dto.SourcePath}'.");
+	}
+
+	public sealed class OutputMappingDto
+	{
+		public string SourcePath { get; init; } = string.Empty;
+		public string TargetKey { get; init; } = string.Empty;
+		public string? Transform { get; init; }
+		public bool Required { get; init; }
 	}
 
 	private static void TrySetBody(HttpRequestMessage request, IReadOnlyDictionary<string, string> attributes, IDictionary<string, object> variables)

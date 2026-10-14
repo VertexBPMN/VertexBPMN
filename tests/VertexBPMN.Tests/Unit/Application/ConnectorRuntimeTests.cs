@@ -358,6 +358,51 @@ public sealed class ConnectorRuntimeTests
 		Assert.Equal("application/json", result.Outputs["httpContentType"]);
 	}
 
+	[Fact]
+	public async Task HttpExecutor_AppliesOutputMappingFromBinding()
+	{
+		using var httpClientHandler = new JsonSendHandler("""{"customer":"A","amount":12.5}""");
+		using var httpClient = new HttpClient(httpClientHandler, disposeHandler: false);
+		var reader = new HttpDataResponseReader(4096, new ConnectorRedactionPolicy());
+		var executor = new HttpConnectorExecutor(httpClient, reader);
+		var context = new ConnectorExecutionContext(
+			"tenant-a", "http", "get.orders", new Uri("https://api.example.test/v1/orders"),
+			new Dictionary<string, string>(StringComparer.Ordinal)
+			{
+				["vertex:connector.method"] = "GET",
+				["vertex:connector.outputMapping"] = """[{"sourcePath":"customer","targetKey":"customerName","transform":"ToText"},{"sourcePath":"amount","targetKey":"amount","transform":"ToNumber"}]"""
+			},
+			new Dictionary<string, object>(StringComparer.Ordinal),
+			new ConnectorRetryPolicy(0, TimeSpan.Zero, TimeSpan.Zero));
+
+		var result = await executor.ExecuteAsync(context, TestContext.Current.CancellationToken);
+
+		Assert.True(result.Success);
+		Assert.Equal("A", result.Outputs["customerName"]);
+		Assert.Equal(12.5m, result.Outputs["amount"]);
+	}
+
+	[Fact]
+	public async Task HttpExecutor_RejectsFailedOutputMapping_WithoutPartialExposure()
+	{
+		using var httpClientHandler = new JsonSendHandler("""{"customer":"A"}""");
+		using var httpClient = new HttpClient(httpClientHandler, disposeHandler: false);
+		var reader = new HttpDataResponseReader(4096, new ConnectorRedactionPolicy());
+		var executor = new HttpConnectorExecutor(httpClient, reader);
+		var context = new ConnectorExecutionContext(
+			"tenant-a", "http", "get.orders", new Uri("https://api.example.test/v1/orders"),
+			new Dictionary<string, string>(StringComparer.Ordinal)
+			{
+				["vertex:connector.method"] = "GET",
+				["vertex:connector.outputMapping"] = """[{"sourcePath":"amount","targetKey":"amount","transform":"ToNumber","required":true}]"""
+			},
+			new Dictionary<string, object>(StringComparer.Ordinal),
+			new ConnectorRetryPolicy(0, TimeSpan.Zero, TimeSpan.Zero));
+
+		await Assert.ThrowsAsync<ServiceTaskExecutionException>(
+			() => executor.ExecuteAsync(context, TestContext.Current.CancellationToken));
+	}
+
 	private sealed class JsonSendHandler(string json) : HttpMessageHandler
 	{
 		protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)

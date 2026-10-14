@@ -119,3 +119,34 @@ Content-Type: application/json
 ### 14 — Timeout (bestehender Retry-Pfad)
 # Konzept: vertex:retryPolicy.timeoutMs überschreiten → definiertes timeout,
 #   keine Teilzuordnung der (nicht gelesenen) Antwort.
+
+### 15 — Studio-Mapper-Vorschau (LC03 Z.247)
+# Ziel: Eingabe-/Ausgabeschema, Feldwahl, explizite Transformation und Vorschau über
+#   einen realen Datenfall; ohne Teilzuordnung bei fehlendem Pflichtfeld/fehlerhafter
+#   Typumwandlung. Stateless: keine Persistenz, nur Berechnung.
+POST {{baseUrl}}/api/mapping/preview
+Authorization: Bearer {{VERTEXBPMN_ADMIN_TOKEN}}
+Content-Type: application/json
+# Soll: 200; success=true; Werte wie customerName="A", amount=12.5, group="gold".
+{
+  "sourceJson": "{ \"customer\": { \"name\": \"A\", \"group\": \"gold\" }, \"amount\": 12.50 }",
+  "mappings": [
+    { "sourcePath": "customer.name", "targetKey": "customerName", "transform": "Copy", "required": true },
+    { "sourcePath": "customer.group", "targetKey": "group", "transform": "Copy", "required": false },
+    { "sourcePath": "amount", "targetKey": "amount", "transform": "ToNumber", "required": false }
+  ]
+}
+
+### 16 — Mapper-Vorschau: definierter Fehler ohne Teilzuordnung
+# Soll: 400/200 mit success=false und Fehler-LISTE (keine Teilwerte), weil Pflichtfeld fehlt
+#   bzw. 'abc' nicht als Dezimal konvertierbar ist.
+POST {{baseUrl}}/api/mapping/preview
+Authorization: Bearer {{VERTEXBPMN_ADMIN_TOKEN}}
+Content-Type: application/json
+{
+  "sourceJson": "{ \"customer\": { \"name\": \"A\" }, \"amount\": \"abc\" }",
+  "mappings": [
+    { "sourcePath": "customer.missing", "targetKey": "x", "transform": "Copy", "required": true },
+    { "sourcePath": "amount", "targetKey": "amount", "transform": "ToNumber", "required": false }
+  ]
+}

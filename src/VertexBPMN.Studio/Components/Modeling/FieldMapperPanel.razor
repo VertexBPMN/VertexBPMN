@@ -1,0 +1,128 @@
+@using MudBlazor
+@using VertexBPMN.Studio.Services
+@using System.Text.Json
+
+<MudPaper Class="pa-4" Elevation="0">
+    <MudText Typo="Typo.h6" Class="mb-3">Mapper (Vorschau)</MudText>
+    <MudText Typo="Typo.caption" Class="mb-2">Eingabe‑/Ausgabeschema, Feldwahl, explizite Transformation, Beispieldaten und Vorschau (LC03 Z.247). Null/fehlendes Feld → &lt;null&gt;, Datum → DateTimeOffset, Dezimal → decimal, Liste/Objekt nur mit „Copy“.</MudText>
+
+    <MudGrid>
+        <MudItem xs="12" md="5">
+            <MudTextField T="string" Label="Beispieldaten (JSON)" Variant="Variant.Outlined" Lines="8"
+                          Value="@_sampleJson" ValueChanged="@(v => _sampleJson = v)" />
+        </MudItem>
+
+        <MudItem xs="12" md="7">
+            <MudText Typo="Typo.subtitle2">Feldzuordnungen</MudText>
+            @for (var i = 0; i < _mappings.Count; i++)
+            {
+                var index = i;
+                <MudStack Row="true" Spacing="2" Class="mt-1" AlignItems="AlignItems.Center">
+                    <MudTextField T="string" Label="Quelle (Pfad)" Style="max-width: 180px" Value="@_mappings[index].SourcePath"
+                                  ValueChanged="@(v => UpdateSource(index, v))" />
+                    <MudTextField T="string" Label="Ziel" Style="max-width: 120px" Value="@_mappings[index].TargetKey"
+                                  ValueChanged="@(v => UpdateTarget(index, v))" />
+                    <MudSelect T="string" Label="Transformation" Style="max-width: 140px"
+                               Value="@_mappings[index].Transform" ValueChanged="@(v => UpdateTransform(index, v))">
+                        @foreach (var transform in _transforms)
+                        {
+                            <MudSelectItem T="string" Value="@transform">@transform</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudCheckBox T="bool" Label="Pflicht" Value="@_mappings[index].Required"
+                                 ValueChanged="@(v => UpdateRequired(index, v))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" OnClick="@(() => _mappings.RemoveAt(index))" />
+                </MudStack>
+            }
+            <MudButton Class="mt-2" Variant="Variant.Outlined" Color="Color.Secondary" OnClick="AddMapping">+ Feldzuordnung</MudButton>
+        </MudItem>
+    </MudGrid>
+
+    <MudButton Class="mt-4" Variant="Variant.Filled" Color="Color.Primary" OnClick="PreviewAsync" Disabled="@(!CanPreview)">Vorschau berechnen</MudButton>
+
+    @if (_preview is not null)
+    {
+        <MudDivider Class="my-4" />
+        @if (_preview.Success)
+        {
+            <MudText Typo="Typo.subtitle2">Ergebnis (zu setzende Variablen)</MudText>
+            <MudSimpleTable Class="mt-2" Dense="true">
+                <thead><tr><th>Ziel</th><th>Wert</th></tr></thead>
+                <tbody>
+                    @foreach (var pair in _preview.Values)
+                    {
+                        <tr><td>@pair.Key</td><td><code>@RenderValue(pair.Value)</code></td></tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Error">Keine Teilzuordnung: @string.Join(" ", _preview.Errors)</MudAlert>
+        }
+    }
+
+    @if (_error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+</MudPaper>
+
+@code {
+    [Inject] private IFieldMappingService MappingService { get; set; } = default!;
+
+    private readonly List<string> _transforms = ["Copy", "ToText", "ToNumber", "ToDate", "ToBool"];
+    private string _sampleJson = """{ "customer": { "name": "A" }, "amount": 12.50 }""";
+    private readonly List<StudioFieldMappingItem> _mappings =
+    [
+        new StudioFieldMappingItem("customer.name", "customerName", "Copy", true),
+        new StudioFieldMappingItem("amount", "amount", "ToNumber", false)
+    ];
+
+    private StudioFieldMappingPreviewResult? _preview;
+    private string? _error;
+    private bool _busy;
+
+    private bool CanPreview => !_busy && _mappings.Count > 0;
+
+    private void AddMapping() => _mappings.Add(new StudioFieldMappingItem("", "", "Copy", false));
+    private void UpdateSource(int index, string? value) => _mappings[index] = _mappings[index] with { SourcePath = value?.Trim() ?? string.Empty };
+    private void UpdateTarget(int index, string? value) => _mappings[index] = _mappings[index] with { TargetKey = value?.Trim() ?? string.Empty };
+    private void UpdateTransform(int index, string? value) => _mappings[index] = _mappings[index] with { Transform = value };
+    private void UpdateRequired(int index, bool value) => _mappings[index] = _mappings[index] with { Required = value };
+
+    private async Task PreviewAsync()
+    {
+        _busy = true;
+        _error = null;
+        _preview = null;
+        try
+        {
+            var items = _mappings
+                .Where(m => !string.IsNullOrWhiteSpace(m.SourcePath) && !string.IsNullOrWhiteSpace(m.TargetKey))
+                .ToList();
+            _preview = await MappingService.PreviewAsync(_sampleJson, items);
+        }
+        catch (Exception exception)
+        {
+            _error = exception.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static string RenderValue(object? value)
+    {
+        if (value is null)
+        {
+            return "&lt;null&gt;";
+        }
+        if (value is string text)
+        {
+            return text;
+        }
+        return JsonSerializer.Serialize(value);
+    }
+}

@@ -57,6 +57,23 @@ implementierten und getesteten Stränge.
 - Tests (TDD): strukturierte `rows`/`rowCount`, Zeilenlimit-Cap, Ablehnung nicht-SELECT /
   gestapelter Anweisungen. SQLite-basiert, lokal grün.
 
+### Strang F — Studio-Mapper (Z.247)
+- **`FieldMapper`** (Application): explizite Feldzuordnungen (`FieldMapping`) mit
+  Dotted-Pfaden (verschachtelte Dict/Liste). **Fail-closed**: fehlendes Pflichtfeld oder
+  fehlgeschlagene explizite Transformation bricht die gesamte Zuordnung ab (keine
+  Teilzuordnung). Transformationen `Copy`/`ToText`/`ToNumber`/`ToDate`/`ToBool`.
+- **`FieldMappingPreviewService`** (Application): parst Beispiel-JSON und wendet die
+  Zuordnungen an — isoliert testbar.
+- **`MappingController`** (API): `POST /api/mapping/preview` — stateless, Policy
+  `ProcessManager`.
+- **Studio** (`FieldMapperPanel.razor` + `HttpFieldMappingService`): Eingabe-/Ausgabe-
+  schema, Feldwahl (Quelle/Ziel), explizite Transformation, Pflicht-Flag, Beispieldaten-
+  Textarea und Vorschau mit Ergebnis-/Fehleranzeige.
+- **Dokumentierte Semantik**: `docs/reference/low-code-mapper-semantics.md` (Null/
+  fehlendes Feld, Datum, Dezimal, Liste, Objekt, Fehlerverhalten).
+- Tests: `FieldMapperTests` 8× + `FieldMappingPreviewServiceTests` 3× grün; Studio +
+  API kompilieren.
+
 ## Was verifiziert ist
 
 - Build: **0 Errors, 0 Warnings.**
@@ -76,8 +93,11 @@ implementierten und getesteten Stränge.
    Read-only-Rollen-Abnahme (Infra) und die explizite „nur administrativ freigegebene
    Queries"-Konfig (Browser-Designer sendet keine beliebige SQL) — der harte
    SELECT-Guard schützt den Lesepfad bereits.
-2. **Studio-Mapper (Z.247)**: Eingabe-/Ausgabeschema, Feldwahl, explizite
-   Transformation, Beispieldaten, Vorschau im Studio (Razor). UI-Arbeit.
+2. **Studio-Mapper (Z.247, Teil)**: `FieldMapper` + Preview-API + `FieldMapperPanel.razor`
+   (Feldwahl, Transformation, Beispieldaten, Vorschau) sind implementiert und getestet.
+   Es fehlt die **Integration in den Connector-Binding-Flow** (die Feldwahl speist noch
+   nicht automatisch ein zu übernehmendes Mapping/Binding) und eine **visuelle
+   Laufzeit-Prüfung** der Komponente (nur Kompilation verifiziert).
 3. **Sensitive-Felder-Schutz History/Audit (Z.245)**: Design bereits erfüllt
    (Redaction vor Variablen; Audit speichert keine Body-Felder), aber nicht durch
    einen eigenen Test belegt.
@@ -89,10 +109,13 @@ implementierten und getesteten Stränge.
 
 ## Nächste Schritte (vorgeschlagene Reihenfolge)
 
-1. **Studio-Mapper (Z.247)** — UI, größerer Aufwand; danach Read-only-/Admin-Approval-
-   Verfeinerung der DB-Seite, falls Infra-Zugriff besteht.
+1. **Mapper in Connector-Binding-Flow integrieren** (Z.247 Rest): der Studio-Mapper
+   übernimmt das konfigurierte Mapping in ein Bindungs-Attribut (z. B. ein erwartetes
+   Output-Mapping), das die Runtime bei einer echten Datenantwort anwendet — damit ist die
+   Feldwahl nicht mehr nur Vorschau, sondern steuernd.
 2. Durchgehender Datenfall (Z.249) — erfordert Input- + Mapper-Strang vollständig
    und schließlich einen echten Studio→Runtime-Nachweis.
+3. DB-Read-only-/Admin-Approval-Verfeinerung, falls Infra-Zugriff besteht.
 
 Kein Cloud-Deployment, keine Produktionsänderung für die verbleibende lokale Arbeit.
 

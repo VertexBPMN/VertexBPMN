@@ -289,6 +289,7 @@ builder.Services.AddScoped<IWorkflowTriggerService, HttpWorkflowTriggerService>(
 builder.Services.AddScoped<IConnectorService, HttpConnectorService>();
 builder.Services.AddScoped<HttpSourceControlService>();
 builder.Services.AddScoped<IConnectorTemplateService, HttpConnectorTemplateService>();
+builder.Services.AddScoped<IFieldMappingService, HttpFieldMappingService>();
 builder.Services.AddScoped<IDebuggingService, HttpDebuggingService>();
 builder.Services.AddScoped<ICaseManagementService, HttpCaseManagementService>();
 builder.Services.AddScoped<NotificationClient>();

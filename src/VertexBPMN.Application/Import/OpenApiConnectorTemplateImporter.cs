@@ -149,10 +149,16 @@ public sealed class OpenApiConnectorTemplateImporter : IOpenApiConnectorTemplate
 				type = MapType(schema, ref needsReview, notes);
 			}
 
-			// LC02: header parameters are exported under the unified vertex:connector.header.<name>
-			// key so @HttpConnectorExecutor transports them on the request. Path/query stay on the
-			// raw name (path becomes an endpoint placeholder, query is assembled at mapping time).
-			var propKey = location == "header" ? "vertex:connector.header." + name : name;
+			// LC03: header/query parameters are exported under the unified keys the
+			// @HttpConnectorExecutor expects (vertex:connector.header.<name>,
+			// vertex:connector.query.<name>). Path stays on the raw name (endpoint
+			// placeholder) and is resolved from process variables at runtime.
+			var propKey = location switch
+			{
+				"header" => "vertex:connector.header." + name,
+				"query" => "vertex:connector.query." + name,
+				_ => name
+			};
 			props.Add(new ConnectorTemplateProperty(propKey, type, Required: location == "path", BindingVersion: ConnectorBindingVersion.Versioned));
 		}
 	}
@@ -182,9 +188,73 @@ public sealed class OpenApiConnectorTemplateImporter : IOpenApiConnectorTemplate
 				continue;
 			}
 
+			// LC03: a flat object body is exported as structured bodyField.<name> properties
+			// so the executor builds a properly JSON-escaped body (no unchecked interpolation).
+			// Nested/complex schemas fall back to a single "body" property and flag review.
+			if (schema.TryGetProperty("properties", out var properties)
+				&& properties.ValueKind == JsonValueKind.Object
+				&& EmitStructuredBodyFields(requestBody, properties, props, ref needsReview, notes))
+			{
+				break;
+			}
+
 			props.Add(new ConnectorTemplateProperty("body", MapType(schema, ref needsReview, notes), Required: true));
 			break;
 		}
+	}
+
+	// Returns true when at least one structured bodyField.<name> property was emitted.
+	private static bool EmitStructuredBodyFields(
+		JsonElement requestBody,
+		JsonElement properties,
+		List<ConnectorTemplateProperty> props,
+		ref bool needsReview,
+		List<string> notes)
+	{
+		var emitted = 0;
+		foreach (var property in properties.EnumerateObject())
+		{
+			if (property.Value.ValueKind != JsonValueKind.Object)
+			{
+				continue;
+			}
+
+			var isComplex = property.Value.TryGetProperty("type", out var propType)
+				&& propType.ValueKind == JsonValueKind.String
+				&& propType.GetString() is "object" or "array";
+			if (isComplex)
+			{
+				needsReview = true;
+				continue;
+			}
+
+			props.Add(new ConnectorTemplateProperty(
+				"vertex:connector.bodyField." + property.Name,
+				MapType(property.Value, ref needsReview, notes),
+				Required: requestBody.TryGetProperty("required", out var requiredArr) && Contains(requiredArr, property.Name),
+				BindingVersion: ConnectorBindingVersion.Versioned));
+			emitted++;
+		}
+
+		return emitted > 0;
+	}
+
+	private static bool Contains(JsonElement array, string value)
+	{
+		if (array.ValueKind != JsonValueKind.Array)
+		{
+			return false;
+		}
+
+		foreach (var item in array.EnumerateArray())
+		{
+			if (item.ValueKind == JsonValueKind.String && string.Equals(item.GetString(), value, StringComparison.Ordinal))
+			{
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	private static string MapType(JsonElement schema, ref bool needsReview, List<string> notes)

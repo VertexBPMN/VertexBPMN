@@ -20,7 +20,7 @@ public static class ConnectorValueResolver
 	/// against variables; mixed literal+reference content is assembled. Unresolved
 	/// references and malformed delimiters throw <see cref="ServiceTaskExecutionException"/>.
 	/// </summary>
-	public static string Resolve(string source, IReadOnlyDictionary<string, object?> variables, string? sourceDescription = null)
+	public static string Resolve(string source, IDictionary<string, object> variables, string? sourceDescription = null)
 	{
 		if (string.IsNullOrEmpty(source))
 		{

@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using System.Text;
+using System.Text.Json;
 using VertexBPMN.Application.Connectors;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Exceptions;
@@ -226,7 +227,7 @@ public sealed class ConnectorRuntimeTests
 	[Fact]
 	public void ValueResolver_ResolvesLiteralVariableAndMixedSources()
 	{
-		var vars = new Dictionary<string, object?>(StringComparer.Ordinal)
+		var vars = new Dictionary<string, object>(StringComparer.Ordinal)
 		{
 			["userId"] = "42",
 			["kind"] = "premium"
@@ -240,7 +241,7 @@ public sealed class ConnectorRuntimeTests
 	[Fact]
 	public void ValueResolver_ThrowsOnUnresolvedVariable()
 	{
-		var vars = new Dictionary<string, object?>(StringComparer.Ordinal);
+		var vars = new Dictionary<string, object>(StringComparer.Ordinal);
 		Assert.Throws<ServiceTaskExecutionException>(() => ConnectorValueResolver.Resolve("{{missing}}", vars));
 		Assert.Throws<ServiceTaskExecutionException>(() => ConnectorValueResolver.Resolve("a {{broken", vars));
 	}
@@ -377,6 +378,129 @@ public sealed class ConnectorRuntimeTests
 			return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK));
 		}
 	}
+
+	private static ConnectorRetryPolicy NoRetry() => new(0, TimeSpan.Zero, TimeSpan.Zero);
+
+	[Fact]
+	public async Task HttpExecutor_MapsQueryParametersFromBinding_AndResolvesVariables()
+	{
+		HttpRequestMessage? captured = null;
+		using var handler = new RecordingHandler(r => captured = r);
+		using var httpClient = new HttpClient(handler, disposeHandler: false);
+		var executor = new HttpConnectorExecutor(httpClient);
+		var context = new ConnectorExecutionContext(
+			"tenant-a", "http", "x", new Uri("https://api.example.test/v1/orders"),
+			new Dictionary<string, string>(StringComparer.Ordinal)
+			{
+				["vertex:connector.method"] = "GET",
+				["vertex:connector.query.status"] = "active",
+				["vertex:connector.query.page"] = "{{page}}",
+				["vertex:connector.query.term"] = "a b & c"
+			},
+			new Dictionary<string, object>(StringComparer.Ordinal) { ["page"] = "2" },
+			NoRetry());
+
+		await executor.ExecuteAsync(context, TestContext.Current.CancellationToken);
+
+		var query = ParseQuery(captured!.RequestUri!.Query);
+		Assert.Equal("active", query["status"]);
+		Assert.Equal("2", query["page"]);
+		Assert.Equal("a b & c", query["term"]);
+	}
+
+	private static Dictionary<string, string> ParseQuery(string raw)
+	{
+		var result = new Dictionary<string, string>(StringComparer.Ordinal);
+		if (string.IsNullOrEmpty(raw))
+		{
+			return result;
+		}
+
+		foreach (var pair in raw.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+		{
+			var eq = pair.IndexOf('=', StringComparison.Ordinal);
+			if (eq < 0)
+			{
+				result[Uri.UnescapeDataString(pair)] = string.Empty;
+			}
+			else
+			{
+				result[Uri.UnescapeDataString(pair[..eq])] = Uri.UnescapeDataString(pair[(eq + 1)..]);
+			}
+		}
+
+		return result;
+	}
+
+	[Fact]
+	public async Task HttpExecutor_RejectsUnresolvedVariableInQuery()
+	{
+		using var handler = new SuccessfulHandler();
+		using var httpClient = new HttpClient(handler, disposeHandler: false);
+		var executor = new HttpConnectorExecutor(httpClient);
+		var context = new ConnectorExecutionContext(
+			"tenant-a", "http", "x", new Uri("https://api.example.test/v1"),
+			new Dictionary<string, string>(StringComparer.Ordinal)
+			{
+				["vertex:connector.method"] = "GET",
+				["vertex:connector.query.page"] = "{{missing}}"
+			},
+			new Dictionary<string, object>(StringComparer.Ordinal),
+			NoRetry());
+
+		await Assert.ThrowsAsync<ServiceTaskExecutionException>(() => executor.ExecuteAsync(context, TestContext.Current.CancellationToken));
+	}
+
+	[Fact]
+	public async Task HttpExecutor_BuildsStructuredJsonBodyFromBindingFields()
+	{
+		string? body = null;
+		string? contentType = null;
+		using var handler = new RecordingHandler(r =>
+		{
+			body = r.Content?.ReadAsStringAsync().GetAwaiter().GetResult();
+			contentType = r.Content?.Headers.ContentType?.MediaType;
+		});
+		using var httpClient = new HttpClient(handler, disposeHandler: false);
+		var executor = new HttpConnectorExecutor(httpClient);
+		var context = new ConnectorExecutionContext(
+			"tenant-a", "http", "x", new Uri("https://api.example.test/v1/orders"),
+			new Dictionary<string, string>(StringComparer.Ordinal)
+			{
+				["vertex:connector.method"] = "POST",
+				["vertex:connector.bodyField.customer"] = "{{customer}}",
+				["vertex:connector.bodyField.amount"] = "12.5"
+			},
+			new Dictionary<string, object>(StringComparer.Ordinal) { ["customer"] = "A&B" },
+			NoRetry());
+
+		await executor.ExecuteAsync(context, TestContext.Current.CancellationToken);
+
+		Assert.Equal("application/json", contentType);
+		var doc = JsonDocument.Parse(body!);
+		Assert.Equal("A&B", doc.RootElement.GetProperty("customer").GetString());
+		Assert.Equal("12.5", doc.RootElement.GetProperty("amount").GetString());
+	}
+
+	[Fact]
+	public async Task HttpExecutor_RejectsUnresolvedVariableInStructuredBody()
+	{
+		using var handler = new SuccessfulHandler();
+		using var httpClient = new HttpClient(handler, disposeHandler: false);
+		var executor = new HttpConnectorExecutor(httpClient);
+		var context = new ConnectorExecutionContext(
+			"tenant-a", "http", "x", new Uri("https://api.example.test/v1"),
+			new Dictionary<string, string>(StringComparer.Ordinal)
+			{
+				["vertex:connector.method"] = "POST",
+				["vertex:connector.bodyField.customer"] = "{{missing}}"
+			},
+			new Dictionary<string, object>(StringComparer.Ordinal),
+			NoRetry());
+
+		await Assert.ThrowsAsync<ServiceTaskExecutionException>(() => executor.ExecuteAsync(context, TestContext.Current.CancellationToken));
+	}
+
 	private sealed class DelayingExecutor : IConnectorExecutor
 	{
 		public string Type => "test";

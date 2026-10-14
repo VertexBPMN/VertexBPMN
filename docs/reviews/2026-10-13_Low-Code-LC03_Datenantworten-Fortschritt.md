@@ -6,81 +6,80 @@ Stand: 2026-10-14 · Branch `codex/low-code-lc00` · Paket L (abhängig von LC02
 
 LC03 ist ein großes Paket mit mehreren, teils voneinander unabhängigen
 Strängen (Datenantworten, HTTP-Input-/Output-Mapping, DB-Abfragen, Studio-Mapper,
-OpenAPI-Import, `.http`-Katalog). Dieser Bericht dokumentiert den aktuell lokal
-implementierten und getesteten Strang **„Datenantworten begrenzt lesen"** —
-die abnahmerelevante Grundlage für LC-AC-02/04 aus dem Plan Z. 244/254.
+OpenAPI-Import, `.http`-Katalog). Dieser Bericht dokumentiert die aktuell lokal
+implementierten und getesteten Stränge.
 
-## Was implementiert ist (lokal, uncommittet)
+## Was implementiert ist (lokal, committet als Teilfortschritt)
 
-**Bounded Response-Reader** (`HttpDataResponseReader.cs` + `HttpDataResponse.cs`):
-- Liest die HTTP-Response begrenzt als JSON **oder Text** (Size-Limit via
-  Stream-Chunk-Read, kein unbeschränkter Variablenwert).
-- Liefert **Status, freigegebene Header und Body getrennt** (Success/Statuscode
-  im Ergebnis, Content-Type/Encoding erkannt, Felder separat).
-- Content-Type-/Encoding-Erkennung aus `CharSet`.
-- **Definierte Fehlercodes ohne Teilzuordnung**: `responseTooLarge`
-  (zu große Antwort → Abbruch), `invalidBody` (malformiertes JSON),
-  `nonJsonText` (kein verarbeitbares JSON). Timeout wird weiterhin vom
-  bestehenden CancellationToken/Retry-Mechanismus abgedeckt.
-- **Tiefe (rekursive) Redaction** über `ConnectorRedactionPolicy.RedactValue`:
-  sensitive skalare und verschachtelte Felder (Top-Level, `nested.apiKey`,
-  Listen-Elemente) → `***`.
+### Strang A — Datenantworten begrenzt lesen (LC-AC-02/04-Grundlage)
+- **`HttpDataResponseReader`** (`HttpDataResponse.cs`): liest die HTTP-Response
+  begrenzt als JSON **oder** Text (Size-Limit via Stream-Chunk-Read, kein
+  unbeschränkter Variablenwert). Content-Type/Encoding aus `CharSet`; Status/Header/
+  Body getrennt. **Definierte Fehlercodes ohne Teilzuordnung**: `bodyTooLarge`,
+  `invalidBody`, `nonJsonText`.
+- **Tiefe Redaction** (`ConnectorRedactionPolicy.RedactValue`): sensitive und
+  verschachtelte Felder (Top-Level, `nested.apiKey`, Listen-Elemente) → `***`.
+- **Executor-Integration** (`HttpConnectorExecutor`): exponiert `httpContentType`,
+  `httpBody`, `httpBody.<field>` als Prozessvariablen; nicht lesbare/zu große
+  Antwort → definierter Fehler ohne Teilzuordnung.
+- **DI**: Reader + Executor registriert; Limit `ConnectorRuntime:MaxResponseBytes`
+  (Default 256 KiB).
 
-**Executor-Integration** (`HttpConnectorExecutor.cs`): Der Executor liest nach
-dem Request die Response-Body über den Reader und exponierte
-- `httpContentType`, `httpBody` und `httpBody.<key>` je Feld als
-  Prozessvariablen (unter `connector.output.*`-Ebene über den bestehenden
-  Output-Fluss). Erfolg (2xx) → definierter Erfolg mit Felder; nicht lesbare/
-  zu große Antwort → definierter Fehler ohne Teilzuordnung via
-  `ServiceTaskExecutionException`.
+### Strang B — HTTP-Input-Mapping (Path/Query/Header/Body, kein unchecked Splice)
+- **Query-Mapping**: `vertex:connector.query.<name>` → URL-Query (resolved +
+  percent-encoded).
+- **Strukturierter Body**: `vertex:connector.bodyField.<name>` → JSON-Objekt
+  (resolved, JSON-escaped); Legacy-`vertex:connector.body` weiter unterstützt
+  (jetzt auch resolved).
+- **`ConnectorValueResolver` verdrahtet** in Query/Header/Body: `{{var}}`-Referenzen
+  lösen gegen Prozessvariablen auf; unaufgelöste Referenzen → fail-fast
+  (`ServiceTaskExecutionException`), keine Teilzuordnung.
 
-**DI-Verdrahtung** (`ServiceTaskRegistryExtensions.cs`): `HttpDataResponseReader`
-und `HttpConnectorExecutor` (mit Reader) per DI registriert; Größenlimit
-`ConnectorRuntime:MaxResponseBytes` (Default 256 KiB).
+### Strang C — OpenAPI-Import-Ausbau (Parameter/Bodies auf Executor-Konvention)
+- Query-Params → `vertex:connector.query.*`; flache JSON-Objekte → `vertex:connector.bodyField.*`;
+  nested/komplexe Formen bleiben `body` und flaggen `NeedsReview`.
+- OAuth2 weiterhin manuell zu verknüpfen (Review); nicht unterstützte Formen
+  explizit als Reviewbedarf gekennzeichnet (Z.248).
+
+### Strang D — `.http`-Katalog (Z.250, Teil)
+- `connectors-and-mapping.http` um LC03-Requests erweitert: Query-/Body-Mapping,
+  Beispielantworten ohne sensible Daten, Schema-/Limit-/Timeoutfehler.
 
 ## Was verifiziert ist
 
 - Build: **0 Errors, 0 Warnings.**
-- `HttpDataResponseReaderTests` **4/4 grün**: bounded JSON lesen + tiefe Redaction
-  verschachtelter/sensibler Felder (`customer`→`A`, `amount`→`12.5`,
-  `secretToken`→`***`, `nested.apiKey`→`***`, `list[0].token`→`***`),
-  zu große Antwort abgelehnt, malformiertes JSON abgelehnt, Nicht-JSON-Text
-  abgelehnt.
-- Neuer End-to-End-Executor-Test `HttpExecutor_ExposesJsonResponseFieldsWithRedaction`:
-  JSON-Response → Felder als `httpBody.*` in den Outputs inkl. Redaction — grün.
-- Alle Connector-/Importer-Tests (ConnectorRuntimeTests inkl. neuer
-  Sicherheits-/Versions-Tests, OpenApiConnectorTemplateImporter) weiterhin grün;
-  keine Regression.
+- `HttpDataResponseReaderTests` **4/4 grün**.
+- 4 neue Input-Mapping-Tests (Query + Var-Auflösung, unaufgelöste Query abgelehnt,
+  strukturierter Body gebaut, unaufgelöster Body-Feld abgelehnt) grün.
+- 2 neue Importer-Tests (Query/BodyField-Mapping, komplexer Body + Review) grün.
+- Volle Connector-/Importer-Suite grün, keine Regression.
+- Commits local (nicht gepusht): `765b01f5` (A), `6889fbd0` (B), `19f5f8e5` (D), `37aaff3b` (C).
 
 ## Was noch fehlt (Abnahmelücken — bewusst nicht als fertig markiert)
 
-1. **HTTP-Input-Mapping** (Plan Z. 245): Pfad/Query/Header/strukturierter Body
-   aus dem Binding auf den Request abbilden; keine ungeprüfte Stringinterpolation
-   in JSON/SQL/URLs. (Teilweise durch LC02-Binding-Grundlage adressiert, nicht
-   vollständig.)
-2. **DB-Abfrage/-Schreiboperation** (Z. 246): parametrisierte, administrativ
-   freigegebene Queries, festes Ergebnisschema, Limits, Read-only-Rollen,
-   serverseitige Paging-Strategie.
-3. **Studio-Mapper** (Z. 247): Eingabe-/Ausgabeschema, Feldwahl, explizite
-   Transformation, Beispieldaten, Vorschau; dokumentierte Semantik für
-   Null/fehlendes Feld/Datum/Dezimal/Liste/Objekt.
-4. **OpenAPI-Import-Ausbau** (Z. 248): Parameter-/Bodies/Responses; nicht
-   unterstützte Referenzen/Auth-/Schemaformen als Reviewbedarf kennzeichnen.
-5. **Durchgehender Datenfall** (Z. 249): Kundenantwort lesen → Betrag/Kundengruppe
-   mappen → DMN auswerten → tatsächlicher BPMN-Pfad — **nicht** nur lokale
-   Unit-Tests (kein ausgeführter Studio→Deploy→Start→Request→Folgeschritt-Nachweis).
-6. **`.http`-Katalog-Erweiterung** (Z. 250): Datenquellen-/Mappingrequests,
-   Beispielantworten ohne sensible Daten, Schema-/Limit-/Timeoutfehler.
+1. **DB-Abfrage/-Schreiboperation (Z.246)**: `DatabaseConnectorExecutor` ist derzeit
+   reiner Schreibpfad (`ExecuteNonQuery`, `affectedRows`). Es fehlen: DB-Abfrage als
+   eigene Operation mit festem Ergebnisschema (Zeilen/Spalten als Variablen),
+   serverseitige Limits + Paging, Read-only-Rollen-Abnahme, „Browser-Designer sendet
+   keine beliebige SQL" (nur administrativ freigegebene Queries). Großer eigener Strang.
+2. **Studio-Mapper (Z.247)**: Eingabe-/Ausgabeschema, Feldwahl, explizite
+   Transformation, Beispieldaten, Vorschau im Studio (Razor). UI-Arbeit.
+3. **Sensitive-Felder-Schutz History/Audit (Z.245)**: Design bereits erfüllt
+   (Redaction vor Variablen; Audit speichert keine Body-Felder), aber nicht durch
+   einen eigenen Test belegt.
+4. **Durchgehender Datenfall (Z.249)**: Kundenantwort lesen → Betrag/Kundengruppe
+   mappen → DMN auswerten → tatsächlicher BPMN-Pfad — kein ausgeführter
+   Studio→Deploy→Start→Request→Folgeschritt-Nachweis (nur Unit-Tests).
+5. **DB-, Mapper-Integration im `.http`-Katalog**: nur Konzeptblöcke 10–14, kein
+   echter Lauf (fehlende Testdienste + Runtime-Nachweis).
 
 ## Nächste Schritte (vorgeschlagene Reihenfolge)
 
-1. Teilfortschritt des gelesenen-Response-Strangs committen (klar nicht-fertig
-   markiert), damit die Arbeit gesichert ist.
-2. HTTP-Input-Mapping (Path/Query/Header/strukturierter Body) anpacken —
-   nächster LC03-Teilstrang.
-3. Danach DB-Abfrage-Operation und Studio-Mapper; der durchgehende Datenfall
-   (nur nach vollständigem Input- und Mapper-Strang) benötigt schließlich einen
-   echten Studio→Runtime-Nachweis.
+1. **DB-Abfrage-Operation** (Z.246): Query-Read mit festem Ergebnisschema + Limits
+   im `DatabaseConnectorExecutor` (lokal testbar).
+2. Studio-Mapper (Z.247) — UI, größerer Aufwand.
+3. Durchgehender Datenfall (Z.249) — erfordert Input- + Mapper-Strang vollständig
+   und schließlich einen echten Studio→Runtime-Nachweis.
 
-Kein Cloud-Deployment, keine Produktionsänderung erforderlich für die
-verbleibende lokale Arbeit.
+Kein Cloud-Deployment, keine Produktionsänderung für die verbleibende lokale Arbeit.
+

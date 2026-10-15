@@ -7,7 +7,7 @@ namespace VertexBPMN.Application;
 /// <summary>
 /// Persistent implementation of ITaskService using ITaskRepository.
 /// </summary>
-public class TaskService : ITaskService
+public class TaskService : ITaskService, ITaskCompletionService
 {
 	private readonly ITaskRepository _repo;
 	private readonly IProcessMiningEventSink _eventSink;
@@ -21,6 +21,20 @@ public class TaskService : ITaskService
 		_eventSink = eventSink;
 		_executionRuntime = executionRuntime;
 	}
+
+    public ValueTask CompleteValidatedAsync(Guid taskId, IDictionary<string, object>? variables, string? idempotencyKey,
+        long? expectedRevision, string? formSchemaHash, string? userId, string? tenantId, bool isAdmin,
+        IReadOnlyCollection<string>? roles = null, CancellationToken ct = default)
+    {
+        if (_executionRuntime is not IValidatedTaskCompletionRuntime runtime)
+        {
+            throw new InvalidOperationException("The runtime does not support validated task completion.");
+        }
+        // The runtime persists history and its completion outbox atomically. Do not publish
+        // a second, non-transactional event here: a retry must have no additional effect.
+        return runtime.CompleteValidatedAsync(taskId, variables, idempotencyKey, expectedRevision,
+            formSchemaHash, userId, tenantId, isAdmin, roles, ct);
+    }
 
 	public async ValueTask ClaimAsync(Guid taskId, string userId, CancellationToken cancellationToken = default)
 	{
@@ -38,6 +52,7 @@ public class TaskService : ITaskService
 			}
 
 			task.Assignee = userId;
+			task.Revision++;
 			task.LastModified = DateTime.UtcNow;
 			task.ModifiedBy = userId;
 			await _repo.AddAsync(task, cancellationToken); // Upsert
@@ -111,6 +126,7 @@ public class TaskService : ITaskService
 			}
 
 			task.Status = UserTaskStatus.Delegated;
+			task.Revision++;
 			task.Assignee = userId;
 			task.LastModified = DateTime.UtcNow;
 			task.ModifiedBy = userId;

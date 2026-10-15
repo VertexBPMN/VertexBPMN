@@ -202,6 +202,14 @@ public sealed class VertexBpmnClient
     public Task<DecisionResult?> EvaluateDecisionAsync(string decisionKey, IDictionary<string, object?> inputs, string? tenantId = null, CancellationToken cancellationToken = default)
         => SendForNullableAsync<DecisionResult>(HttpMethod.Post, "api/decision/evaluate", new EvaluateDecisionRequest(decisionKey, inputs, tenantId ?? options.TenantId), cancellationToken);
 
+    public Task<FormDefinitionRevisionMetadata?> GetFormRevisionAsync(string id, int version, string? tenantId = null, CancellationToken cancellationToken = default)
+        => SendForNullableAsync<FormDefinitionRevisionMetadata>(HttpMethod.Get,
+            BuildUri($"api/forms/{Uri.EscapeDataString(id)}/revisions/{version}", ("tenantId", tenantId ?? options.TenantId)), cancellationToken);
+
+    public async Task<IReadOnlyList<FormDefinitionRevisionMetadata>> ListFormRevisionsAsync(string id, string? tenantId = null, CancellationToken cancellationToken = default)
+        => await SendAsync<List<FormDefinitionRevisionMetadata>>(HttpMethod.Get,
+            BuildUri($"api/forms/{Uri.EscapeDataString(id)}/revisions", ("tenantId", tenantId ?? options.TenantId)), cancellationToken) ?? [];
+
     public Task<FormDefinitionMetadata?> CreateFormAsync(string key, string name, string schema, string? tenantId = null, CancellationToken cancellationToken = default)
         => SendForNullableAsync<FormDefinitionMetadata>(HttpMethod.Post, "api/forms", new FormWriteRequest(tenantId ?? options.TenantId, key, name, schema), cancellationToken);
 

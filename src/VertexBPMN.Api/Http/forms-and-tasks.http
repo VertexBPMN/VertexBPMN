@@ -1,0 +1,76 @@
+# LC04: IDs, schema/hash/revision always come from actual responses.
+@baseUrl = http://localhost:51870
+@tenant = tenant-a
+@formId = REPLACE_FROM_CREATE_RESPONSE
+@taskId = REPLACE_FROM_TASK_LIST
+@taskRevision = REPLACE_FROM_TASK_RESPONSE
+@schemaHash = REPLACE_FROM_TASK_RESPONSE
+@userId = REPLACE_WITH_AUTHENTICATED_USER_ID
+@completionKey = REPLACE_WITH_STABLE_UNIQUE_ATTEMPT_KEY
+
+### Create revision 1 (use configured HTTP-client authentication)
+POST {{baseUrl}}/api/forms
+Content-Type: application/json
+
+{"tenantId":"{{tenant}}","key":"lc04-approval","name":"LC04 approval","schema":"{\"type\":\"default\",\"components\":[{\"type\":\"textfield\",\"key\":\"reason\",\"validate\":{\"required\":true}}]}"}
+
+### List persisted revisions
+GET {{baseUrl}}/api/forms/{{formId}}/revisions?tenantId={{tenant}}
+
+### Read fixed revision (must not change on update)
+GET {{baseUrl}}/api/forms/{{formId}}/revisions/1?tenantId={{tenant}}
+
+### Deploy explicit revision 1 (canonical Camunda formRef contract)
+POST {{baseUrl}}/api/repository
+Content-Type: application/json
+
+{"tenantId":"{{tenant}}","name":"lc04-fixed","bpmnXml":"<definitions xmlns=\"http://www.omg.org/spec/BPMN/20100524/MODEL\" xmlns:camunda=\"http://camunda.org/schema/1.0/bpmn\" targetNamespace=\"urn:lc04\"><process id=\"lc04-fixed\" isExecutable=\"true\"><startEvent id=\"s\"/><sequenceFlow id=\"f1\" sourceRef=\"s\" targetRef=\"approval\"/><userTask id=\"approval\" camunda:formRef=\"lc04-approval\" camunda:formRefBinding=\"version\" camunda:formRefVersion=\"1\"/><sequenceFlow id=\"f2\" sourceRef=\"approval\" targetRef=\"e\"/><endEvent id=\"e\"/></process></definitions>"}
+
+### Start actual deployed process, then take task ID from task list
+POST {{baseUrl}}/api/runtime/start
+Content-Type: application/json
+Idempotency-Key: {{completionKey}}-start
+
+{"processDefinitionKey":"lc04-fixed","tenantId":"{{tenant}}","variables":{}}
+
+### Publish revision 2; old task must still use schema 1 (legacy CRUD contract has no expectedVersion)
+PUT {{baseUrl}}/api/forms/{{formId}}
+Content-Type: application/json
+
+{"tenantId":"{{tenant}}","key":"lc04-approval","name":"LC04 approval v2","schema":"{\"type\":\"default\",\"components\":[{\"type\":\"number\",\"key\":\"amount\",\"validate\":{\"required\":true}}]}"}
+
+### Tasks from an actually deployed/started process
+GET {{baseUrl}}/api/task?tenantId={{tenant}}
+
+### Claim: retrieve task again afterwards for current revision
+POST {{baseUrl}}/api/task/{{taskId}}/claim
+Content-Type: application/json
+
+{"userId":"{{userId}}","tenantId":"{{tenant}}"}
+
+### Frozen task schema/hash/revision
+GET {{baseUrl}}/api/task/{{taskId}}
+
+### Invalid completion: required field missing; no status/variable change
+POST {{baseUrl}}/api/task/{{taskId}}/complete
+Content-Type: application/json
+Idempotency-Key: {{completionKey}}-invalid
+
+{"tenantId":"{{tenant}}","variables":{},"expectedRevision":{{taskRevision}},"formSchemaHash":"{{schemaHash}}"}
+
+### Valid completion: repeat identical request and header; one transition
+POST {{baseUrl}}/api/task/{{taskId}}/complete
+Content-Type: application/json
+Idempotency-Key: {{completionKey}}
+
+{"tenantId":"{{tenant}}","variables":{"reason":"Approved"},"expectedRevision":{{taskRevision}},"formSchemaHash":"{{schemaHash}}"}
+
+### Re-read exact target after completion
+GET {{baseUrl}}/api/task/{{taskId}}
+
+### Stale schema: expected 409, no mutation
+POST {{baseUrl}}/api/task/{{taskId}}/complete
+Content-Type: application/json
+Idempotency-Key: {{completionKey}}-stale
+
+{"tenantId":"{{tenant}}","variables":{"reason":"Approved"},"expectedRevision":{{taskRevision}},"formSchemaHash":"stale-hash"}

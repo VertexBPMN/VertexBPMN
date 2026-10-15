@@ -31,6 +31,11 @@ public sealed class StudioUiTestHost : IAsyncLifetime
 	public Uri BaseAddress { get; private set; } = null!;
 	public IBrowser Browser { get; private set; } = null!;
 	public IReadOnlyList<string> ApiRequests => _apiRequests.ToArray();
+	public bool TaskFormsEnabled { get; init; }
+	private readonly ConcurrentQueue<string> _taskCompletions = new();
+	public IReadOnlyList<string> TaskCompletions => _taskCompletions.ToArray();
+	private readonly ConcurrentQueue<string> _taskCompletionKeys = new();
+	public IReadOnlyList<string> TaskCompletionKeys => _taskCompletionKeys.ToArray();
 	public IReadOnlyList<string> StudioLogs => _studioLogs.ToArray();
 	public VertexBPMN.SourceControl.Abstractions.SourceControlAvailability GitAvailability { get; init; } =
 		new(false, VertexBPMN.SourceControl.Abstractions.SourceControlCapability.None,
@@ -95,6 +100,7 @@ public sealed class StudioUiTestHost : IAsyncLifetime
 			await next();
 		});
 		MapApiContracts(_api);
+		if (TaskFormsEnabled) MapTaskFormEndpoints(_api);
 		_api.MapGet("/api/source-control/availability", () => Results.Json(GitAvailability,
 			statusCode: (int)GitAvailabilityStatusCode));
 		await _api.StartAsync();
@@ -224,7 +230,7 @@ public sealed class StudioUiTestHost : IAsyncLifetime
 	private static readonly string[] AllHttpMethods = ["GET", "POST", "PUT", "DELETE", "PATCH"];
 	private static readonly string[] HttpRequestServiceTaskAppliesTo = ["bpmn:ServiceTask"];
 
-	private static void MapApiContracts(WebApplication app)
+	private void MapApiContracts(WebApplication app)
 	{
 		MapContractReviewEndpoints(app);
 		MapRepositoryEndpoints(app);
@@ -293,7 +299,7 @@ public sealed class StudioUiTestHost : IAsyncLifetime
 		}));
 	}
 
-	private static void MapRuntimeEndpoints(WebApplication app)
+	private void MapRuntimeEndpoints(WebApplication app)
 	{
 		app.MapGet("/api/runtime", () => Results.Json(new[]
 		{
@@ -342,7 +348,13 @@ public sealed class StudioUiTestHost : IAsyncLifetime
 				lastModified = "2026-08-12T10:06:00Z",
 				candidateRole = "approver",
 				candidateUsers = Array.Empty<string>(),
-				requiredFields = Array.Empty<string>()
+				requiredFields = Array.Empty<string>(),
+				assignee = TaskFormsEnabled ? "UI Test User" : null,
+				formKey = TaskFormsEnabled ? "invoiceApprovalForm" : null,
+				formSchema = TaskFormsEnabled ? TaskFormSchema : null,
+				formVersion = TaskFormsEnabled ? 1 : (int?)null,
+				formSchemaHash = TaskFormsEnabled ? "snapshot-hash-1" : null,
+				revision = 7L
 			}
 		}));
 		app.MapGet("/api/engine/capabilities", () => Results.Json(new
@@ -352,6 +364,27 @@ public sealed class StudioUiTestHost : IAsyncLifetime
 			supportsWorkers = false,
 			supportsDurablePersistence = true
 		}));
+	}
+
+	internal const string TaskFormSchema = """
+	{"type":"default","schemaVersion":16,"components":[{"id":"Field_note","type":"textfield","key":"note","label":"Snapshot note","validate":{"required":true}},{"id":"Field_invoice","type":"textfield","key":"invoice","label":"Invoice context","readonly":true}]}
+	""";
+
+	private void MapTaskFormEndpoints(WebApplication app)
+	{
+		app.MapGet("/api/vertex/variable/{id}", () => Results.Json(new
+		{
+			note = new { type = "String", value = "Prefilled note" },
+			invoice = new { type = "String", value = "INV-001" },
+			secret = new { type = "String", value = "Not a form field" }
+		}));
+		app.MapPost("/api/task/{id}/complete", async (HttpContext context) =>
+		{
+			using var reader = new StreamReader(context.Request.Body);
+			_taskCompletions.Enqueue(await reader.ReadToEndAsync());
+			_taskCompletionKeys.Enqueue(context.Request.Headers["Idempotency-Key"].ToString());
+			return Results.NoContent();
+		});
 	}
 
 	private static void MapAdminEndpoints(WebApplication app)

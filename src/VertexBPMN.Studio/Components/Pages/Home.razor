@@ -122,7 +122,7 @@ else if (_error != null)
 
             @if (_recentTasks.Any())
             {
-                <MudList T="UserTask" Dense="true" Class="studio-dashboard-task-list">
+                <MudList T="StudioUserTask" Dense="true" Class="studio-dashboard-task-list">
                     @foreach (var task in _recentTasks.Take(10))
                     {
                         <MudListItem>
@@ -154,7 +154,7 @@ else if (_error != null)
 
 @code {
     private DashboardMetrics _metrics = new();
-    private List<UserTask> _recentTasks = new();
+    private List<StudioUserTask> _recentTasks = new();
     private bool _isLoading = true;
     private string? _error;
     private Timer? _refreshTimer;
@@ -215,7 +215,7 @@ else if (_error != null)
         }
     }
 
-    private async Task<IEnumerable<UserTask>> LoadTasks()
+    private async Task<IEnumerable<StudioUserTask>> LoadTasks()
     {
         try
         {
@@ -224,7 +224,7 @@ else if (_error != null)
         catch (Exception ex)
         {
             Logger.LogWarning(ex, "Failed to load tasks for dashboard");
-            return Enumerable.Empty<UserTask>();
+            return Enumerable.Empty<StudioUserTask>();
         }
     }
 

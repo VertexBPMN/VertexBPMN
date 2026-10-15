@@ -9,7 +9,34 @@ namespace VertexBPMN.Infrastructure.Persistence;
 /// </summary>
 public class BpmnDbContext : DbContext
 {
-    public BpmnDbContext(DbContextOptions<BpmnDbContext> options) : base(options) { }
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "MA0056", Justification = "SQLite migration hash function registration uses the initialized EF connection before migrations run.")]
+    public BpmnDbContext(DbContextOptions<BpmnDbContext> options) : base(options)
+    {
+        if (Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite"
+            && Database.GetDbConnection() is Microsoft.Data.Sqlite.SqliteConnection connection)
+        {
+            connection.CreateFunction<string, string>("vertex_sha256", schema =>
+                Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(schema))).ToLowerInvariant(), isDeterministic: true);
+        }
+    }
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        EnsureImmutableFormRevisions();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        EnsureImmutableFormRevisions();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private void EnsureImmutableFormRevisions()
+    {
+        if (ChangeTracker.Entries<FormDefinitionRevisionRecord>().Any(x => x.State == EntityState.Modified))
+        { throw new InvalidOperationException("Form revisions are immutable."); }
+    }
 
     public DbSet<ProcessDefinition> ProcessDefinitions => Set<ProcessDefinition>();
     public DbSet<ProcessInstance> ProcessInstances => Set<ProcessInstance>();
@@ -41,6 +68,7 @@ public class BpmnDbContext : DbContext
     public DbSet<ConnectorTemplateRecord> ConnectorTemplates => Set<ConnectorTemplateRecord>();
     public DbSet<WorkflowTrigger> WorkflowTriggers => Set<WorkflowTrigger>();
     public DbSet<FormDefinitionRecord> FormDefinitions => Set<FormDefinitionRecord>();
+    public DbSet<FormDefinitionRevisionRecord> FormDefinitionRevisions => Set<FormDefinitionRevisionRecord>();
     public DbSet<CaseDefinitionRecord> CaseDefinitions => Set<CaseDefinitionRecord>();
     public DbSet<CaseInstanceRecord> CaseInstances => Set<CaseInstanceRecord>();
     public DbSet<PollingTriggerRecord> PollingTriggers => Set<PollingTriggerRecord>();
@@ -487,7 +515,19 @@ public class BpmnDbContext : DbContext
 
     private static void ConfigureFormDefinitions(ModelBuilder modelBuilder)
     {
+        var revision = modelBuilder.Entity<FormDefinitionRevisionRecord>();
+        revision.HasKey(x => x.Id);
+        revision.Property(x => x.TenantId).HasMaxLength(64).IsRequired();
+        revision.Property(x => x.Key).HasMaxLength(128).IsRequired();
+        revision.Property(x => x.Name).HasMaxLength(256).IsRequired();
+        revision.Property(x => x.Schema).IsRequired();
+        revision.Property(x => x.SchemaHash).HasMaxLength(64).IsRequired();
+        revision.HasIndex(x => new { x.FormDefinitionId, x.Version }).IsUnique();
+        revision.HasOne<FormDefinitionRecord>().WithMany().HasForeignKey(x => x.FormDefinitionId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<UserTask>().Property(x => x.FormSchemaHash).HasMaxLength(64);
+        modelBuilder.Entity<UserTask>().HasOne<FormDefinitionRevisionRecord>().WithMany().HasForeignKey(x => x.FormRevisionId).OnDelete(DeleteBehavior.Restrict);
         var entity = modelBuilder.Entity<FormDefinitionRecord>();
+        entity.Property(x => x.Version).IsConcurrencyToken();
         entity.HasKey(x => x.Id); entity.Property(x => x.TenantId).HasMaxLength(64).IsRequired(); entity.Property(x => x.Key).HasMaxLength(128).IsRequired(); entity.Property(x => x.Name).HasMaxLength(256).IsRequired(); entity.Property(x => x.Schema).IsRequired(); entity.HasIndex(x => new { x.TenantId, x.Key }).IsUnique();
     }
 

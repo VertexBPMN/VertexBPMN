@@ -88,6 +88,26 @@ implementierten und getesteten Stränge.
   `RejectsFailedOutputMapping_WithoutPartialExposure` (required-Missing → Exception),
   plus wiederhergestellter `ExposesJsonResponseFieldsWithRedaction`.
 
+### Strang H — Durchgehender Datenfall (Z.249)
+Echter End-to-End-Datenfall: Kundenantwort → Output-Mapping → Prozessvariablen →
+FEEL-Gateway → tatsächlicher BPMN-Pfad. **Keine vorab gesetzten Ergebnisvariablen.**
+
+- `tests/VertexBPMN.Tests/Acceptance/PersistentEndToEndDmnDataFlowTests.cs` (neu):
+  lokaler TCP-Mock-HTTP-Server (`/customer`, `/gold`, `/default`), reale
+  Connector-Pipeline (`HttpConnectorExecutor` + `ConnectorRegistry` +
+  `ConnectorRuntime` + `VertexConnectorServiceTaskHandler`), reale
+  `PersistentProcessExecutionRuntime`, FEEL-Exclusive-Gateway auf
+  `connector.output.betrag > 1000`, Pfad-Markierung pro Zweig (nur der gewählte
+  Branch führt seinen Marker-Connector aus). `[Theory]` 2 Fälle:
+  - Betrag **1500** → GOLD-Zweig, `kundengruppe=gold`
+  - Betrag **300** → DEFAULT-Zweig, `kundengruppe=standard`
+- Alle Variablen (`connector.output.betrag|kundengruppe|branch`) entstehen aus der
+  echten HTTP-Antwort über das Output-Mapping (Strang G) — nichts vorab gesetzt.
+- **Namespace-Fix (Pitfall):** vertex-Extensions erfordern den kanonischen
+  Namespace `https://vertexbpmn.io/schema/bpmn/1.0` (`VertexBpmnExtensions.NamespaceUri`);
+  `http://...` (ohne https) wird nicht erkannt → `node.Implementation` bleibt leer
+  → Suspended mit „No service-task handler is registered for ''“.
+
 ## Was verifiziert ist
 
 - Build: **0 Errors, 0 Warnings.**
@@ -98,6 +118,8 @@ implementierten und getesteten Stränge.
 - 3 neue DB-Query-Tests (strukturierte rows/rowCount, Zeilenlimit-Cap, read-only
   Guard) + bestehender SQLite-Parameter-Test grün.
 - Volle Connector-/Importer-Suite grün, keine Regression.
+- **Strang H (Z.249):** 2 neue End-to-End-Datenfall-Tests grün (GOLD 1500, DEFAULT 300);
+  Regressionsfilter Connector/FieldMapper/DatabaseConnector/Importer **49/49 grün**.
 - Commits local (nicht gepusht): `765b01f5` (A), `6889fbd0` (B), `19f5f8e5` (D),
   `37aaff3b` (C), `8c783328` (E), `cfcce709` (Bericht).
 

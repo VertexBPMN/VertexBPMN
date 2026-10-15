@@ -277,6 +277,80 @@ public sealed class ConnectorRuntimeTests
 	}
 
 	[Fact]
+	public async Task Handler_BindingTimeoutIsAuthoritativeOverShorterRetryTimeout()
+	{
+		// Finding 4: a shorter vertex:retryPolicy.timeoutMs must not override the
+		// explicit binding timeout (vertex:connector.timeoutMs) on a single attempt.
+		ConnectorExecutionContext? capturedContext = null;
+		var runtime = new Mock<IConnectorRuntime>();
+		runtime.Setup(x => x.ExecuteAsync(It.IsAny<ConnectorExecutionContext>(), It.IsAny<CancellationToken>())).Callback<ConnectorExecutionContext, CancellationToken>((context, _) => capturedContext = context).ReturnsAsync(new ConnectorExecutionResult(true, 200, new Dictionary<string, object>(StringComparer.Ordinal)));
+		await using var provider = new ServiceCollection().AddSingleton<ICredentialService>(new Mock<ICredentialService>().Object).AddSingleton<IAuditLogService>(new Mock<IAuditLogService>().Object).BuildServiceProvider();
+		var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>(StringComparer.Ordinal)).Build();
+		var handler = new VertexConnectorServiceTaskHandler(runtime.Object, provider.GetRequiredService<IServiceScopeFactory>(), configuration);
+		var attributes = new Dictionary<string, string>(StringComparer.Ordinal)
+		{
+			["vertex:connector.type"] = "http",
+			["vertex:connector.operationId"] = "http.request",
+			["vertex:connector.endpoint"] = "https://api.example.test/orders",
+			["vertex:retryPolicy.timeoutMs"] = "2000",
+			["vertex:connector.timeoutMs"] = "8000"
+		};
+
+		await handler.ExecuteAsync(attributes, new Dictionary<string, object>(StringComparer.Ordinal), TestContext.Current.CancellationToken);
+
+		Assert.NotNull(capturedContext);
+		Assert.Equal(TimeSpan.FromMilliseconds(8000), capturedContext.RetryPolicy.EffectiveTimeout);
+	}
+
+	[Fact]
+	public async Task Handler_ResolvesVariableInEndpoint()
+	{
+		// Finding 3: endpoint values go through ConnectorValueResolver so {{var}}
+		// references in the binding resolve against process variables before parse.
+		ConnectorExecutionContext? capturedContext = null;
+		var runtime = new Mock<IConnectorRuntime>();
+		runtime.Setup(x => x.ExecuteAsync(It.IsAny<ConnectorExecutionContext>(), It.IsAny<CancellationToken>())).Callback<ConnectorExecutionContext, CancellationToken>((context, _) => capturedContext = context).ReturnsAsync(new ConnectorExecutionResult(true, 200, new Dictionary<string, object>(StringComparer.Ordinal)));
+		await using var provider = new ServiceCollection().AddSingleton<ICredentialService>(new Mock<ICredentialService>().Object).AddSingleton<IAuditLogService>(new Mock<IAuditLogService>().Object).BuildServiceProvider();
+		var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>(StringComparer.Ordinal)).Build();
+		var handler = new VertexConnectorServiceTaskHandler(runtime.Object, provider.GetRequiredService<IServiceScopeFactory>(), configuration);
+		var attributes = new Dictionary<string, string>(StringComparer.Ordinal)
+		{
+			["vertex:connector.type"] = "http",
+			["vertex:connector.operationId"] = "http.request",
+			["vertex:connector.endpoint"] = "https://api.example.test/customers/{{customerId}}",
+			["vertex:connector.method"] = "GET"
+		};
+		var variables = new Dictionary<string, object>(StringComparer.Ordinal) { ["customerId"] = "42" };
+
+		await handler.ExecuteAsync(attributes, variables, TestContext.Current.CancellationToken);
+
+		Assert.NotNull(capturedContext);
+		Assert.NotNull(capturedContext.Endpoint);
+		Assert.Equal("api.example.test", capturedContext.Endpoint.Host);
+		Assert.Equal("/customers/42", capturedContext.Endpoint.AbsolutePath);
+	}
+
+	[Fact]
+	public async Task Handler_UnresolvedEndpointVariableFailsFast()
+	{
+		// LC01 contract: an endpoint referencing a missing variable must fail fast,
+		// not be silently reinterpreted as a literal.
+		var runtime = new Mock<IConnectorRuntime>();
+		await using var provider = new ServiceCollection().AddSingleton<ICredentialService>(new Mock<ICredentialService>().Object).AddSingleton<IAuditLogService>(new Mock<IAuditLogService>().Object).BuildServiceProvider();
+		var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>(StringComparer.Ordinal)).Build();
+		var handler = new VertexConnectorServiceTaskHandler(runtime.Object, provider.GetRequiredService<IServiceScopeFactory>(), configuration);
+		var attributes = new Dictionary<string, string>(StringComparer.Ordinal)
+		{
+			["vertex:connector.type"] = "http",
+			["vertex:connector.operationId"] = "http.request",
+			["vertex:connector.endpoint"] = "https://api.example.test/customers/{{missing}}"
+		};
+
+		await Assert.ThrowsAsync<ServiceTaskExecutionException>(
+			() => handler.ExecuteAsync(attributes, new Dictionary<string, object>(StringComparer.Ordinal), TestContext.Current.CancellationToken));
+	}
+
+	[Fact]
 	public async Task HttpExecutor_RejectsBlockedAndCtlBindingHeaders()
 	{
 		using var httpClientHandler = new RecordingHandler(_ => { });

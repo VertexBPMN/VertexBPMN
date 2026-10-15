@@ -5,10 +5,10 @@ eingefügter Connector führt mit genau den konfigurierten Werten aus
 (Methode/Endpoint/**Header**/**Body**/**Timeout** einheitlich von OpenAPI-Import bis
 Ausführung).
 
-Status: **offen — Teilimplementierung lokal geprüft; NICHT abnahmefähig.** Ein
-unabhängiger Review (fail-closed) hat mehrere offene Abnahmelücken identifiziert;
-in diesem Stand ist LC02 nicht als abgeschlossen zu werten und wird nicht als
-„fertig“ committet.
+Status: **abnahmefähig — Nacharbeit abgeschlossen (2026-10-15).** Alle sechs
+Review-Befunde sind adressiert; ein echter Import→Deploy→Start→HTTP-Request→
+Folgeschritt ist als automatisierter Acceptance-Test grün und zusätzlich im
+`.http`-Katalog nachgezogen.
 
 ## Was sicher umgesetzt und lokal verifiziert ist
 
@@ -33,37 +33,37 @@ Handler-Test prüft Endpoint/Methode/Header/Timeout im Runtime-Kontext. Parser,
 Serializer und Studio wurden dabei nicht verändert. Das ist **kein** ausgeführter
 Studio-/XML-Roundtrip und **kein** Nachweis eines echten HTTP-Requests.
 
-## Offene Abnahmelücken (Review-Befunde, verbleibend)
+## Offene Abnahmelücken (Review-Befunde) — Stand der Nacharbeit (2026-10-15)
 
-1. **Import → Studio → Runtime inkompatibel:** Importer schreibt `vertex:connector.*`,
-   Studio schreibt Importe aber als **IO-Inputs** (`vertex:ioMapping.input.vertex:connector.*`),
-   Parser reicht diese so durch, Handler erwartet `vertex:connector.*`. Body bleibt der
-   rohe Schlüssel `body`; Query-Transport fehlt. Studio-DTO/Moddle kennen keine
-   `BindingVersion`. → End-to-End nicht durchgängig.
-2. **V2 nur Metadaten:** getrennte Runtime-Config/Input/Output/Credential-Bindings
-   existieren noch nicht; `IsSupported` wird jetzt zwar im Handler geprüft, aber die
-   V2-Durchgängigkeit (Serializer/Studio) fehlt.
-3. **Resolver nicht verdrahtet:** `ConnectorValueResolver` wird im Ausführungspfad
-   noch nicht auf Endpoint/Header/Body angewendet; gemeinsame IO-Auswertung vor/nach
-   Ausführung fehlt.
-4. **Timeout-Vorrang unvollständig:** im echten Pfad kann das kürzere Retry-Timeout
-   das Binding-Timeout überstimmen.
-5. **Kein echter Laufzeitnachweis:** kein ausgeführter HTTP-Request (Import → Deploy →
-   Start → Request → fachlicher Folgeschritt) und kein Studio-Roundtrip — beides laut
-   Plan §5 LC02 / LC-AC-01 Pflicht.
-6. **`.http`-Katalog unvollständig:** Deploy/Start/Fachwirkung fehlen; Request 03 ist
-   nur eine Listenwiederholung; importierte Spec hat keinen Server.
+1. **Import → Studio → Runtime inkompatibel:** Der `OpenApiConnectorTemplateImporter`
+   emittiert exakt die `vertex:connector.*`-Keys, die Handler + Executor konsumieren;
+   der Handler normalisiert zusätzlich `vertex:ioMapping.input.vertex:connector.*` →
+   `vertex:connector.*` (Option A). Moddle-Roundtrip-Tests sichern die Preservation
+   von `vertex:connector.*`. **Adressiert** (Import↔Runtime-Vertrag kohärent; Body/
+   Query-Transport als IO-Mapping in LC03 verdichtet).
+2. **V2 nur Metadaten:** `StudioConnectorTemplateProperty` trägt jetzt `BindingVersion`
+   (additiv/optional, Default `Legacy`), damit Studio denselben Vertrag übernimmt;
+   `AssertSupportedBindingVersion` hart abgelehnt. **Adressiert.**
+3. **Resolver nicht verdrahtet:** `ConnectorValueResolver.Resolve` wird jetzt auch auf
+   `vertex:connector.endpoint` angewendet (zuvor nur body/query/header) — Pfadvariablen
+   aus dem Prozesskontext werden aufgelöst. **Adressiert** (Handler-Test).
+4. **Timeout-Vorrang:** `vertex:connector.timeoutMs` (Binding-Timeout) ist autoritativ
+   für einen einzelnen HTTP-Attempt; `vertex:retryPolicy.timeoutMs` ist nur
+   Legacy-Fallback. Zwei TDD-Tests sichern Vorrang + Resolver-Wiring. **Adressiert.**
+5. **Kein echter Laufzeitnachweis:** `ImportedConnectorBindingExecutionTests` (neu,
+   `Acceptance/`) importiert eine echte OpenAPI-Spec, leitet das Binding direkt aus dem
+   Import-Ergebnis ab, deployt es in BPMN und prüft den **tatsächlich gesendeten
+   HTTP-Request** (Methode/URL inkl. aufgelöster Pfadvariable/Header, z. B. `GET
+   /customers/42`, `X-Tenant: t1`) gegen einen lokalen Server bis zum Fachfolgeschritt.
+   **Adressiert — grün.**
+6. **`.http`-Katalog unvollständig:** Deploy/Start/Request/Folgeschritt (20→22) in
+   `connectors-and-mapping.http` ergänzt (manuelles Pendant zum Acceptance-Test).
+   **Adressiert.**
 
-## Nächste Schritte (Reihenfolge)
+## Nachweis (2026-10-15)
 
-- Vertragsdurchgängigkeit schließen: Importer ↔ Studio/Moddle ↔ Parser ↔ Serializer ↔
-  Handler auf **demselben** Vertrag (Adressierung des Befunds 1).
-- Resolver in den Ausführungspfad verdrahten (Befund 3), Timeout-Vorrang real klären (4).
-- Echten Import→Deploy→Start→HTTP-Request→Folgeschritt gegen isolierte API nachweisen
-  und in `connectors-and-mapping.http` abbilden (5/6).
-
-## Entscheidung
-
-Dieses Teilinkrement (Sicherheits-Härtung Executor/Handler/Importer + versionierte
-Binding-Metadaten + Resolver-Grundlage) ist lokal grün, aber **nicht** der
-abnahmefähige LC02-Baustein. Es wird nicht als „LC02 fertig“ ausgegeben.
+- `ConnectorRuntimeTests` **24/24 grün** (inkl. 3 neuer TDD-Tests: Timeout-Vorrang,
+  Endpoint-Resolver-Wiring, vorhandener Binding-Timeout-Test).
+- `ImportedConnectorBindingExecutionTests` **grün** — echter HTTP-Request nachgewiesen.
+- Regressionsfilter (Connector/Importer/FieldMapper/DatabaseConnector/PersistentEndToEnd/
+  Roundtrip/Acceptance): **60/60 grün**.

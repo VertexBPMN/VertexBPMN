@@ -8,4 +8,8 @@ public sealed record StudioConnectorTemplateProperty(
     string Type,
     bool Required,
     [property: JsonPropertyName("default")] string? DefaultValue,
-    IReadOnlyList<string>? Options);
+    IReadOnlyList<string>? Options,
+    // LC02: the binding contract version the property participates in (1 = legacy flat,
+    // 2 = versioned). Studio surfaces it so a template adopts the same contract as the
+    // importer/runtime instead of being silently reinterpreted. Additive and optional.
+    int BindingVersion = VertexBPMN.Domain.Interfaces.ConnectorBindingVersion.Legacy);

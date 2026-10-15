@@ -150,3 +150,48 @@ Content-Type: application/json
     { "sourcePath": "amount", "targetKey": "amount", "transform": "ToNumber", "required": false }
   ]
 }
+
+# =============================================================================
+# LC02 · Runtime-Nachweis (Import → Deploy → Start → HTTP-Request → Folgeschritt)
+# Manuelles Pendant zum automatisierten ImportedConnectorBindingExecutionTests:
+# ein über OpenAPI importiertes Binding führt mit EXAKT den konfigurierten Werten aus.
+# Der lokale Echo-Dienst ({{dataServiceUrl}}) loggt Methode/Pfad/Header/Body; die
+# Sollwerte stammen aus der Import-Spec (nicht aus einer vorab erzeugten Variable).
+# Reihenfolge: 20→22. BPMN-Körper ist Abkuerzung; vgl. Test-Fixture.
+# =============================================================================
+
+### 20 — Definition mit importiertem Connector-Binding deployen (ProcessManager)
+# @name deployBinding
+POST {{baseUrl}}/api/repository
+Authorization: Bearer ***
+Content-Type: application/json
+# Soll: 201 ProcessDefinition; ProcessDefinitionKey = "lc02-binding"
+# BPMN: serviceTask apiConn mit <vertex:connector type operationId method endpoint
+#   bindingVersion header.X-Tenant>; endpoint = {{dataServiceUrl}}/customers/{customerId}
+{
+  "bpmnXml": "<definitions xmlns=\"http://www.omg.org/spec/BPMN/20100524/MODEL\" xmlns:vertex=\"https://vertexbpmn.io/schema/bpmn/1.0\"><process id=\"lc02-binding\" isExecutable=\"true\"><startEvent id=\"start\"/><sequenceFlow id=\"sf1\" sourceRef=\"start\" targetRef=\"apiConn\"/><serviceTask id=\"apiConn\"><extensionElements><vertex:connector type=\"http\" operationId=\"http.request\" method=\"get\" endpoint=\"http://127.0.0.1:8080/customers/{customerId}\" bindingVersion=\"2\" header.X-Tenant=\"{{tenant}}\"/></extensionElements></serviceTask><sequenceFlow id=\"sf2\" sourceRef=\"apiConn\" targetRef=\"end\"/><endEvent id=\"end\"/></process></definitions>",
+  "name": "lc02-imported-binding",
+  "tenantId": "{{tenantId}}"
+}
+
+### 21 — Start (löst den Connector gegen {{dataServiceUrl}} aus)
+# @name startBinding
+POST {{baseUrl}}/api/runtime/start
+Authorization: Bearer ***
+Content-Type: application/json
+Idempotency-Key: lc02-binding-start-001
+# Soll: 201 ProcessInstance; der Echo-Dienst muss protokolliert haben:
+#   GET /customers/42, Header "X-Tenant: t1" (aus {{customerId}}={{customerId}} / {{tenant}})
+{
+  "processDefinitionKey": "lc02-binding",
+  "variables": { "customerId": "42", "tenant": "t1" },
+  "tenantId": "{{tenantId}}"
+}
+
+### 22 — Folgeschritt: Instance-Zustand abfragen → Completed (Connector + End erreicht)
+GET {{baseUrl}}/api/runtime/{{startBinding.response.body.id}}
+Authorization: Bearer ***
+Accept: application/json
+# Soll: 200; state=Completed; connector.success=true; connector.status=200;
+#   connector.output.httpBody.customer="A" (falls Output-Mapping/Reader aktiv)
+

@@ -30,13 +30,23 @@ public sealed class VertexConnectorServiceTaskHandler(
 		var operationId = Required(attributes, "vertex:connector.operationId");
 		var tenantId = Value(attributes, "vertex:connector.tenantId") ?? GetVariable(variables, "tenantId") ?? "default";
 		AssertSupportedBindingVersion(attributes);
-		var endpoint = Uri.TryCreate(Value(attributes, "vertex:connector.endpoint"), UriKind.Absolute, out var parsed) ? parsed : null;
+		var endpointSource = Value(attributes, "vertex:connector.endpoint");
+		if (endpointSource is not null)
+		{
+			endpointSource = ConnectorValueResolver.Resolve(endpointSource, variables, "connector endpoint");
+		}
+
+		var endpoint = endpointSource is not null && Uri.TryCreate(endpointSource, UriKind.Absolute, out var parsed) ? parsed : null;
 		var credentialId = Value(attributes, "vertex:connector.credentialRef") ?? Value(attributes, "vertex:credential.id");
 		var secretKey = Value(attributes, "vertex:connector.secretKey") ?? "token";
 		var credentialDestinationHost = GetCredentialDestinationHost(type, endpoint, attributes);
 		var secret = await ResolveSecretAsync(tenantId, credentialId, secretKey, credentialDestinationHost, ct);
 		var retries = GetInt(attributes, "vertex:retryPolicy.maxAttempts", 3, 1, 10);
-		var timeout = GetInt(attributes, "vertex:retryPolicy.timeoutMs", GetInt(attributes, "vertex:connector.timeoutMs", 30_000, 100, 300_000), 100, 300_000);
+		// LC02 timeouts: the binding timeout (vertex:connector.timeoutMs) is authoritative
+		// for a single HTTP attempt. vertex:retryPolicy.timeoutMs is only a legacy fallback
+		// when the binding does not declare one — a shorter retry budget must not override
+		// an explicit binding timeout (ConnectorRuntime cancels attempts with the retry timeout).
+		var timeout = GetInt(attributes, "vertex:connector.timeoutMs", GetInt(attributes, "vertex:retryPolicy.timeoutMs", 30_000, 100, 300_000), 100, 300_000);
 		var delay = GetInt(attributes, "vertex:retryPolicy.initialDelayMs", GetInt(attributes, "vertex:retryPolicy.baseDelayMs", 250, 0, 60_000), 0, 60_000);
 		var context = new ConnectorExecutionContext(tenantId, type, operationId, endpoint, new Dictionary<string, string>(attributes, StringComparer.Ordinal), variables, new ConnectorRetryPolicy(retries, TimeSpan.FromMilliseconds(timeout), TimeSpan.FromMilliseconds(delay)), credentialId, secret);
 		var result = await runtime.ExecuteAsync(context, ct);

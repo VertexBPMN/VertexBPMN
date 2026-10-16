@@ -17,6 +17,109 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
 
+            modelBuilder.Entity("VertexBPMN.Domain.Entities.ApplicationDefinitionRecord", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ContentJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Key")
+                        .IsUnique();
+
+                    b.ToTable("ApplicationDefinitions");
+                });
+
+            modelBuilder.Entity("VertexBPMN.Domain.Entities.ApplicationReleaseCandidateRecord", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ApplicationDefinitionId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ApplicationRevisionId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsReleased")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ManifestJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("ReleasedAtTicks")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApplicationRevisionId");
+
+                    b.ToTable("ApplicationReleaseCandidates");
+                });
+
+            modelBuilder.Entity("VertexBPMN.Domain.Entities.ApplicationRevisionRecord", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ApplicationDefinitionId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ContentJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DiagnosticsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApplicationDefinitionId", "Version")
+                        .IsUnique();
+
+                    b.ToTable("ApplicationRevisions");
+                });
+
             modelBuilder.Entity("VertexBPMN.Domain.Entities.CaseDefinitionRecord", b =>
                 {
                     b.Property<string>("Id")
@@ -745,33 +848,42 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
 
             modelBuilder.Entity("VertexBPMN.Domain.Entities.FormDefinitionRevisionRecord", b =>
                 {
-                    b.Property<string>("Id");
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("CreatedAt");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("FormDefinitionId")
-                        .IsRequired();
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Key")
                         .IsRequired()
-                        .HasMaxLength(128);
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(256);
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Schema")
-                        .IsRequired();
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("SchemaHash")
                         .IsRequired()
-                        .HasMaxLength(64);
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("TenantId")
                         .IsRequired()
-                        .HasMaxLength(64);
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
 
-                    b.Property<int>("Version");
+                    b.Property<int>("Version")
+                        .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 
@@ -895,6 +1007,9 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                     b.Property<string>("ActivityId")
                         .IsRequired()
                         .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ApplicationReleaseId")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("CompletedAt")
@@ -1258,6 +1373,9 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
 
                     b.Property<string>("ActiveTokens")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ApplicationReleaseId")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("BusinessKey")
@@ -1735,15 +1853,18 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                         .HasMaxLength(255)
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("FormRevisionId");
+                    b.Property<string>("FormRevisionId")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("FormSchema")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("FormSchemaHash")
-                        .HasMaxLength(64);
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
 
-                    b.Property<int?>("FormVersion");
+                    b.Property<int?>("FormVersion")
+                        .HasColumnType("INTEGER");
 
                     b.Property<DateTime>("LastModified")
                         .HasColumnType("TEXT");
@@ -2159,6 +2280,24 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                         .IsUnique();
 
                     b.ToTable("IdentityGroups");
+                });
+
+            modelBuilder.Entity("VertexBPMN.Domain.Entities.ApplicationReleaseCandidateRecord", b =>
+                {
+                    b.HasOne("VertexBPMN.Domain.Entities.ApplicationRevisionRecord", null)
+                        .WithMany()
+                        .HasForeignKey("ApplicationRevisionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("VertexBPMN.Domain.Entities.ApplicationRevisionRecord", b =>
+                {
+                    b.HasOne("VertexBPMN.Domain.Entities.ApplicationDefinitionRecord", null)
+                        .WithMany()
+                        .HasForeignKey("ApplicationDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("VertexBPMN.Domain.Entities.EventSubscription", b =>

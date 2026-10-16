@@ -242,6 +242,52 @@ public sealed class VertexBpmnClient
     public Task<CaseRunResult?> ActivateDiscretionaryItemAsync(Guid caseInstanceId, string planItemId, string? tenantId = null, CancellationToken cancellationToken = default)
         => SendForNullableAsync<CaseRunResult>(HttpMethod.Post, $"api/case-definitions/instances/{caseInstanceId}/discretionary-items/{Uri.EscapeDataString(planItemId)}/activate", new TenantRequest(tenantId ?? options.TenantId), cancellationToken);
 
+    public Task<ApplicationMetadata?> CreateApplicationAsync(
+        string key, string name, string content, string? tenantId = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentException.ThrowIfNullOrWhiteSpace(content);
+        var request = new ApplicationWriteRequest(tenantId ?? options.TenantId, key, name, 0, content);
+        return SendForNullableAsync<ApplicationMetadata>(HttpMethod.Post, "api/applications", request, cancellationToken);
+    }
+
+    public Task UpdateApplicationAsync(
+        string id, string key, string name, int expectedVersion, string content, string? tenantId = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        ArgumentException.ThrowIfNullOrWhiteSpace(content);
+        var request = new ApplicationWriteRequest(tenantId ?? options.TenantId, key, name, expectedVersion, content);
+        return SendWithoutContentAsync(HttpMethod.Put, $"api/applications/{Uri.EscapeDataString(id)}", request, cancellationToken);
+    }
+
+    public Task<ApplicationMetadata?> GetApplicationAsync(string id, string? tenantId = null, CancellationToken cancellationToken = default)
+        => SendForNullableAsync<ApplicationMetadata>(HttpMethod.Get,
+            BuildUri($"api/applications/{Uri.EscapeDataString(id)}", ("tenantId", tenantId ?? options.TenantId)), cancellationToken);
+
+    public Task<ApplicationRevision?> GetApplicationRevisionAsync(string id, int version, string? tenantId = null, CancellationToken cancellationToken = default)
+        => SendForNullableAsync<ApplicationRevision>(HttpMethod.Get,
+            BuildUri($"api/applications/{Uri.EscapeDataString(id)}/revisions/{version}", ("tenantId", tenantId ?? options.TenantId)), cancellationToken);
+
+    public Task<ApplicationReleaseCandidate?> CreateApplicationReleaseCandidateAsync(
+        string id, int version, string? tenantId = null, CancellationToken cancellationToken = default)
+        => SendForNullableAsync<ApplicationReleaseCandidate>(HttpMethod.Post,
+            BuildUri($"api/applications/{Uri.EscapeDataString(id)}/revisions/{version}/release-candidate", ("tenantId", tenantId ?? options.TenantId)), cancellationToken);
+
+    public Task<ApplicationReleaseCandidate?> GetApplicationReleaseCandidateAsync(string candidateId, string? tenantId = null, CancellationToken cancellationToken = default)
+        => SendForNullableAsync<ApplicationReleaseCandidate>(HttpMethod.Get,
+            BuildUri($"api/applications/release-candidates/{Uri.EscapeDataString(candidateId)}", ("tenantId", tenantId ?? options.TenantId)), cancellationToken);
+
+    public Task ReleaseApplicationAsync(string candidateId, string? tenantId = null, CancellationToken cancellationToken = default)
+        => SendWithoutContentAsync(HttpMethod.Post,
+            BuildUri($"api/applications/release-candidates/{Uri.EscapeDataString(candidateId)}/release", ("tenantId", tenantId ?? options.TenantId)), null, cancellationToken);
+
+    public Task<ApplicationRevision?> GetApplicationReleasedRevisionAsync(string id, string? tenantId = null, CancellationToken cancellationToken = default)
+        => SendForNullableAsync<ApplicationRevision>(HttpMethod.Get,
+            BuildUri($"api/applications/{Uri.EscapeDataString(id)}/released-revision", ("tenantId", tenantId ?? options.TenantId)), cancellationToken);
+
+
     public Task<N8nImportResult?> ImportN8nWorkflowAsync(string workflowJson, CancellationToken cancellationToken = default)
         => ImportN8nWorkflowAsync(workflowJson, options.TenantId, cancellationToken);
 
@@ -334,6 +380,7 @@ public sealed class VertexBpmnClient
     private sealed record DeployDecisionRequest(string DecisionKey, string Name, string DmnXml, string? TenantId);
     private sealed record EvaluateDecisionRequest(string DecisionKey, IDictionary<string, object?> Inputs, string? TenantId);
     private sealed record FormWriteRequest(string? TenantId, string Key, string Name, string Schema);
+    private sealed record ApplicationWriteRequest(string? TenantId, string Key, string Name, int ExpectedVersion, string Content);
     private sealed record StartTestRunRequest(string BpmnXml, string Name, IDictionary<string, object?>? Variables, string BusinessKey, string? TenantId);
     private sealed record DeployCaseRequest(string Key, string Name, string CmmnXml, string? TenantId);
     private sealed record N8nImportRequest(string WorkflowJson, string? TenantId);

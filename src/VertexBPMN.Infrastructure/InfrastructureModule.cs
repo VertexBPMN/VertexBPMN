@@ -2,14 +2,17 @@ using Azure.Extensions.AspNetCore.DataProtection.Blobs;
 using Azure.Extensions.AspNetCore.DataProtection.Keys;
 using Azure.Identity;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using System.Security.Claims;
 using VertexBPMN.Application;
 using VertexBPMN.Application.Configuration;
 using VertexBPMN.Application.Messaging;
+using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Domain.Interfaces.Repositories;
 using VertexBPMN.Infrastructure.Messaging;
@@ -87,6 +90,8 @@ public static class InfrastructureModule
         services.AddScoped<IConnectorService, PersistentConnectorService>();
         services.AddScoped<IConnectorTemplateService, PersistentConnectorTemplateService>();
         services.AddScoped<IFormDefinitionService, PersistentFormDefinitionService>();
+        services.AddScoped<IApplicationDefinitionService, PersistentApplicationDefinitionService>();
+        services.AddScoped(CreateApplicationAccessContext);
         services.AddScoped<ITaskIoSnapshotRecorder, TaskIoSnapshotRecorder>();
         services.AddScoped<IOAuth2CredentialFlowService, OAuth2CredentialFlowService>();
         if (mode != "Test")
@@ -557,6 +562,22 @@ public static class InfrastructureModule
             "test" or "unittest"   => "Test",
             _                      => "Development"
         };
+
+    private static ApplicationAccessContext CreateApplicationAccessContext(IServiceProvider sp)
+    {
+        var user = sp.GetService<IHttpContextAccessor>()?.HttpContext?.User;
+        var permissions = new HashSet<string>(StringComparer.Ordinal);
+        if (user?.IsInRole("Admin") == true || user?.IsInRole("ProcessManager") == true)
+        {
+            permissions.Add("application.design");
+            permissions.Add("application.publish");
+        }
+        var actorId = user?.FindFirstValue("sub")
+            ?? user?.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? user?.Identity?.Name
+            ?? "system";
+        return new ApplicationAccessContext(actorId, permissions);
+    }
 
     private sealed record DbContextDescriptor(string LogicalName, string[] Synonyms);
 }

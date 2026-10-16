@@ -23,5 +23,7 @@ public class ProcessInstance
 	public long Revision { get; set; }
 	public Guid? ParentProcessInstanceId { get; set; }
 	public string? CallingActivityId { get; set; }
+	// LC05: optional version binding to a released application; legacy instances keep NULL.
+	public string? ApplicationReleaseId { get; set; }
 	public ProcessDefinition ProcessDefinition { get; set; } = null!;
 }

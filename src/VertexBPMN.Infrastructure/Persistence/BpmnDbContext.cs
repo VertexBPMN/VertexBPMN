@@ -34,6 +34,12 @@ public class BpmnDbContext : DbContext
 
     private void EnsureImmutableFormRevisions()
     {
+        if (ChangeTracker.Entries<ApplicationReleaseCandidateRecord>().Any(x => x.State == EntityState.Modified
+            && (x.Property(p => p.ManifestJson).IsModified || x.Property(p => p.ApplicationRevisionId).IsModified
+                || x.Property(p => p.ApplicationDefinitionId).IsModified || x.Property(p => p.TenantId).IsModified)))
+        { throw new InvalidOperationException("Release candidate bindings are immutable."); }
+        if (ChangeTracker.Entries<ApplicationRevisionRecord>().Any(x => x.State == EntityState.Modified))
+        { throw new InvalidOperationException("Application revisions are immutable."); }
         if (ChangeTracker.Entries<FormDefinitionRevisionRecord>().Any(x => x.State == EntityState.Modified))
         { throw new InvalidOperationException("Form revisions are immutable."); }
     }
@@ -67,6 +73,9 @@ public class BpmnDbContext : DbContext
     public DbSet<ConnectorRecord> Connectors => Set<ConnectorRecord>();
     public DbSet<ConnectorTemplateRecord> ConnectorTemplates => Set<ConnectorTemplateRecord>();
     public DbSet<WorkflowTrigger> WorkflowTriggers => Set<WorkflowTrigger>();
+    public DbSet<ApplicationDefinitionRecord> ApplicationDefinitions => Set<ApplicationDefinitionRecord>();
+    public DbSet<ApplicationReleaseCandidateRecord> ApplicationReleaseCandidates => Set<ApplicationReleaseCandidateRecord>();
+    public DbSet<ApplicationRevisionRecord> ApplicationRevisions => Set<ApplicationRevisionRecord>();
     public DbSet<FormDefinitionRecord> FormDefinitions => Set<FormDefinitionRecord>();
     public DbSet<FormDefinitionRevisionRecord> FormDefinitionRevisions => Set<FormDefinitionRevisionRecord>();
     public DbSet<CaseDefinitionRecord> CaseDefinitions => Set<CaseDefinitionRecord>();
@@ -106,6 +115,11 @@ public class BpmnDbContext : DbContext
         ConfigureWorkflowTriggers(modelBuilder);
         ConfigurePollingTriggers(modelBuilder);
         ConfigureOAuth2FlowStates(modelBuilder);
+        modelBuilder.Entity<ApplicationDefinitionRecord>().Property(x => x.Version).IsConcurrencyToken();
+        modelBuilder.Entity<ApplicationDefinitionRecord>().HasIndex(x => new { x.TenantId, x.Key }).IsUnique();
+        modelBuilder.Entity<ApplicationReleaseCandidateRecord>().HasOne<ApplicationRevisionRecord>().WithMany().HasForeignKey(x => x.ApplicationRevisionId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<ApplicationRevisionRecord>().HasOne<ApplicationDefinitionRecord>().WithMany().HasForeignKey(x => x.ApplicationDefinitionId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<ApplicationRevisionRecord>().HasIndex(x => new { x.ApplicationDefinitionId, x.Version }).IsUnique();
         ConfigureFormDefinitions(modelBuilder);
         ConfigureCaseDefinitions(modelBuilder);
 

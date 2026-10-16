@@ -21,4 +21,6 @@ public class Job
     public string? LockOwner { get; set; }
     public DateTime? LockedUntil { get; set; }
     public long Revision { get; set; }
+    // LC05: optional version binding to a released application for async actions; legacy rows keep NULL.
+    public string? ApplicationReleaseId { get; set; }
 }

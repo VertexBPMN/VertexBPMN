@@ -10,33 +10,33 @@
 
   <ItemGroup>
   <PackageReference Include="Grpc.Core" Version="2.46.6" />
-  <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
+  <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.13" />
   <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.9.0" />
   <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" Version="5.9.0" PrivateAssets="all" />
-  <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.12" />
-  <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
-  <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
+  <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.13" />
+  <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.13" />
+  <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.13">
     <PrivateAssets>all</PrivateAssets>
     <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
   </PackageReference>
-  <PackageReference Include="Microsoft.ML" Version="5.0.0" />
+  <PackageReference Include="Microsoft.ML" Version="5.0.1" />
   <!-- ASP.NET OpenAPI 10.0.12 requires the 2.x object model, including its XML-comment generator. -->
   <PackageReference Include="Microsoft.OpenApi" Version="3.10.2" />
-  <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.19.1" />
-  <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.19.0" />
+  <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.20.0" />
+  <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.20.0" />
   <PackageReference Include="Serilog.Extensions.Logging.File" Version="3.0.0" />
   <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
   <PackageReference Include="Swashbuckle.AspNetCore" Version="10.3.0" />
-  <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.12" />
-  <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="10.0.12" />
+  <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.13" />
+  <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="10.0.13" />
   <PackageReference Include="Grpc.AspNetCore" Version="2.84.0" />
   <PackageReference Include="Google.Protobuf" Version="3.36.2" />
   <PackageReference Include="Grpc.Tools" Version="2.84.0" PrivateAssets="All" />
   <!-- OpenTelemetry packages (aligned rc versions) -->
-  <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.19.1" />
-  <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.19.0" />
-  <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.19.0" />
-  <PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.19.1" />
+  <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.20.0" />
+  <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.20.0" />
+  <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.20.0" />
+  <PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.20.0" />
   </ItemGroup>
 
   <ItemGroup>

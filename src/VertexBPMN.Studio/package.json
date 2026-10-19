@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@bpmn-io/form-js": "2.1.1",
-    "@bpmn-io/properties-panel": "3.56.1",
+    "@bpmn-io/properties-panel": "3.57.1",
     "bpmn-js": "18.31.0",
     "bpmn-js-properties-panel": "5.65.2",
     "bpmn-js-token-simulation": "1.0.0",

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using VertexBPMN.Application.Configuration;
 using VertexBPMN.Application.Extensions;
 using VertexBPMN.Application.Import;
+using VertexBPMN.Application.PersonalTasks;
 using VertexBPMN.Domain.Interfaces;
 namespace VertexBPMN.Application;
 
@@ -62,6 +63,7 @@ public static class ApplicationModule
 		services.AddScoped<IWorkflowTriggerService, WorkflowTriggerService>();
 		services.AddScoped<IRuntimeService, RuntimeService>();
 		services.AddScoped<ITaskService, TaskService>();
+		services.AddScoped<IPersonalTaskService, PersonalTaskService>();
 		services.AddScoped<IHistoryService, HistoryService>();
 		services.AddScoped<IManagementService, ManagementService>();
 		services.AddScoped<IDecisionService, DecisionService>();

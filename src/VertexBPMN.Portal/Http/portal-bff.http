@@ -1,0 +1,95 @@
+@portalBaseUrl = http://localhost:5281
+@tenantId = vertexbpmn
+@appId = <application-definition-id>
+@taskId = <task-id>
+@csrf-cookie = <value-from-antiforgery-response>
+@idempotencyKey = 9f1c2b3e-4a5d-4f6b-8c7e-000000000001
+
+###
+# @name AntiforgeryToken
+# Hol den antiforgery request token (cookie + header value). Der Portal-Host validiert
+# den `X-CSRF-TOKEN`-Header bei allen nicht-sicheren BFF-Aktionen. Kopiere den requestToken
+# in die Variable @csrf-cookie (Header-Wert); die Cookie wird automatisch gespeichert.
+# Erwartet: 200 { "requestToken": ..., "cookieName": ... }
+GET {{portalBaseUrl}}/api/bff/antiforgery/token
+Accept: application/json
+
+###
+# @name ReleasedRevision
+# Veröffentlichte Revision der Anwendung (NIE latest/draft). Tenant wird serverseitig aus
+# der angemeldeten Identität abgeleitet; es gibt keinen Weg, eine Entwurfs-/Latest-Revision
+# anzufordern. Ohne Anmeldung: 401. Erwartet: 200 { applicationId, version, pageCount, pageRoutes }
+GET {{portalBaseUrl}}/api/bff/applications/{{appId}}/released
+Accept: application/json
+
+###
+# @name ReleasedDataBinding
+# Enger, serverseitig aufgelöster Query-Binding-Read gegen die veröffentlichte Revision.
+# Nur Bindings, die im Release deklariert UND von einer data-source-read-Aktion referenziert
+# sind, werden ausgeführt. Ohne Anmeldung: 401. Erwartet: 200 { binding, status, rowCount, timestamp }
+GET {{portalBaseUrl}}/api/bff/applications/{{appId}}/data-sources/invoiceList
+Accept: application/json
+
+###
+# @name ArbitraryDataSourceRejected
+# Negativfall: Beliebiges/undeklariertes dataSources-Binding wird abgelehnt (eng begrenzter
+# Binding-Katalog; kein generischer dataSources-Ausführungsendpunkt). Erwartet: 404
+# ProblemDetails { code: "bffUnsanctionedBinding" }.
+GET {{portalBaseUrl}}/api/bff/applications/{{appId}}/data-sources/arbitraryQuery
+Accept: application/json
+
+###
+# @name CsrfRejectedWithoutToken
+# Negativfall: Zustandsänderung ohne CSRF-Token wird abgelehnt (zustandsändernde Endpunkte
+# sind CSRF-geschützt). Erwartet: 400 (Antiforgery).
+POST {{portalBaseUrl}}/api/bff/applications/{{appId}}/actions/claim/{{taskId}}
+Content-Type: application/json
+
+{}
+
+###
+# @name ClaimTask
+# Claim einer Aufgabe für die ABGELEITETE Identität. Der Aufrufer kann keinen Assignee/Tenant
+# übergeben; beide kommen aus der angemeldeten Identität. Erfordert CSRF-Header + Idempotency-Key.
+# Ohne Idempotency-Key: 400 { code: "bffMissingIdempotencyKey" }. Erwartet: 204.
+POST {{portalBaseUrl}}/api/bff/applications/{{appId}}/actions/claim/{{taskId}}
+Content-Type: application/json
+X-CSRF-TOKEN: {{csrf-cookie}}
+Idempotency-Key: {{idempotencyKey}}
+
+{}
+
+###
+# @name CompleteTask
+# Complete einer Aufgabe für die ABGELEITETE Identität. Der Aufrufer übermittelt nur Variablen,
+# nie Assignee/Tenant/Revision. Erfordert CSRF-Header + Idempotency-Key. Erwartet: 204.
+POST {{portalBaseUrl}}/api/bff/applications/{{appId}}/actions/complete/{{taskId}}
+Content-Type: application/json
+X-CSRF-TOKEN: {{csrf-cookie}}
+Idempotency-Key: {{idempotencyKey}}
+
+{
+  "variables": {
+    "approved": true
+  }
+}
+
+###
+# @name TaskStatus
+# Serverseitige Statusprojektion einer Aufgabe (normalisierte Statusvokabular).
+# Ohne Anmeldung: 401. Nicht sichtbare/unbekannte Aufgabe: 404. Erwartet: 200 { taskId, status, ... }.
+GET {{portalBaseUrl}}/api/bff/applications/{{appId}}/tasks/{{taskId}}/status
+Accept: application/json
+
+###
+# @name StartProcess
+# Start einer veröffentlichten Prozess-Aktion (nur wenn das Release einen start-process
+# sanktioniert). Erfordert CSRF-Header + Idempotency-Key. Erwartet: 202 { action, status: "accepted" }.
+POST {{portalBaseUrl}}/api/bff/applications/{{appId}}/actions/start
+Content-Type: application/json
+X-CSRF-TOKEN: {{csrf-cookie}}
+Idempotency-Key: {{idempotencyKey}}
+
+{
+  "variables": {}
+}

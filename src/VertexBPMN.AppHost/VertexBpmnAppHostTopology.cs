@@ -158,6 +158,14 @@ internal static class VertexBpmnAppHostTopology
     }
 
     /// <summary>
+    /// Fachportal (LC06) ist ein opt-in-Einstieg: Der bisherige lokale Start darf das
+    /// Portal nicht automatisch mitstarten (es erwartet eine BFF/OIDC-Konfiguration).
+    /// Aktivierung über Hosting-Config <c>Portal__Enabled=true</c>.
+    /// </summary>
+    private static bool IsPortalEnabled(IDistributedApplicationBuilder builder)
+        => string.Equals(builder.Configuration["Portal:Enabled"], "true", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
     /// Runs API and Studio as Aspire projects while consuming PostgreSQL and RabbitMQ
     /// instances whose lifecycle is managed outside DCP, for example by WSLC or local services.
     /// </summary>
@@ -229,6 +237,11 @@ internal static class VertexBpmnAppHostTopology
     /// </summary>
     private static void ConfigurePortal(IDistributedApplicationBuilder builder, IResourceBuilder<ProjectResource> api)
     {
+        if (!IsPortalEnabled(builder))
+        {
+            return;
+        }
+
         builder
             .AddProject<Projects.VertexBPMN_Portal>("portal")
             .WithHttpEndpoint(

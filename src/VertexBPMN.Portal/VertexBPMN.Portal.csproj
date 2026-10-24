@@ -18,6 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\VertexBPMN.Authentication\VertexBPMN.Authentication.csproj" />
     <ProjectReference Include="..\VertexBPMN.Portal.Client\VertexBPMN.Portal.Client.csproj" />
     <ProjectReference Include="..\VertexBPMN.Domain\VertexBPMN.Domain.csproj" />
     <ProjectReference Include="..\VertexBPMN.ServiceDefaults\VertexBPMN.ServiceDefaults.csproj" />

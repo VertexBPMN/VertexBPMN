@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 namespace VertexBPMN.Studio.Services;
 
 /// <summary>Gespeicherter Sitzungsinhalt mit Versionsprüfung.</summary>
-internal sealed record StoredOidcSession(
+public sealed record StoredOidcSession(
     string SessionId,
     ClaimsPrincipal Principal,
     string AccessToken,

@@ -9,16 +9,15 @@ namespace VertexBPMN.Studio.Services;
 /// der Fencing-Zähler; eine erwartete neuere Revision lässt den Schreibversuch
 /// fehlschlagen, damit keine veraltete Token-Rotation eine frische überschreibt.
 /// </summary>
-internal sealed class InMemorySharedOidcSessionStore : ISharedOidcSessionStore
+public sealed class InMemorySharedOidcSessionStore : ISharedOidcSessionStore
 {
 	private readonly ConcurrentDictionary<string, StoredOidcSession> _sessions = new(StringComparer.Ordinal);
 	public Task<StoredOidcSession?> TryGetAsync(string sessionId, CancellationToken cancellationToken = default)
 	{
 		cancellationToken.ThrowIfCancellationRequested();
 		var stored = _sessions.TryGetValue(sessionId, out var session) ? session : null;
-		if (stored is not null && stored.ExpiresAt <= DateTimeOffset.UtcNow)
+		if (stored is not null && (stored.AccessToken.Length == 0 || stored.ExpiresAt <= DateTimeOffset.UtcNow))
 		{
-			_sessions.TryRemove(sessionId, out _);
 			stored = null;
 		}
 
@@ -33,7 +32,7 @@ internal sealed class InMemorySharedOidcSessionStore : ISharedOidcSessionStore
 		var candidate = new StoredOidcSession(sessionId, principal, accessToken, refreshToken, idToken, expiresAt, nextRevision);
 		_sessions.AddOrUpdate(sessionId, candidate, (key, existing) =>
 		{
-			if (expectedRevision < existing.Revision)
+			if (existing.AccessToken.Length == 0 || expectedRevision < existing.Revision)
 			{
 				throw new OidcSessionRevisionConflictException($"Session {key} was already updated to revision {existing.Revision}; expected {expectedRevision}.");
 			}
@@ -46,22 +45,23 @@ internal sealed class InMemorySharedOidcSessionStore : ISharedOidcSessionStore
 	public Task RemoveAsync(string sessionId, CancellationToken cancellationToken = default)
 	{
 		cancellationToken.ThrowIfCancellationRequested();
-		_sessions.TryRemove(sessionId, out _);
+		_sessions.AddOrUpdate(sessionId, key => new StoredOidcSession(key, new ClaimsPrincipal(), string.Empty, string.Empty, null, DateTimeOffset.MaxValue, 0), (_, session) => session with { AccessToken = string.Empty, RefreshToken = string.Empty, IdToken = null, Principal = new ClaimsPrincipal(), Revision = session.Revision + 1 });
 		return Task.CompletedTask;
 	}
 
-	public Task<int> RemoveExpiredAsync(DateTimeOffset cutoffUtc, CancellationToken cancellationToken = default)
+	public async Task<int> RemoveExpiredAsync(DateTimeOffset cutoffUtc, CancellationToken cancellationToken = default)
 	{
 		cancellationToken.ThrowIfCancellationRequested();
 		var removed = 0;
 		foreach (var(id, session)in _sessions)
 		{
-			if (session.ExpiresAt <= cutoffUtc && _sessions.TryRemove(id, out _))
+			if (session.AccessToken.Length > 0 && session.ExpiresAt <= cutoffUtc)
 			{
+				await RemoveAsync(id, cancellationToken);
 				removed++;
 			}
 		}
 
-		return Task.FromResult(removed);
+		return removed;
 	}
 }

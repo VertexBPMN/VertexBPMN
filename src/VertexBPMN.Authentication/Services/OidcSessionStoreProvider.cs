@@ -6,7 +6,7 @@ namespace VertexBPMN.Studio.Services;
 /// PostgreSQL (Npgsql) in Azure. Die Wahl erfolgt über <c>OidcSessionStore:Provider</c>
 /// ("npgsql" | "sqlite") bzw. wird aus dem Connection-String inferiert.
 /// </summary>
-internal static class OidcSessionStoreProvider
+public static class OidcSessionStoreProvider
 {
 	public static string Resolve(string? connectionString, string? explicitProvider)
 	{

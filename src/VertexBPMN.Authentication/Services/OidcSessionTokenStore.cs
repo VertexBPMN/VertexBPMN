@@ -7,10 +7,10 @@ using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
-using VertexBPMN.ServiceDefaults.Security;
+using VertexBPMN.Authentication.Security;
 
 namespace VertexBPMN.Studio.Services;
-internal sealed class OidcSessionTokenStore
+public sealed class OidcSessionTokenStore
 {
 	public OidcSessionTokenStore(IOptionsMonitor<OpenIdConnectOptions> oidcOptions, TimeProvider timeProvider, ILogger<OidcSessionTokenStore> logger, ISharedOidcSessionStore? sharedStore = null)
 	{
@@ -46,17 +46,19 @@ internal sealed class OidcSessionTokenStore
 
 	public async Task<string> GetAccessTokenAsync(ClaimsPrincipal principal, AuthenticationProperties? fallbackProperties, CancellationToken cancellationToken)
 	{
+		// Retained for source compatibility; stale cookie tokens cannot recreate a session.
+		_ = fallbackProperties;
 		var sessionId = GetSessionId(principal);
-		var entry = GetOrRegister(sessionId, principal, fallbackProperties);
-		var state = await EnsureFreshAsync(sessionId, entry, principal, cancellationToken);
+		var entry = GetOrRegister(sessionId);
+		var state = await EnsureFreshAsync(sessionId, entry, cancellationToken);
 		return state.AccessToken;
 	}
 
 	public async Task<bool> SynchronizeTicketAsync(ClaimsPrincipal principal, AuthenticationProperties properties, CancellationToken cancellationToken)
 	{
 		var sessionId = GetSessionId(principal);
-		var entry = GetOrRegister(sessionId, principal, properties);
-		var state = await EnsureFreshAsync(sessionId, entry, principal, cancellationToken);
+		var entry = GetOrRegister(sessionId);
+		var state = await EnsureFreshAsync(sessionId, entry, cancellationToken);
 		var ticketAccessToken = properties.GetTokenValue("access_token");
 		if (string.Equals(ticketAccessToken, state.AccessToken, StringComparison.Ordinal))
 		{
@@ -106,25 +108,30 @@ internal sealed class OidcSessionTokenStore
 		}
 	}
 
-	private SessionEntry GetOrRegister(string sessionId, ClaimsPrincipal principal, AuthenticationProperties? properties)
+	private SessionEntry GetOrRegister(string sessionId)
 	{
-		if (_sessions.TryGetValue(sessionId, out var existing))
+		var shared = _sharedStore.TryGetAsync(sessionId, CancellationToken.None).GetAwaiter().GetResult();
+		if (shared is not null)
+		{
+			var state = FromStored(shared);
+			var entry = _sessions.GetOrAdd(sessionId, _ => new SessionEntry(state));
+			if (shared.Revision > entry.State.Revision)
+			{
+				entry.State = state;
+			}
+
+			return entry;
+		}
+
+		if (_sessions.TryGetValue(sessionId, out var existing) && existing.State.ExpiresAt <= _timeProvider.GetUtcNow())
 		{
 			return existing;
 		}
 
-		if (properties is null)
-		{
-			throw new OidcSessionExpiredException("The OIDC session is no longer available. Sign in again.");
-		}
-
-		var created = new SessionEntry(ReadTokenSet(principal, properties, revision: 0));
-		var winner = _sessions.GetOrAdd(sessionId, created);
-		WriteThrough(sessionId, winner.State, principal);
-		return winner;
+		throw new OidcSessionExpiredException("The OIDC session is no longer available. Sign in again.");
 	}
 
-	private async Task<SessionTokenSet> EnsureFreshAsync(string sessionId, SessionEntry entry, ClaimsPrincipal principal, CancellationToken cancellationToken)
+	private async Task<SessionTokenSet> EnsureFreshAsync(string sessionId, SessionEntry entry, CancellationToken cancellationToken)
 	{
 		var now = _timeProvider.GetUtcNow();
 		if (entry.State.ExpiresAt > now.Add(RefreshWindow))
@@ -141,16 +148,13 @@ internal sealed class OidcSessionTokenStore
 				return entry.State;
 			}
 
-			var refreshed = await RefreshAsync(entry.State, cancellationToken);
-			var next = refreshed with
-			{
-				Revision = entry.State.Revision + 1
-			};
-			var expectedRevision = entry.State.Revision;
-			entry.State = next;
+			var current = entry.State;
+			var expectedRevision = current.Revision;
+			var next = (await RefreshAsync(current, cancellationToken)) with { Revision = expectedRevision + 1 };
 			try
 			{
-				await WriteWithFencingAsync(sessionId, next, principal, expectedRevision, cancellationToken);
+				await WriteWithFencingAsync(sessionId, next, expectedRevision, cancellationToken);
+				entry.State = next;
 			}
 			catch (OidcSessionRevisionConflictException)
 			{
@@ -158,16 +162,25 @@ internal sealed class OidcSessionTokenStore
 				// aktualisiert. Die frische Darstellung (Fencing-Gewinner) übernehmen
 				// und die lokale veraltete Token-Rotation verwerfen.
 				var winner = await _sharedStore.TryGetAsync(sessionId, cancellationToken);
-				if (winner is not null)
+				if (winner is null)
 				{
-					entry.State = new SessionTokenSet(winner.AccessToken, winner.RefreshToken, winner.IdToken, winner.ExpiresAt, ClonePrincipal(principal), winner.Revision);
+					throw new OidcSessionExpiredException("The OIDC session was revoked during refresh.");
 				}
+
+				entry.State = FromStored(winner);
 			}
 
 			return entry.State;
 		}
 		catch (Exception exception) when (exception is not OperationCanceledException)
 		{
+			var winner = await _sharedStore.TryGetAsync(sessionId, cancellationToken);
+			if (winner is not null && winner.Revision > entry.State.Revision)
+			{
+				entry.State = FromStored(winner);
+				return entry.State;
+			}
+
 			_sessions.TryRemove(sessionId, out _);
 			await _sharedStore.RemoveAsync(sessionId, cancellationToken);
 			_logger.LogWarning(exception, "OIDC token refresh failed for session {SessionId}.", sessionId);
@@ -178,6 +191,8 @@ internal sealed class OidcSessionTokenStore
 			entry.Gate.Release();
 		}
 	}
+
+	private static SessionTokenSet FromStored(StoredOidcSession stored) => new(stored.AccessToken, stored.RefreshToken, stored.IdToken, stored.ExpiresAt, ClonePrincipal(stored.Principal), stored.Revision);
 
 	private void WriteThrough(string sessionId, SessionTokenSet tokenSet, ClaimsPrincipal principal)
 	{
@@ -194,9 +209,9 @@ internal sealed class OidcSessionTokenStore
 		}
 	}
 
-	private async Task WriteWithFencingAsync(string sessionId, SessionTokenSet tokenSet, ClaimsPrincipal principal, long expectedRevision, CancellationToken cancellationToken)
+	private async Task WriteWithFencingAsync(string sessionId, SessionTokenSet tokenSet, long expectedRevision, CancellationToken cancellationToken)
 	{
-		await _sharedStore.PutAsync(sessionId, principal, tokenSet.AccessToken, tokenSet.RefreshToken, tokenSet.IdToken, tokenSet.ExpiresAt, expectedRevision, cancellationToken);
+		await _sharedStore.PutAsync(sessionId, tokenSet.Principal, tokenSet.AccessToken, tokenSet.RefreshToken, tokenSet.IdToken, tokenSet.ExpiresAt, expectedRevision, cancellationToken);
 	}
 
 	private async Task<SessionTokenSet> RefreshAsync(SessionTokenSet current, CancellationToken cancellationToken)

@@ -1,3 +1,4 @@
+using VertexBPMN.Authentication;
 using VertexBPMN.Studio.Components;
 using VertexBPMN.Studio;
 using VertexBPMN.Studio.Services;
@@ -109,8 +110,6 @@ builder.Services.AddMudServices();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton(TimeProvider.System);
 RegisterOidcSessionStore(builder);
-builder.Services.AddSingleton<OidcSessionTokenStore>();
-builder.Services.AddScoped<OidcCookieRefreshEvents>();
 var oidcAuthority = builder.Configuration["StudioAuthentication:Authority"];
 var oidcBackchannelAuthority = builder.Configuration["StudioAuthentication:BackchannelAuthority"];
 LocalOidcBackchannelHandler.Validate(oidcBackchannelAuthority, oidcAuthority, builder.Environment.IsEnvironment("OidcTest"));
@@ -402,14 +401,13 @@ static void RegisterOidcSessionStore(WebApplicationBuilder builder)
 	if (OidcSessionStoreProvider.IsSqlite(provider) || string.IsNullOrWhiteSpace(connectionString))
 	{
 		// Lokaler Standard: In-Process-Store (kein Azure-Zugang nötig, identisches Verhalten).
-		builder.Services.AddSingleton<ISharedOidcSessionStore, InMemorySharedOidcSessionStore>();
+		builder.Services.AddVertexBpmnOidcSessions();
 		return;
 	}
 
 	// Geteilter, verschlüsselter Store auf PostgreSQL (Azure): alle Replikas teilen
-	// denselben Sitzungszustand und dieselben Refresh-Locks (P4.5).
-	builder.Services.AddDbContextFactory<OidcSessionStoreDbContext>(options => OidcSessionStoreProvider.Configure(options, provider, connectionString));
-	builder.Services.AddSingleton<ISharedOidcSessionStore, PersistentOidcSessionStore>();
+	// denselben Sitzungszustand mit Datenbank-Revisionsfencing (P4.5).
+	builder.Services.AddVertexBpmnPersistentOidcSessions(options => OidcSessionStoreProvider.Configure(options, provider, connectionString));
 }
 
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "WebApplicationFactory integration tests require a public application entry point.")]

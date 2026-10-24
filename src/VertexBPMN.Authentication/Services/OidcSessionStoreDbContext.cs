@@ -7,7 +7,7 @@ namespace VertexBPMN.Studio.Services;
 /// SQLite bleibt der lokale Entwicklungsfallback; PostgreSQL ist das Azure-Ziel
 /// für geteilten, replikaübergreifenden Sitzungszustand.
 /// </summary>
-internal sealed class OidcSessionStoreDbContext(DbContextOptions<OidcSessionStoreDbContext> options) : DbContext(options)
+public sealed class OidcSessionStoreDbContext(DbContextOptions<OidcSessionStoreDbContext> options) : DbContext(options)
 {
     public DbSet<OidcSessionRecord> Sessions => Set<OidcSessionRecord>();
 
@@ -21,7 +21,7 @@ internal sealed class OidcSessionStoreDbContext(DbContextOptions<OidcSessionStor
             entity.Property(record => record.Subject).HasMaxLength(256).IsRequired();
             entity.Property(record => record.ProtectedPayload).IsRequired();
             entity.Property(record => record.ExpiresAtUtc);
-            entity.Property(record => record.Revision);
+            entity.Property(record => record.Revision).IsConcurrencyToken();
             entity.Property(record => record.UpdatedAtUtc);
             entity.HasIndex(record => record.ExpiresAtUtc);
         });

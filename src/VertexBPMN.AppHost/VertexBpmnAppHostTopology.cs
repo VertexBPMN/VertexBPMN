@@ -154,6 +154,7 @@ internal static class VertexBpmnAppHostTopology
             .WithEnvironment("Runtime__Outbox__Provider", "RabbitMq");
 
         ConfigureDevelopmentStudio(builder, api);
+        ConfigurePortal(builder, api);
     }
 
     /// <summary>
@@ -221,6 +222,25 @@ internal static class VertexBpmnAppHostTopology
         }
 
         ConfigureExternalStudio(builder, api, useOidcTest ? oidcAuthority : null, studioClientSecret);
+    }
+
+    /// <summary>
+    /// Registers the Fachportal (LC06): BFF-Host + Blazor-WASM-Client, verbraucht die API.
+    /// </summary>
+    private static void ConfigurePortal(IDistributedApplicationBuilder builder, IResourceBuilder<ProjectResource> api)
+    {
+        builder
+            .AddProject<Projects.VertexBPMN_Portal>("portal")
+            .WithHttpEndpoint(
+                port: 5281,
+                name: "http")
+            .WaitFor(api)
+            .WithEnvironment(
+                "ASPNETCORE_ENVIRONMENT",
+                "Development")
+            .WithEnvironment(
+                "Portal__ApiBaseUrl",
+                api.GetEndpoint("http"));
     }
 
     private static IResourceBuilder<RabbitMQServerResource> ConfigureRabbitMq(IDistributedApplicationBuilder builder)

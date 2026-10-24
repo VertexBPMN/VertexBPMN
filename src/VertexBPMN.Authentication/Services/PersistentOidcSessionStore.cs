@@ -13,7 +13,7 @@ namespace VertexBPMN.Studio.Services;
 /// Token-Rotation mit veralteten Tokens überschreibt. Abgelaufene Sitzungen gelten als
 /// TTL-nicht-gelesen und werden per <see cref = "RemoveExpiredAsync"/> gereinigt.
 /// </summary>
-internal sealed class PersistentOidcSessionStore : ISharedOidcSessionStore
+public sealed class PersistentOidcSessionStore : ISharedOidcSessionStore
 {
 	private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 	private readonly IDbContextFactory<OidcSessionStoreDbContext> _dbFactory;
@@ -28,7 +28,7 @@ internal sealed class PersistentOidcSessionStore : ISharedOidcSessionStore
 	{
 		await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
 		var record = await db.Sessions.AsNoTracking().SingleOrDefaultAsync(s => s.SessionId == sessionId, cancellationToken);
-		if (record is null || record.ExpiresAtUtc <= DateTimeOffset.UtcNow)
+		if (record is null || record.ProtectedPayload.Length == 0 || record.ExpiresAtUtc <= DateTimeOffset.UtcNow)
 		{
 			return null;
 		}
@@ -45,7 +45,7 @@ internal sealed class PersistentOidcSessionStore : ISharedOidcSessionStore
 		var existing = await db.Sessions.SingleOrDefaultAsync(s => s.SessionId == sessionId, cancellationToken);
 		if (existing is not null)
 		{
-			if (expectedRevision < existing.Revision)
+			if (existing.ProtectedPayload.Length == 0 || expectedRevision < existing.Revision)
 			{
 				throw new OidcSessionRevisionConflictException($"Session {sessionId} was already updated to revision {existing.Revision}; expected {expectedRevision}.");
 			}
@@ -61,17 +61,40 @@ internal sealed class PersistentOidcSessionStore : ISharedOidcSessionStore
 			db.Sessions.Add(new OidcSessionRecord { SessionId = sessionId, Subject = principal.FindFirstValue("sub") ?? string.Empty, ProtectedPayload = protectedPayload, ExpiresAtUtc = expiresAt, Revision = expectedRevision, UpdatedAtUtc = DateTimeOffset.UtcNow });
 		}
 
-		await db.SaveChangesAsync(cancellationToken);
+		try
+		{
+			await db.SaveChangesAsync(cancellationToken);
+		}
+		catch (DbUpdateConcurrencyException)
+		{
+			throw new OidcSessionRevisionConflictException("The session changed before the refresh was committed.");
+		}
 	}
 
 	public async Task RemoveAsync(string sessionId, CancellationToken cancellationToken = default)
 	{
-		await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
-		var existing = await db.Sessions.SingleOrDefaultAsync(s => s.SessionId == sessionId, cancellationToken);
-		if (existing is not null)
+		while (true)
 		{
-			db.Sessions.Remove(existing);
-			await db.SaveChangesAsync(cancellationToken);
+			await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
+			var existing = await db.Sessions.SingleOrDefaultAsync(s => s.SessionId == sessionId, cancellationToken);
+			if (existing is null || existing.ProtectedPayload.Length == 0)
+			{
+				return;
+			}
+
+			existing.ProtectedPayload = [];
+			existing.Revision++;
+			existing.UpdatedAtUtc = DateTimeOffset.UtcNow;
+			try
+			{
+				await db.SaveChangesAsync(cancellationToken);
+				return;
+			}
+			catch (DbUpdateConcurrencyException)
+			{
+				// Logout wins over a concurrent rotation. Reload its latest revision and revoke it.
+				cancellationToken.ThrowIfCancellationRequested();
+			}
 		}
 	}
 
@@ -80,13 +103,17 @@ internal sealed class PersistentOidcSessionStore : ISharedOidcSessionStore
 		await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
 		// Client-side filter: DateTimeOffset comparisons are not translatable on the SQLite
 		// provider (Npgsql supports them server-side, SQLite does not).
-		var expired = (await db.Sessions.ToListAsync(cancellationToken)).Where(s => s.ExpiresAtUtc <= cutoffUtc).ToList();
+		var expired = (await db.Sessions.ToListAsync(cancellationToken)).Where(s => s.ProtectedPayload.Length > 0 && s.ExpiresAtUtc <= cutoffUtc).ToList();
 		if (expired.Count == 0)
 		{
 			return 0;
 		}
 
-		db.Sessions.RemoveRange(expired);
+		foreach (var session in expired)
+		{
+			session.ProtectedPayload = [];
+			session.Revision++;
+		}
 		await db.SaveChangesAsync(cancellationToken);
 		return expired.Count;
 	}

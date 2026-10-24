@@ -11,7 +11,7 @@ namespace VertexBPMN.Studio.Services;
 /// jede Sitzung den verschlüsselten Token-Satz inklusive Hauptprüfsumme (sub)
 /// und einer monoton steigenden Revision (für verteiltes Lease/Fencing).
 /// </summary>
-internal interface ISharedOidcSessionStore
+public interface ISharedOidcSessionStore
 {
     /// <summary>Holt den gespeicherten Token-Satz einer Sitzung; null, wenn unbekannt/abgelaufen.</summary>
     Task<StoredOidcSession?> TryGetAsync(string sessionId, CancellationToken cancellationToken = default);

@@ -30,7 +30,7 @@ namespace VertexBPMN.Studio.Migrations.OidcSession
                     b.Property<byte[]>("ProtectedPayload")
                         .IsRequired();
 
-                    b.Property<long>("Revision");
+                    b.Property<long>("Revision").IsConcurrencyToken();
 
                     b.Property<string>("Subject")
                         .IsRequired()

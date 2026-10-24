@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <EnableMicrosoftTestingPlatform>true</EnableMicrosoftTestingPlatform>
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+    <TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageReference Include="xunit.v3.mtp-v2" Version="4.0.1" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.12" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
+    <ProjectReference Include="../../src/VertexBPMN.Authentication/VertexBPMN.Authentication.csproj" />
+    <Using Include="Xunit" />
+    <!-- Execute the unchanged Studio regressions against the extracted library. -->
+    <Compile Include="../VertexBPMN.Tests/Unit/Security/OidcSessionTokenStoreTests.cs" Link="Compatibility/OidcSessionTokenStoreTests.cs" />
+    <Compile Include="../VertexBPMN.Tests/Unit/Security/PersistentOidcSessionStoreTests.cs" Link="Compatibility/PersistentOidcSessionStoreTests.cs" />
+    <Compile Include="../VertexBPMN.Tests/Unit/Security/InMemorySharedOidcSessionStoreTests.cs" Link="Compatibility/InMemorySharedOidcSessionStoreTests.cs" />
+    <Compile Include="../../src/VertexBPMN.Studio/Services/OidcCircuitAuthenticationStateProvider.cs" Link="Compatibility/OidcCircuitAuthenticationStateProvider.cs" />
+    <Using Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
+</Project>

@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 
 namespace VertexBPMN.Studio.Services;
-internal sealed class OidcCookieRefreshEvents(OidcSessionTokenStore tokenStore) : CookieAuthenticationEvents
+public sealed class OidcCookieRefreshEvents(OidcSessionTokenStore tokenStore) : CookieAuthenticationEvents
 {
 	public override async Task ValidatePrincipal(CookieValidatePrincipalContext context)
 	{

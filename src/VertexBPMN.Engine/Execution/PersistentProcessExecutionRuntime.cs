@@ -1585,6 +1585,7 @@ public sealed partial class PersistentProcessExecutionRuntime(
 		CancellationToken cancellationToken)
 	{
 		var token = CreateWaitingToken(instance, node);
+		var assignment = await ResolveTaskAssignmentAsync(instance, node, cancellationToken);
 		var formAttributes = await ReadTaskFormBindingAsync(instance, node, cancellationToken);
 		var formKey = formAttributes.GetValueOrDefault("formRef")
 					  ?? formAttributes.GetValueOrDefault("formKey");
@@ -1601,6 +1602,9 @@ public sealed partial class PersistentProcessExecutionRuntime(
 			LastModified = DateTime.UtcNow,
 			Status = UserTaskStatus.Pending,
 			Revision = 1,
+			CandidateRole = assignment.CandidateRole,
+			Assignee = assignment.Assignee,
+			CandidateUsers = assignment.CandidateUsers,
 			FormKey = formKey,
 			FormSchema = formRevision?.Schema,
             FormRevisionId = formRevision?.Id,
@@ -1623,6 +1627,104 @@ public sealed partial class PersistentProcessExecutionRuntime(
 		AddOutbox(instance, "UserTaskCreated", new { taskId = task.Id, activityId = node.Id });
 
 		RegisterUserTaskBoundaries(instance, node, model, task);
+	}
+
+	private async Task<(string CandidateRole, string? Assignee, List<string> CandidateUsers)> ResolveTaskAssignmentAsync(ProcessInstance instance, ExecutionNode node, CancellationToken cancellationToken)
+	{
+		var definition = instance.ProcessDefinition ?? await _db.ProcessDefinitions.FindAsync([instance.ProcessDefinitionId], cancellationToken)
+			?? throw new InvalidOperationException($"Process definition for instance '{instance.Id}' could not be resolved.");
+
+		var xml = definition.BpmnXml;
+		if (string.IsNullOrWhiteSpace(xml))
+		{
+			return (string.Empty, null, new List<string>());
+		}
+
+		var document = XDocument.Parse(xml);
+		var userTask = document.Descendants()
+			.FirstOrDefault(e => e.Name.LocalName == "userTask" && (string?)e.Attribute("id") == node.Id);
+		if (userTask is null)
+		{
+			return (string.Empty, null, new List<string>());
+		}
+
+		return DeriveTaskAssignment(CollectTaskAssignmentValues(userTask));
+	}
+
+	/// <summary>
+	/// Reads assignment from direct attributes (e.g. camunda:assignee) and extension
+	/// elements (e.g. <c>&lt;activiti:candidateGroups value="..."/&gt;</c>), keyed by
+	/// local name so any vendor namespace is handled uniformly.
+	/// </summary>
+	private static Dictionary<string, List<string>> CollectTaskAssignmentValues(XElement userTask)
+	{
+		var values = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+		foreach (var attribute in userTask.Attributes().Where(a => !a.IsNamespaceDeclaration))
+		{
+			AddAssignmentValue(values, attribute.Name.LocalName, attribute.Value);
+		}
+
+		var extensionParent = userTask.Elements().FirstOrDefault(e => e.Name.LocalName == "extensionElements");
+		if (extensionParent is not null)
+		{
+			foreach (var element in extensionParent.Descendants().Where(el => !el.HasElements))
+			{
+				var value = (string?)element.Attribute("value") ?? element.Value;
+				if (!string.IsNullOrWhiteSpace(value))
+				{
+					AddAssignmentValue(values, element.Name.LocalName, value);
+				}
+			}
+		}
+
+		return values;
+	}
+
+	private static (string CandidateRole, string? Assignee, List<string> CandidateUsers) DeriveTaskAssignment(Dictionary<string, List<string>> values)
+	{
+		string FirstNonEmpty(string key) => values.TryGetValue(key, out var list)
+			? list.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v)) ?? string.Empty
+			: string.Empty;
+
+		var assignee = FirstNonEmpty("assignee");
+
+		var candidateUsers = new List<string>();
+		if (values.TryGetValue("candidateUsers", out var candidateUsersList))
+		{
+			candidateUsers = candidateUsersList
+				.SelectMany(v => v.Split(','))
+				.Select(v => v.Trim())
+				.Where(v => v.Length > 0)
+				.Distinct(StringComparer.Ordinal)
+				.ToList();
+		}
+
+		var candidateRole = FirstNonEmpty("candidateRole");
+		if (string.IsNullOrWhiteSpace(candidateRole) && values.TryGetValue("candidateGroups", out var candidateGroups))
+		{
+			candidateRole = candidateGroups
+				.SelectMany(v => v.Split(','))
+				.Select(v => v.Trim())
+				.FirstOrDefault(v => v.Length > 0) ?? string.Empty;
+		}
+
+		return (candidateRole, string.IsNullOrWhiteSpace(assignee) ? null : assignee, candidateUsers);
+	}
+
+	private static void AddAssignmentValue(Dictionary<string, List<string>> values, string key, string value)
+	{
+		if (string.IsNullOrWhiteSpace(value))
+		{
+			return;
+		}
+
+		if (!values.TryGetValue(key, out var list))
+		{
+			list = new List<string>();
+			values[key] = list;
+		}
+
+		list.Add(value);
 	}
 
 	private void RegisterUserTaskBoundaries(

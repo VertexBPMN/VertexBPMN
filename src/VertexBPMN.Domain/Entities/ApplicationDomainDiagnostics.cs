@@ -38,7 +38,21 @@ public static class ApplicationDomainDiagnostics
         {
             var id = action.TryGetProperty("processDefinitionId", out var processId) ? processId.GetString() : null;
             if (id is null || !root.TryGetProperty("references", out var references)
-                || !references.EnumerateArray().Any(x => x.GetProperty("type").GetString() == "process" && x.GetProperty("id").GetString() == id))
+                || !references.EnumerateArray().Any(x =>
+                {
+                    if (x.GetProperty("type").GetString() != "process")
+                    {
+                        return false;
+                    }
+                    if (x.GetProperty("id").GetString() == id)
+                    {
+                        return true;
+                    }
+                    // The start-process action references the stable process KEY (the runtime
+                    // starts by key), while references[].id is the internal ProcessDefinition
+                    // GUID. A reference may declare its key so the action resolves to it.
+                    return x.TryGetProperty("key", out var key) && key.GetString() == id;
+                }))
             { diagnostics.Add("UNKNOWN_PROCESS"); }
         }
     }

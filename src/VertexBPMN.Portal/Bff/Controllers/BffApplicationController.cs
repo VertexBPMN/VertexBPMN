@@ -55,16 +55,23 @@ public sealed class BffApplicationController(IBffRuntimeGateway gateway) : Contr
     {
         if (ResolveScope() is not { } scope) { return Forbid(); }
         if (IdempotencyKey is null) { return BadRequest(CodeProblem("bffMissingIdempotencyKey", "An Idempotency-Key header is required.")); }
-        _ = request;
         var released = await gateway.GetReleasedAsync(scope.TenantId, id, ct);
         if (released is null) { return NotFound(); }
-        if (!HasProcessStart(released.ContentJson))
+
+        // Only a sanctioned start-process action present verbatim in the released revision may
+        // start; its processDefinitionId is server-resolved and never caller-supplied.
+        string processDefinitionId;
+        try
         {
-            return Unsanctioned(UnsanctionedAction, "The released application does not sanction a process start.");
+            processDefinitionId = ReleasedProcessStartResolver.ResolveSanctionedStartProcessId(released.ContentJson);
+        }
+        catch (BffUnsanctionedActionException exception)
+        {
+            return Unsanctioned(UnsanctionedAction, exception.Message);
         }
 
         // State-changing effect is idempotent by key through the API's start contract.
-        await gateway.ExecuteDataSourceReadAsync(scope.TenantId, id, ReleasedActions.StartProcess, ct);
+        await gateway.StartProcessAsync(scope.TenantId, processDefinitionId, request?.Variables, IdempotencyKey, ct);
         return Accepted(new BffActionResult(ReleasedActions.StartProcess, null, "accepted"));
     }
 
@@ -111,30 +118,6 @@ public sealed class BffApplicationController(IBffRuntimeGateway gateway) : Contr
         var tenantId = User.FindFirstValue("tenant_id");
         var actor = User.FindFirstValue("sub") ?? User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue(ClaimTypes.Name);
         return string.IsNullOrWhiteSpace(tenantId) || string.IsNullOrWhiteSpace(actor) ? null : new Scope(tenantId, actor);
-    }
-
-    private static bool HasProcessStart(string contentJson)
-    {
-        try
-        {
-            using var document = System.Text.Json.JsonDocument.Parse(contentJson);
-            if (!document.RootElement.TryGetProperty("pages", out var pages) || pages.ValueKind != System.Text.Json.JsonValueKind.Array) { return false; }
-            foreach (var page in pages.EnumerateArray())
-            {
-                if (page.TryGetProperty("actions", out var actions))
-                {
-                    foreach (var action in actions.EnumerateArray())
-                    {
-                        if (Equals(action.TryGetProperty("type", out var type) ? type.GetString() : null, ReleasedActions.StartProcess)) { return true; }
-                    }
-                }
-            }
-            return false;
-        }
-        catch
-        {
-            return false;
-        }
     }
 
     private NotFoundObjectResult Unsanctioned(string code, string detail)

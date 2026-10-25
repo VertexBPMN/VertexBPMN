@@ -65,6 +65,14 @@ public sealed class VertexBffRuntimeGateway : IBffRuntimeGateway
             DateTimeOffset.UtcNow);
     }
 
+    public async Task StartProcessAsync(string tenantId, string processDefinitionId, IDictionary<string, object?>? variables, string idempotencyKey, CancellationToken ct = default)
+    {
+        var payload = JsonSerializer.Serialize(new { processDefinitionKey = processDefinitionId, variables });
+        using var request = CreateRequest(HttpMethod.Post, "/api/runtime/start", payload, idempotencyKey);
+        using var response = await SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+    }
+
     public async Task ClaimAsync(string tenantId, string applicationId, Guid taskId, string idempotencyKey, CancellationToken ct = default)
     {
         using var request = CreateRequest(HttpMethod.Post, $"/api/task/inbox/{taskId}/claim", null, idempotencyKey);

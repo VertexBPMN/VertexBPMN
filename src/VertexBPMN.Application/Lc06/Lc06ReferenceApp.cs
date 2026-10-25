@@ -27,6 +27,42 @@ public static class Lc06ReferenceApp
     /// <summary>The reference process started by the application's start-process action.</summary>
     public const string ProcessId = "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d";
 
+    /// <summary>
+    /// The stable process definition KEY the released start-process action references. The
+    /// runtime starts processes by KEY (StartProcessByKeyAsync), so the released action
+    /// carries the key - not the internal ProcessDefinition.Id - and the BFF forwards it
+    /// verbatim as the start identifier to POST /api/runtime/start.
+    /// </summary>
+    public const string StartProcessKey = "lc06-reference-flow";
+
+    /// <summary>Candidate group/role assigned to the reference process's user task; the inbox is exposed to this role.</summary>
+    public const string CandidateRole = "FinanceAgent";
+
+    /// <summary>
+    /// A real, minimal BPMN 2.0 process definition for the reference app. It is a valid,
+    /// parseable process containing a single user task assigned to the
+    /// <see cref="CandidateRole"/> so that starting the process produces a personal inbox
+    /// task that can be claimed and completed through the engine.
+    /// </summary>
+    public static string ProcessBpmn => """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <definitions id="lc06-reference-def" targetNamespace="http://vertexbpmn.org/lc06"
+            xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+            xmlns:activiti="http://activiti.org/bpmn">
+          <process id="lc06-reference-flow" isExecutable="true">
+            <startEvent id="start" />
+            <sequenceFlow id="to-approval" sourceRef="start" targetRef="approval" />
+            <userTask id="approval" name="Approve invoice batch">
+              <extensionElements>
+                <activiti:candidateGroups value="FinanceAgent" />
+              </extensionElements>
+            </userTask>
+            <sequenceFlow id="to-end" sourceRef="approval" targetRef="end" />
+            <endEvent id="end" />
+          </process>
+        </definitions>
+        """;
+
     /// <summary>A data source that is declared AND referenced by a sanctioned data-source-read action.</summary>
     public const string SanctionedBinding = "invoiceList";
 
@@ -43,7 +79,7 @@ public static class Lc06ReferenceApp
             "en": { "appTitle": "LC06 Reference Application", "appSubtitle": "Ontology for the released low-code runtime" }
           },
           "references": [
-            { "type": "process", "id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d", "tenantId": "vertexbpmn-reference" }
+            { "type": "process", "id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d", "key": "lc06-reference-flow", "tenantId": "vertexbpmn-reference" }
           ],
           "dataSources": [
             { "key": "invoiceList", "bindingVersion": 2 },
@@ -56,7 +92,7 @@ public static class Lc06ReferenceApp
               "navigation": ["tasks"],
               "actions": [
                 { "type": "data-source-read", "version": "1.0.0", "dataSource": "invoiceList" },
-                { "type": "start-process", "version": "1.0.0", "processDefinitionId": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d" }
+                { "type": "start-process", "version": "1.0.0", "processDefinitionId": "lc06-reference-flow" }
               ],
               "components": [
                 {

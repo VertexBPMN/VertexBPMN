@@ -21,6 +21,10 @@ internal sealed class FakeBffRuntimeGateway : IBffRuntimeGateway
     public string? LastCompletedTenant { get; private set; }
     public Guid? LastCompletedTask { get; private set; }
     public string? LastExecutedBinding { get; private set; }
+    public string? LastStartedTenant { get; private set; }
+    public string? LastStartedProcessDefinitionId { get; private set; }
+    public IDictionary<string, object?>? LastStartedVariables { get; private set; }
+    public string? LastStartedIdempotencyKey { get; private set; }
 
     public void ResetCalls()
     {
@@ -30,6 +34,10 @@ internal sealed class FakeBffRuntimeGateway : IBffRuntimeGateway
         LastCompletedTenant = null;
         LastCompletedTask = null;
         LastExecutedBinding = null;
+        LastStartedTenant = null;
+        LastStartedProcessDefinitionId = null;
+        LastStartedVariables = null;
+        LastStartedIdempotencyKey = null;
     }
 
     public Task<ReleasedApplication?> GetReleasedAsync(string tenantId, string applicationId, CancellationToken ct = default)
@@ -39,6 +47,15 @@ internal sealed class FakeBffRuntimeGateway : IBffRuntimeGateway
     {
         LastExecutedBinding = bindingName;
         return Task.FromResult(DataSourceResult);
+    }
+
+    public Task StartProcessAsync(string tenantId, string processDefinitionId, IDictionary<string, object?>? variables, string idempotencyKey, CancellationToken ct = default)
+    {
+        LastStartedTenant = tenantId;
+        LastStartedProcessDefinitionId = processDefinitionId;
+        LastStartedVariables = variables;
+        LastStartedIdempotencyKey = idempotencyKey;
+        return Task.CompletedTask;
     }
 
     public Task ClaimAsync(string tenantId, string applicationId, Guid taskId, string idempotencyKey, CancellationToken ct = default)

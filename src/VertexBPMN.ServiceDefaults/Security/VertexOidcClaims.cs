@@ -19,7 +19,8 @@ public static class VertexOidcClaims
         "Admin",
         "ProcessManager",
         "ReadOnly",
-        "ExternalTaskWorker"
+        "ExternalTaskWorker",
+        "FinanceAgent"
     ];
 
     public static bool TryNormalize(ClaimsPrincipal principal, out string error)

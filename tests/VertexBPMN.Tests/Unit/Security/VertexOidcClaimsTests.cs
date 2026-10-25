@@ -28,6 +28,43 @@ public sealed class VertexOidcClaimsTests
 	}
 
 	[Fact]
+	public void TryNormalize_AcceptsFinanceAgentRole()
+	{
+		var principal = Principal(
+			new Claim("sub", "user-1"),
+			new Claim("tenant_id", "tenant-a"),
+			new Claim("roles", "FinanceAgent"));
+
+		var result = VertexOidcClaims.TryNormalize(principal, out var error);
+
+		Assert.True(result, error);
+		Assert.True(principal.IsInRole("FinanceAgent"));
+	}
+
+	[Fact]
+	public void TryNormalize_AcceptsAllSanctionedVertxBpmnRoles()
+	{
+		var principal = Principal(
+			new Claim("sub", "user-1"),
+			new Claim("tenant_id", "tenant-a"),
+			new Claim("roles", "Admin"),
+			new Claim("roles", "ProcessManager"),
+			new Claim("roles", "ReadOnly"),
+			new Claim("roles", "ExternalTaskWorker"),
+			new Claim("roles", "FinanceAgent"));
+
+		var result = VertexOidcClaims.TryNormalize(principal, out var error);
+
+		Assert.True(result, error);
+		foreach (var role in new[] { "Admin", "ProcessManager", "ReadOnly", "ExternalTaskWorker", "FinanceAgent" })
+		{
+			Assert.True(principal.IsInRole(role), role);
+		}
+
+		Assert.Equal(5, principal.FindAll(ClaimTypes.Role).Count());
+	}
+
+	[Fact]
 	public void TryNormalize_IsIdempotent()
 	{
 		var principal = Principal(

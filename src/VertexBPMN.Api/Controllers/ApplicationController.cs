@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Exceptions;
 using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Api.Services;
 
 namespace VertexBPMN.Api.Controllers;
 [ApiController]
@@ -41,6 +42,24 @@ public sealed class ApplicationController(IApplicationDefinitionService applicat
         if (tenant is null) { return BadRequest(); }
         var revision = await applications.GetReleasedRevisionAsync(tenant, id, ct);
         return revision is null ? NotFound() : Ok(revision);
+    }
+
+    [HttpGet("{id}/released/data-sources/{bindingName}")]
+    public async Task<IActionResult> GetReleasedDataSource(string id, string bindingName, [FromQuery] string? tenantId, CancellationToken ct)
+    {
+        var tenant = Tenant(tenantId, out var forbidden);
+        if (forbidden) { return Forbid(); }
+        if (tenant is null) { return BadRequest(); }
+        var revision = await applications.GetReleasedRevisionAsync(tenant, id, ct);
+        if (revision is null) { return NotFound(); }
+
+        // Defense in depth: the API resolves the released revision and applies the same
+        // narrow gate the BFF applies, so a sanctioned data-source-read binding resolves
+        // and anything else is rejected (404) rather than served or forwarded.
+        var read = ReleasedDataSourceReader.ResolveSanctionedRead(revision.ContentJson, bindingName);
+        return read is null
+            ? NotFound(UnsanctionedBinding(bindingName))
+            : Ok(read);
     }
 
     [HttpGet("release-candidates/{candidateId}")]
@@ -113,6 +132,16 @@ public sealed class ApplicationController(IApplicationDefinitionService applicat
         catch (Exception exception) when (exception is ApplicationDefinitionConflictException or ApplicationForeignTenantException or ApplicationValidationException or ArgumentException)
         { return Failure(exception); }
     }
+
+    private JsonResult UnsanctionedBinding(string bindingName) => new(new
+    {
+        code = "apiUnsanctionedBinding",
+        title = "Unsanctioned released binding.",
+        detail = $"Data source '{bindingName}' is not a sanctioned released binding."
+    })
+    {
+        StatusCode = StatusCodes.Status404NotFound
+    };
 
     private ActionResult Failure(Exception exception) => exception switch
     {

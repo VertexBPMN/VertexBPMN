@@ -58,7 +58,7 @@ public static class ReferenceApplicationSeeder
             Key = "lc06-reference-flow",
             Name = "LC06 Reference Flow",
             Version = 1,
-            BpmnXml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><definitions xmlns=\"http://www.omg.org/spec/BPMN/20100524/MODEL\" />",
+            BpmnXml = Lc06ReferenceApp.ProcessBpmn,
             TenantId = tenantId,
             CreatedAt = DateTime.UtcNow,
             DeploymentId = deployment.Id,

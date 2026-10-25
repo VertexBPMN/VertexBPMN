@@ -96,21 +96,69 @@ public sealed class ReferenceAppBffTests : IClassFixture<PortalWebApplicationFac
     }
 
     [Fact]
-    public async Task Start_process_is_sanctioned_by_the_reference_app()
+    public async Task Start_process_triggers_a_real_process_start_for_the_released_process()
     {
         UseReleased(_factory);
         _factory.Gateway.ResetCalls();
         var client = _factory.CreateClient();
         var ct = TestContext.Current.CancellationToken;
         await ObtainCsrfAsync(client, ct);
-        client.DefaultRequestHeaders.Add("Idempotency-Key", Guid.NewGuid().ToString());
+        client.DefaultRequestHeaders.Add("Idempotency-Key", "start-1");
 
-        var response = await client.PostAsJsonAsync($"/api/bff/applications/{AppId}/actions/start", new { }, ct);
+        var response = await client.PostAsJsonAsync($"/api/bff/applications/{AppId}/actions/start",
+            new { variables = new Dictionary<string, object?>(StringComparer.Ordinal) { ["amount"] = 1500 } }, ct);
 
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<BffActionResult>(cancellationToken: ct);
         Assert.Equal(ReleasedActions.StartProcess, body!.Action, StringComparer.Ordinal);
-        Assert.Equal(ReleasedActions.StartProcess, _factory.Gateway.LastExecutedBinding, StringComparer.Ordinal);
+
+        // A real engine start was invoked for the released start identifier - the stable
+        // process KEY - with the server-derived tenant and the body variables - NOT a
+        // data-source read on 'start-process'.
+        Assert.Equal(Lc06ReferenceApp.StartProcessKey, _factory.Gateway.LastStartedProcessDefinitionId, StringComparer.Ordinal);
+        Assert.Equal("vertexbpmn", _factory.Gateway.LastStartedTenant, StringComparer.Ordinal);
+        Assert.Equal("start-1", _factory.Gateway.LastStartedIdempotencyKey, StringComparer.Ordinal);
+        Assert.NotNull(_factory.Gateway.LastStartedVariables);
+        Assert.True(_factory.Gateway.LastStartedVariables!.ContainsKey("amount"));
+        Assert.Single(_factory.Gateway.LastStartedVariables);
+        Assert.Null(_factory.Gateway.LastExecutedBinding);
+    }
+
+    [Fact]
+    public async Task Start_requires_an_idempotency_key()
+    {
+        UseReleased(_factory);
+        _factory.Gateway.ResetCalls();
+        var client = _factory.CreateClient();
+        var ct = TestContext.Current.CancellationToken;
+        await ObtainCsrfAsync(client, ct);
+
+        var response = await client.PostAsJsonAsync($"/api/bff/applications/{AppId}/actions/start", new { }, ct);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<ProblemDetails>(cancellationToken: ct);
+        Assert.NotNull(body);
+        Assert.Equal("bffMissingIdempotencyKey", ProblemCode(body), StringComparer.Ordinal);
+        Assert.Null(_factory.Gateway.LastStartedProcessDefinitionId);
+    }
+
+    [Fact]
+    public async Task Start_process_action_without_process_definition_id_is_rejected()
+    {
+        _factory.Gateway.Released = new ReleasedApplication(AppId, 1, """{"pages":[{"id":"home","route":"/home","actions":[{"type":"start-process","version":"1.0.0"}]}]}""");
+        _factory.Gateway.ResetCalls();
+        var client = _factory.CreateClient();
+        var ct = TestContext.Current.CancellationToken;
+        await ObtainCsrfAsync(client, ct);
+        client.DefaultRequestHeaders.Add("Idempotency-Key", "start-1");
+
+        var response = await client.PostAsJsonAsync($"/api/bff/applications/{AppId}/actions/start", new { }, ct);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<ProblemDetails>(cancellationToken: ct);
+        Assert.NotNull(body);
+        Assert.Equal("bffUnsanctionedAction", ProblemCode(body), StringComparer.Ordinal);
+        Assert.Null(_factory.Gateway.LastStartedProcessDefinitionId);
     }
 
     [Fact]

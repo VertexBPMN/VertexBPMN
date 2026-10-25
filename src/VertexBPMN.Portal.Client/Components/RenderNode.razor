@@ -1,0 +1,25 @@
+@namespace VertexBPMN.Portal.Client.Components
+@using Microsoft.AspNetCore.Components
+@using VertexBPMN.Portal.Client.Rendering
+
+@if (Node is KnownComponent known)
+{
+    <div class="lc-component lc-@known.Type">
+        <span class="lc-type">@known.Type</span>
+        @foreach (var child in known.Children)
+        {
+            <RenderNode Node="child" />
+        }
+    </div>
+}
+else if (Node is UnsupportedComponent unsupported)
+{
+    <div class="lc-component lc-unsupported" role="alert">
+        <span class="lc-unsupported-label">Unsupported component:</span> <code>@unsupported.Type</code>
+    </div>
+}
+
+@code {
+    /// <summary>A single node of the fully-rendered allowlist tree.</summary>
+    [Parameter] public RenderedNode? Node { get; set; }
+}

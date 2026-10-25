@@ -1,0 +1,35 @@
+@namespace VertexBPMN.Portal.Client.Components
+@using Microsoft.AspNetCore.Components
+@using VertexBPMN.Portal.Client.Rendering
+
+@if (_application is null)
+{
+    <p class="lc-empty">No released content to render.</p>
+}
+else
+{
+    foreach (var page in _application.Pages)
+    {
+        <section class="lc-page" data-route="@(page.Route)">
+            <h2>@(page.Route)</h2>
+            @foreach (var node in page.Components)
+            {
+                <RenderNode Node="node" />
+            }
+        </section>
+    }
+}
+
+@code {
+    /// <summary>The released application's ContentJson (component catalog) to render.</summary>
+    [Parameter] public string? ContentJson { get; set; }
+
+    private RenderedApplication? _application;
+
+    protected override void OnParametersSet()
+    {
+        // The allowlist renderer produces a closed tree; nothing from the metadata is evaluated
+        // or instantiated here — unknown component types are rendered as safe placeholders.
+        _application = string.IsNullOrWhiteSpace(ContentJson) ? null : ReleasedRenderer.Render(ContentJson!);
+    }
+}

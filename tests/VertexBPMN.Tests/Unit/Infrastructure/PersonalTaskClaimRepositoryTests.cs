@@ -113,6 +113,19 @@ public sealed class PersonalTaskClaimRepositoryTests : IDisposable
 	}
 
 	[Fact]
+	public async Task TryClaim_UnassignedDelegatedTask_Claims()
+	{
+		var task = Seed(status: UserTaskStatus.Delegated, revision: 3);
+
+		var outcome = await _repo.TryClaimAsync(new TaskClaimAttempt(task.Id, "u1", "tenant-a", 3), TestContext.Current.CancellationToken);
+
+		Assert.Equal(TaskClaimOutcome.Claimed, outcome);
+		var latest = await Latest(task.Id);
+		Assert.Equal("u1", latest!.Assignee);
+		Assert.Equal(4, latest.Revision);
+	}
+
+	[Fact]
 	public async Task TryClaim_AlreadyAssignedToAnother_ReturnsAlreadyAssigned()
 	{
 		var task = Seed(assignee: "rival");

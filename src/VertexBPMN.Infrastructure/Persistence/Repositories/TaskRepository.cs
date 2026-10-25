@@ -95,7 +95,55 @@ public class TaskRepository : ITaskRepository
 
     public async ValueTask<TaskClaimOutcome> TryClaimAsync(TaskClaimAttempt attempt, CancellationToken cancellationToken = default)
     {
-        var task = await _db.Tasks.FirstOrDefaultAsync(t => t.Id == attempt.TaskId, cancellationToken);
+        var conflict = await PreCheckAsync(attempt, cancellationToken);
+        if (conflict is not null)
+        {
+            return conflict.Value;
+        }
+
+        // Atomic Compare-And-Swap. A single conditional UPDATE can only affect the row
+        // when it still has the caller-derived expected revision, is still claimable
+        // (non-terminal state), still belongs to the caller's tenant, and is either
+        // unassigned or already held by this caller. The statement itself is atomic;
+        // it runs inside an explicit transaction so the fence and the write commit
+        // together. affected-rows == 1 means we won; 0 means a concurrent claim (or
+        // other change) advanced the revision in between, so we lost the race.
+        await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
+        var lastModified = DateTime.UtcNow;
+        var affected = await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+             UPDATE "Tasks"
+             SET "Assignee" = {attempt.UserId},
+                 "Revision" = "Revision" + 1,
+                 "LastModified" = {lastModified},
+                 "ModifiedBy" = {attempt.UserId}
+             WHERE "Id" = {attempt.TaskId}
+               AND "TenantId" = {attempt.TenantId}
+               AND "Revision" = {attempt.ExpectedRevision}
+               AND "Status" IN ({(int)UserTaskStatus.Pending}, {(int)UserTaskStatus.Delegated})
+               AND ("Assignee" IS NULL OR "Assignee" = {attempt.UserId})
+             """,
+            cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        if (affected != 1)
+        {
+            return TaskClaimOutcome.StaleRevision;
+        }
+
+        SyncTrackedSnapshot(attempt.TaskId, attempt.UserId, attempt.ExpectedRevision + 1, lastModified);
+        return TaskClaimOutcome.Claimed;
+    }
+
+    /// <summary>
+    /// Read-only pre-check producing deterministic, distinct outcomes for the
+    /// non-race cases. This deliberately applies the same revision tie used by
+    /// synchronous reads; it performs no write (null means "proceed to the CAS").
+    /// </summary>
+    private async ValueTask<TaskClaimOutcome?> PreCheckAsync(TaskClaimAttempt attempt, CancellationToken cancellationToken)
+    {
+        var task = await _db.Tasks.AsNoTracking()
+            .FirstOrDefaultAsync(t => t.Id == attempt.TaskId, cancellationToken);
         if (task is null || !string.Equals(task.TenantId, attempt.TenantId, StringComparison.Ordinal))
         {
             return TaskClaimOutcome.NotFound;
@@ -116,15 +164,27 @@ public class TaskRepository : ITaskRepository
             return TaskClaimOutcome.AlreadyAssigned;
         }
 
-        // The caller is unassigned or re-claiming their own task: claim it and advance
-        // the revision fence so a concurrent claim/snapshot cannot silently win.
-        task.Assignee = attempt.UserId;
-        task.Revision++;
-        task.LastModified = DateTime.UtcNow;
-        task.ModifiedBy = attempt.UserId;
+        return null;
+    }
 
-        await _db.SaveChangesAsync(cancellationToken);
-        return TaskClaimOutcome.Claimed;
+    /// <summary>
+    /// The raw CAS bypasses the change tracker, so keep any already-tracked snapshot
+    /// consistent with the committed write (e.g. pending inbox rows or the service's
+    /// earlier GetByIdAsync read) instead of leaving it stale.
+    /// </summary>
+    private void SyncTrackedSnapshot(Guid taskId, string userId, long newRevision, DateTime lastModified)
+    {
+        var tracked = _db.ChangeTracker.Entries<UserTask>().FirstOrDefault(e => e.Entity.Id == taskId);
+        if (tracked is null)
+        {
+            return;
+        }
+
+        tracked.Entity.Assignee = userId;
+        tracked.Entity.Revision = newRevision;
+        tracked.Entity.LastModified = lastModified;
+        tracked.Entity.ModifiedBy = userId;
+        tracked.State = EntityState.Unchanged;
     }
 
     private static bool IsVisibleTo(UserTask task, string userId, IReadOnlyCollection<string> roles)

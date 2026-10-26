@@ -90,7 +90,7 @@ public static class InfrastructureModule
         services.AddScoped<IConnectorService, PersistentConnectorService>();
         services.AddScoped<IConnectorTemplateService, PersistentConnectorTemplateService>();
         services.AddScoped<IFormDefinitionService, PersistentFormDefinitionService>();
-        services.AddScoped<IApplicationDefinitionService, PersistentApplicationDefinitionService>();
+        RegisterApplicationServices(services);
         services.AddScoped(CreateApplicationAccessContext);
         services.AddScoped<ITaskIoSnapshotRecorder, TaskIoSnapshotRecorder>();
         services.AddScoped<IOAuth2CredentialFlowService, OAuth2CredentialFlowService>();
@@ -100,6 +100,12 @@ public static class InfrastructureModule
         }
 
         return services;
+    }
+
+    private static void RegisterApplicationServices(IServiceCollection services)
+    {
+        services.AddScoped<IApplicationDefinitionService, PersistentApplicationDefinitionService>();
+        services.AddScoped<IApplicationReleaseService, PersistentApplicationReleaseService>();
     }
 
     private static void RegisterExternalTaskServices(

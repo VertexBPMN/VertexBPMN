@@ -75,6 +75,7 @@ public class BpmnDbContext : DbContext
     public DbSet<WorkflowTrigger> WorkflowTriggers => Set<WorkflowTrigger>();
     public DbSet<ApplicationDefinitionRecord> ApplicationDefinitions => Set<ApplicationDefinitionRecord>();
     public DbSet<ApplicationReleaseCandidateRecord> ApplicationReleaseCandidates => Set<ApplicationReleaseCandidateRecord>();
+    public DbSet<ApplicationReleaseRecord> ApplicationReleases => Set<ApplicationReleaseRecord>();
     public DbSet<ApplicationRevisionRecord> ApplicationRevisions => Set<ApplicationRevisionRecord>();
     public DbSet<FormDefinitionRecord> FormDefinitions => Set<FormDefinitionRecord>();
     public DbSet<FormDefinitionRevisionRecord> FormDefinitionRevisions => Set<FormDefinitionRevisionRecord>();
@@ -118,6 +119,7 @@ public class BpmnDbContext : DbContext
         modelBuilder.Entity<ApplicationDefinitionRecord>().Property(x => x.Version).IsConcurrencyToken();
         modelBuilder.Entity<ApplicationDefinitionRecord>().HasIndex(x => new { x.TenantId, x.Key }).IsUnique();
         modelBuilder.Entity<ApplicationReleaseCandidateRecord>().HasOne<ApplicationRevisionRecord>().WithMany().HasForeignKey(x => x.ApplicationRevisionId).OnDelete(DeleteBehavior.Restrict);
+        ConfigureApplicationReleases(modelBuilder);
         modelBuilder.Entity<ApplicationRevisionRecord>().HasOne<ApplicationDefinitionRecord>().WithMany().HasForeignKey(x => x.ApplicationDefinitionId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<ApplicationRevisionRecord>().HasIndex(x => new { x.ApplicationDefinitionId, x.Version }).IsUnique();
         ConfigureFormDefinitions(modelBuilder);
@@ -543,6 +545,16 @@ public class BpmnDbContext : DbContext
         var entity = modelBuilder.Entity<FormDefinitionRecord>();
         entity.Property(x => x.Version).IsConcurrencyToken();
         entity.HasKey(x => x.Id); entity.Property(x => x.TenantId).HasMaxLength(64).IsRequired(); entity.Property(x => x.Key).HasMaxLength(128).IsRequired(); entity.Property(x => x.Name).HasMaxLength(256).IsRequired(); entity.Property(x => x.Schema).IsRequired(); entity.HasIndex(x => new { x.TenantId, x.Key }).IsUnique();
+    }
+
+    private static void ConfigureApplicationReleases(ModelBuilder modelBuilder)
+    {
+        var release = modelBuilder.Entity<ApplicationReleaseRecord>();
+        release.Property(x => x.PointerRevision).IsConcurrencyToken();
+        release.Property(x => x.State).HasConversion<string>().HasMaxLength(32);
+        release.HasOne<ApplicationRevisionRecord>().WithMany().HasForeignKey(x => x.ApplicationRevisionId).OnDelete(DeleteBehavior.Restrict);
+        release.HasIndex(x => new { x.TenantId, x.ApplicationDefinitionId });
+        release.HasIndex(x => new { x.TenantId, x.ApplicationDefinitionId, x.OperationId }).IsUnique();
     }
 
     private static void ConfigureCaseDefinitions(ModelBuilder modelBuilder)

@@ -357,6 +357,29 @@ public sealed class VertexBpmnClient
 		return request;
     }
 
+    public Task<ApplicationReleaseStatus?> PrepareApplicationReleaseAsync(string applicationId, string operationId, string manifestJson, int revision, string? tenantId = null, CancellationToken cancellationToken = default)
+        => SendForNullableAsync<ApplicationReleaseStatus>(HttpMethod.Post,
+            BuildUri($"api/applications/{Uri.EscapeDataString(applicationId)}/releases/prepare", ("tenantId", tenantId ?? options.TenantId)),
+            new PrepareApplicationReleaseRequest(operationId, revision, manifestJson), cancellationToken);
+
+    public Task<ApplicationReleaseStatus?> ActivateApplicationReleaseAsync(string applicationId, string operationId, string? tenantId = null, CancellationToken cancellationToken = default)
+        => SendForNullableAsync<ApplicationReleaseStatus>(HttpMethod.Post,
+            BuildUri($"api/applications/{Uri.EscapeDataString(applicationId)}/releases/activate", ("tenantId", tenantId ?? options.TenantId)),
+            new OperateApplicationReleaseRequest(operationId), cancellationToken);
+
+    public Task<ApplicationReleaseStatus?> GetApplicationReleaseStatusAsync(string applicationId, string? tenantId = null, CancellationToken cancellationToken = default)
+        => SendForNullableAsync<ApplicationReleaseStatus>(HttpMethod.Get,
+            BuildUri($"api/applications/{Uri.EscapeDataString(applicationId)}/releases/status", ("tenantId", tenantId ?? options.TenantId)), cancellationToken);
+
+    public Task<ApplicationReleaseStatus?> RollbackApplicationReleaseAsync(string applicationId, string operationId, string? tenantId = null, CancellationToken cancellationToken = default)
+        => SendForNullableAsync<ApplicationReleaseStatus>(HttpMethod.Post,
+            BuildUri($"api/applications/{Uri.EscapeDataString(applicationId)}/releases/rollback", ("tenantId", tenantId ?? options.TenantId)),
+            new OperateApplicationReleaseRequest(operationId), cancellationToken);
+
+    public Task<ApplicationReleaseStartEntry?> GetApplicationReleaseActiveStartAsync(string applicationId, string? tenantId = null, CancellationToken cancellationToken = default)
+        => SendForNullableAsync<ApplicationReleaseStartEntry>(HttpMethod.Get,
+            BuildUri($"api/applications/{Uri.EscapeDataString(applicationId)}/releases/active-start", ("tenantId", tenantId ?? options.TenantId)), cancellationToken);
+
     private static string BuildUri(string path, params (string Name, string? Value)[] query)
     {
         var values = query
@@ -384,4 +407,7 @@ public sealed class VertexBpmnClient
     private sealed record StartTestRunRequest(string BpmnXml, string Name, IDictionary<string, object?>? Variables, string BusinessKey, string? TenantId);
     private sealed record DeployCaseRequest(string Key, string Name, string CmmnXml, string? TenantId);
     private sealed record N8nImportRequest(string WorkflowJson, string? TenantId);
+    private sealed record PrepareApplicationReleaseRequest(string OperationId, int Revision, string ManifestJson);
+    private sealed record OperateApplicationReleaseRequest(string OperationId);
+
 }

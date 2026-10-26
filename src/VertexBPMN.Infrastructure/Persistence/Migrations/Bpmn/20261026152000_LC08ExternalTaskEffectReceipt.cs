@@ -15,18 +15,20 @@ public class LC08ExternalTaskEffectReceipt : Migration
     /// <inheritdoc />
     protected override void Up(MigrationBuilder migrationBuilder)
     {
+        var guidType = ActiveProvider.Contains("Npgsql", StringComparison.Ordinal) ? "uuid" : "TEXT";
+        var longType = ActiveProvider.Contains("Npgsql", StringComparison.Ordinal) ? "bigint" : "INTEGER";
         migrationBuilder.CreateTable(
             name: "ExternalTaskEffectReceipts",
             columns: table => new
             {
-                Id = table.Column<string>(type: "TEXT", nullable: false),
-                JobId = table.Column<string>(type: "TEXT", nullable: false),
-                ActivityExecutionId = table.Column<string>(type: "TEXT", nullable: false),
-                EffectKey = table.Column<string>(type: "TEXT", maxLength: 256, nullable: false),
-                EffectName = table.Column<string>(type: "TEXT", maxLength: 32, nullable: false),
-                CompletionId = table.Column<string>(type: "TEXT", nullable: false),
-                ResultHash = table.Column<string>(type: "TEXT", maxLength: 64, nullable: false),
-                CreatedAt = table.Column<long>(type: "INTEGER", nullable: false)
+                Id = table.Column<Guid>(type: guidType, nullable: false),
+                JobId = table.Column<Guid>(type: guidType, nullable: false),
+                ActivityExecutionId = table.Column<Guid>(type: guidType, nullable: false),
+                EffectKey = table.Column<string>(maxLength: 256, nullable: false),
+                EffectName = table.Column<string>(maxLength: 32, nullable: false),
+                CompletionId = table.Column<Guid>(type: guidType, nullable: false),
+                ResultHash = table.Column<string>(maxLength: 64, nullable: false),
+                CreatedAt = table.Column<long>(type: longType, nullable: false)
             },
             constraints: table =>
             {

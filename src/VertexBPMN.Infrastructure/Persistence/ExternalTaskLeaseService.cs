@@ -131,10 +131,11 @@ public sealed class ExternalTaskLeaseService(
 
 		var visible = await db.ExternalTaskJobs.AsNoTracking().SingleOrDefaultAsync(job =>
             job.Id == jobId && job.TenantId == worker.TenantId && worker.Topics.Contains(job.Topic), cancellationToken);
-        if (visible is null || !CanUseProfile(worker, visible.AgentProfileRef))
+        if (visible is null)
 		{
 			throw new ExternalTaskLeaseException("external_task_not_found");
 		}
+		ThrowIfProfileDenied(visible, worker);
 
 		if (visible.WorkerIssuer != worker.Issuer || visible.WorkerSubject != worker.Subject)
 		{
@@ -483,12 +484,33 @@ public sealed class ExternalTaskLeaseService(
     {
         var job = await db.ExternalTaskJobs.AsNoTracking().SingleOrDefaultAsync(item =>
             item.Id == jobId && item.TenantId == worker.TenantId && worker.Topics.Contains(item.Topic), cancellationToken);
-        if (job is null || !CanUseProfile(worker, job.AgentProfileRef))
-		{
-			throw new ExternalTaskLeaseException("external_task_not_found");
-		}
+        if (job is null)
+        {
+            throw new ExternalTaskLeaseException("external_task_not_found");
+        }
 
-		return job;
+        ThrowIfProfileDenied(job, worker);
+        return job;
+    }
+
+    private static void ThrowIfProfileDenied(ExternalTaskJob job, ExternalTaskWorkerContext worker)
+    {
+        if (CanUseProfile(worker, job.AgentProfileRef))
+        {
+            return;
+        }
+
+        // Mid-lease profile/access revocation: a worker that still holds the current lease on
+        // the job keeps the claim, but the job-bound profile no longer authorizes any business
+        // effect (Completion/Fail/Heartbeat). Surface an explicit 403 policy_revoked so the
+        // deprived worker learns the access change instead of a misleading "not found"; the
+        // lease row is deliberately left untouched so recovery/reclaim can proceed normally.
+        if (job.WorkerIssuer == worker.Issuer && job.WorkerSubject == worker.Subject)
+        {
+            throw new ExternalTaskLeaseException("policy_revoked");
+        }
+
+        throw new ExternalTaskLeaseException("external_task_not_found");
     }
 
     private static void EnsureCurrentLease(ExternalTaskJob job, ExternalTaskWorkerContext worker,

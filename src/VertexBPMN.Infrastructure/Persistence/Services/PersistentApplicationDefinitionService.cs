@@ -3,6 +3,7 @@ using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Domain.Exceptions;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Security.Cryptography;
 using System.Text;
 namespace VertexBPMN.Infrastructure.Persistence.Services;
@@ -14,6 +15,17 @@ public sealed class PersistentApplicationDefinitionService(BpmnDbContext db, IAu
     private void Authorize(string permission)
     {
         if (access?.Permissions.Contains(permission) != true) { throw new UnauthorizedAccessException("Application permission denied."); }
+    }
+
+    public async Task<IReadOnlyList<ApplicationDefinitionSummary>> ListAsync(string tenantId, CancellationToken cancellationToken = default)
+    {
+        Authorize("application.design");
+        // Lightweight listing: metadata only (no draft content) for this tenant, stable order.
+        return await db.ApplicationDefinitions.AsNoTracking()
+            .Where(x => x.TenantId == tenantId)
+            .OrderBy(x => x.Name).ThenBy(x => x.Key)
+            .Select(x => new ApplicationDefinitionSummary(x.Id, x.TenantId, x.Key, x.Name, x.Version))
+            .ToListAsync(cancellationToken);
     }
 
     public async Task<bool> DeleteAsync(string tenantId, string id, CancellationToken cancellationToken = default)
@@ -106,16 +118,17 @@ public sealed class PersistentApplicationDefinitionService(BpmnDbContext db, IAu
         var item = await db.ApplicationDefinitions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (item is null) { return false; }
         if (item.Version != request.ExpectedVersion) { throw new ApplicationDefinitionConflictException("The application revision has changed."); }
-        await ValidateMetadataAsync(tenantId, request.Content, cancellationToken);
+        var content = await EnrichContentReferencesAsync(tenantId, request.Content, cancellationToken);
+        await ValidateMetadataAsync(tenantId, content, cancellationToken);
         item.Version++;
         item.Key = request.Key;
         item.Name = request.Name;
-        item.ContentJson = request.Content;
+        item.ContentJson = content;
         db.ApplicationRevisions.Add(new ApplicationRevisionRecord
         {
-            ApplicationDefinitionId = id, TenantId = tenantId, Version = item.Version, ContentJson = request.Content,
-            DiagnosticsJson = ApplicationDomainDiagnostics.Validate(request.Content),
-            ContentHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(request.Content))).ToLowerInvariant()
+            ApplicationDefinitionId = id, TenantId = tenantId, Version = item.Version, ContentJson = content,
+            DiagnosticsJson = ApplicationDomainDiagnostics.Validate(content),
+            ContentHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(content))).ToLowerInvariant()
         });
         try { await db.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateException) { db.ChangeTracker.Clear(); throw new ApplicationDefinitionConflictException("The application revision has changed."); }
@@ -199,21 +212,58 @@ public sealed class PersistentApplicationDefinitionService(BpmnDbContext db, IAu
         if (request.ExpectedVersion != 0) { throw new ApplicationDefinitionConflictException("New definitions require expected version zero."); }
         if (await db.ApplicationDefinitions.CountAsync(x => x.TenantId == tenantId, cancellationToken) >= maxDraftsPerTenant)
         { throw new ApplicationDefinitionConflictException("Application draft quota exceeded."); }
-        await ValidateMetadataAsync(tenantId, request.Content, cancellationToken);
+        var content = await EnrichContentReferencesAsync(tenantId, request.Content, cancellationToken);
+        await ValidateMetadataAsync(tenantId, content, cancellationToken);
         var definition = new ApplicationDefinitionRecord
         {
-            TenantId = tenantId, Key = request.Key, Name = request.Name, ContentJson = request.Content, Version = 1
+            TenantId = tenantId, Key = request.Key, Name = request.Name, ContentJson = content, Version = 1
         };
         db.ApplicationDefinitions.Add(definition);
         db.ApplicationRevisions.Add(new ApplicationRevisionRecord
         {
-            ApplicationDefinitionId = definition.Id, TenantId = tenantId, Version = 1, ContentJson = request.Content,
-            DiagnosticsJson = ApplicationDomainDiagnostics.Validate(request.Content),
-            ContentHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(request.Content))).ToLowerInvariant()
+            ApplicationDefinitionId = definition.Id, TenantId = tenantId, Version = 1, ContentJson = content,
+            DiagnosticsJson = ApplicationDomainDiagnostics.Validate(content),
+            ContentHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(content))).ToLowerInvariant()
         });
         try { await db.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateException) { db.ChangeTracker.Clear(); throw new ApplicationDefinitionConflictException("Application key already exists."); }
         await auditLogService.RecordAsync(new AuditLog { Action = "application.created", ResourceId = definition.Id, TenantId = tenantId }, cancellationToken);
         return new(definition.Id, tenantId, definition.Key, definition.Name, definition.Version, definition.ContentJson);
+    }
+
+    /// <summary>
+    /// The LC07 designer serializes process references as { type, key } (see
+    /// AppDesignerDocument.ToJson): it has no knowledge of the internal ProcessDefinition
+    /// GUID, only the stable process key the runtime starts by. The server gate (and the
+    /// manifest builder) require a process reference to carry the internal id + tenantId.
+    /// This boundary translation resolves each unresolved process reference by key against
+    /// the tenant's ProcessDefinitions, keeping the stable key untouched so the runtime can
+    /// still start the process by it.
+    /// </summary>
+    private async Task<string> EnrichContentReferencesAsync(string tenantId, string content, CancellationToken cancellationToken)
+    {
+        var root = JsonNode.Parse(content);
+        if (root?["references"] is not JsonArray references) { return content; }
+        var needsEnrichment = references.OfType<JsonObject>().Any(reference =>
+            reference["type"]?.GetValue<string>() == "process"
+            && reference.ContainsKey("key")
+            && (reference["id"] is null || string.IsNullOrEmpty(reference["id"]?.GetValue<string>())));
+        if (!needsEnrichment) { return content; }
+
+        foreach (var node in references)
+        {
+            if (node is not JsonObject reference || reference["type"]?.GetValue<string>() != "process") { continue; }
+            var key = reference["key"]?.GetValue<string>();
+            if (string.IsNullOrWhiteSpace(key)) { continue; }
+            if (reference.ContainsKey("tenantId") && !string.IsNullOrEmpty(reference["tenantId"]?.GetValue<string>())) { continue; }
+            var process = await db.ProcessDefinitions.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.Key == key)
+                .Select(x => new { x.Id, x.TenantId })
+                .SingleOrDefaultAsync(cancellationToken);
+            if (process is null) { continue; }
+            reference["id"] = process.Id.ToString();
+            reference["tenantId"] = process.TenantId;
+        }
+        return root.ToJsonString();
     }
 }

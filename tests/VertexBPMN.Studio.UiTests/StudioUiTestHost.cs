@@ -100,7 +100,10 @@ public sealed class StudioUiTestHost : IAsyncLifetime
 			await next();
 		});
 		MapApiContracts(_api);
-		if (TaskFormsEnabled) MapTaskFormEndpoints(_api);
+		if (TaskFormsEnabled)
+		{
+			MapTaskFormEndpoints(_api);
+		}
 		_api.MapGet("/api/source-control/availability", () => Results.Json(GitAvailability,
 			statusCode: (int)GitAvailabilityStatusCode));
 		await _api.StartAsync();
@@ -335,6 +338,18 @@ public sealed class StudioUiTestHost : IAsyncLifetime
 			activeTokens = Array.Empty<string>(),
 			variables = new Dictionary<string, object>(StringComparer.Ordinal)
 		}));
+		MapTaskListEndpoint(app);
+		app.MapGet("/api/engine/capabilities", () => Results.Json(new
+		{
+			engineType = "Simple",
+			supportsCmmn = true,
+			supportsWorkers = false,
+			supportsDurablePersistence = true
+		}));
+	}
+
+	private void MapTaskListEndpoint(WebApplication app)
+	{
 		app.MapGet("/api/task", () => Results.Json(new[]
 		{
 			new
@@ -356,13 +371,6 @@ public sealed class StudioUiTestHost : IAsyncLifetime
 				formSchemaHash = TaskFormsEnabled ? "snapshot-hash-1" : null,
 				revision = 7L
 			}
-		}));
-		app.MapGet("/api/engine/capabilities", () => Results.Json(new
-		{
-			engineType = "Simple",
-			supportsCmmn = true,
-			supportsWorkers = false,
-			supportsDurablePersistence = true
 		}));
 	}
 

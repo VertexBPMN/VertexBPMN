@@ -4,6 +4,7 @@ namespace VertexBPMN.Domain.Interfaces;
 
 public interface IApplicationDefinitionService
 {
+    Task<IReadOnlyList<ApplicationDefinitionSummary>> ListAsync(string tenantId, CancellationToken cancellationToken = default);
     Task<ApplicationDefinitionMetadata?> GetAsync(string tenantId, string id, CancellationToken cancellationToken = default);
     Task<ApplicationRevisionRecord?> GetRevisionAsync(string tenantId, string id, int version, CancellationToken cancellationToken = default);
     Task<bool> UpdateAsync(string tenantId, string id, ApplicationDefinitionWriteRequest request, CancellationToken cancellationToken = default);

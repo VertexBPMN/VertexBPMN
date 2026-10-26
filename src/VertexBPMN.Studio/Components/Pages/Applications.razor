@@ -1,0 +1,106 @@
+@page "/applications"
+@inject IApplicationService ApplicationService
+@inject StudioTenantContext TenantContext
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>Applications</PageTitle>
+
+<MudStack Spacing="3" Class="studio-editor-page">
+    <StudioPageHeader Title="Applications"
+                      Eyebrow="Low-code"
+                      Description="Create and open low-code application drafts. The designer edits the app's pages and components behind the released component allowlist." />
+
+    <StudioToolbar AriaLabel="Application actions" Class="studio-editor-toolbar">
+        <MudTextField Label="Application key" @bind-Value="_newKey" Required="true" Immediate="true" data-testid="app-key" />
+        <MudTextField Label="Application name" @bind-Value="_newName" Required="true" Immediate="true" data-testid="app-name" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateAsync" StartIcon="@Icons.Material.Filled.Add"
+                   Disabled="@(string.IsNullOrWhiteSpace(_newKey) || string.IsNullOrWhiteSpace(_newName))" data-testid="create-app">
+            Create application
+        </MudButton>
+        <MudChip T="string" Color="Color.Info" Variant="Variant.Outlined">Tenant: @(TenantContext.CurrentTenantId ?? "select tenant")</MudChip>
+    </StudioToolbar>
+
+    <MudPaper Class="studio-modeler-card" Elevation="0">
+        <div class="studio-modeler-card__header">
+            <div>
+                <MudText Typo="Typo.h6">Application drafts</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Open a draft in the low-code designer to edit its pages and components.</MudText>
+            </div>
+        </div>
+        <MudSimpleTable Dense="true" Class="mt-2">
+            <thead>
+                <tr><th>Key</th><th>Name</th><th>Version</th><th></th></tr>
+            </thead>
+            <tbody>
+                @if (_applications.Count == 0)
+                {
+                    <tr><td colspan="4">No applications yet. Create one above.</td></tr>
+                }
+                @foreach (var application in _applications)
+                {
+                    <tr>
+                        <td><code>@application.Key</code></td>
+                        <td>@application.Name</td>
+                        <td>@application.Version</td>
+                        <td>
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="@(() => OpenDesigner(application.Id))" data-testid="open-designer">Open designer</MudButton>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    </MudPaper>
+</MudStack>
+
+@code {
+    private string _newKey = string.Empty;
+    private string _newName = string.Empty;
+    private IReadOnlyList<StudioApplicationSummary> _applications = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        if (string.IsNullOrWhiteSpace(TenantContext.CurrentTenantId))
+        {
+            _applications = [];
+            return;
+        }
+        try
+        {
+            _applications = await ApplicationService.ListAsync(TenantContext.CurrentTenantId);
+        }
+        catch (Exception exception)
+        {
+            Snackbar.Add($"Applications could not be loaded: {exception.Message}", Severity.Error);
+        }
+    }
+
+    private async Task CreateAsync()
+    {
+        if (string.IsNullOrWhiteSpace(TenantContext.CurrentTenantId))
+        {
+            Snackbar.Add("Select a tenant before creating an application.", Severity.Warning);
+            return;
+        }
+        try
+        {
+            var created = await ApplicationService.CreateAsync(TenantContext.CurrentTenantId, _newKey.Trim(), _newName.Trim(), "{\"localizations\":{},\"pages\":[]}");
+            Snackbar.Add($"Application '{created.Key}' created.", Severity.Success);
+            _newKey = string.Empty;
+            _newName = string.Empty;
+            await RefreshAsync();
+            OpenDesigner(created.Id);
+        }
+        catch (Exception exception)
+        {
+            Snackbar.Add($"Application creation failed: {exception.Message}", Severity.Error);
+        }
+    }
+
+    private void OpenDesigner(string applicationId) => Navigation.NavigateTo($"/applications/{applicationId}/design");
+}

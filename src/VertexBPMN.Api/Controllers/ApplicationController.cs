@@ -14,6 +14,15 @@ namespace VertexBPMN.Api.Controllers;
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public controller required for ASP.NET Core MVC discovery and activation.")]
 public sealed class ApplicationController(IApplicationDefinitionService applications) : ControllerBase
 {
+    [HttpGet]
+    public async Task<ActionResult<IReadOnlyList<ApplicationDefinitionSummary>>> List([FromQuery] string? tenantId, CancellationToken ct)
+    {
+        var tenant = Tenant(tenantId, out var forbidden);
+        if (forbidden) { return Forbid(); }
+        if (tenant is null) { return BadRequest(); }
+        return Ok(await applications.ListAsync(tenant, ct));
+    }
+
     [HttpGet("{id}")]
     public async Task<ActionResult<ApplicationDefinitionMetadata>> Get(string id, [FromQuery] string? tenantId, CancellationToken ct)
     {

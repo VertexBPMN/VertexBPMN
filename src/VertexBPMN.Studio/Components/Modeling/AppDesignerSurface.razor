@@ -1,0 +1,385 @@
+@page "/applications/{ApplicationId}/design"
+@inject IApplicationService ApplicationService
+@inject StudioTenantContext TenantContext
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IRepositoryService Repository
+
+<PageTitle>Application Designer</PageTitle>
+
+<MudStack Spacing="3" Class="studio-editor-page" @onkeydown="OnKeyDownAsync" tabindex="0">
+    <StudioPageHeader Title="@( _draft?.Name ?? "Application Designer")"
+                      Eyebrow="Low-code"
+                      Description="Design pages and components from the released component allowlist. Only sanctioned components, versions and properties can be emitted." />
+
+    <StudioToolbar AriaLabel="Designer actions" Class="studio-editor-toolbar">
+        <MudChip T="string" Color="Color.Info" Variant="Variant.Outlined">Draft v@(_draft?.Version ?? 0)</MudChip>
+        <MudChip T="string" Variant="Variant.Outlined" Color="@(_dirty ? Color.Warning : Color.Default)">@(_dirty ? "Unstete Änderungen" : "Gespeichert")</MudChip>
+        <MudChip T="string" Variant="Variant.Outlined">Tenant: @(TenantContext.CurrentTenantId ?? "select tenant")</MudChip>
+        <MudButton Variant="Variant.Outlined" Color="Color.Default" OnClick="UndoAsync" Disabled="@(!CanUndo)" StartIcon="@Icons.Material.Filled.Undo" data-testid="undo" aria-label="Undo (Ctrl+Z)">Undo</MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Default" OnClick="RedoAsync" Disabled="@(!CanRedo)" StartIcon="@Icons.Material.Filled.Redo" data-testid="redo" aria-label="Redo (Ctrl+Shift+Z)">Redo</MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="OpenPreview" StartIcon="@Icons.Material.Filled.Visibility" data-testid="preview-open">Vorschau</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync" Disabled="@(!_dirty || _saving)" StartIcon="@Icons.Material.Filled.Save" data-testid="save-draft">
+            Save draft
+        </MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="PublishAsync" Disabled="@(_publishing || _saving || _draft is null)" StartIcon="@Icons.Material.Filled.Publish" data-testid="publish">
+            Veröffentlichen
+        </MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="ExitToApplications" StartIcon="@Icons.Material.Filled.ArrowBack">Back to applications</MudButton>
+    </StudioToolbar>
+
+    @if (_error is not null)
+    {
+        <MudAlert Severity="Severity.Error">@_error</MudAlert>
+    }
+
+    <MudGrid>
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4 mb-4" Elevation="0">
+                <MudText Typo="Typo.h6">Pages</MudText>
+                <MudStack Row="true" Spacing="1" Class="mt-2">
+                    <MudTextField Label="New page title" @bind-Value="_newPageTitle" Immediate="true" T="string" data-testid="new-page-title" />
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddPageAsync" Disabled="@(string.IsNullOrWhiteSpace(_newPageTitle))" data-testid="add-page">Add</MudButton>
+                </MudStack>
+                <MudStack Spacing="1" Class="mt-2" data-testid="page-tree">
+                    @for (var i = 0; i < _document.Pages.Count; i++)
+                    {
+                        var pg = _document.Pages[i];
+                        var index = i;
+                        <MudPaper Elevation="1" Class="d-flex align-center justify-space-between pa-2" data-testid="page-node">
+                            <MudButton Variant="Variant.Text" Color="@(pg.Id == _selectedPageId ? Color.Primary : Color.Inherit)" OnClick="@(() => SelectPage(pg.Id))" FullWidth="false">@pg.Title · <code>@pg.Route</code></MudButton>
+                            <span>
+                                <MudIconButton Icon="@Icons.Material.Filled.ArrowUpward" Size="Size.Small" OnClick="@(() => MovePageAsync(pg.Id, index - 1))" Disabled="@(index == 0)" data-testid="page-up" />
+                                <MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Size="Size.Small" OnClick="@(() => MovePageAsync(pg.Id, index + 1))" Disabled="@(index == _document.Pages.Count - 1)" data-testid="page-down" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => RemovePageAsync(pg.Id))" data-testid="page-delete" />
+                            </span>
+                        </MudPaper>
+                    }
+                </MudStack>
+            </MudPaper>
+
+            <MudPaper Class="pa-4" Elevation="0">
+                <MudText Typo="Typo.h6">Data sources</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Declare data sources (key + bindingVersion). A component may only bind to a declared source; mappings only reference the source's authored schema fields.</MudText>
+                <MudStack Row="true" Spacing="1" Class="mt-2" AlignItems="AlignItems.Center">
+                    <MudTextField Label="Key" T="string" @bind-Value="_newDataSourceKey" Immediate="true" data-testid="data-source-key" Style="max-width: 150px" />
+                    <MudTextField Label="Fields (comma)" T="string" @bind-Value="_newDataSourceFields" Immediate="true" data-testid="data-source-fields" Style="max-width: 220px" />
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddDataSourceAsync" Disabled="@(string.IsNullOrWhiteSpace(_newDataSourceKey))" data-testid="data-source-add">Add</MudButton>
+                </MudStack>
+                <MudStack Spacing="1" Class="mt-2" data-testid="data-source-list">
+                    @for (var i = 0; i < _document.DataSources.Count; i++)
+                    {
+                        var source = _document.DataSources[i];
+                        <MudPaper Elevation="1" Class="d-flex align-center justify-space-between pa-2" data-testid="data-source-node">
+                            <span><code>@source.Key</code> · v@source.BindingVersion</span>
+                            <span>
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => RemoveDataSourceAsync(source.Key))" data-testid="data-source-delete" />
+                            </span>
+                        </MudPaper>
+                    }
+                </MudStack>
+                @if (HasValidationIssues)
+                {
+                    <MudAlert Severity="Severity.Warning" Class="mt-2">Draft has unresolved diagnostics: <code>@string.Join(", ", _document.Validate())</code></MudAlert>
+                }
+            </MudPaper>
+
+            <MudPaper Class="pa-4" Elevation="0">
+                <MudText Typo="Typo.h6">Component palette</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Add a component to the selected page. The palette is the closed renderer allowlist (v1.0.0).</MudText>
+                @if (_selectedPage is null)
+                {
+                    <MudAlert Severity="Severity.Info" Class="mt-2">Select a page first.</MudAlert>
+                }
+                <MudStack Spacing="1" Class="mt-2">
+                    @foreach (var type in AppDesignerDocument.GetPaletteTypes())
+                    {
+                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small"
+                                   Disabled="@(_selectedPage is null)"
+                                   OnClick="@(() => AddComponentAsync(type))" data-testid="@($"palette-{type}")">
+                            + @type
+                        </MudButton>
+                    }
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4" Elevation="0">
+                <MudText Typo="Typo.h6">Components</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Ordered component list of the selected page. Reorder with the arrows, remove with the trash icon.</MudText>
+                @if (_selectedPage is null)
+                {
+                    <MudAlert Severity="Severity.Info" Class="mt-2">Select a page to see its components.</MudAlert>
+                }
+                <MudStack Spacing="1" Class="mt-2" data-testid="component-tree">
+                    @if (_selectedPage is not null)
+                    {
+                        @for (var i = 0; i < _selectedPage.Components.Count; i++)
+                        {
+                            var component = _selectedPage.Components[i];
+                            var index = i;
+                            <MudPaper Elevation="1" Class="d-flex align-center justify-space-between pa-2" data-testid="component-node">
+                                <MudButton Variant="Variant.Text" Color="@(component.Id == _selectedComponentId ? Color.Primary : Color.Inherit)" OnClick="@(() => SelectComponent(component.Id))" FullWidth="false"><code>@component.Type</code> v@component.Version</MudButton>
+                                <span>
+                                    <MudIconButton Icon="@Icons.Material.Filled.ArrowUpward" Size="Size.Small" OnClick="@(() => MoveComponentAsync(component.Id, index - 1))" Disabled="@(index == 0)" data-testid="component-up" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Size="Size.Small" OnClick="@(() => MoveComponentAsync(component.Id, index + 1))" Disabled="@(index == _selectedPage.Components.Count - 1)" data-testid="component-down" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => RemoveComponentAsync(component.Id))" data-testid="component-delete" />
+                                </span>
+                            </MudPaper>
+                        }
+                    }
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4" Elevation="0">
+                <MudText Typo="Typo.h6">Property editor</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Edit the selected component's sanctioned properties. Unsupported properties are rejected, never emitted.</MudText>
+                @if (_selectedComponent is null)
+                {
+                    <MudAlert Severity="Severity.Info" Class="mt-2">Select a component to edit its properties.</MudAlert>
+                }
+                @if (_unsupportedMessage is not null)
+                {
+                    <MudAlert Severity="Severity.Warning" Class="mt-2" data-testid="unsupported-flag">@_unsupportedMessage</MudAlert>
+                }
+                @if (_selectedComponent is not null)
+                {
+                    <MudText Typo="Typo.subtitle2" Class="mt-2"><code>@_selectedComponent.Type</code></MudText>
+                    @foreach (var property in AppDesignerDocument.EditablePropertiesFor(_selectedComponent.Type))
+                    {
+                        if (property == "dataSource")
+                        {
+                            <MudSelect T="string" Label="dataSource" Class="mt-2" Variant="Variant.Outlined"
+                                       Value="@ValueFor(_selectedComponent, property)"
+                                       ValueChanged="async v => await OnBindChangedAsync(_selectedComponent.Id, v)"
+                                       data-testid="prop-dataSource">
+                                @if (_document.DataSources.Count == 0)
+                                {
+                                    <MudSelectItem T="string" Value="null" Disabled="true">No data sources declared yet</MudSelectItem>
+                                }
+                                @foreach (var dataSourceKey in _document.DataSources.Select(s => s.Key))
+                                {
+                                    <MudSelectItem T="string" Value="@dataSourceKey">@dataSourceKey</MudSelectItem>
+                                }
+                            </MudSelect>
+                        }
+                        else
+                        {
+                            <MudTextField T="string" Label="@property" Class="mt-2"
+                                          Value="@ValueFor(_selectedComponent, property)"
+                                          ValueChanged="async v => await OnPropertyChangedAsync(_selectedComponent.Id, property, v)"
+                                          data-testid="@($"prop-{property}")" />
+                        }
+                    }
+                }
+
+                @if (_selectedComponent is not null && CanMap(_selectedComponent))
+                {
+                    <MudDivider Class="my-3" />
+                    <MudText Typo="Typo.subtitle2">Field mapping → <code>@_selectedComponent.DataSource</code></MudText>
+                    <MudStack Row="true" Spacing="1" Class="mt-2" AlignItems="AlignItems.Center">
+                        <MudSelect T="string" Label="Source field" Class="mt-2" Variant="Variant.Outlined"
+                                   Value="@_mappingSource" ValueChanged="@(v => _mappingSource = v)" data-testid="mapping-source">
+                            @foreach (var field in (SchemaFor(_selectedComponent) ?? []))
+                            {
+                                <MudSelectItem T="string" Value="@field">@field</MudSelectItem>
+                            }
+                        </MudSelect>
+                        <MudTextField Label="Target column" T="string" @bind-Value="_mappingTarget" Immediate="true" data-testid="mapping-target" Style="max-width: 150px" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Add" OnClick="@(() => AddMappingAsync(_selectedComponent.Id))" Disabled="@(string.IsNullOrWhiteSpace(_mappingSource) || string.IsNullOrWhiteSpace(_mappingTarget))" data-testid="mapping-add" />
+                    </MudStack>
+                    <MudStack Spacing="1" Class="mt-2" data-testid="mapping-list">
+                        @for (var m = 0; m < _selectedComponent.Mappings.Count; m++)
+                        {
+                            var index = m;
+                            var mapping = _selectedComponent.Mappings[m];
+                            <MudPaper Elevation="1" Class="d-flex align-center justify-space-between pa-2" data-testid="mapping-node">
+                                <span><code>@mapping.SourcePath</code> → @mapping.TargetKey</span>
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => RemoveMappingAsync(_selectedComponent.Id, index))" data-testid="mapping-delete" />
+                            </MudPaper>
+                        }
+                    </MudStack>
+                }
+
+                @if (_selectedComponent is not null)
+                {
+                    <MudDivider Class="my-3" />
+                    <MudText Typo="Typo.subtitle2">Action (Button-Ausführung)</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">One explicit action from the closed catalogue (v1.0.0). The target is a reference: a declared data source, a known process key, or a runtime task key.</MudText>
+                    @if (_actionEditorMessage is not null)
+                    {
+                        <MudAlert Severity="Severity.Warning" Class="mt-2" data-testid="action-editor-message">@_actionEditorMessage</MudAlert>
+                    }
+                    @if (_selectedComponent.Action is null)
+                    {
+                        <MudStack Row="true" Spacing="1" Class="mt-2" AlignItems="AlignItems.Center">
+                            <MudSelect T="string" Class="mt-2" Variant="Variant.Outlined" Label="Action type"
+                                       Value="_newActionType" ValueChanged="v => _newActionType = v" data-testid="action-type">
+                                @foreach (var actionType in AppDesignerDocument.GetActionTypes())
+                                {
+                                    <MudSelectItem T="string" Value="@actionType">@actionType</MudSelectItem>
+                                }
+                            </MudSelect>
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" OnClick="() => AddActionAsync(_selectedComponent.Id)" Disabled="@(string.IsNullOrWhiteSpace(_newActionType))" data-testid="action-add">Add</MudButton>
+                        </MudStack>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.subtitle2" Class="mt-2"><code>@_selectedComponent.Action.Type</code> v@_selectedComponent.Action.Version</MudText>
+                        @if (IsTaskAction(_selectedComponent.Action))
+                        {
+                            <MudStack Row="true" Spacing="1" Class="mt-2" AlignItems="AlignItems.Center">
+                                <MudTextField T="string" Label="Task key" Class="mt-2" Value="_newActionTarget" ValueChanged="v => _newActionTarget = v" data-testid="action-target" Style="max-width: 200px" />
+                                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="() => SetActionTargetAsync(_selectedComponent.Id, _newActionTarget)" Disabled="@(string.IsNullOrWhiteSpace(_newActionTarget))" data-testid="action-target-set">Set target</MudButton>
+                            </MudStack>
+                        }
+                        else
+                        {
+                            <MudSelect T="string" Class="mt-2" Variant="Variant.Outlined" Label="Action target"
+                                       Value="@_selectedComponent.Action.Target"
+                                       ValueChanged="async v => await SetActionTargetAsync(_selectedComponent.Id, v)"
+                                       data-testid="action-target">
+                                @if (ActionTargetChoices(_selectedComponent.Action) is null || ActionTargetChoices(_selectedComponent.Action)!.Count == 0)
+                                {
+                                    <MudSelectItem T="string" Value="null" Disabled="true">No @(_selectedComponent.Action.Type == "start-process" ? "process definitions" : "data sources") declared yet</MudSelectItem>
+                                }
+                                @foreach (var choice in (ActionTargetChoices(_selectedComponent.Action) ?? []))
+                                {
+                                    <MudSelectItem T="string" Value="@choice">@choice</MudSelectItem>
+                                }
+                            </MudSelect>
+                        }
+                        <MudStack Row="true" Spacing="1" Class="mt-2" AlignItems="AlignItems.Center">
+                            <MudTextField Label="Input name" T="string" @bind-Value="_newActionInputName" Immediate="true" data-testid="action-input-name" Style="max-width: 130px" />
+                            <MudTextField Label="Input value" T="string" @bind-Value="_newActionInputValue" Immediate="true" data-testid="action-input-value" Style="max-width: 130px" />
+                            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="() => AddActionInputAsync(_selectedComponent.Id)" Disabled="@(string.IsNullOrWhiteSpace(_newActionInputName))" data-testid="action-input-add">+ Input</MudButton>
+                        </MudStack>
+                        <MudStack Spacing="1" Class="mt-2" data-testid="action-input-list">
+                            @for (var a = 0; a < _selectedComponent.Action.Inputs.Count; a++)
+                            {
+                                var inputIndex = a;
+                                var actionInput = _selectedComponent.Action.Inputs[a];
+                                <MudPaper Elevation="1" Class="d-flex align-center justify-space-between pa-2" data-testid="action-input-node">
+                                    <span><code>@actionInput.Name</code> = <code>@actionInput.Value</code></span>
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="() => RemoveActionInputAsync(_selectedComponent.Id, inputIndex)" data-testid="action-input-delete" />
+                                </MudPaper>
+                            }
+                        </MudStack>
+                        <MudButton Variant="Variant.Text" Color="Color.Error" Size="Size.Small" Class="mt-2" OnClick="() => RemoveActionAsync(_selectedComponent.Id)" data-testid="action-remove">Remove action</MudButton>
+                    }
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @if (_previewOpen)
+    {
+        <MudPaper Class="pa-4 mb-4" Elevation="2" data-testid="preview-panel">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-2">
+                <MudText Typo="Typo.h6">Vorschau (nur Testdaten, keine Aktionen ausführend)</MudText>
+                <MudButton Variant="Variant.Text" Color="Color.Secondary" OnClick="ClosePreview" data-testid="preview-close">Schließen</MudButton>
+            </MudStack>
+            <MudAlert Severity="Severity.Info" Class="mb-3" data-testid="preview-banner">
+                Diese Vorschau rendert den aktuellen Entwurf mit <b>redigierten Testdaten</b> gegen ein ausdrücklich
+                gewähltes Testziel. Sie ist strikt schreibgeschützt: <b>keine Speicherung, kein Prozessstart,
+                kein Claim/Complete und keine externe Aktion</b> wird ausgelöst. Aktionen werden nur als
+                Vorschau-Marker dargestellt und nie ausgeführt.
+            </MudAlert>
+
+            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mb-2">
+                <span>Testziel (Datensatz):</span>
+                <MudSelect T="string" Value="@_previewTarget" ValueChanged="@(v => { _previewTarget = v; })"
+                           data-testid="preview-target" Style="min-width: 220px">
+                    @foreach (var option in PreviewTargetOptions)
+                    {
+                        <MudSelectItem T="string" Value="@option">@option</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RunPreview"
+                           Disabled="@(string.IsNullOrWhiteSpace(_previewTarget))" data-testid="preview-run">
+                    Vorschau mit Testdaten
+                </MudButton>
+            </MudStack>
+
+            @if (!string.IsNullOrWhiteSpace(_previewMessage))
+            {
+                <MudAlert Severity="Severity.Warning" Class="mt-2" data-testid="preview-message">@_previewMessage</MudAlert>
+            }
+            @if (!string.IsNullOrWhiteSpace(_previewError))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-2" data-testid="preview-error">@_previewError</MudAlert>
+            }
+
+            @if (_preview is not null)
+            {
+                <MudStack Spacing="2" Class="mt-2" data-testid="preview-result">
+                    <MudChip T="string" Variant="Variant.Outlined" Color="Color.Info">Testziel: @_preview.Target.DataSetName · Tenancy: @_preview.Target.TenantId</MudChip>
+                    @foreach (var previewPage in _preview.Pages)
+                    {
+                        <MudPaper Elevation="1" Class="pa-3" data-testid="preview-page">
+                            <MudText Typo="Typo.subtitle1"><code>@previewPage.Route</code></MudText>
+                            @foreach (var previewNode in previewPage.Components)
+                            {
+                                <div data-testid="preview-node" class="preview-node">
+                                    @if (previewNode.Kind == PreviewKind.Unsupported)
+                                    {
+                                        <span data-testid="preview-unsupported">⚠ Nicht unterstütztes Element: <code>@previewNode.Type</code></span>
+                                    }
+                                    else
+                                    {
+                                        <span><strong>@previewNode.Type</strong> @(previewNode.Label is not null ? $"· {previewNode.Label}" : "")</span>
+                                        @if (previewNode.HasAction)
+                                        {
+                                            <MudChip T="string" Size="Size.Small" Color="@(previewNode.ActionIsSideEffecting ? Color.Warning : Color.Default)"
+                                                     Variant="Variant.Outlined" Class="ml-2" data-testid="preview-non-executing">
+                                                @(previewNode.ActionIsSideEffecting ? "Würde in Produktion starten/schließen – in der Vorschau NICHT ausgeführt" : "Aktion – in der Vorschau NICHT ausgeführt")
+                                            </MudChip>
+                                        }
+                                        @if (previewNode.DataSource is not null)
+                                        {
+                                            <div class="ml-4" data-testid="preview-source">Datensatz: <code>@previewNode.DataSource</code></div>
+                                        }
+                                    }
+                                    @foreach (var child in previewNode.Children)
+                                    {
+                                        <div class="ml-4" data-testid="preview-child">↳ <em>@child.Type</em></div>
+                                    }
+                                </div>
+                            }
+                        </MudPaper>
+                    }
+                    @foreach (var dataSet in _preview.DataSets)
+                    {
+                        <MudPaper Elevation="1" Class="pa-3" data-testid="preview-dataset">
+                            <MudText Typo="Typo.subtitle1">Testdaten (redigiert): <code>@dataSet.Key</code> v@dataSet.BindingVersion</MudText>
+                            <MudSimpleTable data-testid="preview-data-table">
+                                <thead>
+                                    <tr>
+                                        @foreach (var field in dataSet.Fields)
+                                        {
+                                            <th data-testid="preview-redacted">@field (Testdaten)</th>
+                                        }
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var row in dataSet.RedactedRows)
+                                    {
+                                        <tr>
+                                            @foreach (var cell in row)
+                                            {
+                                                <td data-testid="preview-redacted"><code>@cell</code></td>
+                                            }
+                                        </tr>
+                                    }
+                                </tbody>
+                            </MudSimpleTable>
+                        </MudPaper>
+                    }
+                </MudStack>
+            }
+        </MudPaper>
+    }
+</MudStack>

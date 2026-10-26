@@ -163,3 +163,186 @@ Konkrete Restarbeit steht je ID in `Remaining`. Priorität:
 **Gesamtstatus: vollständig inventarisiert, fachliche Acceptance-Abdeckung noch
 nicht vollständig.** Ein grüner Build oder ein vollständig zugeordnetes Inventar
 ist kein vollständiger UI-Abnahmebeleg.
+
+## LC07 S1: Low-Code App-Designer (Foundation)
+
+Der [Use-Case-Katalog](studio-use-cases.tsv) wurde um die Gruppe `LC07 S1`
+ergänzt (IDs `LC07-S1-SERVICE`, `LC07-S1-API`, `LC07-S1-ALLOWLIST`,
+`LC07-S1-DESIGNER`). Sie decken die neue Designer-Foundation ab:
+
+- **API/SERVICE/API-Real**: `GET api/applications` Listen-Endpoint sowie der
+  Studio-`HttpApplicationService`-Roundtrip (List/Create/Get/Save) gegen echte
+  Controller- und Persistenzschicht (`CustomWebApplicationFactory`). Die aktuelle
+  Nachverifikation ist grün; eine vollständige strikte TDD-Historie ist nicht belegt.
+- **ALLOWLIST (Autorungs-Boundary)**: `AppDesignerDocument` erzwingt zu **jeder**
+  Autorzeit die geschlossene Renderer-Allowlist aus
+  `ApplicationComponentCatalog.Components` (Version `1.0.0`). Unbekannte
+  Komponente/Version/Eigenschaft löst `InvalidOperationException` aus; unbekannte
+  Eingaben können so nie in einer ContentJson landen. Palette = sortierte
+  Allowlist. Vereinbarungsbedingt (Slice S1) verfügt der gültige Pfad noch **ohne**
+  Datenquellen-Deklaration; `ApplicationDomainDiagnostics` würde eine freie
+  `dataSource`-Referenz als `UNKNOWN_DATA_SOURCE` korrekt ablehnen (späterer Slice).
+- **DESIGNER (browser-real)**: `ApplicationDesigner_CreateAddPageAddComponentEditPropertySaveAndReload_ARealDraft`
+  deckt den Kernablauf Create App -> Add Page -> Add Component -> Edit Property ->
+  Save -> Reload über echte API und isoliertes PostgreSQL ab. Tatsächlich ausgeführt:
+  beide Designer-Browserfälle zusammen 2 bestanden, 0 Fehler/Failures/Skips.
+  SQL-Assertions prüfen Draft und Revision 2 unabhängig von der Erfolgsmeldung.
+  Reload eröffnet eine neue Browsernavigation, wählt den Tenant erneut und öffnet
+  den Designer im selben Circuit. Tenantwechsel verwirft den geladenen Entwurf.
+  Echter Verhaltens-RED für Tenantwechsel und anschließendes GREEN sind vorhanden.
+
+## LC07 S2: Datenquellen + Datenbindung + Schema-validiertes Feld-Mapping
+
+Der [Use-Case-Katalog](studio-use-cases.tsv) wurde um die Gruppe `LC07 S2`
+ergänzt (IDs `LC07-S2-DOC`, `LC07-S2-SERVICE`, `LC07-S2-DESIGNER`). Sie bauen
+additiv auf S1 auf und decken die Datenquellen-Schicht des Designers ab:
+
+- **Deklaration**: `AppDesignerDocument` führt `DataSources` (Key + bindingVersion
+  + authored Schema `fields`), `AddDataSource`/`RemoveDataSource`. Die serialisierte
+  `dataSources`-Deklaration trägt `key`/`bindingVersion` in der exakten
+  Lc06ReferenceApp-Form; `fields` ist eine additive Autorzeit-Schemainformation, die
+  von allen Released-Readern (key/bindingVersion) toleriert und im Draft roundgetrippt
+  wird. Doppelte Keys werden abgelehnt.
+- **Bindung**: `BindComponent` erzwingt, dass eine gebundene Komponente auf eine
+  DEKLARIERTE Quelle verweist; Binding an eine undeklarierte Quelle wird zur
+  Autorzeit geworfen. Jede Referenz, die dennoch aus externem Content stammt
+  (oder nach `RemoveDataSource` übrig bleibt), wird von `Validate()` als
+  `UNKNOWN_DATA_SOURCE` gemeldet — identisch zur Released-Semantik von
+  `ApplicationDomainDiagnostics` (deren `Validate(json)` direkt wiederverwendet wird).
+- **Schema-validiertes Feld-Mapping**: `MapField` (Datenquellen-Feld → Tabellen-
+  Spalte/Komponenten-Feld) akzeptiert nur Felder, die auf dem gebundenen Schema
+  existieren; unbekannte Felder werden zur Autorzeit geworfen und nie still
+  akzeptiert. Die Mapping-Struktur folgt der FieldMapper-Konvention
+  (`StudioFieldMappingItem`: sourcePath → targetKey).
+- **API/SERVICE-Real**: `SaveDraft_WithDeclaredDataSourceBoundTableAndMappedField_RoundtripsThroughRealApi`
+  persistiert einen Draft mit deklarierter Quelle + gebundener Tabelle + gemapptem
+  Feld durch echte Controller-/Persistenzschicht (`CustomWebApplicationFactory`) und
+  lädt ihn wieder (declare -> bind -> map -> save -> reload). Nachverifikation:
+  `AppDesignerDataBindingTests` 9 bestanden; die vier relevanten Logic-Klassen
+  zusammen 22 bestanden, 0 Fehler/Failures/Skips. Strikte TDD für S2 ist **nicht**
+  bewiesen: Compiler-/Analyzerfehler sind kein Verhaltens-RED.
+- **DESIGNER (browser-real)**: `ApplicationDesigner_DeclareDataSourceBindTableMapFieldSaveAndReload_ARealDraft`
+  deckt den Ablauf Declare Data Source -> Bind Table -> Map Field -> Save -> Reload
+  über echte API und isoliertes PostgreSQL mit unabhängigen SQL-Assertions ab.
+  Tatsächlich ausgeführt und bestanden; nach Reload werden Quelle, Bindung und
+  Mapping im Property-Editor geprüft. Die Auswahl enthält genau die drei
+  selbst deklarierten Schemafelder.
+
+**Evidenz (lokal, sanitisiert):** `/home/azureuser/.hermes/cache/scratch/lc07-verification/`.
+Browser/SQL-GREEN: `lc07535e29f44c/results.xml`, `runner.log`, scenario-spezifische
+Playwright-Traces, Screenshots und `database-cleanup.log`. Tenantwechsel-RED:
+`lc07b6a7532280/results.xml`; GREEN: `lc07fdf3b8ee20/results.xml`.
+Logic-Nachverifikation: `logic-final.xml` (22/0). UiTests-Baseline: zwei bereits
+in HEAD vorhandene Analyzerfehler in `StudioUiTestHost.cs` (IDE0011/MA0051),
+minimal repariert; finaler Release-Build ohne Warnungen/Fehler.
+
+**Weiter offen vor vollständiger LC07-Abnahme:** erzwungene verspätete Load-/Save-
+Antworten sind noch nicht dynamisch getestet (Generation-Guards vorhanden), ebenso
+App-Listen-Tenantwechsel/verspätete Listen-/Create-Antworten. `fields` ist ein
+selbst deklariertes Schema, kein Nachweis eines aus LC03–LC06 aufgelösten echten
+Datenquellenschemas. Mapping-Persistenz beweist keine Portal-Mappingausführung.
+Parse/Serialize erfasst nicht alle vorhandenen App-Metadaten (u.a. Seitentitel,
+Lokalisierungen/Referenzen); verlustfreies Editieren bestehender Voll-Drafts bleibt
+zu prüfen. S3 wurde nicht begonnen; S1/S2 sind nicht pauschal vollständig abgenommen.
+
+**Scope**: S2 bildet ausschließlich Datenquellen-Deklaration, -Bindung und
+Schema-validiertes Feld-Mapping samt Roundtrip ab. Action-Auswahl,
+Start/Claim/Complete-Verdrahtung, Preview und Undo/Redo gehören zu späteren Slices
+und wurden nicht angelegt.
+
+## LC07 S3: Action (Button-Ausführung)
+
+Der [Use-Case-Katalog](studio-use-cases.tsv) wurde um die Gruppe `LC07 S3`
+ergänzt (IDs `LC07-S3-DOC`, `LC07-S3-SERVICE`, `LC07-S3-DESIGNER`). Sie
+bauen auf S1/S2 auf und machen die Button-Ausführung explizit.
+
+**Umgesetzt (LC07-S3-DOC, Unit):** Eine Komponente trägt höchstens eine
+zugelassene Aktion aus dem geschlossenen Katalog (`data-source-read`,
+`start-process`, `claim-task`, `complete-task`, alle `v1.0.0`). Das erzeugte
+Aktions-JSON entspricht der LC06-Referenzgestalt (z.B. `start-process` mit
+`processDefinitionId` = stabilem Prozess-Key plus `references[].{type:process,key}`).
+Referenz-Targets werden über geschlossene Kataloge gewählt, nicht handschriftlich:
+`data-source-read` → deklarierte Datenquelle (undeclared →
+`UNKNOWN_DATA_SOURCE`), `start-process` → bekannter Prozess-Key aus dem
+Prozess-Katalog (`unknown → UNKNOWN_PROCESS`), `claim/complete-task` →
+Aufgaben-Key mit explizitem Input. Unbekannte/unsanktionierte Aktions-Typen
+werden geworfen und nie in ContentJson emittiert. Das Server-Gate
+`ApplicationDomainDiagnostics` prüft dieselben Regeln.
+
+**HTTP-Roundtrip (LC07-S3-SERVICE):** Ein Draft mit Button + konfigurierter
+Aktion (Referenz-Target + explizites Input) wird über die echte API persistiert,
+geladen und inhaltsgleich zurückgegeben; der gespeicherte Content besteht das
+freigegebene Validierungs-Gate (`[]`).
+
+**Browser (LC07-S3-DESIGNER):** `ApplicationDesigner_ConfigureActionOnButtonSaveReloadAndFlagDanglingReference_ARealDraft`
+— Add Button → Add Action (Datenquelle ausgeschlossen) → Referenz-Ziel
+(deklarierte Quelle) → explizites Input → Save → Reload, gegen echte API +
+isoliertes PostgreSQL mit unabhängigen SQL-Assertions. Nach Reload werden
+Aktion, Referenz-Ziel und Input im Property-Editor geprüft. Negativ:
+Entfernen der referenzierten Datenquelle lässt die Aktion baumeln; der Designer
+flaggt `UNKNOWN_DATA_SOURCE` statt sie stillschweigend zu akzeptieren.
+
+**Evidenz (lokal, sanitisiert):** siehe `lc07s3-e2e.log`/Ergebnis-XML unter
+`/home/azureuser/.hermes/cache/scratch/`.
+
+**Weiter offen vor vollständiger LC07-Abnahme:** Cross-Editor-Verdrahtung
+Prozess/Form/App/Daten-Mapper (Referenzen statt Hand-Kopieren technischer Keys
+in den Beny/BPMN-Editoren), Preview und Undo/Redo gehören zu späteren Slices
+und wurden nicht angelegt. Start/Claim/Complete zur Laufzeit starten keinen
+Prozess; S3 beweist Authoring-/Persistenz-/Gate-Verhalten, nicht die
+ausgeführte Prozessausführung.
+
+**Scope:** S3 bildet ausschließlich den Aktions-Editor (geschlossener Katalog,
+referenzbasiertes Ziel, explizites Input/erwartetes Ergebnis, Validierung +
+Roundtrip + Tests) ab.
+
+## LC07 S4: Undo/Redo + Preview + Workspace-Härtung
+
+Der [Use-Case-Katalog](studio-use-cases.tsv) wurde um die Gruppe `LC07 S4`
+ergänzt (IDs `LC07-S4-UNDO-DOC`, `LC07-S4-PREVIEW-DOC`,
+`LC07-S4-UNDO-DESIGNER`, `LC07-S4-PREVIEW-DESIGNER`). S4 baut additiv auf
+S1..S3 auf, ohne ein zweites Darstellungs-/Entwurfsverfahren einzuführen.
+
+**Undo/Redo (LC07-S4-UNDO-DOC, Unit):** Der DesignDocument-Draft trägt einen
+gebundenen Command-Stack (`MaxUndoDepth = 200`) aus unveränderlichen
+`DocumentState`-Tiefenschnappschüssen. Jeder Mutator ruft `RecordHistory()`
+unmittelbar **vor** seiner Änderung auf. Add/Remove/Reorder Page + Component,
+Property-, Datasource-, Binding-, Action- und Mapping-Änderung sind alle
+udno/redo-fähig. `Undo()`/`Redo()` stellen den Baum mit geklonten Objekten
+wieder her; Konsumenten müssen Seiten/Komponenten über stabile String-IDs über
+`document.Pages` neu auflösen (der Surface tut das bereits). `CanUndo`/`CanRedo`
+sind während einer Wiederherstellung deaktiviert. Ein frischer Edit verwirft den
+Redo-Zweig (kein Stale-Snapshot-Re-Save). `UndoRedoTests` = 14 Unit-Fälle;
+save-Serialisierung folgt stets dem **live**-Modellstand (`ToJson()`), wie im
+Test `SaveSerializesCurrentState_AfterUndoAndRedo_NoStaleSnapshot` belegt.
+
+**Preview (LC07-S4-PREVIEW-DOC + DESIGNER):** Der Preview modelliert den
+aktuellen DRAFT (nur Allowlist-Komponenten, gespiegelt von
+`ReleasedRenderer`/`ApplicationComponentCatalog.Components` — kein ad-hoc
+Renderer) gegen ein **explizit gewähltes Test-Ziel** (z.B. eine Datenquelle
+`invoiceList` oder `standard`) mit **redigierten Testdaten**
+(`[redigiert:<feld>...]`). Preview ist **rein lesend**: `AppPreview.ReadOnly =
+true`, `ExecutableActions = []` (leer), side-effecting Aktionen
+(`start-process`/`claim-task`/`complete-task`/extern) werden nur als
+`ActionIsSideEffecting` markiert und als non-executing gerendert — sie werden
+**niemals ausgeführt**. Unbekannte Komponenten → `Unsupported`-Platzhalter.
+`PreviewTests` = 6 Unit-Fälle.
+
+**Browser (LC07-S4-UNDO-DESIGNER, LC07-S4-PREVIEW-DESIGNER):**
+`ApplicationDesigner_UndoRedoComponentAddition_KeepsDraftConsistent` —
+Add Component → Toolbar-Undo/Redo + Ctrl+Z/Ctrl+Shift+Z → dirty zwischen
+"Gespeichert"/"Unstete Änderungen"; über die echte API/SQL wird bestätigt, dass
+die Button-Änderung **nie persistiert** wurde (Revision bleibt 2).
+`ApplicationDesigner_PreviewRendersDraft_WithoutFiringProductiveStart` — ein
+Button mit `start-process`-Aktion auf einen im Tenant gedeployten Prozess-Key +
+deklarierte Datasource wird per Preview gerendert (redigierte Testdaten +
+non-executing-Marker + Banner); der **unabhängige** DB/API-Beweis (nicht eine
+UI-Erfolgsmeldung) zeigt: keine neue Prozess-Instanz, kein Task, kein
+Draft-Write während des Vorschauens.
+
+**Workspace-Härtung:** Save serialisiert immer den **live**-Draftstand
+(delayed-response-sicher — ein langsamer In-Flight-Save kann weder neuere Edits
+noch veraltete Redo-Zustände überschreiben), Undo/Redo laufen rein in-memory
+ohne Persistenzseiteneffekt, Undo/Redo sind während `_saving` deaktiviert, und
+der Tenant-Wechsel invalidiert den fremden Draft weiterhin (bestehende
+S1-Fixierung bleibt erhalten). Kein S5 (Publish/Build der Referenz-App).

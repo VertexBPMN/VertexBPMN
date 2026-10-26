@@ -18,12 +18,12 @@ public static class ApplicationDomainDiagnostics
             {
                 if (page.TryGetProperty("actions", out var actions))
                 {
-                    foreach (var action in actions.EnumerateArray()) { ValidateAction(root, action, diagnostics); }
+                    foreach (var action in actions.EnumerateArray()) { ValidateAction(root, sources, action, diagnostics); }
                 }
                 if (!page.TryGetProperty("components", out var components)) { continue; }
                 foreach (var component in components.EnumerateArray())
                 {
-                    if (component.TryGetProperty("action", out var action)) { ValidateAction(root, action, diagnostics); }
+                    if (component.TryGetProperty("action", out var action)) { ValidateAction(root, sources, action, diagnostics); }
                     if (component.TryGetProperty("dataSource", out var source) && !sources.Contains(source.GetString()!))
                     { diagnostics.Add("UNKNOWN_DATA_SOURCE"); }
                 }
@@ -32,7 +32,7 @@ public static class ApplicationDomainDiagnostics
         return JsonSerializer.Serialize(diagnostics);
     }
 
-    private static void ValidateAction(JsonElement root, JsonElement action, List<string> diagnostics)
+    private static void ValidateAction(JsonElement root, HashSet<string> sources, JsonElement action, List<string> diagnostics)
     {
         if (action.GetProperty("type").GetString() == "start-process")
         {
@@ -44,7 +44,8 @@ public static class ApplicationDomainDiagnostics
                     {
                         return false;
                     }
-                    if (x.GetProperty("id").GetString() == id)
+                    // The internal ProcessDefinition GUID.
+                    if (x.TryGetProperty("id", out var refId) && refId.GetString() == id)
                     {
                         return true;
                     }
@@ -54,6 +55,16 @@ public static class ApplicationDomainDiagnostics
                     return x.TryGetProperty("key", out var key) && key.GetString() == id;
                 }))
             { diagnostics.Add("UNKNOWN_PROCESS"); }
+        }
+        else if (action.GetProperty("type").GetString() == "data-source-read")
+        {
+            // A data-source-read action must reference a DECLARED data source; an undeclared
+            // target mirrors the released narrow gate (UNKNOWN_DATA_SOURCE / unsanctioned).
+            var target = action.TryGetProperty("dataSource", out var dataSource) ? dataSource.GetString() : null;
+            if (string.IsNullOrWhiteSpace(target) || !sources.Contains(target))
+            {
+                diagnostics.Add("UNKNOWN_DATA_SOURCE");
+            }
         }
     }
 }

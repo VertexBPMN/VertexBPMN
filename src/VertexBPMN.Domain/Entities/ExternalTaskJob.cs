@@ -8,6 +8,7 @@ public sealed class ExternalTaskJob
 	public Guid ProcessInstanceId { get; set; }
 	public Guid DefinitionId { get; set; }
 	public int DefinitionVersion { get; set; }
+	public string? ApplicationReleaseId { get; set; }
 	public string ActivityId { get; set; } = string.Empty;
 	public Guid ActivityExecutionId { get; set; }
 	public Guid WaitTokenId { get; set; }

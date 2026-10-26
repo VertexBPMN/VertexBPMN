@@ -46,6 +46,24 @@ internal static class ExternalTaskMapping
         attempt.Property(x => x.ErrorCode).HasMaxLength(128);
 
         ConfigureContinuation(model);
+        ConfigureEffectReceipt(model);
+    }
+
+    private static void ConfigureEffectReceipt(ModelBuilder model)
+    {
+        var receipt = model.Entity<ExternalTaskEffectReceipt>();
+        receipt.ToTable("ExternalTaskEffectReceipts", table =>
+        {
+            table.HasCheckConstraint("CK_ExternalTaskEffectReceipts_Name",
+                "\"EffectName\" IN ('primary')");
+        });
+        receipt.HasKey(x => x.Id);
+        receipt.HasIndex(x => x.EffectKey).IsUnique();
+        receipt.HasIndex(x => x.JobId);
+        receipt.Property(x => x.EffectKey).HasMaxLength(256).IsRequired();
+        receipt.Property(x => x.EffectName).HasMaxLength(32).IsRequired();
+        receipt.Property(x => x.ResultHash).HasMaxLength(64).IsRequired();
+        receipt.HasOne<ExternalTaskJob>().WithMany().HasForeignKey(x => x.JobId).OnDelete(DeleteBehavior.Restrict);
     }
 
     private static void ConfigureContinuation(ModelBuilder model)

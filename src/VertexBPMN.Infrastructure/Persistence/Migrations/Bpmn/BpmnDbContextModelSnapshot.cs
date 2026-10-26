@@ -724,6 +724,57 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                     b.ToTable("ExternalTaskContinuations");
                 });
 
+            modelBuilder.Entity("VertexBPMN.Domain.Entities.ExternalTaskEffectReceipt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ActivityExecutionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CompletionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("EffectKey")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EffectName")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ResultHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EffectKey")
+                        .IsUnique();
+
+                    b.HasIndex("JobId");
+
+                    b.HasOne("VertexBPMN.Domain.Entities.ExternalTaskJob", null)
+                        .WithMany()
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.ToTable("ExternalTaskEffectReceipts", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ExternalTaskEffectReceipts_Name", "\"EffectName\" IN ('primary')");
+                        });
+                });
+
             modelBuilder.Entity("VertexBPMN.Domain.Entities.ExternalTaskJob", b =>
                 {
                     b.Property<Guid>("Id")
@@ -744,6 +795,9 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
 
                     b.Property<string>("AgentProfileVersion")
                         .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ApplicationReleaseId")
                         .HasColumnType("TEXT");
 
                     b.Property<int>("AttemptsStarted")

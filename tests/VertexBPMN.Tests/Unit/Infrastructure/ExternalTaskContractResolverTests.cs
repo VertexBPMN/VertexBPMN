@@ -76,6 +76,102 @@ public sealed class ExternalTaskContractResolverTests
 		await Assert.ThrowsAsync<InvalidOperationException>(async () => await resolver.ResolveAsync("a", definition, inputs, TestContext.Current.CancellationToken));
 	}
 
+	internal static IConfigurationRoot ObjectConfiguration() => new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>(StringComparer.Ordinal)
+	{
+		["ExternalTasks:EnableSchedulingPreview"] = "true",
+		["ExternalTasks:Contracts:0:TenantId"] = "a",
+		["ExternalTasks:Contracts:0:Topic"] = "test.object",
+		["ExternalTasks:Contracts:0:Enabled"] = "true",
+		["ExternalTasks:Contracts:0:Version"] = "v1",
+		["ExternalTasks:Contracts:0:ObjectSchema:Version"] = "vertex.object-contract.v1",
+		["ExternalTasks:Contracts:0:ObjectSchema:MaxDepth"] = "3",
+		["ExternalTasks:Contracts:0:ObjectSchema:MaxPropertyCount"] = "8",
+		["ExternalTasks:Contracts:0:ObjectSchema:MaxItemCount"] = "32",
+		["ExternalTasks:Contracts:0:ObjectSchema:MaxBytes"] = "4096",
+		["ExternalTasks:Contracts:0:ObjectSchema:Properties:0:Name"] = "text",
+		["ExternalTasks:Contracts:0:ObjectSchema:Properties:0:Type"] = "string",
+		["ExternalTasks:Contracts:0:ObjectSchema:Properties:0:Required"] = "true",
+		["ExternalTasks:Contracts:0:ObjectSchema:Properties:0:MaxLength"] = "64",
+		["ExternalTasks:Contracts:0:ObjectSchema:Properties:0:AllowExternalTransfer"] = "true",
+		["ExternalTasks:Contracts:0:ObjectSchema:Properties:1:Name"] = "meta",
+		["ExternalTasks:Contracts:0:ObjectSchema:Properties:1:Type"] = "object",
+		["ExternalTasks:Contracts:0:ObjectSchema:Properties:1:Required"] = "false",
+		["ExternalTasks:Contracts:0:ObjectSchema:Properties:1:AllowExternalTransfer"] = "true",
+		["ExternalTasks:Contracts:0:BusinessErrorCodes:0"] = "contract_rejected"
+	}).Build();
+
+	[Fact]
+	public async Task ObjectContractValidatesDepthSizeTypeAndAllowlist()
+	{
+		var resolver = new ConfiguredExternalTaskContractResolver(ObjectConfiguration());
+		var definition = new ExternalTaskDefinition("test.object", null, 0, 300);
+
+		var inputs = new Dictionary<string, object>(StringComparer.Ordinal)
+		{
+			["payload"] = new Dictionary<string, object>(StringComparer.Ordinal)
+			{
+				["text"] = "synthetic",
+				["meta"] = new Dictionary<string, object>(StringComparer.Ordinal) { ["n"] = 1 }
+			}
+		};
+		var contract = await resolver.ResolveAsync("a", definition, inputs, TestContext.Current.CancellationToken);
+		Assert.Equal("v1", contract.Version);
+		Assert.Contains("vertex.object-contract.v1", contract.SchemaSnapshot, StringComparison.Ordinal);
+		Assert.Contains("contract_rejected", contract.SchemaSnapshot, StringComparison.Ordinal);
+	}
+
+	[Theory]
+	[InlineData("too-deep")]
+	[InlineData("too-many-properties")]
+	[InlineData("too-large")]
+	[InlineData("wrong-type")]
+	[InlineData("missing-required")]
+	[InlineData("unknown-property")]
+	[InlineData("scalar-root")]
+	public async Task ObjectContractRejectsStructuralViolations(string scenario)
+	{
+		var resolver = new ConfiguredExternalTaskContractResolver(ObjectConfiguration());
+		var definition = new ExternalTaskDefinition("test.object", null, 0, 300);
+		var inputs = new Dictionary<string, object>(StringComparer.Ordinal);
+		switch (scenario)
+		{
+			case "too-deep":
+				inputs["payload"] = Deep(Nested(), 6);
+				break;
+			case "too-many-properties":
+				inputs["payload"] = Enumerable.Range(0, 9).ToDictionary(i => "k" + i, i => (object)i, StringComparer.Ordinal);
+				break;
+			case "too-large":
+				inputs["payload"] = new Dictionary<string, object>(StringComparer.Ordinal) { ["text"] = new string('x', 5000) };
+				break;
+			case "wrong-type":
+				inputs["payload"] = new Dictionary<string, object>(StringComparer.Ordinal) { ["text"] = 42 };
+				break;
+			case "missing-required":
+				inputs["payload"] = new Dictionary<string, object>(StringComparer.Ordinal) { ["meta"] = new Dictionary<string, object>(StringComparer.Ordinal) };
+				break;
+			case "unknown-property":
+				inputs["payload"] = new Dictionary<string, object>(StringComparer.Ordinal) { ["text"] = "x", ["bogus"] = 1 };
+				break;
+			case "scalar-root":
+				inputs["payload"] = "not-an-object";
+				break;
+		}
+		await Assert.ThrowsAsync<InvalidOperationException>(async () => await resolver.ResolveAsync("a", definition, inputs, TestContext.Current.CancellationToken));
+	}
+
+	// Adds depth layers of {"nested": {...}} around value.
+	private static object Deep(object value, int layers)
+	{
+		for (var i = 0; i < layers; i++)
+		{
+			value = new Dictionary<string, object>(StringComparer.Ordinal) { ["nested"] = value };
+		}
+		return value;
+	}
+
+	private static Dictionary<string, object> Nested() => new(StringComparer.Ordinal) { ["text"] = "x" };
+
 	[Theory]
 	[InlineData("wrong-type")]
 	[InlineData("oversize")]

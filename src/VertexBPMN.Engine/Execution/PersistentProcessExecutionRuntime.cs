@@ -1548,6 +1548,7 @@ public sealed partial class PersistentProcessExecutionRuntime(
 			ProcessInstanceId = instance.Id,
 			DefinitionId = deployed.Id,
 			DefinitionVersion = deployed.Version,
+			ApplicationReleaseId = instance.ApplicationReleaseId,
 			ActivityId = node.Id,
 			ActivityExecutionId = token.ActivityExecutionId ?? throw new InvalidOperationException("external_task_activity_identity_missing"),
 			WaitTokenId = token.Id,

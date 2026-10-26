@@ -52,6 +52,7 @@ public class BpmnDbContext : DbContext
     public DbSet<ExternalTaskJob> ExternalTaskJobs => Set<ExternalTaskJob>();
     public DbSet<ExternalTaskAttempt> ExternalTaskAttempts => Set<ExternalTaskAttempt>();
     public DbSet<ExternalTaskContinuation> ExternalTaskContinuations => Set<ExternalTaskContinuation>();
+    public DbSet<ExternalTaskEffectReceipt> ExternalTaskEffectReceipts => Set<ExternalTaskEffectReceipt>();
     public DbSet<UserTask> Tasks => Set<UserTask>();
     public DbSet<HistoryEvent> HistoryEvents => Set<HistoryEvent>();
     public DbSet<Incident> Incidents => Set<Incident>();

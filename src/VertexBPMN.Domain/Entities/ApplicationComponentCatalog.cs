@@ -21,6 +21,7 @@ public static class ApplicationComponentCatalog
                 { throw new ApplicationValidationException("Translations must be strings."); }
             }
         }
+        ApplicationEndpointValidator.Validate(content);
         if (!document.RootElement.TryGetProperty("pages", out var pages)) { return; }
         ApplicationReferenceGraph.Read(pages).Validate();
         var routes = new HashSet<string>(StringComparer.Ordinal);

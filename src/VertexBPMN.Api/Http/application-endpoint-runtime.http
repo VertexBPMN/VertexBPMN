@@ -1,0 +1,27 @@
+# LC09B-S2: GET-only, releasegebundene Datenantwort.
+# Voraussetzungen: App mit endpoints/search/{search}, Aktion data-source-read -> invoices,
+# dataSources: {key:"invoices",bindingVersion:2,query:"personal-task-inbox"} veröffentlichen.
+# Input: object/properties/search:string maxLength:32, required:[search].
+# Output: {items:[{id:string,name:string}]}; nur sichtbare eigene Inbox-Daten.
+# Authentifizierung: konfigurierte ReadOnly-Testidentität mit tenant_id, keine Tokens hier.
+# baseUrl und appKey aus persönlicher HTTP-Umgebung; keine Live-Adresse voreingestellt.
+
+###
+# @name ReadPublishedEndpoint
+# 200: schema-geprüfte, durch "Invoice" gefilterte persistente Inbox-Datensätze.
+GET {{baseUrl}}/api/apps/{{appKey}}/endpoints/search/Invoice
+
+###
+# @name InvalidParameter
+# 400 endpoint_input_invalid; kein Datenquellenzugriff.
+GET {{baseUrl}}/api/apps/{{appKey}}/endpoints/search/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+###
+# @name ForeignRoute
+# 404: nicht in der ausgewählten Release-Revision definiert.
+GET {{baseUrl}}/api/apps/{{appKey}}/endpoints/arbitraryQuery/Invoice
+
+###
+# @name WrongMethod
+# 405: POST ist in S2 kein Runtimevertrag.
+POST {{baseUrl}}/api/apps/{{appKey}}/endpoints/search/Invoice

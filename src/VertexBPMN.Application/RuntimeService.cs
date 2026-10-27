@@ -64,6 +64,19 @@ public class RuntimeService : IRuntimeService
 		return instance;
 	}
 
+	public async ValueTask<ProcessInstance> StartProcessByIdAsync(Guid processDefinitionId, IDictionary<string, object>? variables = null, string? businessKey = null, string? tenantId = null, string? idempotencyKey = null, CancellationToken cancellationToken = default)
+	{
+		var def = await _defRepo.GetByIdAsync(processDefinitionId, cancellationToken);
+		if (def == null)
+		{
+			throw new InvalidOperationException($"Process definition with id '{processDefinitionId}' not found.");
+		}
+
+		var instance = await _executionRuntime.StartAsync(
+			def, variables, businessKey, tenantId, idempotencyKey, cancellationToken);
+		return instance;
+	}
+
 	public ValueTask<ProcessInstance?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
 		=> _repo.GetByIdAsync(id, cancellationToken);
 

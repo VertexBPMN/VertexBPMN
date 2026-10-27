@@ -71,6 +71,11 @@ public class JobExecutorService : BackgroundService
 		try
 		{
 			using var scope = _serviceProvider.CreateScope();
+			var endpointReconciler = scope.ServiceProvider.GetService<IApplicationEndpointReconciler>();
+			if (endpointReconciler is not null)
+			{
+				await endpointReconciler.ReconcileAcceptedAsync(stoppingToken);
+			}
 			var jobRepo = scope.ServiceProvider.GetRequiredService<IJobRepository>();
 			var eventSink = scope.ServiceProvider.GetService<IProcessMiningEventSink>();
 

@@ -121,6 +121,7 @@ public static class InfrastructureModule
     {
         services.AddScoped<IApplicationDefinitionService, PersistentApplicationDefinitionService>();
         services.AddScoped<IApplicationReleaseService, PersistentApplicationReleaseService>();
+        services.AddScoped<IApplicationEndpointReconciler, PersistentApplicationEndpointReconciler>();
     }
 
     private static void RegisterExternalTaskServices(

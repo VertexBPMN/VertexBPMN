@@ -59,6 +59,34 @@ public class InMemoryRuntimeService : IRuntimeService
 		return instance;
 	}
 
+	public async ValueTask<ProcessInstance> StartProcessByIdAsync(Guid processDefinitionId, IDictionary<string, object>? variables = null, string? businessKey = null, string? tenantId = null, string? idempotencyKey = null, CancellationToken cancellationToken = default)
+	{
+		var def = await _repositoryService.GetByIdAsync(processDefinitionId, cancellationToken);
+		if (def == null)
+		{
+			throw new InvalidOperationException($"Process definition with id '{processDefinitionId}' not found.");
+		}
+
+		var instance = new ProcessInstance
+		{
+			Id = Guid.NewGuid(),
+			ProcessDefinitionId = def.Id,
+			BusinessKey = businessKey,
+			TenantId = tenantId,
+			StartedAt = DateTime.UtcNow
+		};
+		_instances[instance.Id] = instance;
+		await _eventSink.EmitAsync(new ProcessMiningEvent
+		{
+			EventType = "ProcessStarted",
+			ProcessInstanceId = instance.Id.ToString(),
+			TenantId = tenantId,
+			Timestamp = DateTimeOffset.UtcNow,
+			PayloadJson = variables != null ? System.Text.Json.JsonSerializer.Serialize(variables) : null
+		}, cancellationToken);
+		return instance;
+	}
+
 	public ValueTask<ProcessInstance?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
 		=> ValueTask.FromResult(_instances.TryGetValue(id, out var inst) ? inst : null);
 

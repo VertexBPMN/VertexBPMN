@@ -50,6 +50,56 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                     b.ToTable("ApplicationDefinitions");
                 });
 
+            modelBuilder.Entity("VertexBPMN.Domain.Entities.ApplicationEndpointOperation", b =>
+                {
+                    b.Property<string>("ApplicationDefinitionId").HasColumnType("TEXT");
+                    b.Property<string>("ApplicationRevisionId").HasColumnType("TEXT");
+                    b.Property<string>("ApplicationReleaseId").HasColumnType("TEXT");
+                    b.Property<string>("BoundProcessDefinitionId").HasColumnType("TEXT");
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ApplicationKey")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("CreatedAtTicks")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("EndpointKey")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OperationId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProcessInstanceId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ResultJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("UpdatedAtTicks")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ApplicationEndpointOperations");
+                });
+
             modelBuilder.Entity("VertexBPMN.Domain.Entities.ApplicationReleaseCandidateRecord", b =>
                 {
                     b.Property<string>("Id")

@@ -80,6 +80,7 @@ public class BpmnDbContext : DbContext
     public DbSet<ApplicationReleaseCandidateRecord> ApplicationReleaseCandidates => Set<ApplicationReleaseCandidateRecord>();
     public DbSet<ApplicationReleaseRecord> ApplicationReleases => Set<ApplicationReleaseRecord>();
     public DbSet<ApplicationRevisionRecord> ApplicationRevisions => Set<ApplicationRevisionRecord>();
+    public DbSet<ApplicationEndpointOperation> ApplicationEndpointOperations => Set<ApplicationEndpointOperation>();
     public DbSet<FormDefinitionRecord> FormDefinitions => Set<FormDefinitionRecord>();
     public DbSet<FormDefinitionRevisionRecord> FormDefinitionRevisions => Set<FormDefinitionRevisionRecord>();
     public DbSet<CaseDefinitionRecord> CaseDefinitions => Set<CaseDefinitionRecord>();

@@ -496,6 +496,72 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                     b.ToTable("EngineDeployments");
                 });
 
+            modelBuilder.Entity("VertexBPMN.Domain.Entities.EventStreamDelivery", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("DefinitionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("RetainedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("SourceEventId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("SubscriptionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SubscriptionId", "SourceEventId")
+                        .IsUnique();
+
+                    b.HasIndex("SubscriptionId", "TenantId");
+
+                    b.ToTable("EventStreamDeliveries");
+                });
+
+            modelBuilder.Entity("VertexBPMN.Domain.Entities.EventStreamSubscription", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("ExpiredThrough")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("EventStreamSubscriptions");
+                });
+
             modelBuilder.Entity("VertexBPMN.Domain.Entities.EventSubscription", b =>
                 {
                     b.Property<Guid>("Id")
@@ -763,11 +829,6 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                         .IsUnique();
 
                     b.HasIndex("JobId");
-
-                    b.HasOne("VertexBPMN.Domain.Entities.ExternalTaskJob", null)
-                        .WithMany()
-                        .HasForeignKey("JobId")
-                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.ToTable("ExternalTaskEffectReceipts", null, t =>
                         {
@@ -2441,6 +2502,16 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("VertexBPMN.Domain.Entities.EventStreamDelivery", b =>
+                {
+                    b.HasOne("VertexBPMN.Domain.Entities.EventStreamSubscription", null)
+                        .WithMany()
+                        .HasForeignKey("SubscriptionId", "TenantId")
+                        .HasPrincipalKey("Id", "TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("VertexBPMN.Domain.Entities.EventSubscription", b =>
                 {
                     b.HasOne("VertexBPMN.Domain.Entities.ExecutionToken", null)
@@ -2475,6 +2546,15 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                 });
 
             modelBuilder.Entity("VertexBPMN.Domain.Entities.ExternalTaskContinuation", b =>
+                {
+                    b.HasOne("VertexBPMN.Domain.Entities.ExternalTaskJob", null)
+                        .WithMany()
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("VertexBPMN.Domain.Entities.ExternalTaskEffectReceipt", b =>
                 {
                     b.HasOne("VertexBPMN.Domain.Entities.ExternalTaskJob", null)
                         .WithMany()

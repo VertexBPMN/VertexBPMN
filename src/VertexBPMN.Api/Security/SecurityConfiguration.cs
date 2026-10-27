@@ -146,6 +146,9 @@ internal static class SecurityConfiguration
 			options.AddPolicy("ProcessManager", policy => policy.RequireClaim(ClaimTypes.Role, "Admin", "ProcessManager"));
 			options.AddPolicy("ReadOnly", policy => policy.RequireClaim(ClaimTypes.Role, "Admin", "ProcessManager", "ReadOnly"));
 			AddTenantReadOnlyPolicy(options);
+			options.AddPolicy("TenantSubscriptionManager", policy => policy.RequireAuthenticatedUser()
+			    .RequireClaim(ClaimTypes.Role, "Admin", "ProcessManager")
+			    .RequireAssertion(context => context.User.IsInRole("Admin") || !string.IsNullOrWhiteSpace(context.User.FindFirstValue("tenant_id"))));
 			options.AddPolicy("ProcessViewer", policy => policy.RequireClaim(ClaimTypes.Role, "Admin", "ProcessManager", "ReadOnly"));
 			options.AddPolicy("ApiKeyRequired", policy => policy.RequireAuthenticatedUser().AddAuthenticationSchemes("ApiKey"));
 			options.AddPolicy("ExternalTaskWorker", policy => policy.AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme).RequireAuthenticatedUser().RequireRole("ExternalTaskWorker").RequireClaim(VertexOidcClaims.SubjectClaimType).RequireClaim(VertexOidcClaims.TenantClaimType).RequireClaim(VertexOidcClaims.ExternalTaskTopicClaimType));

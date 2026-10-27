@@ -59,6 +59,8 @@ public class BpmnDbContext : DbContext
     public DbSet<EventSubscription> EventSubscriptions => Set<EventSubscription>();
     public DbSet<RuntimeOutboxMessage> RuntimeOutbox => Set<RuntimeOutboxMessage>();
     public DbSet<RuntimeInboxMessage> RuntimeInbox => Set<RuntimeInboxMessage>();
+    public DbSet<EventStreamSubscription> EventStreamSubscriptions => Set<EventStreamSubscription>();
+    public DbSet<EventStreamDelivery> EventStreamDeliveries => Set<EventStreamDelivery>();
     public DbSet<WorkerRegistration> WorkerRegistrations => Set<WorkerRegistration>();
     public DbSet<MultiInstanceExecution> MultiInstanceExecutions => Set<MultiInstanceExecution>();
     public DbSet<EngineDeployment> EngineDeployments => Set<EngineDeployment>();
@@ -104,6 +106,7 @@ public class BpmnDbContext : DbContext
         ConfigureIncident(modelBuilder);
         ConfigureEventSubscriptions(modelBuilder);
         ConfigureRuntimeMessaging(modelBuilder);
+        EventStreamModel.Configure(modelBuilder);
         ConfigureWorkerRegistrations(modelBuilder);
         ConfigureMultiInstanceExecution(modelBuilder);
         ConfigureUser(modelBuilder);

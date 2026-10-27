@@ -65,9 +65,7 @@ public static class InfrastructureModule
         services.AddScoped<ISimulationScenarioService, SimulationScenarioService>();
         services.AddScoped<IMessageDispatcher, PersistentMessageDispatcher>();
         services.AddScoped<PersistentProcessMiningEventSink>();
-        services.AddSingleton<RuntimeOutboxAnalyticsProjectionService>();
-        services.AddHostedService(serviceProvider =>
-            serviceProvider.GetRequiredService<RuntimeOutboxAnalyticsProjectionService>());
+        RegisterEventProjections(services, configuration, mode);
         services.AddScoped<IRuntimeMetricsReader, RuntimeMetricsReader>();
         services.AddSingleton<RuntimeMetricsState>();
         if (mode != "Test" && configuration.GetValue("Operational:Metrics:Enabled", true))
@@ -100,6 +98,23 @@ public static class InfrastructureModule
         }
 
         return services;
+    }
+
+    private static void RegisterEventProjections(IServiceCollection services, IConfiguration configuration, string mode)
+    {
+        services.AddSingleton<RuntimeOutboxAnalyticsProjectionService>();
+        services.AddHostedService(serviceProvider =>
+            serviceProvider.GetRequiredService<RuntimeOutboxAnalyticsProjectionService>());
+        if (!configuration.GetValue("Runtime:EventSubscriptions:Enabled", false))
+        {
+            return;
+        }
+        services.AddSingleton<RuntimeEventSubscriptionProjectionService>();
+        if (mode != "Test")
+        {
+            services.AddHostedService(serviceProvider =>
+                serviceProvider.GetRequiredService<RuntimeEventSubscriptionProjectionService>());
+        }
     }
 
     private static void RegisterApplicationServices(IServiceCollection services)

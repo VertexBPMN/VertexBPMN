@@ -71,6 +71,9 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("IdempotencyKey")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ErrorMessage")
                         .HasColumnType("TEXT");
 
@@ -96,6 +99,9 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ApplicationKey", "EndpointKey", "IdempotencyKey")
+                        .IsUnique();
 
                     b.ToTable("ApplicationEndpointOperations");
                 });

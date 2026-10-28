@@ -127,6 +127,8 @@ public class BpmnDbContext : DbContext
         ConfigureApplicationReleases(modelBuilder);
         modelBuilder.Entity<ApplicationRevisionRecord>().HasOne<ApplicationDefinitionRecord>().WithMany().HasForeignKey(x => x.ApplicationDefinitionId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<ApplicationRevisionRecord>().HasIndex(x => new { x.ApplicationDefinitionId, x.Version }).IsUnique();
+        modelBuilder.Entity<ApplicationEndpointOperation>()
+            .HasIndex(x => new { x.TenantId, x.ApplicationKey, x.EndpointKey, x.IdempotencyKey }).IsUnique();
         ConfigureFormDefinitions(modelBuilder);
         ConfigureCaseDefinitions(modelBuilder);
 

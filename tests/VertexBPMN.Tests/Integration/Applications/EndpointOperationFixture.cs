@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Tests.Infrastructure;
 using VertexBPMN.Tests.Unit.Infrastructure;
+using Xunit;
 
 namespace VertexBPMN.Tests.Integration.Applications;
 
@@ -11,7 +12,7 @@ namespace VertexBPMN.Tests.Integration.Applications;
 // principal is xUnit contract evidence (X-Test-User/X-Test-Tenant), not OIDC.
 internal sealed class EndpointOperationFixture : IAsyncDisposable
 {
-    private readonly EndpointCheckpointStore _store = new("/home/azureuser/.hermes/cache/scratch/lc09b-ms2a");
+    private readonly EndpointCheckpointStore _store = new("/home/azureuser/.hermes/cache/scratch/lc09b-ms2b");
     internal VertexBPMN.Infrastructure.Persistence.BpmnDbContext OpenDb() => _store.Open();
     internal IServiceProvider Services => _factory!.Services;
     private CustomWebApplicationFactory? _factory;
@@ -76,6 +77,33 @@ internal sealed class EndpointOperationFixture : IAsyncDisposable
         await using var db = _store.Open();
         return await db.ApplicationEndpointOperations.AsNoTracking()
             .SingleOrDefaultAsync(x => x.OperationId == operationId, ct);
+    }
+
+    // Activates a new release whose "start" endpoint carries `permission` (or, when
+    // includeEndpoint is false, has no "start" endpoint at all) on a fresh process definition.
+    internal async Task SwitchStartEndpointPermissionAsync(string permission, bool includeEndpoint, CancellationToken ct)
+    {
+        var target = Guid.NewGuid();
+        await using var db = _store.Open();
+        var priorDefinition = await db.ProcessDefinitions.SingleAsync(x => x.Id == ProcessId, ct);
+        var newKey = ProcessKey + "-perm" + permission;
+        db.ProcessDefinitions.Add(new ProcessDefinition
+        {
+            Id = target, Key = newKey, Name = ProcessKey, Version = 2,
+            TenantId = "tenant-a", DeploymentId = priorDefinition.DeploymentId,
+            BpmnXml = priorDefinition.BpmnXml
+        });
+        await db.SaveChangesAsync(ct);
+        var content = EndpointOperationContent.Json(newKey, target.ToString(), permission, includeEndpoint);
+        var applications = VertexBPMN.Tests.Unit.Infrastructure.EndpointCheckpointStore.Service(db);
+        Assert.True(await applications.UpdateAsync("tenant-a", Id,
+            new(Key, Key, 1, content), ct));
+        var releases = new VertexBPMN.Infrastructure.Persistence.Services.PersistentApplicationReleaseService(db);
+        var operation = Guid.NewGuid().ToString("N");
+        await releases.PrepareAsync(operation, "tenant-a", Id, 2,
+            ReleaseManifest.Serialize(new ReleaseManifest
+                { Key = Key, Revision = 2, Hash = ReleaseManifest.ComputeHash(content) }), ct);
+        await releases.ActivateAsync(operation, "tenant-a", Id, ct);
     }
 
     public async ValueTask DisposeAsync()

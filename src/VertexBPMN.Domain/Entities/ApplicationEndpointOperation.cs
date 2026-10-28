@@ -11,6 +11,7 @@ public sealed class ApplicationEndpointOperation
     public string TenantId { get; set; } = string.Empty;
     public string ApplicationKey { get; set; } = string.Empty;
     public string EndpointKey { get; set; } = string.Empty;
+    public string? IdempotencyKey { get; set; }
     public string? ApplicationDefinitionId { get; set; }
     public string? ApplicationRevisionId { get; set; }
     public string? ApplicationReleaseId { get; set; }

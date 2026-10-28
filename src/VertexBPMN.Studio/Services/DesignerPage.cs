@@ -6,5 +6,6 @@ internal sealed class DesignerPage(string id, string route, string title, List<D
     public string Id { get; } = id;
     public string Route { get; } = route;
     public string Title { get; } = title;
+    public System.Text.Json.Nodes.JsonObject Metadata { get; init; } = new();
     public List<DesignerComponent> Components { get; } = components;
 }

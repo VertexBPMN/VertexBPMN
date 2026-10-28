@@ -16,5 +16,6 @@ internal sealed class DesignerComponent(string id, string type, string version, 
     public List<DesignerComponent> Children { get; } = children;
     public List<StudioFieldMappingItem> Mappings { get; } = mappings ?? [];
     /// <summary>The explicit action authored on this component (LC07 S3), or <c>null</c> when it has none.</summary>
+    public System.Text.Json.Nodes.JsonObject Metadata { get; init; } = new();
     public DesignerAction? Action { get; set; }
 }

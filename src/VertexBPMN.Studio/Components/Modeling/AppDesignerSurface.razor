@@ -33,6 +33,41 @@
         <MudAlert Severity="Severity.Error">@_error</MudAlert>
     }
 
+    <MudPaper Class="pa-4" Elevation="0">
+        <MudText Typo="Typo.h6">Application endpoints</MudText>
+        <MudText Typo="Typo.caption">Only existing application actions; no arbitrary URLs, SQL or proxy. GET reads synchronously; POST starts a released process with 202.</MudText>
+        <MudTextField T="string" Label="Endpoint key" @bind-Value="_endpointKey" Immediate="true" data-testid="endpoint-key" />
+        <MudSelect T="string" Label="Method" @bind-Value="_endpointMethod" data-testid="endpoint-method">
+            <MudSelectItem T="string" Value='@("GET")'>GET</MudSelectItem>
+            <MudSelectItem T="string" Value='@("POST")'>POST</MudSelectItem>
+        </MudSelect>
+        <MudTextField T="string" Label="Relative route" @bind-Value="_endpointRoute" Immediate="true" data-testid="endpoint-route" />
+        <MudTextField T="string" Label="Path parameters (ordered, comma)" @bind-Value="_endpointParameters" Immediate="true" data-testid="endpoint-parameters" />
+        <MudSelect T="string" Label="Existing action" @bind-Value="_endpointAction" data-testid="endpoint-action">
+            @foreach (var action in EndpointActions().Keys)
+            { <MudSelectItem T="string" Value="@action">@action</MudSelectItem> }
+        </MudSelect>
+        <MudSelect T="string" Label="Permission" @bind-Value="_endpointPermission" data-testid="endpoint-permission">
+            @foreach (var permission in new[] { "ReadOnly", "ProcessManager", "AdminOnly" })
+            { <MudSelectItem T="string" Value="@permission">@permission</MudSelectItem> }
+        </MudSelect>
+        <MudTextField T="string" Label="Input schema" @bind-Value="_endpointInput" Immediate="true" Lines="3" data-testid="endpoint-input" />
+        <MudTextField T="string" Label="Output schema" @bind-Value="_endpointOutput" Immediate="true" Lines="3" data-testid="endpoint-output" />
+        <MudNumericField T="int" Label="Timeout seconds" @bind-Value="_endpointTimeout" Immediate="true" data-testid="endpoint-timeout" />
+        <MudNumericField T="int" Label="Max request bytes" @bind-Value="_endpointRequestBytes" Immediate="true" data-testid="endpoint-request-bytes" />
+        <MudNumericField T="int" Label="Max response bytes" @bind-Value="_endpointResponseBytes" Immediate="true" data-testid="endpoint-response-bytes" />
+
+        <MudButton OnClick="ApplyEndpoint" Disabled="@(_draft is null)" data-testid="endpoint-apply">Apply endpoint</MudButton>
+        @if (_endpointError is not null)
+        { <MudAlert Severity="Severity.Error" data-testid="endpoint-error">@_endpointError</MudAlert> }
+        @foreach (var endpoint in Endpoints)
+        {
+            <MudStack Row="true" data-testid="endpoint-node">
+                <MudText>@endpoint.Method @endpoint.Route · @endpoint.Permission</MudText>
+                <MudButton OnClick="@(() => EditEndpoint(endpoint))" data-testid="endpoint-edit">Edit</MudButton>
+            </MudStack>
+        }
+    </MudPaper>
     <MudGrid>
         <MudItem xs="12" md="4">
             <MudPaper Class="pa-4 mb-4" Elevation="0">

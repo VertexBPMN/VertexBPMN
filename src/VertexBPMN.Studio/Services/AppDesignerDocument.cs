@@ -24,6 +24,7 @@ namespace VertexBPMN.Studio.Services;
 internal sealed class AppDesignerDocument
 {
     public const string AllowedVersion = "1.0.0";
+    private static readonly JsonSerializerOptions EndpointJsonOptions = new(JsonSerializerDefaults.Web);
 
     /// <summary>Editable scalar properties per allowlist component type (mirrors the LC06 renderer props).</summary>
     private static readonly Dictionary<string, string[]> AllowedProperties =
@@ -42,6 +43,7 @@ internal sealed class AppDesignerDocument
     private readonly List<DesignerDataSource> _dataSources;
     private readonly List<string> _referencedProcessKeys;
     private readonly HashSet<string> _knownProcessKeys;
+    private JsonObject _rootMetadata = new() { ["localizations"] = new JsonObject() };
 
     // LC07 S4: a bounded command stack over the draft. Every authoring mutation snapshots
     // the prior model state onto the undo stack; undo/redo swap states through the paired
@@ -90,7 +92,7 @@ internal sealed class AppDesignerDocument
 
     // ---------------------------------------------------------------- Undo / Redo (LC07 S4)
     /// <summary>An immutable full snapshot of the draft's authorable state (deep-cloned).</summary>
-    private sealed record DocumentState(List<DesignerPage> Pages, List<DesignerDataSource> DataSources, List<string> ReferencedProcessKeys);
+    private sealed record DocumentState(List<DesignerPage> Pages, List<DesignerDataSource> DataSources, List<string> ReferencedProcessKeys, JsonObject RootMetadata);
 
     public bool CanUndo => _undoStack.Count > 0 && !_inHistoryRestore;
     public bool CanRedo => _redoStack.Count > 0 && !_inHistoryRestore;
@@ -140,8 +142,9 @@ internal sealed class AppDesignerDocument
 
     private DocumentState CaptureState() => new(
         _pages.Select(ClonePage).ToList(),
-        _dataSources.Select(source => new DesignerDataSource(source.Key, source.BindingVersion, source.Fields.ToList())).ToList(),
-        _referencedProcessKeys.ToList());
+        _dataSources.Select(source => new DesignerDataSource(source.Key, source.BindingVersion, source.Fields.ToList())
+            { Metadata = (JsonObject)source.Metadata.DeepClone() }).ToList(),
+        _referencedProcessKeys.ToList(), (JsonObject)_rootMetadata.DeepClone());
 
     private void Restore(DocumentState state)
     {
@@ -154,6 +157,7 @@ internal sealed class AppDesignerDocument
             _dataSources.AddRange(state.DataSources);
             _referencedProcessKeys.Clear();
             _referencedProcessKeys.AddRange(state.ReferencedProcessKeys);
+            _rootMetadata = (JsonObject)state.RootMetadata.DeepClone();
         }
         finally
         {
@@ -162,14 +166,16 @@ internal sealed class AppDesignerDocument
     }
 
     private static DesignerPage ClonePage(DesignerPage page)
-        => new(page.Id, page.Route, page.Title, page.Components.Select(CloneComponent).ToList());
+        => new(page.Id, page.Route, page.Title, page.Components.Select(CloneComponent).ToList())
+            { Metadata = (JsonObject)page.Metadata.DeepClone() };
 
     private static DesignerComponent CloneComponent(DesignerComponent component)
     {
         var clone = new DesignerComponent(
             component.Id, component.Type, component.Version, component.Label, component.DataSource,
             component.Children.Select(CloneComponent).ToList(),
-            component.Mappings.Select(mapping => new StudioFieldMappingItem(mapping.SourcePath, mapping.TargetKey, mapping.Transform, mapping.Required)).ToList());
+            component.Mappings.Select(mapping => new StudioFieldMappingItem(mapping.SourcePath, mapping.TargetKey, mapping.Transform, mapping.Required)).ToList())
+            { Metadata = (JsonObject)component.Metadata.DeepClone() };
         if (component.Action is not null)
         {
             clone.Action = new DesignerAction(
@@ -205,7 +211,7 @@ internal sealed class AppDesignerDocument
                     GetString(page, "id") ?? Guid.NewGuid().ToString("n"),
                     GetString(page, "route") ?? "/page",
                     GetString(page, "title") ?? GetString(page, "id") ?? "Page",
-                    components));
+                    components) { Metadata = JsonNode.Parse(page.GetRawText())!.AsObject() });
             }
         }
 
@@ -232,10 +238,17 @@ internal sealed class AppDesignerDocument
                         }
                     }
                 }
-                dataSources.Add(new DesignerDataSource(key, bindingVersion, fields));
+                dataSources.Add(new DesignerDataSource(key, bindingVersion, fields)
+                    { Metadata = JsonNode.Parse(source.GetRawText())!.AsObject() });
             }
         }
-        return new AppDesignerDocument(pages, dataSources);
+        var result = new AppDesignerDocument(pages, dataSources)
+        {
+            _rootMetadata = JsonNode.Parse(contentJson)!.AsObject()
+        };
+        result._rootMetadata.Remove("pages");
+        result._rootMetadata.Remove("dataSources");
+        return result;
     }
 
     private static DesignerComponent ParseComponent(JsonElement component)
@@ -265,13 +278,13 @@ internal sealed class AppDesignerDocument
             }
         }
         return new DesignerComponent(
-            Guid.NewGuid().ToString("n"),
+            GetString(component, "id") ?? Guid.NewGuid().ToString("n"),
             GetString(component, "type") ?? "text",
             GetString(component, "version") ?? AllowedVersion,
             GetString(component, "label"),
             GetString(component, "dataSource"),
             children,
-            mappings) { Action = ParseAction(component) };
+            mappings) { Action = ParseAction(component), Metadata = JsonNode.Parse(component.GetRawText())!.AsObject() };
     }
 
     private static DesignerAction? ParseAction(JsonElement component)
@@ -712,13 +725,25 @@ internal sealed class AppDesignerDocument
         action.Inputs.RemoveAt(index);
     }
 
+    public void UpsertEndpoint(ApplicationEndpointDefinition endpoint)
+    {
+        var endpoints = ApplicationEndpointMetadata.Read(ToJson()).ToList();
+        endpoints.RemoveAll(candidate => candidate.Key == endpoint.Key);
+        endpoints.Add(endpoint);
+        if (endpoint.Permission is not ("ReadOnly" or "ProcessManager" or "AdminOnly")
+            || endpoint.Limits.TimeoutSeconds <= 0 || endpoint.Limits.MaxRequestBytes <= 0 || endpoint.Limits.MaxResponseBytes <= 0)
+        { throw new VertexBPMN.Domain.Exceptions.ApplicationValidationException("Endpoint permission and positive limits are required."); }
+        var candidate = JsonNode.Parse(ToJson())!.AsObject();
+        candidate["endpoints"] = JsonSerializer.SerializeToNode(endpoints, EndpointJsonOptions);
+        ApplicationComponentCatalog.Validate(candidate.ToJsonString());
+        RecordHistory();
+        _rootMetadata["endpoints"] = JsonSerializer.SerializeToNode(endpoints, EndpointJsonOptions);
+    }
+
     // ---------------------------------------------------------------- Serialization
     public string ToJson()
     {
-        var root = new JsonObject
-        {
-            ["localizations"] = new JsonObject()
-        };
+        var root = (JsonObject)_rootMetadata.DeepClone();
         if (_referencedProcessKeys.Count > 0)
         {
             var references = new JsonArray();
@@ -733,11 +758,10 @@ internal sealed class AppDesignerDocument
             var dataSources = new JsonArray();
             foreach (var source in _dataSources)
             {
-                var sourceObject = new JsonObject
-                {
-                    ["key"] = source.Key,
-                    ["bindingVersion"] = source.BindingVersion
-                };
+                var sourceObject = (JsonObject)source.Metadata.DeepClone();
+                sourceObject["key"] = source.Key;
+                sourceObject["bindingVersion"] = source.BindingVersion;
+                sourceObject.Remove("fields");
                 if (source.Fields.Count > 0)
                 {
                     var fields = new JsonArray();
@@ -754,11 +778,10 @@ internal sealed class AppDesignerDocument
         var pages = new JsonArray();
         foreach (var page in _pages)
         {
-            var pageObject = new JsonObject
-            {
-                ["id"] = page.Id,
-                ["route"] = page.Route
-            };
+            var pageObject = (JsonObject)page.Metadata.DeepClone();
+            pageObject["id"] = page.Id;
+            pageObject["route"] = page.Route;
+            pageObject["title"] = page.Title;
             var components = new JsonArray();
             foreach (var component in page.Components)
             {
@@ -773,11 +796,11 @@ internal sealed class AppDesignerDocument
 
     private static JsonObject SerializeComponent(DesignerComponent component)
     {
-        var node = new JsonObject
-        {
-            ["type"] = component.Type,
-            ["version"] = component.Version
-        };
+        var node = (JsonObject)component.Metadata.DeepClone();
+        var actionMetadata = node["action"]?.DeepClone() as JsonObject;
+        foreach (var property in new[] { "label", "dataSource", "mappings", "action", "children" }) { node.Remove(property); }
+        node["type"] = component.Type;
+        node["version"] = component.Version;
         if (!string.IsNullOrWhiteSpace(component.Label)) { node["label"] = component.Label; }
         if (!string.IsNullOrWhiteSpace(component.DataSource)) { node["dataSource"] = component.DataSource; }
         if (component.Mappings.Count > 0)
@@ -798,7 +821,14 @@ internal sealed class AppDesignerDocument
         }
         if (component.Action is not null)
         {
-            node["action"] = SerializeAction(component.Action);
+            var serializedAction = SerializeAction(component.Action);
+            if (actionMetadata is not null)
+            {
+                foreach (var property in new[] { "type", "version", "inputs", "dataSource", "processDefinitionId", "taskKey", "pageId", "operationId" }) { actionMetadata.Remove(property); }
+                foreach (var property in serializedAction) { actionMetadata[property.Key] = property.Value?.DeepClone(); }
+                serializedAction = actionMetadata;
+            }
+            node["action"] = serializedAction;
         }
         if (component.Children.Count > 0)
         {

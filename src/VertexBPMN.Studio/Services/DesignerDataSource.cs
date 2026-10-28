@@ -8,4 +8,7 @@ namespace VertexBPMN.Studio.Services;
 /// against. The released readers only consume <c>key</c>/<c>bindingVersion</c>; the fields
 /// are authored schema metadata that round-trips through the draft.
 /// </summary>
-internal sealed record DesignerDataSource(string Key, int BindingVersion, IReadOnlyList<string> Fields);
+internal sealed record DesignerDataSource(string Key, int BindingVersion, IReadOnlyList<string> Fields)
+{
+    public System.Text.Json.Nodes.JsonObject Metadata { get; init; } = new();
+}

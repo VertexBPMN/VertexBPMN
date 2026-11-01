@@ -52,10 +52,21 @@ public sealed class ApplicationEndpointController(BpmnDbContext db, IApplication
         { return NotFound(); }
         if (!EndpointJsonSchema.Matches(endpoint.InputSchema, parameters.Value))
         { return BadRequest(new { code = "endpoint_input_invalid" }); }
-        var result = await tasks.QueryInboxAsync(new TaskInboxQuery(tenant,
+        var inboxQuery = new TaskInboxQuery(tenant,
             User.FindFirstValue("sub") ?? User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.Identity?.Name ?? "",
             User.FindAll(ClaimTypes.Role).Select(x => x.Value).ToArray(),
-            Search: parameters.Value.GetProperty("search").GetString(), PageSize: 20), ct);
+            Search: parameters.Value.GetProperty("search").GetString(), PageSize: 20);
+        PagedTaskInbox result;
+        var timeoutSeconds = endpoint.Limits.TimeoutSeconds;
+        if (timeoutSeconds > 0)
+        {
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+            try { result = await tasks.QueryInboxAsync(inboxQuery, timeoutCts.Token); }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            { return StatusCode(StatusCodes.Status504GatewayTimeout, new { code = "endpoint_timeout" }); }
+        }
+        else { result = await tasks.QueryInboxAsync(inboxQuery, ct); }
         var response = System.Text.Json.JsonSerializer.SerializeToElement(new
             { items = result.Items.Select(x => new { id = x.Id.ToString(), name = x.Name }).ToArray() });
         if (System.Text.Encoding.UTF8.GetByteCount(response.GetRawText()) > endpoint.Limits.MaxResponseBytes)
@@ -87,6 +98,9 @@ public sealed class ApplicationEndpointController(BpmnDbContext db, IApplication
         if (endpoint is null || endpoint.Method != "POST" || endpoint.Action.Type != "start-process"
             || !string.Equals(endpoint.Action.Target, release.BoundProcessDefinitionId, StringComparison.Ordinal))
         { return NotFound(); }
+        if (endpoint.Limits.MaxRequestBytes > 0 && Request.ContentLength is long bodyLength
+            && bodyLength > endpoint.Limits.MaxRequestBytes)
+        { return StatusCode(StatusCodes.Status413PayloadTooLarge, new { code = "endpoint_request_too_large" }); }
         if (endpoint.Permission is not ("ReadOnly" or "ProcessManager" or "AdminOnly")
             || !(await authorization.AuthorizeAsync(User, null, endpoint.Permission)).Succeeded) { return Forbid(); }
         if (!Guid.TryParse(release.BoundProcessDefinitionId, out _)) { return NotFound(); }

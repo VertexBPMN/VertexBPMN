@@ -13,8 +13,11 @@ internal sealed class EndpointRuntimeFixture : IAsyncDisposable
     internal HttpClient Http { get; private set; } = null!;
     internal string Key { get; } = "runtime-" + Guid.NewGuid().ToString("N");
     internal string Id { get; private set; } = "";
-    internal async Task OpenAsync(string content, bool publish = true)
+    internal string Content { get; private set; } = "";
+    internal async Task OpenAsync(string content, bool publish = true,
+        Action<Microsoft.Extensions.DependencyInjection.IServiceCollection>? configureServices = null)
     {
+        Content = content;
         var ct = TestContext.Current.CancellationToken;
         await using var db = _store.Open();
         await db.Database.MigrateAsync(ct);
@@ -27,7 +30,9 @@ internal sealed class EndpointRuntimeFixture : IAsyncDisposable
         db.Tasks.Add(new UserTask { Name = "Contract Beta", ActivityId = "approve", Type = "userTask",
             TenantId = "tenant-a", CandidateRole = "ReadOnly", ProcessInstanceId = instance.Id });
         await db.SaveChangesAsync(ct);
-        _factory = new CustomWebApplicationFactory().WithPersistentBpmnDatabase(db.Database.GetDbConnection().ConnectionString);
+        var factory = new CustomWebApplicationFactory().WithPersistentBpmnDatabase(db.Database.GetDbConnection().ConnectionString);
+        if (configureServices is not null) { factory = factory.WithTestServices(configureServices); }
+        _factory = factory;
         Http = _factory.CreateClient();
         using var created = await Http.PostAsJsonAsync("/api/applications",
             new { tenantId = "tenant-a", key = Key, name = Key, expectedVersion = 0, content }, ct);
@@ -50,7 +55,7 @@ internal sealed class EndpointRuntimeFixture : IAsyncDisposable
         await using var db = _store.Open();
         var releases = new VertexBPMN.Infrastructure.Persistence.Services.PersistentApplicationReleaseService(db);
         var manifest = ReleaseManifest.Serialize(new ReleaseManifest
-            { Key = Key, Revision = revision, Hash = ReleaseManifest.ComputeHash(EndpointRuntimeContent.Json) });
+            { Key = Key, Revision = revision, Hash = ReleaseManifest.ComputeHash(Content) });
         var operation = Guid.NewGuid().ToString("N");
         await releases.PrepareAsync(operation, "tenant-a", Id, revision, manifest, ct);
         await releases.ActivateAsync(operation, "tenant-a", Id, ct);

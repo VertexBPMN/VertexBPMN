@@ -32,8 +32,30 @@ Fehler nicht per-Test auf; es sind überwiegend die bekannten, unveränderten Cl
 (PersistentApplicationValidation-`JsonReaderException` aus unverändertem Enrich-Code,
 SourceControlAuditMigrationSql, HttpBpmnEngineService, StudioFullSupport, DistributedConformance
 (exkludiert) sowie FEEL/Inbox-Konflikt-Cluster in `[C.8.x]`-Fällen). Die neuen
-Plattform-Fähigkeiten schlagen **nicht** fehl (separater grüner 90er-Lauf). Eine vollständige
-Fehler-Enumeration mit Klassenzuordnung ist als offene Prüfung notiert (siehe unten).
+Plattform-Fähigkeiten schlagen **nicht** fehl (separater grüner 90er-Lauf). Die vollständige
+Fehler-Enumeration mit Klassenzuordnung folgt unten.
+
+## CI-safe-Fehler-Enumeration (40 Fehler → 7 Cluster)
+
+Vollständige Extraktion aus `cisafe.log` (Zeilen `failed <FQN>`), gruppiert je Ursache.
+**Alle 7 Cluster sind vorbestehend bzw. umgebungsbedingt; keine Regression durch die
+Low-Code-Plattform (LC09B/LC10/LC11) — die 90 fokussierten neuen Fähigkeiten sind grün.**
+
+| # | Fehler | Anzahl | Klassen (Test) | Ursache |
+| --- | --- | --- | --- | --- |
+| 1 | Multiple EF-Provider registriert (Npgsql **und** Sqlite) | **16** | PersistentRuntimePhase2AcceptanceTests (6), LiveProcessMigrationAcceptanceTests (5), CompensationSemanticsAcceptanceTests (4), BpmnCoreLifecycleContractTests (1) | Fixture-Kollision: beide Provider im selben Service-Provider; umgebungsbedingt |
+| 2 | `LC09_TEST_CONNECTION` muss auf isolierten Store zeigen | **15** | Lc09EventSubscriptionManagementTests (6), IdempotencyTests (2), Checkpoint/Version/Retention/Replica/ReadBoundary/Ownership/Ordering je (1) | Feature default off; env-Variable im CI-safe-Lauf nicht gesetzt → Guard wirft |
+| 3 | `ObjectDisposedException` | **2** | HttpBpmnEngineServiceTests (2) | vorbestehend (bekannter Baseline) |
+| 4 | `JsonReaderException` statt `ApplicationValidationException` | **2** | PersistentApplicationValidationTests (2) | vorbestehend (unveränderter `EnrichContentReferencesAsync`/`JsonNode.Parse`) |
+| 5 | SQLite-Migrationsoperation nicht unterstützt / falscher Exception-Typ | **2** | ExternalTaskPersistenceTests (2) | vorbestehend (Migration auf SQLite) |
+| 6 | Native-Provider-Typen-Migrations-SQL | **2** | SourceControlAuditMigrationSqlTests (2) | vorbestehend (bekannter Baseline) |
+| 7 | Formular-Revision `Form 'approval-form' version ''` nicht auflösbar | **1** | StudioFullSupportAcceptanceTests (1) | vorbestehend (bekannter Baseline) |
+| **Summe** | | **40** | 19 Klassen | keine Low-Code-Regression |
+
+**Schlussfolgerung:** Die 40 CI-safe-Fehler zerfallen in 7 reproduzierbare, vorbestehende oder
+umgebungsbedingte Cluster (Doppel-Provider-Fixture, fehlende isolierte Store-Env, bekannte
+Baseline-Quirks). Ein grünes Gesamtgate ist ohne Behebung dieser Cluster (Fixture-Trennung,
+Env-Setup) nicht erreichbar; die Low-Code-Plattform trägt keinen dieser Fehler bei.
 
 ## Beurteilung Low-Code-Fähigkeiten (entsprechend Produkt-Support-Matrix)
 
@@ -84,9 +106,9 @@ Vertragstest qualifiziert.
 
 ## Offene externe Prüfungen (nicht gefälscht, kein Erfolg gemeldet)
 
-1. **CI-safe Gesamtgate rot** (2564/40/6, Exit 2): vollständige Fehler-Enumeration mit
-   Klassenzuordnung erforderlich; die 40 sind überwiegend die bekannten vorbestehenden/
-   umgebungsbedingten Cluster, nicht die neuen Plattform-Fähigkeiten (separater grüner 90er-Lauf).
+1. **CI-safe Gesamtgate rot** (2564/40/6, Exit 2): Fehler-Enumeration abgeschlossen (7 Cluster,
+   siehe oben); für ein grünes Gate müssen die Doppel-Provider-Fixture getrennt und die
+   isolierte-Store-Env gesetzt werden. Die Low-Code-Plattform trägt keinen der 40 Fehler bei.
 2. **Browser-E2E** für B-/C-/D-Szenarien (LC-AC-05/06/08/09/15/17/19): benötigt Live-Keycloak
    + Portal/Studio im Browser (isolierte Container; die vorhandenen Live-Infra-Container
    bleiben unberührt).

@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Npgsql;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Infrastructure.Persistence;
@@ -27,17 +28,22 @@ namespace VertexBPMN.Tests.Integration.Api;
 ///   LC-AC-17:  Release-1-Operationen laufen nach Release-2-Aktivierung UND nach Rollback weiter
 ///              (Pointer wechselt neue Starts, bereits Gebundene laufen weiter).
 ///
-/// Store-Auswahl ist nicht über Test-Factory-Konfiguration zu erzwingen (Program/MigrationCoordinator
-/// liest die Verbindungsstrings zur Build-Zeit aus appsettings.Test.json = SQLite :memory:). Deshalb
-/// setzt die Collection-Fixture die Verbindungsstrings als PROZESS-Umgebungsvariablen (ConnectionStrings:*),
-/// die WebApplication.CreateBuilder standardmäßig und mit höherer Priorität als appsettings.json liest —
-/// damit registriert AddAllEngineDbContexts ALLE Kontexte auf demselben PostgreSQL-Store (ein Provider).
+/// Store-Auswahl: Die Collection-Fixture hält EINEN frischen PostgreSQL-Store und stellt seine
+/// Verbindungsstrings per LAZY DbContextOptions-Ersetzung (Lc10ReplicaFactory.WithConnectionString)
+/// für die zwei API-Replikate bereit — bewusst KEINE Prozess-Umgebungsvariablen, damit parallel
+/// laufende xUnit-Collections (z. B. IntegratedApi mit Sqlite) nicht durch ein global gekipptes
+/// DB-Provider-Routing brechen. Dadurch nutzen ALLE Kontexte in den Replikaten denselben
+/// PostgreSQL-Store (genau ein Provider).
 /// </summary>
 [Collection("Lc10PostgresReleaseAcceptance")]
 public sealed class Lc10ReleaseActivationAcceptanceTests
 {
     private const string Tenant = "vertexbpmn";
     private const string AdminDatabase = "vertexbpmn_bpmn";
+
+    private readonly Lc10PostgresSharedStore _store;
+
+    public Lc10ReleaseActivationAcceptanceTests(Lc10PostgresSharedStore store) => _store = store;
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
@@ -50,27 +56,17 @@ public sealed class Lc10ReleaseActivationAcceptanceTests
 
     /// <summary>
     /// Gemeinsamer PostgreSQL-Store der Collection: legt EINE Datenbank an, führt die echten
-    /// Bpmn-Migrationen (inkl. ApplicationReleaseActivation) aus und setzt die Store-Verbindungen
-    /// als Prozess-Umgebungsvariablen, damit die zwei API-Replikate denselben Store teilen.
+    /// Bpmn-Migrationen (inkl. ApplicationReleaseActivation) aus und stellt die Store-Verbindungen
+    /// per lazy DbContextOptions-Ersetzung bereit (Lc10ReplicaFactory.WithConnectionString),
+    /// damit die zwei API-Replikate denselben Store teilen.
     /// </summary>
 #pragma warning disable CA2100 // Create/Drop DATABASE names sind GUID-Ableitungen (kein Benutzereingabestrom)
-    internal sealed class Lc10PostgresSharedStore : IAsyncLifetime
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public xUnit collection fixture required for constructor injection into Lc10ReleaseActivationAcceptanceTests.")]
+    public sealed class Lc10PostgresSharedStore : IAsyncLifetime
     {
-        private const string EnvPrefix = "ConnectionStrings__";
-        private static readonly string[] EnvKeys =
-        [
-            "Bpmn", "BpmnDbContext",
-            "Tenants", "TenantDbContext",
-            "Simulation", "SimulationScenarioDbContext",
-            "ProcessMiningEvents",
-            "Decision", "DecisionDbContext",
-            "DependencyRegistry",
-        ];
-
         public string DatabaseName { get; } = "lc10_ac_" + Guid.NewGuid().ToString("n")[..10];
         public string ConnectionString { get; }
         private readonly string _adminConnectionString;
-        private readonly Dictionary<string, string?> _originalValues = new(StringComparer.Ordinal);
 
         public Lc10PostgresSharedStore()
         {
@@ -88,12 +84,10 @@ public sealed class Lc10ReleaseActivationAcceptanceTests
                 await cmd.ExecuteNonQueryAsync(Ct);
             }
 
-            foreach (var key in EnvKeys)
-            {
-                var envKey = EnvPrefix + key;
-                _originalValues[envKey] = Environment.GetEnvironmentVariable(envKey);
-                Environment.SetEnvironmentVariable(envKey, ConnectionString);
-            }
+            // Store-Verbindungen werden bewusst NICHT als Prozess-Umgebungsvariablen gesetzt
+            // (das würde in parallel laufende xUnit-Collections leaken und dort die EF-Provider-
+            // Auswahl kippen). Die API-Replikate erhalten die Verbindungen stattdessen per
+            // lazy DbContextOptions-Ersetzung (siehe Lc10ReplicaFactory / CreateTwoReplicasAsync).
 
             // Echte Migration der vollständigen Bpmn-Kette (inkl. 20261026052338_ApplicationReleaseActivation)
             // auf dem frischen PostgreSQL-Store; Hilfs-Stores ebenfalls auf demselben Store.
@@ -116,11 +110,6 @@ public sealed class Lc10ReleaseActivationAcceptanceTests
 
         public async ValueTask DisposeAsync()
         {
-            foreach (var (key, original) in _originalValues)
-            {
-                Environment.SetEnvironmentVariable(key, original);
-            }
-
             try
             {
                 await using var admin = new NpgsqlConnection(_adminConnectionString);
@@ -136,31 +125,70 @@ public sealed class Lc10ReleaseActivationAcceptanceTests
         }
     }
 
-    /// <summary>Ein echtes API-Replikat: Store-Verbindungen kommen aus den Prozess-Umgebungsvariablen (PostgreSQL).</summary>
+    /// <summary>Ein echtes API-Replikat: Store-Verbindungen werden per Host-Konfiguration injiziert (PostgreSQL).</summary>
     private sealed class Lc10ReplicaFactory : WebApplicationFactory<VertexBPMN.Api.Program>
     {
+        private string? _connectionString;
+
+        public Lc10ReplicaFactory WithConnectionString(string connectionString)
+        {
+            _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
+            return this;
+        }
+
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Test");
             builder.ConfigureAppConfiguration((ctx, cfg) =>
             {
                 var env = ctx.HostingEnvironment;
+                var inMemory = new Dictionary<string, string?>(StringComparer.Ordinal)
+                {
+                    ["OperationalMode"] = "Test",
+                    ["Database:ApplyMigrationsOnStartup"] = "false",
+                    ["ProcessEngine:Type"] = "Simple",
+                    ["Modules:Swagger"] = "false",
+                    ["PathBase"] = "/api",
+                };
                 cfg
                     .AddJsonFile("appsettings.json", optional: true)
                     .AddJsonFile($"appsettings.{env.EnvironmentName}.json", optional: true)
                     .AddJsonFile("appsettings.Test.json", optional: true)
                     .AddEnvironmentVariables()
-                    .AddInMemoryCollection(new Dictionary<string, string?>(StringComparer.Ordinal)
-                    {
-                        ["OperationalMode"] = "Test",
-                        ["Database:ApplyMigrationsOnStartup"] = "false",
-                        ["ProcessEngine:Type"] = "Simple",
-                        ["Modules:Swagger"] = "false",
-                        ["PathBase"] = "/api",
-                    });
+                    .AddInMemoryCollection(inMemory);
             });
             // Test-Authentifizierung + Policies (identisch zu CustomWebApplicationFactory).
             builder.ConfigureServices(ConfigureTestAuthentication);
+            // Ersetzt die DbContext-Options ALLER Engine-Kontexte auf den PostgreSQL-Store.
+            // Das passiert lazy beim Auflösen (nach Program.cs:AddAllEngineDbContexts), ist
+            // parallel-sicher und umgeht das eager Config-Lesen in Program.cs, das vor dem
+            // ConfigureAppConfiguration-Callback läuft -- ohne Prozess-Umgebungsvariablen.
+            builder.ConfigureServices(OverrideDbContextOptions);
+        }
+
+        private void OverrideDbContextOptions(IServiceCollection services)
+        {
+            if (string.IsNullOrEmpty(_connectionString))
+            {
+                return;
+            }
+
+            ReplaceOptions<BpmnDbContext>(services, _connectionString);
+            ReplaceOptions<TenantDbContext>(services, _connectionString);
+            ReplaceOptions<SimulationScenarioDbContext>(services, _connectionString);
+            ReplaceOptions<ProcessMiningEventDbContext>(services, _connectionString);
+            ReplaceOptions<DecisionDbContext>(services, _connectionString);
+            ReplaceOptions<DependencyRegistryDbContext>(services, _connectionString);
+        }
+
+        private static void ReplaceOptions<TContext>(IServiceCollection services, string connectionString)
+            where TContext : DbContext
+        {
+            services.RemoveAll<DbContextOptions<TContext>>();
+            services.RemoveAll<DbContextOptions>();
+            services.AddSingleton(new DbContextOptionsBuilder<TContext>()
+                .UseVertexNpgsql(connectionString)
+                .Options);
         }
 
         private static void ConfigureTestAuthentication(IServiceCollection services)
@@ -199,10 +227,10 @@ public sealed class Lc10ReleaseActivationAcceptanceTests
 
     private async Task<ReplicaSet> CreateTwoReplicasAsync()
     {
-        var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__Bpmn")!;
+        var connectionString = _store.ConnectionString;
 
-        var replicaA = new Lc10ReplicaFactory();
-        var replicaB = new Lc10ReplicaFactory();
+        var replicaA = new Lc10ReplicaFactory().WithConnectionString(connectionString);
+        var replicaB = new Lc10ReplicaFactory().WithConnectionString(connectionString);
         try
         {
             var clientA = replicaA.CreateClient();

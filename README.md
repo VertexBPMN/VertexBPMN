@@ -350,6 +350,8 @@ Normale CI-Läufe erzeugen beide Pakete als Artefakte, veröffentlichen sie aber
 
 - [Dokumentationsübersicht](docs/README.md)
 - [Produkt-Support- und Acceptance-Matrix](docs/reference/product-support-matrix.md)
+- [LC12 Gesamtabnahme der Low-Code-Anwendungsplattform](docs/reviews/2026-11-01_LowCode_Gesamtabnahme_LC12.md)
+- [LC10 Release-Aktivierung (Runbook)](docs/runbooks/low-code-application-releases.md)
 - [Getting Started](docs/getting-started/README.md)
 - [API Quickstart](docs/getting-started/api-quickstart.md)
 - [Produktions-Deployment](docs/runbooks/production-deployment.md)

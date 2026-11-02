@@ -1,6 +1,6 @@
 # Produkt-Support- und Acceptance-Matrix
 
-**Stand:** 28.08.2026
+**Stand:** 01.11.2026
 **Geltungsbereich:** Full Product Support; bewertet wird der öffentlich nutzbare, persistente End-to-End-Pfad. Parser- oder Unit-Tests allein begründen keinen Produktsupport. Jede in dieser Matrix aufgeführte Fähigkeit ist qualifiziert und unterstützt.
 
 ## Statusdefinitionen
@@ -61,6 +61,17 @@
 | Live-Prozessmigration | `supported` | Persistente, tenantgebundene Pläne referenzieren konkrete Source-/Target-Definition-IDs und können damit auch Versionen desselben Process-Keys migrieren. Vor jeder Mutation werden alle aktiven Tokens, Tasks, Jobs, Event-Subscriptions, Incidents und Multi-Instance-Zustände gegen das Zielmodell validiert; Snapshot, Runtime-Mapping, Definition-Wechsel, Audit-Outbox und optimistischer Instance-Count-Guard laufen in einer relationalen Transaktion. Dry-Run, dauerhafter Status, Rollback, Fortsetzung im Zielmodell, Cross-Tenant-Ablehnung und der Studio-Kompatibilitätspfad sind durch FPS-MIGRATION-01 bis -05 belegt. Bei deaktiviertem Feature bleiben beide APIs fail-closed. |
 | bpmn.io Studio | `supported` | Gepinnte und reproduzierbar gebaute BPMN-/DMN-/CMMN-/Form-Assets laufen in echten Chromium-Verträgen. Import/Export, Vertex-Moddle-Erweiterungen, Properties, Low-Code-Mutationen, Quick Insert, lokale Token-Simulation, Viewer und sichtbare Fehlerpfade sind qualifiziert. FPS-STUDIO-01 führt ein Studio-Roundtrip-Artefakt über die produktiven Studio-Adapter gegen die reale persistente API vom Deployment über User-Task-Wait und Completion bis zum Prozessende aus. |
 | Build und Release | `supported` | Pull Requests und `master` werden durch Restore, einen Release-Build und das zentrale Testprojekt blockiert. `v*`-Tags paketieren SDK und CLI mit der Tag-Version und veröffentlichen exakt diese Build-Artefakte über NuGet OIDC. Browser-, Benchmark-, Audit-, Coverage-, OpenAPI-/Conformance-, Container-, SBOM- und externe RabbitMQ-/PostgreSQL-Prüfungen bleiben gezielt ausführbar, blockieren den schnellen Standardworkflow jedoch nicht. |
+
+## Low-Code-Anwendungsplattform
+
+| Fähigkeit | Status | Nachweis und Grenze |
+| --- | --- | --- |
+| App-Metadaten- / Endpoint-Designer im Studio | `supported` | Endpoints werden im Designer definiert (Route, Schema, Permission, Limits, Aktionsbindung), als ContentJson persistiert und über die Runtime bereitgestellt; Designer-Tests und Katalog-Verträge grün. |
+| Durable Endpoint-Operationen (202-Protokoll) | `supported` | POST start-process validiert Tenant/App/aktiver Release/Bindung/Permission, persistiert durable `Accepted` (eingefrorener Snapshot) und liefert 202 + operationId/statusUrl; GET liefert echte Daten, Timeout 504/`endpoint_timeout`, zu große Requests 413/`endpoint_request_too_large`, Idempotenz-Key, Crash-Recovery ohne Doppelstart (LC09B). |
+| App-Metadaten-Tabellen, Datenmapping, Formulare und Aktionen | `supported` | Referenz-App wird ausschließlich im Designer erstellt und über die persistente API genutzt (suchbare Tabelle, Datenmapping, Formular, Prozessstart, Aufgabenabschluss); `Lc09ReferenceAppDesignerAcceptanceTests` grün. |
+| Gemeinsame Release-Aktivierung und Rollback | `supported` | Durable Validation→Prepare→Activate mit atomarem, revisionsgeprüftem Pointer-Switch, Operation-Identity, Reconciliation und Rollback; `Lc10ReleaseActivationAcceptanceTests` grün. PostgreSQL-/Replikat-Pfad bedarf separaten Betriebsnachweises. |
+| Installierbare PWA-Shell | `supported` | Web-App-Manifest + versionierter Service-Worker (published pre-cached fingerdruckte UI-Shell-Assets, navigations-fallback); PWA-Shell-Verträge grün (LC-AC-18). |
+| Offline-Aufgaben-Completion und Konfliktbehandlung | `supported` | Server-Replay (service + Endpoint) wendet Offline-Completions at-most-once mit Revision-/Schema-Guard an, liefert sichtbare Completed/Conflict/NotFound/Forbidden; Client-Queue repliziert beim `online`-Event und macht Konflikte ohne stille Überschreibung sichtbar; Offline-Replay-/Controller-/Queue-Verträge grün (LC-AC-19). |
 
 ## Verbindliche Acceptance-Fälle
 

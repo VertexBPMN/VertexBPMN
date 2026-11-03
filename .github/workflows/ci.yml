@@ -58,6 +58,7 @@ jobs:
           --filter-not-trait "Category=ContractReviewOllama"
           --filter-not-trait "Category=ContractReviewBenchmark"
           --filter-not-trait "Category=Lc09PostgresContract"
+          --filter-not-trait "Category=Lc10PostgresContract"
           --filter-not-class "VertexBPMN.Tests.Conformance.DistributedConformanceTests"
           --max-parallel-test-modules 1
 

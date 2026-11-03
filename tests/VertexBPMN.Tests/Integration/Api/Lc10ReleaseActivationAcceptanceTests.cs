@@ -36,6 +36,7 @@ namespace VertexBPMN.Tests.Integration.Api;
 /// PostgreSQL-Store (genau ein Provider).
 /// </summary>
 [Collection("Lc10PostgresReleaseAcceptance")]
+[Trait("Category", "Lc10PostgresContract")]
 public sealed class Lc10ReleaseActivationAcceptanceTests
 {
     private const string Tenant = "vertexbpmn";

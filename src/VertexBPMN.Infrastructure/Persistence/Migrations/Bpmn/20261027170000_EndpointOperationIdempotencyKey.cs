@@ -31,6 +31,6 @@ public sealed class EndpointOperationIdempotencyKey : Migration
     protected override void Down(MigrationBuilder migrationBuilder)
     {
         migrationBuilder.DropIndex(name: IndexName, table: Table);
-        migrationBuilder.DropColumn(KeyColumn, Table);
+        migrationBuilder.Sql($"ALTER TABLE \"{Table}\" DROP COLUMN \"{KeyColumn}\";");
     }
 }

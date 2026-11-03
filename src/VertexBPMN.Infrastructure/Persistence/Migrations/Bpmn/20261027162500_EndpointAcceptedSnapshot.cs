@@ -24,7 +24,7 @@ public sealed class EndpointAcceptedSnapshot : Migration
     {
         foreach (var column in Columns)
         {
-            migrationBuilder.DropColumn(column, "ApplicationEndpointOperations");
+            migrationBuilder.Sql($"ALTER TABLE \"ApplicationEndpointOperations\" DROP COLUMN \"{column}\";");
         }
     }
 }

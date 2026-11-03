@@ -30,13 +30,9 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "ExpiredThrough",
-                table: "EventStreamSubscriptions");
+            migrationBuilder.Sql("ALTER TABLE \"EventStreamSubscriptions\" DROP COLUMN \"ExpiredThrough\";");
 
-            migrationBuilder.DropColumn(
-                name: "RetainedAt",
-                table: "EventStreamDeliveries");
+            migrationBuilder.Sql("ALTER TABLE \"EventStreamDeliveries\" DROP COLUMN \"RetainedAt\";");
         }
     }
 }

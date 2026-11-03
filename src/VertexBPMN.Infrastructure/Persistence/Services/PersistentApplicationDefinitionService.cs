@@ -242,7 +242,9 @@ public sealed class PersistentApplicationDefinitionService(BpmnDbContext db, IAu
     /// </summary>
     private async Task<string> EnrichContentReferencesAsync(string tenantId, string content, CancellationToken cancellationToken)
     {
-        var root = JsonNode.Parse(content);
+        JsonNode? root;
+        try { root = JsonNode.Parse(content); }
+        catch (JsonException) { throw new ApplicationValidationException("Malformed application metadata."); }
         if (root?["references"] is not JsonArray references) { return content; }
         var needsEnrichment = references.OfType<JsonObject>().Any(reference =>
             reference["type"]?.GetValue<string>() == "process"

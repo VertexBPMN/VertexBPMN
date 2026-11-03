@@ -22,9 +22,7 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "DefinitionId",
-                table: "EventStreamDeliveries");
+            migrationBuilder.Sql("ALTER TABLE \"EventStreamDeliveries\" DROP COLUMN \"DefinitionId\";");
         }
     }
 }

@@ -30,16 +30,10 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn;
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "AuditExportedUtcTicks",
-                table: "SourceControlOperations");
+            migrationBuilder.Sql("ALTER TABLE \"SourceControlOperations\" DROP COLUMN \"AuditExportedUtcTicks\";");
 
-            migrationBuilder.DropColumn(
-                name: "AuditPending",
-                table: "SourceControlOperations");
+            migrationBuilder.Sql("ALTER TABLE \"SourceControlOperations\" DROP COLUMN \"AuditPending\";");
 
-            migrationBuilder.DropColumn(
-                name: "AuditRetryAfterUtcTicks",
-                table: "SourceControlOperations");
+            migrationBuilder.Sql("ALTER TABLE \"SourceControlOperations\" DROP COLUMN \"AuditRetryAfterUtcTicks\";");
         }
     }

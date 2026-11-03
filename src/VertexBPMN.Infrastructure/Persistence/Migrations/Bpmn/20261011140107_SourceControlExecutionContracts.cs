@@ -34,12 +34,8 @@ public partial class SourceControlExecutionContracts : Migration
 	/// <inheritdoc />
 	protected override void Down(MigrationBuilder migrationBuilder)
 	{
-		migrationBuilder.DropColumn(
-			name: "ExecutionContractVersion",
-			table: "SourceControlOperations");
+		migrationBuilder.Sql("ALTER TABLE \"SourceControlOperations\" DROP COLUMN \"ExecutionContractVersion\";");
 
-		migrationBuilder.DropColumn(
-			name: "ProtectedExecutionTarget",
-			table: "SourceControlOperations");
+		migrationBuilder.Sql("ALTER TABLE \"SourceControlOperations\" DROP COLUMN \"ProtectedExecutionTarget\";");
 	}
 }

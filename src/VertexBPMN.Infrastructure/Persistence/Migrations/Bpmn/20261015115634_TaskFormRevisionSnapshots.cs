@@ -55,24 +55,22 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn;
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropForeignKey(
-                name: "FK_Tasks_FormDefinitionRevisions_FormRevisionId",
-                table: "Tasks");
+            if (ActiveProvider?.Contains("Npgsql", StringComparison.Ordinal) == true)
+            {
+                // Postgres DROP COLUMN removes the dependent index and foreign key
+                // on the dropped column automatically.
+                migrationBuilder.Sql("ALTER TABLE \"Tasks\" DROP COLUMN \"FormRevisionId\";");
+                migrationBuilder.Sql("ALTER TABLE \"Tasks\" DROP COLUMN \"FormSchemaHash\";");
+                migrationBuilder.Sql("ALTER TABLE \"Tasks\" DROP COLUMN \"FormVersion\";");
+                return;
+            }
 
-            migrationBuilder.DropIndex(
-                name: "IX_Tasks_FormRevisionId",
-                table: "Tasks");
-
-            migrationBuilder.DropColumn(
-                name: "FormRevisionId",
-                table: "Tasks");
-
-            migrationBuilder.DropColumn(
-                name: "FormSchemaHash",
-                table: "Tasks");
-
-            migrationBuilder.DropColumn(
-                name: "FormVersion",
-                table: "Tasks");
+            // SQLite: EF Core cannot emit DropColumn/DropForeignKey for a column that is
+            // referenced by a foreign key (NotSupportedException). FormRevisionId is
+            // FK-referenced, so it cannot be dropped on SQLite without a full table rebuild;
+            // drop the unindexed, non-FK columns and retain FormRevisionId (with its index
+            // and foreign key) as an unavoidable SQLite downgrade limitation.
+            migrationBuilder.Sql("ALTER TABLE \"Tasks\" DROP COLUMN \"FormSchemaHash\";");
+            migrationBuilder.Sql("ALTER TABLE \"Tasks\" DROP COLUMN \"FormVersion\";");
         }
     }

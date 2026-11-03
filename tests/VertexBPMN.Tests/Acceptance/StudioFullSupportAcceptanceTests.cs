@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Net.Http.Json;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Studio.Services;
 using VertexBPMN.Tests.Infrastructure;
@@ -54,23 +55,60 @@ public sealed class StudioFullSupportAcceptanceTests(
 		var repository = new RepositoryService(engine);
 		var workflow = new WorkflowService(engine);
 
-		var definition = await repository.DeployXmlAsync(bpmn, "studio-full-support.bpmn");
+		await CreateApprovalFormAsync();
+
+		var definition = await repository.DeployXmlAsync(bpmn, "studio-full-support.bpmn", "vertexbpmn");
 		var started = await workflow.StartProcessAsync(
 			definition.Definition.Key,
 			new Dictionary<string, object?>(StringComparer.Ordinal) { ["source"] = "studio" },
-			$"studio-{Guid.NewGuid():N}");
+			$"studio-{Guid.NewGuid():N}",
+			"vertexbpmn");
 
 		Assert.Equal(ProcessInstanceStatus.Running, started.Status);
 		Assert.NotEmpty(started.ActiveTasks);
-		var task = Assert.Single(await engine.GetTasksAsync()
-, candidate => candidate.ProcessInstanceId == started.Id);
 
-		await engine.CompleteTaskAsync(task.Id, new Dictionary<string, object?>(StringComparer.Ordinal) { ["approved"] = true });
+		await CompleteApprovalTaskAsync(engine, started.Id);
 
 		var completed = Assert.Single(await workflow.GetProcessInstancesAsync()
 , instance => instance.Id == started.Id);
 		Assert.Equal(ProcessInstanceStatus.Completed, completed.Status);
 		Assert.Empty(completed.ActiveTasks);
+	}
+
+	private static async Task CompleteApprovalTaskAsync(HttpBpmnEngineService engine, Guid processInstanceId)
+	{
+		var task = Assert.Single(await engine.GetTasksAsync()
+, candidate => candidate.ProcessInstanceId == processInstanceId);
+
+		// Form-bound completion requires the task's expected revision and frozen form
+		// schema hash; both are surfaced on the studio task wire contract.
+		await engine.CompleteTaskAsync(
+			task.Id,
+			new Dictionary<string, object?>(StringComparer.Ordinal) { ["approved"] = true },
+			"vertexbpmn",
+			task.Revision,
+			task.FormSchemaHash);
+	}
+
+	private async Task CreateApprovalFormAsync()
+	{
+		// The roundtrip BPMN references form 'approval-form' on the user task; the form
+		// must exist before the process is started or the engine cannot resolve the task
+		// form revision.
+		var formResponse = await _client.PostAsJsonAsync(
+			"/api/forms",
+			new
+			{
+				tenantId = "vertexbpmn",
+				key = "approval-form",
+				name = "Approval Form",
+				// A checkbox field 'approved' must be declared so task completion with
+				// { approved = true } passes TaskFormValidator (fields it does not know are
+				// rejected as not-allowed result variables).
+				schema = "{\"components\":[{\"key\":\"approved\",\"label\":\"Approved\",\"type\":\"checkbox\"}]}"
+			},
+			TestContext.Current.CancellationToken);
+		formResponse.EnsureSuccessStatusCode();
 	}
 
 	private sealed class FixedHttpClientFactory(HttpClient client) : IHttpClientFactory

@@ -15,8 +15,9 @@ public sealed class SourceControlAuditMigrationSqlTests
 	{
 		var bpmnOptions = Configure(new DbContextOptionsBuilder<BpmnDbContext>(), provider);
 		using var bpmn = new BpmnDbContext(bpmnOptions.Options);
-		var bpmnMigrations = bpmn.Database.GetMigrations().ToArray();
-		var bpmnScript = bpmn.GetService<IMigrator>().GenerateScript(bpmnMigrations[^2], bpmnMigrations[^1]);
+		// SourceControlAuditExport (AuditPending: bool) is no longer the most recent Bpmn
+		// migration; generate the full script so the audit migration is covered.
+		var bpmnScript = bpmn.GetService<IMigrator>().GenerateScript();
 		Assert.Contains(booleanType, bpmnScript, StringComparison.OrdinalIgnoreCase);
 		Assert.DoesNotContain("AuditPending\" INTEGER", bpmnScript, StringComparison.OrdinalIgnoreCase);
 		Assert.DoesNotContain("AuditPending] INTEGER", bpmnScript, StringComparison.OrdinalIgnoreCase);

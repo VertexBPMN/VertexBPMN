@@ -28,7 +28,7 @@ jobs:
           global-json-file: global.json
 
       - name: Restore
-        run: dotnet restore VertexBPMN.sln
+        run: dotnet restore VertexBPMN.sln -p:NuGetAudit=false
 
       - name: Build
         run: dotnet build VertexBPMN.sln --configuration Release --no-restore -p:SkipBpmnIoAssetBuild=true -m:1 --disable-build-servers

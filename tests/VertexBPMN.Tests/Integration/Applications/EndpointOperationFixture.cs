@@ -12,7 +12,7 @@ namespace VertexBPMN.Tests.Integration.Applications;
 // principal is xUnit contract evidence (X-Test-User/X-Test-Tenant), not OIDC.
 internal sealed class EndpointOperationFixture : IAsyncDisposable
 {
-    private readonly EndpointCheckpointStore _store = new("/home/azureuser/.hermes/cache/scratch/lc09b-ms2b");
+    private readonly EndpointCheckpointStore _store = new();
     internal VertexBPMN.Infrastructure.Persistence.BpmnDbContext OpenDb() => _store.Open();
     internal IServiceProvider Services => _factory!.Services;
     private CustomWebApplicationFactory? _factory;

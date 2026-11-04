@@ -8,7 +8,7 @@ namespace VertexBPMN.Tests.Integration.Applications;
 
 internal sealed class EndpointRuntimeFixture : IAsyncDisposable
 {
-    private readonly EndpointCheckpointStore _store = new("/home/azureuser/.hermes/cache/scratch/lc09b-s2");
+    private readonly EndpointCheckpointStore _store = new();
     private CustomWebApplicationFactory? _factory;
     internal HttpClient Http { get; private set; } = null!;
     internal string Key { get; } = "runtime-" + Guid.NewGuid().ToString("N");

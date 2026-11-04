@@ -11,8 +11,12 @@ internal sealed class EndpointCheckpointStore : IAsyncDisposable
 {
     private static readonly string[] PathParameters = ["customerId"];
     private readonly string _path;
-    internal EndpointCheckpointStore(string directory = "/home/azureuser/.hermes/cache/scratch/lc09b-s1")
+    internal EndpointCheckpointStore(string directory = "")
     {
+        if (string.IsNullOrWhiteSpace(directory))
+        {
+            directory = Path.Combine(Path.GetTempPath(), "lc09b-checkpoints");
+        }
         Directory.CreateDirectory(directory);
         _path = Path.Combine(directory, $"endpoint-{Guid.NewGuid():N}.db");
     }

@@ -261,6 +261,8 @@ services:
       ASPNETCORE_HTTP_PORTS: "5263"
       ApiBaseUrl: http://localhost:51870/
       StudioHttpsRedirection__Enabled: "false"
+      ReverseProxy__Enabled: "true"
+      ReverseProxy__KnownProxies__0: 127.0.0.1
       StudioAuthentication__Authority: http://localhost:58080/realms/vertexbpmn
       StudioAuthentication__ClientId: vertexbpmn-studio
       StudioAuthentication__ClientSecret: ${KEYCLOAK_STUDIO_CLIENT_SECRET}

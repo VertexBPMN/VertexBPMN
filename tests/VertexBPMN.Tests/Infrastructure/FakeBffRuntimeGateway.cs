@@ -75,4 +75,13 @@ internal sealed class FakeBffRuntimeGateway : IBffRuntimeGateway
 
     public Task<BffTaskState> GetTaskStateAsync(string tenantId, string applicationId, Guid taskId, CancellationToken ct = default)
         => Task.FromResult(State with { TaskId = taskId });
+
+    public Task<string> GetInboxAsync(string tenantId, int page, int pageSize, CancellationToken ct = default)
+        => Task.FromResult("{\"items\":[],\"total\":0,\"page\":1,\"pageSize\":20,\"hasMore\":false}");
+
+    public Task ClaimInboxTaskAsync(string tenantId, Guid taskId, string idempotencyKey, CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    public Task CompleteInboxTaskAsync(string tenantId, Guid taskId, string idempotencyKey, IReadOnlyDictionary<string, object?>? variables, CancellationToken ct = default)
+        => Task.CompletedTask;
 }

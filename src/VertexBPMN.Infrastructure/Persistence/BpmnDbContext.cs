@@ -129,6 +129,7 @@ public class BpmnDbContext : DbContext
         modelBuilder.Entity<ApplicationRevisionRecord>().HasIndex(x => new { x.ApplicationDefinitionId, x.Version }).IsUnique();
         modelBuilder.Entity<ApplicationEndpointOperation>()
             .HasIndex(x => new { x.TenantId, x.ApplicationKey, x.EndpointKey, x.IdempotencyKey }).IsUnique();
+        modelBuilder.Entity<ApplicationEndpointOperation>().Property(x => x.VariablesJson).HasColumnType("TEXT");
         ConfigureFormDefinitions(modelBuilder);
         ConfigureCaseDefinitions(modelBuilder);
 

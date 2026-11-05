@@ -5,4 +5,5 @@ namespace VertexBPMN.Api.Controllers;
 public sealed class StartProcessIdempotencyRequest
 {
     public string? IdempotencyKey { get; set; }
+    public IDictionary<string, object?>? Variables { get; set; }
 }

@@ -107,20 +107,23 @@ public sealed class VertexBffRuntimeGateway : IBffRuntimeGateway
 
     public async Task<string> GetInboxAsync(string tenantId, int page, int pageSize, CancellationToken ct = default)
     {
-        using var response = await SendAsync(CreateRequest(HttpMethod.Get, $"/api/task/inbox?page={page}&pageSize={pageSize}", null), ct);
+        using var request = CreateRequest(HttpMethod.Get, $"/api/task/inbox?page={page}&pageSize={pageSize}", null);
+        using var response = await SendAsync(request, ct);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadAsStringAsync(ct);
     }
 
     public async Task ClaimInboxTaskAsync(string tenantId, Guid taskId, string idempotencyKey, CancellationToken ct = default)
     {
-        using var response = await SendAsync(CreateRequest(HttpMethod.Post, $"/api/task/inbox/{taskId}/claim", null, idempotencyKey), ct);
+        using var request = CreateRequest(HttpMethod.Post, $"/api/task/inbox/{taskId}/claim", null, idempotencyKey);
+        using var response = await SendAsync(request, ct);
         response.EnsureSuccessStatusCode();
     }
 
     public async Task CompleteInboxTaskAsync(string tenantId, Guid taskId, string idempotencyKey, IReadOnlyDictionary<string, object?>? variables, CancellationToken ct = default)
     {
-        using var response = await SendAsync(CreateRequest(HttpMethod.Post, $"/api/task/inbox/{taskId}/complete", JsonSerializer.Serialize(new { variables }), idempotencyKey), ct);
+        using var request = CreateRequest(HttpMethod.Post, $"/api/task/inbox/{taskId}/complete", JsonSerializer.Serialize(new { variables }), idempotencyKey);
+        using var response = await SendAsync(request, ct);
         response.EnsureSuccessStatusCode();
     }
 

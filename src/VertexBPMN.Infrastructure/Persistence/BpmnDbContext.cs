@@ -92,6 +92,7 @@ public class BpmnDbContext : DbContext
     public DbSet<SourceControlSessionRecord> SourceControlSessions => Set<SourceControlSessionRecord>();
     public DbSet<SourceControlOperationRecord> SourceControlOperations => Set<SourceControlOperationRecord>();
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Maintainability", "MA0051", Justification = "EF model registration is intentionally centralized in the DbContext.")]
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         SourceControl.SourceControlMapping.Configure(modelBuilder);

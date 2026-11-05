@@ -7,6 +7,7 @@ namespace VertexBPMN.Portal.Bff.Controllers;
 [ApiController]
 [Route("api/bff/tasks")]
 [Authorize]
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public controller required for ASP.NET Core MVC discovery and activation.")]
 public sealed class BffTaskController(IBffRuntimeGateway gateway) : ControllerBase
 {
     [HttpGet("inbox")]
@@ -30,10 +31,10 @@ public sealed class BffTaskController(IBffRuntimeGateway gateway) : ControllerBa
     private async Task<IActionResult> Mutate(Guid taskId, IReadOnlyDictionary<string, object?>? variables, bool complete, CancellationToken ct)
     {
         var tenant = User.FindFirstValue("tenant_id");
-        if (tenant is null) return Forbid();
-        if (string.IsNullOrWhiteSpace(IdempotencyKey)) return BadRequest();
-        if (complete) await gateway.CompleteInboxTaskAsync(tenant, taskId, IdempotencyKey, variables, ct);
-        else await gateway.ClaimInboxTaskAsync(tenant, taskId, IdempotencyKey, ct);
+        if (tenant is null) { return Forbid(); }
+        if (string.IsNullOrWhiteSpace(IdempotencyKey)) { return BadRequest(); }
+        if (complete) { await gateway.CompleteInboxTaskAsync(tenant, taskId, IdempotencyKey, variables, ct); }
+        else { await gateway.ClaimInboxTaskAsync(tenant, taskId, IdempotencyKey, ct); }
         return NoContent();
     }
 }

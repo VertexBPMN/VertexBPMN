@@ -26,14 +26,13 @@
     <PackageReference Include="Azure.Extensions.AspNetCore.DataProtection.Keys" Version="1.6.4" />
     <PackageReference Include="Azure.Identity" Version="1.21.0" />
     <PackageReference Include="Azure.Core" Version="1.63.0" />
-    <PackageReference Include="Azure.Storage.Blobs" Version="12.30.0" />
+    <PackageReference Include="Azure.Storage.Blobs" Version="12.30.1" />
   </ItemGroup>
 
 
   <ItemGroup>
     <ProjectReference Include="..\VertexBPMN.Authentication\VertexBPMN.Authentication.csproj" />
     <ProjectReference Include="..\VertexBPMN.Domain\VertexBPMN.Domain.csproj" />
-    <ProjectReference Include="..\VertexBPMN.SourceControl.Abstractions\VertexBPMN.SourceControl.Abstractions.csproj" />
     <ProjectReference Include="..\VertexBPMN.ServiceDefaults\VertexBPMN.ServiceDefaults.csproj" />
   </ItemGroup>
 

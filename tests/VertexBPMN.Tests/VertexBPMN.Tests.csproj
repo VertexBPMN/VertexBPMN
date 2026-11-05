@@ -10,8 +10,8 @@
 </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
-    <PackageReference Include="xunit.v3.mtp-v2" Version="4.0.1" />
-    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.11.2" />
+    <PackageReference Include="xunit.v3.mtp-v2" Version="4.0.2" />
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.12.0" />
     <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
     <PackageReference Include="coverlet.collector" Version="10.1.0">
       <PrivateAssets>all</PrivateAssets>
@@ -139,8 +139,6 @@
   <ProjectReference Include="..\..\src\VertexBPMN.Cli\VertexBPMN.Cli.csproj"
                     Condition="'$(ExternalTaskVerificationBuild)' != 'true'" />
   <ProjectReference Include="..\..\src\VertexBPMN.Api\VertexBPMN.Api.csproj" Aliases="global,api" />
-  <ProjectReference Include="..\..\src\VertexBPMN.Portal\VertexBPMN.Portal.csproj" />
-  <ProjectReference Include="..\..\src\VertexBPMN.Portal.Client\VertexBPMN.Portal.Client.csproj" />
   <ProjectReference Include="..\..\src\VertexBPMN.Application\VertexBPMN.Application.csproj" />
   <ProjectReference Include="..\..\src\VertexBPMN.Domain\VertexBPMN.Domain.csproj" />
   <ProjectReference Include="..\..\src\VertexBPMN.Engine\VertexBPMN.Engine.csproj" />

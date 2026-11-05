@@ -13,6 +13,130 @@ namespace VertexBPMN.Tests.Acceptance;
 public sealed class ExternalTaskCompletionAcceptanceTests
 {
 	private static readonly string[] MultiInstanceItems = ["one", "two", "three"];
+
+	[Fact]
+	public async Task ForgedSuccessContinuationBeforeCompletionCannotApplyBusinessOutput()
+	{
+		var ct = TestContext.Current.CancellationToken;
+		await using var fixture = await Fixture.CreateAsync(SuccessProcess(), ct);
+		await fixture.Runtime.StartAsync(fixture.Definition,
+			new Dictionary<string, object>(StringComparer.Ordinal) { ["document"] = "synthetic" },
+			null, "a", "forged", ct);
+		fixture.Db.ChangeTracker.Clear();
+		var lease = Assert.Single(await fixture.Leases.ClaimAsync(Worker(),
+			new ExternalTaskClaimCommand(["test.work"]), ct));
+		var job = await fixture.Db.ExternalTaskJobs.SingleAsync(ct);
+		job.Result = "{\"approved\":true}";
+		fixture.Db.ExternalTaskContinuations.Add(new ExternalTaskContinuation
+		{
+			Id = Guid.NewGuid(), JobId = job.Id, ActivityExecutionId = lease.ActivityExecutionId,
+			Outcome = ExternalTaskOutcome.Success, State = ExternalTaskContinuationState.Pending,
+			Revision = 1, CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+		});
+		await fixture.Db.SaveChangesAsync(ct);
+		fixture.Db.ChangeTracker.Clear();
+
+		await fixture.Runtime.ProcessExternalTaskContinuationsAsync(cancellationToken: ct);
+
+		fixture.Db.ChangeTracker.Clear();
+		Assert.Empty(await fixture.Db.Tasks.ToListAsync(ct));
+		Assert.False((await fixture.Db.ProcessInstances.SingleAsync(ct)).Variables.ContainsKey("review"));
+		Assert.Equal(ExternalTaskContinuationState.Cancelled,
+			(await fixture.Db.ExternalTaskContinuations.SingleAsync(ct)).State);
+	}
+
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public async Task IndependentEffectReplayAfterWorkerStateLossProducesOneBusinessRow(bool crashed)
+	{
+		var ct = TestContext.Current.CancellationToken;
+		await using var fixture = await Fixture.CreateAsync(
+			SuccessProcess().Replace("maxRetries=\"0\"", "maxRetries=\"1\"", StringComparison.Ordinal), ct,
+			configuration => configuration["ExternalTasks:Contracts:0:MaxAttempts"] = "2");
+		await fixture.Runtime.StartAsync(fixture.Definition,
+			new Dictionary<string, object>(StringComparer.Ordinal) { ["document"] = "synthetic" },
+			null, "a", "worker-state-loss", ct);
+		fixture.Db.ChangeTracker.Clear();
+		var lease = Assert.Single(await fixture.Leases.ClaimAsync(Worker(),
+			new ExternalTaskClaimCommand(["test.work"]), ct));
+		var session = new VertexBPMN.Domain.Model.Runtime.ExternalTaskNodeSession(lease);
+		using var result = JsonDocument.Parse("{\"approved\":true}");
+		Assert.Throws<InvalidOperationException>(() => session.Complete(result.RootElement));
+		var directory = Path.Combine(Path.GetTempPath(), "lc08-effects", Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(directory);
+		try
+		{
+			var connectionString = $"Data Source={Path.Combine(directory, "effects.db")};Pooling=False";
+			await RecordIndependentEffectAsync(connectionString, session.EffectKey, ct);
+			// A technical failure schedules a real engine retry after the effect was committed.
+			var reclaimed = await ReclaimAfterFailureAsync(fixture, lease, crashed, ct);
+			Assert.Equal(2, reclaimed.LeaseGeneration);
+			Assert.NotEqual(lease.LeaseId, reclaimed.LeaseId);
+			var restarted = new VertexBPMN.Domain.Model.Runtime.ExternalTaskNodeSession(reclaimed);
+			Assert.Equal(session.EffectKey, restarted.EffectKey);
+			await RecordIndependentEffectAsync(connectionString, restarted.EffectKey, ct);
+			Assert.True(restarted.ConfirmBusinessEffect(restarted.EffectKey));
+			var command = restarted.Complete(result.RootElement);
+			await fixture.Leases.CompleteAsync(Worker(), lease.JobId, command, ct);
+			await fixture.Leases.CompleteAsync(Worker(), lease.JobId, command, ct);
+			fixture.Db.ChangeTracker.Clear();
+			await fixture.Runtime.ProcessExternalTaskContinuationsAsync(cancellationToken: ct);
+			await fixture.Runtime.ProcessExternalTaskContinuationsAsync(cancellationToken: ct);
+			fixture.Db.ChangeTracker.Clear();
+			Assert.Single(await fixture.Db.Tasks.ToListAsync(ct));
+			await using var effects = new SqliteConnection(connectionString);
+			await effects.OpenAsync(ct);
+			await using var count = effects.CreateCommand();
+			count.CommandText = "SELECT COUNT(*) FROM BusinessEffects";
+			Assert.Equal(1L, await count.ExecuteScalarAsync(ct));
+		}
+		finally
+		{
+			Directory.Delete(directory, recursive: true);
+		}
+	}
+
+	private static async Task<ExternalTaskLease> ReclaimAfterFailureAsync(Fixture fixture, ExternalTaskLease lease, bool crashed, CancellationToken ct)
+	{
+		if (crashed)
+		{
+			var expiry = new FixedClock(DateTimeOffset.FromUnixTimeMilliseconds(lease.LeaseExpiresAt));
+			await new ExternalTaskRecoveryService(fixture.Db, expiry).RecoverAsync(cancellationToken: ct);
+		}
+		else
+		{
+			await fixture.Leases.FailAsync(Worker(), lease.JobId,
+				new ExternalTaskFailCommand(lease.LeaseId, lease.LeaseGeneration, Guid.NewGuid(),
+					"technical", "transport_failure"), ct);
+		}
+		fixture.Db.ChangeTracker.Clear();
+		var retryAt = (await fixture.Db.ExternalTaskJobs.SingleAsync(ct)).AvailableAt;
+		var retryClock = new FixedClock(DateTimeOffset.FromUnixTimeMilliseconds(retryAt));
+		await new ExternalTaskRecoveryService(fixture.Db, retryClock).RecoverAsync(cancellationToken: ct);
+		var configuration = VertexBPMN.Tests.Unit.Infrastructure.ExternalTaskContractResolverTests.Configuration();
+		configuration["ExternalTasks:Contracts:0:MaxAttempts"] = "2";
+		var service = new ExternalTaskLeaseService(fixture.Db,
+			new ConfiguredExternalTaskContractResolver(configuration), retryClock);
+		return Assert.Single(await service.ClaimAsync(Worker(), new ExternalTaskClaimCommand(["test.work"]), ct));
+	}
+
+	private sealed class FixedClock(DateTimeOffset now) : TimeProvider
+	{
+		public override DateTimeOffset GetUtcNow() => now;
+	}
+
+	private static async Task RecordIndependentEffectAsync(string connectionString, string effectKey, CancellationToken ct)
+	{
+		await using var connection = new SqliteConnection(connectionString);
+		await connection.OpenAsync(ct);
+		await using var command = connection.CreateCommand();
+		command.CommandText = "CREATE TABLE IF NOT EXISTS BusinessEffects (EffectKey TEXT PRIMARY KEY, Approved INTEGER NOT NULL); "
+			+ "INSERT INTO BusinessEffects (EffectKey, Approved) VALUES ($key, 1) ON CONFLICT(EffectKey) DO NOTHING;";
+		command.Parameters.AddWithValue("$key", effectKey);
+		await command.ExecuteNonQueryAsync(ct);
+	}
+
 	[Fact]
 	public async Task ContractReviewResultAlwaysContinuesToHumanReviewTask()
 	{

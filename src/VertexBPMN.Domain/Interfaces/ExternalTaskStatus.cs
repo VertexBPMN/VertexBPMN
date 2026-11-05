@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace VertexBPMN.Domain.Interfaces;
 
 public sealed record ExternalTaskStatus(
@@ -13,4 +11,6 @@ public sealed record ExternalTaskStatus(
 	int AttemptsStarted,
 	int MaxAttempts,
 	long LeaseGeneration,
-	long? LeaseExpiresAt);
+	long? LeaseExpiresAt,
+	string? ApplicationReleaseId = null,
+	int FlowRevision = 0);

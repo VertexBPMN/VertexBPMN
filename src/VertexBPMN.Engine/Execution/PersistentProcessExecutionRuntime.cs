@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using VertexBPMN.Domain.Entities;
+using VertexBPMN.Domain.Exceptions;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Domain.Model.Bpmn;
 using VertexBPMN.Infrastructure.Persistence;
@@ -26,7 +27,7 @@ public sealed partial class PersistentProcessExecutionRuntime(
 	ILogger<PersistentProcessExecutionRuntime> logger,
 	IConfiguration? configuration = null,
 	IExternalTaskContractResolver? externalContracts = null,
-	TimeProvider? timeProvider = null) : IProcessExecutionRuntime
+	TimeProvider? timeProvider = null) : IProcessExecutionRuntime, IValidatedTaskCompletionRuntime
 {
 	private const string ActiveSubscription = "Active";
 	private const string ScheduledJob = "Scheduled";
@@ -311,22 +312,50 @@ public sealed partial class PersistentProcessExecutionRuntime(
 		}
 	}
 
-	public async ValueTask CompleteUserTaskAsync(
+	public ValueTask CompleteUserTaskAsync(
 		Guid taskId,
 		IDictionary<string, object>? variables,
 		string? idempotencyKey = null,
 		CancellationToken cancellationToken = default)
+        => CompleteTaskCoreAsync(taskId, variables, idempotencyKey, null, cancellationToken);
+
+    private async ValueTask CompleteTaskCoreAsync(Guid taskId, IDictionary<string, object>? variables,
+        string? idempotencyKey, TaskCompletionCommand? command, CancellationToken cancellationToken)
 	{
+        await using var transaction = await BeginTransactionAsync(cancellationToken);
 		var task = await _db.Tasks.SingleOrDefaultAsync(item => item.Id == taskId, cancellationToken)
-				   ?? throw new KeyNotFoundException($"User task '{taskId}' was not found.");
-		if (await FindInboxAsync("complete-task", idempotencyKey, task.TenantId, cancellationToken) is not null)
+			   ?? throw new KeyNotFoundException($"User task '{taskId}' was not found.");
+        await _db.Entry(task).ReloadAsync(cancellationToken);
+        if (command is not null)
+        {
+            AuthorizeCompletion(task, command);
+        }
+		var validation = VertexBPMN.Domain.Forms.TaskFormValidator.Validate(task, variables);
+		if (!validation.IsValid)
 		{
+			throw new ArgumentException(
+				$"Cannot complete task '{taskId}': {string.Join(" ", validation.Errors)}");
+		}
+		if (await FindInboxAsync($"complete-task:{taskId:N}", idempotencyKey, task.TenantId, cancellationToken) is { } duplicate)
+		{
+			EnsureCompletionReplay(duplicate, taskId, variables, command);
 			return;
 		}
 
-		await using var transaction = await BeginTransactionAsync(cancellationToken);
+        if (command is null && !string.IsNullOrWhiteSpace(task.FormSchema))
+        {
+            throw new ArgumentException("Form-bound tasks require the validated completion contract.");
+        }
+        if (command is not null)
+        {
+            FenceCompletion(task, command);
+        }
 		if (task.Status == UserTaskStatus.Completed)
 		{
+            if (command is not null || !string.IsNullOrWhiteSpace(idempotencyKey))
+            {
+                throw new TaskCompletionConflictException("The task has already been completed by another attempt.");
+            }
 			return;
 		}
 
@@ -335,13 +364,25 @@ public sealed partial class PersistentProcessExecutionRuntime(
 			throw new InvalidOperationException($"Task is in {task.Status} state.");
 		}
 
-		var inbox = AddInbox("complete-task", idempotencyKey, task.TenantId);
+		var inbox = AddInbox($"complete-task:{taskId:N}", idempotencyKey, task.TenantId);
 		if (await ClaimInboxAsync(
-				inbox, transaction, "complete-task", idempotencyKey, task.TenantId, cancellationToken) is not null)
+				inbox, transaction, $"complete-task:{taskId:N}", idempotencyKey, task.TenantId, cancellationToken) is { } claimedDuplicate)
 		{
+			EnsureCompletionReplay(claimedDuplicate, taskId, variables, command);
 			return;
 		}
 
+        await ApplyTaskCompletionAsync(task, variables, cancellationToken);
+        CompleteInbox(inbox, CompletionFingerprint(taskId, variables, command));
+        await _db.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
+    }
+
+    private async Task ApplyTaskCompletionAsync(UserTask task, IDictionary<string, object>? variables, CancellationToken cancellationToken)
+    {
 		var instance = await LoadActiveInstanceAsync(task.ProcessInstanceId, task.TenantId, cancellationToken);
 		var definition = await _db.ProcessDefinitions.AsNoTracking()
 			.SingleAsync(item => item.Id == instance.ProcessDefinitionId, cancellationToken);
@@ -351,6 +392,12 @@ public sealed partial class PersistentProcessExecutionRuntime(
 		task.CompletedAt = DateTime.UtcNow;
 		task.LastModified = DateTime.UtcNow;
 		task.Revision++;
+        // Flush the optimistic task fence before any downstream business handler executes.
+        try { await _db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new TaskCompletionConflictException("The task changed during completion.");
+        }
 		MergeVariables(instance, variables);
 		await CompleteWaitingTaskTokenAsync(instance.Id, task, cancellationToken);
 		await CancelBoundaryJobsAsync(instance.Id, task.Id, cancellationToken);
@@ -364,12 +411,6 @@ public sealed partial class PersistentProcessExecutionRuntime(
 		AddOutbox(instance, "UserTaskCompleted", new { task.Id, task.ActivityId });
 		await ContinueCompletedUserTaskAsync(instance, task, model, cancellationToken);
 		await FinalizeTransitionAsync(instance, cancellationToken);
-		CompleteInbox(inbox, task.Id.ToString());
-		await _db.SaveChangesAsync(cancellationToken);
-		if (transaction is not null)
-		{
-			await transaction.CommitAsync(cancellationToken);
-		}
 	}
 	private async Task ContinueCompletedUserTaskAsync(ProcessInstance instance, UserTask task, ExecutionModel model, CancellationToken cancellationToken)
 	{
@@ -1507,6 +1548,7 @@ public sealed partial class PersistentProcessExecutionRuntime(
 			ProcessInstanceId = instance.Id,
 			DefinitionId = deployed.Id,
 			DefinitionVersion = deployed.Version,
+			ApplicationReleaseId = instance.ApplicationReleaseId,
 			ActivityId = node.Id,
 			ActivityExecutionId = token.ActivityExecutionId ?? throw new InvalidOperationException("external_task_activity_identity_missing"),
 			WaitTokenId = token.Id,
@@ -1544,14 +1586,11 @@ public sealed partial class PersistentProcessExecutionRuntime(
 		CancellationToken cancellationToken)
 	{
 		var token = CreateWaitingToken(instance, node);
-		var formKey = node.Attributes.GetValueOrDefault("formRef")
-					  ?? node.Attributes.GetValueOrDefault("formKey");
-		var formSchema = string.IsNullOrWhiteSpace(formKey)
-			? null
-			: await _db.FormDefinitions.AsNoTracking()
-				.Where(form => form.TenantId == instance.TenantId && form.Key == formKey)
-				.Select(form => form.Schema)
-				.SingleOrDefaultAsync(cancellationToken);
+		var assignment = await ResolveTaskAssignmentAsync(instance, node, cancellationToken);
+		var formAttributes = await ReadTaskFormBindingAsync(instance, node, cancellationToken);
+		var formKey = formAttributes.GetValueOrDefault("formRef")
+					  ?? formAttributes.GetValueOrDefault("formKey");
+		var formRevision = await ResolveTaskFormRevisionAsync(instance.TenantId, formKey, formAttributes, cancellationToken);
 		var task = new UserTask
 		{
 			Id = Guid.NewGuid(),
@@ -1564,13 +1603,17 @@ public sealed partial class PersistentProcessExecutionRuntime(
 			LastModified = DateTime.UtcNow,
 			Status = UserTaskStatus.Pending,
 			Revision = 1,
+			CandidateRole = assignment.CandidateRole,
+			Assignee = assignment.Assignee,
+			CandidateUsers = assignment.CandidateUsers,
 			FormKey = formKey,
-			FormSchema = formSchema,
+			FormSchema = formRevision?.Schema,
+            FormRevisionId = formRevision?.Id,
+            FormVersion = formRevision?.Version,
+            FormSchemaHash = formRevision?.SchemaHash,
 			MultiInstanceExecutionId = pending.MultiInstanceExecutionId,
 			MultiInstanceIndex = pending.MultiInstanceIndex,
-			LocalVariables = pending.LocalVariables is null
-				? []
-				: new Dictionary<string, object>(pending.LocalVariables, StringComparer.Ordinal)
+			LocalVariables = FreezeTaskFormVariables(formRevision?.Schema, instance.Variables, pending.LocalVariables)
 		};
 		token.Variables[TaskIdVariable] = task.Id.ToString();
 		if (pending.MultiInstanceExecutionId.HasValue)
@@ -1585,6 +1628,104 @@ public sealed partial class PersistentProcessExecutionRuntime(
 		AddOutbox(instance, "UserTaskCreated", new { taskId = task.Id, activityId = node.Id });
 
 		RegisterUserTaskBoundaries(instance, node, model, task);
+	}
+
+	private async Task<(string CandidateRole, string? Assignee, List<string> CandidateUsers)> ResolveTaskAssignmentAsync(ProcessInstance instance, ExecutionNode node, CancellationToken cancellationToken)
+	{
+		var definition = instance.ProcessDefinition ?? await _db.ProcessDefinitions.FindAsync([instance.ProcessDefinitionId], cancellationToken)
+			?? throw new InvalidOperationException($"Process definition for instance '{instance.Id}' could not be resolved.");
+
+		var xml = definition.BpmnXml;
+		if (string.IsNullOrWhiteSpace(xml))
+		{
+			return (string.Empty, null, new List<string>());
+		}
+
+		var document = XDocument.Parse(xml);
+		var userTask = document.Descendants()
+			.FirstOrDefault(e => e.Name.LocalName == "userTask" && (string?)e.Attribute("id") == node.Id);
+		if (userTask is null)
+		{
+			return (string.Empty, null, new List<string>());
+		}
+
+		return DeriveTaskAssignment(CollectTaskAssignmentValues(userTask));
+	}
+
+	/// <summary>
+	/// Reads assignment from direct attributes (e.g. camunda:assignee) and extension
+	/// elements (e.g. <c>&lt;activiti:candidateGroups value="..."/&gt;</c>), keyed by
+	/// local name so any vendor namespace is handled uniformly.
+	/// </summary>
+	private static Dictionary<string, List<string>> CollectTaskAssignmentValues(XElement userTask)
+	{
+		var values = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+		foreach (var attribute in userTask.Attributes().Where(a => !a.IsNamespaceDeclaration))
+		{
+			AddAssignmentValue(values, attribute.Name.LocalName, attribute.Value);
+		}
+
+		var extensionParent = userTask.Elements().FirstOrDefault(e => e.Name.LocalName == "extensionElements");
+		if (extensionParent is not null)
+		{
+			foreach (var element in extensionParent.Descendants().Where(el => !el.HasElements))
+			{
+				var value = (string?)element.Attribute("value") ?? element.Value;
+				if (!string.IsNullOrWhiteSpace(value))
+				{
+					AddAssignmentValue(values, element.Name.LocalName, value);
+				}
+			}
+		}
+
+		return values;
+	}
+
+	private static (string CandidateRole, string? Assignee, List<string> CandidateUsers) DeriveTaskAssignment(Dictionary<string, List<string>> values)
+	{
+		string FirstNonEmpty(string key) => values.TryGetValue(key, out var list)
+			? list.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v)) ?? string.Empty
+			: string.Empty;
+
+		var assignee = FirstNonEmpty("assignee");
+
+		var candidateUsers = new List<string>();
+		if (values.TryGetValue("candidateUsers", out var candidateUsersList))
+		{
+			candidateUsers = candidateUsersList
+				.SelectMany(v => v.Split(','))
+				.Select(v => v.Trim())
+				.Where(v => v.Length > 0)
+				.Distinct(StringComparer.Ordinal)
+				.ToList();
+		}
+
+		var candidateRole = FirstNonEmpty("candidateRole");
+		if (string.IsNullOrWhiteSpace(candidateRole) && values.TryGetValue("candidateGroups", out var candidateGroups))
+		{
+			candidateRole = candidateGroups
+				.SelectMany(v => v.Split(','))
+				.Select(v => v.Trim())
+				.FirstOrDefault(v => v.Length > 0) ?? string.Empty;
+		}
+
+		return (candidateRole, string.IsNullOrWhiteSpace(assignee) ? null : assignee, candidateUsers);
+	}
+
+	private static void AddAssignmentValue(Dictionary<string, List<string>> values, string key, string value)
+	{
+		if (string.IsNullOrWhiteSpace(value))
+		{
+			return;
+		}
+
+		if (!values.TryGetValue(key, out var list))
+		{
+			list = new List<string>();
+			values[key] = list;
+		}
+
+		list.Add(value);
 	}
 
 	private void RegisterUserTaskBoundaries(
@@ -3816,6 +3957,12 @@ public sealed partial class PersistentProcessExecutionRuntime(
 							  attribute.Name.LocalName is "formRef" or "formKey")?.Value
 						  ?? task.Attributes().FirstOrDefault(attribute =>
 							  attribute.Name.LocalName is "formRef" or "formKey")?.Value;
+			foreach (var name in new[] { "formRefBinding", "formRefVersion" })
+			{
+				var value = form?.Attributes().FirstOrDefault(attribute => attribute.Name.LocalName == name)?.Value
+					?? task.Attributes().FirstOrDefault(attribute => attribute.Name.LocalName == name)?.Value;
+				if (value is not null) { attributes[name] = value; }
+			}
 			if (!string.IsNullOrWhiteSpace(formRef))
 			{
 				attributes["formRef"] = formRef;

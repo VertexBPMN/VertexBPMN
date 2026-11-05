@@ -51,12 +51,14 @@ internal sealed class TestAuthenticationHandler(
 			{
 				new Claim(ClaimTypes.Name, Request.Headers["X-Test-User"].ToString()),
 				new Claim(ClaimTypes.Role, "ReadOnly"),
+				new Claim(ClaimTypes.NameIdentifier, Request.Headers["X-Test-User"].ToString()),
 				new Claim("tenant_id", Request.Headers["X-Test-Tenant"].FirstOrDefault() ?? "vertexbpmn")
 			}
 			:
 			[
 				new Claim(ClaimTypes.Name, "test-admin"),
 				new Claim(ClaimTypes.Role, "Admin"),
+				new Claim(ClaimTypes.NameIdentifier, "test-admin"),
 				new Claim("tenant_id", "vertexbpmn")
 			];
 		var identity = new ClaimsIdentity(claims, Scheme.Name);

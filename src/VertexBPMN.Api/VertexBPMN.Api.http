@@ -1,6 +1,24 @@
-@VertexBPMN.Api_HostAddress = http://localhost:5263
+# =============================================================================
+# VertexBPMN API — Einstieg (Smoke) und Verweis auf den HTTP-Requestkatalog
+# =============================================================================
+# Kurzer Einstieg mit gültigen Smoke-Requests. Für thematische Abnahmen siehe
+# das Verzeichnis Http/ (Low-Code-Plan §4.3): runtime-baseline.http (LC00/LC02),
+# connectors-and-mapping.http (LC02/LC03), forms-and-tasks.http (LC04),
+# applications.http (LC05/LC07), app-runtime.http (LC06/LC07/LC09),
+# external-tasks.http (LC08), events-and-endpoints.http (LC09),
+# application-releases.http (LC10).
+# Umgebung: local-http (http-client.env.json); Token aus Testidentität (kein Literal hier).
+@VertexBPMN.Api_HostAddress = {{baseUrl}}
+@token = {{VERTEXBPMN_STAGE_TOKEN}}
 
-GET {{VertexBPMN.Api_HostAddress}}/weatherforecast/
+### 01 — Health (Smoke, unauthentifiziert)
+GET {{VertexBPMN.Api_HostAddress}}/api/health
 Accept: application/json
+# Soll: 200 { "status": "healthy" }
 
-###
+### 02 — Engine-Capabilities (Smoke, authentifiziert)
+GET {{VertexBPMN.Api_HostAddress}}/api/engine/capabilities
+Authorization: Bearer {{token}}
+Accept: application/json
+# Soll: 200 EngineCapabilities
+

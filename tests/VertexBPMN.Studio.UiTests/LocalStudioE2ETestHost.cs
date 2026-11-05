@@ -155,6 +155,35 @@ public sealed class LocalStudioE2ETestHost : IAsyncLifetime
 	public void RegisterProcessDefinitionCleanup(string processKey, string? tenantId = null) =>
 		_processDefinitionCleanups.Push(new(processKey, tenantId));
 
+    private Process? _endpointApiProcess;
+
+    public async Task<HttpClient> CreateEndpointRuntimeClientAsync(string tenantId)
+    {
+        var secret = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+        string Connection(string key)
+        {
+            var settings = new NpgsqlConnectionStringBuilder(RequiredEnvironment($"VERTEXBPMN_E2E_{key}_CONNECTION"));
+            settings.Database = IsolatedDatabaseNames.Single(name => name.StartsWith(settings.Database + "_e2e_", StringComparison.Ordinal));
+            return settings.ConnectionString;
+        }
+        var environment = BuildApiEnvironment(Connection("BPMN"), Connection("TENANT"), Connection("SIMULATION"), Connection("EVENTS"), Connection("DECISION"));
+        environment["Jwt__UseDevelopmentApiKey"] = "false";
+        environment["Jwt__SecretKey"] = secret;
+        environment["Database__ApplyMigrationsOnStartup"] = "false";
+        var address = new Uri($"http://127.0.0.1:{GetFreePort()}/");
+        var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../.."));
+        _endpointApiProcess = StartProject(Path.Combine(root, "src", "VertexBPMN.Api", "VertexBPMN.Api.csproj"), "Release", address, environment, _apiLogs);
+        await WaitForEndpointAsync(new Uri(address, "api/ready"), _endpointApiProcess, _apiLogs, "Endpoint JWT API");
+        var claims = new[] { new System.Security.Claims.Claim("tenant_id", tenantId), new System.Security.Claims.Claim("sub", "endpoint-reader"),
+            new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, "ReadOnly") };
+        var token = new System.IdentityModel.Tokens.Jwt.JwtSecurityToken(audience: "vertexbpmn-api", claims: claims,
+            expires: DateTime.UtcNow.AddMinutes(5), signingCredentials: new Microsoft.IdentityModel.Tokens.SigningCredentials(
+                new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(secret)), Microsoft.IdentityModel.Tokens.SecurityAlgorithms.HmacSha256));
+        var client = new HttpClient { BaseAddress = address };
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler().WriteToken(token));
+        return client;
+    }
+
 	public HttpClient CreateApiClient()
 	{
 		if (string.IsNullOrWhiteSpace(_apiKey))
@@ -386,6 +415,7 @@ public sealed class LocalStudioE2ETestHost : IAsyncLifetime
 		{
 			_playwright?.Dispose();
 			await StopProcessAsync(_studioProcess);
+            await StopProcessAsync(_endpointApiProcess);
 			await StopProcessAsync(_apiProcess);
 			await Task.Delay(TimeSpan.FromSeconds(2));
 

@@ -15,4 +15,6 @@ public sealed record ExternalTaskLease(
 	long LeaseExpiresAt,
 	long Deadline,
 	int AttemptNumber,
-	int MaxAttempts);
+	int MaxAttempts,
+	string? ApplicationReleaseId = null,
+	int FlowRevision = 0);

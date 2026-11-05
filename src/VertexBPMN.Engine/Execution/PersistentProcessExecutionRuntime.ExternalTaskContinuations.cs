@@ -84,7 +84,10 @@ public sealed partial class PersistentProcessExecutionRuntime
 
 			if (instance?.Status != ProcessInstanceStatus.Running || wait?.State != ExecutionToken.WaitingState
 				|| job is null || wait.ActivityExecutionId != job.ActivityExecutionId
-				|| continuation.ActivityExecutionId != job.ActivityExecutionId)
+				|| continuation.ActivityExecutionId != job.ActivityExecutionId
+				|| (continuation.Outcome == ExternalTaskOutcome.Success
+					&& (job.State != ExternalTaskState.Completed || job.CompletionId is null
+						|| job.ResultHash is null || job.CompletedAt is null)))
 			{
 				continuation.State = ExternalTaskContinuationState.Cancelled;
 				continuation.Revision++;

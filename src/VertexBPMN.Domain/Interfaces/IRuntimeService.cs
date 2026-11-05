@@ -19,6 +19,7 @@ public interface IRuntimeService
 
 	// Vorhandene Methoden
 	ValueTask<ProcessInstance> StartProcessByKeyAsync(string processDefinitionKey, IDictionary<string, object>? variables = null, string? businessKey = null, string? tenantId = null, string? idempotencyKey = null, CancellationToken cancellationToken = default);
+	ValueTask<ProcessInstance> StartProcessByIdAsync(Guid processDefinitionId, IDictionary<string, object>? variables = null, string? businessKey = null, string? tenantId = null, string? idempotencyKey = null, CancellationToken cancellationToken = default);
 	ValueTask<ProcessInstance?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
 	IAsyncEnumerable<ProcessInstance> ListAsync(Guid? processDefinitionId = null, string? tenantId = null, CancellationToken cancellationToken = default);
 	ValueTask SignalAsync(Guid processInstanceId, string signalName, object? payload = null, CancellationToken cancellationToken = default);

@@ -1,0 +1,34 @@
+# LC09B-MS-2a: veröffentlichter, gebundener POST und Status.
+# Voraussetzung: tenant-eigene App mit aktivem Release und POST/start-process Endpoint;
+# endpoint.Action.Target muss exakt BoundProcessDefinitionId sein.
+# baseUrl, appKey, endpointKey und userToken aus gewählter Umgebung/User Secrets.
+# Kein automatisches Deploy/Activate/Cleanup; jede Mutation ausdrücklich senden.
+# Workerpfad: vorhandener JobExecutorService (Modules:BackgroundJobs).
+# Accepted -> Running -> Started bedeutet nur Prozessstart, NICHT Prozessabschluss.
+# Recovery/Idempotenz ungewisser Starts bleibt MS-2b; Status-Endpoint-Permission
+# aus MS-1 ist noch nicht vollständig abgesichert (kein AC14-Abschluss).
+
+### Durable Annahme; 202, operationId/statusUrl/status=Accepted; noch keine Prozess-ID
+# @name acceptEndpointStart
+POST {{baseUrl}}/api/apps/{{appKey}}/endpoints/{{endpointKey}}
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{}
+
+### Tenant-/App-/Endpoint-bezogener Status; result null bis Start bestätigt
+# @name readEndpointStart
+GET {{baseUrl}}/api/apps/{{appKey}}/endpoints/{{endpointKey}}/operations/{{acceptEndpointStart.response.body.$.operationId}}
+Authorization: Bearer {{userToken}}
+
+### Unbekannte Operations-ID: 404
+# @name missingEndpointOperation
+GET {{baseUrl}}/api/apps/{{appKey}}/endpoints/{{endpointKey}}/operations/nonexistent
+Authorization: Bearer {{userToken}}
+
+### Kein Token: Authentifizierung verweigert
+# @name anonymousEndpointStart
+POST {{baseUrl}}/api/apps/{{appKey}}/endpoints/{{endpointKey}}
+Content-Type: application/json
+
+{}

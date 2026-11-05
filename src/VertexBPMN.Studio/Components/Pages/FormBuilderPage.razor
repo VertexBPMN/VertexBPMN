@@ -27,6 +27,13 @@
             <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="ExportFormJson" StartIcon="@Icons.Material.Filled.Download">Export JSON</MudButton>
             <MudButton Variant="Variant.Outlined" OnClick="LoadSavedFormJson" StartIcon="@Icons.Material.Filled.CloudDownload">Load saved form</MudButton>
             <MudButton Variant="Variant.Outlined" OnClick="@(() => LoadFormJson())" StartIcon="@Icons.Material.Filled.Refresh">Load JSON</MudButton>
+            <MudSelect T="int" Label="Published revision" @bind-Value="_selectedVersion" Disabled="@(_revisions.Count == 0)">
+                @foreach (var revision in _revisions)
+                {
+                    <MudSelectItem T="int" Value="@revision.Version">Revision @revision.Version · @revision.SchemaHash</MudSelectItem>
+                }
+            </MudSelect>
+            <MudButton Variant="Variant.Outlined" OnClick="LoadSelectedRevisionAsync" Disabled="@(_selectedVersion < 1)">Load selected revision</MudButton>
             <MudChip T="string" Color="Color.Info" Variant="Variant.Outlined">Tenant: @(TenantContext.CurrentTenantId ?? "select tenant")</MudChip>
     </StudioToolbar>
 
@@ -79,6 +86,9 @@
     private string _formKey = "invoice-approval";
     private string _formName = "Invoice approval";
     private string? _formId;
+    private IReadOnlyList<StudioFormRevision> _revisions = [];
+    private int _selectedVersion;
+    private string? _formTenantId;
     private string _newFieldKey = string.Empty;
     private string _newFieldLabel = string.Empty;
     private int _activeToolTab;
@@ -111,8 +121,17 @@
         _savedFormJson = _formJson;
         if (string.IsNullOrWhiteSpace(TenantContext.CurrentTenantId)) { Snackbar.Add("Select a tenant before saving the form.", Severity.Warning); return; }
         var request = new StudioFormWriteRequest(TenantContext.CurrentTenantId, _formKey, _formName, _formJson);
-        if (_formId is null) _formId = (await FormService.CreateAsync(request)).Id; else await FormService.UpdateAsync(_formId, request);
-        Snackbar.Add("Form saved in the registry and refreshed in the Runtime Viewer.", Severity.Success);
+        try
+        {
+            if (_formId is not null && !string.Equals(_formTenantId, request.TenantId, StringComparison.Ordinal))
+                throw new InvalidOperationException("Reload the form after changing tenant.");
+            if (_formId is null) _formId = (await FormService.CreateAsync(request)).Id;
+            else await FormService.UpdateAsync(_formId, request);
+            _formTenantId = request.TenantId;
+            await RefreshRevisionsAsync();
+            Snackbar.Add("Form saved as an immutable revision and refreshed in the Runtime Viewer.", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add($"Form save failed: {ex.Message}", Severity.Error); }
     }
 
     private async Task AddTextFieldAsync()
@@ -143,6 +162,9 @@
             _formJson = json;
             _savedFormJson = json;
             _formId = null;
+            _formTenantId = null;
+            _revisions = [];
+            _selectedVersion = 0;
             Snackbar.Add($"Imported {file.Name}.", Severity.Success);
         }
         catch (JsonException exception)
@@ -173,7 +195,32 @@
         _formName = definition.Name;
         _formJson = definition.Schema;
         _savedFormJson = definition.Schema;
+        _formTenantId = definition.TenantId;
+        await RefreshRevisionsAsync();
         Snackbar.Add("Saved form loaded from the registry.", Severity.Success);
+    }
+
+    private async Task RefreshRevisionsAsync()
+    {
+        if (_formId is null || _formTenantId is null) return;
+        _revisions = await FormService.GetRevisionsAsync(_formId, _formTenantId);
+        _selectedVersion = _revisions.Select(revision => revision.Version).DefaultIfEmpty(0).Max();
+    }
+
+    private async Task LoadSelectedRevisionAsync()
+    {
+        if (_formId is null || _formTenantId is null || _selectedVersion < 1) return;
+        try
+        {
+            if (!string.Equals(_formTenantId, TenantContext.CurrentTenantId, StringComparison.Ordinal))
+                throw new InvalidOperationException("Reload the form after changing tenant.");
+            var revision = await FormService.GetRevisionAsync(_formId, _selectedVersion, _formTenantId)
+                ?? throw new InvalidOperationException("The selected revision is unavailable.");
+            _formJson = revision.Schema;
+            _savedFormJson = revision.Schema;
+            Snackbar.Add($"Loaded immutable revision {revision.Version}. Saving publishes a new revision.", Severity.Info);
+        }
+        catch (Exception ex) { Snackbar.Add($"Revision load failed: {ex.Message}", Severity.Error); }
     }
 
     private async Task ExportFormJson()

@@ -1,0 +1,98 @@
+@page "/inbox"
+@namespace VertexBPMN.Portal.Client.Pages
+@using Microsoft.AspNetCore.Components
+@using VertexBPMN.Portal.Client.Bff
+
+<PageTitle>Task Inbox</PageTitle>
+
+<h1>Task Inbox</h1>
+
+@if (_loading)
+{
+    <p>Loading…</p>
+}
+else if (_result is { IsSuccess: true } ok && ok.Value is { } page)
+{
+    @if (page.Items.Count == 0)
+    {
+        <p>No tasks in your inbox.</p>
+    }
+    else
+    {
+        <table class="table">
+            <thead>
+                <tr><th>Task</th><th>Status</th><th>Created</th><th></th></tr>
+            </thead>
+            <tbody>
+                @foreach (var task in page.Items)
+                {
+                    <tr>
+                        <td>@task.Name</td>
+                        <td>@TaskStatusProjector.Normalize(task.Status)</td>
+                        <td>@(task.Created?.ToLocalTime().ToString("g"))</td>
+                        <td>
+                            <button class="btn btn-sm" disabled="@_busy" @onclick="() => Claim(task)">Claim</button>
+                            <button class="btn btn-sm" disabled="@_busy" @onclick="() => Complete(task)">Complete</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(_message))
+    {
+        <p class="text-info">@_message</p>
+    }
+}
+else
+{
+    <p class="text-danger">Failed to load inbox: @(_result?.ErrorCode)</p>
+}
+
+@code {
+    [Inject] private PortalBffClient Bff { get; set; } = default!;
+
+    private BffResult<TaskInboxPage>? _result;
+    private bool _loading = true;
+    private bool _busy;
+    private string? _message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _result = await Bff.GetInboxAsync();
+        _loading = false;
+    }
+
+    private async Task Claim(TaskInboxItem task)
+    {
+        _busy = true;
+        _message = null;
+        try
+        {
+            var result = await Bff.ClaimTaskAsync(task.Id);
+            _message = result.IsSuccess ? $"Claimed '{task.Name}'." : $"Claim failed: {result.ErrorCode}";
+            _result = await Bff.GetInboxAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task Complete(TaskInboxItem task)
+    {
+        _busy = true;
+        _message = null;
+        try
+        {
+            var result = await Bff.CompleteTaskAsync(task.Id);
+            _message = result.IsSuccess ? $"Completed '{task.Name}'." : $"Complete failed: {result.ErrorCode}";
+            _result = await Bff.GetInboxAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

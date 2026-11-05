@@ -1,0 +1,45 @@
+### LC09 — Event-Subscriptions & Replay (events section)
+# Events-Teil von LC-AC-13: Cursor-/Replayrequests, definierte API-Parameter und relevante
+# Negativfälle. Keine Secrets / keine realen Identitäten in dieser versionierten Datei.
+# Identitäten getrennt je Testumgebung bereitstellen (LC-AC-22): @token = <Keycloak-Access-Token im JWT-Format>
+# Basis-URL gegen isolierte API setzen (z. B. http://localhost:5263).
+
+@base = http://localhost:5263
+@token = <access-token>
+@subId = 00000000-0000-0000-0000-000000000000
+
+### 1) Subscription anlegen (TenantSubscriptionManager)
+# @name createSubscription
+POST {{base}}/api/event-subscriptions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "process-events-sub" }
+
+### 2) Subscriptions auflisten (TenantReadOnly)
+GET {{base}}/api/event-subscriptions
+Authorization: Bearer {{token}}
+
+### 3) Ereignisse ab Anfang (TenantReadOnly) — setzt @subId auf die erzeugte Subscription
+GET {{base}}/api/event-subscriptions/{{subId}}/events
+Authorization: Bearer {{token}}
+
+### 4) Replay ab Cursor / Fortsetzen (TenantReadOnly)
+# @name replay
+GET {{base}}/api/event-subscriptions/{{subId}}/events?after=<cursor-von-Read-Antwort>
+Authorization: Bearer {{token}}
+
+### 5) Negative: ungültiger Cursor -> 400
+GET {{base}}/api/event-subscriptions/{{subId}}/events?after=not-a-cursor
+Authorization: Bearer {{token}}
+
+### 6) Negative: fremde/andere Tenant-Subscription -> 404 (fremde Identität einsetzen)
+GET {{base}}/api/event-subscriptions/<fremde-subscription-id>/events
+Authorization: Bearer <anderer-tenant-token>
+
+### 7) Subscription löschen (TenantSubscriptionManager)
+DELETE {{base}}/api/event-subscriptions/{{subId}}
+Authorization: Bearer {{token}}
+
+### 8) Negative: unbefugt (ohne/ungültiger Token) -> 401/403
+GET {{base}}/api/event-subscriptions/{{subId}}/events

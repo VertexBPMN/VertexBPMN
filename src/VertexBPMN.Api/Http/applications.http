@@ -1,0 +1,55 @@
+# LC05: Application definitions — draft CRUD, revision pinning, release-candidate/release lifecycle.
+# IDs, versions and revisions always come from actual responses (REPLACE_FROM_* placeholders).
+@baseUrl = http://localhost:51870
+@tenant = Testmandant
+@appId = REPLACE_FROM_CREATE_RESPONSE
+@revisionId = REPLACE_FROM_REVISION_RESPONSE
+@candidateId = REPLACE_FROM_RELEASE_CANDIDATE_RESPONSE
+
+### Create draft revision 1 (use configured HTTP-client authentication)
+POST {{baseUrl}}/api/applications
+Content-Type: application/json
+
+{"tenantId":"{{tenant}}","key":"lc05-app","name":"LC05 application","expectedVersion":0,"content":"{\"pages\":[{\"id\":\"home\",\"route\":\"/home\"}]}"}
+
+### Read the draft (current mutable revision)
+GET {{baseUrl}}/api/applications/{{appId}}?tenantId={{tenant}}
+
+### Read fixed revision 1 (must not change on later updates)
+GET {{baseUrl}}/api/applications/{{appId}}/revisions/1?tenantId={{tenant}}
+
+### Update draft with expectedVersion=1 -> becomes revision 2 (stale expectedVersion yields 409, no data loss)
+PUT {{baseUrl}}/api/applications/{{appId}}
+Content-Type: application/json
+
+{"tenantId":"{{tenant}}","key":"lc05-app","name":"LC05 application v2","expectedVersion":1,"content":"{\"pages\":[{\"id\":\"home\",\"route\":\"/home\"},{\"id\":\"settings\",\"route\":\"/settings\"}]}"}
+
+### Negative: concurrent update with stale expectedVersion must be rejected (409)
+PUT {{baseUrl}}/api/applications/{{appId}}
+Content-Type: application/json
+
+{"tenantId":"{{tenant}}","key":"lc05-app","name":"Stale write","expectedVersion":1,"content":"{\"pages\":[{\"id\":\"home\",\"route\":\"/home\"}]}"}
+
+### Read fixed revision 1 again (unchanged despite the update above)
+GET {{baseUrl}}/api/applications/{{appId}}/revisions/1?tenantId={{tenant}}
+
+### Create release candidate from explicitly pinned revision 2
+POST {{baseUrl}}/api/applications/{{appId}}/revisions/2/release-candidate?tenantId={{tenant}}
+
+### Get the release candidate
+GET {{baseUrl}}/api/applications/release-candidates/{{candidateId}}?tenantId={{tenant}}
+
+### Release the candidate (204)
+POST {{baseUrl}}/api/applications/release-candidates/{{candidateId}}/release?tenantId={{tenant}}
+
+### Negative: drafting a new revision after release must not displace the released one
+PUT {{baseUrl}}/api/applications/{{appId}}
+Content-Type: application/json
+
+{"tenantId":"{{tenant}}","key":"lc05-app","name":"LC05 application v3","expectedVersion":2,"content":"{\"pages\":[{\"id\":\"home\",\"route\":\"/home\"},{\"id\":\"admin\",\"route\":\"/admin\"}]}"}
+
+### Released read: returns the pinned revision 2 only (never the v3 draft) — no draft leak
+GET {{baseUrl}}/api/applications/{{appId}}/released-revision?tenantId={{tenant}}
+
+### Negative: read the release candidate / released revision from another tenant (403)
+GET {{baseUrl}}/api/applications/{{appId}}/released-revision?tenantId=Testmandant-fremd

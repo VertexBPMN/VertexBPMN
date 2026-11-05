@@ -1,0 +1,64 @@
+# LC06/07/09: Released-application runtime — the server-side API contract the Portal BFF
+# calls with the user's server-held token. The BFF resolves the tenant, actor and released
+# revision itself and forwards to these endpoints; the browser never reaches them directly.
+# Identities: use configured HTTP-client authentication (Admin/ReadOnly/ProcessManager).
+@baseUrl = http://localhost:51870
+@tenant = Testmandant
+@appId = REPLACE_FROM_RELEASED_RESPONSE
+@taskId = REPLACE_FROM_INBOX_OR_TASK_RESPONSE
+@idempotencyKey = 8a1c2b3d-4e5f-4a6b-9c7d-000000000002
+
+###
+# @name ReleasedRevision
+# Veröffentlichte (nicht latest/draft) Revision als ApplicationRevisionRecord. Diese
+# ContentJson ist die Release-Bindung, gegen die der BFF Datenquellen/Aktionen auflöst.
+# Ohne/nicht ReadOnly-Berechtigung: 401/403. Bei keinem freigegebenen Release: 404.
+# Erwartet: 200 { id, applicationDefinitionId, tenantId, contentJson, version, ... }
+GET {{baseUrl}}/api/applications/{{appId}}/released-revision?tenantId={{tenant}}
+
+###
+# @name PersonalInbox
+# Persönliche Aufgabenliste (assignee/candidate-gefiltert, Tenant aus Claims). Der BFF leitet
+# die Aufgabenabfrage an diesen bestehenden Inbox-Vertrag weiter (keine Neuimplementierung).
+GET {{baseUrl}}/api/task/inbox?page=1&pageSize=20
+
+###
+# @name PersonalInboxDetail
+# Einzelaufgabe mit Objektebene-Leseautorisierung; nicht sichtbare Aufgabe: 404 (kein Leak).
+GET {{baseUrl}}/api/task/inbox/{{taskId}}
+
+###
+# @name ClaimTask
+# Claim für die ABGELEITETE Identität; Tenant/Assignee/Revision kommen aus dem Server.
+# Erfordert ProcessManager-Rolle + Idempotency-Key. Ohne Schlüssel/fremder Kandidat: 400/403.
+POST {{baseUrl}}/api/task/inbox/{{taskId}}/claim
+Idempotency-Key: {{idempotencyKey}}
+
+###
+# @name CompleteTask
+# Validierte Completion (Schema + Berechtigung + Idempotenz) gegen den Task-Snapshot.
+# Ohne Idempotency-Key/stale Revision: 400/409.
+POST {{baseUrl}}/api/task/inbox/{{taskId}}/complete
+Content-Type: application/json
+Idempotency-Key: {{idempotencyKey}}
+
+{"variables":{"approved":true}}
+
+###
+# @name PermissionDenied
+# Negativfall: Aufruf ohne passende Berechtigung (z. B. ReadOnly auf claim) -> 403.
+POST {{baseUrl}}/api/task/inbox/{{taskId}}/claim
+Idempotency-Key: {{idempotencyKey}}
+
+###
+# @name ReleasedDataSourceRead
+# Eng begrenzter, serverseitig aufgelöster Query-Binding-Read gegen die Release-Bindung.
+# Der BFF validiert zuvor, dass das Binding deklariert UND von einer data-source-read-Aktion
+# referenziert ist (kein generischer dataSources-Ausführungsendpunkt, keine rohe Query).
+# Exit: 200 { binding, status, rowCount, ... }; unsanktioniertes Binding: 404 bffUnsanctionedBinding.
+GET {{baseUrl}}/api/applications/{{appId}}/released/data-sources/invoiceList?tenantId={{tenant}}
+
+###
+# @name UnsanctionedRejected
+# Negativfall: beliebiges/rohes Query- oder Connector-Binding wird abgelehnt.
+GET {{baseUrl}}/api/applications/{{appId}}/released/data-sources/arbitraryQuery?tenantId={{tenant}}

@@ -70,8 +70,11 @@ public sealed class OpenApiConnectorTemplateImporterTests
 	{
 		var result = _importer.Import(Spec, "tenant-a");
 
+		// LC03: the flat createOrder body is now exported as structured bodyField props,
+		// so it no longer needs review. OAuth still requires manual credential linkage.
 		var order = result.Report.Single(r => r.OperationId == "createOrder");
-		Assert.Equal(N8nImportDisposition.NeedsReview, order.Disposition);
+		Assert.Equal(N8nImportDisposition.Migrated, order.Disposition);
+		Assert.Contains(result.Templates.Single(t => t.Name == "createOrder").Properties, p => p.Key == "vertex:connector.bodyField.qty");
 
 		var oauth = result.Report.Single(r => r.OperationId == "getOauth");
 		Assert.Equal(N8nImportDisposition.NeedsReview, oauth.Disposition);
@@ -119,6 +122,71 @@ public sealed class OpenApiConnectorTemplateImporterTests
 
 		Assert.True(result.Success);
 		Assert.Equal("https://api.example.com/v1/users/42", captured!.ToString());
+	}
+
+	[Fact]
+	public void Import_MapsQueryToConnectorQueryAndStructuredBodyToBodyFields()
+	{
+		const string spec = """
+			{
+			  "openapi": "3.0.0",
+			  "info": { "title": "D", "version": "1" },
+			  "servers": [ { "url": "https://api.example.com/v2" } ],
+			  "paths": {
+			    "/search": {
+			      "get": {
+			        "operationId": "search",
+			        "parameters": [ { "name": "q", "in": "query", "schema": { "type": "string" } } ]
+			      }
+			    },
+			    "/items": {
+			      "post": {
+			        "operationId": "createItem",
+			        "requestBody": { "content": { "application/json": { "schema": {
+			          "type": "object",
+			          "properties": { "customer": { "type": "string" }, "qty": { "type": "integer" } }
+			        } } } }
+			      }
+			    }
+			  }
+			}
+			""";
+		var result = new OpenApiConnectorTemplateImporter().Import(spec, "tenant-a");
+
+		var search = result.Templates.Single(t => t.Name == "search");
+		Assert.Contains(search.Properties, p => p.Key == "vertex:connector.query.q" && p.Type == "string");
+
+		var create = result.Templates.Single(t => t.Name == "createItem");
+		Assert.Contains(create.Properties, p => p.Key == "vertex:connector.bodyField.customer" && p.Type == "string");
+		Assert.Contains(create.Properties, p => p.Key == "vertex:connector.bodyField.qty" && p.Type == "number");
+		Assert.DoesNotContain(create.Properties, p => p.Key == "body");
+	}
+
+	[Fact]
+	public void Import_KeepsComplexBodyAsBodyAndFlagsNeedsReview()
+	{
+		const string spec = """
+			{
+			  "openapi": "3.0.0",
+			  "info": { "title": "D", "version": "1" },
+			  "paths": {
+			    "/complex": {
+			      "post": {
+			        "operationId": "createComplex",
+			        "requestBody": { "content": { "application/json": { "schema": {
+			          "type": "object",
+			          "properties": { "nested": { "type": "array", "items": { "type": "object" } } }
+			        } } } }
+			      }
+			    }
+			  }
+			}
+			""";
+		var result = new OpenApiConnectorTemplateImporter().Import(spec, "tenant-a");
+
+		var create = result.Templates.Single(t => t.Name == "createComplex");
+		Assert.Contains(create.Properties, p => p.Key == "body");
+		Assert.Equal(N8nImportDisposition.NeedsReview, result.Report.Single(r => r.OperationId == "createComplex").Disposition);
 	}
 
 	private sealed class RecordingHandler(Action<HttpRequestMessage> onRequest) : HttpMessageHandler

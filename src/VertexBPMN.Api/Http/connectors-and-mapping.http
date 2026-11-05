@@ -1,0 +1,197 @@
+# =============================================================================
+# HTTP-Request-Catalog · connectors-and-mapping.http
+# Paket: LC02 (Template-/Connectorbindung) · erweitert in LC03 (Datenantworten)
+# Ziel: ConnectorTemplate-Bindung (import → persist → list) und unify-Transport
+#       (method/endpoint/header/body/timeout).
+# Voraussetzungen: laufende API (local-http), Testidentitäten, KEINE Tokens hier.
+# Identitäten: {{VERTEXBPMN_STAGE_TOKEN}} (ProcessManager),
+#              {{VERTEXBPMN_ADMIN_TOKEN}} (AdminOnly für Create/PUT/DELETE),
+#              {{VERTEXBPMN_READONLY_TOKEN}} (ReadOnly-Check).
+# Reihenfolge: 01→05. Sollwerte sind Kommentare; 200 beweist keine Fachwirkung.
+# =============================================================================
+@baseUrl = {{baseUrl}}
+@tenantId = {{tenantId}}
+@token = {{VERTEXBPMN_STAGE_TOKEN}}
+@adminToken = {{VERTEXBPMN_ADMIN_TOKEN}}
+
+### 01 — OpenAPI importieren (ProcessManager) → Report (LC02 Importpfad)
+# @name openapiImport
+POST {{baseUrl}}/api/import/openapi
+Authorization: Bearer {{token}}
+Content-Type: application/json
+# Soll: 200; Report-Array mit operationId + disposition je Operation
+
+{
+  "openApiJson": "{\"openapi\":\"3.0.0\",\"info\":{\"title\":\"Demo\",\"version\":\"1.0\"},\"paths\":{\"/users/{id}\":{\"get\":{\"operationId\":\"getUser\",\"parameters\":[{\"name\":\"id\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"integer\"}},{\"name\":\"X-Trace\",\"in\":\"header\",\"schema\":{\"type\":\"string\"}}]},\"post\":{\"operationId\":\"updateUser\",\"parameters\":[{\"name\":\"id\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"integer\"}}],\"requestBody\":{\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"}}}}}}}}}}",
+  "tenantId": "{{tenantId}}"
+}
+# Erwartete Template-Propertys für updateUser: vertex:connector.method=post,
+#   vertex:connector.endpoint=<server>/users/{id}, vertex:connector.timeoutMs,
+#   vertex:connector.header.X-Trace bei get (BindingVersion 2).
+
+### 02 — Connector-Templates listen (ReadOnly ok) → 200 mit Properties+BindingVersion
+GET {{baseUrl}}/api/connector-templates
+Authorization: Bearer {{token}}
+Accept: application/json
+# Soll: 200; Array von ConnectorTemplateMetadata inkl. Properties[].bindingVersion
+
+### 03 — Template lesen (nach openapiImport, aus tatsächlicher Antwort-ID)
+GET {{baseUrl}}/api/connector-templates
+Authorization: Bearer {{token}}
+Accept: application/json
+# Soll: 200; hier wird die echte Id aus 02 übernommen (nicht erfunden)
+
+### 04 — Template anlegen (AdminOnly) → 201 Created (Binding-Version 2 nach LC02)
+# @name createTemplate
+POST {{baseUrl}}/api/connector-templates
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+# Soll: 201 Created; Location auf GET {id}
+
+{
+  "tenantId": "{{tenantId}}",
+  "name": "Demo GetUser",
+  "category": "http",
+  "appliesTo": ["serviceTask"],
+  "runtime": "http",
+  "icon": null,
+  "properties": [
+    { "key": "vertex:connector.method", "type": "string", "required": true, "default": "GET", "bindingVersion": 2 },
+    { "key": "vertex:connector.endpoint", "type": "string", "required": true, "default": "https://api.example.test/v1/users", "bindingVersion": 2 },
+    { "key": "vertex:connector.timeoutMs", "type": "number", "required": false, "bindingVersion": 2 },
+    { "key": "vertex:connector.header.X-Trace", "type": "string", "required": false, "bindingVersion": 2 }
+  ]
+}
+
+### 05 — ReadOnly darf Create NICHT ausführen → 403 (Berechtigungsmatrix LC01)
+POST {{baseUrl}}/api/connector-templates
+Authorization: Bearer {{VERTEXBPMN_READONLY_TOKEN}}
+Content-Type: application/json
+# Soll: 403 Forbidden; ProblemDetails
+{
+  "tenantId": "{{tenantId}}",
+  "name": "ShouldFail",
+  "category": "http",
+  "appliesTo": ["serviceTask"],
+  "runtime": "http",
+  "properties": []
+}
+
+# =============================================================================
+# LC03 · Datenantworten & Input-Mapping (Fortschrittsstand, Teilfortschritt)
+# Ziel: begrenzt lesen (JSON/Text), Query-/Body-Mapping, definierte Fehler.
+# Beispielantworten hier OHNE sensible Daten; Secret-Felder → *** (Redaction).
+# Abhängige Testdienste: ein lokaler Echo-/JSON-Dienst hinter {{dataServiceUrl}}.
+# =============================================================================
+
+### 10 — Connector-Request mit Query-Mapping + strukturiertem Body (LC03 Input-Mapping)
+# @name dataCall
+POST {{baseUrl}}/api/engine/capabilities
+Authorization: Bearer {{VERTEXBPMN_STAGE_TOKEN}}
+Content-Type: application/json
+# Soll: 200; Nachrichten-Echo der gemappten Felder; Referenz auf echten Lauf.
+# Konzept: vertex:connector.query.<name> → URL-Query (resolved+encoded),
+#   vertex:connector.bodyField.<name> → JSON-Body-Feld (resolved, escaped),
+#   {{var}}-Referenzen auflösen, unaufgelöst → definierter Fehler.
+
+### 11 — Begrenzte JSON-Antwort mit tiefer Redaction (LC03 Datenantworten)
+# Konzept: Response-Felder via httpBody.<field> in Prozessvariablen übernehmen;
+#   secretToken / nested.apiKey / list[].token → *** (nicht in Variablen/History).
+# ...
+# Beispielantwort (Testdienst, KEINE sensiblen Daten):
+# {
+#   "customer": "A",
+#   "amount": 12.5,
+#   "group": "basic",
+#   "nested": { "apiKey": "***" }
+# }
+# Erwartete Prozessvariablen: connector.output.httpBody.customer="A",
+#   connector.output.httpBody.amount=12.5, connector.output.httpBody.nested.apiKey="***".
+
+### 12 — Zu große Antwort → definierter Fehler ohne Teilzuordnung
+# Konzept: Antwort größer als ConnectorRuntime:MaxResponseBytes (Default 256 KiB)
+#   wird abgebrochen; Status/Header/Body werden NICHT teilweise zugeordnet.
+# Soll: connector.success=false, Fehlercode responseTooLarge, keine httpBody.*-Variablen.
+
+### 13 — Malformiertes/nicht-JSON-Antwort → definierter Fehler
+# Konzept: invalidBody / nonJsonText; keine Teilzuordnung; Fehler ohne Teilwerte.
+
+### 14 — Timeout (bestehender Retry-Pfad)
+# Konzept: vertex:retryPolicy.timeoutMs überschreiten → definiertes timeout,
+#   keine Teilzuordnung der (nicht gelesenen) Antwort.
+
+### 15 — Studio-Mapper-Vorschau (LC03 Z.247)
+# Ziel: Eingabe-/Ausgabeschema, Feldwahl, explizite Transformation und Vorschau über
+#   einen realen Datenfall; ohne Teilzuordnung bei fehlendem Pflichtfeld/fehlerhafter
+#   Typumwandlung. Stateless: keine Persistenz, nur Berechnung.
+POST {{baseUrl}}/api/mapping/preview
+Authorization: Bearer {{VERTEXBPMN_ADMIN_TOKEN}}
+Content-Type: application/json
+# Soll: 200; success=true; Werte wie customerName="A", amount=12.5, group="gold".
+{
+  "sourceJson": "{ \"customer\": { \"name\": \"A\", \"group\": \"gold\" }, \"amount\": 12.50 }",
+  "mappings": [
+    { "sourcePath": "customer.name", "targetKey": "customerName", "transform": "Copy", "required": true },
+    { "sourcePath": "customer.group", "targetKey": "group", "transform": "Copy", "required": false },
+    { "sourcePath": "amount", "targetKey": "amount", "transform": "ToNumber", "required": false }
+  ]
+}
+
+### 16 — Mapper-Vorschau: definierter Fehler ohne Teilzuordnung
+# Soll: 400/200 mit success=false und Fehler-LISTE (keine Teilwerte), weil Pflichtfeld fehlt
+#   bzw. 'abc' nicht als Dezimal konvertierbar ist.
+POST {{baseUrl}}/api/mapping/preview
+Authorization: Bearer {{VERTEXBPMN_ADMIN_TOKEN}}
+Content-Type: application/json
+{
+  "sourceJson": "{ \"customer\": { \"name\": \"A\" }, \"amount\": \"abc\" }",
+  "mappings": [
+    { "sourcePath": "customer.missing", "targetKey": "x", "transform": "Copy", "required": true },
+    { "sourcePath": "amount", "targetKey": "amount", "transform": "ToNumber", "required": false }
+  ]
+}
+
+# =============================================================================
+# LC02 · Runtime-Nachweis (Import → Deploy → Start → HTTP-Request → Folgeschritt)
+# Manuelles Pendant zum automatisierten ImportedConnectorBindingExecutionTests:
+# ein über OpenAPI importiertes Binding führt mit EXAKT den konfigurierten Werten aus.
+# Der lokale Echo-Dienst ({{dataServiceUrl}}) loggt Methode/Pfad/Header/Body; die
+# Sollwerte stammen aus der Import-Spec (nicht aus einer vorab erzeugten Variable).
+# Reihenfolge: 20→22. BPMN-Körper ist Abkuerzung; vgl. Test-Fixture.
+# =============================================================================
+
+### 20 — Definition mit importiertem Connector-Binding deployen (ProcessManager)
+# @name deployBinding
+POST {{baseUrl}}/api/repository
+Authorization: Bearer ***
+Content-Type: application/json
+# Soll: 201 ProcessDefinition; ProcessDefinitionKey = "lc02-binding"
+# BPMN: serviceTask apiConn mit <vertex:connector type operationId method endpoint
+#   bindingVersion header.X-Tenant>; endpoint = {{dataServiceUrl}}/customers/{customerId}
+{
+  "bpmnXml": "<definitions xmlns=\"http://www.omg.org/spec/BPMN/20100524/MODEL\" xmlns:vertex=\"https://vertexbpmn.io/schema/bpmn/1.0\"><process id=\"lc02-binding\" isExecutable=\"true\"><startEvent id=\"start\"/><sequenceFlow id=\"sf1\" sourceRef=\"start\" targetRef=\"apiConn\"/><serviceTask id=\"apiConn\"><extensionElements><vertex:connector type=\"http\" operationId=\"http.request\" method=\"get\" endpoint=\"http://127.0.0.1:8080/customers/{customerId}\" bindingVersion=\"2\" header.X-Tenant=\"{{tenant}}\"/></extensionElements></serviceTask><sequenceFlow id=\"sf2\" sourceRef=\"apiConn\" targetRef=\"end\"/><endEvent id=\"end\"/></process></definitions>",
+  "name": "lc02-imported-binding",
+  "tenantId": "{{tenantId}}"
+}
+
+### 21 — Start (löst den Connector gegen {{dataServiceUrl}} aus)
+# @name startBinding
+POST {{baseUrl}}/api/runtime/start
+Authorization: Bearer ***
+Content-Type: application/json
+Idempotency-Key: lc02-binding-start-001
+# Soll: 201 ProcessInstance; der Echo-Dienst muss protokolliert haben:
+#   GET /customers/42, Header "X-Tenant: t1" (aus {{customerId}}={{customerId}} / {{tenant}})
+{
+  "processDefinitionKey": "lc02-binding",
+  "variables": { "customerId": "42", "tenant": "t1" },
+  "tenantId": "{{tenantId}}"
+}
+
+### 22 — Folgeschritt: Instance-Zustand abfragen → Completed (Connector + End erreicht)
+GET {{baseUrl}}/api/runtime/{{startBinding.response.body.id}}
+Authorization: Bearer ***
+Accept: application/json
+# Soll: 200; state=Completed; connector.success=true; connector.status=200;
+#   connector.output.httpBody.customer="A" (falls Output-Mapping/Reader aktiv)
+

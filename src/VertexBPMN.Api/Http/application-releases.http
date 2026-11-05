@@ -1,0 +1,58 @@
+# LC10: Gemeinsame Aktivierung / Rollback / Provenienz über die Application-Release-API.
+# Pfad: Prepare -> Activate -> Status -> Rollback -> Cleanup.
+# Retries verwenden DIESELBE Operation-Identity (idempotent über den eindeutigen
+# {TenantId, ApplicationDefinitionId, OperationId}-Index). Rollback und Cleanup sind
+# getrennt benannte Requests: Rollback kehrt den Aktivierungszeiger um, Cleanup entfernt
+# nur nie aktivierte Vorbereitungs-/Fehlversuchsdaten.
+# IDs/Revisionen stets aus den tatsächlichen Antworten übernehmen (REPLACE_FROM_*).
+@baseUrl = http://localhost:51870
+@tenant = Testmandant
+@appId = REPLACE_FROM_PREPARE_RESPONSE
+
+### Aktivierung vorbereiten (Generation 1, Revision 1) -> liefert die ApplicationReleaseId
+POST {{baseUrl}}/api/applications/{{appId}}/releases/prepare?tenantId={{tenant}}
+Content-Type: application/json
+
+{"operationId":"lc10-op-1","revision":1,"manifestJson":"{\"schemaVersion\":\"1\",\"artifactKind\":\"application\",\"key\":\"lc10-app\",\"revision\":1,\"hash\":\"deadbeef\"}"}
+
+### Retry derselben Vorbereitung mit DERSELBEN Operation-Identity -> 201, identische OperationId (idempotent)
+POST {{baseUrl}}/api/applications/{{appId}}/releases/prepare?tenantId={{tenant}}
+Content-Type: application/json
+
+{"operationId":"lc10-op-1","revision":1,"manifestJson":"{\"schemaVersion\":\"1\",\"artifactKind\":\"application\",\"key\":\"lc10-app\",\"revision\":1,\"hash\":\"deadbeef\"}"}
+
+### Aktivieren (Deploy + atomarer, revisionsgeprüfter Pointer-Switch) -> State=Active
+POST {{baseUrl}}/api/applications/{{appId}}/releases/activate?tenantId={{tenant}}
+Content-Type: application/json
+
+{"operationId":"lc10-op-1"}
+
+### Retry der Aktivierung mit DERSELBEN Operation-Identity -> wieder State=Active, genau eine aktive Generation
+POST {{baseUrl}}/api/applications/{{appId}}/releases/activate?tenantId={{tenant}}
+Content-Type: application/json
+
+{"operationId":"lc10-op-1"}
+
+### Status (rekonziliert ausstehende DeploymentRunning-Operationen deterministisch)
+GET {{baseUrl}}/api/applications/{{appId}}/releases/status?tenantId={{tenant}}
+
+### Active-Start: konkrete, tenantgeprüfte ProcessDefinitionId der aktiven Generation
+GET {{baseUrl}}/api/applications/{{appId}}/releases/active-start?tenantId={{tenant}}
+
+### Rollback (separat benannt): kehrt den Zeiger auf eine frühere Generation um -> neue Starts wieder auf Generation 1
+POST {{baseUrl}}/api/applications/{{appId}}/releases/rollback?tenantId={{tenant}}
+Content-Type: application/json
+
+{"operationId":"lc10-op-rollback"}
+
+### Cleanup (separat benannt): entfernt nur nie aktivierte Pre-Release-Daten, fasst den aktiven Zeiger NICHT an
+POST {{baseUrl}}/api/applications/{{appId}}/releases/cleanup?tenantId={{tenant}}
+
+### Abort-Fall vor dem Deployment deterministisch rekonziliert (nicht satisfiable Revision -> Failed)
+POST {{baseUrl}}/api/applications/{{appId}}/releases/prepare?tenantId={{tenant}}
+Content-Type: application/json
+
+{"operationId":"lc10-op-abort","revision":99,"manifestJson":"{\"schemaVersion\":\"1\",\"artifactKind\":\"application\",\"key\":\"lc10-app\",\"revision\":99,\"hash\":\"deadbeef\"}"}
+
+### Status nach Abort -> State=Failed mit Diagnose (Rekonziliation)
+GET {{baseUrl}}/api/applications/{{appId}}/releases/status?tenantId={{tenant}}

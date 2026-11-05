@@ -67,18 +67,18 @@ internal class HttpBpmnEngineService : IBpmnEngineService
         return instances ?? Enumerable.Empty<ProcessInstance>();
     }
 
-    public async Task<IEnumerable<UserTask>> GetTasksAsync(string? tenantId = null)
+    public async Task<IEnumerable<StudioUserTask>> GetTasksAsync(string? tenantId = null)
     {
         try
         {
             var uri = string.IsNullOrWhiteSpace(tenantId) ? "api/task" : $"api/task?tenantId={Uri.EscapeDataString(tenantId)}";
-            var tasks = await _httpClient.GetFromJsonAsync<IEnumerable<UserTask>>(uri);
-            return tasks ?? Enumerable.Empty<UserTask>();
+            var tasks = await _httpClient.GetFromJsonAsync<IEnumerable<StudioUserTask>>(uri);
+            return tasks ?? Enumerable.Empty<StudioUserTask>();
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error fetching tasks");
-            return Enumerable.Empty<UserTask>();
+            return Enumerable.Empty<StudioUserTask>();
         }
     }
 
@@ -112,10 +112,15 @@ internal class HttpBpmnEngineService : IBpmnEngineService
         response.EnsureSuccessStatusCode();
     }
 
-    public async Task CompleteTaskAsync(Guid taskId, IDictionary<string, object?>? variables = null, string? tenantId = null)
+    public async Task CompleteTaskAsync(Guid taskId, IDictionary<string, object?>? variables = null, string? tenantId = null, long? expectedRevision = null, string? formSchemaHash = null, string? idempotencyKey = null)
     {
-        var response = await _httpClient.PostAsJsonAsync($"api/task/{taskId}/complete", new VariablesRequest(variables, tenantId));
-        response.EnsureSuccessStatusCode();
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"api/task/{taskId}/complete")
+        {
+            Content = JsonContent.Create(new { variables, tenantId, expectedRevision, formSchemaHash })
+        };
+        request.Headers.Add("Idempotency-Key", idempotencyKey ?? Guid.NewGuid().ToString("N"));
+        using var response = await _httpClient.SendAsync(request);
+        await ApiResponseErrors.EnsureSuccessAsync(response, CancellationToken.None);
     }
 
     public async Task DelegateTaskAsync(Guid taskId, string userId, string? tenantId = null)
@@ -188,5 +193,4 @@ internal class HttpBpmnEngineService : IBpmnEngineService
     }
 
     private sealed record UserRequest(string UserId, string? TenantId);
-    private sealed record VariablesRequest(IDictionary<string, object?>? Variables, string? TenantId);
 }

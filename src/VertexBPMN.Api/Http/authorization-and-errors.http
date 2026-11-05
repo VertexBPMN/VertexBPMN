@@ -1,0 +1,64 @@
+# =============================================================================
+# HTTP-Request-Catalog · authorization-and-errors.http
+# Paket: LC01 (Verträge) · erweitert je betroffenem Paket (LC02+)
+# Ziel: negative Authentifizierungs-/Autorisierungsfälle und ProblemDetails
+# Voraussetzungen: laufende API (local-http), Testidentitäten, keine Tokens hier.
+# Identitäten (getrennt, aus Testidentitäten, KEINE Literal-Secrets):
+#   {{VERTEXBPMN_STAGE_TOKEN}}        gültiger Nutzer-Token (tenant)
+#   {{VERTEXBPMN_READONLY_TOKEN}}     ReadOnly-Nutzer
+#   {{VERTEXBPMN_FOREIGN_TENANT_TOKEN}} Nutzer eines anderen Testtenants
+#   {{VERTEXBPMN_WORKER_TOKEN}}       External-Task-Worker (falscher Topic unten)
+# Reihenfolge: unten; 200 beweist keine Fachwirkung — fachlicher Nachweis getrennt.
+# =============================================================================
+@baseUrl = {{baseUrl}}
+@tenantId = {{tenantId}}
+@otherTenantId = {{otherTenantId}}
+@token = {{VERTEXBPMN_STAGE_TOKEN}}
+
+### 01 — Fehlender Token (kein Authorization-Header) → 401 + ProblemDetails
+GET {{baseUrl}}/api/engine/capabilities
+Accept: application/json
+# Soll: 401 Unauthorized; ProblemDetails mit code/title
+
+### 02 — Ungültiger/abgelaufener Token → 401
+GET {{baseUrl}}/api/engine/capabilities
+Authorization: Bearer INVALID_TOKEN_VALUE
+Accept: application/json
+# Soll: 401
+
+### 03 — ReadOnly-Nutzer darf Schreibaktion nicht ausführen → 403
+POST {{baseUrl}}/api/repository
+Authorization: Bearer {{VERTEXBPMN_READONLY_TOKEN}}
+Content-Type: application/json
+# Soll: 403 Forbidden; ProblemDetails (Bringt ReadOnly-Rolle zum Ausdruck)
+# (Body durch schreibende Definition in LC02 konkretisiert; hier nur Auth-Ziel)
+{
+  "resourceType": "process",
+  "payload": "{{$guid}}",
+  "metadata": {}
+}
+# Anmerkung: readOnly-Semantik wird in LC02 mit echtem Deploy-Body abgesichert.
+
+### 04 — Fremdtenant-Lesezugriff → 403/404
+GET {{baseUrl}}/api/forms
+Authorization: Bearer {{VERTEXBPMN_FOREIGN_TENANT_TOKEN}}
+Accept: application/json
+# Soll: 403 (oder 404 ohne Existenz-Leak); ProblemDetails; kein Datenverlust
+
+### 05 — Worker versucht Benutzer-Endpoint (falsche/verbreitete Rolle) → 403
+GET {{baseUrl}}/api/task
+Authorization: Bearer {{VERTEXBPMN_WORKER_TOKEN}}
+Accept: application/json
+# Soll: 403; Workeridentität wird nie als Benutzer behandelt
+
+### 06 — Falscher Worker-Topic (Worker-Token für anderen Topic) → 403
+POST {{baseUrl}}/api/external-tasks/claim
+Authorization: Bearer {{VERTEXBPMN_WORKER_TOKEN}}
+Content-Type: application/json
+{ "topics": ["wrong-topic-for-this-worker"], "maxTasks": 1, "leaseSeconds": 60 }
+# Soll: 403; falscher Topic/widerrufenes Profil wird abgelehnt (LC08 vertieft)
+
+### 07 — Rate-Limit / zu viele Versuche (token-bucket) → 429 (LC-Definition)
+GET {{baseUrl}}/api/health
+Accept: application/json
+# Soll: nicht Teil dieses Pakets; hier nur dokumentiert — 429-Beispiel nach Bedarf

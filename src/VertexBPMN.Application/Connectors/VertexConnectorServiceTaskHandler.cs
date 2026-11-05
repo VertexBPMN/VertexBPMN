@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Data.Common;
 using System.Diagnostics;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
@@ -20,16 +21,32 @@ public sealed class VertexConnectorServiceTaskHandler(
 {
 	public async Task ExecuteAsync(IDictionary<string, string> attributes, IDictionary<string, object> variables, CancellationToken ct = default)
 	{
+		// LC02/ADR-0006: the Studio persists connector config as ioMapping inputs
+		// (vertex:ioMapping.input.vertex:connector.*). Surface these under the plain
+		// vertex:connector.* keys so handler + executor share one view — without
+		// changing the parser/serializer round-trip contract.
+		attributes = NormalizeConnectorAttributes(attributes);
 		var type = Required(attributes, "vertex:connector.type");
 		var operationId = Required(attributes, "vertex:connector.operationId");
 		var tenantId = Value(attributes, "vertex:connector.tenantId") ?? GetVariable(variables, "tenantId") ?? "default";
-		var endpoint = Uri.TryCreate(Value(attributes, "vertex:connector.endpoint"), UriKind.Absolute, out var parsed) ? parsed : null;
+		AssertSupportedBindingVersion(attributes);
+		var endpointSource = Value(attributes, "vertex:connector.endpoint");
+		if (endpointSource is not null)
+		{
+			endpointSource = ConnectorValueResolver.Resolve(endpointSource, variables, "connector endpoint");
+		}
+
+		var endpoint = endpointSource is not null && Uri.TryCreate(endpointSource, UriKind.Absolute, out var parsed) ? parsed : null;
 		var credentialId = Value(attributes, "vertex:connector.credentialRef") ?? Value(attributes, "vertex:credential.id");
 		var secretKey = Value(attributes, "vertex:connector.secretKey") ?? "token";
 		var credentialDestinationHost = GetCredentialDestinationHost(type, endpoint, attributes);
 		var secret = await ResolveSecretAsync(tenantId, credentialId, secretKey, credentialDestinationHost, ct);
 		var retries = GetInt(attributes, "vertex:retryPolicy.maxAttempts", 3, 1, 10);
-		var timeout = GetInt(attributes, "vertex:retryPolicy.timeoutMs", GetInt(attributes, "vertex:connector.timeoutMs", 30_000, 100, 300_000), 100, 300_000);
+		// LC02 timeouts: the binding timeout (vertex:connector.timeoutMs) is authoritative
+		// for a single HTTP attempt. vertex:retryPolicy.timeoutMs is only a legacy fallback
+		// when the binding does not declare one — a shorter retry budget must not override
+		// an explicit binding timeout (ConnectorRuntime cancels attempts with the retry timeout).
+		var timeout = GetInt(attributes, "vertex:connector.timeoutMs", GetInt(attributes, "vertex:retryPolicy.timeoutMs", 30_000, 100, 300_000), 100, 300_000);
 		var delay = GetInt(attributes, "vertex:retryPolicy.initialDelayMs", GetInt(attributes, "vertex:retryPolicy.baseDelayMs", 250, 0, 60_000), 0, 60_000);
 		var context = new ConnectorExecutionContext(tenantId, type, operationId, endpoint, new Dictionary<string, string>(attributes, StringComparer.Ordinal), variables, new ConnectorRetryPolicy(retries, TimeSpan.FromMilliseconds(timeout), TimeSpan.FromMilliseconds(delay)), credentialId, secret);
 		var result = await runtime.ExecuteAsync(context, ct);
@@ -120,6 +137,52 @@ public sealed class VertexConnectorServiceTaskHandler(
 
 	private static string Required(IDictionary<string, string> values, string key) => Value(values, key) ?? throw new ServiceTaskExecutionException($"'{key}' is required.");
 	private static string? Value(IDictionary<string, string> values, string key) => values.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value) ? value.Trim() : null;
+
+	// LC02/ADR-0006: bridge the Studio's ioMapping persistence back to the plain
+	// vertex:connector.* keys the runtime expects.
+	private static Dictionary<string, string> NormalizeConnectorAttributes(IDictionary<string, string> attributes)
+	{
+		const string ioMappingPrefix = "vertex:ioMapping.input.";
+		const string connectorMarker = "vertex:connector.";
+		var hasIoMappingConnector = attributes.Keys.Any(key => key.StartsWith(ioMappingPrefix + connectorMarker, StringComparison.Ordinal));
+		if (!hasIoMappingConnector)
+		{
+			return attributes is Dictionary<string, string> dict ? dict : new Dictionary<string, string>(attributes, StringComparer.Ordinal);
+		}
+
+		var normalized = new Dictionary<string, string>(attributes, StringComparer.Ordinal);
+		foreach (var (key, value) in attributes)
+		{
+			if (key.StartsWith(ioMappingPrefix + connectorMarker, StringComparison.Ordinal))
+			{
+				var plain = key[ioMappingPrefix.Length..];
+				normalized[plain] = value;
+			}
+		}
+
+		return normalized;
+	}
+
+	// LC02/ADR-0006: reject unknown/ambiguous binding versions at load instead of guessing.
+	// When no explicit version attribute is present the binding is treated as legacy (1).
+	private static void AssertSupportedBindingVersion(IDictionary<string, string> attributes)
+	{
+		if (!attributes.TryGetValue("vertex:connector.bindingVersion", out var raw))
+		{
+			return;
+		}
+
+		if (!int.TryParse(raw, out var version))
+		{
+			throw new ServiceTaskExecutionException($"Invalid connector binding version '{raw}'.");
+		}
+
+		if (!ConnectorBindingVersion.IsSupported(version))
+		{
+			throw new ServiceTaskExecutionException($"Unsupported connector binding version '{version}'; supported versions are {ConnectorBindingVersion.Legacy} (legacy) and {ConnectorBindingVersion.Versioned}.");
+		}
+	}
+
 	private static string? GetVariable(IDictionary<string, object> values, string key) => values.TryGetValue(key, out var value) ? Convert.ToString(value) : null;
 	private static int GetInt(IDictionary<string, string> values, string key, int fallback, int min, int max) => values.TryGetValue(key, out var raw) && int.TryParse(raw, out var parsed) ? Math.Clamp(parsed, min, max) : fallback;
 }

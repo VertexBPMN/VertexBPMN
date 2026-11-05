@@ -22,7 +22,7 @@ public sealed class ExternalTaskLeaseService(
         var job = await FindVisibleBoundJobAsync(worker, jobId, cancellationToken);
         return new ExternalTaskStatus(job.Id, job.ActivityExecutionId, job.Topic, job.State.ToString(),
             job.ContractVersion, job.AgentProfileVersion, job.Deadline, job.AttemptsStarted, job.MaxAttempts,
-            job.LeaseGeneration, job.LeaseExpiresAt);
+            job.LeaseGeneration, job.LeaseExpiresAt, job.ApplicationReleaseId, job.DefinitionVersion);
     }
 
     public async ValueTask<ExternalTaskAttemptPage> GetAttemptsAsync(
@@ -131,10 +131,11 @@ public sealed class ExternalTaskLeaseService(
 
 		var visible = await db.ExternalTaskJobs.AsNoTracking().SingleOrDefaultAsync(job =>
             job.Id == jobId && job.TenantId == worker.TenantId && worker.Topics.Contains(job.Topic), cancellationToken);
-        if (visible is null || !CanUseProfile(worker, visible.AgentProfileRef))
+        if (visible is null)
 		{
 			throw new ExternalTaskLeaseException("external_task_not_found");
 		}
+		ThrowIfProfileDenied(visible, worker);
 
 		if (visible.WorkerIssuer != worker.Issuer || visible.WorkerSubject != worker.Subject)
 		{
@@ -291,6 +292,9 @@ public sealed class ExternalTaskLeaseService(
             Outcome = ExternalTaskOutcome.Success, State = ExternalTaskContinuationState.Pending,
             Revision = 1, CreatedAt = now
         });
+        // Server-side trusted business-effect receipt: exactly one persisted row per activity
+        // execution regardless of retries, response loss or reused completions (UNIQUE effect key).
+        AddSuccessEffectReceipt(visible, command.CompletionId, resultHash, now);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         RuntimeTelemetry.ExternalTaskDuration.Record(Math.Max(0, now - visible.CreatedAt));
@@ -480,12 +484,33 @@ public sealed class ExternalTaskLeaseService(
     {
         var job = await db.ExternalTaskJobs.AsNoTracking().SingleOrDefaultAsync(item =>
             item.Id == jobId && item.TenantId == worker.TenantId && worker.Topics.Contains(item.Topic), cancellationToken);
-        if (job is null || !CanUseProfile(worker, job.AgentProfileRef))
-		{
-			throw new ExternalTaskLeaseException("external_task_not_found");
-		}
+        if (job is null)
+        {
+            throw new ExternalTaskLeaseException("external_task_not_found");
+        }
 
-		return job;
+        ThrowIfProfileDenied(job, worker);
+        return job;
+    }
+
+    private static void ThrowIfProfileDenied(ExternalTaskJob job, ExternalTaskWorkerContext worker)
+    {
+        if (CanUseProfile(worker, job.AgentProfileRef))
+        {
+            return;
+        }
+
+        // Mid-lease profile/access revocation: a worker that still holds the current lease on
+        // the job keeps the claim, but the job-bound profile no longer authorizes any business
+        // effect (Completion/Fail/Heartbeat). Surface an explicit 403 policy_revoked so the
+        // deprived worker learns the access change instead of a misleading "not found"; the
+        // lease row is deliberately left untouched so recovery/reclaim can proceed normally.
+        if (job.WorkerIssuer == worker.Issuer && job.WorkerSubject == worker.Subject)
+        {
+            throw new ExternalTaskLeaseException("policy_revoked");
+        }
+
+        throw new ExternalTaskLeaseException("external_task_not_found");
     }
 
     private static void EnsureCurrentLease(ExternalTaskJob job, ExternalTaskWorkerContext worker,
@@ -534,6 +559,17 @@ public sealed class ExternalTaskLeaseService(
                 && item.Revision == wait.Revision && item.State == ExecutionToken.WaitingState)
             .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.Revision, item => item.Revision + 1), cancellationToken);
         return waitUpdated == 1;
+    }
+
+    private void AddSuccessEffectReceipt(ExternalTaskJob job, Guid completionId, string resultHash, long now)
+    {
+        db.ExternalTaskEffectReceipts.Add(new ExternalTaskEffectReceipt
+        {
+            Id = Guid.NewGuid(), JobId = job.Id, ActivityExecutionId = job.ActivityExecutionId,
+            EffectKey = VertexBPMN.Domain.Model.Runtime.ExternalTaskEffectKey.For(job.ActivityExecutionId),
+            EffectName = VertexBPMN.Domain.Model.Runtime.ExternalTaskEffectKey.DefaultEffectName,
+            CompletionId = completionId, ResultHash = resultHash, CreatedAt = now
+        });
     }
 
     private async ValueTask<ExternalTaskMutationResult> MutationResultAsync(
@@ -678,7 +714,8 @@ public sealed class ExternalTaskLeaseService(
     private static ExternalTaskLease ToLease(ExternalTaskJob job, Guid leaseId, long generation, long expires, int attempt)
         => new(job.Id, job.ActivityExecutionId, job.Topic, job.ContractVersion, job.AgentProfileVersion,
             JsonDocument.Parse(job.InputSnapshot).RootElement.Clone(), job.SchemaSnapshot,
-            leaseId, generation, expires, job.Deadline, attempt, job.MaxAttempts);
+            leaseId, generation, expires, job.Deadline, attempt, job.MaxAttempts,
+            job.ApplicationReleaseId, job.DefinitionVersion);
 
     private void ValidateWorker(ExternalTaskWorkerContext worker)
     {

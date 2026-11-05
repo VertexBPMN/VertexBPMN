@@ -154,7 +154,16 @@ internal static class VertexBpmnAppHostTopology
             .WithEnvironment("Runtime__Outbox__Provider", "RabbitMq");
 
         ConfigureDevelopmentStudio(builder, api);
+        ConfigurePortal(builder, api);
     }
+
+    /// <summary>
+    /// Fachportal (LC06) ist ein opt-in-Einstieg: Der bisherige lokale Start darf das
+    /// Portal nicht automatisch mitstarten (es erwartet eine BFF/OIDC-Konfiguration).
+    /// Aktivierung über Hosting-Config <c>Portal__Enabled=true</c>.
+    /// </summary>
+    private static bool IsPortalEnabled(IDistributedApplicationBuilder builder)
+        => string.Equals(builder.Configuration["Portal:Enabled"], "true", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Runs API and Studio as Aspire projects while consuming PostgreSQL and RabbitMQ
@@ -221,6 +230,30 @@ internal static class VertexBpmnAppHostTopology
         }
 
         ConfigureExternalStudio(builder, api, useOidcTest ? oidcAuthority : null, studioClientSecret);
+    }
+
+    /// <summary>
+    /// Registers the Fachportal (LC06): BFF-Host + Blazor-WASM-Client, verbraucht die API.
+    /// </summary>
+    private static void ConfigurePortal(IDistributedApplicationBuilder builder, IResourceBuilder<ProjectResource> api)
+    {
+        if (!IsPortalEnabled(builder))
+        {
+            return;
+        }
+
+        builder
+            .AddProject<Projects.VertexBPMN_Portal>("portal")
+            .WithHttpEndpoint(
+                port: 5281,
+                name: "http")
+            .WaitFor(api)
+            .WithEnvironment(
+                "ASPNETCORE_ENVIRONMENT",
+                "Development")
+            .WithEnvironment(
+                "Portal__ApiBaseUrl",
+                api.GetEndpoint("http"));
     }
 
     private static IResourceBuilder<RabbitMQServerResource> ConfigureRabbitMq(IDistributedApplicationBuilder builder)

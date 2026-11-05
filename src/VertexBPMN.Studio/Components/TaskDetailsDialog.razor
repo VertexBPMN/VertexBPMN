@@ -1,123 +1,119 @@
-@inject MudBlazor.IDialogService DialogService
 @inject MudBlazor.ISnackbar Snackbar
 @inject IJSRuntime JSRuntime
-@inject VertexBPMN.Studio.Services.ITaskService TaskService
-@inject VertexBPMN.Studio.Services.StudioTenantContext TenantContext
+@inject ITaskService TaskService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ILogger<TaskDetailsDialog> Logger
+@inject IExecutionDetailsService ExecutionDetailsService
+@inject IWebHostEnvironment HostEnvironment
 @implements IAsyncDisposable
 
 <MudDialog>
     <TitleContent>
-        <MudText Typo="Typo.h6" Class="studio-dialog-title"><MudIcon Icon="@Icons.Material.Outlined.TaskAlt" Class="me-2" />Task Details: @Task.Name</MudText>
+        <MudText Typo="Typo.h6">Task Details: @Task.Name</MudText>
     </TitleContent>
     <DialogContent>
-        <MudGrid Class="studio-dialog-details">
-            <MudItem xs="12">
-                <MudText><b>Id:</b> <span class="studio-technical-id">@Task.Id</span></MudText>
-                <MudText><b>Process Instance Id:</b> <span class="studio-technical-id">@Task.ProcessInstanceId</span></MudText>
-                <MudText><b>Created Time:</b> @Task.CreatedAt</MudText>
-                <MudText><b>Assignee:</b> @(string.IsNullOrEmpty(Task.Assignee) ? "Unassigned" : Task.Assignee)</MudText>
-                <MudText><b>Due Date:</b> @(Task.DueDate?.ToShortDateString() ?? "N/A")</MudText>
-            </MudItem>
-            @if (!string.IsNullOrEmpty(Task.FormKey))
-            {
-                <MudItem xs="12">
-                    <MudText Typo="Typo.h6" Class="mt-4">Task Form</MudText>
-                    <div id="@_formContainerId" class="studio-dialog-form"></div>
-                </MudItem>
-            }
-        </MudGrid>
+        <MudText><b>Id:</b> @Task.Id</MudText>
+        <MudText><b>Process Instance Id:</b> @Task.ProcessInstanceId</MudText>
+        <MudText><b>Assignee:</b> @(Task.Assignee ?? "Unassigned")</MudText>
+        @if (TaskFormState.IsBound(Task))
+        {
+            <MudText Typo="Typo.h6" Class="mt-4">Task Form</MudText>
+            <MudText Typo="Typo.caption">Snapshot revision: @Task.FormVersion · Hash: @Task.FormSchemaHash</MudText>
+            <div id="@_formContainerId" class="studio-dialog-form"></div>
+        }
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="@(() => Dialog.Close())">Cancel</MudButton>
-        @if (Task.Assignee == _currentUserName)
+        @if (!string.IsNullOrWhiteSpace(_currentUserName) && Task.Assignee == _currentUserName)
         {
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Check" OnClick="CompleteTask">Complete</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" Disabled="@(_submitting || (TaskFormState.IsBound(Task) && !_formInitialized))" OnClick="CompleteTask">Complete</MudButton>
         }
     </DialogActions>
 </MudDialog>
 
 @code {
     [CascadingParameter] public MudBlazor.IMudDialogInstance Dialog { get; set; } = default!;
-
-    [Parameter]
-    public UserTask Task { get; set; } = default!;
-
+    [Parameter] public StudioUserTask Task { get; set; } = default!;
     private string _formJson = "{}";
-
-    private readonly string _formContainerId = $"form-builder-{Guid.NewGuid():N}";
+    private readonly string _formContainerId = $"task-form-{Guid.NewGuid():N}";
     private IJSObjectReference? _module;
     private IJSObjectReference? _formInstance;
     private bool _formInitialized;
+    private bool _submitting;
     private string? _currentUserName;
+    private IDictionary<string, object?> _prefill = new Dictionary<string, object?>();
+    private string? _completionJson;
+    private string? _idempotencyKey;
+    private bool _schemaLoaded;
 
     protected override async Task OnInitializedAsync()
     {
-        var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        _currentUserName = authenticationState.User.Identity?.Name
-            ?? authenticationState.User.FindFirstValue(ClaimTypes.NameIdentifier);
-
-        if (!string.IsNullOrEmpty(Task.FormKey))
+        var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        _currentUserName = state.User.FindFirstValue("sub")
+            ?? state.User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? (state.User.Identity?.IsAuthenticated == true
+                && state.User.Identity?.AuthenticationType == UiTestAuthenticationHandler.Scheme
+                    ? state.User.Identity?.Name
+                    : null);
+        if (!TaskFormState.IsBound(Task)) return;
+        try
         {
-            try
+            if (!string.IsNullOrWhiteSpace(Task.FormSchema))
             {
-                // Load form JSON (in real app this should come from a service or repository)
-                var path = Path.Combine("wwwroot", "data", Task.FormKey + ".json");
-                if (File.Exists(path))
-                {
-                    _formJson = await File.ReadAllTextAsync(path);
-                }
-                else if (!string.IsNullOrEmpty(Task.FormSchema))
-                {
-                    _formJson = Task.FormSchema!; // fallback to embedded schema
-                }
+                _formJson = Task.FormSchema!;
             }
-            catch (Exception ex)
+            else
             {
-                Snackbar.Add($"Fehler beim Laden des Formulars: {ex.Message}", Severity.Error);
+                // Only legacy tasks without snapshots may use local examples.
+                var key = Task.FormKey ?? string.Empty;
+                if (key != Path.GetFileName(key) || key.Contains("..", StringComparison.Ordinal))
+                    throw new InvalidOperationException("Invalid legacy form key.");
+                var path = Path.Combine(HostEnvironment.WebRootPath, "data", key + ".json");
+                if (!File.Exists(path)) throw new InvalidOperationException("Task form snapshot is unavailable.");
+                _formJson = await File.ReadAllTextAsync(path);
             }
+            var authorizedData = await ExecutionDetailsService.GetVariablesAsync(Task.ProcessInstanceId);
+            _prefill = authorizedData.EnumerateObject().ToDictionary(property => property.Name,
+                property => (object?)(property.Value.TryGetProperty("value", out var value) ? value.Clone() : property.Value.Clone()), StringComparer.Ordinal);
+            _schemaLoaded = true;
         }
+        catch (Exception ex) { Snackbar.Add($"Task form unavailable: {ex.Message}", Severity.Error); }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && !string.IsNullOrEmpty(Task.FormKey))
+        if (!firstRender || !_schemaLoaded) return;
+        try
         {
-            try
-            {
-                _module = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/form-viewer.js");
-                _formInstance = await _module.InvokeAsync<IJSObjectReference>("FormViewerInterop.createViewer", _formContainerId, _formJson);
-                _formInitialized = true;
-            }
-            catch (Exception ex)
-            {
-                Snackbar.Add($"Form init failed: {ex.Message}", Severity.Error);
-            }
+            _module = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/form-viewer.js");
+            _formInstance = await _module.InvokeAsync<IJSObjectReference>("FormViewerInterop.createViewer", _formContainerId, _formJson, _prefill);
+            _formInitialized = true;
+            StateHasChanged();
         }
+        catch (Exception ex) { Snackbar.Add($"Form init failed: {ex.Message}", Severity.Error); }
     }
 
     private async Task CompleteTask()
     {
+        if (_submitting || Task.Assignee != _currentUserName || (TaskFormState.IsBound(Task) && !_formInitialized)) return;
+        _submitting = true;
         try
         {
             string? submittedJson = null;
-            if (_formInitialized && _module is not null && _formInstance is not null)
+            if (TaskFormState.IsBound(Task))
+                submittedJson = await _module!.InvokeAsync<string>("FormViewerInterop.getData", _formInstance);
+            if (_idempotencyKey is null || !string.Equals(_completionJson, submittedJson, StringComparison.Ordinal))
             {
-                submittedJson = await _module.InvokeAsync<string>("FormViewerInterop.getData", _formInstance);
+                _completionJson = submittedJson;
+                _idempotencyKey = Guid.NewGuid().ToString("N");
             }
-            IDictionary<string, object?>? variables = submittedJson is null
-                ? null
-                : System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object?>>(submittedJson)
-                  ?? new Dictionary<string, object?>();
-            await TaskService.CompleteTaskAsync(Task.Id, variables, TenantContext.CurrentTenantId);
+            var variables = submittedJson is null ? null : System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object?>>(submittedJson);
+            await TaskService.CompleteTaskAsync(Task.Id, variables, Task.TenantId, Task.Revision, Task.FormSchemaHash, _idempotencyKey);
             Snackbar.Add($"Task {Task.Name} completed!", Severity.Success);
             Dialog.Close(DialogResult.Ok(submittedJson));
         }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Error completing task: {ex.Message}", Severity.Error);
-        }
+        catch (Exception ex) { Snackbar.Add($"Error completing task: {ex.Message}", Severity.Error); }
+        finally { _submitting = false; }
     }
 
     public async ValueTask DisposeAsync()
@@ -126,16 +122,11 @@
         {
             if (_formInstance is not null)
             {
+                if (_module is not null) await _module.InvokeVoidAsync("FormViewerInterop.destroy", _formInstance);
                 await _formInstance.DisposeAsync();
             }
-            if (_module is not null)
-            {
-                await _module.DisposeAsync();
-            }
+            if (_module is not null) await _module.DisposeAsync();
         }
-        catch (Exception exception)
-        {
-            Logger.LogWarning(exception, "Failed to dispose the task form viewer");
-        }
+        catch (Exception ex) { Logger.LogWarning(ex, "Failed to dispose the task form viewer"); }
     }
 }

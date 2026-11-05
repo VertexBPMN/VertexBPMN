@@ -9,7 +9,40 @@ namespace VertexBPMN.Infrastructure.Persistence;
 /// </summary>
 public class BpmnDbContext : DbContext
 {
-    public BpmnDbContext(DbContextOptions<BpmnDbContext> options) : base(options) { }
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "MA0056", Justification = "SQLite migration hash function registration uses the initialized EF connection before migrations run.")]
+    public BpmnDbContext(DbContextOptions<BpmnDbContext> options) : base(options)
+    {
+        if (Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite"
+            && Database.GetDbConnection() is Microsoft.Data.Sqlite.SqliteConnection connection)
+        {
+            connection.CreateFunction<string, string>("vertex_sha256", schema =>
+                Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(schema))).ToLowerInvariant(), isDeterministic: true);
+        }
+    }
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        EnsureImmutableFormRevisions();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        EnsureImmutableFormRevisions();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private void EnsureImmutableFormRevisions()
+    {
+        if (ChangeTracker.Entries<ApplicationReleaseCandidateRecord>().Any(x => x.State == EntityState.Modified
+            && (x.Property(p => p.ManifestJson).IsModified || x.Property(p => p.ApplicationRevisionId).IsModified
+                || x.Property(p => p.ApplicationDefinitionId).IsModified || x.Property(p => p.TenantId).IsModified)))
+        { throw new InvalidOperationException("Release candidate bindings are immutable."); }
+        if (ChangeTracker.Entries<ApplicationRevisionRecord>().Any(x => x.State == EntityState.Modified))
+        { throw new InvalidOperationException("Application revisions are immutable."); }
+        if (ChangeTracker.Entries<FormDefinitionRevisionRecord>().Any(x => x.State == EntityState.Modified))
+        { throw new InvalidOperationException("Form revisions are immutable."); }
+    }
 
     public DbSet<ProcessDefinition> ProcessDefinitions => Set<ProcessDefinition>();
     public DbSet<ProcessInstance> ProcessInstances => Set<ProcessInstance>();
@@ -19,12 +52,15 @@ public class BpmnDbContext : DbContext
     public DbSet<ExternalTaskJob> ExternalTaskJobs => Set<ExternalTaskJob>();
     public DbSet<ExternalTaskAttempt> ExternalTaskAttempts => Set<ExternalTaskAttempt>();
     public DbSet<ExternalTaskContinuation> ExternalTaskContinuations => Set<ExternalTaskContinuation>();
+    public DbSet<ExternalTaskEffectReceipt> ExternalTaskEffectReceipts => Set<ExternalTaskEffectReceipt>();
     public DbSet<UserTask> Tasks => Set<UserTask>();
     public DbSet<HistoryEvent> HistoryEvents => Set<HistoryEvent>();
     public DbSet<Incident> Incidents => Set<Incident>();
     public DbSet<EventSubscription> EventSubscriptions => Set<EventSubscription>();
     public DbSet<RuntimeOutboxMessage> RuntimeOutbox => Set<RuntimeOutboxMessage>();
     public DbSet<RuntimeInboxMessage> RuntimeInbox => Set<RuntimeInboxMessage>();
+    public DbSet<EventStreamSubscription> EventStreamSubscriptions => Set<EventStreamSubscription>();
+    public DbSet<EventStreamDelivery> EventStreamDeliveries => Set<EventStreamDelivery>();
     public DbSet<WorkerRegistration> WorkerRegistrations => Set<WorkerRegistration>();
     public DbSet<MultiInstanceExecution> MultiInstanceExecutions => Set<MultiInstanceExecution>();
     public DbSet<EngineDeployment> EngineDeployments => Set<EngineDeployment>();
@@ -40,7 +76,13 @@ public class BpmnDbContext : DbContext
     public DbSet<ConnectorRecord> Connectors => Set<ConnectorRecord>();
     public DbSet<ConnectorTemplateRecord> ConnectorTemplates => Set<ConnectorTemplateRecord>();
     public DbSet<WorkflowTrigger> WorkflowTriggers => Set<WorkflowTrigger>();
+    public DbSet<ApplicationDefinitionRecord> ApplicationDefinitions => Set<ApplicationDefinitionRecord>();
+    public DbSet<ApplicationReleaseCandidateRecord> ApplicationReleaseCandidates => Set<ApplicationReleaseCandidateRecord>();
+    public DbSet<ApplicationReleaseRecord> ApplicationReleases => Set<ApplicationReleaseRecord>();
+    public DbSet<ApplicationRevisionRecord> ApplicationRevisions => Set<ApplicationRevisionRecord>();
+    public DbSet<ApplicationEndpointOperation> ApplicationEndpointOperations => Set<ApplicationEndpointOperation>();
     public DbSet<FormDefinitionRecord> FormDefinitions => Set<FormDefinitionRecord>();
+    public DbSet<FormDefinitionRevisionRecord> FormDefinitionRevisions => Set<FormDefinitionRevisionRecord>();
     public DbSet<CaseDefinitionRecord> CaseDefinitions => Set<CaseDefinitionRecord>();
     public DbSet<CaseInstanceRecord> CaseInstances => Set<CaseInstanceRecord>();
     public DbSet<PollingTriggerRecord> PollingTriggers => Set<PollingTriggerRecord>();
@@ -65,6 +107,7 @@ public class BpmnDbContext : DbContext
         ConfigureIncident(modelBuilder);
         ConfigureEventSubscriptions(modelBuilder);
         ConfigureRuntimeMessaging(modelBuilder);
+        EventStreamModel.Configure(modelBuilder);
         ConfigureWorkerRegistrations(modelBuilder);
         ConfigureMultiInstanceExecution(modelBuilder);
         ConfigureUser(modelBuilder);
@@ -78,6 +121,14 @@ public class BpmnDbContext : DbContext
         ConfigureWorkflowTriggers(modelBuilder);
         ConfigurePollingTriggers(modelBuilder);
         ConfigureOAuth2FlowStates(modelBuilder);
+        modelBuilder.Entity<ApplicationDefinitionRecord>().Property(x => x.Version).IsConcurrencyToken();
+        modelBuilder.Entity<ApplicationDefinitionRecord>().HasIndex(x => new { x.TenantId, x.Key }).IsUnique();
+        modelBuilder.Entity<ApplicationReleaseCandidateRecord>().HasOne<ApplicationRevisionRecord>().WithMany().HasForeignKey(x => x.ApplicationRevisionId).OnDelete(DeleteBehavior.Restrict);
+        ConfigureApplicationReleases(modelBuilder);
+        modelBuilder.Entity<ApplicationRevisionRecord>().HasOne<ApplicationDefinitionRecord>().WithMany().HasForeignKey(x => x.ApplicationDefinitionId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<ApplicationRevisionRecord>().HasIndex(x => new { x.ApplicationDefinitionId, x.Version }).IsUnique();
+        modelBuilder.Entity<ApplicationEndpointOperation>()
+            .HasIndex(x => new { x.TenantId, x.ApplicationKey, x.EndpointKey, x.IdempotencyKey }).IsUnique();
         ConfigureFormDefinitions(modelBuilder);
         ConfigureCaseDefinitions(modelBuilder);
 
@@ -487,8 +538,30 @@ public class BpmnDbContext : DbContext
 
     private static void ConfigureFormDefinitions(ModelBuilder modelBuilder)
     {
+        var revision = modelBuilder.Entity<FormDefinitionRevisionRecord>();
+        revision.HasKey(x => x.Id);
+        revision.Property(x => x.TenantId).HasMaxLength(64).IsRequired();
+        revision.Property(x => x.Key).HasMaxLength(128).IsRequired();
+        revision.Property(x => x.Name).HasMaxLength(256).IsRequired();
+        revision.Property(x => x.Schema).IsRequired();
+        revision.Property(x => x.SchemaHash).HasMaxLength(64).IsRequired();
+        revision.HasIndex(x => new { x.FormDefinitionId, x.Version }).IsUnique();
+        revision.HasOne<FormDefinitionRecord>().WithMany().HasForeignKey(x => x.FormDefinitionId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<UserTask>().Property(x => x.FormSchemaHash).HasMaxLength(64);
+        modelBuilder.Entity<UserTask>().HasOne<FormDefinitionRevisionRecord>().WithMany().HasForeignKey(x => x.FormRevisionId).OnDelete(DeleteBehavior.Restrict);
         var entity = modelBuilder.Entity<FormDefinitionRecord>();
+        entity.Property(x => x.Version).IsConcurrencyToken();
         entity.HasKey(x => x.Id); entity.Property(x => x.TenantId).HasMaxLength(64).IsRequired(); entity.Property(x => x.Key).HasMaxLength(128).IsRequired(); entity.Property(x => x.Name).HasMaxLength(256).IsRequired(); entity.Property(x => x.Schema).IsRequired(); entity.HasIndex(x => new { x.TenantId, x.Key }).IsUnique();
+    }
+
+    private static void ConfigureApplicationReleases(ModelBuilder modelBuilder)
+    {
+        var release = modelBuilder.Entity<ApplicationReleaseRecord>();
+        release.Property(x => x.PointerRevision).IsConcurrencyToken();
+        release.Property(x => x.State).HasConversion<string>().HasMaxLength(32);
+        release.HasOne<ApplicationRevisionRecord>().WithMany().HasForeignKey(x => x.ApplicationRevisionId).OnDelete(DeleteBehavior.Restrict);
+        release.HasIndex(x => new { x.TenantId, x.ApplicationDefinitionId });
+        release.HasIndex(x => new { x.TenantId, x.ApplicationDefinitionId, x.OperationId }).IsUnique();
     }
 
     private static void ConfigureCaseDefinitions(ModelBuilder modelBuilder)

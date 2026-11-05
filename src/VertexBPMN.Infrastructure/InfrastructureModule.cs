@@ -2,14 +2,17 @@ using Azure.Extensions.AspNetCore.DataProtection.Blobs;
 using Azure.Extensions.AspNetCore.DataProtection.Keys;
 using Azure.Identity;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using System.Security.Claims;
 using VertexBPMN.Application;
 using VertexBPMN.Application.Configuration;
 using VertexBPMN.Application.Messaging;
+using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
 using VertexBPMN.Domain.Interfaces.Repositories;
 using VertexBPMN.Infrastructure.Messaging;
@@ -62,9 +65,7 @@ public static class InfrastructureModule
         services.AddScoped<ISimulationScenarioService, SimulationScenarioService>();
         services.AddScoped<IMessageDispatcher, PersistentMessageDispatcher>();
         services.AddScoped<PersistentProcessMiningEventSink>();
-        services.AddSingleton<RuntimeOutboxAnalyticsProjectionService>();
-        services.AddHostedService(serviceProvider =>
-            serviceProvider.GetRequiredService<RuntimeOutboxAnalyticsProjectionService>());
+        RegisterEventProjections(services, configuration, mode);
         services.AddScoped<IRuntimeMetricsReader, RuntimeMetricsReader>();
         services.AddSingleton<RuntimeMetricsState>();
         if (mode != "Test" && configuration.GetValue("Operational:Metrics:Enabled", true))
@@ -87,6 +88,8 @@ public static class InfrastructureModule
         services.AddScoped<IConnectorService, PersistentConnectorService>();
         services.AddScoped<IConnectorTemplateService, PersistentConnectorTemplateService>();
         services.AddScoped<IFormDefinitionService, PersistentFormDefinitionService>();
+        RegisterApplicationServices(services);
+        services.AddScoped(CreateApplicationAccessContext);
         services.AddScoped<ITaskIoSnapshotRecorder, TaskIoSnapshotRecorder>();
         services.AddScoped<IOAuth2CredentialFlowService, OAuth2CredentialFlowService>();
         if (mode != "Test")
@@ -95,6 +98,30 @@ public static class InfrastructureModule
         }
 
         return services;
+    }
+
+    private static void RegisterEventProjections(IServiceCollection services, IConfiguration configuration, string mode)
+    {
+        services.AddSingleton<RuntimeOutboxAnalyticsProjectionService>();
+        services.AddHostedService(serviceProvider =>
+            serviceProvider.GetRequiredService<RuntimeOutboxAnalyticsProjectionService>());
+        if (!configuration.GetValue("Runtime:EventSubscriptions:Enabled", false))
+        {
+            return;
+        }
+        services.AddSingleton<RuntimeEventSubscriptionProjectionService>();
+        if (mode != "Test")
+        {
+            services.AddHostedService(serviceProvider =>
+                serviceProvider.GetRequiredService<RuntimeEventSubscriptionProjectionService>());
+        }
+    }
+
+    private static void RegisterApplicationServices(IServiceCollection services)
+    {
+        services.AddScoped<IApplicationDefinitionService, PersistentApplicationDefinitionService>();
+        services.AddScoped<IApplicationReleaseService, PersistentApplicationReleaseService>();
+        services.AddScoped<IApplicationEndpointReconciler, PersistentApplicationEndpointReconciler>();
     }
 
     private static void RegisterExternalTaskServices(
@@ -557,6 +584,22 @@ public static class InfrastructureModule
             "test" or "unittest"   => "Test",
             _                      => "Development"
         };
+
+    private static ApplicationAccessContext CreateApplicationAccessContext(IServiceProvider sp)
+    {
+        var user = sp.GetService<IHttpContextAccessor>()?.HttpContext?.User;
+        var permissions = new HashSet<string>(StringComparer.Ordinal);
+        if (user?.IsInRole("Admin") == true || user?.IsInRole("ProcessManager") == true)
+        {
+            permissions.Add("application.design");
+            permissions.Add("application.publish");
+        }
+        var actorId = user?.FindFirstValue("sub")
+            ?? user?.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? user?.Identity?.Name
+            ?? "system";
+        return new ApplicationAccessContext(actorId, permissions);
+    }
 
     private sealed record DbContextDescriptor(string LogicalName, string[] Synonyms);
 }

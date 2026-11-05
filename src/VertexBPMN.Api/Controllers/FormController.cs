@@ -45,6 +45,26 @@ public sealed class FormController(IFormDefinitionService forms) : ControllerBas
 		return form is null ? NotFound() : Ok(form);
 	}
 
+	[HttpGet("{id}/revisions")]
+    public async Task<ActionResult<IReadOnlyList<FormDefinitionRevisionMetadata>>> ListRevisions(string id, [FromQuery] string? tenantId, CancellationToken ct)
+    {
+        var tenant = Tenant(tenantId, out var forbidden);
+        if (forbidden) { return Forbid(); }
+        if (tenant is null) { return BadRequest(); }
+        if (await forms.GetAsync(tenant, id, ct) is null) { return NotFound(); }
+        return Ok(await forms.ListRevisionsAsync(tenant, id, ct));
+    }
+
+    [HttpGet("{id}/revisions/{version:int}")]
+    public async Task<ActionResult<FormDefinitionRevisionMetadata>> GetRevision(string id, int version, [FromQuery] string? tenantId, CancellationToken ct)
+    {
+        var tenant = Tenant(tenantId, out var forbidden);
+        if (forbidden) { return Forbid(); }
+        if (tenant is null) { return BadRequest(); }
+        var revision = await forms.GetRevisionAsync(tenant, id, version, ct);
+        return revision is null ? NotFound() : Ok(revision);
+    }
+
 	[HttpPost]
 	[Authorize(Policy = "ProcessManager")]
 	public async Task<ActionResult<FormDefinitionMetadata>> Create([FromBody] Write request, CancellationToken ct)
@@ -119,7 +139,8 @@ public sealed class FormController(IFormDefinitionService forms) : ControllerBas
 			return BadRequest();
 		}
 
-		return await forms.DeleteAsync(tenant, id, ct) ? NoContent() : NotFound();
+        try { return await forms.DeleteAsync(tenant, id, ct) ? NoContent() : NotFound(); }
+        catch (FormDefinitionConflictException e) { return Conflict(new ProblemDetails { Detail = e.Message }); }
 	}
 
 	private string? Tenant(string? requested, out bool forbidden)

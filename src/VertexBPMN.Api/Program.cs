@@ -263,6 +263,32 @@ else
 	await DatabaseMigrationCoordinator.EnsureCurrentAsync(app.Services);
 }
 
+// LC06 acceptance: when enabled, seed the reference application as a RELEASED
+// revision through the platform's own release pipeline so the Portal BFF can serve
+// GET /released. Idempotent; gated so normal deployments are unaffected.
+if (builder.Configuration.GetValue<bool>("Database:SeedReferenceApplicationOnStartup"))
+{
+	await using var seedScope = app.Services.CreateAsyncScope();
+	var seedDb = seedScope.ServiceProvider.GetRequiredService<BpmnDbContext>();
+	var seedAudit = seedScope.ServiceProvider.GetRequiredService<IAuditLogService>();
+	var seedAccess = new VertexBPMN.Domain.Entities.ApplicationAccessContext(
+		"reference-seeder",
+		new HashSet<string>(StringComparer.Ordinal) { "application.design", "application.publish" });
+	var seedAppId = await VertexBPMN.Infrastructure.Persistence.Seeding.ReferenceApplicationSeeder.SeedReleasedAsync(seedDb, seedAudit, seedAccess);
+	if (seedAppId is not null)
+	{
+		if (app.Logger.IsEnabled(LogLevel.Information))
+		{
+			app.Logger.LogInformation("Seeded LC06 reference application as released revision: {ApplicationId}", seedAppId);
+		}
+	}
+	else
+	{
+		app.Logger.LogInformation("LC06 reference application already present; seed skipped.");
+	}
+}
+
+
 // Plugin system gating
 var enablePlugins = moduleOptions.Plugins && dependencyOptions.Plugins.Enabled && opMode != OperationalMode.Test;
 if (enablePlugins)

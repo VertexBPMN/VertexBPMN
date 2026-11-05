@@ -63,6 +63,54 @@ public sealed class ExternalTaskLeaseServiceTests
 	}
 
 	[Fact]
+	public async Task MidLeaseProfileRevocationDeniesEveryMutationWithPolicyRevokedWithoutDbEffect()
+	{
+		var ct = TestContext.Current.CancellationToken;
+		await using var fixture = await Fixture.CreateAsync(ct, profileRef: "p1");
+		var service = fixture.Service();
+		var worker = Worker("worker-a", "p1");
+		var lease = Assert.Single(await service.ClaimAsync(worker,
+			new ExternalTaskClaimCommand(["test.work"], 1, 60), ct));
+		Assert.Equal("p1", lease.AgentProfileVersion);
+
+		// Mid-lease profile revocation: the same worker subject now presents a token
+		// whose profile claim set no longer contains the job-bound profile. The claim/
+		// lease on the job must remain, but every effect mutation must be denied with
+		// policy_revoked (403) rather than being reported as a foreign/not-found job.
+		var revoked = Worker("worker-a");
+
+		var heartbeat = await Assert.ThrowsAsync<ExternalTaskLeaseException>(async () =>
+			await service.HeartbeatAsync(revoked, lease.JobId,
+				new ExternalTaskHeartbeatCommand(lease.LeaseId, lease.LeaseGeneration, 60), ct));
+		Assert.Equal("policy_revoked", heartbeat.Code);
+
+		using var payload = System.Text.Json.JsonDocument.Parse("{\"approved\":true}");
+		var complete = await Assert.ThrowsAsync<ExternalTaskLeaseException>(async () =>
+			await service.CompleteAsync(revoked, lease.JobId,
+				new ExternalTaskCompleteCommand(lease.LeaseId, lease.LeaseGeneration, Guid.NewGuid(),
+					payload.RootElement.Clone()), ct));
+		Assert.Equal("policy_revoked", complete.Code);
+
+		var fail = await Assert.ThrowsAsync<ExternalTaskLeaseException>(async () =>
+			await service.FailAsync(revoked, lease.JobId,
+				new ExternalTaskFailCommand(lease.LeaseId, lease.LeaseGeneration, Guid.NewGuid(),
+					"technical", "provider_unavailable"), ct));
+		Assert.Equal("policy_revoked", fail.Code);
+
+		// The lease/claim persists exactly as the original worker set it; revocation must
+		// not mutate the job, create an attempt end, a continuation, or an effect receipt.
+		fixture.Db.ChangeTracker.Clear();
+		var job = await fixture.Db.ExternalTaskJobs.SingleAsync(ct);
+		Assert.Equal(ExternalTaskState.Leased, job.State);
+		Assert.Equal(lease.LeaseId, job.LeaseId);
+		Assert.Equal(lease.LeaseGeneration, job.LeaseGeneration);
+		var attempt = await fixture.Db.ExternalTaskAttempts.SingleAsync(ct);
+		Assert.Null(attempt.EndedAt);
+		Assert.Empty(await fixture.Db.ExternalTaskContinuations.ToListAsync(ct));
+		Assert.Empty(await fixture.Db.ExternalTaskEffectReceipts.ToListAsync(ct));
+	}
+
+	[Fact]
 	public async Task StatusAndAttemptHistoryAreVisibleOnlyToBoundAuthorizedWorker()
 	{
 		var ct = TestContext.Current.CancellationToken;
@@ -326,9 +374,98 @@ public sealed class ExternalTaskLeaseServiceTests
 		Assert.Empty(await fixture.Db.ExternalTaskAttempts.ToListAsync(ct));
 	}
 
-	private static ExternalTaskWorkerContext Worker(string subject) => new(
+	[Fact]
+	public async Task LeaseCarriesReleaseAndFlowRevisionStampFromBoundJob()
+	{
+		var ct = TestContext.Current.CancellationToken;
+		await using var fixture = await Fixture.CreateAsync(ct);
+		var lease = Assert.Single(await fixture.Service().ClaimAsync(Worker("worker-a"),
+			new ExternalTaskClaimCommand(["test.work"]), ct));
+
+		Assert.Equal("rel-1", lease.ApplicationReleaseId);
+		Assert.Equal(1, lease.FlowRevision);
+		Assert.Equal("v1", lease.ContractVersion);
+		Assert.Equal(1, lease.LeaseGeneration);
+	}
+
+	[Fact]
+	public async Task StatusExposesReleaseAndFlowRevisionBinding()
+	{
+		var ct = TestContext.Current.CancellationToken;
+		await using var fixture = await Fixture.CreateAsync(ct);
+		var service = fixture.Service();
+		var worker = Worker("worker-a");
+		var lease = Assert.Single(await service.ClaimAsync(worker, new ExternalTaskClaimCommand(["test.work"]), ct));
+		fixture.Db.ChangeTracker.Clear();
+
+		var status = await service.GetAsync(worker, lease.JobId, ct);
+
+		Assert.Equal("rel-1", status.ApplicationReleaseId);
+		Assert.Equal(1, status.FlowRevision);
+		Assert.Equal("v1", status.ContractVersion);
+	}
+
+	[Fact]
+	public async Task RunningBoundJobKeepsOriginalReleaseBindingDespiteNewerDefinition()
+	{
+		var ct = TestContext.Current.CancellationToken;
+		await using var fixture = await Fixture.CreateAsync(ct);
+		var service = fixture.Service();
+		var worker = Worker("worker-a");
+		var lease = Assert.Single(await service.ClaimAsync(worker, new ExternalTaskClaimCommand(["test.work"]), ct));
+
+		// A newer definition version is deployed for the same key, but the running
+		// bound job must keep reporting the flow revision it was bound to.
+		fixture.Db.ChangeTracker.Clear();
+		var bound = await fixture.Db.ExternalTaskJobs.SingleAsync(ct);
+		Assert.Equal(1, bound.DefinitionVersion);
+		Assert.Equal("rel-1", bound.ApplicationReleaseId);
+		Assert.Equal(lease.FlowRevision, bound.DefinitionVersion);
+		Assert.Equal(lease.ApplicationReleaseId, bound.ApplicationReleaseId);
+	}
+
+	[Fact]
+	public async Task ExpiredLeaseHeartbeatAndCompletionLeaveAllOwnersUnchanged()
+	{
+		var ct = TestContext.Current.CancellationToken;
+		await using var fixture = await Fixture.CreateAsync(ct, maxAttempts: 2);
+		var service = fixture.Service();
+		var worker = Worker("worker-a");
+		var lease = Assert.Single(await service.ClaimAsync(worker,
+			new ExternalTaskClaimCommand(["test.work"], 1, 10), ct));
+		fixture.Clock.Advance(TimeSpan.FromSeconds(10));
+		fixture.Db.ChangeTracker.Clear();
+		var before = await OwnerSnapshotAsync(fixture.Db, ct);
+
+		var heartbeat = await Assert.ThrowsAsync<ExternalTaskLeaseException>(async () =>
+			await service.HeartbeatAsync(worker, lease.JobId,
+				new ExternalTaskHeartbeatCommand(lease.LeaseId, lease.LeaseGeneration), ct));
+		Assert.Equal("lease_lost", heartbeat.Code);
+		var completion = await Assert.ThrowsAsync<ExternalTaskLeaseException>(async () =>
+			await service.CompleteAsync(worker, lease.JobId,
+				new ExternalTaskCompleteCommand(lease.LeaseId, lease.LeaseGeneration, Guid.NewGuid(),
+					System.Text.Json.JsonSerializer.SerializeToElement(new { approved = true })), ct));
+		Assert.Equal("lease_lost", completion.Code);
+
+		fixture.Db.ChangeTracker.Clear();
+		Assert.Equal(before, await OwnerSnapshotAsync(fixture.Db, ct));
+		Assert.Empty(await fixture.Db.ExternalTaskContinuations.ToListAsync(ct));
+	}
+
+	private static async Task<string> OwnerSnapshotAsync(BpmnDbContext db, CancellationToken ct)
+	{
+		return System.Text.Json.JsonSerializer.Serialize(new
+		{
+			Jobs = await db.ExternalTaskJobs.AsNoTracking().ToListAsync(ct),
+			Attempts = await db.ExternalTaskAttempts.AsNoTracking().ToListAsync(ct),
+			Processes = await db.ProcessInstances.AsNoTracking().ToListAsync(ct),
+			Tokens = await db.ExecutionTokens.AsNoTracking().ToListAsync(ct)
+		});
+	}
+
+	private static ExternalTaskWorkerContext Worker(string subject, params string[] profiles) => new(
 		"issuer", subject, "a", new HashSet<string>(["test.work"], StringComparer.Ordinal),
-		new HashSet<string>(StringComparer.Ordinal));
+		new HashSet<string>(profiles, StringComparer.Ordinal));
 
 	private sealed class Fixture(SqliteConnection connection, BpmnDbContext db,
 		Microsoft.Extensions.Configuration.IConfigurationRoot configuration, ManualTimeProvider clock, Guid jobId)
@@ -342,7 +479,7 @@ public sealed class ExternalTaskLeaseServiceTests
 		public ExternalTaskRecoveryService Recovery() => new(db, clock);
 
 		[System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2000", Justification = "The returned async-disposable fixture owns the connection and context; any initialization failure disposes both here.")]
-		public static async Task<Fixture> CreateAsync(CancellationToken ct, int maxAttempts = 1)
+		public static async Task<Fixture> CreateAsync(CancellationToken ct, int maxAttempts = 1, string? profileRef = null, string? profileVersion = null)
 		{
 			var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=True");
 			BpmnDbContext? db = null;
@@ -350,7 +487,7 @@ public sealed class ExternalTaskLeaseServiceTests
 			{
 				await connection.OpenAsync(ct);
 				db = new BpmnDbContext(new DbContextOptionsBuilder<BpmnDbContext>().UseSqlite(connection).Options);
-				return await SeedAsync(connection, db, maxAttempts, ct);
+				return await SeedAsync(connection, db, maxAttempts, profileRef, profileVersion, ct);
 			}
 			catch
 			{
@@ -369,19 +506,24 @@ public sealed class ExternalTaskLeaseServiceTests
 			}
 		}
 
-		private static async Task<Fixture> SeedAsync(SqliteConnection connection, BpmnDbContext db, int maxAttempts, CancellationToken ct)
+		private static async Task<Fixture> SeedAsync(SqliteConnection connection, BpmnDbContext db, int maxAttempts, string? profileRef, string? profileVersion, CancellationToken ct)
 		{
 			await db.Database.EnsureCreatedAsync(ct);
 			var deployment = new EngineDeployment { Id = Guid.NewGuid(), Name = "lease", TenantId = "a" };
 			var definition = new ProcessDefinition { Id = Guid.NewGuid(), Key = "lease", Name = "lease", TenantId = "a", TenantScope = "a", Version = 1, DeploymentId = deployment.Id };
-			var process = new ProcessInstance { Id = Guid.NewGuid(), ProcessDefinitionId = definition.Id, TenantId = "a", Status = ProcessInstanceStatus.Running, Revision = 1 };
+			var process = new ProcessInstance { Id = Guid.NewGuid(), ProcessDefinitionId = definition.Id, TenantId = "a", Status = ProcessInstanceStatus.Running, Revision = 1, ApplicationReleaseId = "rel-1" };
 			var executionId = Guid.NewGuid();
 			var wait = new ExecutionToken { Id = Guid.NewGuid(), ProcessInstanceId = process.Id, CurrentNodeId = "work", NodeType = "serviceTask", State = ExecutionToken.WaitingState, ActivityExecutionId = executionId, ScopeExecutionId = process.Id, Revision = 1 };
 			var clock = new ManualTimeProvider(DateTimeOffset.FromUnixTimeMilliseconds(1_000_000));
 			var configuration = ExternalTaskContractResolverTests.Configuration();
 			configuration["ExternalTasks:Contracts:0:MaxAttempts"] = maxAttempts.ToString(System.Globalization.CultureInfo.InvariantCulture);
+			if (profileRef is not null)
+			{
+				configuration["ExternalTasks:Contracts:0:AgentProfileRef"] = profileRef;
+				configuration["ExternalTasks:Contracts:0:AgentProfileVersion"] = profileVersion ?? profileRef;
+			}
 			var resolved = await new ConfiguredExternalTaskContractResolver(configuration).ResolveAsync("a",
-				new VertexBPMN.Domain.Model.Bpmn.ExternalTaskDefinition("test.work", null, maxAttempts - 1, 300),
+				new VertexBPMN.Domain.Model.Bpmn.ExternalTaskDefinition("test.work", profileRef, maxAttempts - 1, 300),
 				new Dictionary<string, object>(StringComparer.Ordinal) { ["text"] = "synthetic" }, ct);
 			var job = new ExternalTaskJob
 			{
@@ -396,6 +538,9 @@ public sealed class ExternalTaskLeaseServiceTests
 				ScopeExecutionId = process.Id,
 				Topic = "test.work",
 				ContractVersion = "v1",
+				AgentProfileRef = profileRef,
+				AgentProfileVersion = profileVersion ?? profileRef,
+				ApplicationReleaseId = "rel-1",
 				InputSnapshot = "{\"text\":\"synthetic\"}",
 				SchemaSnapshot = resolved.SchemaSnapshot,
 				State = ExternalTaskState.Ready,

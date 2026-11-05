@@ -14,17 +14,17 @@
                   Description="Find, claim and complete the user tasks assigned to the active tenant." />
 
 <MudPaper Class="studio-data-card" Elevation="0">
-<MudTable Items="@_tasks" Hover="true" Dense="true" Breakpoint="Breakpoint.Md" Class="studio-data-table" Filter="new Func<UserTask, bool>(FilterFunc)">
+<MudTable Items="@_tasks" Hover="true" Dense="true" Breakpoint="Breakpoint.Md" Class="studio-data-table" Filter="new Func<StudioUserTask, bool>(FilterFunc)">
     <ToolBarContent>
         <MudTextField @bind-Value="_searchString" Placeholder="Search tasks" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="studio-table-search" Clearable="true" />
     </ToolBarContent>
     <HeaderContent>
-        <MudTh><MudTableSortLabel SortBy="new Func<UserTask, object>(x => x.Id)">Id</MudTableSortLabel></MudTh>
-        <MudTh><MudTableSortLabel SortBy="new Func<UserTask, object>(x => x.Name ?? string.Empty)">Name</MudTableSortLabel></MudTh>
-        <MudTh><MudTableSortLabel SortBy="new Func<UserTask, object>(x => x.ProcessInstanceId)">Process Instance Id</MudTableSortLabel></MudTh>
-        <MudTh><MudTableSortLabel SortBy="new Func<UserTask, object>(x => x.CreatedAt)">Created Time</MudTableSortLabel></MudTh>
-        <MudTh><MudTableSortLabel SortBy="new Func<UserTask, object>(x => x.Assignee ?? string.Empty)">Assignee</MudTableSortLabel></MudTh>
-        <MudTh><MudTableSortLabel SortBy="new Func<UserTask, object>(x => x.DueDate ?? DateTime.MaxValue)">Due Date</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<StudioUserTask, object>(x => x.Id)">Id</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<StudioUserTask, object>(x => x.Name ?? string.Empty)">Name</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<StudioUserTask, object>(x => x.ProcessInstanceId)">Process Instance Id</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<StudioUserTask, object>(x => x.CreatedAt)">Created Time</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<StudioUserTask, object>(x => x.Assignee ?? string.Empty)">Assignee</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<StudioUserTask, object>(x => x.DueDate ?? DateTime.MaxValue)">Due Date</MudTableSortLabel></MudTh>
         <MudTh>Actions</MudTh>
     </HeaderContent>
     <RowTemplate>
@@ -41,9 +41,16 @@
             {
                 <MudIconButton Icon="@Icons.Material.Filled.PersonAdd" Size="Size.Small" OnClick="@(() => ClaimTask(context.Id))" aria-label="Claim Task" />
             }
-            else if (context.Assignee == _currentUserName)
+            else if (context.Assignee == _currentUserSubject)
             {
-                <MudIconButton Icon="@Icons.Material.Filled.Check" Size="Size.Small" OnClick="@(() => CompleteTask(context.Id))" aria-label="Complete Task" />
+                @if (TaskFormState.IsBound(context))
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Assignment" Size="Size.Small" OnClick="@(() => ViewTaskDetails(context))" aria-label="Open Task Form" />
+                }
+                else
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Check" Size="Size.Small" OnClick="@(() => CompleteTask(context))" aria-label="Complete Task" />
+                }
             }
             <MudIconButton Icon="@Icons.Material.Filled.Info" Size="Size.Small" OnClick="@(() => ViewTaskDetails(context))" aria-label="View Details" />
         </MudTd>
@@ -59,15 +66,19 @@
 @code {
     private void OnEngineStatusChanged(object? sender, EventArgs args) => _ = InvokeAsync(StateHasChanged);
 
-    private IEnumerable<UserTask> _tasks = new List<UserTask>();
+    private IEnumerable<StudioUserTask> _tasks = new List<StudioUserTask>();
     private string _searchString = "";
-    private string? _currentUserName;
+    private string? _currentUserSubject;
 
     protected override async Task OnInitializedAsync()
     {
         var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        _currentUserName = authenticationState.User.Identity?.Name
-            ?? authenticationState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        _currentUserSubject = authenticationState.User.FindFirstValue("sub")
+            ?? authenticationState.User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? (authenticationState.User.Identity?.IsAuthenticated == true
+                && authenticationState.User.Identity?.AuthenticationType == UiTestAuthenticationHandler.Scheme
+                    ? authenticationState.User.Identity?.Name
+                    : null);
         ActiveEngineService.OnChange += OnEngineStatusChanged; // Subscribe to state changes
         TenantContext.Changed += OnTenantChanged;
         await LoadTasks();
@@ -90,7 +101,7 @@
         _tasks = await TaskService.GetTasksAsync(TenantContext.CurrentTenantId);
     }
 
-    private bool FilterFunc(UserTask task)
+    private bool FilterFunc(StudioUserTask task)
     {
         if (string.IsNullOrWhiteSpace(_searchString))
             return true;
@@ -107,7 +118,7 @@
 
     private async Task ClaimTask(Guid taskId)
     {
-        if (string.IsNullOrWhiteSpace(_currentUserName))
+        if (string.IsNullOrWhiteSpace(_currentUserSubject))
         {
             Snackbar.Add("The current user could not be determined.", Severity.Error);
             return;
@@ -115,7 +126,7 @@
 
         try
         {
-            await TaskService.ClaimTaskAsync(taskId, _currentUserName, TenantContext.CurrentTenantId);
+            await TaskService.ClaimTaskAsync(taskId, _currentUserSubject, TenantContext.CurrentTenantId);
             Snackbar.Add($"Task {taskId} claimed!", Severity.Success);
             await LoadTasks();
         }
@@ -125,11 +136,13 @@
         }
     }
 
-    private async Task CompleteTask(Guid taskId)
+    private async Task CompleteTask(StudioUserTask task)
     {
+        if (TaskFormState.IsBound(task)) { await ViewTaskDetails(task); return; }
+        var taskId = task.Id;
         try
         {
-            await TaskService.CompleteTaskAsync(taskId, tenantId: TenantContext.CurrentTenantId);
+            await TaskService.CompleteTaskAsync(taskId, tenantId: task.TenantId, expectedRevision: task.Revision);
             Snackbar.Add($"Task {taskId} completed!", Severity.Success);
             await LoadTasks();
         }
@@ -139,7 +152,7 @@
         }
     }
 
-    private async Task ViewTaskDetails(UserTask task)
+    private async Task ViewTaskDetails(StudioUserTask task)
     {
         var parameters = new DialogParameters<VertexBPMN.Studio.Components.TaskDetailsDialog>();
         parameters.Add(x => x.Task, task);

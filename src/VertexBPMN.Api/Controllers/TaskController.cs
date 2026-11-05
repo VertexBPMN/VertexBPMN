@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
 using VertexBPMN.Domain.Entities;
 using VertexBPMN.Domain.Interfaces;
+using VertexBPMN.Domain.Exceptions;
 
 namespace VertexBPMN.Api.Controllers;
 [ApiController]
@@ -93,8 +94,66 @@ public class TaskController : ControllerBase
 			return Forbid();
 		}
 
+		var task = await _taskService.GetByIdAsync(id);
+		if (task is null)
+		{
+			return NotFound();
+		}
+		if (!User.IsInRole("Admin") && !string.IsNullOrWhiteSpace(task.Assignee)
+			&& !string.Equals(task.Assignee, User.FindFirstValue("sub") ?? User.FindFirstValue(ClaimTypes.NameIdentifier), StringComparison.Ordinal))
+		{
+			return Forbid();
+		}
+		if (_taskService is not ITaskCompletionService
+			&& ((request.ExpectedRevision.HasValue && request.ExpectedRevision != task.Revision)
+			|| (request.FormSchemaHash is not null && !string.Equals(request.FormSchemaHash, task.FormSchemaHash, StringComparison.Ordinal))))
+		{
+			return Conflict(new { code = "staleTaskSnapshot", revision = task.Revision, formSchemaHash = task.FormSchemaHash });
+		}
+		var validation = VertexBPMN.Domain.Forms.TaskFormValidator.Validate(task, request.Variables);
+		if (!validation.IsValid)
+		{
+			return BadRequest(new { code = "invalidFormData", errors = validation.Errors });
+		}
+
+		var isBound = !string.IsNullOrWhiteSpace(task.FormKey) || !string.IsNullOrWhiteSpace(task.FormSchema);
+		var validated = _taskService as ITaskCompletionService;
+		if (validated is not null || isBound)
+		{
+			if (validated is null)
+			{
+				return StatusCode(501, new { code = "validatedCompletionUnavailable" });
+			}
+			return await CompleteValidatedTaskAsync(id, task, request, validated);
+		}
+
 		await _taskService.CompleteAsync(id, request.Variables, idempotencyKey: IdempotencyKey);
 		return NoContent();
+	}
+
+	private async Task<IActionResult> CompleteValidatedTaskAsync(Guid id, UserTask task, CompleteRequest request, ITaskCompletionService validated)
+	{
+			try
+			{
+				var roles = User.FindAll(ClaimTypes.Role).Select(c => c.Value).ToArray();
+				await validated.CompleteValidatedAsync(id, request.Variables, IdempotencyKey,
+					request.ExpectedRevision, request.FormSchemaHash,
+					User.FindFirstValue("sub") ?? User.FindFirstValue(ClaimTypes.NameIdentifier), task.TenantId,
+					User.IsInRole("Admin"), roles, HttpContext.RequestAborted);
+			}
+			catch (TaskCompletionConflictException)
+			{
+				return Conflict(new { code = "staleTaskSnapshot" });
+			}
+			catch (UnauthorizedAccessException)
+			{
+				return Forbid();
+			}
+			catch (ArgumentException)
+			{
+				return BadRequest(new { code = "invalidFormData" });
+			}
+			return NoContent();
 	}
 
 	[HttpPost("{id}/delegate")]
@@ -139,7 +198,7 @@ public class TaskController : ControllerBase
 	[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public contract type ClaimRequest retained for exposed HTTP action signatures and controller activation (TaskController).")]
 	public record ClaimRequest(string UserId, string? TenantId = null);
 	[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public contract type CompleteRequest retained for exposed HTTP action signatures and controller activation (TaskController).")]
-	public record CompleteRequest(IDictionary<string, object>? Variables, string? TenantId = null);
+	public record CompleteRequest(IDictionary<string, object>? Variables, string? TenantId = null, long? ExpectedRevision = null, string? FormSchemaHash = null);
 	[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "Public contract type DelegateRequest retained for exposed HTTP action signatures and controller activation (TaskController).")]
 	public record DelegateRequest(string UserId, string? TenantId = null);
 }

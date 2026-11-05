@@ -1,0 +1,82 @@
+# =============================================================================
+# VertexBPMN API — Runtime Baseline (LC00/LC02)
+# =============================================================================
+# Zweck: Definition deployen, Prozess starten/lesen, Variablen und Aufgabenstatus
+#        gegen eine laufende API prüfen. IDs aus tatsächlichen Antworten übernehmen.
+#
+# Voraussetzungen:
+#   - Laufende API unter {{baseUrl}} (Profil `http` -> http://localhost:5263).
+#   - VERTEXBPMN_STAGE_TOKEN im HTTP-Editor-Scope gesetzt (Testidentität mit
+#     ProcessManager-Rolle für Deploy/Start/Complete). Kein Token in dieser Datei.
+#   - Reihenfolge einhalten; Requestnamen liefern Response-Variablen fuer Folge-Requests.
+#
+# Umgebung: local-http (siehe http-client.env.json). @-Definitionen unten haben
+# Vorrang vor Umgebungsvariablen.
+@baseUrl = {{baseUrl}}
+@tenantId = {{tenantId}}
+@token = {{VERTEXBPMN_STAGE_TOKEN}}
+
+### 01 — Health (unauthentifiziert): Probe der API
+GET {{baseUrl}}/api/health
+Accept: application/json
+# Soll: 200 { "status": "healthy" }
+
+### 02 — Engine-Capabilities (authentifiziert)
+GET {{baseUrl}}/api/engine/capabilities
+Authorization: Bearer {{token}}
+Accept: application/json
+# Soll: 200 EngineCapabilities (EngineType, SupportsCmmn, SupportsDurablePersistence)
+
+### 03 — Definition deployen (BPMN-XML; Körper ist Abkuerzung — volle Fixture
+#       tests/VertexBPMN.Tests/TestData/Reference/A.1.0.bpmn in den Editor holen)
+# @name deploy
+POST {{baseUrl}}/api/repository
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "bpmnXml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><bpmn:definitions xmlns:bpmn=\"http://www.omg.org/spec/BPMN/20100524/MODEL\" id=\"def_1\" targetNamespace=\"http://example.com\"><bpmn:process id=\"Process_InvoiceApproval\" isExecutable=\"true\"><bpmn:startEvent id=\"StartEvent_1\"/><bpmn:endEvent id=\"EndEvent_1\"/><bpmn:sequenceFlow id=\"Flow_1\" sourceRef=\"StartEvent_1\" targetRef=\"EndEvent_1\"/></bpmn:process></bpmn:definitions>",
+  "name": "invoice-approval-baseline",
+  "tenantId": "{{tenantId}}"
+}
+# Soll: 201 ProcessDefinition; ProcessDefinition.id als {{deploy.response.body.id}} weiterverwenden
+
+### 04 — Definitionen auflisten (Key-Filter)
+GET {{baseUrl}}/api/repository?key=Process_InvoiceApproval
+Authorization: Bearer {{token}}
+Accept: application/json
+# Soll: 200 Liste enthaelt deployte Definition
+
+### 05 — Prozess starten (StartRequest: ProcessDefinitionKey, Variables, BusinessKey, TenantId)
+# @name start
+POST {{baseUrl}}/api/runtime/start
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Idempotency-Key: baseline-start-001
+
+{
+  "processDefinitionKey": "Process_InvoiceApproval",
+  "variables": { "amount": 1250.00, "customerId": "C-1001" },
+  "businessKey": "INV-2026-0001",
+  "tenantId": "{{tenantId}}"
+}
+# Soll: 201 ProcessInstance; id als {{start.response.body.id}}
+
+### 06 — Prozess lesen (anonymisierte Variablen/Taskstatus)
+GET {{baseUrl}}/api/runtime/{{start.response.body.id}}
+Authorization: Bearer {{token}}
+Accept: application/json
+# Soll: 200 ProcessInstance mit Variablen; Tasks-Status konsistent
+
+### 07 — Ungültiger Start (unbekannter ProcessDefinitionKey) — Negativfall
+POST {{baseUrl}}/api/runtime/start
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Idempotency-Key: baseline-start-bad-001
+
+{
+  "processDefinitionKey": "Does_Not_Exist",
+  "variables": {},
+  "tenantId": "{{tenantId}}"
+}
+# Soll: 4xx mit ProblemDetails (kein 200-Create)

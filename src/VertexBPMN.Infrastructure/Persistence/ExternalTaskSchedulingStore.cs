@@ -31,9 +31,16 @@ public sealed class ExternalTaskSchedulingStore(BpmnDbContext db)
             ?? await db.ProcessInstances.SingleOrDefaultAsync(instance => instance.Id == job.ProcessInstanceId, cancellationToken);
         if (owner is null || owner.TenantId != job.TenantId || owner.ProcessDefinitionId != job.DefinitionId
             || owner.Status != ProcessInstanceStatus.Running)
-		{
-			throw new InvalidOperationException("external_task_invalid_process");
-		}
+        {
+            throw new InvalidOperationException("external_task_invalid_process");
+        }
+
+        // The running bound job keeps the release stamp it was created under; a later
+        // retarget to a different release/flow version must be refused, never silently applied.
+        if (owner.ApplicationReleaseId != job.ApplicationReleaseId)
+        {
+            throw new InvalidOperationException("external_task_release_binding_mismatch");
+        }
 
 		if (!await db.ProcessDefinitions.AnyAsync(definition => definition.Id == job.DefinitionId
                 && definition.TenantId == job.TenantId && definition.Version == job.DefinitionVersion, cancellationToken))
@@ -74,6 +81,7 @@ public sealed class ExternalTaskSchedulingStore(BpmnDbContext db)
                 || existing.ScopeExecutionId != job.ScopeExecutionId || existing.DefinitionId != job.DefinitionId
                 || existing.DefinitionVersion != job.DefinitionVersion || existing.AgentProfileRef != job.AgentProfileRef
                 || existing.AgentProfileVersion != job.AgentProfileVersion
+                || existing.ApplicationReleaseId != job.ApplicationReleaseId
                 || existing.MaxAttempts != job.MaxAttempts || existing.Deadline != job.Deadline
                 || existing.CreatedAt != job.CreatedAt || existing.MultiInstanceExecutionId != job.MultiInstanceExecutionId
                 || existing.MultiInstanceIndex != job.MultiInstanceIndex)

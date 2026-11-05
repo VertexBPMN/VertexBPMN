@@ -34,6 +34,9 @@ public class UserTask
 	/// Optional JSON schema for dynamic forms (form-js, Camunda 8, etc.)
 	/// </summary>
 	public string? FormSchema { get; set; }
+    public string? FormRevisionId { get; set; }
+    public int? FormVersion { get; set; }
+    public string? FormSchemaHash { get; set; }
 
 	// TODO: Add candidate users/groups, etc.
 }

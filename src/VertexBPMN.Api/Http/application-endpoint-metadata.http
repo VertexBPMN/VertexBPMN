@@ -1,0 +1,34 @@
+### LC09B S1: Endpoint-Metadaten im bestehenden Entwurf speichern
+# Keine ausführbare Endpoint-Route; vorhandene App-API, ProcessManager nötig.
+# baseUrl/tenantId/adminToken aus persönlicher HTTP-Editor-Umgebung.
+# @name createEndpointDraft
+POST {{baseUrl}}/api/applications
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "tenantId": "{{tenantId}}",
+  "key": "lc09b-endpoint-checkpoint",
+  "name": "LC09B Endpoint",
+  "expectedVersion": 0,
+  "content": "{\"dataSources\":[{\"key\":\"customers\",\"bindingVersion\":2}],\"pages\":[{\"id\":\"home\",\"route\":\"/home\",\"actions\":[{\"type\":\"data-source-read\",\"version\":\"1.0.0\",\"dataSource\":\"customers\"}]}],\"endpoints\":[{\"key\":\"customers\",\"method\":\"GET\",\"route\":\"/endpoints/customers/{customerId}\",\"pathParameters\":[\"customerId\"],\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{\"type\":\"object\"},\"permission\":\"ReadOnly\",\"limits\":{\"timeoutSeconds\":5,\"maxRequestBytes\":1024,\"maxResponseBytes\":4096},\"action\":{\"pageId\":\"home\",\"type\":\"data-source-read\",\"version\":\"1.0.0\",\"target\":\"customers\"}}]}"
+}
+
+### Snapshot lesen; Soll: 200, unveränderlicher ContentJson inklusive endpoints
+# @name readEndpointRevision
+GET {{baseUrl}}/api/applications/{{createEndpointDraft.response.body.$.id}}/revisions/1?tenantId={{tenantId}}
+Authorization: Bearer {{adminToken}}
+
+### Unbekannte Aktion; Soll: 400, kein neuer Entwurf
+# @name rejectUnknownEndpointAction
+POST {{baseUrl}}/api/applications
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "tenantId": "{{tenantId}}",
+  "key": "lc09b-rejected-endpoint",
+  "name": "Rejected",
+  "expectedVersion": 0,
+  "content": "{\"endpoints\":[{\"key\":\"customers\",\"method\":\"GET\",\"route\":\"/endpoints/customers\",\"pathParameters\":[],\"action\":{\"pageId\":\"foreign\",\"type\":\"sql\",\"version\":\"1.0.0\",\"target\":\"foreign\"}}]}"
+}

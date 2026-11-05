@@ -1,3 +1,4 @@
+using VertexBPMN.Authentication;
 using VertexBPMN.Studio.Components;
 using VertexBPMN.Studio;
 using VertexBPMN.Studio.Services;
@@ -109,8 +110,6 @@ builder.Services.AddMudServices();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton(TimeProvider.System);
 RegisterOidcSessionStore(builder);
-builder.Services.AddSingleton<OidcSessionTokenStore>();
-builder.Services.AddScoped<OidcCookieRefreshEvents>();
 var oidcAuthority = builder.Configuration["StudioAuthentication:Authority"];
 var oidcBackchannelAuthority = builder.Configuration["StudioAuthentication:BackchannelAuthority"];
 LocalOidcBackchannelHandler.Validate(oidcBackchannelAuthority, oidcAuthority, builder.Environment.IsEnvironment("OidcTest"));
@@ -270,6 +269,7 @@ builder.Services.AddScoped<IHistoryService, HttpHistoryService>();
 builder.Services.AddScoped<IEngineCapabilitiesService, HttpEngineCapabilitiesService>();
 builder.Services.AddScoped<IDmnService, HttpDmnService>();
 builder.Services.AddScoped<IFormDefinitionService, HttpFormDefinitionService>();
+builder.Services.AddScoped<IApplicationService, HttpApplicationService>();
 builder.Services.AddScoped<IHealthService, HttpHealthService>();
 builder.Services.AddScoped<IAnalyticsService, HttpAnalyticsService>();
 builder.Services.AddScoped<IMlAnalyticsService, HttpMlAnalyticsService>();
@@ -289,6 +289,7 @@ builder.Services.AddScoped<IWorkflowTriggerService, HttpWorkflowTriggerService>(
 builder.Services.AddScoped<IConnectorService, HttpConnectorService>();
 builder.Services.AddScoped<HttpSourceControlService>();
 builder.Services.AddScoped<IConnectorTemplateService, HttpConnectorTemplateService>();
+builder.Services.AddScoped<IFieldMappingService, HttpFieldMappingService>();
 builder.Services.AddScoped<IDebuggingService, HttpDebuggingService>();
 builder.Services.AddScoped<ICaseManagementService, HttpCaseManagementService>();
 builder.Services.AddScoped<NotificationClient>();
@@ -401,14 +402,13 @@ static void RegisterOidcSessionStore(WebApplicationBuilder builder)
 	if (OidcSessionStoreProvider.IsSqlite(provider) || string.IsNullOrWhiteSpace(connectionString))
 	{
 		// Lokaler Standard: In-Process-Store (kein Azure-Zugang nötig, identisches Verhalten).
-		builder.Services.AddSingleton<ISharedOidcSessionStore, InMemorySharedOidcSessionStore>();
+		builder.Services.AddVertexBpmnOidcSessions();
 		return;
 	}
 
 	// Geteilter, verschlüsselter Store auf PostgreSQL (Azure): alle Replikas teilen
-	// denselben Sitzungszustand und dieselben Refresh-Locks (P4.5).
-	builder.Services.AddDbContextFactory<OidcSessionStoreDbContext>(options => OidcSessionStoreProvider.Configure(options, provider, connectionString));
-	builder.Services.AddSingleton<ISharedOidcSessionStore, PersistentOidcSessionStore>();
+	// denselben Sitzungszustand mit Datenbank-Revisionsfencing (P4.5).
+	builder.Services.AddVertexBpmnPersistentOidcSessions(options => OidcSessionStoreProvider.Configure(options, provider, connectionString));
 }
 
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515", Justification = "WebApplicationFactory integration tests require a public application entry point.")]

@@ -187,10 +187,34 @@ public sealed class HttpBpmnEngineServiceTests
 			base.Dispose(disposing);
 		}
 
-		protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+		protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
 		{
-			_requests.Add(request);
-			return Task.FromResult(_response);
+			// The service under test may dispose the request (e.g. `using var request` in
+			// CompleteTaskAsync) once SendAsync completes. Buffer a clone so the test can
+			// still inspect method/URI/headers/body after the call returns.
+			_requests.Add(await CloneAsync(request, cancellationToken));
+			return _response;
+		}
+
+		private static async Task<HttpRequestMessage> CloneAsync(HttpRequestMessage source, CancellationToken cancellationToken)
+		{
+			var clone = new HttpRequestMessage(source.Method, source.RequestUri) { Version = source.Version };
+			foreach (var (key, value) in source.Headers)
+			{
+				clone.Headers.TryAddWithoutValidation(key, value);
+			}
+
+			if (source.Content is not null)
+			{
+				var bytes = await source.Content.ReadAsByteArrayAsync(cancellationToken);
+				clone.Content = new ByteArrayContent(bytes);
+				foreach (var (key, value) in source.Content.Headers)
+				{
+					clone.Content.Headers.TryAddWithoutValidation(key, value);
+				}
+			}
+
+			return clone;
 		}
 	}
 }

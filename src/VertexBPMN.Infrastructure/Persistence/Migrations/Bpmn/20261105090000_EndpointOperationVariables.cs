@@ -16,5 +16,15 @@ public sealed class EndpointOperationVariables : Migration
             nullable: true);
 
     protected override void Down(MigrationBuilder migrationBuilder)
-        => migrationBuilder.DropColumn(name: "VariablesJson", table: "ApplicationEndpointOperations");
+    {
+        if (ActiveProvider == "Microsoft.EntityFrameworkCore.Sqlite")
+        {
+            // This hand-written migration has no target model for EF's SQLite table rebuild.
+            // The nullable column has no dependent constraints and can be dropped directly.
+            migrationBuilder.Sql("ALTER TABLE \"ApplicationEndpointOperations\" DROP COLUMN \"VariablesJson\";");
+            return;
+        }
+
+        migrationBuilder.DropColumn(name: "VariablesJson", table: "ApplicationEndpointOperations");
+    }
 }

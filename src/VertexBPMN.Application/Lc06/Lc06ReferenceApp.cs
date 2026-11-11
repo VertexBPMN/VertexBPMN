@@ -130,5 +130,5 @@ public static class Lc06ReferenceApp
             }
           ]
         }
-        """;
+        """.ReplaceLineEndings("\n");
 }

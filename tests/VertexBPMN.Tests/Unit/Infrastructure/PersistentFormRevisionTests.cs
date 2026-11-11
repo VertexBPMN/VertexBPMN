@@ -73,7 +73,7 @@ public sealed class PersistentFormRevisionTests
     public async Task Migration_BackfillsOnlyCurrentVersionAndSurvivesReopen()
     {
         var path = Path.Combine(Path.GetTempPath(), $"lc04-{Guid.NewGuid():N}.db");
-        var options = new DbContextOptionsBuilder<BpmnDbContext>().UseSqlite($"Data Source={path}").Options;
+        var options = new DbContextOptionsBuilder<BpmnDbContext>().UseSqlite($"Data Source={path};Pooling=False").Options;
         try
         {
             await using (var db = new BpmnDbContext(options))

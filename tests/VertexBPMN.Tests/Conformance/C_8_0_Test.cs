@@ -8,6 +8,7 @@ using VertexBPMN.Engine.Parsing;
 
 namespace VertexBPMN.Tests.Conformance;
 
+[Collection("FeelRuntimeConformance")]
 public sealed class C_8_0_Test
 {
 	[Fact]

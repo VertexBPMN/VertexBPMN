@@ -32,7 +32,4 @@ public interface IBffRuntimeGateway
 
     /// <summary>Reads a task's raw lifecycle state for the derived actor (projection happens in the controller).</summary>
     Task<BffTaskState> GetTaskStateAsync(string tenantId, string applicationId, Guid taskId, CancellationToken ct = default);
-    Task<string> GetInboxAsync(string tenantId, int page, int pageSize, CancellationToken ct = default);
-    Task ClaimInboxTaskAsync(string tenantId, Guid taskId, string idempotencyKey, CancellationToken ct = default);
-    Task CompleteInboxTaskAsync(string tenantId, Guid taskId, string idempotencyKey, IReadOnlyDictionary<string, object?>? variables, CancellationToken ct = default);
 }

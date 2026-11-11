@@ -34,27 +34,25 @@ public sealed class PortalBffClient
         => GetJsonAsync<DataSourceReadResult>($"api/bff/applications/{applicationId}/data-sources/{binding}", ct);
 
     public Task<BffResult<ActionOutcome>> StartAsync(string applicationId, IDictionary<string, object?>? variables = null, CancellationToken ct = default)
-        => PostJsonAsync<ActionOutcome>($"api/bff/applications/{applicationId}/actions/start", new VariableEnvelope(variables), ct);
+        => PostJsonAsync<ActionOutcome>($"api/bff/applications/{applicationId}/actions/start", variables, ct);
 
     public Task<BffResult> ClaimAsync(string applicationId, Guid taskId, CancellationToken ct = default)
         => PostNoContentAsync($"api/bff/applications/{applicationId}/actions/claim/{taskId}", null, ct);
 
     public Task<BffResult> CompleteAsync(string applicationId, Guid taskId, IDictionary<string, object?>? variables = null, CancellationToken ct = default)
-        => PostNoContentAsync($"api/bff/applications/{applicationId}/actions/complete/{taskId}", new VariableEnvelope(variables), ct);
+        => PostNoContentAsync($"api/bff/applications/{applicationId}/actions/complete/{taskId}", variables, ct);
 
     public Task<BffResult<TaskStatusView>> GetTaskStatusAsync(string applicationId, Guid taskId, CancellationToken ct = default)
         => GetJsonAsync<TaskStatusView>($"api/bff/applications/{applicationId}/tasks/{taskId}/status", ct);
 
     public Task<BffResult<TaskInboxPage>> GetInboxAsync(int page = 1, int pageSize = 20, CancellationToken ct = default)
-        => GetJsonAsync<TaskInboxPage>($"api/bff/tasks/inbox?page={page}&pageSize={pageSize}", ct);
+        => GetJsonAsync<TaskInboxPage>($"api/task/inbox?page={page}&pageSize={pageSize}", ct);
 
     public Task<BffResult> ClaimTaskAsync(Guid taskId, CancellationToken ct = default)
-        => PostNoContentAsync($"api/bff/tasks/inbox/{taskId}/claim", null, ct);
+        => PostNoContentAsync($"api/task/inbox/{taskId}/claim", null, ct);
 
     public Task<BffResult> CompleteTaskAsync(Guid taskId, IDictionary<string, object?>? variables = null, CancellationToken ct = default)
-        => PostNoContentAsync($"api/bff/tasks/inbox/{taskId}/complete", new VariableEnvelope(variables), ct);
-
-    private sealed record VariableEnvelope(IDictionary<string, object?>? Variables);
+        => PostNoContentAsync($"api/task/inbox/{taskId}/complete", variables, ct);
 
     private async Task<BffResult<T>> GetJsonAsync<T>(string path, CancellationToken ct)
     {
@@ -68,11 +66,11 @@ public sealed class PortalBffClient
         return BffResult<T>.Success(value!);
     }
 
-    private async Task<BffResult<T>> PostJsonAsync<T>(string path, object? payload, CancellationToken ct)
+    private async Task<BffResult<T>> PostJsonAsync<T>(string path, IDictionary<string, object?>? variables, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, path);
         await ApplyStateChangingHeadersAsync(request, ct).ConfigureAwait(false);
-        request.Content = JsonContent.Create(payload);
+        request.Content = JsonContent.Create(variables);
         using var response = await _http.SendAsync(request, ct).ConfigureAwait(false);
         if (response.IsSuccessStatusCode)
         {
@@ -83,13 +81,13 @@ public sealed class PortalBffClient
         return await ToFailureAsync<T>(response, ct).ConfigureAwait(false);
     }
 
-    private async Task<BffResult> PostNoContentAsync(string path, object? payload, CancellationToken ct)
+    private async Task<BffResult> PostNoContentAsync(string path, IDictionary<string, object?>? variables, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, path);
         await ApplyStateChangingHeadersAsync(request, ct).ConfigureAwait(false);
-        if (payload is not null)
+        if (variables is not null)
         {
-            request.Content = JsonContent.Create(payload);
+            request.Content = JsonContent.Create(variables);
         }
 
         using var response = await _http.SendAsync(request, ct).ConfigureAwait(false);

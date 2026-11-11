@@ -87,6 +87,9 @@ namespace VertexBPMN.Infrastructure.Persistence.Migrations.Bpmn
                     b.Property<string>("ResultJson")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("VariablesJson")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("TEXT");

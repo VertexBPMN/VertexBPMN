@@ -31,6 +31,9 @@ public sealed class PersistentApplicationEndpointReconciler(BpmnDbContext db, IR
             // process (see IProcessExecutionRuntime inbox deduplication). The crash window between
             // the committed start and the Started write is therefore closed without double effects.
             var instance = await runtime.StartProcessByIdAsync(definitionId,
+                variables: candidate.VariablesJson is null
+                    ? null
+                    : JsonSerializer.Deserialize<Dictionary<string, object>>(candidate.VariablesJson),
                 tenantId: candidate.TenantId, idempotencyKey: "endpoint:" + candidate.OperationId,
                 cancellationToken: cancellationToken);
             candidate.Status = "Started";

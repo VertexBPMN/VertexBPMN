@@ -284,6 +284,10 @@ public sealed class PersistentApplicationReleaseService(BpmnDbContext db) : IApp
         }
 
         var diagnostics = ValidateGraph(tenantId, revision.ContentJson);
+        if (diagnostics.Count == 0 && string.IsNullOrWhiteSpace(release.BoundProcessDefinitionId))
+        {
+            release.BoundProcessDefinitionId = await ResolveConcreteProcessDefinitionIdAsync(tenantId, revision.ContentJson, cancellationToken);
+        }
         release.State = diagnostics.Count == 0 ? ApplicationReleaseState.Ready : ApplicationReleaseState.Failed;
         if (diagnostics.Count > 0)
         {

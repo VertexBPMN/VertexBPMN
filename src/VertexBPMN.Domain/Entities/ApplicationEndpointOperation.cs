@@ -16,6 +16,7 @@ public sealed class ApplicationEndpointOperation
     public string? ApplicationRevisionId { get; set; }
     public string? ApplicationReleaseId { get; set; }
     public string? BoundProcessDefinitionId { get; set; }
+    public string? VariablesJson { get; set; }
     public string Status { get; set; } = string.Empty;
     public string? ProcessInstanceId { get; set; }
     public string? ResultJson { get; set; }

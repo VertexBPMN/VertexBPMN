@@ -111,7 +111,7 @@ public sealed class ApplicationEndpointController(BpmnDbContext db, IApplication
             var existing = await FindByKeyAsync(tenant, appKey, endpointKey, idempotencyKey, ct);
             if (existing is not null) { return AcceptedWith(existing, appKey, endpointKey); }
         }
-        return await CreateAcceptedAsync(idempotencyKey, tenant, appKey, endpointKey, id,
+        return await CreateAcceptedAsync(idempotencyKey, body?.Variables, tenant, appKey, endpointKey, id,
             revision.Id, release.Id, release.BoundProcessDefinitionId, ct);
     }
 
@@ -135,7 +135,7 @@ public sealed class ApplicationEndpointController(BpmnDbContext db, IApplication
                 && x.EndpointKey == endpointKey && x.IdempotencyKey == idempotencyKey)
             .Select(x => x.OperationId).SingleOrDefaultAsync(ct);
 
-    private async Task<IActionResult> CreateAcceptedAsync(string? idempotencyKey, string tenant, string appKey,
+    private async Task<IActionResult> CreateAcceptedAsync(string? idempotencyKey, IDictionary<string, object?>? variables, string tenant, string appKey,
         string endpointKey, string definitionId, string revisionId, string releaseId, string boundDefinitionId,
         CancellationToken ct)
     {
@@ -147,6 +147,7 @@ public sealed class ApplicationEndpointController(BpmnDbContext db, IApplication
             IdempotencyKey = idempotencyKey,
             ApplicationDefinitionId = definitionId, ApplicationRevisionId = revisionId,
             ApplicationReleaseId = releaseId, BoundProcessDefinitionId = boundDefinitionId,
+            VariablesJson = variables is null ? null : JsonSerializer.Serialize(variables),
             CreatedAtTicks = DateTime.UtcNow.Ticks, UpdatedAtTicks = DateTime.UtcNow.Ticks
         };
         db.ApplicationEndpointOperations.Add(operation);

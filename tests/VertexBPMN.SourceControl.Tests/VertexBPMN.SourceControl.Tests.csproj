@@ -10,8 +10,8 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../VertexBPMN.Tests/Infrastructure/PostgresTestDatabaseCommands.cs" Link="Infrastructure/PostgresTestDatabaseCommands.cs" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
-    <PackageReference Include="xunit.v3.mtp-v2" Version="4.0.2" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageReference Include="xunit.v3.mtp-v2" Version="4.0.3" />
     <ProjectReference Include="../../src/VertexBPMN.SourceControl.Abstractions/VertexBPMN.SourceControl.Abstractions.csproj" />
     <ProjectReference Include="../../src/VertexBPMN.Infrastructure/VertexBPMN.Infrastructure.csproj" />
     <ProjectReference Include="../../src/VertexBPMN.SourceControl.AuthHelper/VertexBPMN.SourceControl.AuthHelper.csproj" ReferenceOutputAssembly="false" />
